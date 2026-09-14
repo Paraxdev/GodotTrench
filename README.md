@@ -24,7 +24,8 @@ the showcase maps above are rendered in Godot and were built entirely through th
 
 ![Live mode: edits in GodotTrench show up in the Godot editor before saving](docs/screenshots/GodotTrench-demo-live-view.gif)
 
-live mode in action: with the map's scene open in Godot, every edit in GodotTrench shows up in the Godot editor right away, no saving needed, see [Working with Godot](docs/godot.md).
+work in live mode to instantly see changes before saving 
+[Working with Godot](docs/godot.md).
 
 # Disclosure
 This project makes use of AI / LLMs, specifically Claude.
