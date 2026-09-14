@@ -281,6 +281,7 @@ impl Viewport {
                 Some(h) => {
                     let target = map.click_target(h.node, &open_groups);
                     cx.state.last_bounds = map.bounds(target);
+                    cx.state.outliner_reveal = Some(target);
                     cx.state.doc.select(|_, s| {
                         if modifiers.command {
                             s.toggle_node(target);
@@ -306,6 +307,7 @@ impl Viewport {
             let group = map.selection_target(h.node, &open_groups);
             if group != map.click_target(h.node, &open_groups) {
                 cx.state.last_bounds = map.bounds(group);
+                cx.state.outliner_reveal = Some(group);
                 cx.state.doc.select(|_, s| {
                     s.clear();
                     s.select_node(group);
@@ -314,6 +316,7 @@ impl Viewport {
                 cx.state.set_status(format!("Selected group {name}"));
             } else if let Some(e) = map.owning_entity(h.node) {
                 let brushes = map.get(e).map(|n| n.children.clone()).unwrap_or_default();
+                cx.state.outliner_reveal = Some(h.node);
                 cx.state.doc.select(|_, s| {
                     s.clear();
                     s.nodes.extend(brushes);
