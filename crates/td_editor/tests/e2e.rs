@@ -175,6 +175,16 @@ fn resize_edges_and_faces() {
     let (min, max) = ed.selection_bounds();
     assert!(approx(&min, &[-32.0, 0.0, -32.0]) && approx(&max, &[96.0, 64.0, 32.0]), "edge resize {min:?} {max:?}");
 
+    // The grabbed edge moves in every view, whichever way its axes point on screen.
+    ed.input("top", json!([{ "type": "drag", "world": [32, 0, -32], "to_world": [32, 0, -64] }]));
+    ed.call("set_camera", json!({ "view": "front", "center": [32, 32, 0], "zoom": 1.5 }));
+    ed.input("front", json!([{ "type": "drag", "world": [32, 64, 0], "to_world": [32, 32, 0] }]));
+    ed.input("front", json!([{ "type": "drag", "world": [32, 0, 0], "to_world": [32, 16, 0] }]));
+    ed.call("set_camera", json!({ "view": "side", "center": [0, 24, 0], "zoom": 1.5 }));
+    ed.input("side", json!([{ "type": "drag", "world": [0, 24, 32], "to_world": [0, 24, 64] }]));
+    let (min, max) = ed.selection_bounds();
+    assert!(approx(&min, &[-32.0, 16.0, -64.0]) && approx(&max, &[96.0, 32.0, 64.0]), "edge resize in all views {min:?} {max:?}");
+
     // Shift+drag the top face upwards in the 3D view.
     ed.call("set_camera", json!({ "view": "3d", "position": [-200, 250, 220], "look_at": [32, 32, 0] }));
     ed.input("3d", json!([{ "type": "drag", "world": [32, 64, 0], "to_world": [32, 128, 0], "modifiers": ["shift"], "steps": 12 }]));
