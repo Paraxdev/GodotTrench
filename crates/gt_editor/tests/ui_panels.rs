@@ -34,14 +34,66 @@ impl Fixture {
 }
 
 #[test]
-fn entity_browser_creates_brush_entities() {
-    let mut harness = Harness::new_ui_state(|ui, f: &mut Fixture| panels::entity_browser(ui, &mut f.state, &mut f.panels, &mut f.actions), Fixture::new());
+fn entity_browser_selects_several_cards_and_places_them() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(700.0, 1400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::entity_browser(ui, &mut f.state, &mut f.panels, &mut f.actions), Fixture::new());
     harness.run();
-    harness.get_by_label("func_door  ").click();
+    harness.get_by_label("func_door").click();
     harness.run();
-    assert_eq!(harness.state().actions, vec![Action::CreateBrushEntity("func_door".into())]);
-    // Point entities are listed too.
-    harness.get_by_label_contains("info_player_start");
+    assert_eq!(harness.state().panels.entity_selection, vec!["func_door".to_string()]);
+    assert!(harness.state().actions.is_empty(), "a click only selects");
+
+    harness.get_by_label("info_player_start").click_modifiers(egui::Modifiers::COMMAND);
+    harness.run();
+    assert_eq!(harness.state().panels.entity_selection, vec!["func_door".to_string(), "info_player_start".to_string()]);
+    harness.get_by_label("func_door").click_modifiers(egui::Modifiers::COMMAND);
+    harness.run();
+    assert_eq!(harness.state().panels.entity_selection, vec!["info_player_start".to_string()]);
+    harness.get_by_label("func_door").click_modifiers(egui::Modifiers::COMMAND);
+    harness.run();
+
+    harness.get_by_label("Place 2").click();
+    harness.run();
+    assert_eq!(
+        harness.state().actions,
+        vec![Action::PlaceEntities { classnames: vec!["info_player_start".into(), "func_door".into()], at: None, normal: None, row: DVec3::X }]
+    );
+}
+
+#[test]
+fn entity_browser_shift_click_selects_a_range() {
+    let mut ps = PanelState::default();
+    let order: Vec<String> = ["a", "b", "c", "d"].map(String::from).to_vec();
+    panels::select_entity_card(&mut ps, &order, "b".into(), egui::Modifiers::NONE);
+    panels::select_entity_card(&mut ps, &order, "d".into(), egui::Modifiers::SHIFT);
+    assert_eq!(ps.entity_selection, ["b", "c", "d"].map(String::from).to_vec());
+    panels::select_entity_card(&mut ps, &order, "a".into(), egui::Modifiers::NONE);
+    assert_eq!(ps.entity_selection, vec!["a".to_string()]);
+}
+
+#[test]
+fn placing_entities_lines_them_up_and_gives_brush_entities_a_box() {
+    let mut f = Fixture::new();
+    f.state.snap = true;
+    f.state.grid = 16.0;
+    let classnames = vec!["info_player_start".to_string(), "func_door".to_string(), "light".to_string()];
+    let action = Action::PlaceEntities { classnames, at: Some(DVec3::ZERO), normal: Some(DVec3::Y), row: DVec3::X };
+    gt_editor::commands::execute(&mut f.state, action, &egui::Context::default());
+    let map = &f.state.doc.map;
+    let placed: Vec<gt_core::NodeId> = f.state.doc.selection.nodes.iter().copied().collect();
+    assert_eq!(placed.len(), 3);
+    let mut boxes: Vec<(String, Aabb)> = placed.iter().map(|id| (map.entity(*id).unwrap().classname.clone(), map.bounds(*id))).collect();
+    boxes.sort_by(|a, b| a.1.center().x.total_cmp(&b.1.center().x));
+    let names: Vec<&str> = boxes.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(names, ["info_player_start", "func_door", "light"]);
+    let door = placed.iter().find(|id| map.entity(**id).unwrap().classname == "func_door").unwrap();
+    let brush = map.get(*door).unwrap().children[0];
+    let bounds = map.brush(brush).unwrap().bounds();
+    assert_eq!(bounds.min.y, 0.0, "the box rests on the floor");
+    assert_eq!(bounds.size(), DVec3::splat(64.0));
+    assert!(boxes.windows(2).all(|w| w[0].1.max.x <= w[1].1.min.x), "no overlaps: {boxes:?}");
+    assert_eq!(f.state.doc.history.undo_labels().next(), Some("Place 3 Entities"));
 }
 
 #[test]
@@ -148,6 +200,39 @@ fn reference_panel_shows_code_for_the_selected_entity() {
 }
 
 #[test]
+fn reference_list_fits_the_names_and_the_divider_drags() {
+    let mut f = Fixture::new();
+    f.panels.reference_class = "info_spawner".into();
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(900.0, 700.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::reference(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    let detail_x = |h: &Harness<Fixture>| h.get_by_label("Use from GDScript").rect().min.x;
+    let auto = detail_x(&harness);
+    let list_item = harness.get_all_by_label("info_spawner").map(|n| n.rect()).min_by(|a, b| a.min.x.total_cmp(&b.min.x)).unwrap();
+    assert!(auto > list_item.max.x && auto < 450.0, "auto width fits the names without taking half, detail at {auto}");
+
+    let split = egui::pos2(auto - 8.0 - 4.0, 400.0);
+    harness.hover_at(split);
+    harness.run();
+    harness.event(egui::Event::PointerButton { pos: split, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() });
+    harness.run();
+    for step in 1..=5 {
+        harness.event(egui::Event::PointerMoved(split + egui::vec2(30.0 * step as f32, 0.0)));
+        harness.run();
+    }
+    harness.event(egui::Event::PointerButton {
+        pos: split + egui::vec2(150.0, 0.0),
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: Default::default(),
+    });
+    harness.run();
+    let dragged = detail_x(&harness);
+    assert!((dragged - auto - 150.0).abs() < 12.0, "the divider follows the pointer, {auto} to {dragged}");
+}
+
+#[test]
 fn scatter_inspector_edits_palette_and_activates() {
     let mut f = Fixture::new();
     let layer = f.state.doc.map.default_layer();
@@ -250,12 +335,16 @@ fn dragged_entities_and_materials_show_a_preview_at_the_pointer() {
     harness.run();
     assert!(harness.query_by_label("info_player_start").is_none(), "nothing without a drag");
 
-    egui::DragAndDrop::set_payload(&harness.ctx, panels::DndPayload::Entity("info_player_start".into()));
+    egui::DragAndDrop::set_payload(&harness.ctx, panels::DndPayload::Entities(vec!["info_player_start".into()]));
     harness.hover_at(egui::pos2(200.0, 150.0));
     harness.run();
     let card = harness.get_by_label("info_player_start").rect();
     assert!(card.min.x > 200.0 && card.min.y > 150.0, "the card sits next to the pointer, got {card:?}");
     harness.get_by_label("Drop into a view to place it");
+
+    egui::DragAndDrop::set_payload(&harness.ctx, panels::DndPayload::Entities(vec!["info_player_start".into(), "light".into()]));
+    harness.run();
+    harness.get_by_label("2 entities");
 
     egui::DragAndDrop::set_payload(&harness.ctx, panels::DndPayload::Material("dev/grey".into()));
     harness.run();
