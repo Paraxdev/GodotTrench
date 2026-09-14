@@ -166,3 +166,7 @@ and [FuncGodot](https://github.com/func-godot) which was forked and modified to 
 see [FORK.md](/godot/addons/func_godot/FORK.md) for changes made
 
 the toolbar, menu and outliner icons are from [Lucide](https://lucide.dev) (ISC license, see [LICENSE-lucide.txt](/crates/gt_editor/assets/icons/LICENSE-lucide.txt))
+
+# License
+
+GodotTrench is MIT licensed, see [LICENSE.md](LICENSE.md). third party code, assets and tools are listed with their licenses in [LICENSES.md](LICENSES.md).

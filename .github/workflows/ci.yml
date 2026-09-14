@@ -39,6 +39,9 @@ jobs:
       - name: Format
         if: runner.os == 'Linux'
         run: cargo fmt --all --check
+      - name: Third party license table is current
+        if: runner.os == 'Linux'
+        run: python3 tools/gen_licenses.py --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Tests (unit, fixtures, headless UI panels)
@@ -128,7 +131,7 @@ jobs:
           dir="godottrench-${{ matrix.name }}"
           mkdir -p "dist/$dir"
           cp "target/release/${{ matrix.exe }}" "dist/$dir/"
-          cp README.md "dist/$dir/"
+          cp README.md LICENSE.md LICENSES.md "dist/$dir/"
           cd dist
           if [ "$RUNNER_OS" = "Windows" ]; then 7z a -bd "$dir.zip" "$dir" > /dev/null; else tar czf "$dir.tar.gz" "$dir"; fi
           rm -rf "$dir"
