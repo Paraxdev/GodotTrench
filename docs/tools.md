@@ -1,9 +1,14 @@
 # Level design tools and controls
 
+New to the editor? *Help > Guided Tour* walks through the interface, setting up a Godot project, building a first room,
+the tools, entities, terrain and getting the map into Godot. It highlights the real widgets, each chapter can be opened on
+its own, and *Help > Guide* shows the same chapters as searchable pages with tips.
+
 ## Controls (TrenchBroom style)
 
 * 3D: hold right mouse to look, WASD to fly (Q/E down/up while looking), middle mouse pans, wheel dollies, Alt+left drag orbits.
 * 2D: right or middle mouse pans, wheel zooms.
+* Drag the point where the view separators cross to resize all four views at once.
 * Left drag on empty space draws a brush, drag the selection to move it (Alt: vertical, Ctrl: duplicate, Shift: lock axis).
 * Shift+click selects faces, Shift+drag a face resizes the brush, Ctrl+Shift+drag extrudes. In 2D views drag selection edges to resize.
 * Tools: `C` clip (Tab changes kept side, Enter applies), `V` vertex, `R` rotate, `T` scale, `G` sculpt, `P` paint,

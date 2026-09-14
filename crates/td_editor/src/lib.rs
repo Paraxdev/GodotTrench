@@ -7,6 +7,7 @@ pub mod dialogs;
 pub mod entity_wizards;
 pub mod extra_tools;
 pub mod gizmos;
+pub mod guide;
 pub mod hotspot_editor;
 pub mod icons;
 pub mod live_link;
