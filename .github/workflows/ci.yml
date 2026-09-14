@@ -161,6 +161,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # GitHub refuses the workflow token a tag on an older commit whose workflow files differ from main, and a newer run publishes anyway.
+          head=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "main moved on to ${head::7}, leaving the alpha to that run"
+            exit 0
+          fi
           short="${GITHUB_SHA::7}"
           notes="Rolling alpha built from ${short} on $(date -u +%Y-%m-%d). Expect bugs.
 
