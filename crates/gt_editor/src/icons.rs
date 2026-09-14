@@ -9,6 +9,8 @@ use crate::tools::ToolKind;
 
 /// Icon size in toolbars.
 pub const TOOLBAR: f32 = 18.0;
+/// Largest toolbar icon size when the toolbar is dragged taller.
+pub const TOOLBAR_MAX: f32 = 40.0;
 /// Icon size in menus, panels and the outliner.
 pub const SMALL: f32 = 14.0;
 
@@ -82,6 +84,7 @@ icons! {
     KEYBOARD = "keyboard",
     COMMAND = "command",
     REFERENCE = "book-open",
+    HELP = "circle-help",
     LINK = "link",
     DOOR = "door-open",
     FOCUS = "scan-eye",
@@ -142,14 +145,14 @@ pub fn atom(icon: Option<Icon>, size: f32) -> Atom<'static> {
     }
 }
 
-/// Toolbar icon button. `label` is its accessible name, `tooltip` shows on hover.
-pub fn button(ui: &mut Ui, icon: Icon, label: &str, tooltip: impl Into<WidgetText>) -> Response {
-    Button::image(icon.image(TOOLBAR).alt_text(label)).image_tint_follows_text_color(true).frame_when_inactive(false).ui(ui).on_hover_text(tooltip)
+/// Toolbar icon button of `size` points. `label` is its accessible name, `tooltip` shows on hover.
+pub fn button(ui: &mut Ui, icon: Icon, size: f32, label: &str, tooltip: impl Into<WidgetText>) -> Response {
+    Button::image(icon.image(size).alt_text(label)).image_tint_follows_text_color(true).frame_when_inactive(false).ui(ui).on_hover_text(tooltip)
 }
 
 /// Toolbar icon toggle that stays highlighted while `selected`.
-pub fn toggle(ui: &mut Ui, icon: Icon, selected: bool, label: &str, tooltip: impl Into<WidgetText>) -> Response {
-    Button::image(icon.image(TOOLBAR).alt_text(label))
+pub fn toggle(ui: &mut Ui, icon: Icon, size: f32, selected: bool, label: &str, tooltip: impl Into<WidgetText>) -> Response {
+    Button::image(icon.image(size).alt_text(label))
         .selected(selected)
         .frame_when_inactive(selected)
         .image_tint_follows_text_color(true)

@@ -155,6 +155,10 @@ pub enum Action {
     /// A trigger volume of this class around the selection bounds.
     VolumeAroundSelection(String),
     ShowReference,
+    ShowGuide,
+    /// Starts the guided tour at the first chapter not finished yet.
+    StartTour,
+    ShowPreferences,
     UiScaleUp,
     UiScaleDown,
     UiScaleReset,
@@ -178,6 +182,9 @@ impl Action {
             Action::UiScaleUp => "Increase UI Scale".into(),
             Action::UiScaleDown => "Decrease UI Scale".into(),
             Action::UiScaleReset => "Reset UI Scale".into(),
+            Action::ShowGuide => "Guide".into(),
+            Action::StartTour => "Guided Tour".into(),
+            Action::ShowPreferences => "Preferences".into(),
             other => format!("{other:?}"),
         }
     }
@@ -411,6 +418,9 @@ pub fn bindable_actions() -> Vec<Action> {
         Action::MakePlatform,
         Action::ShowLinkDialog,
         Action::ShowReference,
+        Action::ShowGuide,
+        Action::StartTour,
+        Action::ShowPreferences,
     ]);
     for j in gt_geom::Justify::ALL {
         out.push(Action::Justify(j));
@@ -1047,7 +1057,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 state.set_status(e);
             }
         }
-        Action::ShowScatterPalette | Action::ShowLinkDialog | Action::ShowReference => {}
+        Action::ShowScatterPalette | Action::ShowLinkDialog | Action::ShowReference | Action::ShowGuide | Action::StartTour | Action::ShowPreferences => {}
         Action::CreateBrushFromBounds => {
             let b = state.last_bounds;
             let mat = state.current_material.clone();
