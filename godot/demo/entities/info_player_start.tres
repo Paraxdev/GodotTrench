@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
+
+[resource]
+script = ExtResource("1_point")
+classname = "info_player_start"
+description = "Player spawn point"
+meta_properties = Dictionary[String, Variant]({
+"size": AABB(-16, -16, 0, 16, 16, 56),
+"color": Color(0.2, 1, 0.2, 1)
+})
+node_class = "Marker3D"

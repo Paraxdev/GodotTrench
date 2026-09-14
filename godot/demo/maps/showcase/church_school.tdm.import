@@ -1,0 +1,14 @@
+[remap]
+
+importer="func_godot.map"
+type="QuakeMapFile"
+uid="uid://dyjlttvi18oeh"
+path="res://.godot/imported/church_school.tdm-61b17459f6a627d71e41343ec7bd805b.tres"
+
+[deps]
+
+source_file="res://demo/maps/showcase/church_school.tdm"
+dest_files=["res://.godot/imported/church_school.tdm-61b17459f6a627d71e41343ec7bd805b.tres"]
+
+[params]
+

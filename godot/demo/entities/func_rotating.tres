@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_solid"]
+[ext_resource type="Script" path="res://demo/entities/rotator.gd" id="2_rot"]
+
+[resource]
+script = ExtResource("1_solid")
+collision_shape_type = 1
+classname = "func_rotating"
+description = "Brush entity spinning around its vertical axis"
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"degrees_per_second": 45.0,
+"start_on": true
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.5, 0.9, 0.9, 1)
+})
+node_class = "AnimatableBody3D"
+script_class = ExtResource("2_rot")

@@ -1,0 +1,14 @@
+[remap]
+
+importer="func_godot.map"
+type="QuakeMapFile"
+uid="uid://civ00oppiux2u"
+path="res://.godot/imported/lighthouse_forest.tdm-886dd22594f560d6bc83c75397d77179.tres"
+
+[deps]
+
+source_file="res://demo/maps/showcase/lighthouse_forest.tdm"
+dest_files=["res://.godot/imported/lighthouse_forest.tdm-886dd22594f560d6bc83c75397d77179.tres"]
+
+[params]
+

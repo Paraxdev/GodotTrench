@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_solid"]
+
+[resource]
+script = ExtResource("1_solid")
+build_visuals = false
+collision_shape_type = 1
+classname = "trigger_area"
+description = "Invisible volume, fires body_entered and body_exited"
+class_properties = Dictionary[String, Variant]({
+"targetname": ""
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.9, 0.6, 0.1, 1)
+})
+node_class = "Area3D"

@@ -1,0 +1,14 @@
+[remap]
+
+importer="func_godot.map"
+type="QuakeMapFile"
+uid="uid://dkuo2l4edkn0w"
+path="res://.godot/imported/mountain_house.tdm-999ea1ca99217d08eb2ee3cf7dc496f2.tres"
+
+[deps]
+
+source_file="res://demo/maps/showcase/mountain_house.tdm"
+dest_files=["res://.godot/imported/mountain_house.tdm-999ea1ca99217d08eb2ee3cf7dc496f2.tres"]
+
+[params]
+

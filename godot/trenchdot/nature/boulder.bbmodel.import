@@ -1,0 +1,17 @@
+[remap]
+
+importer="trenchdot.bbmodel"
+type="PackedScene"
+uid="uid://ctff5i0rmqnvm"
+path="res://.godot/imported/boulder.bbmodel-5f29d8f8c55a1058238f96cc74fe4a04.scn"
+
+[deps]
+
+source_file="res://trenchdot/nature/boulder.bbmodel"
+dest_files=["res://.godot/imported/boulder.bbmodel-5f29d8f8c55a1058238f96cc74fe4a04.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

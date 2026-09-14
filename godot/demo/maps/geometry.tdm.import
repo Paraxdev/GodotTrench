@@ -1,0 +1,14 @@
+[remap]
+
+importer="func_godot.map"
+type="QuakeMapFile"
+uid="uid://b25ieltyndeql"
+path="res://.godot/imported/geometry.tdm-c9d6e389d278c3a7e5a3b8f5014a3316.tres"
+
+[deps]
+
+source_file="res://demo/maps/geometry.tdm"
+dest_files=["res://.godot/imported/geometry.tdm-c9d6e389d278c3a7e5a3b8f5014a3316.tres"]
+
+[params]
+

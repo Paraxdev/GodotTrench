@@ -1,0 +1,17 @@
+[remap]
+
+importer="trenchdot.bbmodel"
+type="PackedScene"
+uid="uid://bv6xlohjmagnr"
+path="res://.godot/imported/birch.bbmodel-a316e7983ffe85dd8c734953643140f1.scn"
+
+[deps]
+
+source_file="res://trenchdot/nature/birch.bbmodel"
+dest_files=["res://.godot/imported/birch.bbmodel-a316e7983ffe85dd8c734953643140f1.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

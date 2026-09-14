@@ -1,0 +1,524 @@
+{
+  "meta": {
+    "format_version": "4.10",
+    "model_format": "free",
+    "box_uv": false
+  },
+  "name": "fern",
+  "model_identifier": "",
+  "visible_box": [
+    1,
+    1,
+    0
+  ],
+  "resolution": {
+    "width": 32,
+    "height": 32
+  },
+  "elements": [
+    {
+      "name": "frond0",
+      "type": "mesh",
+      "uuid": "00000001-0000-4000-8000-000000000011",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "vertices": {
+        "p0": [
+          1.3884084340701204,
+          0.0,
+          5.663243065612049
+        ],
+        "p1": [
+          4.343610500683516,
+          0.0,
+          -3.890121825644011
+        ],
+        "p2": [
+          12.94163890281397,
+          16.0,
+          -1.2304399656919554
+        ],
+        "p3": [
+          9.986436836200575,
+          16.0,
+          8.322924925564104
+        ]
+      },
+      "faces": {
+        "front": {
+          "vertices": [
+            "p0",
+            "p1",
+            "p2",
+            "p3"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        },
+        "back": {
+          "vertices": [
+            "p3",
+            "p2",
+            "p1",
+            "p0"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        }
+      }
+    },
+    {
+      "name": "frond1",
+      "type": "mesh",
+      "uuid": "00000002-0000-4000-8000-000000001f00",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "vertices": {
+        "p0": [
+          -4.957022419652505,
+          0.0,
+          3.0704932390517365
+        ],
+        "p1": [
+          5.041975173117416,
+          0.0,
+          2.9289053166102166
+        ],
+        "p2": [
+          5.169404303314784,
+          16.0,
+          11.928003150103144
+        ],
+        "p3": [
+          -4.829593289455137,
+          16.0,
+          12.069591072544664
+        ]
+      },
+      "faces": {
+        "front": {
+          "vertices": [
+            "p0",
+            "p1",
+            "p2",
+            "p3"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        },
+        "back": {
+          "vertices": [
+            "p3",
+            "p2",
+            "p1",
+            "p0"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        }
+      }
+    },
+    {
+      "name": "frond2",
+      "type": "mesh",
+      "uuid": "00000003-0000-4000-8000-000000003def",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "vertices": {
+        "p0": [
+          -4.452016772410614,
+          0.0,
+          -3.765573881651318
+        ],
+        "p1": [
+          -1.2274984732638154,
+          0.0,
+          5.700284861139397
+        ],
+        "p2": [
+          -9.74677134177546,
+          16.0,
+          8.602351330371516
+        ],
+        "p3": [
+          -12.971289640922258,
+          16.0,
+          -0.8635074124191995
+        ]
+      },
+      "faces": {
+        "front": {
+          "vertices": [
+            "p0",
+            "p1",
+            "p2",
+            "p3"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        },
+        "back": {
+          "vertices": [
+            "p3",
+            "p2",
+            "p1",
+            "p0"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        }
+      }
+    },
+    {
+      "name": "frond3",
+      "type": "mesh",
+      "uuid": "00000004-0000-4000-8000-000000005cde",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "vertices": {
+        "p0": [
+          2.2055247358181393,
+          0.0,
+          -5.397745885061127
+        ],
+        "p1": [
+          -5.800610950733059,
+          0.0,
+          0.5940644731304072
+        ],
+        "p2": [
+          -11.19324027310544,
+          16.0,
+          -6.611457644765672
+        ],
+        "p3": [
+          -3.1871045865542413,
+          16.0,
+          -12.603268002957206
+        ]
+      },
+      "faces": {
+        "front": {
+          "vertices": [
+            "p0",
+            "p1",
+            "p2",
+            "p3"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        },
+        "back": {
+          "vertices": [
+            "p3",
+            "p2",
+            "p1",
+            "p0"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        }
+      }
+    },
+    {
+      "name": "frond4",
+      "type": "mesh",
+      "uuid": "00000005-0000-4000-8000-000000007bcd",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "vertices": {
+        "p0": [
+          5.815106022174857,
+          0.0,
+          0.42958346204865894
+        ],
+        "p1": [
+          -2.3574762498040576,
+          0.0,
+          -5.3331328252360075
+        ],
+        "p2": [
+          2.828968408752142,
+          16.0,
+          -12.688456870017031
+        ],
+        "p3": [
+          11.001550680731057,
+          16.0,
+          -6.925740582732364
+        ]
+      },
+      "faces": {
+        "front": {
+          "vertices": [
+            "p0",
+            "p1",
+            "p2",
+            "p3"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        },
+        "back": {
+          "vertices": [
+            "p3",
+            "p2",
+            "p1",
+            "p0"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        }
+      }
+    }
+  ],
+  "outliner": [
+    {
+      "name": "fern",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "uuid": "ffffffff-0000-4000-8000-000000000000",
+      "children": [
+        "00000001-0000-4000-8000-000000000011",
+        "00000002-0000-4000-8000-000000001f00",
+        "00000003-0000-4000-8000-000000003def",
+        "00000004-0000-4000-8000-000000005cde",
+        "00000005-0000-4000-8000-000000007bcd"
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "path": "",
+      "name": "fern_atlas.png",
+      "folder": "block",
+      "namespace": "",
+      "id": "0",
+      "width": 32,
+      "height": 32,
+      "uv_width": 32,
+      "uv_height": 32,
+      "particle": false,
+      "render_mode": "default",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAFPUlEQVR4Ae3AA6AkWZbG8f937o3IzKdyS2Oubdu2bdu2bdu2bWmMnpZKr54yMyLu+Xa3anqmhztr1a/yL3jFD3xJT+vG5pkN9u464MQt22QaSYxHI0iUvnB43xHzEzPWewMK4ZYoRF1U/vgb/lo8f4gHeO1PfSW3dSOnZFo3+q2eo3NHdJsd/UYHwPLiio3TCw7uPaLbqKz3B5wmSuA03aIy2+45uO+IjVNz1nsDW9ducnj2iHE5MT8+Y7bV8ztf8qcCEC/A63zaK/vgviOiiChBdKJbdLSxsbywYuu6TQ7uPaLbqDhNhFjurpHE4sSMOq9kMwo4Orek9IU/+ea/Ec+J4Pl41Y98WS93V7ShUfpCv9UxrRrrvTXTslFmhRwThZCEJObHZmxds8H8WM9su2d1aQ02GJym3+p59Y95OfOcCJ4PBYyHI1vXbjAcjpQucDPjqrFxes7i2Iz1wcDWNRvMd3o2Ty84urBitt2zODnHBhuOzi+ZVhM7N26zvLji+UD8C17j41/ekrBNt6jkZPbvOaTOCm1M+q2OjRNzDs4esXFyTukKy4srFifnTMuJw/Mr/vRb/kY8f4jn45U/7KW9OD5jWidtaGycmrO6NFD6QMBwNDEuJ3au3yTTlC4AyGYEKATAcDgyHI44zfZ1m6z2Bn7/K/9cPBviRfDqH/NybmMy2+7BRiEOzy9ZnJjTb3YMhyNO080rB2eP2L5uk9WlAQl+7yv+XLxgiBfiDT7v1Xzp9n3qvNJtVPqNjuXuiijBen8AYPP0gnE5MT8+4+DeI7au2eDgviP6rQ4BmcbN/N5X/Ll4XgQvxK99xh9ofmxGv9mxODFnOBrJZqIIDIuTc+q80m12HJ5d0m1USl/YvGaD4WBkubtmtt3ze1/x5+L5Q7wIXuXDX8Zb124wHI5IYjgcqbPCuJrIKek3Orau2WB5aU2/2eFmAKah8Vuf/8fiBUP8C17zE17B/WbH0YUVCiHBsZu3OTq3pNvosM16fwCg3+hY7q5RCIBsCYY//Nq/FM8f4l/hzb7ytT0cjBzcd8TxB+3gKVldWrN5zQaSWO0N5JTMtjt+6RN/V/zLEC+CN/3y1zLA4X1LZsd6ptXE8uKafrNj+7pNMs3R+SWlC6Z1w810GxUQv/E5fyheMIIXwS9+/O9IIab1RI7JuJw486iT7Ny4hYHxaARD6QulK2xfv8nq0sBvfM4fiheO4EV0dG5JnVfG5cRsq+fw3JKLT7+Ep2S1u6b0hSii36zs3XlAVPEiIHgRdRsdm2cW1HllttMDEDUos8KJB+8wrSYOzy4pfWHj1AKneREg/pVe77Nf1fPtnrqoHN53xPYNW5Bm/95DkMDm1z/rD8WLBvGv8Fbf8HqeVo3VpTUbpxccnVuSaeqsALBxakGEuPiMPX77i/5E/MsI/hV+5sN+Q8vdFVvXbnLp9n1sLssp2blhCzejIn77i/5EvGio/CvVWWXvzn22r99keWHFfLtncWrO3l0HtCHJKflXIPhX2r5hEyTamMx2ehYn5xzcc8TWNRu0sWGbfwXEv9E7fM+b+PDsEdkMwHAw8puf90fiX4fg3+Atv+71PByMjMuJ0gUC+s2Od/juNzb/Ooh/o9f7rFf1sZu2aGMyLidWl9b85uf+kfjXofJvVGeF1aU1NuTY2L52g38DxL/Dm37Fa3txYsZ4NPGzH/4b4l+Pyr/DzvWbZDP96Y5/Iyr/Duu9gXE1sTgx59+I4N9hvT/gNFHEvxHBv0O30dGGxsVn7PFvROXfYTgcmB+fM60m/o34R2DTV2SEQRrbAAAAAElFTkSuQmCC"
+    }
+  ]
+}

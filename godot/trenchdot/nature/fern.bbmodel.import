@@ -1,0 +1,17 @@
+[remap]
+
+importer="trenchdot.bbmodel"
+type="PackedScene"
+uid="uid://b101mbta5fqy2"
+path="res://.godot/imported/fern.bbmodel-4150fddb33c9169175ada2f971bb4c01.scn"
+
+[deps]
+
+source_file="res://trenchdot/nature/fern.bbmodel"
+dest_files=["res://.godot/imported/fern.bbmodel-4150fddb33c9169175ada2f971bb4c01.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true
