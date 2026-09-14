@@ -461,9 +461,15 @@ pub fn chapters() -> Vec<Chapter> {
                 step(
                     Anchor::View3d,
                     "Select and move",
-                    "• Click a brush to select it, Ctrl+click adds to or removes from the selection, clicking empty space deselects.\n• Drag the selection to move it. Hold Alt to move vertically, Ctrl to drag out a copy.",
+                    "• Click an object to select just that object, even inside a group. Double click selects the whole group around it. Ctrl+click adds to or removes from the selection, clicking empty space deselects.\n• Drag the selection to move it. Hold Alt to move vertically, Ctrl to drag out a copy.",
                 )
                 .task("Select something", has_selection),
+                step(
+                    Anchor::View3d,
+                    "Move, rotate and scale with the gizmo",
+                    "The selection shows a gizmo in the 3D view:\n• Drag an arrow to move along that axis, a colored square to move in its plane, the center dot to move freely.\n• Drag a ring to rotate in 15 degree steps, hold Shift for single degrees.\n• Drag the box at the end of an arrow to scale along that axis.\nMoves and scales snap to the grid. View > Transform Gizmo hides it.",
+                )
+                .keys([("Toggle the gizmo", Action::ToggleTransformGizmo)]),
                 step(
                     Anchor::Views2d,
                     "Resize",
@@ -568,7 +574,7 @@ pub fn chapters() -> Vec<Chapter> {
                 step(
                     Anchor::Menu("Edit"),
                     "Groups",
-                    "Group the selection so it selects and moves as one, double click to open a group and edit inside it. Duplicate Linked makes copies that stay identical when you change any of them.",
+                    "Group objects to keep them together: a click still picks one object inside, a double click selects the whole group so it moves as one. Duplicate Linked makes copies that stay identical when you change any of them, clicking one of those always selects the whole copy.",
                 )
                 .keys([("Group", Action::Group), ("Ungroup", Action::Ungroup), ("Duplicate linked", Action::DuplicateLinked)]),
                 step(

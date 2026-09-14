@@ -25,6 +25,7 @@ pub mod texture_ops;
 pub mod texture_tool;
 pub mod tools;
 pub mod toolset;
+pub mod transform_gizmo;
 pub mod uv_editor;
 pub mod viewport;
 pub mod volume_tool;

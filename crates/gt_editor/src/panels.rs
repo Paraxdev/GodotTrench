@@ -161,6 +161,9 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                 if resp.double_clicked() {
                     toggles.push((*id, 0));
                 }
+                if resp.secondary_clicked() && !selected && !matches!(node.kind, NodeKind::Layer(_)) {
+                    clicked = Some((*id, false));
+                }
                 resp.context_menu(|ui| {
                     if let NodeKind::Layer(l) = &node.kind {
                         let mut name = l.name.clone();
@@ -183,20 +186,59 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                             toggles.push((*id, 4));
                             ui.close();
                         }
-                    } else if let NodeKind::Group(g) = &node.kind {
-                        let mut name = g.name.clone();
-                        if ui.text_edit_singleline(&mut name).changed() {
-                            rename = Some((*id, name));
+                    } else {
+                        let editable_name = match &node.kind {
+                            NodeKind::Group(g) => Some(g.name.clone()),
+                            NodeKind::Scatter(s) => Some(s.name.clone()),
+                            _ => None,
+                        };
+                        if let Some(mut name) = editable_name {
+                            if ui.text_edit_singleline(&mut name).changed() {
+                                rename = Some((*id, name));
+                            }
+                            ui.separator();
                         }
-                    } else if let NodeKind::Scatter(s) = &node.kind {
-                        let mut name = s.name.clone();
-                        if ui.text_edit_singleline(&mut name).changed() {
-                            rename = Some((*id, name));
+                        let mut item = |ui: &mut Ui, label: &str, action: Action| {
+                            if ui.button(label).clicked() {
+                                actions.push(action);
+                                ui.close();
+                            }
+                        };
+                        match &node.kind {
+                            NodeKind::Group(_) => {
+                                item(ui, "Open Group", Action::OpenGroup);
+                                item(ui, "Ungroup", Action::Ungroup);
+                                ui.separator();
+                            }
+                            NodeKind::Scatter(_) => {
+                                item(ui, "Paint Into This Set", Action::ActivateScatter(*id));
+                                ui.separator();
+                            }
+                            NodeKind::Entity(_) => {
+                                item(ui, "Code Reference", Action::ShowReference);
+                                ui.separator();
+                            }
+                            _ => {}
                         }
-                        if ui.button("Paint into this set").clicked() {
-                            actions.push(Action::ActivateScatter(*id));
+                        item(ui, "Focus", Action::FocusSelection);
+                        if ui.button(if node.hidden { "Show" } else { "Hide" }).clicked() {
+                            toggles.push((*id, 1));
                             ui.close();
                         }
+                        if ui.button(if node.locked { "Unlock" } else { "Lock" }).clicked() {
+                            toggles.push((*id, 2));
+                            ui.close();
+                        }
+                        ui.separator();
+                        item(ui, "Duplicate", Action::Duplicate);
+                        ui.menu_button("Move to Layer", |ui| {
+                            for layer in &map.layers {
+                                if let Some(l) = map.get(*layer) {
+                                    item(ui, &l.name(), Action::MoveToLayer(*layer));
+                                }
+                            }
+                        });
+                        item(ui, "Delete", Action::Delete);
                     }
                 });
             });
@@ -1491,6 +1533,46 @@ pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
     });
 }
 
+/// Follows the pointer while a material or entity is dragged. Views set the copy cursor where a drop works.
+pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
+    let Some(payload) = egui::DragAndDrop::payload::<DndPayload>(ctx) else { return };
+    let Some(pointer) = ctx.pointer_latest_pos() else { return };
+    if ctx.output(|o| o.cursor_icon) == egui::CursorIcon::Default {
+        ctx.set_cursor_icon(egui::CursorIcon::NoDrop);
+    }
+    egui::Area::new(egui::Id::new("dnd_preview")).order(egui::Order::Tooltip).interactable(false).fixed_pos(pointer + Vec2::new(18.0, 14.0)).show(ctx, |ui| {
+        egui::Frame::popup(ui.style()).show(ui, |ui| {
+            ui.horizontal(|ui| match payload.as_ref() {
+                DndPayload::Material(name) => {
+                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(40.0), Sense::hover());
+                    match state.materials.thumbnail(ctx, name, &mut 1) {
+                        Some(tex) => {
+                            ui.painter().image(tex.id(), rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
+                        }
+                        None => {
+                            ui.painter().rect_filled(rect, 2.0, Color32::from_gray(35));
+                        }
+                    }
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new(name).strong());
+                        ui.label(RichText::new("Drop on a face, Shift covers the whole brush").weak().small());
+                    });
+                }
+                DndPayload::Entity(classname) => {
+                    let color =
+                        state.game.entity(classname).map(|d| d.color).map(|c| Color32::from_rgb((c.r * 255.0) as u8, (c.g * 255.0) as u8, (c.b * 255.0) as u8));
+                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(14.0), Sense::hover());
+                    ui.painter().rect_filled(rect, 2.0, color.unwrap_or(Color32::LIGHT_GRAY));
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new(classname).strong());
+                        ui.label(RichText::new("Drop into a view to place it").weak().small());
+                    });
+                }
+            });
+        });
+    });
+}
+
 // ------------------------------------------------------------------ entities
 
 pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
@@ -1637,7 +1719,7 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
 pub const TOOL_HELP: [(&str, &str); 14] = [
     (
         "Select",
-        "Click selects, drag empty space draws a brush, drag the selection moves it (Alt vertical, Ctrl duplicates). Entity gizmo handles (hinges, travel, radius) drag here.",
+        "Click selects the object, double click its whole group. Drag empty space draws a brush, drag the selection moves it (Alt vertical, Ctrl duplicates). In 3D the gizmo arrows, squares, rings and boxes move, rotate and scale. Entity gizmo handles (hinges, travel, radius) drag here.",
     ),
     ("Clip", "Click two or three points, Tab picks the side to keep, Enter clips."),
     ("Vertex", "Drag brush vertices, edge and face midpoints split. Del removes vertices."),

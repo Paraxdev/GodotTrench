@@ -145,6 +145,8 @@ pub struct Prefs {
     pub guide_welcome_seen: bool,
     /// Ids of guide chapters the tour went all the way through.
     pub guide_done: Vec<String>,
+    /// Move, rotate and scale handles on the selection in the 3D view.
+    pub transform_gizmo: bool,
 }
 
 pub const UI_SCALE_MIN: f32 = 0.5;
@@ -202,6 +204,7 @@ impl Default for Prefs {
             follow_display_scaling: true,
             guide_welcome_seen: false,
             guide_done: Vec::new(),
+            transform_gizmo: true,
         }
     }
 }

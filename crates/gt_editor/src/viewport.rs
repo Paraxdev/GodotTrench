@@ -35,6 +35,7 @@ pub struct Viewport {
 const BG_3D: [f64; 4] = [0.011, 0.012, 0.015, 1.0];
 const BG_2D: [f64; 4] = [0.006, 0.0065, 0.008, 1.0];
 const BG_LIT: [f64; 4] = [0.18, 0.28, 0.45, 1.0];
+const DROP_COLOR: Color32 = Color32::from_rgb(255, 170, 60);
 
 impl Viewport {
     pub fn new(kind: ViewKind) -> Self {
@@ -261,6 +262,7 @@ impl Viewport {
 
         if response.clicked()
             && let Some(pos) = response.interact_pointer_pos()
+            && crate::transform_gizmo::hit(cx.state, &self.camera, rect, pos).is_none()
         {
             let hit = self.pick(cx, pos);
             let map = &cx.state.doc.map;
@@ -277,7 +279,7 @@ impl Viewport {
                     });
                 }
                 Some(h) => {
-                    let target = map.selection_target(h.node, &open_groups);
+                    let target = map.click_target(h.node, &open_groups);
                     cx.state.last_bounds = map.bounds(target);
                     cx.state.doc.select(|_, s| {
                         if modifiers.command {
@@ -299,19 +301,17 @@ impl Viewport {
         if response.double_clicked()
             && let Some(h) = response.interact_pointer_pos().and_then(|p| self.pick(cx, p))
         {
+            // A click picks the object, a double click widens that to the whole group around it.
             let map = &cx.state.doc.map;
-            let closed_group = map
-                .ancestors(h.node)
-                .into_iter()
-                .rev()
-                .find(|a| matches!(map.get(*a).map(|n| &n.kind), Some(gt_doc::NodeKind::Group(_))) && !open_groups.contains(a));
-            if let Some(g) = closed_group {
-                cx.state.open_groups.push(g);
-                let target = cx.state.doc.map.selection_target(h.node, &cx.state.open_groups);
+            let group = map.selection_target(h.node, &open_groups);
+            if group != map.click_target(h.node, &open_groups) {
+                cx.state.last_bounds = map.bounds(group);
                 cx.state.doc.select(|_, s| {
                     s.clear();
-                    s.select_node(target);
+                    s.select_node(group);
                 });
+                let name = cx.state.doc.map.get(group).map(|n| n.name()).unwrap_or_default();
+                cx.state.set_status(format!("Selected group {name}"));
             } else if let Some(e) = map.owning_entity(h.node) {
                 let brushes = map.get(e).map(|n| n.children.clone()).unwrap_or_default();
                 cx.state.doc.select(|_, s| {
@@ -366,6 +366,9 @@ impl Viewport {
             cx.state.doc.begin("Edit Gizmo");
             return Some(Drag::Gizmo { handle, start });
         }
+        if let Some(drag) = crate::transform_gizmo::begin(cx.state, &self.camera, self.rect, origin) {
+            return Some(Drag::Transform(drag));
+        }
         if self.camera.kind.is_2d()
             && !cx.state.doc.selection.nodes.is_empty()
             && let Some((normal, faces)) = self.edge_under_cursor(origin, cx)
@@ -380,7 +383,7 @@ impl Viewport {
         let hit = picking::pick(state, &ray);
         let open_groups = state.open_groups.clone();
         let is_selected = |id: NodeId| {
-            let target = map.selection_target(id, &open_groups);
+            let target = map.click_target(id, &open_groups);
             state.doc.selection.nodes.contains(&target) || map.ancestors(id).iter().any(|a| state.doc.selection.nodes.contains(a))
         };
 
@@ -444,6 +447,11 @@ impl Viewport {
         match drag {
             Drag::Gizmo { handle, start } => {
                 if let Some(status) = crate::gizmos::drag(state, *handle, *start, &self.camera, rect, pos, modifiers) {
+                    state.set_status(status);
+                }
+            }
+            Drag::Transform(drag) => {
+                if let Some(status) = crate::transform_gizmo::drag(state, drag, &self.camera, rect, pos, modifiers) {
                     state.set_status(status);
                 }
             }
@@ -617,10 +625,48 @@ impl Viewport {
         (!faces.is_empty()).then_some((normal, faces))
     }
 
+    /// Shows where a dragged payload lands: the faces a material goes on, or the surface point an entity rests on.
+    fn paint_drop_target(&self, ui: &Ui, cx: &ViewCtx, payload: &DndPayload, pos: egui::Pos2) {
+        let Some(hit) = picking::pick(cx.state, &self.camera.ray(self.rect, pos)) else { return };
+        let painter = ui.painter().with_clip_rect(self.rect);
+        let stroke = egui::Stroke::new(2.0, DROP_COLOR);
+        match payload {
+            DndPayload::Material(_) => {
+                let map = &cx.state.doc.map;
+                let whole = ui.input(|i| i.modifiers.shift);
+                let polygons: Vec<Vec<DVec3>> = match (map.brush(hit.node), map.mesh(hit.node), hit.face) {
+                    (Some(b), _, Some(face)) if !whole => vec![b.face_points(face)],
+                    (Some(b), _, Some(_)) => (0..b.faces.len()).map(|f| b.face_points(f)).collect(),
+                    (_, Some(m), Some(face)) => {
+                        let faces: Vec<usize> = if whole { (0..m.faces.len()).collect() } else { vec![face] };
+                        faces.iter().filter_map(|f| m.faces.get(*f)).map(|f| f.indices.iter().map(|i| m.vertices[*i as usize]).collect()).collect()
+                    }
+                    _ => Vec::new(),
+                };
+                for polygon in polygons {
+                    let Some(points) = polygon.iter().map(|p| self.camera.project(self.rect, *p)).collect::<Option<Vec<_>>>() else { continue };
+                    painter.add(egui::Shape::closed_line(points.clone(), stroke));
+                    if map.brush(hit.node).is_some() {
+                        painter.add(egui::Shape::convex_polygon(points, DROP_COLOR.gamma_multiply(0.25), egui::Stroke::NONE));
+                    }
+                }
+            }
+            DndPayload::Entity(_) => {
+                if let Some(point) = self.camera.project(self.rect, hit.point) {
+                    painter.circle(point, 5.0, DROP_COLOR.gamma_multiply(0.4), stroke);
+                }
+            }
+        }
+    }
+
     fn handle_drop(&mut self, ui: &Ui, response: &Response, cx: &mut ViewCtx) {
         let Some(payload) = response.dnd_release_payload::<DndPayload>() else {
-            if response.dnd_hover_payload::<DndPayload>().is_some() {
-                ui.painter().rect_stroke(self.rect.shrink(1.0), 0.0, egui::Stroke::new(2.0, Color32::from_rgb(255, 170, 60)), egui::StrokeKind::Inside);
+            if let Some(payload) = response.dnd_hover_payload::<DndPayload>() {
+                ui.painter().rect_stroke(self.rect.shrink(1.0), 0.0, egui::Stroke::new(2.0, DROP_COLOR), egui::StrokeKind::Inside);
+                ui.ctx().set_cursor_icon(CursorIcon::Copy);
+                if let Some(pos) = response.hover_pos() {
+                    self.paint_drop_target(ui, cx, &payload, pos);
+                }
             }
             return;
         };
@@ -755,6 +801,11 @@ impl Viewport {
             _ => None,
         };
         crate::gizmos::paint_overlay(ui, &self.camera, self.rect, state, active);
+        let transforming = match &self.drag {
+            Some(Drag::Transform(drag)) => Some(drag.part),
+            _ => None,
+        };
+        crate::transform_gizmo::paint(ui, &self.camera, self.rect, state, transforming);
         if self.camera.kind.is_2d() && !state.doc.selection.nodes.is_empty() {
             let b = state.doc.map.bounds_of(state.doc.selection.nodes.iter().copied());
             if !b.is_empty() {

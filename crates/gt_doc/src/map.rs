@@ -509,6 +509,21 @@ impl Map {
         target
     }
 
+    /// What a click in a view selects: the clicked object itself, or the outermost closed linked group around it, because
+    /// linked groups are edited as a whole. [`Self::selection_target`] gives the whole group instead.
+    pub fn click_target(&self, id: NodeId, open_groups: &[NodeId]) -> NodeId {
+        let mut target = id;
+        for a in self.ancestors(id) {
+            if let Some(Node { kind: NodeKind::Group(g), .. }) = self.get(a)
+                && g.link_id.is_some()
+                && !open_groups.contains(&a)
+            {
+                target = a;
+            }
+        }
+        target
+    }
+
     /// Deep copies a subtree under a new parent with fresh ids. Returns the new root id.
     pub fn duplicate_subtree(&mut self, id: NodeId, parent: NodeId) -> Option<NodeId> {
         let node = self.get(id)?.clone();
@@ -566,5 +581,22 @@ mod tests {
         let b = m.insert(a, NodeKind::Group(Group::new("b")));
         m.reparent(a, b);
         assert_eq!(m.get(a).unwrap().parent, Some(layer));
+    }
+
+    #[test]
+    fn clicks_pick_objects_inside_groups_but_keep_linked_groups_whole() {
+        let mut m = Map::new();
+        let layer = m.default_layer();
+        let brush = || NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::ONE), "x").unwrap());
+        let house = m.insert(layer, NodeKind::Group(Group::new("house")));
+        let chair = m.insert(house, NodeKind::Group(Group::new("chair")));
+        let leg = m.insert(chair, brush());
+        assert_eq!(m.click_target(leg, &[]), leg);
+        assert_eq!(m.selection_target(leg, &[]), house);
+
+        let window = m.insert(house, NodeKind::Group(Group { link_id: Some(7), ..Group::new("window") }));
+        let pane = m.insert(window, brush());
+        assert_eq!(m.click_target(pane, &[]), window);
+        assert_eq!(m.click_target(pane, &[window]), pane, "an opened linked group edits its contents");
     }
 }

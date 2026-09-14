@@ -840,6 +840,7 @@ impl App {
             menu(ui, "View", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 m.item(ui, Some(icons::FOCUS), "Focus Selection", Action::FocusSelection);
+                m.toggle(ui, "Transform Gizmo", self.state.prefs.transform_gizmo, Action::ToggleTransformGizmo);
                 ui.separator();
                 sub_menu(ui, Some(icons::shade(self.state.prefs.shade)), "Shading", |ui| {
                     for s in Shade::ALL {
@@ -950,7 +951,8 @@ impl App {
                 for line in [
                     "3D: RMB look + WASD fly (Q/E down/up), MMB pan, Alt+LMB orbit",
                     "2D: RMB/MMB pan, wheel zoom, drag edges to resize",
-                    "Drag empty space to draw a brush, drag selection to move (Alt vertical, Ctrl duplicate)",
+                    "Click selects an object, double click its group. Drag empty space to draw a brush, drag selection to move (Alt vertical, Ctrl duplicate)",
+                    "3D gizmo: arrows and squares move, rings rotate, boxes scale",
                     "Shift+click selects faces, Shift+drag a face resizes, Ctrl+Shift+drag extrudes",
                     "Tab edits meshes Blender style: 1/2/3 modes, G/R/S, E extrude, I inset, Ctrl+R loop cut, K knife",
                 ] {
@@ -1633,6 +1635,7 @@ impl eframe::App for App {
         self.hotspot_editor.show(&ctx, &mut self.state, &mut self.actions);
         self.scatter_palette.show(&ctx, &mut self.state, &mut self.actions);
         self.link_dialog.show(&ctx, &mut self.state);
+        panels::dnd_preview(&ctx, &mut self.state);
         self.guide.show(&ctx, &mut self.state, &mut self.actions);
 
         for action in std::mem::take(&mut self.actions) {
