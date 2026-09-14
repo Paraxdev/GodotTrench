@@ -5,6 +5,7 @@ use egui_kittest::kittest::Queryable;
 use gt_core::{Aabb, DVec3};
 use gt_doc::{NodeKind, ops};
 use gt_editor::commands::Action;
+use gt_editor::guide::Guide;
 use gt_editor::panels::{self, PanelState};
 use gt_editor::state::{EditorState, Prefs};
 use gt_geom::Brush;
@@ -210,6 +211,92 @@ fn outliner_toggles_visibility_and_adds_layers() {
     eyes[1].click();
     harness.run();
     assert!(harness.state().state.doc.map.get(id).unwrap().hidden);
+}
+
+struct GuideFixture {
+    guide: Guide,
+    state: EditorState,
+    actions: Vec<Action>,
+}
+
+fn guide_harness(guide: Guide) -> Harness<'static, GuideFixture> {
+    let fixture = GuideFixture { guide, state: EditorState::new(Prefs::default()), actions: Vec::new() };
+    Harness::builder().with_size(egui::vec2(1200.0, 900.0)).build_ui_state(
+        |ui, f: &mut GuideFixture| {
+            let ctx = ui.ctx().clone();
+            f.guide.show(&ctx, &mut f.state, &mut f.actions);
+        },
+        fixture,
+    )
+}
+
+#[test]
+fn guide_window_opens_chapters_searches_and_runs_step_buttons() {
+    let mut guide = Guide::new(false);
+    guide.window_open = true;
+    let mut harness = guide_harness(guide);
+    harness.run();
+    harness.get_by_label("3. Set up a Godot project").click();
+    harness.run();
+    harness.get_by_label("Open Godot Project…").scroll_to_me();
+    harness.run();
+    harness.get_by_label("Open Godot Project…").click();
+    harness.run();
+    assert_eq!(harness.state().actions, vec![Action::OpenProject]);
+
+    let search = harness.get_by_role(egui::accesskit::Role::TextInput);
+    search.click();
+    harness.run();
+    harness.get_by_role(egui::accesskit::Role::TextInput).type_text("hollow");
+    harness.run();
+    harness.get_by_label("Build a first room: Hollow it into a room").click();
+    harness.run();
+    harness.get_by_label("Hollow selection");
+
+    // The result scrolls to its step, whose Show me button starts the tour right there.
+    harness.get_all_by_label("Show me").nth(4).unwrap().click();
+    harness.run();
+    assert_eq!(harness.state().guide.tour(), Some((4, 4)));
+}
+
+#[test]
+fn tour_steps_through_chapters_and_remembers_finished_ones() {
+    let mut guide = Guide::new(false);
+    guide.start_tour(0, 0);
+    let mut harness = guide_harness(guide);
+    harness.run();
+    harness.get_by_label("Welcome to GodotTrench");
+    harness.get_by_label("Next").click();
+    harness.run();
+    harness.get_by_label("Next").click();
+    harness.run();
+    assert_eq!(harness.state().guide.tour(), Some((0, 2)));
+    harness.get_by_label("Next chapter").click();
+    harness.run();
+    assert_eq!(harness.state().guide.tour(), Some((1, 0)));
+    assert_eq!(harness.state().state.prefs.guide_done, vec!["welcome".to_string()]);
+    harness.get_by_label("Back").click();
+    harness.run();
+    assert_eq!(harness.state().guide.tour(), Some((0, 2)));
+    harness.get_by_label("Close").click();
+    harness.run();
+    assert_eq!(harness.state().guide.tour(), None);
+
+    // Resuming skips the finished chapter.
+    let prefs = harness.state().state.prefs.clone();
+    harness.state_mut().guide.resume_tour(&prefs);
+    assert_eq!(harness.state().guide.tour(), Some((1, 0)));
+}
+
+#[test]
+fn welcome_offers_the_tour_once() {
+    let mut harness = guide_harness(Guide::new(true));
+    harness.run();
+    harness.get_by_label("Take the guided tour").click();
+    harness.run();
+    assert_eq!(harness.state().guide.tour(), Some((0, 0)));
+    assert!(harness.state().state.prefs.guide_welcome_seen);
+    assert!(!harness.state().guide.welcome_open);
 }
 
 #[test]

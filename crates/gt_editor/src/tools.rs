@@ -1,6 +1,6 @@
 use gt_core::{DVec3, NodeId, Plane};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ToolKind {
     /// Selection, moving, brush drawing, face dragging and entity gizmo handles (TrenchBroom default tool).
     Select,

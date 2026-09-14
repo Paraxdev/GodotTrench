@@ -1,11 +1,12 @@
 use egui::{Color32, RichText, Ui};
-use egui_dock::{DockArea, DockState, NodeIndex, TabViewer};
+use egui_dock::{DockArea, DockState, Node, NodeIndex, SplitNode, TabViewer, Tree};
 use gt_render::Renderer;
 
 use crate::CliArgs;
 use crate::camera::ViewKind;
 use crate::commands::{self, Action, ModelImport};
 use crate::dialogs::{CommandPalette, KeymapWindow, LinkDialog, ScatterPaletteWindow, ShapeDialog, TerrainDialog};
+use crate::guide::{self, Anchor, Guide, Panel};
 use crate::icons;
 use crate::mcp::tools::{Deferred, InputScript};
 use crate::mcp::{McpHost, ToolExecutor, transport};
@@ -55,8 +56,12 @@ pub struct App {
     pub(crate) hotspot_editor: crate::hotspot_editor::HotspotEditor,
     scatter_palette: ScatterPaletteWindow,
     link_dialog: LinkDialog,
+    pub(crate) guide: Guide,
     keep_prefs: bool,
     window_fitted: bool,
+    toolbar_fit: ToolbarFit,
+    /// Height of the tool options bar contents last frame.
+    tool_options_height: f32,
     /// Scale shown while its slider is dragged, applied on release so the slider does not move under the pointer.
     ui_scale_draft: Option<f32>,
 }
@@ -78,6 +83,145 @@ fn tab_title(tab: Tab) -> &'static str {
         Tab::Uv => "UV Editor",
         Tab::Reference => "Reference",
     }
+}
+
+fn panel_tab(panel: Panel) -> Tab {
+    match panel {
+        Panel::Outliner => Tab::Outliner,
+        Panel::Inspector => Tab::Inspector,
+        Panel::Materials => Tab::Materials,
+        Panel::Entities => Tab::Entities,
+        Panel::History => Tab::History,
+        Panel::Issues => Tab::Issues,
+        Panel::Uv => Tab::Uv,
+        Panel::Reference => Tab::Reference,
+    }
+}
+
+fn tab_panel(tab: Tab) -> Option<Panel> {
+    Panel::ALL.into_iter().find(|p| panel_tab(*p) == tab)
+}
+
+const TOOLBAR_ID: &str = "toolbar";
+const TOOL_OPTIONS_ID: &str = "tool_options";
+
+/// Tallest the tool options bar can be dragged, unless its contents wrap into more rows.
+const TOOL_OPTIONS_MAX_HEIGHT: f32 = 48.0;
+/// Room kept between the toolbar icons and the project button on the right.
+const PROJECT_BUTTON_GAP: f32 = 16.0;
+
+/// Contents of a top bar the user can drag taller, centered vertically in the extra height. Returns their height.
+fn bar_contents(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui)) -> f32 {
+    let id = ui.id().with("bar_content_height");
+    let content_height = ui.ctx().data(|d| d.get_temp::<f32>(id)).unwrap_or_else(|| ui.available_height());
+    ui.add_space(((ui.available_height() - content_height) * 0.5).floor().max(0.0));
+    let height = ui.scope(add_contents).response.rect.height();
+    // A resizable panel keeps the size its contents fill, without this the dragged height snaps back on release.
+    ui.take_available_space();
+    if (height - content_height).abs() > 0.5 {
+        ui.ctx().data_mut(|d| d.insert_temp(id, height));
+        ui.ctx().request_repaint();
+    }
+    height
+}
+
+/// Frame margins and separator line a top panel adds around its contents.
+fn bar_margin(style: &egui::Style) -> f32 {
+    egui::Frame::side_top_panel(style).total_margin().sum().y + style.visuals.widgets.noninteractive.bg_stroke.width.round()
+}
+
+/// What the toolbar measured last frame, used to size its icons for the next one.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct ToolbarFit {
+    icon: f32,
+    icons: usize,
+    /// Width of the icon groups, without the project button.
+    tools_width: f32,
+    project_width: f32,
+    content_height: f32,
+}
+
+impl ToolbarFit {
+    /// Icons follow the bar height between the default and the maximum size, and shrink when they would no longer fit on one
+    /// row. Every icon button adds the same width, so the size that fits follows from last frame's measurement.
+    fn icon_size(&self, bar_height: f32, width: f32, padding: f32) -> f32 {
+        let from_height = bar_height - padding;
+        let fitting = match self.icons {
+            0 => icons::TOOLBAR,
+            n => self.icon + (width - self.project_width - PROJECT_BUTTON_GAP - self.tools_width) / n as f32,
+        };
+        from_height.min(fitting).clamp(icons::TOOLBAR, icons::TOOLBAR_MAX).floor()
+    }
+
+    /// Tallest the bar can be dragged: a row of the largest icons, or the wrapped rows of the smallest ones.
+    fn max_height(&self, padding: f32) -> f32 {
+        let wrapped = if self.icon <= icons::TOOLBAR { self.content_height } else { 0.0 };
+        (icons::TOOLBAR_MAX + padding).max(wrapped)
+    }
+}
+
+/// Smallest width or height a view keeps while the grid corner is dragged.
+const MIN_VIEW_SIZE: f32 = 80.0;
+const GRID_CORNER_GRAB: f32 = 14.0;
+
+fn split_node(node: &Node<Tab>) -> Option<&SplitNode> {
+    match node {
+        Node::Horizontal(s) | Node::Vertical(s) => Some(s),
+        _ => None,
+    }
+}
+
+/// The 2x2 view grid: a left and right split whose sides are each split top and bottom into views.
+/// Returns that split followed by the splits of its left and right column.
+fn view_grid(tree: &Tree<Tab>) -> Option<[NodeIndex; 3]> {
+    let views = |i: NodeIndex| i.0 < tree.len() && tree[i].tabs().is_some_and(|t| !t.is_empty() && t.iter().all(|t| matches!(t, Tab::View(_))));
+    let columns = |i: NodeIndex| i.0 < tree.len() && matches!(tree[i], Node::Vertical(_)) && views(i.left()) && views(i.right());
+    (0..tree.len())
+        .map(NodeIndex)
+        .find(|h| matches!(tree[*h], Node::Horizontal(_)) && columns(h.left()) && columns(h.right()))
+        .map(|h| [h, h.left(), h.right()])
+}
+
+fn split_point(split: &SplitNode, vertical: bool) -> f32 {
+    let (min, size) = if vertical { (split.rect.min.y, split.rect.height()) } else { (split.rect.min.x, split.rect.width()) };
+    min + size * split.fraction
+}
+
+/// Split fraction that puts the separator at `pos`, keeping both sides at least `MIN_VIEW_SIZE`.
+fn fraction_at(min: f32, size: f32, pos: f32) -> f32 {
+    if size <= MIN_VIEW_SIZE * 2.0 {
+        return 0.5;
+    }
+    (pos - min).clamp(MIN_VIEW_SIZE, size - MIN_VIEW_SIZE) / size
+}
+
+/// Handle where the view separators cross, dragging it resizes all four views at once.
+fn view_grid_corner(ui: &mut Ui, dock: &mut DockState<Tab>) {
+    let tree = dock.main_surface_mut();
+    let Some([h, left, right]) = view_grid(tree) else { return };
+    let (Some(hs), Some(ls), Some(rs)) = (split_node(&tree[h]), split_node(&tree[left]), split_node(&tree[right])) else { return };
+    // The two columns can have their separators at different heights, the handle sits between them and aligns both.
+    let corner = egui::pos2(split_point(hs, false), (split_point(ls, true) + split_point(rs, true)) * 0.5);
+    let response = ui
+        .interact(egui::Rect::from_center_size(corner, egui::Vec2::splat(GRID_CORNER_GRAB)), ui.id().with("view_grid_corner"), egui::Sense::drag())
+        .on_hover_and_drag_cursor(egui::CursorIcon::Move)
+        .on_hover_text("Drag to resize all four views");
+    if response.hovered() || response.dragged() {
+        ui.painter().circle_filled(corner, 4.0, ui.visuals().selection.bg_fill);
+    }
+    if !response.dragged() {
+        return;
+    }
+    let Some(pointer) = response.interact_pointer_pos() else { return };
+    if let Node::Horizontal(s) = &mut tree[h] {
+        s.fraction = fraction_at(s.rect.min.x, s.rect.width(), pointer.x);
+    }
+    for column in [left, right] {
+        if let Node::Vertical(s) = &mut tree[column] {
+            s.fraction = fraction_at(s.rect.min.y, s.rect.height(), pointer.y);
+        }
+    }
+    ui.ctx().request_repaint();
 }
 
 /// Focuses a panel tab, reopening it in the focused dock leaf when it was closed.
@@ -152,6 +296,11 @@ fn menu_button<'a>(icon: Option<icons::Icon>, label: &str, shortcut: Option<Stri
     }
 }
 
+fn menu<R>(ui: &mut Ui, title: &'static str, add_contents: impl FnOnce(&mut Ui) -> R) {
+    let response = ui.menu_button(title, add_contents).response;
+    guide::mark(ui.ctx(), Anchor::Menu(title), response.rect);
+}
+
 fn sub_menu<R>(ui: &mut Ui, icon: Option<icons::Icon>, label: &str, add_contents: impl FnOnce(&mut Ui) -> R) {
     use egui::containers::menu::SubMenuButton;
     let button =
@@ -188,6 +337,7 @@ impl App {
         let render_state = cc.wgpu_render_state.as_ref().expect("GodotTrench requires the wgpu renderer");
         let prefs: Prefs = if args.default_prefs { Prefs::default() } else { cc.storage.and_then(|s| eframe::get_value(s, "prefs")).unwrap_or_default() };
         let keep_prefs = !args.default_prefs;
+        let welcome = keep_prefs && !prefs.guide_welcome_seen;
         let mut state = EditorState::new(prefs);
         let project = args.project.clone().or_else(|| state.prefs.recent_projects.first().cloned());
         if let Some(root) = project.as_deref().and_then(gt_formats::game::find_project_root) {
@@ -219,6 +369,14 @@ impl App {
             && let Err(e) = state.open_map(&path)
         {
             state.set_status(format!("Could not open {}: {e}", path.display()));
+        }
+        if args.default_prefs {
+            // Bar heights live in the persisted egui memory, automated runs keep the standard layout.
+            cc.egui_ctx.data_mut(|d| {
+                for id in [TOOLBAR_ID, TOOL_OPTIONS_ID] {
+                    d.remove::<egui::containers::panel::PanelState>(egui::Id::new(id));
+                }
+            });
         }
         cc.egui_ctx.set_visuals(visuals());
         // UI scale shortcuts go through the keymap so they are rebindable and saved in the preferences.
@@ -255,8 +413,11 @@ impl App {
             hotspot_editor: Default::default(),
             scatter_palette: Default::default(),
             link_dialog: Default::default(),
+            guide: Guide::new(welcome),
             keep_prefs,
             window_fitted: false,
+            toolbar_fit: ToolbarFit::default(),
+            tool_options_height: 0.0,
             ui_scale_draft: None,
         }
     }
@@ -302,6 +463,9 @@ impl App {
                 }
             }
             Action::ShowReference => show_tab(&mut self.dock, Tab::Reference),
+            Action::ShowGuide => self.guide.window_open = true,
+            Action::StartTour => self.guide.resume_tour(&self.state.prefs),
+            Action::ShowPreferences => self.show_prefs = true,
             Action::ShowUvEditor => show_tab(&mut self.dock, Tab::Uv),
             Action::MeshOp(op) => {
                 if self.state.tool != ToolKind::Mesh {
@@ -361,8 +525,8 @@ impl App {
     fn menu_bar(&mut self, ui: &mut Ui) {
         use crate::entity_wizards::{DoorKind, HingeSide, SlideDirection};
         let mut m = MenuCx { ctx: ui.ctx().clone(), shortcuts: commands::shortcuts(&self.state.prefs), actions: &mut self.actions };
-        egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button("File", |ui| {
+        let bar = egui::MenuBar::new().ui(ui, |ui| {
+            menu(ui, "File", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 m.item(ui, Some(icons::NEW), "New Map", Action::NewMap);
                 m.item(ui, Some(icons::OPEN), "Open Map…", Action::OpenMap);
@@ -408,7 +572,7 @@ impl App {
                     ui.close();
                 }
             });
-            ui.menu_button("Edit", |ui| {
+            menu(ui, "Edit", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 m.item(ui, Some(icons::UNDO), "Undo", Action::Undo);
                 m.item(ui, Some(icons::REDO), "Redo", Action::Redo);
@@ -469,7 +633,7 @@ impl App {
                 });
                 m.item(ui, None, "Repeat Last", Action::RepeatLast);
             });
-            ui.menu_button("Brush", |ui| {
+            menu(ui, "Brush", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 m.item(ui, Some(icons::SHAPES), "Shape Generator…", Action::ShowShapeDialog);
                 m.item(ui, Some(icons::BRUSH), "Box from Last Bounds", Action::CreateBrushFromBounds);
@@ -535,7 +699,7 @@ impl App {
                 });
                 m.item(ui, None, "Move Brushes to World", Action::MoveToWorld);
             });
-            ui.menu_button("Mesh", |ui| {
+            menu(ui, "Mesh", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 m.item(ui, Some(icons::MESH), "Edit Mesh", Action::EditMesh);
                 ui.separator();
@@ -551,7 +715,7 @@ impl App {
                     });
                 }
             });
-            ui.menu_button("Texture", |ui| {
+            menu(ui, "Texture", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 m.item(ui, Some(icons::TEXTURE), "Texture Tool", Action::SetTool(ToolKind::Texture));
                 m.item(ui, None, "UV Editor", Action::ShowUvEditor);
@@ -585,7 +749,7 @@ impl App {
                 });
                 m.item(ui, None, "Hotspot Fit", Action::HotspotTexture);
             });
-            ui.menu_button("Terrain", |ui| {
+            menu(ui, "Terrain", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 m.item(ui, Some(icons::TERRAIN), "Create Terrain…", Action::ShowTerrainDialog);
                 ui.separator();
@@ -617,7 +781,7 @@ impl App {
                     m.item(ui, None, "Install Nature Models", Action::InstallNatureModels);
                 });
             });
-            ui.menu_button("Gameplay", |ui| {
+            menu(ui, "Gameplay", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 let game = &self.state.game;
                 sub_menu(ui, Some(icons::DOOR), "Doors and Movers", |ui| {
@@ -656,7 +820,7 @@ impl App {
                     m.point_entities(ui, game, &["path_corner"]);
                 });
             });
-            ui.menu_button("Tools", |ui| {
+            menu(ui, "Tools", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 for (i, group) in ToolKind::GROUPS.iter().enumerate() {
                     if i > 0 {
@@ -673,7 +837,7 @@ impl App {
                     }
                 }
             });
-            ui.menu_button("View", |ui| {
+            menu(ui, "View", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 m.item(ui, Some(icons::FOCUS), "Focus Selection", Action::FocusSelection);
                 ui.separator();
@@ -747,7 +911,7 @@ impl App {
                     }
                 });
             });
-            ui.menu_button("Godot", |ui| {
+            menu(ui, "Godot", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 m.item(ui, Some(icons::PLAY), "Run Project", Action::RunGodotProject);
                 m.item(ui, None, "Open Project in Godot Editor", Action::OpenGodotEditor);
@@ -773,11 +937,14 @@ impl App {
                     m.item(ui, None, "Models", Action::ReloadModels);
                 });
             });
-            ui.menu_button("Help", |ui| {
+            menu(ui, "Help", |ui| {
                 ui.set_min_width(MENU_WIDTH);
+                m.item(ui, Some(icons::HELP), "Guided Tour", Action::StartTour);
+                m.item(ui, Some(icons::REFERENCE), "Guide…", Action::ShowGuide);
+                ui.separator();
                 m.item(ui, Some(icons::COMMAND), "Command Palette", Action::ShowCommandPalette);
                 m.item(ui, Some(icons::KEYBOARD), "Keyboard Shortcuts…", Action::ShowKeymap);
-                m.item(ui, Some(icons::REFERENCE), "Entity and Code Reference", Action::ShowReference);
+                m.item(ui, None, "Entity and Code Reference", Action::ShowReference);
                 ui.separator();
                 ui.label(RichText::new("GodotTrench, a brush and mesh level editor for Godot").strong());
                 for line in [
@@ -791,10 +958,14 @@ impl App {
                 }
             });
         });
+        guide::mark(ui.ctx(), Anchor::MenuBar, bar.response.rect);
     }
 
-    fn toolbar(&mut self, ui: &mut Ui) {
+    fn toolbar(&mut self, ui: &mut Ui, bar_height: f32) {
         let ctx = ui.ctx().clone();
+        let size = self.toolbar_fit.icon_size(bar_height, ui.available_width(), ui.spacing().button_padding.y * 2.0);
+        let mut icon_count = 0;
+        let mut tools_rect = egui::Rect::NOTHING;
         let shortcuts = commands::shortcuts(&self.state.prefs);
         let tip = |label: &str, action: &Action| match shortcuts.iter().find(|(_, a)| a == action) {
             Some((s, _)) => format!("{label} ({})", ctx.format_shortcut(s)),
@@ -807,52 +978,82 @@ impl App {
         };
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
+            let mut group = egui::Rect::NOTHING;
             for (icon, label, action) in
                 [(icons::NEW, "New Map", Action::NewMap), (icons::OPEN, "Open Map", Action::OpenMap), (icons::SAVE, "Save", Action::Save)]
             {
-                if icons::button(ui, icon, label, tip(label, &action)).clicked() {
+                let resp = icons::button(ui, icon, size, label, tip(label, &action));
+                group |= resp.rect;
+                icon_count += 1;
+                if resp.clicked() {
                     self.actions.push(action);
                 }
             }
+            tools_rect |= group;
+            guide::mark(ui.ctx(), Anchor::ToolbarFile, std::mem::replace(&mut group, egui::Rect::NOTHING));
             group_gap(ui);
             let history = [
                 (icons::UNDO, "Undo", Action::Undo, self.state.doc.history.can_undo()),
                 (icons::REDO, "Redo", Action::Redo, self.state.doc.history.can_redo()),
             ];
             for (icon, label, action, enabled) in history {
-                let resp = ui.add_enabled_ui(enabled, |ui| icons::button(ui, icon, label, tip(label, &action))).inner;
+                let resp = ui.add_enabled_ui(enabled, |ui| icons::button(ui, icon, size, label, tip(label, &action))).inner;
+                group |= resp.rect;
+                icon_count += 1;
                 if resp.clicked() {
                     self.actions.push(action);
                 }
             }
+            tools_rect |= group;
+            guide::mark(ui.ctx(), Anchor::ToolbarHistory, std::mem::replace(&mut group, egui::Rect::NOTHING));
             group_gap(ui);
-            for (i, group) in ToolKind::GROUPS.iter().enumerate() {
+            for (i, tools) in ToolKind::GROUPS.iter().enumerate() {
                 if i > 0 {
                     ui.add_space(6.0);
                 }
-                for t in group.iter().copied() {
+                for t in tools.iter().copied() {
                     let action = if t == ToolKind::Mesh { Action::EditMesh } else { Action::SetTool(t) };
                     let tooltip = format!("{}\n{}", tip(&format!("{} tool", t.label()), &action), panels::tool_help(t));
-                    if icons::toggle(ui, icons::tool(t), self.state.tool == t, t.label(), tooltip).clicked() {
+                    let resp = icons::toggle(ui, icons::tool(t), size, self.state.tool == t, t.label(), tooltip);
+                    guide::mark(ui.ctx(), Anchor::Tool(t), resp.rect);
+                    group |= resp.rect;
+                    icon_count += 1;
+                    if resp.clicked() {
                         self.actions.push(Action::SetTool(t));
                     }
                 }
             }
+            tools_rect |= group;
+            guide::mark(ui.ctx(), Anchor::ToolbarTools, std::mem::replace(&mut group, egui::Rect::NOTHING));
             group_gap(ui);
-            ui.add(icons::GRID.image(icons::TOOLBAR).tint(ui.visuals().text_color())).on_hover_text("Grid size, [ and ] change it");
-            egui::ComboBox::from_id_salt("grid").selected_text(format!("{}", self.state.grid)).width(56.0).show_ui(ui, |ui| {
-                for g in [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0] {
-                    ui.selectable_value(&mut self.state.grid, g, format!("{g}"));
-                }
-            });
+            icon_count += 1;
+            group |= ui.add(icons::GRID.image(size).tint(ui.visuals().text_color())).on_hover_text("Grid size, [ and ] change it").rect;
+            group |= egui::ComboBox::from_id_salt("grid")
+                .selected_text(format!("{}", self.state.grid))
+                .width(56.0)
+                .show_ui(ui, |ui| {
+                    for g in [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0] {
+                        ui.selectable_value(&mut self.state.grid, g, format!("{g}"));
+                    }
+                })
+                .response
+                .rect;
             ui.add_space(2.0);
-            if icons::toggle(ui, icons::SNAP, self.state.snap, "Snap to grid", tip("Snap to grid", &Action::ToggleSnap)).clicked() {
+            let resp = icons::toggle(ui, icons::SNAP, size, self.state.snap, "Snap to grid", tip("Snap to grid", &Action::ToggleSnap));
+            group |= resp.rect;
+            icon_count += 1;
+            if resp.clicked() {
                 self.actions.push(Action::ToggleSnap);
             }
             let uv_tip = format!("{}\nTextures stay fixed to faces while moving and rotating", tip("UV lock", &Action::ToggleUvLock));
-            if icons::toggle(ui, icons::UV_LOCK, self.state.uv_lock, "UV lock", uv_tip).clicked() {
+            let resp = icons::toggle(ui, icons::UV_LOCK, size, self.state.uv_lock, "UV lock", uv_tip);
+            group |= resp.rect;
+            icon_count += 1;
+            if resp.clicked() {
                 self.actions.push(Action::ToggleUvLock);
             }
+            tools_rect |= group;
+            guide::mark(ui.ctx(), Anchor::ToolbarGrid, std::mem::replace(&mut group, egui::Rect::NOTHING));
             group_gap(ui);
             for (icon, label, help, action) in [
                 (icons::CSG_SUBTRACT, "CSG subtract", "Carve the selected brushes out of the brushes they touch", Action::CsgSubtract),
@@ -860,17 +1061,27 @@ impl App {
                 (icons::CSG_INTERSECT, "CSG intersect", "Keep only the volume shared by the selected brushes", Action::CsgIntersect),
                 (icons::CSG_HOLLOW, "Hollow", "Turn the selected brushes into walls (thickness in Brush > CSG)", Action::CsgHollow),
             ] {
-                if icons::button(ui, icon, label, format!("{}\n{help}", tip(label, &action))).clicked() {
+                let resp = icons::button(ui, icon, size, label, format!("{}\n{help}", tip(label, &action)));
+                group |= resp.rect;
+                icon_count += 1;
+                if resp.clicked() {
                     self.actions.push(action);
                 }
             }
+            tools_rect |= group;
+            guide::mark(ui.ctx(), Anchor::ToolbarCsg, std::mem::replace(&mut group, egui::Rect::NOTHING));
             group_gap(ui);
             for s in Shade::ALL {
                 let label = format!("{} shading", capitalize(s.label()));
-                if icons::toggle(ui, icons::shade(s), self.state.prefs.shade == s, &label, tip(&label, &Action::SetShade(s))).clicked() {
+                let resp = icons::toggle(ui, icons::shade(s), size, self.state.prefs.shade == s, &label, tip(&label, &Action::SetShade(s)));
+                group |= resp.rect;
+                icon_count += 1;
+                if resp.clicked() {
                     self.actions.push(Action::SetShade(s));
                 }
             }
+            tools_rect |= group;
+            guide::mark(ui.ctx(), Anchor::ToolbarShading, group);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let project = match &self.state.game.project_root {
                     Some(p) => format!("{} ({})", self.state.game.name, p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
@@ -878,11 +1089,17 @@ impl App {
                 };
                 let button = egui::Button::image_and_text(icons::OPEN.image(icons::SMALL), RichText::new(project).color(Color32::from_rgb(140, 190, 255)))
                     .image_tint_follows_text_color(true);
-                if ui.add(button).on_hover_text("Open a Godot project folder").clicked() {
+                let resp = ui.add(button).on_hover_text("Open a Godot project folder");
+                guide::mark(ui.ctx(), Anchor::ToolbarProject, resp.rect);
+                self.toolbar_fit.project_width = resp.rect.width();
+                if resp.clicked() {
                     self.actions.push(Action::OpenProject);
                 }
             });
         });
+        self.toolbar_fit.icon = size;
+        self.toolbar_fit.icons = icon_count;
+        self.toolbar_fit.tools_width = tools_rect.width();
     }
 
     fn tool_options(&mut self, ui: &mut Ui) {
@@ -1289,7 +1506,24 @@ impl TabViewer for Tabs<'_> {
         }
     }
 
+    fn on_tab_button(&mut self, tab: &mut Tab, response: &egui::Response) {
+        if let Some(panel) = tab_panel(*tab) {
+            response.clone().on_hover_text(panel.help());
+        }
+    }
+
     fn ui(&mut self, ui: &mut Ui, tab: &mut Tab) {
+        let anchor = match *tab {
+            Tab::View(i) => match self.viewports.get(i).map(|v| v.kind()) {
+                Some(ViewKind::Perspective) => Some(Anchor::View3d),
+                Some(_) => Some(Anchor::Views2d),
+                None => None,
+            },
+            other => tab_panel(other).map(Anchor::Panel),
+        };
+        if let Some(anchor) = anchor {
+            guide::mark(ui.ctx(), anchor, ui.clip_rect());
+        }
         match tab {
             Tab::View(i) => {
                 let Some(vp) = self.viewports.get_mut(*i) else { return };
@@ -1342,13 +1576,27 @@ impl eframe::App for App {
         self.tools.sync(&self.state);
         self.collect_input_actions(&ctx);
 
+        if let Some(Anchor::Panel(panel)) = self.guide.take_reveal() {
+            show_tab(&mut self.dock, panel_tab(panel));
+        }
+
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
-        egui::Panel::top("toolbar").show(ui, |ui| self.toolbar(ui));
-        egui::Panel::top("tool_options").show(ui, |ui| self.tool_options(ui));
+        let margin = bar_margin(&ctx.global_style());
+        let padding = ctx.global_style().spacing.button_padding.y * 2.0;
+        let toolbar = egui::Panel::top(TOOLBAR_ID).resizable(true).max_size(self.toolbar_fit.max_height(padding) + margin).show(ui, |ui| {
+            let bar_height = ui.available_height();
+            bar_contents(ui, |ui| self.toolbar(ui, bar_height))
+        });
+        self.toolbar_fit.content_height = toolbar.inner;
+        let options_max = TOOL_OPTIONS_MAX_HEIGHT.max(self.tool_options_height) + margin;
+        let options = egui::Panel::top(TOOL_OPTIONS_ID).resizable(true).max_size(options_max).show(ui, |ui| bar_contents(ui, |ui| self.tool_options(ui)));
+        self.tool_options_height = options.inner;
+        guide::mark(&ctx, Anchor::ToolOptions, options.response.rect);
         if !self.state.tabs.is_empty() {
             egui::Panel::top("map_tabs").show(ui, |ui| self.tab_bar(ui));
         }
-        egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
+        let status = egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
+        guide::mark(&ctx, Anchor::StatusBar, status.response.rect);
 
         if std::mem::take(&mut self.state.material_reload) {
             let game = self.state.game.clone();
@@ -1375,6 +1623,7 @@ impl eframe::App for App {
                 actions: &mut self.actions,
             };
             DockArea::new(&mut self.dock).show_leaf_collapse_buttons(false).show_inside(ui, &mut tabs);
+            view_grid_corner(ui, &mut self.dock);
         });
 
         self.palette.show(&ctx, &self.state, &mut self.actions);
@@ -1384,6 +1633,7 @@ impl eframe::App for App {
         self.hotspot_editor.show(&ctx, &mut self.state, &mut self.actions);
         self.scatter_palette.show(&ctx, &mut self.state, &mut self.actions);
         self.link_dialog.show(&ctx, &mut self.state);
+        self.guide.show(&ctx, &mut self.state, &mut self.actions);
 
         for action in std::mem::take(&mut self.actions) {
             let Some(action) = self.run_app_action(action) else { continue };
@@ -1412,6 +1662,10 @@ impl eframe::App for App {
         }
     }
 
+    fn persist_egui_memory(&self) -> bool {
+        self.keep_prefs
+    }
+
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         if self.keep_prefs {
             eframe::set_value(storage, "prefs", &self.state.prefs);
@@ -1438,6 +1692,41 @@ mod tests {
         let grouped: Vec<MeshOp> = MESH_OP_GROUPS.iter().flat_map(|(_, ops)| ops.iter().copied()).collect();
         assert_eq!(grouped.len(), MeshOp::ALL.len());
         assert!(MeshOp::ALL.iter().all(|op| grouped.contains(op)));
+    }
+
+    #[test]
+    fn finds_the_view_grid_in_the_default_layout() {
+        let dock = default_dock();
+        let tree = dock.main_surface();
+        let [h, left, right] = view_grid(tree).expect("default layout has a 2x2 view grid");
+        assert!(matches!(tree[h], Node::Horizontal(_)));
+        assert!(matches!((&tree[left], &tree[right]), (Node::Vertical(_), Node::Vertical(_))));
+        let views: Vec<Tab> = [left.left(), left.right(), right.left(), right.right()].iter().flat_map(|i| tree[*i].tabs().unwrap().to_vec()).collect();
+        assert_eq!(views, vec![Tab::View(0), Tab::View(2), Tab::View(1), Tab::View(3)]);
+        assert!(view_grid(DockState::new(vec![Tab::View(0)]).main_surface()).is_none());
+    }
+
+    #[test]
+    fn grid_corner_keeps_views_visible() {
+        assert_eq!(fraction_at(100.0, 1000.0, 600.0), 0.5);
+        assert_eq!(fraction_at(100.0, 1000.0, 0.0), MIN_VIEW_SIZE / 1000.0);
+        assert_eq!(fraction_at(100.0, 1000.0, 5000.0), 1.0 - MIN_VIEW_SIZE / 1000.0);
+        assert_eq!(fraction_at(0.0, 100.0, 90.0), 0.5);
+    }
+
+    #[test]
+    fn toolbar_icons_follow_the_bar_height_within_limits() {
+        let fit = ToolbarFit { icon: 18.0, icons: 30, tools_width: 900.0, project_width: 150.0, content_height: 20.0 };
+        assert_eq!(fit.icon_size(20.0, 2000.0, 2.0), icons::TOOLBAR, "default bar height keeps the default size");
+        assert_eq!(fit.icon_size(32.0, 2000.0, 2.0), 30.0);
+        assert_eq!(fit.icon_size(400.0, 2000.0, 2.0), icons::TOOLBAR_MAX, "capped");
+        // 2000 wide leaves 934 spare points, 31 more per icon, so a narrower window limits the size before the height does.
+        assert_eq!(fit.icon_size(400.0, 1300.0, 2.0), 25.0);
+        assert_eq!(fit.icon_size(400.0, 600.0, 2.0), icons::TOOLBAR, "never below the default, the toolbar wraps instead");
+        assert_eq!(fit.max_height(2.0), icons::TOOLBAR_MAX + 2.0);
+        let wrapped = ToolbarFit { content_height: 120.0, ..fit };
+        assert_eq!(wrapped.max_height(2.0), 120.0, "wrapped rows are never clipped");
+        assert_eq!(ToolbarFit { icon: 30.0, ..wrapped }.max_height(2.0), icons::TOOLBAR_MAX + 2.0);
     }
 
     #[test]
