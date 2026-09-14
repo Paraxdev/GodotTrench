@@ -1,0 +1,336 @@
+{
+  "meta": {
+    "format_version": "4.10",
+    "model_format": "free",
+    "box_uv": false
+  },
+  "name": "grass",
+  "model_identifier": "",
+  "visible_box": [
+    1,
+    1,
+    0
+  ],
+  "resolution": {
+    "width": 32,
+    "height": 32
+  },
+  "elements": [
+    {
+      "name": "tuft0",
+      "type": "mesh",
+      "uuid": "00000001-0000-4000-8000-000000000011",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "vertices": {
+        "p0": [
+          -9.0,
+          0.0,
+          -0.0
+        ],
+        "p1": [
+          9.0,
+          0.0,
+          0.0
+        ],
+        "p2": [
+          9.0,
+          12.0,
+          0.0
+        ],
+        "p3": [
+          -9.0,
+          12.0,
+          0.0
+        ]
+      },
+      "faces": {
+        "front": {
+          "vertices": [
+            "p0",
+            "p1",
+            "p2",
+            "p3"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        },
+        "back": {
+          "vertices": [
+            "p3",
+            "p2",
+            "p1",
+            "p0"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        }
+      }
+    },
+    {
+      "name": "tuft1",
+      "type": "mesh",
+      "uuid": "00000002-0000-4000-8000-000000001f00",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "vertices": {
+        "p0": [
+          -4.500000000000001,
+          0.0,
+          -7.794228634059947
+        ],
+        "p1": [
+          4.500000000000001,
+          0.0,
+          7.794228634059947
+        ],
+        "p2": [
+          4.500000000000001,
+          12.0,
+          7.794228634059947
+        ],
+        "p3": [
+          -4.500000000000001,
+          12.0,
+          -7.794228634059947
+        ]
+      },
+      "faces": {
+        "front": {
+          "vertices": [
+            "p0",
+            "p1",
+            "p2",
+            "p3"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        },
+        "back": {
+          "vertices": [
+            "p3",
+            "p2",
+            "p1",
+            "p0"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        }
+      }
+    },
+    {
+      "name": "tuft2",
+      "type": "mesh",
+      "uuid": "00000003-0000-4000-8000-000000003def",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "vertices": {
+        "p0": [
+          4.499999999999998,
+          0.0,
+          -7.794228634059948
+        ],
+        "p1": [
+          -4.499999999999998,
+          0.0,
+          7.794228634059948
+        ],
+        "p2": [
+          -4.499999999999998,
+          12.0,
+          7.794228634059948
+        ],
+        "p3": [
+          4.499999999999998,
+          12.0,
+          -7.794228634059948
+        ]
+      },
+      "faces": {
+        "front": {
+          "vertices": [
+            "p0",
+            "p1",
+            "p2",
+            "p3"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        },
+        "back": {
+          "vertices": [
+            "p3",
+            "p2",
+            "p1",
+            "p0"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        }
+      }
+    }
+  ],
+  "outliner": [
+    {
+      "name": "grass",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "uuid": "ffffffff-0000-4000-8000-000000000000",
+      "children": [
+        "00000001-0000-4000-8000-000000000011",
+        "00000002-0000-4000-8000-000000001f00",
+        "00000003-0000-4000-8000-000000003def"
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "path": "",
+      "name": "grass_atlas.png",
+      "folder": "block",
+      "namespace": "",
+      "id": "0",
+      "width": 32,
+      "height": 32,
+      "uv_width": 32,
+      "uv_height": 32,
+      "particle": false,
+      "render_mode": "default",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAE8UlEQVR4Ae3AA6AkWZbG8f937o3IzKdyS2Oubdu2bdu2bdu2bWmMnpZKr54yMyLu+Xa3anqmhztr1S/470Xw34vgvxfBfy+C/14E/72I9/yW1zH/faj9RuW/ETEsJz7sJ9/UPNNH/Oybm/86xHA08Q1v+4vimfbuPeJdvuY1zX8N4sSNWzzQam/ghz7qd8V/kI/+pbc0LxgRVXzoT76peaZrHnmcf4v3+vbX9Qf9yBub53Lh9n1eCGK5N3Dx9gPutz4YeaevfHXzr7R1as63vNMvi+dyeGHNB3z/G5rnj1pq0MbG/fbuOeJHPvb3xb/S/tklz8/G8Rn9ZscLQN2965Af+4Q/EM+0cWLGv0W/qDw/22fmfMPb/IJ4/ojNk3Pe/kte1TzTwbklH/oTb2r+lS7cfsDzs3/fkufn7b74VQ0QbUx+/JP+UDzTzrUb7N51wL9W6YJ3+drXNM/l0j1HPD9bp+a81ee+kqN0wQOde/oeP/gRvyv+lTaOz/ihj/xd8Vy2Ti942y96FfNc9u5b8jOf+Seq55+xxwNtnV7wb7E+HHl+Lt19yC984Z+L53Lqli0A4sSNW/xHODi34vk5/ZAd3u0bXss8l2ndeNeve03HNCYPlFPyNp//yua5vM0XvLJ5IU7ctMXzc7S7xuZ53PPEXX7wI35XsX/vEQ8UXfBTn/7H4rkc7Q68MG1sPNDbf8mrGmBcTrR147llGoBYH028w5e9mnmmg7NL3vDjXsY8tzQvzNHuwFt/3iv5nb/qNfyOX/HqHtcNgKPdNT/ycb8vnku/qLzdF7+q4/j1G/zYJ/yBeKb5Ts+vfsVfiedSZ4Xn512/9jUNsH/fEau9kdXByI9+3O9rttnxLl/zmj5x0xbPT1TxE5/8h4ppSB5oWjfe/ktf1TwXm+frvqdeAmC21bM+GukXhXf48lfz/n1HDMuJi3ce8rZf+CrmuRycWwEQpQseaLk3cO7pezy39cHAm33ay5tnerNPe3kDbByfAbA+GNg8MSMTfuzj/0Cr/ZHhaKT2wU9+6h+J57J9ZsHrfNhLOM4+9RIPlJOZbXU8t9IFDzStGwB1VrhMIkowHI28wce8tPuNyjQkdVZ4oDf82Jc2wO7dh/zWN/ydoltU3vDjXsY8k9P8ypf9lXim1/+olzLAfLtn794j7rc+GAEYjkbe5vNf2Yudnp/9nD9VlODXvuqvdbS75pe++C+0f3bJAw3LxmUGgFjs9PzqV/yVeCaneX4u3nnA73374/RGH/8yBtg4MeONPuFlHTX4qU//Yx2cWwLgNACLnZ7X+4iX9HA0AfC6H/6SBlBwWRTxRh//Mo7V/gjAa33Qi/tV3/vRrvMCwOt9xEsaoE0JwM61GwCM68ZrfdCL+2h34Fe+7C+1vDTw+h/1UkYC4OzTLgGw3B/5ja/7W20cn/FaH/Ti3jg+A2C+1QOwcWJGN69Em5LX+dCXcBuTP/zuJ2jv3iUApQsAVnsDABfvOOBNP+XlPByO/M63/L3G5QTAuJz49a/5G823Ol7nw17CkgCYbVQAckqiikv3HAKggFd/38d4OJzYveuQWO6u+a1v/DttX7PgtT7oxV26ACBq8Mrv9ih388qrv99jvXPNBstLA6UrPFC/UQFQwG99w9/JNgDTugGwPhj5rW/4O03r5DU/8MWczfz+dz5ew3Li97/zcfpHyav83MHGLLkAAAAASUVORK5CYII="
+    }
+  ]
+}

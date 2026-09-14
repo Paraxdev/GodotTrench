@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_trigger.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "trigger_once"
+description = "Fires triggered the first time a body of filter_group enters, then disables itself"
+build_visuals = false
+collision_shape_type = 1
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"filter_group": "player",
+"start_disabled": false,
+"once": true
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"filter_group": "Only bodies in this group, empty accepts any body",
+"start_disabled": "Needs an enable input first",
+"once": "Disables itself after firing"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.9019608, 0.6, 0.101960786, 1),
+"inputs": ["enable", "disable", "toggle"],
+"outputs": ["triggered", "entered", "exited"]
+})
+node_class = "Area3D"

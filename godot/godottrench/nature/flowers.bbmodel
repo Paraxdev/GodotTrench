@@ -1,0 +1,242 @@
+{
+  "meta": {
+    "format_version": "4.10",
+    "model_format": "free",
+    "box_uv": false
+  },
+  "name": "flowers",
+  "model_identifier": "",
+  "visible_box": [
+    1,
+    1,
+    0
+  ],
+  "resolution": {
+    "width": 32,
+    "height": 32
+  },
+  "elements": [
+    {
+      "name": "stems0",
+      "type": "mesh",
+      "uuid": "00000001-0000-4000-8000-000000000011",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "vertices": {
+        "p0": [
+          -6.447426958020196,
+          0.0,
+          -2.725928396160554
+        ],
+        "p1": [
+          6.447426958020196,
+          0.0,
+          2.725928396160554
+        ],
+        "p2": [
+          6.447426958020196,
+          11.0,
+          2.725928396160554
+        ],
+        "p3": [
+          -6.447426958020196,
+          11.0,
+          -2.725928396160554
+        ]
+      },
+      "faces": {
+        "front": {
+          "vertices": [
+            "p0",
+            "p1",
+            "p2",
+            "p3"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        },
+        "back": {
+          "vertices": [
+            "p3",
+            "p2",
+            "p1",
+            "p0"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        }
+      }
+    },
+    {
+      "name": "stems1",
+      "type": "mesh",
+      "uuid": "00000002-0000-4000-8000-000000001f00",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "vertices": {
+        "p0": [
+          2.7259283961605525,
+          0.0,
+          -6.447426958020196
+        ],
+        "p1": [
+          -2.7259283961605525,
+          0.0,
+          6.447426958020196
+        ],
+        "p2": [
+          -2.7259283961605525,
+          11.0,
+          6.447426958020196
+        ],
+        "p3": [
+          2.7259283961605525,
+          11.0,
+          -6.447426958020196
+        ]
+      },
+      "faces": {
+        "front": {
+          "vertices": [
+            "p0",
+            "p1",
+            "p2",
+            "p3"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        },
+        "back": {
+          "vertices": [
+            "p3",
+            "p2",
+            "p1",
+            "p0"
+          ],
+          "uv": {
+            "p0": [
+              0.0,
+              32.0
+            ],
+            "p1": [
+              32.0,
+              32.0
+            ],
+            "p2": [
+              32.0,
+              0.0
+            ],
+            "p3": [
+              0.0,
+              0.0
+            ]
+          },
+          "texture": 0
+        }
+      }
+    }
+  ],
+  "outliner": [
+    {
+      "name": "flowers",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "uuid": "ffffffff-0000-4000-8000-000000000000",
+      "children": [
+        "00000001-0000-4000-8000-000000000011",
+        "00000002-0000-4000-8000-000000001f00"
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "path": "",
+      "name": "flowers_atlas.png",
+      "folder": "block",
+      "namespace": "",
+      "id": "0",
+      "width": 32,
+      "height": 32,
+      "uv_width": 32,
+      "uv_height": 32,
+      "particle": false,
+      "render_mode": "default",
+      "source": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAACFklEQVR4Ae3AA6AkWZbG8f937o3IzKdyS2Oubdu2bdu2bdu2bWmMnpZKr54yMyLu+Xa3anqmhztr1S/470Xw34vgvxfBfy8q/wpP+KBv9In5FlM2bvy69xH/fgQvoqd96Lf6zMYx7j64QI3C2Y/+PvOvZA9+2tOe6NVq31xB8CLa6Te493CXGoW99REb3Yx/Ddu+8847efCDH4wk7DRA5UXUnAxtwph57Xn67r38a5w7dze2OTw85Pz580QEAOJfYf1JP+GDYUU6OfPV7yH+FezR58+fo7XGqVOnuPfee7nxxgdL/Cu94We/qn/1s/9Q/BucO3e3T548ye7uLidPXiuA4L/Q6dPX640/93U4efJacQXBA9x665Pd2sq2zX8Ngmfa2zvviCCiAI1nPOMp5j8flWc6e/Ysp0+fBgq3334rq9Waf62/fr+vsTEP2jnDya96N/EvI3imzc1NLl3aA+Dmmx/MjTfewL/G8Ek/6XnteLHTt3DP4S7TJ/+U+ZcRPNN1192sM2dO89SnPhGY2No6If4Vzi33GHPiCefvYKufs5oGXgQED7BY7OhDv//9kHrxryTgzMYx5rWji8qYjRcBwX+Q67/2vbUcB67ZOM7QRk585buKfxnBf6CHfOMH6B13vo4HfcP7ixcNwX8vgv9eBP+9CP57Efz3IvjvRfDfi+C/F8F/L4L/XgT/vQj+exH89+IfAUu2ta9RlEs5AAAAAElFTkSuQmCC"
+    }
+  ]
+}

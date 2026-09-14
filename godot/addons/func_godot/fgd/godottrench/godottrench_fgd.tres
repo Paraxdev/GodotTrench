@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDFile" load_steps=25 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_file.gd" id="1_fgd"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/info_teleport_destination.tres" id="2_info_teleport_destination"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/path_corner.tres" id="3_path_corner"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/prop_model.tres" id="4_prop_model"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/func_door.tres" id="5_func_door"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/func_door_rotating.tres" id="6_func_door_rotating"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/func_gate.tres" id="7_func_gate"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/func_platform.tres" id="8_func_platform"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/func_train.tres" id="9_func_train"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/func_button.tres" id="10_func_button"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/trigger_once.tres" id="11_trigger_once"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/trigger_multiple.tres" id="12_trigger_multiple"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/trigger_call.tres" id="13_trigger_call"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/trigger_spawn_area.tres" id="14_trigger_spawn_area"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/trigger_hurt.tres" id="15_trigger_hurt"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/trigger_teleport.tres" id="16_trigger_teleport"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/trigger_push.tres" id="17_trigger_push"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/info_spawner.tres" id="18_info_spawner"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/logic_call.tres" id="19_logic_call"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/logic_relay.tres" id="20_logic_relay"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/logic_timer.tres" id="21_logic_timer"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/logic_counter.tres" id="22_logic_counter"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/logic_auto.tres" id="23_logic_auto"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/logic_debug.tres" id="24_logic_debug"]
+
+[resource]
+script = ExtResource("1_fgd")
+fgd_name = "GodotTrench"
+entity_definitions = Array[Resource]([ExtResource("2_info_teleport_destination"), ExtResource("3_path_corner"), ExtResource("4_prop_model"), ExtResource("5_func_door"), ExtResource("6_func_door_rotating"), ExtResource("7_func_gate"), ExtResource("8_func_platform"), ExtResource("9_func_train"), ExtResource("10_func_button"), ExtResource("11_trigger_once"), ExtResource("12_trigger_multiple"), ExtResource("13_trigger_call"), ExtResource("14_trigger_spawn_area"), ExtResource("15_trigger_hurt"), ExtResource("16_trigger_teleport"), ExtResource("17_trigger_push"), ExtResource("18_info_spawner"), ExtResource("19_logic_call"), ExtResource("20_logic_relay"), ExtResource("21_logic_timer"), ExtResource("22_logic_counter"), ExtResource("23_logic_auto"), ExtResource("24_logic_debug")])

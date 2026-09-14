@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_spawner.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "info_spawner"
+description = "Spawns scenes (enemies, pickups) around itself on input or on a timer"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"scene": "",
+"count": 1,
+"max_alive": 5,
+"total": 0,
+"interval": 0.0,
+"radius": 64.0,
+"start_active": false,
+"spawn_on_ready": false,
+"spawn_group": "enemies",
+"snap_to_ground": true
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"scene": "res:// scene to spawn",
+"count": "Instances per spawn",
+"max_alive": "Never more alive at once",
+"total": "Stops after this many, 0 is unlimited",
+"interval": "Seconds between spawns while active, 0 spawns only on input",
+"radius": "Random spread around the spawner, map units",
+"start_active": "Timer runs from map load",
+"spawn_on_ready": "Spawns once when the map loads",
+"spawn_group": "Group added to spawned nodes",
+"snap_to_ground": "Drops spawns onto the floor below"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.9019608, 0.3019608, 0.3019608, 1),
+"size": AABB(-16, -16, 0, 16, 16, 48),
+"property_types": {"scene": "resource"},
+"gizmos": [{"type": "radius", "property": "radius", "scale": 1.0}],
+"inputs": ["spawn", "start", "stop", "toggle", "kill_all"],
+"outputs": ["spawned", "all_dead", "exhausted"]
+})
+node_class = "Node3D"

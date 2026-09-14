@@ -1,0 +1,17 @@
+[remap]
+
+importer="godottrench.bbmodel"
+type="PackedScene"
+uid="uid://b101mbta5fqy2"
+path="res://.godot/imported/fern.bbmodel-b1201e04ca5ff9de73f782c93dd8ad0b.scn"
+
+[deps]
+
+source_file="res://godottrench/nature/fern.bbmodel"
+dest_files=["res://.godot/imported/fern.bbmodel-b1201e04ca5ff9de73f782c93dd8ad0b.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

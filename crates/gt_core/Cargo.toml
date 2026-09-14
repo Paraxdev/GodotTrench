@@ -1,0 +1,9 @@
+[package]
+name = "gt_core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+glam.workspace = true
+serde.workspace = true

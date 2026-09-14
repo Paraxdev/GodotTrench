@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="FuncGodotMapSettings" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/map/func_godot_map_settings.gd" id="1_settings"]
+[ext_resource type="Resource" path="res://demo/demo_fgd.tres" id="2_fgd"]
+
+[resource]
+script = ExtResource("1_settings")
+inverse_scale_factor = 32.0
+entity_fgd = ExtResource("2_fgd")
+use_groups_hierarchy = true
+entity_name_property = "targetname"
+base_texture_dir = "res://demo/textures"
+clip_texture = "special/clip"
+skip_texture = "special/skip"
+origin_texture = "special/origin"

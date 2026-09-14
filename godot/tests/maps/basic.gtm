@@ -1,0 +1,217 @@
+{
+  "format": "godottrench-map",
+  "version": 1,
+  "properties": {"classname":"worldspawn"},
+  "layers": [
+    {
+      "id": 1,
+      "type": "layer",
+      "name": "Default",
+      "color": "#7e67e6ff",
+      "omit_from_export": false,
+      "children": [
+        {
+          "id": 2,
+          "type": "brush",
+          "vertices": [[256.0,0.0,-256.0],[256.0,0.0,256.0],[256.0,-16.0,256.0],[256.0,-16.0,-256.0],[-256.0,0.0,256.0],[-256.0,0.0,-256.0],[-256.0,-16.0,-256.0],[-256.0,-16.0,256.0]],
+          "faces": [
+            {"indices":[0,1,2,3],"material":"base/floor","uv":{"u_axis":[0.0,0.0,-1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[4,5,6,7],"material":"base/floor","uv":{"u_axis":[0.0,0.0,1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[1,0,5,4],"material":"base/floor","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[3,2,7,6],"material":"base/floor","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[2,1,4,7],"material":"base/floor","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[6,5,0,3],"material":"base/floor","uv":{"u_axis":[-1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}}
+          ]
+        },
+        {
+          "id": 3,
+          "type": "brush",
+          "vertices": [[256.0,128.0,-256.0],[256.0,128.0,-240.0],[256.0,0.0,-240.0],[256.0,0.0,-256.0],[32.0,128.0,-256.0],[32.0,128.0,-240.0],[32.0,0.0,-240.0],[32.0,0.0,-256.0]],
+          "faces": [
+            {"indices":[0,1,2,3],"material":"base/wall","uv":{"u_axis":[0.0,0.0,-1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[1,0,4,5],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[3,2,6,7],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[2,1,5,6],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[4,0,3,7],"material":"base/wall","uv":{"u_axis":[-1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[5,4,7,6],"material":"base/wall","uv":{"u_axis":[0.0,0.0,-1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}}
+          ]
+        },
+        {
+          "id": 4,
+          "type": "brush",
+          "vertices": [[-256.0,128.0,-240.0],[-256.0,128.0,-256.0],[-256.0,0.0,-256.0],[-256.0,0.0,-240.0],[-32.0,128.0,-256.0],[-32.0,128.0,-240.0],[-32.0,0.0,-240.0],[-32.0,0.0,-256.0]],
+          "faces": [
+            {"indices":[0,1,2,3],"material":"base/wall","uv":{"u_axis":[0.0,0.0,1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[4,1,0,5],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[6,3,2,7],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[5,0,3,6],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[2,1,4,7],"material":"base/wall","uv":{"u_axis":[-1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[4,5,6,7],"material":"base/wall","uv":{"u_axis":[0.0,0.0,1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}}
+          ]
+        },
+        {
+          "id": 5,
+          "type": "brush",
+          "vertices": [[-32.0,128.0,-240.0],[32.0,128.0,-240.0],[32.0,128.0,-256.0],[-32.0,128.0,-256.0],[-32.0,96.0,-240.0],[32.0,96.0,-240.0],[32.0,96.0,-256.0],[-32.0,96.0,-256.0]],
+          "faces": [
+            {"indices":[0,1,2,3],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[1,0,4,5],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[3,2,6,7],"material":"base/wall","uv":{"u_axis":[-1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[2,1,5,6],"material":"base/wall","uv":{"u_axis":[0.0,0.0,-1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[0,3,7,4],"material":"base/wall","uv":{"u_axis":[0.0,0.0,1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[7,6,5,4],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}}
+          ]
+        },
+        {
+          "id": 6,
+          "type": "group",
+          "name": "props",
+          "children": [
+            {
+              "id": 7,
+              "type": "brush",
+              "vertices": [[160.0,64.0,96.0],[160.0,64.0,160.0],[160.0,0.0,160.0],[160.0,0.0,96.0],[96.0,64.0,160.0],[96.0,64.0,96.0],[96.0,0.0,96.0],[96.0,0.0,160.0]],
+              "faces": [
+                {"indices":[0,1,2,3],"material":"base/metal","uv":{"u_axis":[0.0,0.0,-1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[4,5,6,7],"material":"base/metal","uv":{"u_axis":[0.0,0.0,1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[1,0,5,4],"material":"base/metal","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[3,2,7,6],"material":"base/metal","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[2,1,4,7],"material":"base/metal","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[6,5,0,3],"material":"base/metal","uv":{"u_axis":[-1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}}
+              ]
+            },
+            {
+              "id": 8,
+              "type": "brush",
+              "vertices": [[-95.21539030917347,48.0,55.21539030917346],[-71.21539030917347,48.0,96.78460969082653],[-71.21539030917347,0.0,96.78460969082653],[-95.21539030917347,0.0,55.21539030917346],[-112.78460969082653,48.0,120.78460969082653],[-136.78460969082653,48.0,79.21539030917346],[-136.78460969082653,0.0,79.21539030917346],[-112.78460969082653,0.0,120.78460969082653]],
+              "faces": [
+                {"indices":[0,1,2,3],"material":"base/metal","uv":{"u_axis":[-0.5,0.0,-0.8660254037844387],"v_axis":[0.0,-1.0,0.0],"offset":[-63.7897644669694,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[4,5,6,7],"material":"base/metal","uv":{"u_axis":[0.5,0.0,0.8660254037844387],"v_axis":[0.0,-1.0,0.0],"offset":[63.7897644669694,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[1,0,5,4],"material":"base/metal","uv":{"u_axis":[0.8660254037844387,0.0,-0.5],"v_axis":[0.5,0.0,0.8660254037844387],"offset":[30.06664199358161,63.7897644669694],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[3,2,7,6],"material":"base/metal","uv":{"u_axis":[0.8660254037844387,0.0,-0.5],"v_axis":[0.5,0.0,0.8660254037844387],"offset":[30.06664199358161,63.7897644669694],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[2,1,4,7],"material":"base/metal","uv":{"u_axis":[0.8660254037844387,0.0,-0.5],"v_axis":[0.0,-1.0,0.0],"offset":[30.06664199358161,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[6,5,0,3],"material":"base/metal","uv":{"u_axis":[-0.8660254037844387,0.0,0.5],"v_axis":[0.0,-1.0,0.0],"offset":[-30.06664199358161,0.0],"scale":[1.0,1.0],"rotation":0.0}}
+              ]
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "type": "entity",
+          "classname": "func_door",
+          "origin": [0.0,0.0,0.0],
+          "angles": [0.0,0.0,0.0],
+          "properties": {"targetname":"door1"},
+          "outputs": [{"output":"opened","target":"lamp","input":"turn_on"}],
+          "children": [
+            {
+              "id": 10,
+              "type": "brush",
+              "vertices": [[32.0,96.0,-252.0],[32.0,96.0,-244.0],[32.0,0.0,-244.0],[32.0,0.0,-252.0],[-32.0,96.0,-244.0],[-32.0,96.0,-252.0],[-32.0,0.0,-252.0],[-32.0,0.0,-244.0]],
+              "faces": [
+                {"indices":[0,1,2,3],"material":"base/metal","uv":{"u_axis":[0.0,0.0,-1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[4,5,6,7],"material":"base/metal","uv":{"u_axis":[0.0,0.0,1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[1,0,5,4],"material":"base/metal","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[3,2,7,6],"material":"base/metal","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[2,1,4,7],"material":"base/metal","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[6,5,0,3],"material":"base/metal","uv":{"u_axis":[-1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}}
+              ]
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "type": "entity",
+          "classname": "func_button",
+          "origin": [0.0,0.0,0.0],
+          "angles": [0.0,0.0,0.0],
+          "properties": {"targetname":"button1"},
+          "outputs": [{"output":"pressed","target":"door1","input":"open","delay":0.1}],
+          "children": [
+            {
+              "id": 12,
+              "type": "brush",
+              "vertices": [[64.0,48.0,-240.0],[64.0,48.0,-232.0],[64.0,32.0,-232.0],[64.0,32.0,-240.0],[48.0,48.0,-232.0],[48.0,48.0,-240.0],[48.0,32.0,-240.0],[48.0,32.0,-232.0]],
+              "faces": [
+                {"indices":[0,1,2,3],"material":"base/metal","uv":{"u_axis":[0.0,0.0,-1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[4,5,6,7],"material":"base/metal","uv":{"u_axis":[0.0,0.0,1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[1,0,5,4],"material":"base/metal","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[3,2,7,6],"material":"base/metal","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[2,1,4,7],"material":"base/metal","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[6,5,0,3],"material":"base/metal","uv":{"u_axis":[-1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}}
+              ]
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "type": "entity",
+          "classname": "trigger_area",
+          "origin": [0.0,0.0,0.0],
+          "angles": [0.0,0.0,0.0],
+          "outputs": [{"output":"body_entered","target":"door1","input":"open"}],
+          "children": [
+            {
+              "id": 14,
+              "type": "brush",
+              "vertices": [[64.0,96.0,-200.0],[64.0,96.0,-120.0],[64.0,16.0,-120.0],[64.0,16.0,-200.0],[-64.0,96.0,-120.0],[-64.0,96.0,-200.0],[-64.0,16.0,-200.0],[-64.0,16.0,-120.0]],
+              "faces": [
+                {"indices":[0,1,2,3],"material":"special/trigger","uv":{"u_axis":[0.0,0.0,-1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[4,5,6,7],"material":"special/trigger","uv":{"u_axis":[0.0,0.0,1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[1,0,5,4],"material":"special/trigger","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[3,2,7,6],"material":"special/trigger","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[2,1,4,7],"material":"special/trigger","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+                {"indices":[6,5,0,3],"material":"special/trigger","uv":{"u_axis":[-1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}}
+              ]
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "type": "entity",
+          "classname": "light",
+          "origin": [0.0,112.0,0.0],
+          "angles": [0.0,90.0,0.0],
+          "properties": {"light_energy":"2.5","start_on":"0","targetname":"lamp"}
+        },
+        {
+          "id": 16,
+          "type": "entity",
+          "classname": "info_player_start",
+          "origin": [0.0,0.0,128.0],
+          "angles": [0.0,45.0,0.0]
+        },
+        {
+          "id": 17,
+          "type": "instance",
+          "path": "prefab.gtm",
+          "origin": [200.0,0.0,-64.0],
+          "angles": [0.0,90.0,0.0],
+          "fixup": "p1"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "layer",
+      "name": "Omitted",
+      "color": "#676ee6ff",
+      "omit_from_export": true,
+      "children": [
+        {
+          "id": 19,
+          "type": "brush",
+          "vertices": [[1064.0,64.0,1000.0],[1064.0,64.0,1064.0],[1064.0,0.0,1064.0],[1064.0,0.0,1000.0],[1000.0,64.0,1064.0],[1000.0,64.0,1000.0],[1000.0,0.0,1000.0],[1000.0,0.0,1064.0]],
+          "faces": [
+            {"indices":[0,1,2,3],"material":"base/wall","uv":{"u_axis":[0.0,0.0,-1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[4,5,6,7],"material":"base/wall","uv":{"u_axis":[0.0,0.0,1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[1,0,5,4],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[3,2,7,6],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[2,1,4,7],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[6,5,0,3],"material":"base/wall","uv":{"u_axis":[-1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}}
+          ]
+        }
+      ]
+    }
+  ]
+}

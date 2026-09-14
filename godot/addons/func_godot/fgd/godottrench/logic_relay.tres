@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_relay.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "logic_relay"
+description = "Forwards trigger to its outputs, can be disabled"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"start_disabled": false
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"start_disabled": "Ignores trigger until enabled"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7529412, 0.7529412, 0.7529412, 1),
+"size": AABB(-8, -8, -8, 8, 8, 8),
+"inputs": ["trigger", "enable", "disable", "toggle"],
+"outputs": ["triggered"]
+})
+node_class = "Node3D"

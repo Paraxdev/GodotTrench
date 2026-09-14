@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_path_corner.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "path_corner"
+description = "One stop of a func_train path. target names the next corner."
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"target": "",
+"wait": 0.0,
+"speed": 0.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name of this corner",
+"target": "Next corner",
+"wait": "Seconds the train waits here",
+"speed": "New train speed in m/s from here on, 0 keeps it"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.6666667, 0.8, 1, 1),
+"size": AABB(-8, -8, -8, 8, 8, 8),
+"outputs": ["reached"]
+})
+node_class = "Marker3D"

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDFile" load_steps=11 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_file.gd" id="1_fgd"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/func_godot_fgd.tres" id="2_base"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/godottrench_fgd.tres" id="3_gt"]
+[ext_resource type="Resource" path="res://demo/entities/light.tres" id="5_light"]
+[ext_resource type="Resource" path="res://demo/entities/info_player_start.tres" id="6_start"]
+[ext_resource type="Resource" path="res://demo/entities/trigger_area.tres" id="7_trigger"]
+[ext_resource type="Resource" path="res://demo/entities/infodecal.tres" id="8_decal"]
+[ext_resource type="Resource" path="res://demo/entities/func_rotating.tres" id="10_rot"]
+[ext_resource type="Resource" path="res://demo/entities/light_spot.tres" id="11_spot"]
+[ext_resource type="Resource" path="res://demo/entities/light_rotating.tres" id="12_beam"]
+
+[resource]
+script = ExtResource("1_fgd")
+fgd_name = "GodotTrenchDemo"
+base_fgd_files = Array[Resource]([ExtResource("2_base"), ExtResource("3_gt")])
+entity_definitions = Array[Resource]([ExtResource("5_light"), ExtResource("6_start"), ExtResource("7_trigger"), ExtResource("8_decal"), ExtResource("10_rot"), ExtResource("11_spot"), ExtResource("12_beam")])

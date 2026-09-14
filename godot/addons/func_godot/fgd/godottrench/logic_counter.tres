@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_counter.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "logic_counter"
+description = "Counts inputs and fires when it reaches its limits"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"min": 0,
+"max": 3,
+"start_value": 0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"min": "Lower limit",
+"max": "Upper limit",
+"start_value": "Initial value"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7529412, 0.7529412, 0.7529412, 1),
+"size": AABB(-8, -8, -8, 8, 8, 8),
+"inputs": ["add", "subtract", "set_value", "reset"],
+"outputs": ["hit_max", "hit_min", "changed"]
+})
+node_class = "Node3D"

@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_door.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "func_door"
+description = "Sliding door. Moves by travel when opened, back when closed."
+collision_shape_type = 1
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"travel": "0 64 0",
+"speed": 2.0,
+"wait": -1.0,
+"locked": false,
+"start_open": false,
+"interact": true
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name other entities use to open it",
+"travel": "Offset the door slides by, in map units",
+"speed": "Meters per second",
+"wait": "Seconds before it closes again, -1 stays open",
+"locked": "Ignores open and use until unlocked",
+"start_open": "Starts in the open position",
+"interact": "Opens when a player calls use() on it"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.3019608, 0.7019608, 1, 1),
+"property_types": {"travel": "vector3"},
+"gizmos": [{"type": "travel", "property": "travel"}],
+"inputs": ["open", "close", "toggle", "lock", "unlock", "use"],
+"outputs": ["opened", "closed", "started_opening", "started_closing", "locked_use"]
+})
+node_class = "AnimatableBody3D"

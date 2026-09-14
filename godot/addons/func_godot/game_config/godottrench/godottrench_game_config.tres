@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="GodotTrenchGameConfig" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/godottrench_game_config.gd" id="1_gt"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/func_godot_fgd.tres" id="2_fgd"]
+[ext_resource type="Resource" path="res://addons/func_godot/func_godot_default_map_settings.tres" id="3_ms"]
+
+[resource]
+script = ExtResource("1_gt")
+fgd_file = ExtResource("2_fgd")
+map_settings = ExtResource("3_ms")

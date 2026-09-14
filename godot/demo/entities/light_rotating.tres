@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
+[ext_resource type="Script" path="res://demo/entities/rotating_light.gd" id="2_rot"]
+
+[resource]
+script = ExtResource("1_point")
+script_class = ExtResource("2_rot")
+classname = "light_rotating"
+description = "Rotating lighthouse beam (spot light)"
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"light_energy": 8.0,
+"light_color": Color(1, 0.95, 0.75, 1),
+"spot_range": 120.0,
+"spot_angle": 12.0,
+"degrees_per_second": 60.0,
+"start_on": true
+})
+auto_apply_to_matching_node_properties = true
+meta_properties = Dictionary[String, Variant]({
+"size": AABB(-12, -12, -12, 12, 12, 12),
+"color": Color(1, 0.95, 0.5, 1)
+})
+node_class = "SpotLight3D"

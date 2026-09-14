@@ -1,0 +1,14 @@
+[remap]
+
+importer="func_godot.map"
+type="QuakeMapFile"
+uid="uid://dlyk6m7d0c176"
+path="res://.godot/imported/demo.gtm-208281d64184247d7bef49f464af5506.tres"
+
+[deps]
+
+source_file="res://demo/maps/demo.gtm"
+dest_files=["res://.godot/imported/demo.gtm-208281d64184247d7bef49f464af5506.tres"]
+
+[params]
+
