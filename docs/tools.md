@@ -9,7 +9,11 @@ its own, and *Help > Guide* shows the same chapters as searchable pages with tip
 * 3D: hold right mouse to look, WASD to fly (Q/E down/up while looking), middle mouse pans, wheel dollies, Alt+left drag orbits.
 * 2D: right or middle mouse pans, wheel zooms.
 * Drag the point where the view separators cross to resize all four views at once.
+* Click selects the object under the cursor, also inside groups, double click selects the whole group. Linked groups are always
+  selected as a whole.
 * Left drag on empty space draws a brush, drag the selection to move it (Alt: vertical, Ctrl: duplicate, Shift: lock axis).
+* The selection shows a gizmo in the 3D view: arrows move along an axis, squares move in a plane, the center dot moves freely,
+  rings rotate (15° steps, Shift for 1°) and the boxes scale along an axis. *View > Transform Gizmo* hides it.
 * Shift+click selects faces, Shift+drag a face resizes the brush, Ctrl+Shift+drag extrudes. In 2D views drag selection edges to resize.
 * Tools: `C` clip (Tab changes kept side, Enter applies), `V` vertex, `R` rotate, `T` scale, `G` sculpt, `P` paint,
   `B` scatter, `Shift+G` blend, `Shift+E` volume, `M` measure, `Shift+P` path, `Shift+T` texture, `Tab` edit mesh,

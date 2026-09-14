@@ -213,6 +213,55 @@ fn outliner_toggles_visibility_and_adds_layers() {
     assert!(harness.state().state.doc.map.get(id).unwrap().hidden);
 }
 
+#[test]
+fn outliner_context_menu_selects_and_acts_on_objects() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    let brush =
+        f.state.doc.edit("add", |m, _| m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "dev/grey").unwrap())));
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(360.0, 400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::outliner(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    harness.get_by_label("Expand").click();
+    harness.run();
+    harness.get_by_label_contains("brush").click_secondary();
+    harness.run();
+    assert!(harness.state().state.doc.selection.nodes.contains(&brush), "right click selects the row");
+    for entry in ["Focus", "Hide", "Duplicate"] {
+        harness.get_by_label(entry);
+    }
+    harness.get_by_label_contains("Move to Layer");
+    assert_eq!(harness.get_all_by_label("Lock").count(), 3, "the two row lock icons and the menu entry");
+    harness.get_by_label("Delete").click();
+    harness.run();
+    assert_eq!(harness.state().actions, vec![Action::Delete]);
+}
+
+#[test]
+fn dragged_entities_and_materials_show_a_preview_at_the_pointer() {
+    let mut harness = Harness::builder().with_size(egui::vec2(600.0, 400.0)).build_ui_state(
+        |ui, f: &mut Fixture| {
+            let ctx = ui.ctx().clone();
+            panels::dnd_preview(&ctx, &mut f.state);
+        },
+        Fixture::new(),
+    );
+    harness.run();
+    assert!(harness.query_by_label("info_player_start").is_none(), "nothing without a drag");
+
+    egui::DragAndDrop::set_payload(&harness.ctx, panels::DndPayload::Entity("info_player_start".into()));
+    harness.hover_at(egui::pos2(200.0, 150.0));
+    harness.run();
+    let card = harness.get_by_label("info_player_start").rect();
+    assert!(card.min.x > 200.0 && card.min.y > 150.0, "the card sits next to the pointer, got {card:?}");
+    harness.get_by_label("Drop into a view to place it");
+
+    egui::DragAndDrop::set_payload(&harness.ctx, panels::DndPayload::Material("dev/grey".into()));
+    harness.run();
+    harness.get_by_label("dev/grey");
+}
+
 struct GuideFixture {
     guide: Guide,
     state: EditorState,
@@ -254,9 +303,9 @@ fn guide_window_opens_chapters_searches_and_runs_step_buttons() {
     harness.get_by_label("Hollow selection");
 
     // The result scrolls to its step, whose Show me button starts the tour right there.
-    harness.get_all_by_label("Show me").nth(4).unwrap().click();
+    harness.get_all_by_label("Show me").nth(5).unwrap().click();
     harness.run();
-    assert_eq!(harness.state().guide.tour(), Some((4, 4)));
+    assert_eq!(harness.state().guide.tour(), Some((4, 5)));
 }
 
 #[test]
