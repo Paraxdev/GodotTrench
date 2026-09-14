@@ -97,6 +97,33 @@ fn placing_entities_lines_them_up_and_gives_brush_entities_a_box() {
 }
 
 #[test]
+fn outliner_reveals_an_object_picked_in_a_view() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    let inner = f.state.doc.edit("add", |m, _| {
+        for i in 0..300 {
+            let min = DVec3::new(i as f64 * 64.0, 0.0, 0.0);
+            m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(min, min + DVec3::splat(32.0)), "dev/grey").unwrap()));
+        }
+        let outer = m.insert(layer, NodeKind::Group(gt_doc::Group::new("outer")));
+        let inner = m.insert(outer, NodeKind::Group(gt_doc::Group::new("inner")));
+        m.insert(inner, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(8.0)), "dev/grey").unwrap()));
+        inner
+    });
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(400.0, 500.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::outliner(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    assert!(harness.query_by_label_contains("inner").is_none());
+
+    harness.state_mut().state.outliner_reveal = Some(inner);
+    harness.run();
+    let row = harness.get_by_label_contains("inner").rect();
+    assert!(row.min.y > 0.0 && row.max.y < 500.0, "the row is scrolled into sight, got {row:?}");
+    harness.get_by_label_contains("outer");
+}
+
+#[test]
 fn inspector_adds_io_output() {
     let (fixture, id) = Fixture::with_light();
     let mut harness = Harness::builder()
