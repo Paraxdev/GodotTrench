@@ -95,28 +95,44 @@ func verify() -> Error:
 ## First cleans the map node of any children, then creates a [FuncGodotParser], [FuncGodotGeometryGenerator] 
 ## and [FuncGodotEntityAssembler] to parse and generate the map. 
 func build() -> void:
+	_build("")
+
+## GodotTrench: builds the .gtm map from [param text] instead of its file, e.g. unsaved edits sent by the GodotTrench editor.
+## The file path is still used to resolve prefabs.
+func build_from_text(text: String) -> void:
+	_build(text)
+
+func _build(text: String) -> void:
 	var time_elapsed: float = Time.get_ticks_msec()
-	
+
 	if build_flags & BuildFlags.SHOW_PROFILE_INFO:
 		FuncGodotUtil.print_profile_info("Building...", _SIGNATURE)
 
 	clear_children()
-	
+
 	var verify_err: Error = verify()
 	if verify_err != OK:
 		fail_build("Verification failed: %s. Aborting map build" % error_string(verify_err), true)
 		return
-	
+
 	if not map_settings:
 		push_warning("Map assembler does not have a map settings provided and will use default map settings.")
 		load(ProjectSettings.get_setting("func_godot/default_map_settings", "res://addons/func_godot/func_godot_default_map_settings.tres"))
-	
+
 	# Parse and collect map data
 	var parser := FuncGodotParser.new()
 	if build_flags & BuildFlags.SHOW_PROFILE_INFO:
 		print("\nPARSER")
 		parser.declare_step.connect(FuncGodotUtil.print_profile_info.bind(parser._SIGNATURE))
-	var parse_data: FuncGodotData.ParseData = parser.parse_map_data(_map_file_internal, map_settings)
+	var parse_data: FuncGodotData.ParseData
+	var is_gtm := _map_file_internal.get_extension().to_lower() == "gtm"
+	if text != "" and is_gtm:
+		parse_data = parser.parse_gtm(text, map_settings, _map_file_internal)
+	else:
+		parse_data = parser.parse_map_data(_map_file_internal, map_settings)
+	# GodotTrench: lets a live session tell whether the scene still matches the map it was built from.
+	if is_gtm and (text != "" or Engine.is_editor_hint()):
+		set_meta(GodotTrenchBuild.SOURCE_HASH_META, (text if text != "" else FileAccess.get_file_as_string(_map_file_internal)).hash())
 	
 	if parse_data.entities.is_empty():
 		return	# Already printed failure message in parser, just return here
@@ -151,7 +167,7 @@ func build() -> void:
 	# GodotTrench: scatter sets (trees, rocks, foliage) as MultiMesh and shared collision.
 	GodotTrenchScatter.build_all(self, parse_data.scatters, map_settings)
 	# GodotTrench: sky, fog and sun from worldspawn keys, the same values the editor's lit preview uses.
-	if _map_file_internal.get_extension().to_lower() == "gtm":
+	if is_gtm:
 		GodotTrenchEnvironment.build(self, entities[0].properties)
 
 	time_elapsed = Time.get_ticks_msec() - time_elapsed

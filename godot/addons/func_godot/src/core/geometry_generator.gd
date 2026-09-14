@@ -175,7 +175,8 @@ func determine_entity_origins(entity_index: int) -> void:
 	else:
 		origin_type = entity.definition.origin_type
 	
-	if entity_index == 0:
+	# GodotTrench: worldspawn by classname, so entity lists built without it (live updates) keep brush entity origins.
+	if entity.properties.get("classname", "") == "worldspawn":
 		entity.origin = Vector3.ZERO
 		return
 	

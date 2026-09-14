@@ -66,9 +66,7 @@ static func build(map_node: Node3D, properties: Dictionary) -> Array[Node]:
 	sun.directional_shadow_max_distance = 400.0
 	out.append(sun)
 
-	var scene_root: Node = map_node
-	if map_node.is_inside_tree() and map_node.get_tree().edited_scene_root:
-		scene_root = map_node.get_tree().edited_scene_root
+	var scene_root := GodotTrenchBuild.scene_owner(map_node)
 	for node in out:
 		map_node.add_child(node)
 		node.owner = scene_root

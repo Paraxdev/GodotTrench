@@ -46,10 +46,16 @@ class Context:
 	## Transform applied to everything parsed at the current instance level (Godot space, map units).
 	var xform := Transform3D.IDENTITY
 	var name_prefix := ""
+	## Brushes and meshes waiting to be converted, see [method GodotTrenchParser._convert_geometry].
+	var geometry: Array[Dictionary] = []
 
 
 static func parse(text: String, map_settings: FuncGodotMapSettings, parse_data: _ParseData, map_path: String = "") -> _ParseData:
-	var json = JSON.parse_string(text)
+	return parse_dict(JSON.parse_string(text), map_settings, parse_data, map_path)
+
+
+## Like [method parse] for a map that is already parsed JSON, e.g. the live model of the GodotTrench editor.
+static func parse_dict(json: Variant, map_settings: FuncGodotMapSettings, parse_data: _ParseData, map_path: String = "") -> _ParseData:
 	if not json is Dictionary or json.get("format", "") != FORMAT_NAME:
 		push_error("[GTM] %s is not a GodotTrench map" % map_path)
 		return null
@@ -63,12 +69,54 @@ static func parse(text: String, map_settings: FuncGodotMapSettings, parse_data: 
 	for key in json.get("properties", {}):
 		world.properties[key] = str(json["properties"][key])
 	world.properties["classname"] = "worldspawn"
+	world.node_id = 0
 	ctx.worldspawn = world
 	parse_data.entities.append(world)
 
 	for layer in json.get("layers", []):
 		_parse_node(ctx, layer, null)
+	_convert_geometry(ctx)
 	return parse_data
+
+
+## Leaves a slot for a brush or mesh node in [param entity], filled by [method _convert_geometry].
+static func _queue_geometry(ctx: Context, node: Dictionary, entity: _EntityData) -> void:
+	entity.brushes.append(null)
+	ctx.geometry.append({ "node": node, "xform": ctx.xform, "depth": ctx.instance_depth, "entity": entity, "slot": entity.brushes.size() - 1 })
+
+
+## Converts the queued brushes and meshes, on worker threads for bigger maps. Only data is created there.
+static func _convert_geometry(ctx: Context) -> void:
+	var jobs := ctx.geometry
+	var results := []
+	results.resize(jobs.size())
+	var convert := func(i: int) -> void:
+		var job: Dictionary = jobs[i]
+		var node: Dictionary = job["node"]
+		var brush: _BrushData
+		if node.get("type", "") == "mesh":
+			brush = GodotTrenchMesh.parse(node, job["xform"], ctx.map_settings.scale_factor, ctx.map_settings.origin_texture)
+		else:
+			brush = _parse_brush(ctx.map_settings, job["xform"], node)
+		if brush:
+			brush.node_id = int(node.get("id", 0)) + int(job["depth"]) * 1000000
+		results[i] = brush
+	if GodotTrenchBuild.threaded() and jobs.size() >= 32:
+		var task := WorkerThreadPool.add_group_task(convert, jobs.size(), -1, false, "Convert GodotTrench brushes")
+		WorkerThreadPool.wait_for_group_task_completion(task)
+	else:
+		for i in jobs.size():
+			convert.call(i)
+	var touched := {}
+	for i in jobs.size():
+		var entity: _EntityData = jobs[i]["entity"]
+		entity.brushes[jobs[i]["slot"]] = results[i]
+		touched[entity] = true
+	for entity: _EntityData in touched:
+		for k in range(entity.brushes.size() - 1, -1, -1):
+			if entity.brushes[k] == null:
+				entity.brushes.remove_at(k)
+	jobs.clear()
 
 
 static func _make_group(ctx: Context, node: Dictionary, parent: _GroupData, is_layer: bool) -> _GroupData:
@@ -98,14 +146,8 @@ static func _parse_node(ctx: Context, node: Dictionary, group: _GroupData) -> vo
 			var g := _make_group(ctx, node, group, false)
 			for child in node.get("children", []):
 				_parse_node(ctx, child, g)
-		"brush":
-			var brush := _parse_brush(ctx, node)
-			if brush:
-				ctx.worldspawn.brushes.append(brush)
-		"mesh":
-			var mesh := _parse_mesh(ctx, node)
-			if mesh:
-				ctx.worldspawn.brushes.append(mesh)
+		"brush", "mesh":
+			_queue_geometry(ctx, node, ctx.worldspawn)
 		"terrain":
 			# Terrains stay axis aligned: instances move them but do not rotate them.
 			ctx.parse_data.terrains.append({ "data": node, "offset": ctx.xform.origin, "group": group, "id": int(node.get("id", 0)) + ctx.instance_depth * 1000000 })
@@ -124,6 +166,7 @@ static func _parse_entity(ctx: Context, node: Dictionary, group: _GroupData) -> 
 		ent.properties[key] = str(props[key])
 	ent.properties["classname"] = str(node.get("classname", ""))
 	ent.group = group
+	ent.node_id = int(node.get("id", 0)) + ctx.instance_depth * 1000000
 
 	for key in ["targetname", "target"]:
 		if ent.properties.has(key) and ctx.name_prefix != "" and not str(ent.properties[key]).begins_with("!"):
@@ -143,15 +186,8 @@ static func _parse_entity(ctx: Context, node: Dictionary, group: _GroupData) -> 
 			ent.properties["angles"] = angles_to_quake(angles)
 	else:
 		for child in children:
-			match child.get("type", ""):
-				"brush":
-					var brush := _parse_brush(ctx, child)
-					if brush:
-						ent.brushes.append(brush)
-				"mesh":
-					var mesh := _parse_mesh(ctx, child)
-					if mesh:
-						ent.brushes.append(mesh)
+			if child.get("type", "") in ["brush", "mesh"]:
+				_queue_geometry(ctx, child, ent)
 
 	var outputs: Array = node.get("outputs", [])
 	for o in outputs:
@@ -163,20 +199,21 @@ static func _parse_entity(ctx: Context, node: Dictionary, group: _GroupData) -> 
 	ctx.parse_data.entities.append(ent)
 
 
-static func _parse_brush(ctx: Context, node: Dictionary) -> _BrushData:
+## Runs on worker threads, so it only creates data.
+static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D, node: Dictionary) -> _BrushData:
 	var raw_vertices: Array = node.get("vertices", [])
 	var faces: Array = node.get("faces", [])
 	if raw_vertices.size() < 4 or faces.size() < 4:
 		return null
-	var scale := ctx.map_settings.scale_factor
+	var scale := map_settings.scale_factor
 	var vertices := PackedVector3Array()
 	vertices.resize(raw_vertices.size())
 	for i in raw_vertices.size():
-		vertices[i] = ctx.xform * vec3(raw_vertices[i])
+		vertices[i] = xform * vec3(raw_vertices[i])
 
 	var brush := _BrushData.new()
 	brush.exact = true
-	var origin_texture := ctx.map_settings.origin_texture
+	var origin_texture := map_settings.origin_texture
 	brush.origin = true
 	for f in faces:
 		var indices: Array = f.get("indices", [])
@@ -217,10 +254,10 @@ static func _parse_brush(ctx: Context, node: Dictionary) -> _BrushData:
 		var v_axis := vec3(uv.get("v_axis"), Vector3.BACK)
 		var offset := vec2(uv.get("offset"), Vector2.ZERO)
 		var uv_scale := vec2(uv.get("scale"), Vector2.ONE)
-		if ctx.xform != Transform3D.IDENTITY:
+		if xform != Transform3D.IDENTITY:
 			# Keep textures locked to instance geometry.
-			var inv_t := ctx.xform.basis.inverse().transposed()
-			var t := ctx.xform.origin
+			var inv_t := xform.basis.inverse().transposed()
+			var t := xform.origin
 			var mu := inv_t * u_axis
 			var mv := inv_t * v_axis
 			var lu := maxf(mu.length(), 1e-9)
@@ -267,15 +304,7 @@ static func _parse_brush(ctx: Context, node: Dictionary) -> _BrushData:
 		brush.faces.append(face)
 	if brush.faces.size() < 4:
 		return null
-	brush.node_id = int(node.get("id", 0)) + ctx.instance_depth * 1000000
 	return brush
-
-
-static func _parse_mesh(ctx: Context, node: Dictionary) -> _BrushData:
-	var mesh := GodotTrenchMesh.parse(node, ctx.xform, ctx.map_settings.scale_factor, ctx.map_settings.origin_texture)
-	if mesh:
-		mesh.node_id = int(node.get("id", 0)) + ctx.instance_depth * 1000000
-	return mesh
 
 
 static func _resolve_instance_path(ctx: Context, path: String) -> String:

@@ -25,26 +25,28 @@ func restore_buffers() -> void:
 
 static func build_all(map_node: Node3D, scatters: Array[Dictionary], settings: FuncGodotMapSettings) -> Array[GodotTrenchScatter]:
 	var out: Array[GodotTrenchScatter] = []
-	if scatters.is_empty():
-		return out
-	var scene_root: Node = map_node
-	if map_node.is_inside_tree():
-		scene_root = map_node.get_tree().edited_scene_root
 	for entry in scatters:
-		var node := create(entry["data"], entry.get("xform", Transform3D.IDENTITY), settings)
-		if not node:
-			continue
-		node.name = ("scatter_%d_%s" % [int(entry.get("id", out.size())), str(entry["data"].get("name", ""))]).validate_node_name()
 		var group = entry.get("group", null)
 		var parent: Node = map_node
 		if settings.use_groups_hierarchy and group and group.node:
 			parent = group.node
-		parent.add_child(node)
-		if scene_root:
-			node.owner = scene_root
-			_set_owner(node, scene_root)
-		out.append(node)
+		var node := build_one(map_node, parent, entry["data"], entry.get("xform", Transform3D.IDENTITY), int(entry.get("id", out.size())), settings)
+		if node:
+			out.append(node)
 	return out
+
+## Creates one scatter set node named after its map node id under [param parent], owned like the other generated nodes.
+static func build_one(map_node: Node, parent: Node, data: Dictionary, xform: Transform3D, id: int, settings: FuncGodotMapSettings) -> GodotTrenchScatter:
+	var node := create(data, xform, settings)
+	if not node:
+		return null
+	node.name = ("scatter_%d_%s" % [id, str(data.get("name", ""))]).validate_node_name()
+	node.set_meta(GodotTrenchBuild.ID_META, id)
+	parent.add_child(node)
+	var scene_root := GodotTrenchBuild.scene_owner(map_node)
+	node.owner = scene_root
+	_set_owner(node, scene_root)
+	return node
 
 static func _set_owner(node: Node, owner_node: Node) -> void:
 	for child in node.get_children():
