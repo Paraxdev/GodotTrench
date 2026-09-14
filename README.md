@@ -22,6 +22,10 @@ Maps are saved as `.gtm` and loaded in Godot by our fork of [FuncGodot](https://
 
 the showcase maps above are rendered in Godot and were built entirely through the editor's MCP tools, see [examples/mcp](examples/mcp).
 
+![Live mode: edits in GodotTrench show up in the Godot editor before saving](docs/screenshots/GodotTrench-demo-live-view.gif)
+
+live mode in action: with the map's scene open in Godot, every edit in GodotTrench shows up in the Godot editor right away, no saving needed, see [Working with Godot](docs/godot.md).
+
 # Disclosure
 This project makes use of AI / LLMs, specifically Claude.
 Expect bugs and weird shenanigans, feel free to open issues or pull requests with fixes.
@@ -44,12 +48,13 @@ to use a map in Godot, add a `FuncGodotMap` node, point it at a `.gtm` file and 
 * brushes, meshes and terrains with TrenchBroom style editing, CSG, clip, vertex and texture tools
 * scatter trees, rocks and foliage onto chosen surfaces, blend materials and terrain layers
 * doors, lifts, buttons, triggers, spawners and logic entities with Hammer style I/O, plus C# entities
-* live link to Godot, lit preview, prefabs, displacements and decals
+* live link to Godot with a live mode that shows edits before saving, lit preview, prefabs, displacements and decals
 * an MCP server so agents and scripts can build maps too
 
 ## Docs
 
 * [Tools and controls](docs/tools.md)
+* [Working with Godot: live mode, builds, live link protocol](docs/godot.md)
 * [Gameplay entities, I/O and C#](docs/gameplay.md)
 * [MCP server and scripts](docs/mcp.md)
 * [Development: building, tests, CI](docs/development.md)

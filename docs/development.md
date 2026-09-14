@@ -17,8 +17,13 @@ cargo test -p gt_editor --test e2e -- --ignored --test-threads=1  # end to end: 
 
 cargo run -p gt_formats --example demo_maps                       # regenerate the Godot test maps
 godot --headless --path godot --import                            # run twice on a fresh checkout
-godot --headless --path godot --script res://tests/run_tests.gd   # addon tests: .gtm build, I/O, gameplay entities, scatter, blend, C#, a showcase playthrough
+godot --headless --path godot --script res://tests/run_tests.gd   # addon tests: .gtm build, I/O, gameplay entities, scatter, blend, C#, live sessions, a showcase playthrough
+godot --headless --path godot --script res://tests/bench_build.gd -- runs=5 threaded=1  # time each build step of the showcase maps
 ```
+
+To try the live link end to end without a window, open a scene with a `FuncGodotMap` in a headless Godot editor
+(`godot --headless --editor --path godot res://path/scene.tscn`), start the editor with `--mcp-http --project godot`, and
+check what Godot built with the `inspect` event described in [Working with Godot](godot.md).
 
 The `example_mcp_scripts_replay` end to end test replays every script in `examples/mcp` and checks the result.
 
