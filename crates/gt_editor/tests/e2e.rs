@@ -552,4 +552,13 @@ fn keyboard_shortcuts_and_views() {
         let (w, h, _) = ed.screenshot(view, view);
         assert!(w > 50 && h > 50);
     }
+
+    let ppp = |ed: &Editor| ed.state()["ui"]["pixels_per_point"].as_f64().unwrap();
+    let base = ppp(&ed);
+    ed.input("window", json!([{ "type": "key", "key": "Equals", "modifiers": ["ctrl"] }, { "type": "key", "key": "Equals", "modifiers": ["ctrl"] }]));
+    ed.input("window", json!([{ "type": "move", "x": 5, "y": 5 }]));
+    assert_eq!(ed.state()["ui"]["scale"], 1.2);
+    assert!((ppp(&ed) / base - 1.2).abs() < 0.01, "pixels per point {} from {base}", ppp(&ed));
+    ed.input("window", json!([{ "type": "key", "key": "0", "modifiers": ["ctrl"] }]));
+    assert_eq!(ed.state()["ui"]["scale"], 1.0);
 }

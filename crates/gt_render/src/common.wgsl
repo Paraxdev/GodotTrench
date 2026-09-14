@@ -4,6 +4,8 @@ struct Camera {
     eye: vec4<f32>,
     // x: grid size, y: grid alpha, z: mode (0 textured, 1 flat, 2 lit), w: 1 for orthographic
     params: vec4<f32>,
+    // xy: target size in pixels, z: line width in pixels
+    viewport: vec4<f32>,
 };
 
 struct Light {
