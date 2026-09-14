@@ -64,6 +64,9 @@ func _initialize() -> void:
 	test_scatter_and_blend()
 	test_face_cull()
 	test_csharp_entities()
+	await test_live_session()
+	test_live_link_lines()
+	test_threaded_build_matches()
 	await test_showcase_playthrough()
 	print("%d checks, %d failures" % [checks, failures.size()])
 	quit(1 if failures.size() > 0 else 0)
@@ -632,7 +635,7 @@ func test_scatter_and_blend() -> void:
 	var map_node := Node3D.new()
 	var built_sets := GodotTrenchScatter.build_all(map_node, [{ "data": data, "xform": Transform3D.IDENTITY, "group": null, "id": 1 }], settings)
 	var unowned := collect(map_node, func(n): return n != map_node and n.owner != map_node)
-	check(built_sets.size() == 1 and unowned.is_empty(), "built scatter sets are owned by the scene, unowned: %s" % unowned)
+	check(built_sets.size() == 1 and unowned.is_empty(), "built scatter sets are owned by the scene, unowned: %s" % [unowned])
 	var saved := PackedScene.new()
 	saved.pack(map_node)
 	var reloaded := saved.instantiate()
@@ -734,6 +737,148 @@ func test_csharp_entities() -> void:
 		check(door["properties"].any(func(p): return p["name"] == "hinge" and p["type"] == "vector3"), "property types exported from FGD meta")
 		check(not door["inputs"].any(func(i): return i["name"] == "angle_for"), "helper methods are not inputs")
 	check(by_name.has("trigger_spawn_area") and by_name.has("logic_debug") and by_name.has("info_spawner"), "addon entity library exported")
+func world_vertex_count(map: FuncGodotMap) -> int:
+	var world: Node = GodotTrenchBuild.nodes_by_id(map).get(0)
+	var count := 0
+	if not world:
+		return count
+	for mesh_instance: MeshInstance3D in collect(world, func(n): return n is MeshInstance3D):
+		for s in mesh_instance.mesh.get_surface_count():
+			count += mesh_instance.mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX].size()
+	return count
+
+func test_live_session() -> void:
+	print("- live session")
+	var text := FileAccess.get_file_as_string(MAP)
+	var map := FuncGodotMap.new()
+	map.name = "LiveMap"
+	map.map_settings = load(SETTINGS)
+	map.local_map_file = MAP
+	root.add_child(map)
+	map.build_from_text(text)
+	await process_frame
+	var by_id := GodotTrenchBuild.nodes_by_id(map)
+	check(by_id.has(0) and by_id.has(9) and by_id.has(15) and by_id.has(16), "generated nodes carry their map node ids, got %s" % [by_id.keys()])
+	check(GodotTrenchBuild.groups_by_id(map).has(6), "group nodes carry their map node ids")
+	var world_before: Node = by_id[0]
+	var maps: Array[FuncGodotMap] = [map]
+	var session := GodotTrenchLiveSession.new(MAP, maps)
+	check(session.begin(text), "the session takes the map")
+	check(GodotTrenchBuild.nodes_by_id(map)[0] == world_before, "a scene built from the same map is not rebuilt when the session starts")
+
+	var lamp: Node3D = by_id[15]
+	check(session.apply([{ "op": "translate", "ids": [15], "offset": [32.0, 0.0, 0.0] }]), "translate applies")
+	check(near(lamp.position, Vector3(1, 3.5, 0)), "translate moves the lamp right away, got %s" % lamp.position)
+	check(near(float(session._nodes[15]["origin"][0]), 32.0), "translate moves the lamp in the model")
+	var lamp_json: Dictionary = session._nodes[15].duplicate(true)
+	lamp_json["properties"]["light_energy"] = "5"
+	session.apply([{ "op": "set", "id": 15, "parent": 1, "index": 8, "node": lamp_json }])
+	session.process()
+	by_id = GodotTrenchBuild.nodes_by_id(map)
+	var lamp2 := by_id.get(15) as OmniLight3D
+	check(lamp2 != null and lamp2 != lamp and near(lamp2.light_energy, 5.0), "a property change rebuilds that entity")
+	check(lamp2 != null and String(lamp2.name) == "entity_lamp" and near(lamp2.position, Vector3(1, 3.5, 0)), "the rebuilt lamp keeps its name and new position")
+	check(by_id[0] == world_before, "entity edits leave the world mesh alone")
+
+	var door: Node3D = by_id[9]
+	var door_position := door.position
+	session.apply([{ "op": "translate", "ids": [10], "offset": [0.0, 16.0, 0.0] }])
+	check(near(door.position, door_position + Vector3(0, 0.5, 0)), "moving every brush of a brush entity moves its node, got %s" % door.position)
+	session.apply([{ "op": "set", "id": 10, "parent": 9, "index": 0, "node": session._nodes[10].duplicate(true) }])
+	session.process()
+	var door2 := GodotTrenchBuild.nodes_by_id(map).get(9) as Node3D
+	check(door2 != door and door2 is GTDoor, "a changed door brush rebuilds the door")
+	check(door2 != null and near(door2.position, door_position + Vector3(0, 0.5, 0)), "a brush entity rebuilt alone keeps its brush center origin, got %s" % (door2.position if door2 else null))
+	check(door2 != null and collect(door2, func(n): return n is GodotTrenchOutput).size() == 1, "the rebuilt door gets its output relay")
+
+	session.apply([{ "op": "remove", "id": 16 }])
+	session.apply([{ "op": "set", "id": 40, "parent": 6, "index": 2, "node": { "id": 40, "type": "entity", "classname": "light", "origin": [0.0, 64.0, 64.0], "angles": [0.0, 0.0, 0.0], "properties": {} } }])
+	session.process()
+	by_id = GodotTrenchBuild.nodes_by_id(map)
+	check(not by_id.has(16) and collect(map, func(n): return n is Marker3D).is_empty(), "a removed entity is gone")
+	check(by_id.get(40) is OmniLight3D and by_id[40].get_parent() == GodotTrenchBuild.groups_by_id(map).get(6), "a new entity is built inside its group")
+
+	var top := func(root_node: Node) -> float:
+		var y := -INF
+		for mi: MeshInstance3D in collect(root_node, func(n): return n is MeshInstance3D):
+			y = maxf(y, (mi.global_transform * mi.get_aabb()).end.y)
+		return y
+	session.apply([{ "op": "translate", "ids": [7], "offset": [0.0, 100.0, 0.0] }])
+	session.process()
+	var world_after: Node = GodotTrenchBuild.nodes_by_id(map).get(0)
+	check(world_after != world_before and world_after.name == GodotTrenchLiveSession.WORLD_NODE and world_after.get_parent() == map, "dragging a loose brush replaces the world with chunks")
+	var drag := world_after.get_node_or_null("_gt_live_brush_7") as Node3D
+	check(drag != null and near(top.call(drag), 5.125, 0.01), "the dragged brush has a node of its own, top %s" % (top.call(drag) if drag else null))
+	session.apply([{ "op": "translate", "ids": [7], "offset": [0.0, 100.0, 0.0] }])
+	check(drag != null and near(top.call(drag), 8.25, 0.01), "further drag steps move that node right away")
+	session.apply([{ "op": "set", "id": 7, "parent": 6, "index": 0, "node": session._nodes[7].duplicate(true) }])
+	session.process()
+	check(world_after.get_node_or_null("_gt_live_brush_7") == null and world_after.get_children().any(func(n): return String(n.name).begins_with("chunk_")), "when the drag ends the brush goes back into a chunk")
+	check(near(top.call(world_after), 8.25, 0.01), "the chunks show the moved brush, top %s" % top.call(world_after))
+	var fresh := FuncGodotMap.new()
+	fresh.map_settings = map.map_settings
+	fresh.local_map_file = MAP
+	root.add_child(fresh)
+	fresh.build_from_text(session.text())
+	check(world_vertex_count(fresh) == world_vertex_count(map), "the live world matches a full build of the same map")
+	fresh.free()
+
+	var heights := Marshalls.raw_to_base64(PackedFloat32Array([0.0, 0.0, 0.0, 0.0]).to_byte_array())
+	session.apply([{ "op": "set", "id": 41, "parent": 1, "index": 0, "node": { "id": 41, "type": "terrain", "origin": [0.0, 0.0, 0.0], "resolution": [2, 2], "cell_size": 64.0, "heights": heights, "layers": [{ "material": "base/floor" }] } }])
+	session.process()
+	var terrain := GodotTrenchBuild.nodes_by_id(map).get(41) as GodotTrenchTerrain
+	check(terrain != null, "a new terrain is built")
+	if terrain:
+		session.apply([{ "op": "translate", "ids": [41], "offset": [64.0, 0.0, 0.0] }])
+		var material := (terrain.get_child(0) as MeshInstance3D).mesh.surface_get_material(0) as ShaderMaterial
+		check(near(terrain.position, Vector3(2, 0, 0)) and near(material.get_shader_parameter("map_offset"), Vector3(2, 0, 0)), "a moved terrain keeps its texture projection")
+
+	check(not session.apply([{ "op": "set", "id": 42, "parent": 999, "index": 0, "node": { "id": 42, "type": "entity", "classname": "light" } }]), "ops that do not fit the model ask for a resync")
+
+	session.apply([{ "op": "translate", "ids": [17], "offset": [0.0, 0.0, 64.0] }])
+	session._last_change -= GodotTrenchLiveSession.IDLE_MSEC + 1
+	session.process()
+	var plight := find_named(map, "entity_p1-plight") as Node3D
+	check(plight != null and near(plight.position, Vector3(6.25, 2.0, -1.0)), "moving a prefab instance rebuilds the map from the model, got %s" % (plight.position if plight else null))
+	check(GodotTrenchLiveSession.building == 0 and not session.pending(), "the session is idle again")
+	map.queue_free()
+	await process_frame
+
+func test_threaded_build_matches() -> void:
+	print("- threaded building matches single threaded")
+	var path := "res://demo/maps/showcase/lighthouse_forest.gtm"
+	var settings: FuncGodotMapSettings = load(SETTINGS)
+	var text := FileAccess.get_file_as_string(path)
+	var runs := []
+	for threaded in [false, true]:
+		ProjectSettings.set_setting(GodotTrenchBuild.SETTING_THREADED, threaded)
+		var data := FuncGodotParser.new().parse_gtm(text, settings, path)
+		var brushes := []
+		for e in data.entities:
+			for b in e.brushes:
+				brushes.append([b.node_id, b.faces.size(), b.faces[0].exact_vertices])
+		var terrain := GodotTrenchTerrain.create(data.terrains[0]["data"], Vector3.ZERO, settings)
+		var chunks := []
+		for mi in terrain.get_children().filter(func(n): return n is MeshInstance3D):
+			var arrays: Array = mi.mesh.surface_get_arrays(0)
+			chunks.append([String(mi.name), arrays[Mesh.ARRAY_VERTEX], arrays[Mesh.ARRAY_NORMAL], arrays[Mesh.ARRAY_INDEX]])
+		terrain.free()
+		runs.append([brushes, chunks])
+	ProjectSettings.set_setting(GodotTrenchBuild.SETTING_THREADED, true)
+	check(runs[0][0].size() >= 32 and runs[0][0] == runs[1][0], "threaded parsing keeps every brush and its order, %d brushes" % runs[0][0].size())
+	check(runs[0][1].size() > 1 and runs[0][1] == runs[1][1], "threaded terrain chunks are identical, %d chunks" % runs[0][1].size())
+
+func test_live_link_lines() -> void:
+	print("- live link line splitting")
+	var bytes := "{\"a\":\"ü\"}\n{\"b\":1}\n{\"c\"".to_utf8_buffer()
+	var first := GodotTrenchEditorIntegration.take_lines(bytes.slice(0, 7))
+	check(first[0].is_empty() and first[1].size() == 7, "no line before the newline, a cut multibyte character stays buffered")
+	var rest: PackedByteArray = first[1]
+	rest.append_array(bytes.slice(7))
+	var split := GodotTrenchEditorIntegration.take_lines(rest)
+	check(split[0] == PackedStringArray(["{\"a\":\"ü\"}", "{\"b\":1}"]), "complete lines decode whole, got %s" % [split[0]])
+	check(split[1].get_string_from_utf8() == "{\"c\"", "the unfinished line stays buffered")
+
 func find_targetname(root: Node, targetname: String) -> Node:
 	for n in collect(root, func(n): return str(n.get_meta(GodotTrenchIO.TARGETNAME_META, "")) == targetname):
 		return n

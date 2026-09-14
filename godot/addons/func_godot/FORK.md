@@ -12,7 +12,9 @@ Upstream class names are kept so the fork stays a drop-in replacement and upstre
 | `src/godottrench/runtime/godottrench_io.gd` | Hammer style entity I/O: targetname lookup (with `*` wildcard, `!self`, `!activator`), parameter parsing, input dispatch to methods, properties or built-in inputs (`kill`, `show`, `hide`, `enable`, `disable`, `toggle`). |
 | `src/godottrench/runtime/godottrench_output.gd` | `GodotTrenchOutput` node, one per output. Connects itself to the parent's signal when entering the tree and honours delay and fire count. |
 | `src/godottrench/godottrench_game_config.gd` | `GodotTrenchGameConfig` resource. Exports `godottrench_game.json` for the editor: entity definitions from an FGD resource (typed properties, sizes, colors, node classes, scenes) plus I/O outputs and inputs taken from script signals and methods. |
-| `src/godottrench/godottrench_editor_integration.gd` | Project settings, automatic game config export on file system changes, and the live link TCP server (`127.0.0.1:7842`) that rebuilds `FuncGodotMap` nodes when GodotTrench saves a map. |
+| `src/godottrench/godottrench_editor_integration.gd` | Project settings, automatic game config export on file system changes, and the live link TCP server (`127.0.0.1:7842`): status heartbeat, rebuilds when GodotTrench saves a map, Build in Godot from unsaved map text, focus, build epochs and live sessions. Protocol in `docs/godot.md`. |
+| `src/godottrench/godottrench_live_session.gd` | `GodotTrenchLiveSession`: live mode for one map. Keeps the map JSON GodotTrench sent, applies `set`, `remove`, `translate` and `properties` ops and rebuilds only the touched entity, terrain, scatter, group or environment nodes. Loose brushes switch the worldspawn to chunks rebuilt one at a time, dragged brushes get their own node. |
+| `src/godottrench/runtime/godottrench_build.gd` | `GodotTrenchBuild`: owner rule for generated nodes, the `_gt_id` / `_gt_group` / `_gt_source_hash` metadata and the `godottrench/threaded_build` setting. |
 | `src/godottrench/export_game_config_cli.gd` | Headless export: `godot --headless --path <project> --script res://addons/func_godot/src/godottrench/export_game_config_cli.gd` |
 | `game_config/godottrench/godottrench_game_config.tres` | Default game config resource. |
 | `src/godottrench/godottrench_displacement.gd` | Displacement grids (same triangulation as the editor), surface arrays with blend weights in vertex color alpha, trimesh collision triangles. |
@@ -38,8 +40,8 @@ Upstream class names are kept so the fork stays a drop-in replacement and upstre
 
 All changes are small and marked with `GodotTrench` comments.
 
-* `src/core/data.gd`: `FaceData.exact_vertices`, `FaceData.props`, vertex colors and displacement arrays (including explicit `disp_uvs` and `disp_colors`), `BrushData.exact`, `BrushData.has_disp`, `BrushData.is_mesh`, `BrushData.closed`, `BrushData.node_id`, `FaceData.render_hidden`, `ParseData.terrains`, `EntityData.outputs`, `EntityData.node`, pending shape data.
-* `src/core/parser.gd`: `.gtm` branch in `parse_map_data`.
+* `src/core/data.gd`: `FaceData.exact_vertices`, `FaceData.props`, vertex colors and displacement arrays (including explicit `disp_uvs` and `disp_colors`), `BrushData.exact`, `BrushData.has_disp`, `BrushData.is_mesh`, `BrushData.closed`, `BrushData.node_id`, `FaceData.render_hidden`, `ParseData.terrains`, `EntityData.outputs`, `EntityData.node`, `EntityData.node_id`, pending shape data.
+* `src/core/parser.gd`: `.gtm` branch in `parse_map_data` that reads the file in one call, `parse_gtm` for map text or parsed JSON, the post processing split into `post_process`, and the class property default caches are actually filled (keyed by definition).
 * `src/core/geometry_generator.gd`:
   * exact brushes skip hyperplane clipping,
   * faces hidden by `GodotTrenchFaceCull` (run before surface generation) are skipped for visuals but kept for collision,
@@ -49,13 +51,22 @@ All changes are small and marked with `GodotTrench` comments.
   * **bug fix**: `generate_entity_surfaces` no longer runs on the worker thread pool. Creating `ArrayMesh` and shape
     resources from several threads at once corrupted server state and crashed Godot on exit whenever a map had more than one
     brush entity. Vertex generation and winding stay threaded. Shape resources are created after surface generation.
-* `src/core/entity_assembler.gd`: remembers the node of each entity and sets up I/O after assembly.
-* `src/map/func_godot_map.gd`: accepts `*.gtm`, `auto_rebuild_on_save` for the live link, builds terrains and the worldspawn environment after the entity assembler.
+  * `determine_entity_origins` recognizes worldspawn by classname instead of list index, so entity lists without it
+    (live rebuilds of one entity) keep their origins.
+* `src/core/entity_assembler.gd`: remembers the node of each entity and sets up I/O after assembly. `attach_entity` adds
+  one generated entity node (used by the build loop and live rebuilds), entity and group nodes get their map node id as
+  metadata, and every generated node follows `GodotTrenchBuild.scene_owner`.
+* `src/map/func_godot_map.gd`: accepts `*.gtm`, `auto_rebuild_on_save` for the live link, builds terrains and the worldspawn environment after the entity assembler, `build_from_text` for unsaved map text and the `_gt_source_hash` of the last full build.
 * `src/import/quake_map_import_plugin.gd`: imports `.gtm` so maps ship in exported games.
 * `src/func_godot_plugin.gd`: creates the GodotTrench integration node, the *GodotTrench: Export Game Config* tool menu entry and the `.bbmodel` import plugin.
 * `src/core/parser.gd` and `src/core/entity_assembler.gd`: merge C# entity definitions and apply their properties.
 * `src/util/func_godot_util.gd` (`build_texture_map`) and `src/core/geometry_generator.gd`: blend texture keys build blend materials and force a color array.
 * `src/map/func_godot_map.gd`: builds scatter sets after terrains.
+
+GodotTrench files changed alongside: `gtm_parser.gd` converts brushes and meshes on the WorkerThreadPool (data only, in
+their original order), terrain chunk arrays are built on worker threads with the meshes created afterwards, and
+`GodotTrenchTerrain.build_one` / `GodotTrenchScatter.build_one` build a single node for live sessions. Threading the
+coplanar face culling was measured slower and left out.
 
 The I/O runtime also gained `@group`, node path and `!player` targets, PascalCase fallbacks for C# methods and signals,
 JSON array arguments with placeholders and type coercion, and the `GodotTrenchIO.events()` bus.
@@ -64,7 +75,8 @@ JSON array arguments with placeholders and type coercion, and the `GodotTrenchIO
 
 `res://tests/run_tests.gd` in the GodotTrench demo project builds the maps in `tests/maps` headless and checks geometry,
 transforms, prefabs, omitted layers, I/O chains, displacements, meshes, terrains, model props, the Blockbench importer, the worldspawn environment and the
-game config export, the gameplay entities, spawners, scatter sets, blend materials and C# definitions, and finishes with a
+game config export, the gameplay entities, spawners, scatter sets, blend materials, C# definitions, live sessions and threaded
+builds matching single threaded ones, and finishes with a
 playthrough of the lighthouse showcase map (gate relay and `trigger_call`). `res://tests/build_showcase.gd` builds the three
 showcase maps into scenes.
 
