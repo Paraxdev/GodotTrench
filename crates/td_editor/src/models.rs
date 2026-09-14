@@ -184,13 +184,13 @@ fn load_gltf(path: &Path, units_per_meter: f64) -> Result<Model, String> {
                     .collect();
                 let mut idx = indices;
                 if mirrored {
-                    for tri in idx.chunks_exact_mut(3) {
+                    for tri in idx.as_chunks_mut::<3>().0 {
                         tri.swap(1, 2);
                     }
                 }
                 if normals.is_none() {
                     let mut vs = vertices;
-                    for tri in idx.chunks_exact(3) {
+                    for tri in idx.as_chunks::<3>().0 {
                         let (a, b, c) = (vs[tri[0] as usize].pos, vs[tri[1] as usize].pos, vs[tri[2] as usize].pos);
                         let n = (b - a).cross(c - a).normalize_or_zero();
                         for k in tri {
