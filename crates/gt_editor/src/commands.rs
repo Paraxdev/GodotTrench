@@ -872,7 +872,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         }
         Action::ToggleCordon => {
             if state.doc.map.editor.cordon.is_none() {
-                state.set_status("No cordon set, use View > Set Cordon from Selection");
+                state.set_status("No cordon set, use View > Cordon > Set Cordon from Selection");
                 return;
             }
             state.doc.edit("Toggle Cordon", |m, _| m.editor.cordon_enabled = !m.editor.cordon_enabled);

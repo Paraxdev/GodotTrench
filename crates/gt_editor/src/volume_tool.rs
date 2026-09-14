@@ -78,7 +78,9 @@ impl VolumeTool {
                     let class = state.prefs.volume_class.clone();
                     let props = default_props(&class);
                     match crate::entity_wizards::make_volume(state, &class, &bounds, &props, Vec::new()) {
-                        Ok(_) => state.set_status(format!("{class} created. Set its outputs in the inspector, or use Gameplay > Link Selected")),
+                        Ok(_) => {
+                            state.set_status(format!("{class} created. Set its outputs in the inspector, or use Gameplay > Logic > Link Two Selected Entities"))
+                        }
                         Err(e) => state.set_status(e),
                     }
                 }
