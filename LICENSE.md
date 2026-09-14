@@ -20,4 +20,4 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-Third party code, assets and tools keep their own licenses, see [LICENSES.md](LICENSES.md).
+Third party code and assets keep their own licenses, see [LICENSES.md](LICENSES.md).
