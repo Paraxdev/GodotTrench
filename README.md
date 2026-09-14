@@ -73,7 +73,7 @@ result is stored under its `save` name and later args refer to it with `"$name.p
   and height limits. Foliage sets skip collision and shadows and fade out by distance. In Godot every set becomes MultiMeshes with
   shared collision shapes, or instanced scenes when the model has scripts. *Scatter Sets to Entities* (Terrain menu) turns a set into `prop_model` entities.
 * **Blend** (`Shift+G`): paints terrain splat layers, displacement alpha and a second material on brush and mesh faces
-  (Texture menu, *Blend material*). Modes: paint, erase, smooth, sharpen, noise, slope and height masks, with smooth, linear,
+  (Terrain > Blend, *Set Blend Material*). Modes: paint, erase, smooth, sharpen, noise, slope and height masks, with smooth, linear,
   constant and spray falloffs. Godot uses the same blend through `gt_blend.gdshader`.
 * **Volume** (`Shift+E`): drag out a `trigger_once`, `trigger_multiple`, `trigger_call`, spawn area, hurt, teleport, push or plain area volume in one step.
 * **Gameplay wizards** (Gameplay menu and the selection panel): turn brushes into a door that swings on its left or right hinge or
@@ -167,3 +167,5 @@ this project couldn't exist with the work of: <br>
 [TrenchBroom](https://github.com/TrenchBroom/TrenchBroom) as it inspired the whole ui and features
 and [FuncGodot](https://github.com/func-godot) which was forked and modified to have a more advanced set of features.
 see [FORK.md](/godot/addons/func_godot/FORK.md) for changes made
+
+the toolbar, menu and outliner icons are from [Lucide](https://lucide.dev) (ISC license, see [LICENSE-lucide.txt](/crates/gt_editor/assets/icons/LICENSE-lucide.txt))

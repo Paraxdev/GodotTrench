@@ -52,8 +52,8 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("File: Save As".into(), Action::SaveAs),
         ("File: Import .map".into(), Action::ImportQuakeMap),
         ("File: Export .map".into(), Action::ExportQuakeMap),
-        ("File: Open Godot Project".into(), Action::OpenProject),
-        ("File: Reload Game Config".into(), Action::ReloadProject),
+        ("Godot: Open Godot Project".into(), Action::OpenProject),
+        ("Godot: Reload Game Config".into(), Action::ReloadProject),
         ("Godot: Open Project in Godot Editor".into(), Action::OpenGodotEditor),
         ("Godot: Run Project".into(), Action::RunGodotProject),
         ("Edit: Undo".into(), Action::Undo),
@@ -82,7 +82,7 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("View: Lock Selected".into(), Action::LockSelected),
         ("View: Unlock All".into(), Action::UnlockAll),
         ("View: Focus Selection".into(), Action::FocusSelection),
-        ("View: Toggle Textured".into(), Action::ToggleTextured),
+        ("View: Cycle Shading".into(), Action::ToggleTextured),
         ("Grid: Smaller".into(), Action::GridDown),
         ("Grid: Larger".into(), Action::GridUp),
         ("Grid: Toggle Snap".into(), Action::ToggleSnap),
@@ -105,6 +105,7 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("View: Shade Textured".into(), Action::SetShade(Shade::Textured)),
         ("View: Shade Flat".into(), Action::SetShade(Shade::Flat)),
         ("View: Lit Preview".into(), Action::SetShade(Shade::Lit)),
+        ("View: Shade Wireframe".into(), Action::SetShade(Shade::Wireframe)),
         ("View: Set Cordon from Selection".into(), Action::SetCordonFromSelection),
         ("View: Toggle Cordon".into(), Action::ToggleCordon),
         ("View: Clear Cordon".into(), Action::ClearCordon),
@@ -116,8 +117,8 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("File: New Tab".into(), Action::NewTab),
         ("File: Close Tab".into(), Action::CloseTab),
         ("File: Next Tab".into(), Action::NextTab),
-        ("Edit: Keyboard Shortcuts".into(), Action::ShowKeymap),
-        ("Edit: Reload Models".into(), Action::ReloadModels),
+        ("Help: Keyboard Shortcuts".into(), Action::ShowKeymap),
+        ("Godot: Reload Models".into(), Action::ReloadModels),
         ("Group: Duplicate Linked".into(), Action::DuplicateLinked),
         ("Group: Unlink".into(), Action::UnlinkGroups),
         ("Mesh: Edit Mode".into(), Action::EditMesh),
@@ -137,7 +138,27 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("Gameplay: Make Lift".into(), Action::MakePlatform),
         ("Gameplay: Link Selected Entities".into(), Action::ShowLinkDialog),
         ("Help: Entity and Code Reference".into(), Action::ShowReference),
+        ("Edit: Repeat Last".into(), Action::RepeatLast),
+        ("Group: Open Group".into(), Action::OpenGroup),
+        ("Brush: Box from Last Bounds".into(), Action::CreateBrushFromBounds),
+        ("Godot: Reload Materials".into(), Action::ReloadMaterials),
+        ("Texture: Tool".into(), Action::SetTool(ToolKind::Texture)),
+        ("Texture: Align to 3D View".into(), Action::AlignTextureToView),
+        ("Texture: Reset Alignment".into(), Action::ResetTexture),
+        ("Texture: Copy Material and Alignment".into(), Action::CopyAlignment),
+        ("Texture: Paste Alignment".into(), Action::PasteAlignment),
+        ("Texture: Toggle Treat as One".into(), Action::ToggleTreatAsOne),
+        ("Texture: Hotspot Editor".into(), Action::ShowHotspotEditor),
     ];
+    for j in gt_geom::Justify::ALL {
+        out.push((format!("Texture: Justify {}", j.label()), Action::Justify(j)));
+    }
+    for d in [0.125, 0.25, 0.5, 1.0, 2.0, 4.0] {
+        out.push((format!("Texture: Texel Density {d}"), Action::TexelDensity(d)));
+    }
+    for k in crate::texture_ops::MeshUvKind::ALL {
+        out.push((format!("Mesh UVs: {}", k.label()), Action::MeshUv(k)));
+    }
     for preset in gt_doc::scatter::PRESETS {
         out.push((format!("Scatter: Preset {preset}"), Action::ScatterPreset(preset.to_string())));
     }
@@ -949,6 +970,15 @@ mod tests {
         let a = fuzzy_score("sub", "Brush: CSG Subtract").unwrap();
         let b = fuzzy_score("sub", "Select: Same Material but").unwrap_or(i32::MIN);
         assert!(a > b);
+    }
+
+    #[test]
+    fn palette_ranks_grid_larger_first() {
+        let state = EditorState::new(crate::state::Prefs::default());
+        let mut matches: Vec<(i32, String, Action)> =
+            palette_entries(&state).into_iter().filter_map(|(label, action)| fuzzy_score("grid larger", &label).map(|s| (s, label, action))).collect();
+        matches.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        assert_eq!(matches[0].2, Action::GridUp);
     }
 
     #[test]
