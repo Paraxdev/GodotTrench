@@ -559,6 +559,12 @@ impl App {
             "flip" => Action::Flip { axis: axis_index(&a["axis"]).unwrap_or(0) },
             "focus_selection" => Action::FocusSelection,
             "create_brush_entity" => Action::CreateBrushEntity(a["classname"].as_str().unwrap_or("func_detail").to_string()),
+            "place_entities" => Action::PlaceEntities {
+                classnames: a["classnames"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).map(str::to_string).collect(),
+                at: vec3(&a["at"]),
+                normal: vec3(&a["normal"]),
+                row: vec3(&a["row"]).unwrap_or(DVec3::X),
+            },
             "move_to_world" => Action::MoveToWorld,
             "add_layer" => Action::AddLayer,
             "snap_vertices" => Action::SnapVertices,

@@ -43,5 +43,9 @@ its own, and *Help > Guide* shows the same chapters as searchable pages with tip
   selection, and *Link…* to connect any output to any input.
 * **Gizmos**: selected entities show draggable handles for hinges, travel offsets, radii, spot cones, spawn areas and
   target points. Entity definitions declare them (`"gizmos"` in the game config) or they are inferred from property names.
+* **Entities** tab: cards for every entity class. Drag one into a view to place it on the surface under the pointer,
+  Ctrl or Shift click selects several and dragging any of them drops them all in a row. Brush entities arrive with a box brush,
+  double clicking a brush entity with brushes selected wraps those brushes instead.
 * **Reference** tab: for the selected entity class, GDScript and C# classes you can drop into your project, usage snippets,
-  the FGD resource, and the C# helper with the attributes described in [gameplay.md](gameplay.md).
+  the FGD resource, and the C# helper with the attributes described in [gameplay.md](gameplay.md). Drag the divider between
+  the class list and the details to resize them, double click it to fit the list to the names.
