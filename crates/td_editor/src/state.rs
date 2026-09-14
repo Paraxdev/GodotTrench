@@ -480,9 +480,7 @@ impl EditorState {
             self.load_project(&root);
         }
         match (&self.doc.recovered_from, &self.doc.path) {
-            (Some(_), Some(map_path)) => {
-                self.set_status(format!("Recovered {} from its autosave, save to keep the changes", map_path.display()))
-            }
+            (Some(_), Some(map_path)) => self.set_status(format!("Recovered {} from its autosave, save to keep the changes", map_path.display())),
             (Some(_), None) => self.set_status("Recovered an untitled map from its autosave, save it to keep the changes"),
             _ => self.set_status(format!("Opened {}", path.display())),
         }
