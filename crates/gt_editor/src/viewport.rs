@@ -651,7 +651,7 @@ impl Viewport {
                     }
                 }
             }
-            DndPayload::Entity(_) => {
+            DndPayload::Entities(_) => {
                 if let Some(point) = self.camera.project(self.rect, hit.point) {
                     painter.circle(point, 5.0, DROP_COLOR.gamma_multiply(0.4), stroke);
                 }
@@ -712,41 +712,16 @@ impl Viewport {
                     _ => {}
                 }
             }
-            DndPayload::Entity(classname) if crate::scene::is_decal(cx.state.game.entity(classname)) => {
-                // Decals project along their local -Y, so local +Y is turned to face out of the surface.
-                let (at, normal) = match hit {
-                    Some(h) => (h.point, h.normal),
-                    None => (cx.state.cursor_world.unwrap_or(ray.at(256.0)), DVec3::Y),
+            DndPayload::Entities(classnames) => {
+                let (at, normal) = match (self.camera.kind, hit) {
+                    (_, Some(h)) => (h.point, Some(h.normal)),
+                    (ViewKind::Perspective, None) => (cx.state.cursor_world.unwrap_or(ray.at(256.0)), None),
+                    (_, None) => (self.camera.screen_to_plane(self.rect, pos), None),
                 };
-                let q = gt_core::DQuat::from_rotation_arc(DVec3::Y, normal.normalize());
-                let (y, x, z) = q.to_euler(gt_core::EulerRot::YXZ);
-                let angles = DVec3::new(x.to_degrees(), y.to_degrees(), z.to_degrees()).map(|a| (a * 1e4).round() / 1e4);
-                let origin = at;
-                let classname = classname.clone();
-                let parent = cx.state.insert_parent();
-                cx.state.doc.edit("Place Decal", |m, s| {
-                    let id = ops::create_point_entity(m, parent, &classname, origin);
-                    if let Some(e) = m.entity_mut(id) {
-                        e.angles = angles;
-                    }
-                    s.clear();
-                    s.select_node(id);
-                });
-            }
-            DndPayload::Entity(classname) => {
-                let def_bounds = cx.state.game.entity(classname).map(|d| d.bounds()).unwrap_or(Aabb::new(DVec3::splat(-8.0), DVec3::splat(8.0)));
-                let at = match (self.camera.kind, hit) {
-                    (_, Some(h)) => {
-                        // Rest the entity box against the surface it was dropped on.
-                        let n = h.normal;
-                        let extent = if n.element_sum() > 0.0 { -def_bounds.min.dot(n) } else { def_bounds.max.dot(-n) };
-                        h.point + n * extent
-                    }
-                    (ViewKind::Perspective, None) => cx.state.cursor_world.unwrap_or(ray.at(256.0)),
-                    (_, None) => self.camera.screen_to_plane(self.rect, pos),
-                };
-                let at = cx.state.snap(at);
-                cx.actions.push(Action::CreatePointEntity { classname: classname.clone(), at: Some(at) });
+                let right = self.camera.right();
+                let axis = right.abs().max_position();
+                let row = DVec3::AXES[axis] * right[axis].signum();
+                cx.actions.push(Action::PlaceEntities { classnames: classnames.clone(), at: Some(at), normal, row });
             }
         }
     }

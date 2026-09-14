@@ -14,7 +14,7 @@ pub use crate::uv_editor::uv_editor;
 #[derive(Clone, Debug)]
 pub enum DndPayload {
     Material(String),
-    Entity(String),
+    Entities(Vec<String>),
 }
 
 pub struct PanelState {
@@ -25,6 +25,9 @@ pub struct PanelState {
     material_favorites_only: bool,
     thumb_size: f32,
     entity_filter: String,
+    pub entity_selection: Vec<String>,
+    entity_anchor: Option<String>,
+    entity_card_size: f32,
     new_key: String,
     new_value: String,
     outliner_filter: String,
@@ -34,6 +37,7 @@ pub struct PanelState {
     pub reference_class: String,
     reference_filter: String,
     reference_kind: usize,
+    reference_list_width: Option<f32>,
 }
 
 impl Default for PanelState {
@@ -46,6 +50,9 @@ impl Default for PanelState {
             material_favorites_only: false,
             thumb_size: 72.0,
             entity_filter: String::new(),
+            entity_selection: Vec::new(),
+            entity_anchor: None,
+            entity_card_size: 64.0,
             new_key: String::new(),
             new_value: String::new(),
             outliner_filter: String::new(),
@@ -55,6 +62,7 @@ impl Default for PanelState {
             reference_class: String::new(),
             reference_filter: String::new(),
             reference_kind: 0,
+            reference_list_width: None,
         }
     }
 }
@@ -1558,14 +1566,21 @@ pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
                         ui.label(RichText::new("Drop on a face, Shift covers the whole brush").weak().small());
                     });
                 }
-                DndPayload::Entity(classname) => {
-                    let color =
-                        state.game.entity(classname).map(|d| d.color).map(|c| Color32::from_rgb((c.r * 255.0) as u8, (c.g * 255.0) as u8, (c.b * 255.0) as u8));
-                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(14.0), Sense::hover());
-                    ui.painter().rect_filled(rect, 2.0, color.unwrap_or(Color32::LIGHT_GRAY));
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new(classname).strong());
-                        ui.label(RichText::new("Drop into a view to place it").weak().small());
+                DndPayload::Entities(classnames) => {
+                    for classname in classnames.iter().take(4) {
+                        let def = state.game.entity(classname);
+                        let (rect, _) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::hover());
+                        paint_entity_tile(ui, rect, def);
+                    }
+                    ui.vertical(|ui| match classnames.as_slice() {
+                        [one] => {
+                            ui.label(RichText::new(one).strong());
+                            ui.label(RichText::new("Drop into a view to place it").weak().small());
+                        }
+                        many => {
+                            ui.label(RichText::new(format!("{} entities", many.len())).strong());
+                            ui.label(RichText::new("Drop into a view to place them in a row").weak().small());
+                        }
                     });
                 }
             });
@@ -1575,20 +1590,92 @@ pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
 
 // ------------------------------------------------------------------ entities
 
+fn entity_color(def: &EntityDef) -> Color32 {
+    let c = def.color;
+    Color32::from_rgb((c.r * 255.0) as u8, (c.g * 255.0) as u8, (c.b * 255.0) as u8)
+}
+
+fn entity_icon(def: &EntityDef) -> icons::Icon {
+    let name = def.classname.as_str();
+    if crate::scene::is_decal(Some(def)) {
+        icons::PAINT
+    } else if name.contains("light") {
+        icons::SHADE_LIT
+    } else if name.contains("door") || name.contains("gate") {
+        icons::DOOR
+    } else if name.starts_with("trigger") || name.ends_with("_area") {
+        icons::VOLUME
+    } else if name.contains("path") {
+        icons::PATH
+    } else if name.contains("prop") || name.contains("model") || !def.model.is_empty() || !def.scene.is_empty() {
+        icons::INSTANCE
+    } else if def.kind == gt_formats::EntityKind::Solid {
+        icons::BRUSH
+    } else {
+        icons::ENTITY
+    }
+}
+
+fn paint_entity_tile(ui: &Ui, rect: egui::Rect, def: Option<&EntityDef>) {
+    let color = def.map(entity_color).unwrap_or(Color32::LIGHT_GRAY);
+    ui.painter().rect(rect, 3.0, color.gamma_multiply(0.22), egui::Stroke::new(1.0, color.gamma_multiply(0.7)), egui::StrokeKind::Inside);
+    let icon = def.map(entity_icon).unwrap_or(icons::ENTITY);
+    icon.image(rect.width() * 0.5).tint(color).paint_at(ui, egui::Rect::from_center_size(rect.center(), Vec2::splat(rect.width() * 0.5)));
+}
+
+fn entity_card(ui: &mut Ui, def: &EntityDef, size: f32, selected: bool) -> egui::Response {
+    let cell = Vec2::new(size + 8.0, size + 22.0);
+    let (rect, resp) = ui.allocate_exact_size(cell, Sense::click_and_drag());
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, &def.classname));
+    if selected {
+        ui.painter().rect_filled(rect, 3.0, Color32::from_rgb(90, 60, 30));
+    } else if resp.hovered() {
+        ui.painter().rect_filled(rect, 3.0, Color32::from_gray(50));
+    }
+    let tile = egui::Rect::from_min_size(rect.min + Vec2::splat(4.0), Vec2::splat(size));
+    paint_entity_tile(ui, tile, Some(def));
+    if def.kind == gt_formats::EntityKind::Solid {
+        ui.painter().text(tile.right_top() + Vec2::new(-3.0, 2.0), egui::Align2::RIGHT_TOP, "brush", egui::FontId::proportional(10.0), Color32::from_gray(170));
+    }
+    let mut job = egui::text::LayoutJob::simple_singleline(def.classname.clone(), egui::FontId::proportional(11.0), Color32::LIGHT_GRAY);
+    job.wrap = egui::text::TextWrapping::truncate_at_width(cell.x - 4.0);
+    let label = ui.painter().layout_job(job);
+    ui.painter().galley(egui::pos2(rect.center().x, rect.max.y - 9.0) - label.size() / 2.0, label, Color32::LIGHT_GRAY);
+    resp
+}
+
 pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
-    ui.add(egui::TextEdit::singleline(&mut ps.entity_filter).hint_text("Search entities").desired_width(f32::INFINITY));
-    ui.label(RichText::new("Drag into a viewport, or double click to place at the cursor. Brush entities: select brushes and click.").weak());
+    ui.horizontal_wrapped(|ui| {
+        ui.add(egui::TextEdit::singleline(&mut ps.entity_filter).hint_text("Search entities").desired_width(160.0));
+        ui.add(egui::Slider::new(&mut ps.entity_card_size, 32.0..=128.0).show_value(false)).on_hover_text("Card size");
+        if !ps.entity_selection.is_empty() {
+            let n = ps.entity_selection.len();
+            if ui
+                .button(if n == 1 { "Place".to_string() } else { format!("Place {n}") })
+                .on_hover_text("Place the selected entities at the 3D cursor")
+                .clicked()
+            {
+                actions.push(place_action(state, ps.entity_selection.clone()));
+            }
+            if ui.small_button("Clear").clicked() {
+                ps.entity_selection.clear();
+            }
+        }
+    });
+    ui.label(
+        RichText::new("Drag into a view to place, Ctrl or Shift click selects several and drags them together. Double click places at the cursor.").weak(),
+    );
     ui.separator();
     let filter = ps.entity_filter.to_lowercase();
-    let mut groups: Vec<(String, Vec<EntityDef>)> = Vec::new();
+    let mut groups: Vec<(String, Vec<&EntityDef>)> = Vec::new();
     for def in state.game.entities.iter().filter(|d| d.classname != "worldspawn") {
-        if !filter.is_empty() && !def.classname.to_lowercase().contains(&filter) {
+        if !filter.is_empty() && !def.classname.to_lowercase().contains(&filter) && !def.description.to_lowercase().contains(&filter) {
             continue;
         }
         let group = if def.group.is_empty() { "other".to_string() } else { def.group.clone() };
         match groups.iter_mut().find(|(g, _)| *g == group) {
-            Some((_, list)) => list.push(def.clone()),
-            None => groups.push((group, vec![def.clone()])),
+            Some((_, list)) => list.push(def),
+            None => groups.push((group, vec![def])),
         }
     }
     if state.game.entities.is_empty() {
@@ -1596,42 +1683,112 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
     } else if groups.is_empty() {
         ui.label(RichText::new("No entities match the search").weak());
     }
+    ps.entity_selection.retain(|c| state.game.entity(c).is_some());
+    let order: Vec<String> = groups.iter().flat_map(|(_, defs)| defs.iter().map(|d| d.classname.clone())).collect();
+    let size = ps.entity_card_size;
+    let cell_width = size + 8.0 + ui.spacing().item_spacing.x;
+    let mut clicked: Option<(String, egui::Modifiers)> = None;
+    let mut placed: Option<String> = None;
+    let mut dragged: Option<(egui::Response, String)> = None;
+    let mut to_reference: Option<String> = None;
     ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-        for (group, defs) in groups {
+        for (group, defs) in &groups {
             egui::CollapsingHeader::new(group).default_open(true).show(ui, |ui| {
-                for def in defs {
+                let cols = ((ui.available_width() / cell_width).floor() as usize).max(1);
+                for chunk in defs.chunks(cols) {
                     ui.horizontal(|ui| {
-                        let c = def.color;
-                        let (r, _) = ui.allocate_exact_size(Vec2::splat(12.0), Sense::hover());
-                        ui.painter().rect_filled(r, 2.0, Color32::from_rgb((c.r * 255.0) as u8, (c.g * 255.0) as u8, (c.b * 255.0) as u8));
-                        let kind = match def.kind {
-                            gt_formats::EntityKind::Point => "point",
-                            gt_formats::EntityKind::Solid => "brush",
-                        };
-                        let resp = ui
-                            .add(egui::Label::new(format!("{}  ", def.classname)).sense(Sense::click_and_drag()))
-                            .on_hover_text(format!("{kind} entity\n{}", def.description));
-                        ui.label(RichText::new(kind).weak().small());
-                        match def.kind {
-                            gt_formats::EntityKind::Point => {
-                                if resp.drag_started() {
-                                    resp.dnd_set_drag_payload(DndPayload::Entity(def.classname.clone()));
-                                }
-                                if resp.double_clicked() {
-                                    actions.push(Action::CreatePointEntity { classname: def.classname.clone(), at: None });
-                                }
+                        for def in chunk {
+                            let selected = ps.entity_selection.contains(&def.classname);
+                            let kind = if def.kind == gt_formats::EntityKind::Solid { "brush" } else { "point" };
+                            let resp = entity_card(ui, def, size, selected);
+                            let resp = resp.on_hover_text(format!("{}\n{kind} entity\n{}", def.classname, def.description));
+                            if resp.double_clicked() {
+                                placed = Some(def.classname.clone());
+                            } else if resp.clicked() {
+                                clicked = Some((def.classname.clone(), ui.input(|i| i.modifiers)));
                             }
-                            gt_formats::EntityKind::Solid => {
-                                if resp.clicked() {
+                            if resp.drag_started() {
+                                dragged = Some((resp.clone(), def.classname.clone()));
+                            }
+                            resp.context_menu(|ui| {
+                                if ui.button("Place at cursor").clicked() {
+                                    actions.push(place_action(state, vec![def.classname.clone()]));
+                                    ui.close();
+                                }
+                                if def.kind == gt_formats::EntityKind::Solid && ui.button("Turn selected brushes into it").clicked() {
                                     actions.push(Action::CreateBrushEntity(def.classname.clone()));
+                                    ui.close();
                                 }
-                            }
+                                if ui.button("Show in Reference").clicked() {
+                                    to_reference = Some(def.classname.clone());
+                                    ui.close();
+                                }
+                                if ui.button("Copy classname").clicked() {
+                                    ui.ctx().copy_text(def.classname.clone());
+                                    ui.close();
+                                }
+                            });
                         }
                     });
                 }
             });
         }
     });
+    if let Some((classname, modifiers)) = clicked {
+        select_entity_card(ps, &order, classname, modifiers);
+    }
+    if let Some(classname) = placed {
+        let classnames = if ps.entity_selection.contains(&classname) { ps.entity_selection.clone() } else { vec![classname] };
+        actions.push(place_action(state, classnames));
+    }
+    if let Some((resp, classname)) = dragged {
+        if !ps.entity_selection.contains(&classname) {
+            ps.entity_selection = vec![classname.clone()];
+            ps.entity_anchor = Some(classname);
+        }
+        resp.dnd_set_drag_payload(DndPayload::Entities(ps.entity_selection.clone()));
+    }
+    if let Some(classname) = to_reference {
+        ps.reference_class = classname;
+        actions.push(Action::ShowReference);
+    }
+}
+
+/// Plain click picks one card, Ctrl toggles it and Shift extends from the last clicked card in display order.
+pub fn select_entity_card(ps: &mut PanelState, order: &[String], classname: String, modifiers: egui::Modifiers) {
+    let anchor = ps.entity_anchor.as_ref().and_then(|a| order.iter().position(|c| c == a));
+    match (modifiers.shift, anchor, order.iter().position(|c| *c == classname)) {
+        (true, Some(from), Some(to)) => {
+            let range = &order[from.min(to)..=from.max(to)];
+            if !modifiers.command {
+                ps.entity_selection.clear();
+            }
+            for c in range {
+                if !ps.entity_selection.contains(c) {
+                    ps.entity_selection.push(c.clone());
+                }
+            }
+            return;
+        }
+        _ if modifiers.command => {
+            if let Some(i) = ps.entity_selection.iter().position(|c| *c == classname) {
+                ps.entity_selection.remove(i);
+            } else {
+                ps.entity_selection.push(classname.clone());
+            }
+        }
+        _ => ps.entity_selection = vec![classname.clone()],
+    }
+    ps.entity_anchor = Some(classname);
+}
+
+/// A lone brush entity wraps the selected brushes when there are any, everything else is placed at the cursor.
+fn place_action(state: &EditorState, classnames: Vec<String>) -> Action {
+    let has_brushes = state.doc.selection.geometry(&state.doc.map).iter().any(|id| state.doc.map.terrain(*id).is_none());
+    match classnames.as_slice() {
+        [one] if has_brushes && state.game.entity(one).is_some_and(|d| d.kind == gt_formats::EntityKind::Solid) => Action::CreateBrushEntity(one.clone()),
+        _ => Action::PlaceEntities { classnames, at: None, normal: None, row: DVec3::X },
+    }
 }
 
 // -------------------------------------------------------------------- issues
@@ -1744,7 +1901,7 @@ pub fn tool_help(tool: crate::tools::ToolKind) -> &'static str {
 }
 
 pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
-    use crate::code_refs::{self, CodeKind};
+    use crate::code_refs;
     ui.horizontal(|ui| {
         ui.add(egui::TextEdit::singleline(&mut ps.reference_filter).hint_text("Filter entities").desired_width(140.0));
         if let Some(root) = state.game.project_root.clone()
@@ -1771,8 +1928,37 @@ pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
     {
         ps.reference_class = e.classname.clone();
     }
-    ui.columns(2, |cols| {
-        ScrollArea::vertical().id_salt("reference_list").auto_shrink([false, false]).show(&mut cols[0], |ui| {
+    let area = ui.available_rect_before_wrap();
+    let min_width = 80.0_f32.min(area.width() / 2.0);
+    let max_width = (area.width() - 200.0).max(min_width);
+    let width = ps
+        .reference_list_width
+        .unwrap_or_else(|| {
+            let font = egui::TextStyle::Body.resolve(ui.style());
+            let longest = defs.iter().map(|d| ui.painter().layout_no_wrap(d.classname.clone(), font.clone(), Color32::WHITE).size().x).fold(0.0, f32::max);
+            (longest + ui.spacing().button_padding.x * 2.0 + ui.spacing().scroll.bar_width + 16.0).clamp(120.0, area.width() * 0.45)
+        })
+        .clamp(min_width, max_width);
+    let split = area.left() + width;
+    let handle = ui
+        .interact(egui::Rect::from_x_y_ranges(split - 4.0..=split + 4.0, area.y_range()), ui.id().with("reference_split"), Sense::click_and_drag())
+        .on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
+        .on_hover_text("Drag to resize, double click to fit the names");
+    if handle.dragged()
+        && let Some(pointer) = handle.interact_pointer_pos()
+    {
+        ps.reference_list_width = Some((pointer.x - area.left()).clamp(min_width, max_width));
+    }
+    if handle.double_clicked() {
+        ps.reference_list_width = None;
+    }
+    let line = if handle.hovered() || handle.dragged() { ui.visuals().widgets.active.bg_stroke } else { ui.visuals().widgets.noninteractive.bg_stroke };
+    ui.painter().vline(split, area.y_range(), line);
+
+    let list_rect = egui::Rect::from_min_max(area.min, egui::pos2(split - 4.0, area.max.y));
+    ui.scope_builder(egui::UiBuilder::new().max_rect(list_rect), |ui| {
+        ui.set_clip_rect(list_rect.intersect(ui.clip_rect()));
+        ScrollArea::vertical().id_salt("reference_list").auto_shrink([false, false]).show(ui, |ui| {
             let mut group = String::new();
             for d in &defs {
                 if d.group != group {
@@ -1789,92 +1975,98 @@ pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
                 ui.label(RichText::new(tool).color(Color32::from_rgb(160, 200, 255))).on_hover_text(help);
             }
         });
-        let ui = &mut cols[1];
-        let Some(def) = state.game.entity(&ps.reference_class).cloned() else {
-            ui.label("Pick an entity to see how to use it from GDScript or C#.");
-            for (tool, help) in TOOL_HELP {
-                ui.label(RichText::new(tool).strong());
-                ui.label(RichText::new(help).weak());
+    });
+    let detail_rect = egui::Rect::from_min_max(egui::pos2(split + 8.0, area.min.y), area.max);
+    ui.scope_builder(egui::UiBuilder::new().max_rect(detail_rect), |ui| {
+        ui.set_clip_rect(detail_rect.intersect(ui.clip_rect()));
+        ScrollArea::vertical().id_salt("reference_detail").auto_shrink([false, false]).show(ui, |ui| reference_detail(ui, state, ps, actions));
+    });
+    ui.advance_cursor_after_rect(area);
+}
+
+fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
+    use crate::code_refs::{self, CodeKind};
+    let Some(def) = state.game.entity(&ps.reference_class).cloned() else {
+        ui.label("Pick an entity to see how to use it from GDScript or C#.");
+        for (tool, help) in TOOL_HELP {
+            ui.label(RichText::new(tool).strong());
+            ui.label(RichText::new(help).weak());
+        }
+        return;
+    };
+    ui.heading(&def.classname);
+    ui.label(RichText::new(&def.description).weak());
+    ui.label(format!(
+        "{} entity, node {}",
+        if def.kind == gt_formats::EntityKind::Solid { "brush" } else { "point" },
+        if def.node_class.is_empty() { "-" } else { &def.node_class }
+    ));
+    if !def.script.is_empty() {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("script");
+            ui.code(&def.script);
+            if let Some(path) = state.game.resolve_res(&def.script).filter(|p| p.is_file())
+                && ui.small_button("Open").clicked()
+            {
+                open_in_system(&path);
             }
-            return;
-        };
-        ui.heading(&def.classname);
-        ui.label(RichText::new(&def.description).weak());
-        ui.label(format!(
-            "{} entity, node {}",
-            if def.kind == gt_formats::EntityKind::Solid { "brush" } else { "point" },
-            if def.node_class.is_empty() { "-" } else { &def.node_class }
-        ));
-        if !def.script.is_empty() {
-            ui.horizontal(|ui| {
-                ui.label("script");
-                ui.code(&def.script);
-                if let Some(path) = state.game.resolve_res(&def.script).filter(|p| p.is_file())
-                    && ui.small_button("Open").clicked()
-                {
-                    open_in_system(&path);
-                }
+        });
+    }
+    egui::CollapsingHeader::new(format!("Properties ({})", def.properties.len())).default_open(true).show(ui, |ui| {
+        for p in &def.properties {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new(&p.name).strong());
+                ui.label(format!("{:?} = {}", p.ty, p.default));
+                ui.label(RichText::new(&p.description).weak());
             });
         }
-        egui::CollapsingHeader::new(format!("Properties ({})", def.properties.len())).default_open(true).show(ui, |ui| {
-            egui::Grid::new("ref_props").num_columns(3).striped(true).show(ui, |ui| {
-                for p in &def.properties {
-                    ui.label(RichText::new(&p.name).strong());
-                    ui.label(format!("{:?} = {}", p.ty, p.default));
-                    ui.label(RichText::new(&p.description).weak());
-                    ui.end_row();
-                }
-            });
-        });
-        egui::CollapsingHeader::new(format!("Inputs ({}) and outputs ({})", def.inputs.len(), def.outputs.len())).default_open(true).show(ui, |ui| {
-            for i in &def.inputs {
-                ui.label(format!("input  {}({})", i.name, i.parameter));
-            }
-            for o in &def.outputs {
-                ui.label(format!("output {}({})", o.name, o.parameter));
-            }
-        });
-        ui.horizontal_wrapped(|ui| {
-            for (k, kind) in CodeKind::ALL.iter().enumerate() {
-                ui.selectable_value(&mut ps.reference_kind, k, kind.label());
-            }
-        });
-        let kind = CodeKind::ALL[ps.reference_kind.min(CodeKind::ALL.len() - 1)];
-        let code = code_refs::generate(&def, kind);
-        ui.horizontal(|ui| {
-            if ui.button("Copy").clicked() {
-                ui.ctx().copy_text(code.clone());
-                state.set_status("Copied to the clipboard");
-            }
-            if matches!(kind, CodeKind::GdscriptClass | CodeKind::CsharpClass | CodeKind::FgdResource)
-                && let Some(root) = state.game.project_root.clone()
-                && ui.button("Create in project").on_hover_text("Writes the file under res://entities/ unless it exists").clicked()
-            {
-                let stem = if kind == CodeKind::CsharpClass { code_refs::pascal(&def.classname) } else { def.classname.clone() };
-                let path = root.join("entities").join(format!("{stem}.{}", kind.extension()));
-                let result = if path.exists() {
-                    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "file exists"))
-                } else {
-                    std::fs::create_dir_all(root.join("entities")).and_then(|_| std::fs::write(&path, &code))
-                };
-                state.set_status(match result {
-                    Ok(()) => format!("Wrote {}", path.display()),
-                    Err(e) => format!("{}: {e}", path.display()),
-                });
-            }
-            if ui.button("Place").on_hover_text("Point entities at the cursor, brush entities from the selection").clicked() {
-                actions.push(if def.kind == gt_formats::EntityKind::Point {
-                    Action::CreatePointEntity { classname: def.classname.clone(), at: None }
-                } else {
-                    Action::CreateBrushEntity(def.classname.clone())
-                });
-            }
-        });
-        ScrollArea::both().id_salt("reference_code").auto_shrink([false, false]).show(ui, |ui| {
-            let mut text = code.as_str();
-            ui.add(egui::TextEdit::multiline(&mut text).code_editor().desired_width(f32::INFINITY));
-        });
     });
+    egui::CollapsingHeader::new(format!("Inputs ({}) and outputs ({})", def.inputs.len(), def.outputs.len())).default_open(true).show(ui, |ui| {
+        for i in &def.inputs {
+            ui.label(format!("input  {}({})", i.name, i.parameter));
+        }
+        for o in &def.outputs {
+            ui.label(format!("output {}({})", o.name, o.parameter));
+        }
+    });
+    ui.horizontal_wrapped(|ui| {
+        for (k, kind) in CodeKind::ALL.iter().enumerate() {
+            ui.selectable_value(&mut ps.reference_kind, k, kind.label());
+        }
+    });
+    let kind = CodeKind::ALL[ps.reference_kind.min(CodeKind::ALL.len() - 1)];
+    let code = code_refs::generate(&def, kind);
+    ui.horizontal(|ui| {
+        if ui.button("Copy").clicked() {
+            ui.ctx().copy_text(code.clone());
+            state.set_status("Copied to the clipboard");
+        }
+        if matches!(kind, CodeKind::GdscriptClass | CodeKind::CsharpClass | CodeKind::FgdResource)
+            && let Some(root) = state.game.project_root.clone()
+            && ui.button("Create in project").on_hover_text("Writes the file under res://entities/ unless it exists").clicked()
+        {
+            let stem = if kind == CodeKind::CsharpClass { code_refs::pascal(&def.classname) } else { def.classname.clone() };
+            let path = root.join("entities").join(format!("{stem}.{}", kind.extension()));
+            let result = if path.exists() {
+                Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "file exists"))
+            } else {
+                std::fs::create_dir_all(root.join("entities")).and_then(|_| std::fs::write(&path, &code))
+            };
+            state.set_status(match result {
+                Ok(()) => format!("Wrote {}", path.display()),
+                Err(e) => format!("{}: {e}", path.display()),
+            });
+        }
+        if ui.button("Place").on_hover_text("Point entities at the cursor, brush entities from the selection").clicked() {
+            actions.push(if def.kind == gt_formats::EntityKind::Point {
+                Action::CreatePointEntity { classname: def.classname.clone(), at: None }
+            } else {
+                Action::CreateBrushEntity(def.classname.clone())
+            });
+        }
+    });
+    let mut text = code.as_str();
+    ui.add(egui::TextEdit::multiline(&mut text).code_editor().desired_width(f32::INFINITY));
 }
 
 /// Opens a file with the operating system's default application.

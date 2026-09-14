@@ -68,6 +68,13 @@ pub enum Action {
         classname: String,
         at: Option<DVec3>,
     },
+    /// Lines the entities up along `row`, resting on the surface facing `normal`. Brush entities get a box brush.
+    PlaceEntities {
+        classnames: Vec<String>,
+        at: Option<DVec3>,
+        normal: Option<DVec3>,
+        row: DVec3,
+    },
     MoveToWorld,
     MoveToLayer(NodeId),
     AddLayer,
@@ -173,6 +180,10 @@ impl Action {
             Action::SetTool(t) => format!("{} Tool", t.label()),
             Action::CreateBrushEntity(c) => format!("Create {c}"),
             Action::CreatePointEntity { classname, .. } => format!("Create {classname}"),
+            Action::PlaceEntities { classnames, .. } => match classnames.as_slice() {
+                [one] => format!("Create {one}"),
+                many => format!("Place {} Entities", many.len()),
+            },
             Action::MeshOp(op) => format!("Mesh: {}", op.label()),
             Action::StoreCamera(n) => format!("Store Camera {n}"),
             Action::RecallCamera(n) => format!("Recall Camera {n}"),
@@ -725,6 +736,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 s.select_node(id);
             });
         }
+        Action::PlaceEntities { classnames, at, normal, row } => place_entities(state, &classnames, at, normal, row),
         Action::MoveToWorld => {
             let layer = state.current_layer;
             state.doc.edit("Move to World", |m, s| ops::move_brushes_to_world(m, s, layer));
@@ -1169,6 +1181,82 @@ fn create_prefab(state: &mut EditorState) {
         s.select_node(id);
     });
     state.set_status(format!("Prefab saved to {}", path.display()));
+}
+
+const BRUSH_ENTITY_BOX: f64 = 64.0;
+
+fn support(b: &Aabb, dir: DVec3) -> f64 {
+    (0..3).map(|i| (b.min[i] * dir[i]).max(b.max[i] * dir[i])).sum()
+}
+
+pub fn place_entities(state: &mut EditorState, classnames: &[String], at: Option<DVec3>, normal: Option<DVec3>, row: DVec3) {
+    enum Placed {
+        Point { origin: DVec3, angles: DVec3 },
+        Brush(gt_geom::Brush),
+    }
+    let start = at.or(state.cursor_world).unwrap_or(DVec3::ZERO);
+    let gap = state.grid.max(8.0);
+    let items: Vec<(&String, Option<&gt_formats::EntityDef>, Aabb)> = classnames
+        .iter()
+        .map(|c| {
+            let def = state.game.entity(c);
+            let bounds = match def {
+                Some(d) if d.kind == gt_formats::EntityKind::Solid => Aabb::from_center_size(DVec3::ZERO, DVec3::splat(BRUSH_ENTITY_BOX)),
+                Some(d) => d.bounds(),
+                None => Aabb::new(DVec3::splat(-8.0), DVec3::splat(8.0)),
+            };
+            (c, def, bounds)
+        })
+        .collect();
+    let total: f64 = items.iter().map(|(_, _, b)| b.size().dot(row).abs()).sum::<f64>() + gap * items.len().saturating_sub(1) as f64;
+    let mut offset = -total / 2.0;
+    let mut placed = Vec::new();
+    for (classname, def, bounds) in &items {
+        let width = bounds.size().dot(row).abs();
+        let slot = start + row * (offset + width / 2.0 - bounds.center().dot(row));
+        offset += width + gap;
+        let item = if crate::scene::is_decal(*def) {
+            // Decals project along their local -Y, so local +Y is turned to face out of the surface.
+            let q = gt_core::DQuat::from_rotation_arc(DVec3::Y, normal.unwrap_or(DVec3::Y).normalize());
+            let (y, x, z) = q.to_euler(gt_core::EulerRot::YXZ);
+            Placed::Point { origin: slot, angles: DVec3::new(x.to_degrees(), y.to_degrees(), z.to_degrees()).map(|a| (a * 1e4).round() / 1e4) }
+        } else {
+            let rested = slot + normal.map(|n| n * support(bounds, -n)).unwrap_or_default();
+            match def {
+                Some(d) if d.kind == gt_formats::EntityKind::Solid => {
+                    let min = state.snap(rested + bounds.min);
+                    let Ok(brush) = gt_geom::Brush::from_aabb(&Aabb::new(min, min + bounds.size()), &state.current_material) else { continue };
+                    Placed::Brush(brush)
+                }
+                _ => Placed::Point { origin: state.snap(rested), angles: DVec3::ZERO },
+            }
+        };
+        placed.push((classname.to_string(), item));
+    }
+    if placed.is_empty() {
+        return;
+    }
+    let parent = state.insert_parent();
+    let label = Action::PlaceEntities { classnames: classnames.to_vec(), at, normal, row }.label();
+    state.doc.edit(&label, |m, s| {
+        s.clear();
+        for (classname, item) in placed {
+            let mut e = gt_doc::Entity::new(classname);
+            let brush = match item {
+                Placed::Point { origin, angles } => {
+                    e.origin = origin;
+                    e.angles = angles;
+                    None
+                }
+                Placed::Brush(b) => Some(b),
+            };
+            let id = m.insert(parent, gt_doc::NodeKind::Entity(e));
+            if let Some(b) = brush {
+                m.insert(id, gt_doc::NodeKind::Brush(b));
+            }
+            s.select_node(id);
+        }
+    });
 }
 
 /// Opens a Quake `.map` as a new, unsaved GodotTrench document.

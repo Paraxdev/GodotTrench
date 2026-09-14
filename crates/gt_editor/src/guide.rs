@@ -58,7 +58,7 @@ impl Panel {
                 "The textures and materials of the Godot project. Click one to apply it to the selection, drag it onto a face, right click for favourites. Search and folders help in big projects."
             }
             Panel::Entities => {
-                "Entity classes from the game config. Drag a point entity into a view or double click to place it at the cursor. For brush entities select brushes first, then click the class."
+                "Entity classes from the game config as cards. Drag one into a view or double click to place it at the cursor, Ctrl or Shift click selects several to drag in together. Brush entities come with a box, or wrap the selected brushes on double click."
             }
             Panel::History => "Every edit in order. Click an older entry to undo back to it, click a later one to redo.",
             Panel::Issues => {
@@ -66,7 +66,7 @@ impl Panel {
             }
             Panel::Uv => "Edits the UVs of selected mesh faces directly, like the UV editor of a 3D modelling program.",
             Panel::Reference => {
-                "How to use the selected entity from code: GDScript and C# snippets, the FGD resource, and buttons that create the script in your project."
+                "How to use the selected entity from code: GDScript and C# snippets, the FGD resource, and buttons that create the script in your project. Drag the divider to resize the class list, double click it to fit the names."
             }
         }
     }
@@ -532,7 +532,7 @@ pub fn chapters() -> Vec<Chapter> {
                 step(
                     Anchor::Panel(Panel::Entities),
                     "Place entities",
-                    "Point entities (lights, spawns, logic) are dragged into a view or double clicked to land at the cursor. Brush entities (doors, triggers, func_detail) wrap brushes: select the brushes, then click the class.",
+                    "Drag a card into a view and the entity rests on the surface you drop it on, double click places it at the cursor. Ctrl or Shift click selects several cards, dragging one of them places them all in a row. Brush entities (doors, triggers, func_detail) arrive with a box brush, or select brushes first and double click the class to wrap them.",
                 )
                 .task("Place an entity", has_entity),
                 step(
