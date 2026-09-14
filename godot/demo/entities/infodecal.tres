@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/runtime/godottrench_decal.gd" id="2_decal"]
+
+[resource]
+script = ExtResource("1_point")
+script_class = ExtResource("2_decal")
+classname = "infodecal"
+description = "Projected decal. Projects along its local -Y axis, GodotTrench aligns it to the surface it is dropped on."
+class_properties = Dictionary[String, Variant]({
+"texture": "res://demo/textures/base/metal.png",
+"size": Vector3(64, 32, 64),
+"modulate": Color(1, 1, 1, 1)
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"texture": "Albedo texture (res:// path)",
+"size": "Projector size in map units: width, depth, height"
+})
+meta_properties = Dictionary[String, Variant]({
+"size": AABB(-8, -8, -8, 8, 8, 8),
+"color": Color(0.9, 0.3, 0.9, 1)
+})
+node_class = "Decal"

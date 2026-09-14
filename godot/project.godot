@@ -1,0 +1,22 @@
+; Engine configuration file.
+; GodotTrench demo and test project for the FuncGodot (GodotTrench) addon.
+
+config_version=5
+
+[application]
+
+config/name="GodotTrench Demo"
+run/main_scene="res://demo/demo.tscn"
+config/features=PackedStringArray("4.7")
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/func_godot/plugin.cfg")
+
+[func_godot]
+
+default_map_settings="res://demo/demo_map_settings.tres"
+
+[godottrench]
+
+game_config="res://demo/demo_game_config.tres"

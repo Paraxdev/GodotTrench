@@ -1,0 +1,17 @@
+[remap]
+
+importer="godottrench.bbmodel"
+type="PackedScene"
+uid="uid://cno7v2pnftv7c"
+path="res://.godot/imported/bush.bbmodel-858bf9456448318f6da451ef9d4d5f75.scn"
+
+[deps]
+
+source_file="res://demo/models/bush.bbmodel"
+dest_files=["res://.godot/imported/bush.bbmodel-858bf9456448318f6da451ef9d4d5f75.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

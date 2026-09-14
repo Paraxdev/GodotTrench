@@ -1,0 +1,42 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["GodotTrench contributors"]
+
+[workspace.dependencies]
+gt_core = { path = "crates/gt_core" }
+gt_geom = { path = "crates/gt_geom" }
+gt_doc = { path = "crates/gt_doc" }
+gt_formats = { path = "crates/gt_formats" }
+gt_bake = { path = "crates/gt_bake" }
+gt_render = { path = "crates/gt_render" }
+
+glam = { version = "0.33", features = ["serde", "bytemuck"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+thiserror = "2"
+anyhow = "1"
+bytemuck = { version = "1", features = ["derive"] }
+imbl = "7"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "tga", "bmp"] }
+gltf = "1.4"
+eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "persistence"] }
+egui = "0.36"
+egui-wgpu = "0.36"
+egui_dock = "0.21"
+rfd = "0.17"
+notify = "8"
+tungstenite = "0.30"
+proptest = "1"
+base64 = "0.22"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

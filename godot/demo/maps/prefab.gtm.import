@@ -1,0 +1,14 @@
+[remap]
+
+importer="func_godot.map"
+type="QuakeMapFile"
+uid="uid://cxi2xqijr8qqv"
+path="res://.godot/imported/prefab.gtm-6098c24d26e0b1e63f00620000eb9719.tres"
+
+[deps]
+
+source_file="res://demo/maps/prefab.gtm"
+dest_files=["res://.godot/imported/prefab.gtm-6098c24d26e0b1e63f00620000eb9719.tres"]
+
+[params]
+

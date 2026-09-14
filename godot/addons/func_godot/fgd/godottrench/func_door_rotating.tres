@@ -1,0 +1,47 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_door_rotating.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "func_door_rotating"
+description = "Door or gate swinging around a hinge. Drag the hinge handle in the viewport."
+collision_shape_type = 1
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"hinge": "0 0 0",
+"axis": {
+"vertical (y)": "y",
+"x": "x",
+"z": "z"
+},
+"open_angle": 95.0,
+"speed": 120.0,
+"open_away": true,
+"wait": -1.0,
+"locked": false,
+"start_open": false,
+"interact": true
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name other entities use to open it",
+"hinge": "Hinge position relative to the door center, map units",
+"axis": ["Hinge axis", "y"],
+"open_angle": "Degrees to swing, negative swings the other way",
+"speed": "Degrees per second",
+"open_away": "Swings away from whoever opens it",
+"wait": "Seconds before it closes again, -1 stays open",
+"locked": "Ignores open and use until unlocked",
+"start_open": "Starts open",
+"interact": "Opens when a player calls use() on it"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.8509804, 0.6039216, 0.3019608, 1),
+"property_types": {"hinge": "vector3"},
+"gizmos": [{"type": "hinge", "property": "hinge", "angle": "open_angle", "axis": "axis"}],
+"inputs": ["open", "close", "toggle", "lock", "unlock", "use"],
+"outputs": ["opened", "closed", "started_opening", "started_closing", "locked_use"]
+})
+node_class = "AnimatableBody3D"

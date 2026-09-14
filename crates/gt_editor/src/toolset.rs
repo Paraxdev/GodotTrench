@@ -1,0 +1,939 @@
+use egui::{Align2, Color32, FontId, Key, PointerButton, Pos2, Rect, Response, Stroke, Ui, Vec2};
+use gt_core::{Aabb, DMat4, DVec3, NodeId, Plane};
+use gt_doc::ops;
+use gt_geom::Brush;
+use gt_render::LineVertex;
+
+use crate::camera::{Camera, ViewKind};
+use crate::picking;
+use crate::scene::v3;
+use crate::state::EditorState;
+use crate::tools::ToolKind;
+
+const HANDLE_RADIUS: f32 = 7.0;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ClipSide {
+    Front,
+    Back,
+    Both,
+}
+
+#[derive(Default)]
+pub struct ClipTool {
+    pub points: Vec<DVec3>,
+    side: Option<ClipSide>,
+    dragging: Option<usize>,
+    /// Extrusion direction used to make a plane from only two points.
+    second_axis: Option<DVec3>,
+}
+
+#[derive(Default)]
+pub struct VertexTool {
+    pub selected: Vec<DVec3>,
+    drag: Option<VertexDrag>,
+}
+
+struct VertexDrag {
+    start: DVec3,
+    plane: Plane,
+    base: Vec<DVec3>,
+}
+
+#[derive(Default)]
+pub struct RotateTool {
+    drag: Option<RotateDrag>,
+    hover_axis: Option<usize>,
+    pub snap_degrees: f64,
+}
+
+struct RotateDrag {
+    axis: DVec3,
+    center: DVec3,
+    start_vec: DVec3,
+    screen_start: Pos2,
+}
+
+#[derive(Default)]
+pub struct ScaleTool {
+    drag: Option<ScaleDrag>,
+}
+
+struct ScaleDrag {
+    base: Aabb,
+    handle: DVec3,
+    plane: Plane,
+    start: DVec3,
+}
+
+#[derive(Default)]
+pub struct BrushStrokeTool {
+    /// Surface point and normal under the cursor.
+    pub hover: Option<(DVec3, DVec3)>,
+    stroking: bool,
+    last_dab: Option<DVec3>,
+}
+
+#[derive(Default)]
+pub struct ToolSet {
+    pub clip: ClipTool,
+    pub vertex: VertexTool,
+    pub rotate: RotateTool,
+    pub scale: ScaleTool,
+    pub stroke: BrushStrokeTool,
+    pub mesh: crate::mesh_tool::MeshTool,
+    pub scatter: crate::scatter_tool::ScatterTool,
+    pub blend: crate::blend_tool::BlendTool,
+    pub volume: crate::volume_tool::VolumeTool,
+    pub path: crate::extra_tools::PathTool,
+    pub measure: crate::extra_tools::MeasureTool,
+    pub texture: crate::texture_tool::TextureTool,
+    active: Option<ToolKind>,
+}
+
+fn screen_dist(cam: &Camera, rect: Rect, world: DVec3, pos: Pos2) -> f32 {
+    cam.project(rect, world).map(|p| (p - pos).length()).unwrap_or(f32::MAX)
+}
+
+fn line(out: &mut Vec<LineVertex>, a: DVec3, b: DVec3, color: [f32; 4]) {
+    out.push(LineVertex { pos: v3(a), color });
+    out.push(LineVertex { pos: v3(b), color });
+}
+
+impl ToolSet {
+    /// Resets per-tool state when the active tool changes.
+    pub fn sync(&mut self, state: &EditorState) {
+        if self.active != Some(state.tool) {
+            self.clip = ClipTool::default();
+            self.vertex.drag = None;
+            self.rotate.drag = None;
+            self.scale.drag = None;
+            if self.rotate.snap_degrees == 0.0 {
+                self.rotate.snap_degrees = 15.0;
+            }
+            self.mesh.reset();
+            self.path.finish();
+            self.texture.reset();
+            self.volume.reset();
+            self.active = Some(state.tool);
+        }
+    }
+
+    /// Enter, Tab and similar keys for the active tool. Returns true if the key was consumed.
+    pub fn keys(&mut self, ctx: &egui::Context, state: &mut EditorState) -> bool {
+        if ctx.egui_wants_keyboard_input() {
+            return false;
+        }
+        match state.tool {
+            ToolKind::Clip => {
+                if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Tab)) {
+                    self.clip.side = Some(match self.clip.side.unwrap_or(ClipSide::Front) {
+                        ClipSide::Front => ClipSide::Back,
+                        ClipSide::Back => ClipSide::Both,
+                        ClipSide::Both => ClipSide::Front,
+                    });
+                    return true;
+                }
+                if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Enter)) {
+                    self.apply_clip(state);
+                    return true;
+                }
+                if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Backspace)) && !self.clip.points.is_empty() {
+                    self.clip.points.pop();
+                    return true;
+                }
+            }
+            ToolKind::Vertex if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Delete)) && !self.vertex.selected.is_empty() => {
+                self.delete_vertices(state);
+                return true;
+            }
+            ToolKind::Mesh => return self.mesh.keys(ctx, state),
+            ToolKind::Texture => return self.texture.keys(ctx, state),
+            ToolKind::Path
+                if self.path.last.is_some()
+                    && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Enter) || i.consume_key(egui::Modifiers::NONE, Key::Escape)) =>
+            {
+                self.path.finish();
+                state.set_status("Path finished");
+                return true;
+            }
+            _ => {}
+        }
+        false
+    }
+
+    pub fn viewport_input(&mut self, ui: &Ui, response: &Response, cam: &Camera, rect: Rect, hover: Option<Pos2>, state: &mut EditorState) {
+        match state.tool {
+            ToolKind::Clip => self.clip_input(ui, response, cam, rect, state),
+            ToolKind::Vertex => self.vertex_input(ui, response, cam, rect, state),
+            ToolKind::Rotate => self.rotate_input(ui, response, cam, rect, hover, state),
+            ToolKind::Scale => self.scale_input(ui, response, cam, rect, hover, state),
+            ToolKind::Sculpt | ToolKind::Paint => self.stroke_input(ui, response, cam, rect, hover, state),
+            ToolKind::Mesh => self.mesh.viewport_input(ui, response, cam, rect, hover, state),
+            ToolKind::Scatter => self.scatter.input(ui, response, cam, rect, hover, state),
+            ToolKind::Blend => self.blend.input(ui, response, cam, rect, hover, state),
+            ToolKind::Volume => self.volume.input(ui, response, cam, rect, state),
+            ToolKind::Path => self.path.input(response, cam, rect, state),
+            ToolKind::Measure => self.measure.input(ui, response, cam, rect, state),
+            ToolKind::Texture => self.texture.input(ui, response, cam, rect, hover, state),
+            ToolKind::Select => {}
+        }
+    }
+
+    // ------------------------------------------------------- sculpt / paint
+
+    fn stroke_targets(state: &EditorState) -> Vec<NodeId> {
+        let selected = state.doc.selection.brushes(&state.doc.map);
+        if selected.is_empty() { state.doc.map.brushes().filter(|(id, _)| state.doc.map.is_editable(*id)).map(|(id, _)| id).collect() } else { selected }
+    }
+
+    fn stroke_input(&mut self, ui: &Ui, response: &Response, cam: &Camera, rect: Rect, hover: Option<Pos2>, state: &mut EditorState) {
+        let targets = Self::stroke_targets(state);
+        let sculpting = state.tool == ToolKind::Sculpt;
+        let faces = gt_doc::terrain::displacement_faces(&state.doc.map, &targets);
+        let selected_terrains = state.doc.selection.terrains(&state.doc.map);
+        let terrains = gt_doc::terrain::terrain_targets(&state.doc.map, &selected_terrains);
+        let pointer = if self.stroke.stroking { ui.input(|i| i.pointer.interact_pos()) } else { hover };
+        self.stroke.hover = pointer.and_then(|pos| {
+            let ray = cam.ray(rect, pos);
+            if sculpting {
+                let disp = gt_doc::terrain::ray_cast(&state.doc.map, &faces, &ray)
+                    .map(|(d, p, id, face)| (d, p, state.doc.map.brush(id).map(|b| b.faces[face].plane.normal).unwrap_or(DVec3::Y)));
+                let terrain = gt_doc::terrain::terrain_ray_cast(&state.doc.map, &terrains, &ray).map(|(d, p, _)| (d, p, DVec3::Y));
+                [disp, terrain].into_iter().flatten().min_by(|a, b| a.0.total_cmp(&b.0)).map(|(_, p, n)| (p, n))
+            } else {
+                picking::pick(state, &ray).filter(|h| h.face.is_some()).map(|h| (h.point, h.normal))
+            }
+        });
+
+        let modifiers = ui.input(|i| i.modifiers);
+        if (response.drag_started_by(PointerButton::Primary)
+            || (response.is_pointer_button_down_on() && !self.stroke.stroking && ui.input(|i| i.pointer.primary_pressed())))
+            && let Some((p, n)) = self.stroke.hover
+        {
+            self.stroke.stroking = true;
+            self.stroke.last_dab = None;
+            state.sculpt.flatten_height = p.dot(n);
+            state.doc.begin(if sculpting { "Sculpt" } else { "Vertex Paint" });
+        }
+        if self.stroke.stroking {
+            let dt = ui.input(|i| i.stable_dt as f64).min(0.05);
+            if let Some((p, _)) = self.stroke.hover {
+                let spacing = state.sculpt.radius * 0.15;
+                let moved_enough = self.stroke.last_dab.is_none_or(|last| (last - p).length() >= spacing);
+                if moved_enough || sculpting {
+                    let mut brush = state.sculpt;
+                    if modifiers.shift {
+                        brush.mode = match brush.mode {
+                            gt_doc::terrain::SculptMode::Raise => gt_doc::terrain::SculptMode::Lower,
+                            gt_doc::terrain::SculptMode::Lower => gt_doc::terrain::SculptMode::Raise,
+                            gt_doc::terrain::SculptMode::PaintAlpha => gt_doc::terrain::SculptMode::EraseAlpha,
+                            other => other,
+                        };
+                    }
+                    if modifiers.command {
+                        brush.mode = gt_doc::terrain::SculptMode::Smooth;
+                    }
+                    // Continuous brushes scale with frame time so the result does not depend on frame rate.
+                    let is_alpha = brush.mode.is_paint();
+                    brush.strength = if is_alpha { (brush.strength * dt * 2.0).min(1.0) } else { brush.strength * dt * 8.0 };
+                    let color = state.paint_color;
+                    let radius = state.sculpt.radius;
+                    let strength = state.sculpt.strength;
+                    state.doc.edit("Stroke", |m, _| {
+                        if sculpting {
+                            gt_doc::terrain::sculpt(m, &faces, p, &brush);
+                            gt_doc::terrain::sculpt_terrains(m, &terrains, p, &brush);
+                        } else {
+                            gt_doc::terrain::paint_vertices(m, &targets, p, radius, color, (strength * dt).min(1.0));
+                        }
+                    });
+                    self.stroke.last_dab = Some(p);
+                    ui.ctx().request_repaint();
+                }
+            }
+            if !ui.input(|i| i.pointer.primary_down()) {
+                self.stroke.stroking = false;
+                state.doc.commit();
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- clip
+
+    fn clip_point_at(&self, cam: &Camera, rect: Rect, pos: Pos2, state: &EditorState) -> Option<(DVec3, Option<DVec3>)> {
+        match cam.kind {
+            ViewKind::Perspective => {
+                let hit = picking::pick(state, &cam.ray(rect, pos))?;
+                Some((state.snap(hit.point), Some(hit.normal)))
+            }
+            k => {
+                let mut p = cam.screen_to_plane(rect, pos);
+                let b = state.doc.map.bounds_of(state.doc.selection.nodes.iter().copied());
+                let axis = k.depth_axis();
+                p[axis] = if b.is_empty() { 0.0 } else { b.center()[axis] };
+                Some((state.snap(p), Some(k.axes().2)))
+            }
+        }
+    }
+
+    fn clip_input(&mut self, ui: &Ui, response: &Response, cam: &Camera, rect: Rect, state: &mut EditorState) {
+        let pointer = ui.input(|i| i.pointer.interact_pos());
+        if response.drag_started_by(PointerButton::Primary)
+            && let Some(origin) = ui.input(|i| i.pointer.press_origin())
+        {
+            self.clip.dragging = self.clip.points.iter().position(|p| screen_dist(cam, rect, *p, origin) < HANDLE_RADIUS);
+        }
+        if let (Some(i), Some(pos)) = (self.clip.dragging, pointer) {
+            if response.dragged_by(PointerButton::Primary)
+                && let Some((p, _)) = self.clip_point_at(cam, rect, pos, state)
+            {
+                self.clip.points[i] = p;
+            }
+            if response.drag_stopped() {
+                self.clip.dragging = None;
+            }
+            return;
+        }
+        if response.clicked()
+            && self.clip.points.len() < 3
+            && let Some(pos) = response.interact_pointer_pos()
+            && let Some((p, n)) = self.clip_point_at(cam, rect, pos, state)
+        {
+            if self.clip.points.is_empty() {
+                self.clip.second_axis = n;
+            }
+            if !self.clip.points.iter().any(|q| (*q - p).length() < 1e-6) {
+                self.clip.points.push(p);
+            }
+        }
+    }
+
+    pub fn clip_plane(&self) -> Option<Plane> {
+        let pts = &self.clip.points;
+        match pts.len() {
+            2 => {
+                let extra = pts[0] + self.clip.second_axis? * 64.0;
+                Plane::from_points(pts[0], pts[1], extra)
+            }
+            3 => Plane::from_points(pts[0], pts[1], pts[2]),
+            _ => None,
+        }
+    }
+
+    pub fn apply_clip_public(&mut self, state: &mut EditorState) {
+        self.apply_clip(state);
+    }
+
+    fn apply_clip(&mut self, state: &mut EditorState) {
+        let Some(plane) = self.clip_plane() else {
+            state.set_status("Place two or three clip points first");
+            return;
+        };
+        let side = self.clip.side.unwrap_or(ClipSide::Front);
+        let brushes = state.doc.selection.brushes(&state.doc.map);
+        state.doc.edit("Clip", |m, s| {
+            s.clear();
+            for id in brushes {
+                let Some(b) = m.brush(id).cloned() else { continue };
+                let template = b.planes();
+                let cap = gt_geom::brush::best_face_data(&plane.flipped(), &template).cloned().unwrap_or_default();
+                let (front, back) = b.split(&plane, &cap);
+                let parent = m.get(id).and_then(|n| n.parent).unwrap_or(m.default_layer());
+                m.remove(id);
+                let keep: Vec<Brush> = match side {
+                    ClipSide::Front => front.into_iter().collect(),
+                    ClipSide::Back => back.into_iter().collect(),
+                    ClipSide::Both => front.into_iter().chain(back).collect(),
+                };
+                for k in keep {
+                    let nid = m.insert(parent, gt_doc::NodeKind::Brush(k));
+                    s.nodes.insert(nid);
+                }
+            }
+        });
+        self.clip.points.clear();
+        state.set_status("Clipped");
+    }
+
+    // -------------------------------------------------------------- vertex
+
+    fn vertex_handles(state: &EditorState) -> (Vec<DVec3>, Vec<DVec3>) {
+        let mut verts: Vec<DVec3> = Vec::new();
+        let mut extra: Vec<DVec3> = Vec::new();
+        for id in state.doc.selection.brushes(&state.doc.map) {
+            let Some(b) = state.doc.map.brush(id) else { continue };
+            for v in &b.vertices {
+                if !verts.iter().any(|q| (*q - *v).length() < 1e-6) {
+                    verts.push(*v);
+                }
+            }
+            for (a, c) in b.edges() {
+                extra.push((b.vertices[a as usize] + b.vertices[c as usize]) * 0.5);
+            }
+            for f in 0..b.faces.len() {
+                extra.push(b.face_center(f));
+            }
+        }
+        (verts, extra)
+    }
+
+    fn vertex_input(&mut self, ui: &Ui, response: &Response, cam: &Camera, rect: Rect, state: &mut EditorState) {
+        let modifiers = ui.input(|i| i.modifiers);
+        let (verts, extra) = Self::vertex_handles(state);
+        let nearest = |pos: Pos2, list: &[DVec3]| {
+            list.iter()
+                .copied()
+                .map(|v| (screen_dist(cam, rect, v, pos), v))
+                .filter(|(d, _)| *d < HANDLE_RADIUS)
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .map(|(_, v)| v)
+        };
+
+        if response.clicked() {
+            let Some(pos) = response.interact_pointer_pos() else { return };
+            match nearest(pos, &verts) {
+                Some(v) => {
+                    if modifiers.command {
+                        if let Some(i) = self.vertex.selected.iter().position(|q| (*q - v).length() < 1e-6) {
+                            self.vertex.selected.remove(i);
+                        } else {
+                            self.vertex.selected.push(v);
+                        }
+                    } else {
+                        self.vertex.selected = vec![v];
+                    }
+                }
+                None => {
+                    if let Some(h) = picking::pick(state, &cam.ray(rect, pos)) {
+                        let target = state.doc.map.selection_target(h.node, &state.open_groups);
+                        state.doc.select(|_, s| {
+                            if !modifiers.command {
+                                s.clear();
+                            }
+                            s.toggle_node(target);
+                        });
+                    }
+                    self.vertex.selected.clear();
+                }
+            }
+        }
+
+        if response.drag_started_by(PointerButton::Primary) {
+            let Some(origin) = ui.input(|i| i.pointer.press_origin()) else { return };
+            let grabbed = nearest(origin, &verts).map(|v| (v, false)).or_else(|| nearest(origin, &extra).map(|v| (v, true)));
+            if let Some((v, is_new)) = grabbed {
+                // Grabbing an unselected handle (or an edge/face point) drags just that one.
+                if is_new || !self.vertex.selected.iter().any(|q| (*q - v).length() < 1e-6) {
+                    self.vertex.selected = vec![v];
+                }
+                let plane = match cam.kind {
+                    ViewKind::Perspective if modifiers.alt => {
+                        let f = cam.forward();
+                        Plane::from_point_normal(v, DVec3::new(f.x, 0.0, f.z).normalize_or(DVec3::Z))
+                    }
+                    ViewKind::Perspective => Plane::from_point_normal(v, DVec3::Y),
+                    k => Plane::from_point_normal(v, -k.axes().2),
+                };
+                state.doc.begin("Move Vertices");
+                self.vertex.drag = Some(VertexDrag { start: v, plane, base: self.vertex.selected.clone() });
+            }
+        }
+
+        if let Some(drag) = &self.vertex.drag {
+            if response.dragged_by(PointerButton::Primary)
+                && let Some(pos) = ui.input(|i| i.pointer.interact_pos())
+            {
+                let ray = cam.ray(rect, pos);
+                if let Some(t) = ray.intersect_plane(&drag.plane) {
+                    let mut delta = ray.at(t) - drag.start;
+                    if cam.kind == ViewKind::Perspective && modifiers.alt {
+                        delta = DVec3::new(0.0, delta.y, 0.0);
+                    }
+                    let target = state.snap(drag.start + delta);
+                    let delta = target - drag.start;
+                    state.doc.reset_transaction();
+                    let base = drag.base.clone();
+                    let moved = move_vertices(state, &base, delta);
+                    if moved {
+                        self.vertex.selected = base.iter().map(|b| *b + delta).collect();
+                    }
+                }
+            }
+            if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
+                self.vertex.drag = None;
+                state.doc.commit();
+            }
+        }
+    }
+
+    fn delete_vertices(&mut self, state: &mut EditorState) {
+        let selected = std::mem::take(&mut self.vertex.selected);
+        let brushes = state.doc.selection.brushes(&state.doc.map);
+        state.doc.edit("Remove Vertices", |m, _| {
+            for id in brushes {
+                let Some(b) = m.brush(id).cloned() else { continue };
+                let pts: Vec<DVec3> = b.vertices.iter().copied().filter(|v| !selected.iter().any(|s| (*s - *v).length() < 1e-6)).collect();
+                if pts.len() == b.vertices.len() {
+                    continue;
+                }
+                if let Ok(nb) = Brush::from_points(&pts, &b.planes(), "")
+                    && let Some(slot) = m.brush_mut(id)
+                {
+                    *slot = nb;
+                }
+            }
+        });
+    }
+
+    // -------------------------------------------------------------- rotate
+
+    fn rotate_center(state: &EditorState) -> Option<DVec3> {
+        let b = state.doc.map.bounds_of(state.doc.selection.nodes.iter().copied());
+        (!b.is_empty()).then(|| state.snap(b.center()))
+    }
+
+    fn ring_radius(cam: &Camera, center: DVec3) -> f64 {
+        match cam.kind {
+            ViewKind::Perspective => (cam.position - center).length() * 0.18,
+            _ => 90.0 / cam.zoom,
+        }
+    }
+
+    fn ring_points(center: DVec3, axis: usize, radius: f64) -> Vec<DVec3> {
+        let (u, v) = match axis {
+            0 => (DVec3::Y, DVec3::Z),
+            1 => (DVec3::Z, DVec3::X),
+            _ => (DVec3::X, DVec3::Y),
+        };
+        (0..=48)
+            .map(|i| {
+                let a = std::f64::consts::TAU * i as f64 / 48.0;
+                center + (u * a.cos() + v * a.sin()) * radius
+            })
+            .collect()
+    }
+
+    fn rotate_input(&mut self, ui: &Ui, response: &Response, cam: &Camera, rect: Rect, hover: Option<Pos2>, state: &mut EditorState) {
+        let Some(center) = Self::rotate_center(state) else { return };
+        let radius = Self::ring_radius(cam, center);
+        let axes: Vec<usize> = if cam.kind.is_2d() { vec![cam.kind.depth_axis()] } else { vec![0, 1, 2] };
+        if self.rotate.drag.is_none() {
+            self.rotate.hover_axis = hover.and_then(|pos| {
+                axes.iter()
+                    .map(|a| {
+                        let pts = Self::ring_points(center, *a, radius);
+                        let d = pts.windows(2).map(|w| seg_screen_dist(cam, rect, w[0], w[1], pos)).fold(f32::MAX, f32::min);
+                        (d, *a)
+                    })
+                    .filter(|(d, _)| *d < 8.0 || cam.kind.is_2d())
+                    .min_by(|a, b| a.0.total_cmp(&b.0))
+                    .map(|(_, a)| a)
+            });
+        }
+        if response.drag_started_by(PointerButton::Primary)
+            && let (Some(axis), Some(origin)) = (self.rotate.hover_axis, ui.input(|i| i.pointer.press_origin()))
+        {
+            let mut n = DVec3::ZERO;
+            n[axis] = 1.0;
+            if let Some(p) = ring_plane_point(cam, rect, origin, center, n) {
+                state.doc.begin("Rotate");
+                self.rotate.drag = Some(RotateDrag { axis: n, center, start_vec: (p - center).normalize_or_zero(), screen_start: origin });
+            }
+        }
+        if let Some(drag) = &self.rotate.drag {
+            if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
+                if let Some(p) = ring_plane_point(cam, rect, pos, drag.center, drag.axis) {
+                    let cur = (p - drag.center).normalize_or_zero();
+                    let mut angle = drag.start_vec.cross(cur).dot(drag.axis).atan2(drag.start_vec.dot(cur)).to_degrees();
+                    let snap = if ui.input(|i| i.modifiers.shift) { 1.0 } else { self.rotate.snap_degrees.max(1.0) };
+                    angle = (angle / snap).round() * snap;
+                    state.doc.reset_transaction();
+                    if angle.abs() > 1e-9 {
+                        let m = ops::rotation_about(drag.center, drag.axis, angle);
+                        let opts = state.opts();
+                        state.doc.edit("Rotate", |map, s| ops::transform_selection(map, s, &m, opts));
+                    }
+                    state.set_status(format!("Rotate {angle:.1}°"));
+                }
+                let _ = drag.screen_start;
+            }
+            if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
+                self.rotate.drag = None;
+                state.doc.commit();
+            }
+        }
+    }
+
+    // --------------------------------------------------------------- scale
+
+    fn scale_handles(bounds: &Aabb, cam: &Camera) -> Vec<DVec3> {
+        let mut out = Vec::new();
+        for x in -1..=1 {
+            for y in -1..=1 {
+                for z in -1..=1 {
+                    let h = DVec3::new(x as f64, y as f64, z as f64);
+                    if h == DVec3::ZERO {
+                        continue;
+                    }
+                    if cam.kind.is_2d() && h[cam.kind.depth_axis()] != 0.0 {
+                        continue;
+                    }
+                    // 3D shows face handles only to keep the view readable.
+                    if !cam.kind.is_2d() && h.abs().element_sum() != 1.0 {
+                        continue;
+                    }
+                    out.push(h);
+                }
+            }
+        }
+        let _ = bounds;
+        out
+    }
+
+    fn handle_pos(bounds: &Aabb, h: DVec3) -> DVec3 {
+        bounds.center() + bounds.size() * 0.5 * h
+    }
+
+    fn scale_input(&mut self, ui: &Ui, response: &Response, cam: &Camera, rect: Rect, _hover: Option<Pos2>, state: &mut EditorState) {
+        let bounds = state.doc.map.bounds_of(state.doc.selection.nodes.iter().copied());
+        if bounds.is_empty() {
+            return;
+        }
+        if response.drag_started_by(PointerButton::Primary) {
+            let Some(origin) = ui.input(|i| i.pointer.press_origin()) else { return };
+            let best = Self::scale_handles(&bounds, cam)
+                .into_iter()
+                .map(|h| (screen_dist(cam, rect, Self::handle_pos(&bounds, h), origin), h))
+                .filter(|(d, _)| *d < HANDLE_RADIUS * 1.5)
+                .min_by(|a, b| a.0.total_cmp(&b.0));
+            if let Some((_, h)) = best {
+                let p = Self::handle_pos(&bounds, h);
+                let plane = match cam.kind {
+                    ViewKind::Perspective => {
+                        let f = cam.forward();
+                        let n = if h.y != 0.0 { DVec3::new(f.x, 0.0, f.z).normalize_or(DVec3::Z) } else { DVec3::Y };
+                        Plane::from_point_normal(p, n)
+                    }
+                    k => Plane::from_point_normal(p, -k.axes().2),
+                };
+                state.doc.begin("Scale");
+                self.scale.drag = Some(ScaleDrag { base: bounds, handle: h, plane, start: p });
+            }
+        }
+        if let Some(drag) = &self.scale.drag {
+            if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
+                let ray = cam.ray(rect, pos);
+                if let Some(t) = ray.intersect_plane(&drag.plane) {
+                    let delta = ray.at(t) - drag.start;
+                    let symmetric = ui.input(|i| i.modifiers.alt);
+                    let mut new = drag.base;
+                    for i in 0..3 {
+                        if drag.handle[i] > 0.0 {
+                            new.max[i] = state.snap_scalar(drag.base.max[i] + delta[i]);
+                            if symmetric {
+                                new.min[i] = drag.base.min[i] - (new.max[i] - drag.base.max[i]);
+                            }
+                        } else if drag.handle[i] < 0.0 {
+                            new.min[i] = state.snap_scalar(drag.base.min[i] + delta[i]);
+                            if symmetric {
+                                new.max[i] = drag.base.max[i] - (new.min[i] - drag.base.min[i]);
+                            }
+                        }
+                    }
+                    let valid = (0..3).all(|i| new.max[i] - new.min[i] > 1e-3 || drag.base.size()[i] < 1e-6);
+                    state.doc.reset_transaction();
+                    if valid && new != drag.base {
+                        let m: DMat4 = ops::scale_bounds(&drag.base, &new);
+                        let opts = state.opts();
+                        state.doc.edit("Scale", |map, s| ops::transform_selection(map, s, &m, opts));
+                        let size = new.size();
+                        state.set_status(format!("Scale to {} x {} x {}", size.x, size.y, size.z));
+                    }
+                }
+            }
+            if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
+                self.scale.drag = None;
+                state.doc.commit();
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ drawing
+
+    pub fn lines(&self, cam: &Camera, rect: Rect, state: &EditorState) -> Vec<LineVertex> {
+        let mut out = Vec::new();
+        match state.tool {
+            ToolKind::Clip => {
+                let pts = &self.clip.points;
+                for w in pts.windows(2) {
+                    line(&mut out, w[0], w[1], [0.3, 1.0, 1.0, 1.0]);
+                }
+                if pts.len() == 3 {
+                    line(&mut out, pts[2], pts[0], [0.3, 1.0, 1.0, 1.0]);
+                }
+                if let Some(plane) = self.clip_plane() {
+                    let side = self.clip.side.unwrap_or(ClipSide::Front);
+                    for id in state.doc.selection.brushes(&state.doc.map) {
+                        let Some(b) = state.doc.map.brush(id) else { continue };
+                        let (front, back) = b.split(&plane, &Default::default());
+                        let kept = [0.3, 1.0, 0.4, 1.0];
+                        let removed = [0.6, 0.6, 0.6, 0.35];
+                        for (piece, keep) in [(front, side != ClipSide::Back), (back, side != ClipSide::Front)] {
+                            if let Some(p) = piece {
+                                for (a, c) in p.edges() {
+                                    line(&mut out, p.vertices[a as usize], p.vertices[c as usize], if keep { kept } else { removed });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            ToolKind::Rotate => {
+                if let Some(center) = Self::rotate_center(state) {
+                    let radius = Self::ring_radius(cam, center);
+                    let axes: Vec<usize> = if cam.kind.is_2d() { vec![cam.kind.depth_axis()] } else { vec![0, 1, 2] };
+                    for a in axes {
+                        let active = self.rotate.hover_axis == Some(a) || self.rotate.drag.as_ref().is_some_and(|d| d.axis[a] == 1.0);
+                        let mut color = match a {
+                            0 => [1.0, 0.3, 0.3, 0.9],
+                            1 => [0.3, 1.0, 0.3, 0.9],
+                            _ => [0.35, 0.5, 1.0, 0.9],
+                        };
+                        if active {
+                            color = [1.0, 1.0, 0.3, 1.0];
+                        }
+                        let pts = Self::ring_points(center, a, radius);
+                        for w in pts.windows(2) {
+                            line(&mut out, w[0], w[1], color);
+                        }
+                    }
+                }
+            }
+            ToolKind::Scale => {
+                let b = state.doc.map.bounds_of(state.doc.selection.nodes.iter().copied());
+                if !b.is_empty() {
+                    let c = b.corners();
+                    for (i, j) in Aabb::EDGES {
+                        line(&mut out, c[i], c[j], [1.0, 0.8, 0.2, 0.9]);
+                    }
+                }
+            }
+            ToolKind::Mesh => out.extend(self.mesh.lines(cam, rect, state)),
+            ToolKind::Scatter => self.scatter.lines(state, &mut out),
+            ToolKind::Blend => self.blend.lines(state, &mut out),
+            ToolKind::Volume => self.volume.lines(state, cam, &mut out),
+            ToolKind::Measure => self.measure.lines(&mut out),
+            ToolKind::Texture => out.extend(self.texture.lines(state)),
+            ToolKind::Sculpt | ToolKind::Paint => {
+                if let Some((p, n)) = self.stroke.hover {
+                    let basis = Plane::from_point_normal(p, n).basis();
+                    let r = state.sculpt.radius;
+                    let color = if state.tool == ToolKind::Sculpt { [0.4, 1.0, 0.6, 0.9] } else { [1.0, 0.6, 0.9, 0.9] };
+                    let ring: Vec<DVec3> = (0..=40)
+                        .map(|i| {
+                            let a = std::f64::consts::TAU * i as f64 / 40.0;
+                            p + (basis.0 * a.cos() + basis.1 * a.sin()) * r + n * 0.5
+                        })
+                        .collect();
+                    for w in ring.windows(2) {
+                        line(&mut out, w[0], w[1], color);
+                    }
+                    line(&mut out, p, p + n * r * 0.4, color);
+                }
+            }
+            _ => {}
+        }
+        crate::gizmos::lines(state, &mut out);
+        let _ = rect;
+        out
+    }
+
+    pub fn paint_overlay(&self, ui: &Ui, cam: &Camera, rect: Rect, state: &EditorState) {
+        let painter = ui.painter_at(rect);
+        let hover = ui.input(|i| i.pointer.hover_pos());
+        let handle = |p: Pos2, color: Color32, hot: bool| {
+            let r = if hot { 5.0 } else { 4.0 };
+            painter.rect_filled(Rect::from_center_size(p, Vec2::splat(r * 2.0)), 1.0, color);
+            painter.rect_stroke(Rect::from_center_size(p, Vec2::splat(r * 2.0)), 1.0, Stroke::new(1.0, Color32::BLACK), egui::StrokeKind::Outside);
+        };
+        match state.tool {
+            ToolKind::Clip => {
+                for (i, p) in self.clip.points.iter().enumerate() {
+                    if let Some(sp) = cam.project(rect, *p) {
+                        let hot = hover.is_some_and(|h| (h - sp).length() < HANDLE_RADIUS);
+                        handle(sp, Color32::from_rgb(80, 255, 255), hot);
+                        painter.text(sp + Vec2::new(8.0, -8.0), Align2::LEFT_BOTTOM, format!("{}", i + 1), FontId::monospace(11.0), Color32::WHITE);
+                    }
+                }
+                let side = match self.clip.side.unwrap_or(ClipSide::Front) {
+                    ClipSide::Front => "front",
+                    ClipSide::Back => "back",
+                    ClipSide::Both => "both",
+                };
+                painter.text(
+                    rect.left_bottom() + Vec2::new(8.0, -8.0),
+                    Align2::LEFT_BOTTOM,
+                    format!("Clip: click to place points, keep {side} (Tab), Enter to apply"),
+                    FontId::proportional(12.0),
+                    Color32::from_rgb(120, 240, 240),
+                );
+            }
+            ToolKind::Vertex => {
+                let (verts, extra) = Self::vertex_handles(state);
+                for v in extra {
+                    if let Some(sp) = cam.project(rect, v) {
+                        painter.circle_filled(sp, 2.5, Color32::from_rgb(120, 200, 255));
+                    }
+                }
+                for v in verts {
+                    if let Some(sp) = cam.project(rect, v) {
+                        let selected = self.vertex.selected.iter().any(|s| (*s - v).length() < 1e-6);
+                        let hot = hover.is_some_and(|h| (h - sp).length() < HANDLE_RADIUS);
+                        handle(sp, if selected { Color32::from_rgb(255, 60, 40) } else { Color32::from_rgb(255, 220, 80) }, hot);
+                    }
+                }
+                painter.text(
+                    rect.left_bottom() + Vec2::new(8.0, -8.0),
+                    Align2::LEFT_BOTTOM,
+                    "Vertex: drag handles, Ctrl+click multi select, edge/face dots add vertices, Del removes",
+                    FontId::proportional(12.0),
+                    Color32::from_rgb(255, 220, 120),
+                );
+            }
+            ToolKind::Scale => {
+                let b = state.doc.map.bounds_of(state.doc.selection.nodes.iter().copied());
+                if !b.is_empty() {
+                    for h in Self::scale_handles(&b, cam) {
+                        if let Some(sp) = cam.project(rect, Self::handle_pos(&b, h)) {
+                            let hot = hover.is_some_and(|p| (p - sp).length() < HANDLE_RADIUS * 1.5);
+                            handle(sp, Color32::from_rgb(255, 200, 60), hot);
+                        }
+                    }
+                }
+                painter.text(
+                    rect.left_bottom() + Vec2::new(8.0, -8.0),
+                    Align2::LEFT_BOTTOM,
+                    "Scale: drag handles, Alt scales symmetrically",
+                    FontId::proportional(12.0),
+                    Color32::from_rgb(255, 210, 120),
+                );
+            }
+            ToolKind::Rotate => {
+                painter.text(
+                    rect.left_bottom() + Vec2::new(8.0, -8.0),
+                    Align2::LEFT_BOTTOM,
+                    format!("Rotate: drag a ring, snaps {}° (Shift for 1°)", self.rotate.snap_degrees),
+                    FontId::proportional(12.0),
+                    Color32::from_rgb(200, 255, 160),
+                );
+            }
+            ToolKind::Mesh => self.mesh.paint_overlay(ui, cam, rect, state),
+            ToolKind::Measure => self.measure.paint(ui, cam, rect, state),
+            ToolKind::Texture => self.texture.paint(ui, rect, state),
+            ToolKind::Scatter => self.scatter.paint_overlay(ui, rect, state),
+            ToolKind::Blend => self.blend.paint_overlay(ui, rect, state),
+            ToolKind::Volume => self.volume.paint_overlay(ui, rect, state),
+            ToolKind::Path => {
+                painter.text(
+                    rect.left_bottom() + Vec2::new(8.0, -8.0),
+                    Align2::LEFT_BOTTOM,
+                    "Path: click to place path corners linked by target, Enter finishes the chain",
+                    FontId::proportional(12.0),
+                    Color32::from_rgb(160, 220, 255),
+                );
+            }
+            ToolKind::Sculpt => {
+                let has_terrain = state.doc.map.terrains().next().is_some();
+                let hint = if !has_terrain && gt_doc::terrain::displacement_faces(&state.doc.map, &Self::stroke_targets(state)).is_empty() {
+                    "Sculpt: no terrain or displacements. Brush > Create Terrain, or select quad faces and Create Displacement".to_string()
+                } else {
+                    format!("Sculpt {:?}: drag to apply, Shift inverts, Ctrl smooths", state.sculpt.mode)
+                };
+                painter.text(
+                    rect.left_bottom() + Vec2::new(8.0, -8.0),
+                    Align2::LEFT_BOTTOM,
+                    hint,
+                    FontId::proportional(12.0),
+                    Color32::from_rgb(140, 255, 170),
+                );
+            }
+            ToolKind::Paint => {
+                painter.text(
+                    rect.left_bottom() + Vec2::new(8.0, -8.0),
+                    Align2::LEFT_BOTTOM,
+                    "Vertex paint: drag over faces (selection, or everything when nothing is selected)",
+                    FontId::proportional(12.0),
+                    Color32::from_rgb(255, 170, 230),
+                );
+            }
+            ToolKind::Select => {}
+        }
+    }
+}
+
+/// Applies a vertex move to every selected brush containing one of the base positions.
+/// Brushes where the move would swallow a moved vertex are left unchanged. Returns true if anything moved.
+fn move_vertices(state: &mut EditorState, base: &[DVec3], delta: DVec3) -> bool {
+    let brushes: Vec<NodeId> = state.doc.selection.brushes(&state.doc.map);
+    let mut any = false;
+    state.doc.edit("Move Vertices", |m, _| {
+        for id in brushes {
+            let Some(b) = m.brush(id).cloned() else { continue };
+            let mut pts = b.vertices.clone();
+            let mut touched = false;
+            for bp in base {
+                match pts.iter().position(|v| (*v - *bp).length() < 1e-6) {
+                    Some(i) => {
+                        pts[i] += delta;
+                        touched = true;
+                    }
+                    None => {
+                        // Edge midpoint or face center: only valid if it lies on this brush's surface.
+                        if b.faces.iter().any(|f| f.plane.distance(*bp).abs() < 1e-4)
+                            && b.contains_point(*bp)
+                            && !b.vertices.iter().any(|v| (*v - *bp).length() < 1e-6)
+                        {
+                            pts.push(*bp + delta);
+                            touched = true;
+                        }
+                    }
+                }
+            }
+            if !touched {
+                continue;
+            }
+            if let Ok(nb) = Brush::from_points(&pts, &b.planes(), "") {
+                let kept = base.iter().all(|bp| {
+                    let target = *bp + delta;
+                    !b.contains_point(*bp) || nb.vertices.iter().any(|v| (*v - target).length() < 1e-3)
+                });
+                if kept && let Some(slot) = m.brush_mut(id) {
+                    *slot = nb;
+                    any = true;
+                }
+            }
+        }
+    });
+    any
+}
+
+fn seg_screen_dist(cam: &Camera, rect: Rect, a: DVec3, b: DVec3, pos: Pos2) -> f32 {
+    let (Some(pa), Some(pb)) = (cam.project(rect, a), cam.project(rect, b)) else { return f32::MAX };
+    let ab = pb - pa;
+    let t = ((pos - pa).dot(ab) / ab.length_sq().max(1e-6)).clamp(0.0, 1.0);
+    (pa + ab * t - pos).length()
+}
+
+fn ring_plane_point(cam: &Camera, rect: Rect, pos: Pos2, center: DVec3, axis: DVec3) -> Option<DVec3> {
+    let ray = cam.ray(rect, pos);
+    let plane = Plane::from_point_normal(center, axis);
+    match ray.intersect_plane(&plane) {
+        Some(t) if t > 0.0 || cam.kind.is_2d() => Some(ray.at(t)),
+        _ => {
+            // Ring seen edge-on: fall back to projecting the closest point on the view ray.
+            let (_, t) = ray.distance_to_point(center);
+            Some(plane.project_point(ray.at(t)))
+        }
+    }
+}

@@ -1,0 +1,37 @@
+{
+  "format": "godottrench-map",
+  "version": 1,
+  "properties": {"classname":"worldspawn"},
+  "layers": [
+    {
+      "id": 1,
+      "type": "layer",
+      "name": "Default",
+      "color": "#7e67e6ff",
+      "omit_from_export": false,
+      "children": [
+        {
+          "id": 2,
+          "type": "brush",
+          "vertices": [[16.0,128.0,-16.0],[16.0,128.0,16.0],[16.0,0.0,16.0],[16.0,0.0,-16.0],[-16.0,128.0,16.0],[-16.0,128.0,-16.0],[-16.0,0.0,-16.0],[-16.0,0.0,16.0]],
+          "faces": [
+            {"indices":[0,1,2,3],"material":"base/wall","uv":{"u_axis":[0.0,0.0,-1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[4,5,6,7],"material":"base/wall","uv":{"u_axis":[0.0,0.0,1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[1,0,5,4],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[3,2,7,6],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[2,1,4,7],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[6,5,0,3],"material":"base/wall","uv":{"u_axis":[-1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}}
+          ]
+        },
+        {
+          "id": 3,
+          "type": "entity",
+          "classname": "light",
+          "origin": [32.0,64.0,0.0],
+          "angles": [0.0,0.0,0.0],
+          "properties": {"targetname":"plight"}
+        }
+      ]
+    }
+  ]
+}

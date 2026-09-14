@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_logic_call.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "logic_call"
+description = "Calls a method in your game code (GDScript or C#) when its trigger input fires"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"call_target": "/root/Game",
+"method": "",
+"arguments": "[]"
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"call_target": "Node path (/root/Game), @group, targetname, !activator or !self",
+"method": "Method to call, C# PascalCase names work too",
+"arguments": "JSON array. $activator, $self, $position and $parameter are replaced"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.9490196, 0.7607843, 0.2, 1),
+"size": AABB(-8, -8, -8, 8, 8, 8),
+"inputs": ["trigger", "call_with"],
+"outputs": ["called"]
+})
+node_class = "Node3D"

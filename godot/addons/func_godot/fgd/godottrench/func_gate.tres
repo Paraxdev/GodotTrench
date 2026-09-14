@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_door_rotating.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "func_gate"
+description = "Alias of func_door_rotating kept for older maps"
+collision_shape_type = 1
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"hinge": "0 0 0",
+"open_angle": 100.0,
+"speed": 90.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"hinge": "Hinge position relative to the leaf center, map units",
+"open_angle": "Degrees to swing",
+"speed": "Degrees per second"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.8509804, 0.6039216, 0.3019608, 1),
+"property_types": {"hinge": "vector3"},
+"gizmos": [{"type": "hinge", "property": "hinge", "angle": "open_angle", "axis": ""}],
+"inputs": ["open", "close", "toggle"],
+"outputs": ["opened", "closed"]
+})
+node_class = "AnimatableBody3D"

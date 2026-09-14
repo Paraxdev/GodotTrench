@@ -1,0 +1,39 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_platform.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "func_platform"
+description = "Lift or moving platform travelling between its start and start + travel. Riders move with it."
+collision_shape_type = 1
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"travel": "0 128 0",
+"speed": 2.0,
+"wait": 1.0,
+"mode": {
+"toggle": 0,
+"ping pong": 1,
+"once": 2
+},
+"start_active": false
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"travel": "Offset to the end position, map units",
+"speed": "Meters per second",
+"wait": "Seconds spent at each end",
+"mode": ["toggle moves on input, ping pong loops, once goes to the end", 0],
+"start_active": "Starts moving on map load"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.4, 0.8, 0.7019608, 1),
+"property_types": {"travel": "vector3"},
+"gizmos": [{"type": "travel", "property": "travel"}],
+"inputs": ["start", "stop", "toggle", "go_to_end", "go_to_start"],
+"outputs": ["reached_end", "reached_start", "started"]
+})
+node_class = "AnimatableBody3D"

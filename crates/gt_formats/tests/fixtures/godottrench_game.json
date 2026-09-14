@@ -1,0 +1,643 @@
+{
+  "format": "godottrench-game",
+  "version": 1,
+  "name": "GodotTrench Demo",
+  "units_per_meter": 32.0,
+  "textures": {
+    "base_dir": "res://demo/textures",
+    "extensions": [
+      "png",
+      "jpg",
+      "jpeg",
+      "bmp",
+      "tga",
+      "webp",
+      "wal"
+    ],
+    "material_dir": "",
+    "material_extension": "tres",
+    "fallback_size": 64
+  },
+  "tool_textures": {
+    "clip": "special/clip",
+    "skip": "special/skip",
+    "origin": "special/origin"
+  },
+  "entities": [
+    {
+      "classname": "worldspawn",
+      "type": "solid",
+      "description": "Default static world geometry. Builds a StaticBody3D with a single MeshInstance3D and a single convex CollisionShape3D shape.",
+      "color": "#ccccccff",
+      "node_class": "StaticBody3D",
+      "group": "worldspawn",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "_vertex_merge_distance",
+          "type": "float",
+          "default": "0.03125",
+          "description": "Adjustable value to snap vertices to on map build. This can reduce instances of seams between polygons."
+        },
+        {
+          "name": "_cull_interior_faces",
+          "type": "bool",
+          "default": "0",
+          "description": "If true, cull interior faces with matching vertices or faces that are flush within a larger face. Note: This has a performance impact that scales with how many brushes are in the brush entity."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "input_event",
+          "parameter": "camera, event, event_position, normal, shape_idx"
+        },
+        {
+          "name": "mouse_entered",
+          "parameter": ""
+        },
+        {
+          "name": "mouse_exited",
+          "parameter": ""
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "classname": "func_geo",
+      "type": "solid",
+      "description": "Static collidable geometry. Builds a StaticBody3D with a MeshInstance3D, a single concave CollisionShape3D, and an OccluderInstance3D.",
+      "color": "#ccccccff",
+      "node_class": "StaticBody3D",
+      "group": "func",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "_phong",
+          "type": "choices",
+          "default": "0",
+          "description": "Phong shading",
+          "options": [
+            [
+              "Disabled",
+              "0"
+            ],
+            [
+              "Smooth shading",
+              "1"
+            ]
+          ]
+        },
+        {
+          "name": "_phong_angle",
+          "type": "float",
+          "default": "89.0",
+          "description": "Phong smoothing angle"
+        },
+        {
+          "name": "_vertex_merge_distance",
+          "type": "float",
+          "default": "0.03125",
+          "description": "Adjustable value to snap vertices to on map build. This can reduce instances of seams between polygons."
+        },
+        {
+          "name": "_cull_interior_faces",
+          "type": "bool",
+          "default": "0",
+          "description": "If true, cull interior faces with matching vertices or faces that are flush within a larger face. Note: This has a performance impact that scales with how many brushes are in the brush entity."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "input_event",
+          "parameter": "camera, event, event_position, normal, shape_idx"
+        },
+        {
+          "name": "mouse_entered",
+          "parameter": ""
+        },
+        {
+          "name": "mouse_exited",
+          "parameter": ""
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "classname": "func_detail",
+      "type": "solid",
+      "description": "Static collidable geometry. Builds a StaticBody3D with a MeshInstance3D and a single concave CollisionShape3D. Does not occlude other VisualInstance3D nodes.",
+      "color": "#ccccccff",
+      "node_class": "StaticBody3D",
+      "group": "func",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "_phong",
+          "type": "choices",
+          "default": "0",
+          "description": "Phong shading",
+          "options": [
+            [
+              "Disabled",
+              "0"
+            ],
+            [
+              "Smooth shading",
+              "1"
+            ]
+          ]
+        },
+        {
+          "name": "_phong_angle",
+          "type": "float",
+          "default": "89.0",
+          "description": "Phong smoothing angle"
+        },
+        {
+          "name": "_vertex_merge_distance",
+          "type": "float",
+          "default": "0.03125",
+          "description": "Adjustable value to snap vertices to on map build. This can reduce instances of seams between polygons."
+        },
+        {
+          "name": "_cull_interior_faces",
+          "type": "bool",
+          "default": "0",
+          "description": "If true, cull interior faces with matching vertices or faces that are flush within a larger face. Note: This has a performance impact that scales with how many brushes are in the brush entity."
+        }
+      ],
+      "outputs": [
+        {
+          "name": "input_event",
+          "parameter": "camera, event, event_position, normal, shape_idx"
+        },
+        {
+          "name": "mouse_entered",
+          "parameter": ""
+        },
+        {
+          "name": "mouse_exited",
+          "parameter": ""
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "classname": "func_detail_illusionary",
+      "type": "solid",
+      "description": "Static geometry with no collision. Builds a Node3D with a MeshInstance3D. Does not occlude other VisualInstance3D nodes.",
+      "color": "#ccccccff",
+      "node_class": "Node3D",
+      "group": "func",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "_phong",
+          "type": "choices",
+          "default": "0",
+          "description": "Phong shading",
+          "options": [
+            [
+              "Disabled",
+              "0"
+            ],
+            [
+              "Smooth shading",
+              "1"
+            ]
+          ]
+        },
+        {
+          "name": "_phong_angle",
+          "type": "float",
+          "default": "89.0",
+          "description": "Phong smoothing angle"
+        },
+        {
+          "name": "_vertex_merge_distance",
+          "type": "float",
+          "default": "0.03125",
+          "description": "Adjustable value to snap vertices to on map build. This can reduce instances of seams between polygons."
+        },
+        {
+          "name": "_cull_interior_faces",
+          "type": "bool",
+          "default": "0",
+          "description": "If true, cull interior faces with matching vertices or faces that are flush within a larger face. Note: This has a performance impact that scales with how many brushes are in the brush entity."
+        }
+      ],
+      "outputs": [],
+      "inputs": []
+    },
+    {
+      "classname": "func_illusionary",
+      "type": "solid",
+      "description": "Static geometry with no collision. Builds a Node3D with a MeshInstance3D and an Occluder3D to aid in render culling of other VisualInstance3D nodes.",
+      "color": "#ccccccff",
+      "node_class": "Node3D",
+      "group": "func",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "_phong",
+          "type": "choices",
+          "default": "0",
+          "description": "Phong shading",
+          "options": [
+            [
+              "Disabled",
+              "0"
+            ],
+            [
+              "Smooth shading",
+              "1"
+            ]
+          ]
+        },
+        {
+          "name": "_phong_angle",
+          "type": "float",
+          "default": "89.0",
+          "description": "Phong smoothing angle"
+        },
+        {
+          "name": "_vertex_merge_distance",
+          "type": "float",
+          "default": "0.03125",
+          "description": "Adjustable value to snap vertices to on map build. This can reduce instances of seams between polygons."
+        },
+        {
+          "name": "_cull_interior_faces",
+          "type": "bool",
+          "default": "0",
+          "description": "If true, cull interior faces with matching vertices or faces that are flush within a larger face. Note: This has a performance impact that scales with how many brushes are in the brush entity."
+        }
+      ],
+      "outputs": [],
+      "inputs": []
+    },
+    {
+      "classname": "func_door",
+      "type": "solid",
+      "description": "Sliding door. Opens upwards by move_distance map units.",
+      "color": "#4db3ffff",
+      "node_class": "AnimatableBody3D",
+      "group": "func",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name other entities use to trigger this door"
+        },
+        {
+          "name": "move_distance",
+          "type": "float",
+          "default": "64.0",
+          "description": "Distance in map units"
+        },
+        {
+          "name": "speed",
+          "type": "float",
+          "default": "2.0",
+          "description": "Meters per second"
+        }
+      ],
+      "script": "res://demo/entities/door.gd",
+      "outputs": [
+        {
+          "name": "opened",
+          "parameter": ""
+        },
+        {
+          "name": "closed",
+          "parameter": ""
+        },
+        {
+          "name": "input_event",
+          "parameter": "camera, event, event_position, normal, shape_idx"
+        },
+        {
+          "name": "mouse_entered",
+          "parameter": ""
+        },
+        {
+          "name": "mouse_exited",
+          "parameter": ""
+        }
+      ],
+      "inputs": [
+        {
+          "name": "open",
+          "parameter": ""
+        },
+        {
+          "name": "close",
+          "parameter": ""
+        },
+        {
+          "name": "toggle",
+          "parameter": ""
+        }
+      ]
+    },
+    {
+      "classname": "func_button",
+      "type": "solid",
+      "description": "Button that fires its pressed output",
+      "color": "#ff8033ff",
+      "node_class": "StaticBody3D",
+      "group": "func",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": ""
+        }
+      ],
+      "script": "res://demo/entities/button.gd",
+      "outputs": [
+        {
+          "name": "pressed",
+          "parameter": "activator"
+        },
+        {
+          "name": "input_event",
+          "parameter": "camera, event, event_position, normal, shape_idx"
+        },
+        {
+          "name": "mouse_entered",
+          "parameter": ""
+        },
+        {
+          "name": "mouse_exited",
+          "parameter": ""
+        }
+      ],
+      "inputs": [
+        {
+          "name": "press",
+          "parameter": "activator"
+        }
+      ]
+    },
+    {
+      "classname": "light",
+      "type": "point",
+      "description": "Switchable omni light",
+      "color": "#ffe64dff",
+      "node_class": "OmniLight3D",
+      "group": "light",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": ""
+        },
+        {
+          "name": "light_energy",
+          "type": "float",
+          "default": "1.0",
+          "description": "Brightness"
+        },
+        {
+          "name": "light_color",
+          "type": "color",
+          "default": "255 255 255",
+          "description": ""
+        },
+        {
+          "name": "omni_range",
+          "type": "float",
+          "default": "10.0",
+          "description": "Range in meters"
+        },
+        {
+          "name": "start_on",
+          "type": "bool",
+          "default": "1",
+          "description": ""
+        }
+      ],
+      "script": "res://demo/entities/lamp.gd",
+      "outputs": [
+        {
+          "name": "switched",
+          "parameter": "on"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "turn_on",
+          "parameter": ""
+        },
+        {
+          "name": "turn_off",
+          "parameter": ""
+        },
+        {
+          "name": "toggle",
+          "parameter": ""
+        }
+      ]
+    },
+    {
+      "classname": "info_player_start",
+      "type": "point",
+      "description": "Player spawn point",
+      "color": "#33ff33ff",
+      "node_class": "Marker3D",
+      "group": "info",
+      "size": [
+        [
+          -16.0,
+          0.0,
+          -16.0
+        ],
+        [
+          16.0,
+          56.0,
+          16.0
+        ]
+      ],
+      "properties": [],
+      "outputs": [],
+      "inputs": []
+    },
+    {
+      "classname": "trigger_area",
+      "type": "solid",
+      "description": "Invisible volume, fires body_entered and body_exited",
+      "color": "#e6991aff",
+      "node_class": "Area3D",
+      "group": "trigger",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": ""
+        }
+      ],
+      "outputs": [
+        {
+          "name": "body_shape_entered",
+          "parameter": "body_rid, body, body_shape_index, local_shape_index"
+        },
+        {
+          "name": "body_shape_exited",
+          "parameter": "body_rid, body, body_shape_index, local_shape_index"
+        },
+        {
+          "name": "body_entered",
+          "parameter": "body"
+        },
+        {
+          "name": "body_exited",
+          "parameter": "body"
+        },
+        {
+          "name": "area_shape_entered",
+          "parameter": "area_rid, area, area_shape_index, local_shape_index"
+        },
+        {
+          "name": "area_shape_exited",
+          "parameter": "area_rid, area, area_shape_index, local_shape_index"
+        },
+        {
+          "name": "area_entered",
+          "parameter": "area"
+        },
+        {
+          "name": "area_exited",
+          "parameter": "area"
+        },
+        {
+          "name": "input_event",
+          "parameter": "camera, event, event_position, normal, shape_idx"
+        },
+        {
+          "name": "mouse_entered",
+          "parameter": ""
+        },
+        {
+          "name": "mouse_exited",
+          "parameter": ""
+        }
+      ],
+      "inputs": []
+    },
+    {
+      "classname": "infodecal",
+      "type": "point",
+      "description": "Projected decal. Projects along its local -Y axis, GodotTrench aligns it to the surface it is dropped on.",
+      "color": "#e64de6ff",
+      "node_class": "Decal",
+      "group": "infodecal",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "texture",
+          "type": "string",
+          "default": "res://demo/textures/base/metal.png",
+          "description": "Albedo texture (res:// path)"
+        },
+        {
+          "name": "size",
+          "type": "vector3",
+          "default": "64.0 32.0 64.0",
+          "description": "Projector size in map units: width, depth, height"
+        },
+        {
+          "name": "modulate",
+          "type": "color",
+          "default": "255 255 255",
+          "description": ""
+        }
+      ],
+      "script": "res://addons/func_godot/src/godottrench/runtime/godottrench_decal.gd",
+      "outputs": [],
+      "inputs": []
+    }
+  ]
+}

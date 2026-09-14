@@ -1,0 +1,29 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://demo/scenes/wisp.gd" id="1_wisp"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_wisp"]
+radius = 0.15
+height = 0.3
+radial_segments = 12
+rings = 6
+
+[sub_resource type="StandardMaterial3D" id="Material_wisp"]
+shading_mode = 0
+albedo_color = Color(0.6, 0.95, 1, 1)
+emission_enabled = true
+emission = Color(0.4, 0.9, 1, 1)
+emission_energy_multiplier = 3.0
+
+[node name="Wisp" type="Node3D"]
+script = ExtResource("1_wisp")
+
+[node name="Glow" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_wisp")
+material_override = SubResource("Material_wisp")
+cast_shadow = 0
+
+[node name="Light" type="OmniLight3D" parent="."]
+light_color = Color(0.5, 0.9, 1, 1)
+light_energy = 1.5
+omni_range = 3.0

@@ -1,0 +1,7 @@
+/target
+/.tools
+*.autosave.gtm
+*.gtm.bak*
+godot/.godot/
+# FuncGodot writes generated materials next to textures on build.
+godot/demo/textures/**/*.tres

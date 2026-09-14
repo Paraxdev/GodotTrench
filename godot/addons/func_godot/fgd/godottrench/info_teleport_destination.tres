@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "info_teleport_destination"
+description = "Where trigger_teleport sends bodies. Its yaw becomes their facing."
+class_properties = Dictionary[String, Variant]({
+"targetname": ""
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name trigger_teleport refers to"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.4, 0.8666667, 1, 1),
+"size": AABB(-16, -16, 0, 16, 16, 56)
+})
+node_class = "Marker3D"

@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_trigger_call.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "trigger_call"
+description = "Calls a method in your game code (GDScript or C#) when a body enters. call_target is a node path like /root/Game, @group, a targetname or !activator."
+build_visuals = false
+collision_shape_type = 1
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"filter_group": "player",
+"call_target": "!activator",
+"method": "",
+"arguments": "[]",
+"once": false,
+"cooldown": 0.5
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"filter_group": "Only bodies in this group, empty accepts any body",
+"call_target": "Node path (/root/Game), @group, targetname, !activator or !self",
+"method": "Method to call, C# PascalCase names work too",
+"arguments": "JSON array. $activator, $self and $position are replaced",
+"once": "Only calls the first time",
+"cooldown": "Seconds between calls"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.9490196, 0.7607843, 0.2, 1),
+"inputs": ["trigger", "enable", "disable"],
+"outputs": ["called", "triggered"]
+})
+node_class = "Area3D"

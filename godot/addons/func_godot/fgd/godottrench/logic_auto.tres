@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_auto.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "logic_auto"
+description = "Fires map_spawn once the map is loaded"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+
+})
+class_property_descriptions = Dictionary[String, Variant]({
+
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7529412, 0.7529412, 0.7529412, 1),
+"size": AABB(-8, -8, -8, 8, 8, 8),
+"outputs": ["map_spawn"]
+})
+node_class = "Node3D"

@@ -1,0 +1,1763 @@
+use std::collections::HashSet;
+
+use egui::{Color32, RichText, ScrollArea, Sense, Ui, Vec2};
+use gt_core::{DVec2, DVec3, NodeId};
+use gt_doc::{IoConnection, NodeKind};
+use gt_formats::{EntityDef, PropertyType};
+use gt_geom::FaceUv;
+
+use crate::commands::Action;
+use crate::state::EditorState;
+pub use crate::uv_editor::uv_editor;
+
+#[derive(Clone, Debug)]
+pub enum DndPayload {
+    Material(String),
+    Entity(String),
+}
+
+pub struct PanelState {
+    expanded: HashSet<NodeId>,
+    material_filter: String,
+    material_folder: Option<String>,
+    material_used_only: bool,
+    material_favorites_only: bool,
+    thumb_size: f32,
+    entity_filter: String,
+    new_key: String,
+    new_value: String,
+    outliner_filter: String,
+    issues: Vec<gt_doc::issues::Issue>,
+    issues_revision: u64,
+    pub uv: crate::uv_editor::UvEditorState,
+    pub reference_class: String,
+    reference_filter: String,
+    reference_kind: usize,
+}
+
+impl Default for PanelState {
+    fn default() -> Self {
+        Self {
+            expanded: HashSet::new(),
+            material_filter: String::new(),
+            material_folder: None,
+            material_used_only: false,
+            material_favorites_only: false,
+            thumb_size: 72.0,
+            entity_filter: String::new(),
+            new_key: String::new(),
+            new_value: String::new(),
+            outliner_filter: String::new(),
+            issues: Vec::new(),
+            issues_revision: 0,
+            uv: Default::default(),
+            reference_class: String::new(),
+            reference_filter: String::new(),
+            reference_kind: 0,
+        }
+    }
+}
+
+// ------------------------------------------------------------------ outliner
+
+pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
+    ui.horizontal(|ui| {
+        if ui.button("+ Layer").clicked() {
+            actions.push(Action::AddLayer);
+        }
+        ui.add(egui::TextEdit::singleline(&mut ps.outliner_filter).hint_text("Filter").desired_width(f32::INFINITY));
+    });
+    ui.separator();
+
+    let map = &state.doc.map;
+    let filter = ps.outliner_filter.to_lowercase();
+    let mut rows: Vec<(usize, NodeId)> = Vec::new();
+    for layer in &map.layers {
+        rows.push((0, *layer));
+        if ps.expanded.contains(layer) || !filter.is_empty() {
+            push_rows(map, *layer, 1, &ps.expanded, &filter, &mut rows);
+        }
+    }
+
+    let row_h = 20.0;
+    let mut toggles: Vec<(NodeId, u8)> = Vec::new();
+    let mut clicked: Option<(NodeId, bool)> = None;
+    let mut set_layer: Option<NodeId> = None;
+    let mut rename: Option<(NodeId, String)> = None;
+    ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, row_h, rows.len(), |ui, range| {
+        for (depth, id) in &rows[range] {
+            let Some(node) = map.get(*id) else { continue };
+            ui.horizontal(|ui| {
+                ui.add_space(*depth as f32 * 14.0);
+                let has_children = !node.children.is_empty();
+                let expanded = ps.expanded.contains(id);
+                if has_children {
+                    if ui.add(egui::Button::new(if expanded { "−" } else { "+" }).frame(false).min_size(Vec2::new(14.0, 0.0))).clicked() {
+                        toggles.push((*id, 0));
+                    }
+                } else {
+                    ui.add_space(18.0);
+                }
+                let eye = if node.hidden { RichText::new("👁").weak() } else { RichText::new("👁") };
+                if ui
+                    .add(egui::Button::new(eye).frame(false))
+                    .on_hover_text(if node.hidden { "Hidden, click to show" } else { "Visible, click to hide" })
+                    .clicked()
+                {
+                    toggles.push((*id, 1));
+                }
+                let lock = if node.locked { RichText::new("🔒").color(Color32::from_rgb(255, 170, 80)) } else { RichText::new("🔓").weak() };
+                if ui.add(egui::Button::new(lock).frame(false)).on_hover_text("Lock").clicked() {
+                    toggles.push((*id, 2));
+                }
+                let selected = state.doc.selection.nodes.contains(id);
+                let (icon, color) = match &node.kind {
+                    NodeKind::Layer(l) => ("☰", Color32::from_rgb((l.color.r * 255.0) as u8, (l.color.g * 255.0) as u8, (l.color.b * 255.0) as u8)),
+                    NodeKind::Group(_) => ("⧉", Color32::from_rgb(160, 200, 255)),
+                    NodeKind::Entity(e) => (
+                        "◆",
+                        state
+                            .game
+                            .entity(&e.classname)
+                            .map(|d| Color32::from_rgb((d.color.r * 255.0) as u8, (d.color.g * 255.0) as u8, (d.color.b * 255.0) as u8))
+                            .unwrap_or(Color32::LIGHT_GRAY),
+                    ),
+                    NodeKind::Brush(_) => ("■", Color32::GRAY),
+                    NodeKind::Instance(_) => ("⎘", Color32::from_rgb(255, 200, 120)),
+                    NodeKind::Mesh(_) => ("▲", Color32::from_rgb(200, 160, 255)),
+                    NodeKind::Terrain(_) => ("∿", Color32::from_rgb(140, 220, 120)),
+                    NodeKind::Scatter(_) => ("✿", Color32::from_rgb(120, 230, 150)),
+                };
+                ui.label(RichText::new(icon).color(color));
+                let mut label = node.name();
+                if let NodeKind::Layer(_) = node.kind {
+                    if state.current_layer == *id {
+                        label = format!("{label}  (current)");
+                    }
+                    if state.doc.map.get(*id).is_some_and(|n| matches!(&n.kind, NodeKind::Layer(l) if l.omit_from_export)) {
+                        label = format!("{label}  [omitted]");
+                    }
+                }
+                let resp = ui.selectable_label(selected, label);
+                if resp.clicked() {
+                    if matches!(node.kind, NodeKind::Layer(_)) {
+                        set_layer = Some(*id);
+                    } else {
+                        clicked = Some((*id, ui.input(|i| i.modifiers.command)));
+                    }
+                }
+                if resp.double_clicked() {
+                    toggles.push((*id, 0));
+                }
+                resp.context_menu(|ui| {
+                    if let NodeKind::Layer(l) = &node.kind {
+                        let mut name = l.name.clone();
+                        if ui.text_edit_singleline(&mut name).changed() {
+                            rename = Some((*id, name));
+                        }
+                        if ui.button("Set Current Layer").clicked() {
+                            set_layer = Some(*id);
+                            ui.close();
+                        }
+                        if ui.button("Toggle Omit From Export").clicked() {
+                            toggles.push((*id, 3));
+                            ui.close();
+                        }
+                        if ui.button("Move Selection Here").clicked() {
+                            actions.push(Action::MoveToLayer(*id));
+                            ui.close();
+                        }
+                        if ui.button("Delete Layer").clicked() {
+                            toggles.push((*id, 4));
+                            ui.close();
+                        }
+                    } else if let NodeKind::Group(g) = &node.kind {
+                        let mut name = g.name.clone();
+                        if ui.text_edit_singleline(&mut name).changed() {
+                            rename = Some((*id, name));
+                        }
+                    } else if let NodeKind::Scatter(s) = &node.kind {
+                        let mut name = s.name.clone();
+                        if ui.text_edit_singleline(&mut name).changed() {
+                            rename = Some((*id, name));
+                        }
+                        if ui.button("Paint into this set").clicked() {
+                            actions.push(Action::ActivateScatter(*id));
+                            ui.close();
+                        }
+                    }
+                });
+            });
+        }
+    });
+
+    for (id, kind) in toggles {
+        match kind {
+            0 => {
+                if !ps.expanded.remove(&id) {
+                    ps.expanded.insert(id);
+                }
+            }
+            1 => state.doc.edit("Toggle Visibility", |m, _| {
+                if let Some(n) = m.get_mut(id) {
+                    n.hidden = !n.hidden;
+                }
+            }),
+            2 => state.doc.edit("Toggle Lock", |m, _| {
+                if let Some(n) = m.get_mut(id) {
+                    n.locked = !n.locked;
+                }
+            }),
+            3 => state.doc.edit("Toggle Omit Layer", |m, _| {
+                if let Some(NodeKind::Layer(l)) = m.get_mut(id).map(|n| &mut n.kind) {
+                    l.omit_from_export = !l.omit_from_export;
+                }
+            }),
+            _ => {
+                state.doc.edit("Delete Layer", |m, _| m.remove(id));
+                if !state.doc.map.contains(state.current_layer) {
+                    state.current_layer = state.doc.map.default_layer();
+                }
+            }
+        }
+    }
+    if let Some((id, name)) = rename {
+        state.doc.edit_coalesced("Rename", |m, _| match m.get_mut(id).map(|n| &mut n.kind) {
+            Some(NodeKind::Layer(l)) => l.name = name,
+            Some(NodeKind::Group(g)) => g.name = name,
+            Some(NodeKind::Scatter(s)) => s.name = name,
+            _ => {}
+        });
+    }
+    if let Some(l) = set_layer {
+        state.current_layer = l;
+    }
+    if let Some((id, toggle)) = clicked {
+        state.last_bounds = state.doc.map.bounds(id);
+        state.doc.select(|_, s| {
+            if toggle {
+                s.toggle_node(id);
+            } else {
+                s.clear();
+                s.select_node(id);
+            }
+        });
+    }
+}
+
+fn push_rows(map: &gt_doc::Map, id: NodeId, depth: usize, expanded: &HashSet<NodeId>, filter: &str, rows: &mut Vec<(usize, NodeId)>) {
+    let Some(node) = map.get(id) else { return };
+    for c in &node.children {
+        let Some(child) = map.get(*c) else { continue };
+        let matches = filter.is_empty() || child.name().to_lowercase().contains(filter);
+        if matches {
+            rows.push((depth, *c));
+        }
+        if expanded.contains(c) || (!filter.is_empty() && !child.children.is_empty()) {
+            push_rows(map, *c, depth + 1, expanded, filter, rows);
+        }
+    }
+}
+
+// ----------------------------------------------------------------- inspector
+
+pub fn inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
+    ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+        if state.doc.selection.has_faces() {
+            face_inspector(ui, state, actions);
+            return;
+        }
+        let entities: Vec<NodeId> = state.doc.selection.nodes.iter().copied().filter(|id| state.doc.map.entity(*id).is_some()).collect();
+        let single = (state.doc.selection.nodes.len() == 1).then(|| state.doc.selection.nodes.iter().next().copied()).flatten();
+        if let Some(first) = entities.first().copied() {
+            entity_inspector(ui, state, ps, first, actions);
+        } else if let Some(id) = single.filter(|id| state.doc.map.terrain(*id).is_some()) {
+            terrain_inspector(ui, state, id, actions);
+        } else if let Some(id) = single.filter(|id| state.doc.map.mesh(*id).is_some()) {
+            mesh_inspector(ui, state, id, actions);
+        } else if let Some(id) = single.filter(|id| state.doc.map.scatter(*id).is_some()) {
+            scatter_inspector(ui, state, id, actions);
+        } else if !state.doc.selection.nodes.is_empty() {
+            selection_summary(ui, state, actions);
+        } else {
+            worldspawn_inspector(ui, state, ps);
+        }
+    });
+}
+
+fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mut Vec<Action>) {
+    let Some(mesh) = state.doc.map.mesh(id).cloned() else { return };
+    ui.heading("Mesh");
+    ui.label(format!("{} vertices, {} faces, {} triangles", mesh.vertices.len(), mesh.faces.len(), mesh.triangle_count()));
+    ui.label(if mesh.is_closed() { "closed" } else { "open surface" });
+    if mesh.is_convex() {
+        ui.label(RichText::new("convex, exports to .map as a brush").weak());
+    }
+    let bounds = mesh.bounds();
+    let s = bounds.size();
+    ui.label(format!("Size {:.1} x {:.1} x {:.1}", s.x, s.y, s.z));
+    let mut angle = mesh.smooth_angle;
+    ui.horizontal(|ui| {
+        ui.label("Smoothing angle");
+        if ui.add(egui::Slider::new(&mut angle, 0.0..=180.0).suffix("°")).changed() {
+            state.doc.edit_coalesced("Smoothing Angle", |m, _| {
+                if let Some(mesh) = m.mesh_mut(id) {
+                    mesh.smooth_angle = angle;
+                }
+            });
+        }
+    });
+    ui.separator();
+    ui.horizontal_wrapped(|ui| {
+        for (label, action) in [
+            ("Edit (Tab)", Action::EditMesh),
+            ("To Brushes", Action::ConvertToBrushes),
+            ("Subdivide", Action::MeshOp(crate::mesh_tool::MeshOp::Subdivide)),
+            ("Solidify", Action::MeshOp(crate::mesh_tool::MeshOp::Solidify)),
+            ("Weld", Action::MeshOp(crate::mesh_tool::MeshOp::MergeByDistance)),
+            ("Flip Normals", Action::MeshOp(crate::mesh_tool::MeshOp::Flip)),
+        ] {
+            if ui.small_button(label).clicked() {
+                actions.push(action);
+            }
+        }
+    });
+    ui.separator();
+    ui.label("Brush entity");
+    ui.horizontal_wrapped(|ui| {
+        for def in state.game.solid_entities() {
+            if ui.small_button(&def.classname).clicked() {
+                actions.push(Action::CreateBrushEntity(def.classname.clone()));
+            }
+        }
+    });
+}
+
+fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mut Vec<Action>) {
+    use gt_doc::scatter::ScatterCollision;
+    let Some(set) = state.doc.map.scatter(id).cloned() else { return };
+    ui.heading(format!("Scatter set '{}'", set.name));
+    let active = state.active_scatter == Some(id);
+    ui.label(format!(
+        "{} instances, {} palette entries, {} target surfaces{}",
+        set.instances.len(),
+        set.items.len(),
+        set.targets.len(),
+        if active { ", painting here" } else { "" }
+    ));
+    let mut edited = set.clone();
+    let mut changed = false;
+    egui::Grid::new("scatter_props").num_columns(2).show(ui, |ui| {
+        ui.label("Name");
+        changed |= ui.text_edit_singleline(&mut edited.name).changed();
+        ui.end_row();
+        ui.label("Kind");
+        ui.horizontal(|ui| {
+            for k in gt_doc::ScatterKind::ALL {
+                changed |=
+                    ui.selectable_value(&mut edited.kind, k, k.label()).on_hover_text("props keep scenes and collision, foliage uses MultiMesh").changed();
+            }
+        });
+        ui.end_row();
+        ui.label("Collision");
+        ui.horizontal(|ui| {
+            for c in ScatterCollision::ALL {
+                changed |= ui.selectable_value(&mut edited.collision, c, c.label()).changed();
+            }
+        });
+        ui.end_row();
+        ui.label("Cast shadows");
+        changed |= ui.checkbox(&mut edited.cast_shadows, "").changed();
+        ui.end_row();
+        ui.label("Visibility range");
+        changed |= ui
+            .add(egui::DragValue::new(&mut edited.visibility_range).range(0.0..=100_000.0).suffix(" u"))
+            .on_hover_text("0 shows instances at any distance")
+            .changed();
+        ui.end_row();
+    });
+    ui.separator();
+    ui.label(RichText::new("Palette").strong());
+    let counts = set.counts();
+    let mut remove = None;
+    egui::Grid::new("scatter_items").num_columns(5).striped(true).show(ui, |ui| {
+        ui.label("model");
+        ui.label("count");
+        ui.label("weight");
+        ui.label("spread");
+        ui.label("");
+        ui.end_row();
+        for (k, item) in edited.items.iter_mut().enumerate() {
+            ui.label(item.label()).on_hover_text(&item.source);
+            ui.label(counts.get(k).copied().unwrap_or(0).to_string());
+            changed |= ui.add(egui::DragValue::new(&mut item.weight).range(0.0..=100.0).speed(0.05)).changed();
+            changed |= ui.add(egui::DragValue::new(&mut item.spacing).range(0.0..=4096.0)).changed();
+            if ui.small_button("×").on_hover_text("Remove the entry and its instances").clicked() {
+                remove = Some(k);
+            }
+            ui.end_row();
+        }
+    });
+    if let Some(k) = remove {
+        edited.remove_item(k);
+        changed = true;
+    }
+    if changed {
+        state.doc.edit_coalesced("Edit Scatter Set", |m, _| {
+            if let Some(slot) = m.scatter_mut(id) {
+                *slot = edited;
+            }
+        });
+    }
+    ui.horizontal_wrapped(|ui| {
+        for (label, action) in [
+            ("Paint Into This Set", Action::ActivateScatter(id)),
+            ("Fill Targets", Action::ScatterFill),
+            ("To Entities", Action::ScatterToEntities),
+            ("Palette…", Action::ShowScatterPalette),
+        ] {
+            if ui.small_button(label).clicked() {
+                if matches!(action, Action::ScatterFill) {
+                    actions.push(Action::ActivateScatter(id));
+                }
+                actions.push(action);
+            }
+        }
+        if ui.small_button("Clear Instances").clicked() {
+            state.doc.edit("Clear Scatter", |m, _| {
+                if let Some(s) = m.scatter_mut(id) {
+                    s.instances.clear();
+                }
+            });
+        }
+    });
+    if !set.targets.is_empty() {
+        ui.label(RichText::new(format!("Targets: {}", set.targets.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", "))).weak());
+    }
+}
+
+fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mut Vec<Action>) {
+    let Some(t) = state.doc.map.terrain(id).cloned() else { return };
+    ui.heading("Terrain");
+    let size = t.size();
+    let upm = state.game.units_per_meter;
+    ui.label(format!("{} x {} vertices, cell {} units", t.resolution[0], t.resolution[1], t.cell_size));
+    ui.label(format!("{} x {} units ({:.0} x {:.0} m), {} chunks", size.x, size.y, size.x / upm, size.y / upm, t.chunks().len()));
+    let b = t.bounds();
+    ui.label(format!("Heights {:.1} to {:.1}", b.min.y, b.max.y));
+    let mut edited = t.clone();
+    let mut changed = false;
+    egui::Grid::new("terrain_props").num_columns(2).show(ui, |ui| {
+        ui.label("Origin");
+        ui.horizontal(|ui| changed |= vec3_editor(ui, &mut edited.origin, 1.0));
+        ui.end_row();
+        ui.label("Chunk cells");
+        changed |= ui.add(egui::DragValue::new(&mut edited.chunk_cells).range(4..=256)).changed();
+        ui.end_row();
+        for (i, layer) in edited.layers.iter_mut().enumerate() {
+            ui.label(format!("Layer {i}"));
+            ui.horizontal(|ui| {
+                changed |= ui.add(egui::TextEdit::singleline(&mut layer.material).desired_width(130.0)).changed();
+                changed |= ui.add(egui::DragValue::new(&mut layer.tile).range(8.0..=16384.0).prefix("tile ")).changed();
+            });
+            ui.end_row();
+        }
+    });
+    ui.horizontal_wrapped(|ui| {
+        if edited.layers.len() < gt_geom::heightfield::MAX_LAYERS && ui.small_button("+ layer (current material)").clicked() {
+            edited.layers.push(gt_geom::TerrainLayer { material: state.current_material.clone(), tile: edited.layers.last().map(|l| l.tile).unwrap_or(256.0) });
+            changed = true;
+        }
+        if edited.layers.len() > 1 && ui.small_button("- last layer").clicked() {
+            edited.layers.pop();
+            changed = true;
+        }
+        for res in [65u32, 129, 257, 513] {
+            if res != t.resolution[0] && ui.small_button(format!("resample {res}")).clicked() {
+                edited = t.resample([res, res]);
+                changed = true;
+            }
+        }
+    });
+    if changed {
+        state.doc.edit_coalesced("Edit Terrain", |m, _| {
+            if let Some(slot) = m.terrain_mut(id) {
+                *slot = edited;
+            }
+        });
+    }
+    ui.separator();
+    ui.horizontal_wrapped(|ui| {
+        for (label, action) in [
+            ("Sculpt", Action::SetTool(crate::tools::ToolKind::Sculpt)),
+            ("Auto Paint", Action::TerrainAutoPaint),
+            ("Flatten", Action::TerrainFlatten),
+            ("Scatter", Action::SetTool(crate::tools::ToolKind::Scatter)),
+            ("Blend", Action::SetTool(crate::tools::ToolKind::Blend)),
+        ] {
+            if ui.small_button(label).clicked() {
+                actions.push(action);
+            }
+        }
+    });
+    ui.label(RichText::new("Drop a material from the browser on the terrain to set the layer chosen in the sculpt toolbar.").weak());
+}
+
+fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>) {
+    let map = &state.doc.map;
+    let brushes = state.doc.selection.brushes(map);
+    let meshes = state.doc.selection.meshes(map);
+    let bounds = map.bounds_of(state.doc.selection.nodes.iter().copied());
+    ui.heading(format!("{} objects", state.doc.selection.nodes.len()));
+    ui.label(format!("{} brushes, {} meshes", brushes.len(), meshes.len()));
+    ui.horizontal_wrapped(|ui| {
+        for (label, action) in [
+            ("Edit Mesh", Action::EditMesh),
+            ("To Mesh", Action::ConvertToMesh),
+            ("Join Meshes", Action::JoinMeshes),
+            ("Duplicate Linked", Action::DuplicateLinked),
+            ("Cordon", Action::SetCordonFromSelection),
+        ] {
+            if ui.small_button(label).clicked() {
+                actions.push(action);
+            }
+        }
+    });
+    if !bounds.is_empty() {
+        let s = bounds.size();
+        ui.label(format!("Size {} x {} x {}", s.x, s.y, s.z));
+        let c = bounds.center();
+        ui.label(format!("Center {:.2} {:.2} {:.2}", c.x, c.y, c.z));
+    }
+    ui.separator();
+    ui.label(RichText::new("Gameplay").strong());
+    ui.horizontal_wrapped(|ui| {
+        use crate::entity_wizards::{DoorKind, HingeSide, SlideDirection};
+        for (label, tip, action) in [
+            (
+                "Door, hinge left",
+                "func_door_rotating hinged on the left end, with a trigger that opens it",
+                Action::MakeDoor { kind: DoorKind::Hinged { side: HingeSide::Left, angle: 95.0 }, trigger: true },
+            ),
+            (
+                "Door, hinge right",
+                "func_door_rotating hinged on the right end, with a trigger that opens it",
+                Action::MakeDoor { kind: DoorKind::Hinged { side: HingeSide::Right, angle: 95.0 }, trigger: true },
+            ),
+            (
+                "Sliding door up",
+                "func_door that slides up by its height",
+                Action::MakeDoor { kind: DoorKind::Sliding { direction: SlideDirection::Up, lip: 4.0 }, trigger: true },
+            ),
+            (
+                "Sliding door sideways",
+                "func_door that slides along its width",
+                Action::MakeDoor { kind: DoorKind::Sliding { direction: SlideDirection::Left, lip: 4.0 }, trigger: true },
+            ),
+            ("Lift", "func_platform that travels up, drag its travel handle", Action::MakePlatform),
+            ("Trigger around", "trigger_multiple around the selection", Action::VolumeAroundSelection("trigger_multiple".into())),
+            ("Spawn area around", "trigger_spawn_area around the selection", Action::VolumeAroundSelection("trigger_spawn_area".into())),
+            ("Blend material", "Current material blends into these faces", Action::SetBlendMaterial),
+        ] {
+            if ui.small_button(label).on_hover_text(tip).clicked() {
+                actions.push(action);
+            }
+        }
+        if state.doc.selection.nodes.iter().filter(|id| state.doc.map.entity(**id).is_some()).count() == 2 && ui.small_button("Link…").clicked() {
+            actions.push(Action::ShowLinkDialog);
+        }
+    });
+    ui.separator();
+    ui.label("Brush entity");
+    ui.horizontal_wrapped(|ui| {
+        for def in state.game.solid_entities() {
+            if ui.small_button(&def.classname).on_hover_text(&def.description).clicked() {
+                actions.push(Action::CreateBrushEntity(def.classname.clone()));
+            }
+        }
+    });
+    ui.separator();
+    ui.horizontal_wrapped(|ui| {
+        for (label, action) in [
+            ("Rotate Y 90", Action::Rotate { axis: 1, degrees: 90.0 }),
+            ("Rotate Y -90", Action::Rotate { axis: 1, degrees: -90.0 }),
+            ("Flip X", Action::Flip { axis: 0 }),
+            ("Flip Z", Action::Flip { axis: 2 }),
+            ("Flip Y", Action::Flip { axis: 1 }),
+            ("Snap Vertices", Action::SnapVertices),
+        ] {
+            if ui.small_button(label).clicked() {
+                actions.push(action);
+            }
+        }
+    });
+}
+
+fn worldspawn_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState) {
+    ui.heading("Map (worldspawn)");
+    ui.label(RichText::new("Nothing selected. These properties apply to the whole map.").weak());
+    let props: Vec<(String, String)> = state.doc.map.properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let def = state.game.entity("worldspawn").cloned();
+    egui::Grid::new("world_props").num_columns(2).striped(true).show(ui, |ui| {
+        if let Some(def) = &def {
+            for p in &def.properties {
+                ui.label(&p.name).on_hover_text(&p.description);
+                let mut value = state.doc.map.properties.get(&p.name).cloned().unwrap_or_else(|| p.default.clone());
+                if property_editor(ui, p.ty, &p.options, &mut value, state) {
+                    let key = p.name.clone();
+                    state.doc.edit_coalesced("Set Map Property", |m, _| {
+                        m.properties.insert(key, value);
+                    });
+                }
+                ui.end_row();
+            }
+        }
+        for (k, v) in props {
+            if def.as_ref().is_some_and(|d| d.property(&k).is_some()) {
+                continue;
+            }
+            ui.label(&k);
+            let mut value = v.clone();
+            if ui.text_edit_singleline(&mut value).changed() {
+                state.doc.edit_coalesced("Set Map Property", |m, _| {
+                    m.properties.insert(k.clone(), value);
+                });
+            }
+            ui.end_row();
+        }
+    });
+    add_property_row(ui, ps, |k, v| {
+        state.doc.edit("Add Map Property", |m, _| {
+            m.properties.insert(k, v);
+        });
+    });
+}
+
+fn add_property_row(ui: &mut Ui, ps: &mut PanelState, mut add: impl FnMut(String, String)) {
+    ui.horizontal(|ui| {
+        ui.add(egui::TextEdit::singleline(&mut ps.new_key).hint_text("key").desired_width(90.0));
+        ui.add(egui::TextEdit::singleline(&mut ps.new_value).hint_text("value").desired_width(90.0));
+        if ui.button("Add").clicked() && !ps.new_key.trim().is_empty() {
+            add(ps.new_key.trim().to_string(), ps.new_value.clone());
+            ps.new_key.clear();
+            ps.new_value.clear();
+        }
+    });
+}
+
+fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, id: NodeId, actions: &mut Vec<Action>) {
+    let Some(entity) = state.doc.map.entity(id).cloned() else { return };
+    let is_point = state.doc.map.is_point_entity(id);
+    let def: Option<EntityDef> = state.game.entity(&entity.classname).cloned();
+
+    ui.horizontal(|ui| {
+        ui.heading(&entity.classname);
+        if def.is_none() {
+            ui.label(RichText::new("no definition").color(Color32::from_rgb(255, 140, 80)));
+        }
+    });
+    if let Some(d) = &def
+        && !d.description.is_empty()
+    {
+        ui.label(RichText::new(&d.description).weak());
+    }
+    ui.horizontal_wrapped(|ui| {
+        if ui.small_button("Code Reference").on_hover_text("GDScript and C# for this entity").clicked() {
+            ps.reference_class = entity.classname.clone();
+            actions.push(Action::ShowReference);
+        }
+        let entity_count = state.doc.selection.nodes.iter().filter(|n| state.doc.map.entity(**n).is_some()).count();
+        if entity_count == 2 && ui.small_button("Link…").on_hover_text("Connect an output of one selected entity to an input of the other").clicked() {
+            actions.push(Action::ShowLinkDialog);
+        }
+        if let Some(d) = &def {
+            let gizmos = d.gizmos(state.game.units_per_meter);
+            if !gizmos.is_empty() {
+                let names: Vec<String> = gizmos.iter().map(|g| g.label()).collect();
+                ui.label(RichText::new(format!("drag the {} handles in the views", names.join(", "))).weak());
+            }
+        }
+    });
+
+    let mut classname = entity.classname.clone();
+    ui.horizontal(|ui| {
+        ui.label("classname");
+        let kind_filter = if is_point { gt_formats::EntityKind::Point } else { gt_formats::EntityKind::Solid };
+        egui::ComboBox::from_id_salt("classname").selected_text(&classname).show_ui(ui, |ui| {
+            for d in state.game.entities.iter().filter(|d| d.kind == kind_filter) {
+                ui.selectable_value(&mut classname, d.classname.clone(), &d.classname);
+            }
+        });
+    });
+    if classname != entity.classname {
+        state.doc.edit("Change Class", |m, _| {
+            if let Some(e) = m.entity_mut(id) {
+                e.classname = classname.clone();
+            }
+        });
+    }
+
+    if is_point {
+        ui.separator();
+        let mut origin = entity.origin;
+        let mut angles = entity.angles;
+        let mut changed = false;
+        ui.horizontal(|ui| {
+            ui.label("origin");
+            changed |= vec3_editor(ui, &mut origin, 1.0);
+        });
+        ui.horizontal(|ui| {
+            ui.label("angles");
+            changed |= vec3_editor(ui, &mut angles, 1.0);
+        });
+        if changed {
+            state.doc.edit_coalesced("Set Transform", |m, _| {
+                if let Some(e) = m.entity_mut(id) {
+                    e.origin = origin;
+                    e.angles = angles;
+                }
+            });
+        }
+    }
+
+    ui.separator();
+    ui.label(RichText::new("Properties").strong());
+    egui::Grid::new("entity_props").num_columns(3).striped(true).show(ui, |ui| {
+        if let Some(d) = &def {
+            for p in &d.properties {
+                let set = entity.properties.contains_key(&p.name);
+                let label = if set { RichText::new(&p.name).strong() } else { RichText::new(&p.name) };
+                ui.label(label).on_hover_text(if p.description.is_empty() { &p.name } else { &p.description });
+                let mut value = entity.properties.get(&p.name).cloned().unwrap_or_else(|| p.default.clone());
+                if property_editor(ui, p.ty, &p.options, &mut value, state) {
+                    let key = p.name.clone();
+                    state.doc.edit_coalesced(&format!("Set {key}"), |m, s| {
+                        for sel in s.nodes.clone() {
+                            if let Some(e) = m.entity_mut(sel) {
+                                e.properties.insert(key.clone(), value.clone());
+                            }
+                        }
+                        let _ = id;
+                    });
+                }
+                if set && ui.small_button("×").on_hover_text("Reset to default").clicked() {
+                    let key = p.name.clone();
+                    state.doc.edit("Reset Property", |m, _| {
+                        if let Some(e) = m.entity_mut(id) {
+                            e.properties.remove(&key);
+                        }
+                    });
+                }
+                ui.end_row();
+            }
+        }
+        for (k, v) in &entity.properties {
+            if def.as_ref().is_some_and(|d| d.property(k).is_some()) {
+                continue;
+            }
+            ui.label(RichText::new(k).italics());
+            let mut value = v.clone();
+            if ui.text_edit_singleline(&mut value).changed() {
+                let key = k.clone();
+                state.doc.edit_coalesced(&format!("Set {key}"), |m, _| {
+                    if let Some(e) = m.entity_mut(id) {
+                        e.properties.insert(key, value);
+                    }
+                });
+            }
+            if ui.small_button("×").clicked() {
+                let key = k.clone();
+                state.doc.edit("Remove Property", |m, _| {
+                    if let Some(e) = m.entity_mut(id) {
+                        e.properties.remove(&key);
+                    }
+                });
+            }
+            ui.end_row();
+        }
+    });
+    add_property_row(ui, ps, |k, v| {
+        state.doc.edit("Add Property", |m, _| {
+            if let Some(e) = m.entity_mut(id) {
+                e.properties.insert(k, v);
+            }
+        });
+    });
+
+    ui.separator();
+    io_editor(ui, state, id, &entity, def.as_ref());
+}
+
+fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &gt_doc::Entity, def: Option<&EntityDef>) {
+    ui.label(RichText::new("Outputs (I/O)").strong());
+    let targetnames: Vec<(String, String)> =
+        state.doc.map.entities().filter_map(|(_, e)| e.targetname().map(|n| (n.to_string(), e.classname.clone()))).collect();
+    let mut outputs = entity.outputs.clone();
+    let mut changed = false;
+    let mut remove = None;
+    for (i, conn) in outputs.iter_mut().enumerate() {
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            egui::Grid::new(("io", i)).num_columns(2).show(ui, |ui| {
+                ui.label("output");
+                changed |= combo_or_text(
+                    ui,
+                    egui::Id::new(("out", i)),
+                    &mut conn.output,
+                    def.map(|d| d.outputs.iter().map(|o| o.name.clone()).collect()).unwrap_or_default(),
+                );
+                ui.end_row();
+                ui.label("target");
+                changed |= combo_or_text(ui, egui::Id::new(("target", i)), &mut conn.target, targetnames.iter().map(|(n, _)| n.clone()).collect());
+                ui.end_row();
+                let target_inputs: Vec<String> = targetnames
+                    .iter()
+                    .filter(|(n, _)| *n == conn.target)
+                    .filter_map(|(_, c)| state.game.entity(c))
+                    .flat_map(|d| d.inputs.iter().map(|i| i.name.clone()))
+                    .collect();
+                ui.label("input");
+                changed |= combo_or_text(ui, egui::Id::new(("input", i)), &mut conn.input, target_inputs);
+                ui.end_row();
+                ui.label("parameter");
+                changed |= ui.text_edit_singleline(&mut conn.parameter).changed();
+                ui.end_row();
+                ui.label("delay");
+                changed |= ui.add(egui::DragValue::new(&mut conn.delay).speed(0.05).range(0.0..=3600.0).suffix(" s")).changed();
+                ui.end_row();
+                ui.label("fire once");
+                let mut once = conn.times == 1;
+                if ui.checkbox(&mut once, "").changed() {
+                    conn.times = if once { 1 } else { -1 };
+                    changed = true;
+                }
+                ui.end_row();
+            });
+            let valid_target = conn.target.is_empty() || targetnames.iter().any(|(n, _)| *n == conn.target) || gt_doc::issues::is_dynamic_target(&conn.target);
+            ui.horizontal(|ui| {
+                if !valid_target {
+                    ui.label(RichText::new("target not found").color(Color32::from_rgb(255, 120, 80)));
+                }
+                if ui.small_button("Remove").clicked() {
+                    remove = Some(i);
+                }
+            });
+        });
+    }
+    if let Some(i) = remove {
+        outputs.remove(i);
+        changed = true;
+    }
+    if ui.button("+ Add Output").clicked() {
+        let output = def.and_then(|d| d.outputs.first()).map(|o| o.name.clone()).unwrap_or_default();
+        outputs.push(IoConnection { output, target: String::new(), input: String::new(), parameter: String::new(), delay: 0.0, times: -1 });
+        changed = true;
+    }
+    if changed {
+        state.doc.edit_coalesced("Edit Outputs", |m, _| {
+            if let Some(e) = m.entity_mut(id) {
+                e.outputs = outputs;
+            }
+        });
+    }
+}
+
+fn combo_or_text(ui: &mut Ui, salt: egui::Id, value: &mut String, options: Vec<String>) -> bool {
+    let mut changed = false;
+    ui.horizontal(|ui| {
+        changed |= ui.add(egui::TextEdit::singleline(value).desired_width(110.0)).changed();
+        if !options.is_empty() {
+            egui::ComboBox::from_id_salt(salt).selected_text("▾").width(24.0).show_ui(ui, |ui| {
+                for o in options {
+                    if ui.selectable_label(*value == o, &o).clicked() {
+                        *value = o;
+                        changed = true;
+                    }
+                }
+            });
+        }
+    });
+    changed
+}
+
+fn vec3_editor(ui: &mut Ui, v: &mut DVec3, speed: f64) -> bool {
+    let mut changed = false;
+    changed |= ui.add(egui::DragValue::new(&mut v.x).speed(speed).prefix("x ")).changed();
+    changed |= ui.add(egui::DragValue::new(&mut v.y).speed(speed).prefix("y ")).changed();
+    changed |= ui.add(egui::DragValue::new(&mut v.z).speed(speed).prefix("z ")).changed();
+    changed
+}
+
+/// Typed editor for a string property value. Returns true when changed.
+fn property_editor(ui: &mut Ui, ty: PropertyType, options: &[(String, String)], value: &mut String, state: &EditorState) -> bool {
+    match ty {
+        PropertyType::Bool => {
+            let mut b = matches!(value.trim(), "1" | "true" | "True");
+            if ui.checkbox(&mut b, "").changed() {
+                *value = if b { "1".into() } else { "0".into() };
+                return true;
+            }
+            false
+        }
+        PropertyType::Int => {
+            let mut i: i64 = value.trim().parse().unwrap_or(0);
+            if ui.add(egui::DragValue::new(&mut i)).changed() {
+                *value = i.to_string();
+                return true;
+            }
+            false
+        }
+        PropertyType::Float => {
+            let mut f: f64 = value.trim().parse().unwrap_or(0.0);
+            if ui.add(egui::DragValue::new(&mut f).speed(0.05)).changed() {
+                *value = format!("{f}");
+                return true;
+            }
+            false
+        }
+        PropertyType::Color => {
+            let parts: Vec<f32> = value.split_whitespace().filter_map(|p| p.parse().ok()).collect();
+            let scale = if parts.iter().any(|p| *p > 1.0) { 255.0 } else { 1.0 };
+            let mut rgb = [
+                parts.first().copied().unwrap_or(255.0) / scale,
+                parts.get(1).copied().unwrap_or(255.0) / scale,
+                parts.get(2).copied().unwrap_or(255.0) / scale,
+            ];
+            if ui.color_edit_button_rgb(&mut rgb).changed() {
+                *value = format!("{} {} {}", (rgb[0] * 255.0).round(), (rgb[1] * 255.0).round(), (rgb[2] * 255.0).round());
+                return true;
+            }
+            false
+        }
+        PropertyType::Choices => {
+            let mut changed = false;
+            let current = options.iter().find(|(_, v)| v == value).map(|(l, _)| l.clone()).unwrap_or_else(|| value.clone());
+            egui::ComboBox::from_id_salt(ui.next_auto_id()).selected_text(current).show_ui(ui, |ui| {
+                for (label, v) in options {
+                    if ui.selectable_label(value == v, label).clicked() {
+                        *value = v.clone();
+                        changed = true;
+                    }
+                }
+            });
+            changed
+        }
+        PropertyType::Flags => {
+            let mut bits: i64 = value.trim().parse().unwrap_or(0);
+            let mut changed = false;
+            ui.vertical(|ui| {
+                for (label, v) in options {
+                    let bit: i64 = v.parse().unwrap_or(0);
+                    let mut on = bits & bit != 0;
+                    if ui.checkbox(&mut on, label).changed() {
+                        bits = if on { bits | bit } else { bits & !bit };
+                        changed = true;
+                    }
+                }
+            });
+            if changed {
+                *value = bits.to_string();
+            }
+            changed
+        }
+        PropertyType::TargetDestination => {
+            let names: Vec<String> = state.doc.map.entities().filter_map(|(_, e)| e.targetname().map(str::to_string)).collect();
+            combo_or_text(ui, ui.next_auto_id(), value, names)
+        }
+        PropertyType::Resource => {
+            let mut changed = ui.add(egui::TextEdit::singleline(value).desired_width(120.0)).changed();
+            if let Some(root) = &state.game.project_root
+                && ui.small_button("…").clicked()
+                && let Some(p) = rfd::FileDialog::new().set_directory(root).pick_file()
+                && let Some(res) = gt_formats::game::to_res_path(root, &p)
+            {
+                *value = res;
+                changed = true;
+            }
+            changed
+        }
+        _ => ui.text_edit_singleline(value).changed(),
+    }
+}
+
+// --------------------------------------------------------------------- faces
+
+/// Face UV operation: (uv, face normal, face points, texture size).
+type UvOp = Box<dyn Fn(&mut FaceUv, DVec3, &[DVec3], DVec2)>;
+
+/// Sets planar UV values on brush faces and on mesh faces without explicit UVs.
+fn edit_planar(state: &mut EditorState, faces: &[(NodeId, usize)], label: &str, coalesce: bool, f: impl Fn(&mut FaceUv, DVec3, &[DVec3], DVec2)) {
+    let plans: Vec<(NodeId, usize, DVec3, Vec<DVec3>, DVec2)> = faces
+        .iter()
+        .filter_map(|(id, fi)| {
+            let info = crate::texture_ops::face_info(&state.doc.map, *id, *fi).filter(|i| i.explicit.is_none())?;
+            let size = crate::texture_ops::tex_size(state, &info.material);
+            Some((*id, *fi, info.plane.normal, info.points, size))
+        })
+        .collect();
+    if plans.is_empty() {
+        return;
+    }
+    let apply = |m: &mut gt_doc::Map| {
+        for (id, fi, n, pts, size) in &plans {
+            if let Some(face) = m.brush_mut(*id).and_then(|b| b.faces.get_mut(*fi)) {
+                f(&mut face.data.uv, *n, pts, *size);
+            } else if let Some(face) = m.mesh_mut(*id).and_then(|mesh| mesh.faces.get_mut(*fi)) {
+                f(&mut face.data.uv, *n, pts, *size);
+            }
+        }
+    };
+    if coalesce {
+        state.doc.edit_coalesced(label, |m, _| apply(m));
+    } else {
+        state.doc.edit(label, |m, _| apply(m));
+    }
+}
+
+fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>) {
+    let faces: Vec<(NodeId, usize)> = state.doc.selection.faces.iter().copied().collect();
+    let Some((bid, fi)) = faces.first().copied() else { return };
+    let Some(info) = crate::texture_ops::face_info(&state.doc.map, bid, fi) else { return };
+    let is_mesh = state.doc.map.mesh(bid).is_some();
+    ui.heading(format!("{} {}faces", faces.len(), if is_mesh { "mesh " } else { "" }));
+    let mut material = info.material.clone();
+    ui.horizontal(|ui| {
+        ui.label("material");
+        if ui.text_edit_singleline(&mut material).lost_focus() && material != info.material {
+            actions.push(Action::ApplyMaterial(material.clone()));
+        }
+    });
+    if let Some(size) = state.materials.size(&info.material) {
+        let details = state.materials.info(&info.material).map(|m| material_summary(&m)).unwrap_or_default();
+        ui.label(RichText::new(format!("{} x {} px{details}", size[0], size[1])).weak());
+    }
+
+    if info.explicit.is_none() {
+        let mut uv = info.uv.clone();
+        let mut changed = false;
+        egui::Grid::new("uv").num_columns(3).show(ui, |ui| {
+            ui.label("offset");
+            changed |= ui.add(egui::DragValue::new(&mut uv.offset.x).speed(1.0)).changed();
+            changed |= ui.add(egui::DragValue::new(&mut uv.offset.y).speed(1.0)).changed();
+            ui.end_row();
+            ui.label("scale");
+            changed |= ui.add(egui::DragValue::new(&mut uv.scale.x).speed(0.01)).changed();
+            changed |= ui.add(egui::DragValue::new(&mut uv.scale.y).speed(0.01)).changed();
+            ui.end_row();
+            ui.label("rotation");
+            let mut rot = uv.rotation;
+            if ui.add(egui::DragValue::new(&mut rot).speed(1.0).suffix("°")).changed() {
+                let delta = rot - uv.rotation;
+                uv.rotate(delta);
+                changed = true;
+            }
+            ui.end_row();
+        });
+        if changed {
+            let (offset, scale, rotation_delta) = (uv.offset, uv.scale, uv.rotation - info.uv.rotation);
+            edit_planar(state, &faces, "Set UV", true, |uv, _, _, _| {
+                uv.offset = offset;
+                uv.scale = scale;
+                if rotation_delta.abs() > 1e-9 {
+                    uv.rotate(rotation_delta);
+                }
+            });
+        }
+    } else {
+        ui.label(RichText::new("explicit UVs (edit them in the UV editor)").weak());
+    }
+
+    ui.horizontal_wrapped(|ui| {
+        ui.label("justify");
+        for j in gt_geom::Justify::ALL {
+            if ui.small_button(j.label()).clicked() {
+                actions.push(Action::Justify(j));
+            }
+        }
+        ui.checkbox(&mut state.treat_as_one, "treat as one");
+    });
+    ui.horizontal_wrapped(|ui| {
+        let mut op: Option<(&str, UvOp)> = None;
+        if ui.button("Reset").clicked() {
+            op = Some(("Reset UV", Box::new(|uv, n, _, _| *uv = FaceUv::paraxial(n, DVec2::ONE))));
+        }
+        if ui.button("Align to Face").clicked() {
+            op = Some(("Align UV", Box::new(|uv, n, _, _| *uv = FaceUv::face_aligned(n, uv.scale))));
+        }
+        if ui.button("Align to View").clicked() {
+            actions.push(Action::AlignTextureToView);
+        }
+        if ui.button("Flip H").clicked() {
+            op = Some(("Flip UV", Box::new(|uv, _, _, _| uv.scale.x = -uv.scale.x)));
+        }
+        if ui.button("Flip V").clicked() {
+            op = Some(("Flip UV", Box::new(|uv, _, _, _| uv.scale.y = -uv.scale.y)));
+        }
+        if ui.button("⟲ 90").clicked() {
+            crate::texture_ops::rotate(state, &faces, -90.0);
+        }
+        if ui.button("⟳ 90").clicked() {
+            crate::texture_ops::rotate(state, &faces, 90.0);
+        }
+        if ui.button("× 2").on_hover_text("Double the texture size").clicked() {
+            crate::texture_ops::scale(state, &faces, DVec2::splat(2.0));
+        }
+        if ui.button("÷ 2").on_hover_text("Halve the texture size").clicked() {
+            crate::texture_ops::scale(state, &faces, DVec2::splat(0.5));
+        }
+        if let Some((label, f)) = op {
+            edit_planar(state, &faces, label, false, f);
+        }
+    });
+    ui.horizontal_wrapped(|ui| {
+        ui.label("texel density");
+        for d in [0.25, 0.5, 1.0, 2.0, 4.0] {
+            if ui.small_button(format!("{d}")).on_hover_text(format!("{d} world units per texture pixel")).clicked() {
+                actions.push(Action::TexelDensity(d));
+            }
+        }
+    });
+    ui.horizontal_wrapped(|ui| {
+        if ui.button("Copy").on_hover_text("Copy material and alignment").clicked() {
+            actions.push(Action::CopyAlignment);
+        }
+        let can_paste = state.uv_clipboard.is_some();
+        if ui.add_enabled(can_paste, egui::Button::new("Paste Alignment")).clicked() {
+            actions.push(Action::PasteAlignment);
+        }
+        if ui.button("Hotspot").on_hover_text("Fit to the best rectangle of <texture>.hotspots.json").clicked() {
+            actions.push(Action::HotspotTexture);
+        }
+        if ui.button("Hotspot Editor").clicked() {
+            actions.push(Action::ShowHotspotEditor);
+        }
+        if ui.button("UV Editor").clicked() {
+            actions.push(Action::ShowUvEditor);
+        }
+    });
+    if is_mesh {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("mesh UVs");
+            for k in crate::texture_ops::MeshUvKind::ALL {
+                if ui.small_button(k.label()).clicked() {
+                    actions.push(Action::MeshUv(k));
+                }
+            }
+        });
+    }
+
+    if is_mesh {
+        return;
+    }
+    ui.separator();
+    ui.label(RichText::new("Surface properties").strong());
+    let face = state.doc.map.brush(bid).and_then(|b| b.faces.get(fi)).cloned();
+    let Some(face) = face else { return };
+    let mut props = face.data.props.clone();
+    let mut prop_changed = false;
+    let mut remove = None;
+    for (k, v) in props.iter_mut() {
+        ui.horizontal(|ui| {
+            ui.label(k.as_str());
+            prop_changed |= ui.text_edit_singleline(v).changed();
+            if ui.small_button("×").clicked() {
+                remove = Some(k.clone());
+            }
+        });
+    }
+    if let Some(k) = remove {
+        props.remove(&k);
+        prop_changed = true;
+    }
+    ui.horizontal(|ui| {
+        for preset in ["collision_layer", "smoothing_group", "no_collision", "no_shadow"] {
+            if !props.contains_key(preset) && ui.small_button(format!("+ {preset}")).clicked() {
+                props.insert(preset.into(), "1".into());
+                prop_changed = true;
+            }
+        }
+    });
+    if prop_changed {
+        state.doc.edit_coalesced("Set Face Properties", |m, _| {
+            for (id, f) in &faces {
+                if let Some(face) = m.brush_mut(*id).and_then(|b| b.faces.get_mut(*f)) {
+                    face.data.props = props.clone();
+                }
+            }
+        });
+    }
+}
+
+/// Short description of a Godot material's preview relevant settings.
+pub fn material_summary(m: &gt_formats::godot_material::GodotMaterial) -> String {
+    use gt_formats::godot_material::Transparency;
+    let mut parts = Vec::new();
+    match m.transparency {
+        Transparency::Alpha => parts.push("transparent".to_string()),
+        Transparency::Scissor(t) => parts.push(format!("alpha scissor {t}")),
+        Transparency::Opaque => {}
+    }
+    if m.emission.is_some() {
+        parts.push(format!("emissive x{}", m.emission_energy));
+    }
+    if m.normal_texture.is_some() {
+        parts.push("normal map".into());
+    }
+    if m.double_sided {
+        parts.push("double sided".into());
+    }
+    if m.unshaded {
+        parts.push("unshaded".into());
+    }
+    if m.nearest == Some(true) {
+        parts.push("pixel filter".into());
+    }
+    if parts.is_empty() { String::new() } else { format!(", {}", parts.join(", ")) }
+}
+
+// ----------------------------------------------------------------- materials
+
+/// Every material used by brushes, meshes and terrain layers of the map.
+fn used_materials(map: &gt_doc::Map) -> HashSet<String> {
+    let mut used: HashSet<String> = map.brushes().flat_map(|(_, b)| b.faces.iter().map(|f| f.data.material.clone())).collect();
+    used.extend(map.meshes().flat_map(|(_, m)| m.faces.iter().map(|f| f.data.material.clone())));
+    used.extend(map.terrains().flat_map(|(_, t)| t.layers.iter().map(|l| l.material.clone())));
+    used
+}
+
+/// Selects every brush and mesh face using `material`.
+pub fn select_faces_with_material(state: &mut EditorState, material: &str) -> usize {
+    let map = &state.doc.map;
+    let mut faces: Vec<(NodeId, usize)> = Vec::new();
+    for (id, b) in map.brushes() {
+        if map.is_editable(id) {
+            faces.extend(b.faces.iter().enumerate().filter(|(_, f)| f.data.material == material).map(|(i, _)| (id, i)));
+        }
+    }
+    for (id, m) in map.meshes() {
+        if map.is_editable(id) {
+            faces.extend(m.faces.iter().enumerate().filter(|(_, f)| f.data.material == material).map(|(i, _)| (id, i)));
+        }
+    }
+    let n = faces.len();
+    state.doc.select(|_, s| {
+        s.clear();
+        for (id, f) in &faces {
+            s.select_face(*id, *f);
+        }
+    });
+    n
+}
+
+/// Replaces `from` with `to` on every face and terrain layer of the map.
+pub fn replace_material(state: &mut EditorState, from: &str, to: &str) -> usize {
+    state.doc.edit("Replace Material", |m, _| {
+        let mut n = 0;
+        let ids: Vec<NodeId> = m.nodes.keys().copied().collect();
+        for id in ids {
+            match m.get_mut(id).map(|node| &mut node.kind) {
+                Some(NodeKind::Brush(b)) => b.faces.iter_mut().filter(|f| f.data.material == from).for_each(|f| {
+                    f.data.material = to.to_string();
+                    n += 1;
+                }),
+                Some(NodeKind::Mesh(mesh)) => mesh.faces.iter_mut().filter(|f| f.data.material == from).for_each(|f| {
+                    f.data.material = to.to_string();
+                    n += 1;
+                }),
+                Some(NodeKind::Terrain(t)) => t.layers.iter_mut().filter(|l| l.material == from).for_each(|l| {
+                    l.material = to.to_string();
+                    n += 1;
+                }),
+                _ => {}
+            }
+        }
+        n
+    })
+}
+
+fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, label: bool, budget: &mut u32) -> egui::Response {
+    let cell = if label { Vec2::new(size + 8.0, size + 22.0) } else { Vec2::splat(size + 4.0) };
+    let (rect, resp) = ui.allocate_exact_size(cell, Sense::click_and_drag());
+    let selected = name == state.current_material;
+    if selected {
+        ui.painter().rect_filled(rect, 3.0, Color32::from_rgb(90, 60, 30));
+    } else if resp.hovered() {
+        ui.painter().rect_filled(rect, 3.0, Color32::from_gray(50));
+    }
+    let img_rect = egui::Rect::from_min_size(rect.min + Vec2::splat(if label { 4.0 } else { 2.0 }), Vec2::splat(size));
+    let ctx = ui.ctx().clone();
+    match state.materials.thumbnail(&ctx, name, budget) {
+        Some(tex) => {
+            ui.painter().image(tex.id(), img_rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
+        }
+        None => {
+            ui.painter().rect_filled(img_rect, 2.0, Color32::from_gray(35));
+            ui.ctx().request_repaint();
+        }
+    }
+    if state.prefs.favorite_materials.iter().any(|f| f == name) {
+        ui.painter().text(
+            img_rect.right_top() + Vec2::new(-3.0, 1.0),
+            egui::Align2::RIGHT_TOP,
+            "★",
+            egui::FontId::proportional(13.0),
+            Color32::from_rgb(255, 210, 60),
+        );
+    }
+    if label {
+        let short = name.rsplit('/').next().unwrap_or(name);
+        ui.painter().text(
+            egui::pos2(rect.center().x, rect.max.y - 9.0),
+            egui::Align2::CENTER_CENTER,
+            short,
+            egui::FontId::proportional(11.0),
+            Color32::LIGHT_GRAY,
+        );
+    }
+    resp
+}
+
+fn material_interactions(resp: egui::Response, state: &mut EditorState, name: &str, actions: &mut Vec<Action>) {
+    let tooltip = {
+        let size = state.materials.size(name).map(|s| format!("\n{} x {} px", s[0], s[1])).unwrap_or_default();
+        let info = state.materials.info(name).map(|m| material_summary(&m).trim_start_matches(", ").to_string()).filter(|s| !s.is_empty());
+        format!("{name}{size}{}", info.map(|i| format!("\n{i}")).unwrap_or_default())
+    };
+    let resp = resp.on_hover_text(tooltip);
+    if resp.clicked() {
+        actions.push(Action::ApplyMaterial(name.to_string()));
+    }
+    if resp.drag_started() {
+        resp.dnd_set_drag_payload(DndPayload::Material(name.to_string()));
+    }
+    resp.context_menu(|ui| {
+        if ui.button("Apply to selection").clicked() {
+            actions.push(Action::ApplyMaterial(name.to_string()));
+            ui.close();
+        }
+        let favorite = state.prefs.favorite_materials.iter().any(|f| f == name);
+        if ui.button(if favorite { "Remove from favourites" } else { "Add to favourites" }).clicked() {
+            if favorite {
+                state.prefs.favorite_materials.retain(|f| f != name);
+            } else {
+                state.prefs.favorite_materials.push(name.to_string());
+            }
+            ui.close();
+        }
+        if ui.button("Select faces using it").clicked() {
+            let n = select_faces_with_material(state, name);
+            state.set_status(format!("Selected {n} faces using {name}"));
+            ui.close();
+        }
+        let current = state.current_material.clone();
+        if current != name && ui.button(format!("Replace {current} with it in the map")).clicked() {
+            let n = replace_material(state, &current, name);
+            state.set_status(format!("Replaced {current} on {n} faces"));
+            ui.close();
+        }
+        if ui.button("Hotspot editor").clicked() {
+            state.current_material = name.to_string();
+            actions.push(Action::ShowHotspotEditor);
+            ui.close();
+        }
+        if ui.button("Copy name").clicked() {
+            ui.ctx().copy_text(name.to_string());
+            ui.close();
+        }
+    });
+}
+
+pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
+    ui.horizontal_wrapped(|ui| {
+        ui.add(egui::TextEdit::singleline(&mut ps.material_filter).hint_text("Search materials").desired_width(160.0));
+        let folders = state.materials.folders();
+        egui::ComboBox::from_id_salt("mat_folder").selected_text(ps.material_folder.clone().unwrap_or_else(|| "All folders".into())).show_ui(ui, |ui| {
+            ui.selectable_value(&mut ps.material_folder, None, "All folders");
+            for f in folders {
+                ui.selectable_value(&mut ps.material_folder, Some(f.clone()), if f.is_empty() { "(root)".to_string() } else { f });
+            }
+        });
+        ui.checkbox(&mut ps.material_used_only, "Used in map");
+        ui.checkbox(&mut ps.material_favorites_only, "★ Favourites");
+        ui.add(egui::Slider::new(&mut ps.thumb_size, 40.0..=160.0).show_value(false));
+        if ui.small_button("⟳").on_hover_text("Reload materials and Godot material settings").clicked() {
+            actions.push(Action::ReloadMaterials);
+        }
+        ui.label(RichText::new(format!("current: {}", state.current_material)).weak());
+    });
+    let mut budget = 6;
+    let recent: Vec<String> = state.prefs.recent_materials.iter().take(16).cloned().collect();
+    if !recent.is_empty() {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("recent").weak());
+            for name in recent {
+                let resp = material_cell(ui, state, &name, 28.0, false, &mut budget);
+                material_interactions(resp, state, &name, actions);
+            }
+        });
+    }
+    ui.separator();
+
+    let used = if ps.material_used_only { used_materials(&state.doc.map) } else { HashSet::new() };
+    let filter = ps.material_filter.to_lowercase();
+    let favorites = state.prefs.favorite_materials.clone();
+    let names: Vec<String> = state
+        .materials
+        .entries
+        .iter()
+        .filter(|e| filter.is_empty() || e.name.to_lowercase().contains(&filter))
+        .filter(|e| ps.material_folder.as_ref().is_none_or(|f| &e.folder == f))
+        .filter(|e| !ps.material_used_only || used.contains(&e.name))
+        .filter(|e| !ps.material_favorites_only || favorites.contains(&e.name))
+        .map(|e| e.name.clone())
+        .collect();
+
+    let size = ps.thumb_size;
+    let cell = Vec2::new(size + 8.0, size + 22.0);
+    let cols = ((ui.available_width() / cell.x).floor() as usize).max(1);
+    let rows = names.len().div_ceil(cols);
+    ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, cell.y, rows, |ui, range| {
+        for row in range {
+            ui.horizontal(|ui| {
+                for name in names.iter().skip(row * cols).take(cols) {
+                    let resp = material_cell(ui, state, name, size, true, &mut budget);
+                    material_interactions(resp, state, name, actions);
+                }
+            });
+        }
+    });
+}
+
+// ------------------------------------------------------------------ entities
+
+pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
+    ui.add(egui::TextEdit::singleline(&mut ps.entity_filter).hint_text("Search entities").desired_width(f32::INFINITY));
+    ui.label(RichText::new("Drag into a viewport, or double click to place at the cursor. Brush entities: select brushes and click.").weak());
+    ui.separator();
+    let filter = ps.entity_filter.to_lowercase();
+    let mut groups: Vec<(String, Vec<EntityDef>)> = Vec::new();
+    for def in state.game.entities.iter().filter(|d| d.classname != "worldspawn") {
+        if !filter.is_empty() && !def.classname.to_lowercase().contains(&filter) {
+            continue;
+        }
+        let group = if def.group.is_empty() { "other".to_string() } else { def.group.clone() };
+        match groups.iter_mut().find(|(g, _)| *g == group) {
+            Some((_, list)) => list.push(def.clone()),
+            None => groups.push((group, vec![def.clone()])),
+        }
+    }
+    ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+        for (group, defs) in groups {
+            egui::CollapsingHeader::new(group).default_open(true).show(ui, |ui| {
+                for def in defs {
+                    ui.horizontal(|ui| {
+                        let c = def.color;
+                        let (r, _) = ui.allocate_exact_size(Vec2::splat(12.0), Sense::hover());
+                        ui.painter().rect_filled(r, 2.0, Color32::from_rgb((c.r * 255.0) as u8, (c.g * 255.0) as u8, (c.b * 255.0) as u8));
+                        let kind = match def.kind {
+                            gt_formats::EntityKind::Point => "point",
+                            gt_formats::EntityKind::Solid => "brush",
+                        };
+                        let resp = ui
+                            .add(egui::Label::new(format!("{}  ", def.classname)).sense(Sense::click_and_drag()))
+                            .on_hover_text(format!("{kind} entity\n{}", def.description));
+                        ui.label(RichText::new(kind).weak().small());
+                        match def.kind {
+                            gt_formats::EntityKind::Point => {
+                                if resp.drag_started() {
+                                    resp.dnd_set_drag_payload(DndPayload::Entity(def.classname.clone()));
+                                }
+                                if resp.double_clicked() {
+                                    actions.push(Action::CreatePointEntity { classname: def.classname.clone(), at: None });
+                                }
+                            }
+                            gt_formats::EntityKind::Solid => {
+                                if resp.clicked() {
+                                    actions.push(Action::CreateBrushEntity(def.classname.clone()));
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+        }
+    });
+}
+
+// -------------------------------------------------------------------- issues
+
+fn collect_issues(state: &EditorState) -> Vec<gt_doc::issues::Issue> {
+    use gt_doc::issues::{Issue, Severity};
+    let mut list = gt_doc::issues::check(&state.doc.map);
+    for (id, e) in state.doc.map.entities() {
+        if state.game.entity(&e.classname).is_none() && !e.classname.is_empty() {
+            list.push(Issue {
+                node: Some(id),
+                severity: Severity::Warning,
+                code: "unknown_class",
+                message: format!("No entity definition for '{}'", e.classname),
+            });
+        }
+    }
+    list.sort_by_key(|i| std::cmp::Reverse(i.severity));
+    list
+}
+
+pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
+    use gt_doc::issues::{self, Severity};
+    if ps.issues_revision != state.doc.revision {
+        ps.issues = collect_issues(state);
+        ps.issues_revision = state.doc.revision;
+    }
+    let errors = ps.issues.iter().filter(|i| i.severity == Severity::Error).count();
+    let warnings = ps.issues.iter().filter(|i| i.severity == Severity::Warning).count();
+    let fixable = ps.issues.iter().filter(|i| issues::fixable(i.code)).count();
+    let mut fix: Vec<gt_doc::issues::Issue> = Vec::new();
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(format!("{errors} errors")).color(Color32::from_rgb(255, 110, 90)));
+        ui.label(RichText::new(format!("{warnings} warnings")).color(Color32::from_rgb(255, 200, 90)));
+        ui.label(format!("{} total", ps.issues.len()));
+        if ui.add_enabled(fixable > 0, egui::Button::new(format!("Fix all ({fixable})"))).clicked() {
+            fix = ps.issues.iter().filter(|i| issues::fixable(i.code)).cloned().collect();
+        }
+    });
+    ui.separator();
+    if ps.issues.is_empty() {
+        ui.label(RichText::new("No problems found").color(Color32::from_rgb(120, 220, 120)));
+    }
+    let mut select: Option<NodeId> = None;
+    ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+        for issue in &ps.issues {
+            ui.horizontal(|ui| {
+                let (icon, color) = match issue.severity {
+                    Severity::Error => ("⛔", Color32::from_rgb(255, 110, 90)),
+                    Severity::Warning => ("⚠", Color32::from_rgb(255, 200, 90)),
+                    Severity::Info => ("ℹ", Color32::from_rgb(140, 190, 255)),
+                };
+                ui.label(RichText::new(icon).color(color));
+                let name = issue.node.and_then(|n| state.doc.map.get(n)).map(|n| n.name()).unwrap_or_default();
+                if ui.selectable_label(false, format!("{}  {}", issue.message, RichText::new(name).weak().text())).clicked() {
+                    select = issue.node;
+                }
+                if issues::fixable(issue.code) && ui.small_button("Fix").clicked() {
+                    fix.push(issue.clone());
+                }
+            });
+        }
+    });
+    if let Some(id) = select.filter(|id| state.doc.map.contains(*id)) {
+        let target = state.doc.map.selection_target(id, &state.open_groups);
+        state.doc.select(|_, s| {
+            s.clear();
+            s.select_node(target);
+        });
+        actions.push(Action::FocusSelection);
+    }
+    if !fix.is_empty() {
+        let material = state.current_material.clone();
+        state.doc.edit("Fix Issues", |m, _| {
+            for issue in &fix {
+                issues::fix(m, issue, &material);
+            }
+        });
+    }
+}
+
+// ----------------------------------------------------------------- reference
+
+/// Short usage notes for every tool, shown in the reference panel.
+pub const TOOL_HELP: [(&str, &str); 14] = [
+    (
+        "Select",
+        "Click selects, drag empty space draws a brush, drag the selection moves it (Alt vertical, Ctrl duplicates). Entity gizmo handles (hinges, travel, radius) drag here.",
+    ),
+    ("Clip", "Click two or three points, Tab picks the side to keep, Enter clips."),
+    ("Vertex", "Drag brush vertices, edge and face midpoints split. Del removes vertices."),
+    ("Rotate", "Drag a ring, snaps to 15 degrees, Shift for 1 degree."),
+    ("Scale", "Drag bounds handles, Alt scales symmetrically."),
+    ("Mesh", "Blender style: 1/2/3 component modes, G/R/S, E extrude, I inset, Ctrl+R loop cut, K knife."),
+    ("Sculpt", "Raise, lower, smooth, flatten, noise and terrace terrains and displacements. Shift inverts, Ctrl smooths, Ctrl+wheel radius."),
+    ("Blend", "Paint, erase, smooth, sharpen, noise, slope and height blends on terrain layers, displacement alpha and faces with a blend material."),
+    ("Paint", "Vertex colors on brush faces."),
+    (
+        "Scatter",
+        "Paints trees, rocks and foliage from a weighted palette into a scatter layer. Shift erases, Alt+click toggles target surfaces, Ctrl+wheel radius.",
+    ),
+    ("Volume", "Drag out trigger, spawn, hurt, teleport and push volumes as brush entities."),
+    ("Path", "Click to chain path_corner entities, Enter finishes."),
+    ("Measure", "Drag or click two points."),
+    ("Texture", "Right click applies, Alt+right wraps, Alt+click picks, drag slides, Ctrl+wheel scales, Alt+wheel rotates."),
+];
+
+pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
+    use crate::code_refs::{self, CodeKind};
+    ui.horizontal(|ui| {
+        ui.add(egui::TextEdit::singleline(&mut ps.reference_filter).hint_text("Filter entities").desired_width(140.0));
+        if let Some(root) = state.game.project_root.clone()
+            && ui.small_button("Add C# helper to project").on_hover_text("Writes GodotTrench.cs, the bridge C# entities use").clicked()
+        {
+            let path = root.join("addons/func_godot/csharp/GodotTrench.cs");
+            let result = std::fs::create_dir_all(path.parent().unwrap_or(&root)).and_then(|_| std::fs::write(&path, code_refs::CSHARP_HELPER));
+            state.set_status(match result {
+                Ok(()) => format!("Wrote {}", path.display()),
+                Err(e) => format!("Could not write the C# helper: {e}"),
+            });
+        }
+    });
+    let filter = ps.reference_filter.to_lowercase();
+    let defs: Vec<gt_formats::EntityDef> = state
+        .game
+        .entities
+        .iter()
+        .filter(|d| filter.is_empty() || d.classname.contains(&filter) || d.description.to_lowercase().contains(&filter))
+        .cloned()
+        .collect();
+    if ps.reference_class.is_empty()
+        && let Some(e) = state.doc.selection.nodes.iter().find_map(|id| state.doc.map.entity(*id))
+    {
+        ps.reference_class = e.classname.clone();
+    }
+    ui.columns(2, |cols| {
+        ScrollArea::vertical().id_salt("reference_list").auto_shrink([false, false]).show(&mut cols[0], |ui| {
+            let mut group = String::new();
+            for d in &defs {
+                if d.group != group {
+                    group = d.group.clone();
+                    ui.label(RichText::new(&group).strong());
+                }
+                if ui.selectable_label(ps.reference_class == d.classname, &d.classname).on_hover_text(&d.description).clicked() {
+                    ps.reference_class = d.classname.clone();
+                }
+            }
+            ui.separator();
+            ui.label(RichText::new("Tools").strong());
+            for (tool, help) in TOOL_HELP {
+                ui.label(RichText::new(tool).color(Color32::from_rgb(160, 200, 255))).on_hover_text(help);
+            }
+        });
+        let ui = &mut cols[1];
+        let Some(def) = state.game.entity(&ps.reference_class).cloned() else {
+            ui.label("Pick an entity to see how to use it from GDScript or C#.");
+            for (tool, help) in TOOL_HELP {
+                ui.label(RichText::new(tool).strong());
+                ui.label(RichText::new(help).weak());
+            }
+            return;
+        };
+        ui.heading(&def.classname);
+        ui.label(RichText::new(&def.description).weak());
+        ui.label(format!(
+            "{} entity, node {}",
+            if def.kind == gt_formats::EntityKind::Solid { "brush" } else { "point" },
+            if def.node_class.is_empty() { "-" } else { &def.node_class }
+        ));
+        if !def.script.is_empty() {
+            ui.horizontal(|ui| {
+                ui.label("script");
+                ui.code(&def.script);
+                if let Some(path) = state.game.resolve_res(&def.script).filter(|p| p.is_file())
+                    && ui.small_button("Open").clicked()
+                {
+                    open_in_system(&path);
+                }
+            });
+        }
+        egui::CollapsingHeader::new(format!("Properties ({})", def.properties.len())).default_open(true).show(ui, |ui| {
+            egui::Grid::new("ref_props").num_columns(3).striped(true).show(ui, |ui| {
+                for p in &def.properties {
+                    ui.label(RichText::new(&p.name).strong());
+                    ui.label(format!("{:?} = {}", p.ty, p.default));
+                    ui.label(RichText::new(&p.description).weak());
+                    ui.end_row();
+                }
+            });
+        });
+        egui::CollapsingHeader::new(format!("Inputs ({}) and outputs ({})", def.inputs.len(), def.outputs.len())).default_open(true).show(ui, |ui| {
+            for i in &def.inputs {
+                ui.label(format!("input  {}({})", i.name, i.parameter));
+            }
+            for o in &def.outputs {
+                ui.label(format!("output {}({})", o.name, o.parameter));
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            for (k, kind) in CodeKind::ALL.iter().enumerate() {
+                ui.selectable_value(&mut ps.reference_kind, k, kind.label());
+            }
+        });
+        let kind = CodeKind::ALL[ps.reference_kind.min(CodeKind::ALL.len() - 1)];
+        let code = code_refs::generate(&def, kind);
+        ui.horizontal(|ui| {
+            if ui.button("Copy").clicked() {
+                ui.ctx().copy_text(code.clone());
+                state.set_status("Copied to the clipboard");
+            }
+            if matches!(kind, CodeKind::GdscriptClass | CodeKind::CsharpClass | CodeKind::FgdResource)
+                && let Some(root) = state.game.project_root.clone()
+                && ui.button("Create in project").on_hover_text("Writes the file under res://entities/ unless it exists").clicked()
+            {
+                let stem = if kind == CodeKind::CsharpClass { code_refs::pascal(&def.classname) } else { def.classname.clone() };
+                let path = root.join("entities").join(format!("{stem}.{}", kind.extension()));
+                let result = if path.exists() {
+                    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "file exists"))
+                } else {
+                    std::fs::create_dir_all(root.join("entities")).and_then(|_| std::fs::write(&path, &code))
+                };
+                state.set_status(match result {
+                    Ok(()) => format!("Wrote {}", path.display()),
+                    Err(e) => format!("{}: {e}", path.display()),
+                });
+            }
+            if ui.button("Place").on_hover_text("Point entities at the cursor, brush entities from the selection").clicked() {
+                actions.push(if def.kind == gt_formats::EntityKind::Point {
+                    Action::CreatePointEntity { classname: def.classname.clone(), at: None }
+                } else {
+                    Action::CreateBrushEntity(def.classname.clone())
+                });
+            }
+        });
+        ScrollArea::both().id_salt("reference_code").auto_shrink([false, false]).show(ui, |ui| {
+            let mut text = code.as_str();
+            ui.add(egui::TextEdit::multiline(&mut text).code_editor().desired_width(f32::INFINITY));
+        });
+    });
+}
+
+/// Opens a file with the operating system's default application.
+pub fn open_in_system(path: &std::path::Path) {
+    let result = if cfg!(windows) {
+        std::process::Command::new("cmd").args(["/C", "start", ""]).arg(path).spawn()
+    } else if cfg!(target_os = "macos") {
+        std::process::Command::new("open").arg(path).spawn()
+    } else {
+        std::process::Command::new("xdg-open").arg(path).spawn()
+    };
+    let _ = result;
+}
+
+// ------------------------------------------------------------------- history
+
+pub fn history(ui: &mut Ui, state: &mut EditorState) {
+    let undo: Vec<String> = state.doc.history.undo_labels().map(str::to_string).collect();
+    let redo: Vec<String> = state.doc.history.redo_labels().map(str::to_string).collect();
+    let mut undo_steps = 0;
+    let mut redo_steps = 0;
+    ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+        for (i, label) in redo.iter().enumerate().rev() {
+            if ui.selectable_label(false, RichText::new(label).weak()).clicked() {
+                redo_steps = i + 1;
+            }
+        }
+        ui.label(RichText::new("▶ current").strong());
+        for (i, label) in undo.iter().enumerate() {
+            if ui.selectable_label(false, label).clicked() {
+                undo_steps = i + 1;
+            }
+        }
+    });
+    for _ in 0..undo_steps {
+        state.doc.undo();
+    }
+    for _ in 0..redo_steps {
+        state.doc.redo();
+    }
+}

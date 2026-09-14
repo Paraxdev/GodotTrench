@@ -1,0 +1,17 @@
+[remap]
+
+importer="godottrench.bbmodel"
+type="PackedScene"
+uid="uid://brggympur7oby"
+path="res://.godot/imported/oak.bbmodel-859cba7b431ff6b4e7d8bbfeae3ba751.scn"
+
+[deps]
+
+source_file="res://demo/models/oak.bbmodel"
+dest_files=["res://.godot/imported/oak.bbmodel-859cba7b431ff6b4e7d8bbfeae3ba751.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

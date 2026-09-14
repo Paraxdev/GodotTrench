@@ -1,0 +1,14 @@
+[remap]
+
+importer="func_godot.map"
+type="QuakeMapFile"
+uid="uid://ku1niut6a6fm"
+path="res://.godot/imported/terrain.gtm-7d3938c16c9090fb7cb366536bd7a994.tres"
+
+[deps]
+
+source_file="res://demo/maps/terrain.gtm"
+dest_files=["res://.godot/imported/terrain.gtm-7d3938c16c9090fb7cb366536bd7a994.tres"]
+
+[params]
+

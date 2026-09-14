@@ -1,0 +1,17 @@
+[remap]
+
+importer="godottrench.bbmodel"
+type="PackedScene"
+uid="uid://ctff5i0rmqnvm"
+path="res://.godot/imported/boulder.bbmodel-da54c7c0fb4c5f4642678f1523630e59.scn"
+
+[deps]
+
+source_file="res://godottrench/nature/boulder.bbmodel"
+dest_files=["res://.godot/imported/boulder.bbmodel-da54c7c0fb4c5f4642678f1523630e59.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

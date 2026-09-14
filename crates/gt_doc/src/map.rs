@@ -1,0 +1,570 @@
+use std::collections::BTreeMap;
+
+use gt_core::{Aabb, Color, DMat4, DVec3, NodeId};
+use gt_geom::{Brush, Mesh, Terrain};
+use serde::{Deserialize, Serialize};
+
+use crate::entity::Entity;
+use crate::scatter::Scatter;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Layer {
+    pub name: String,
+    pub color: Color,
+    #[serde(default)]
+    pub omit_from_export: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Group {
+    pub name: String,
+    /// Groups sharing a link id are kept identical up to their transforms (TrenchBroom linked groups).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link_id: Option<u64>,
+    /// Placement of a linked group relative to the others in its set.
+    #[serde(default = "identity", skip_serializing_if = "is_identity")]
+    pub transform: DMat4,
+}
+
+impl Group {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self { name: name.into(), link_id: None, transform: DMat4::IDENTITY }
+    }
+}
+
+fn identity() -> DMat4 {
+    DMat4::IDENTITY
+}
+
+fn is_identity(m: &DMat4) -> bool {
+    *m == DMat4::IDENTITY
+}
+
+/// Saved viewpoint of the 3D view.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CameraBookmark {
+    pub position: DVec3,
+    pub yaw: f64,
+    pub pitch: f64,
+}
+
+/// Editor state stored with the map but not exported.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct EditorData {
+    /// Slots 1 to 9.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub cameras: BTreeMap<u8, CameraBookmark>,
+    /// Objects outside the cordon are hidden in the views and left out of cordoned exports.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cordon: Option<Aabb>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cordon_enabled: bool,
+}
+
+/// Reference to another map placed with a transform (Hammer func_instance / prefab).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Instance {
+    /// Path relative to the referencing map, or a res:// path.
+    pub path: String,
+    pub origin: DVec3,
+    pub angles: DVec3,
+    /// Prefix applied to targetnames inside the instance so several copies do not collide.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fixup: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum NodeKind {
+    Layer(Layer),
+    Group(Group),
+    Entity(Entity),
+    Brush(Brush),
+    Instance(Instance),
+    Mesh(Mesh),
+    Terrain(Terrain),
+    Scatter(Scatter),
+}
+
+impl NodeKind {
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            NodeKind::Layer(_) => "layer",
+            NodeKind::Group(_) => "group",
+            NodeKind::Entity(_) => "entity",
+            NodeKind::Brush(_) => "brush",
+            NodeKind::Instance(_) => "instance",
+            NodeKind::Mesh(_) => "mesh",
+            NodeKind::Terrain(_) => "terrain",
+            NodeKind::Scatter(_) => "scatter",
+        }
+    }
+
+    /// Geometry leaves that can live in the world or inside brush entities.
+    pub fn is_geometry(&self) -> bool {
+        matches!(self, NodeKind::Brush(_) | NodeKind::Mesh(_) | NodeKind::Terrain(_))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Node {
+    pub id: NodeId,
+    pub parent: Option<NodeId>,
+    pub children: Vec<NodeId>,
+    pub kind: NodeKind,
+    pub hidden: bool,
+    pub locked: bool,
+}
+
+impl Node {
+    pub fn brush(&self) -> Option<&Brush> {
+        match &self.kind {
+            NodeKind::Brush(b) => Some(b),
+            _ => None,
+        }
+    }
+
+    pub fn entity(&self) -> Option<&Entity> {
+        match &self.kind {
+            NodeKind::Entity(e) => Some(e),
+            _ => None,
+        }
+    }
+
+    pub fn mesh(&self) -> Option<&Mesh> {
+        match &self.kind {
+            NodeKind::Mesh(m) => Some(m),
+            _ => None,
+        }
+    }
+
+    pub fn terrain(&self) -> Option<&Terrain> {
+        match &self.kind {
+            NodeKind::Terrain(t) => Some(t),
+            _ => None,
+        }
+    }
+
+    pub fn name(&self) -> String {
+        match &self.kind {
+            NodeKind::Layer(l) => l.name.clone(),
+            NodeKind::Group(g) if g.link_id.is_some() => format!("{} (linked)", g.name),
+            NodeKind::Group(g) => g.name.clone(),
+            NodeKind::Entity(e) => match e.targetname() {
+                Some(n) => format!("{} ({n})", e.classname),
+                None => e.classname.clone(),
+            },
+            NodeKind::Brush(b) => format!("brush ({} faces)", b.faces.len()),
+            NodeKind::Instance(i) => format!("instance {}", i.path),
+            NodeKind::Mesh(m) => format!("mesh ({} faces)", m.faces.len()),
+            NodeKind::Terrain(t) => format!("terrain {}x{}", t.resolution[0], t.resolution[1]),
+            NodeKind::Scatter(s) => format!("scatter {} ({})", s.name, s.instances.len()),
+        }
+    }
+
+    pub fn scatter(&self) -> Option<&Scatter> {
+        match &self.kind {
+            NodeKind::Scatter(s) => Some(s),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Map {
+    pub nodes: imbl::OrdMap<NodeId, Node>,
+    pub layers: Vec<NodeId>,
+    /// Worldspawn key/values.
+    pub properties: BTreeMap<String, String>,
+    pub next_id: u64,
+    pub editor: EditorData,
+}
+
+impl Default for Map {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Map {
+    pub fn new() -> Self {
+        let mut map = Map { nodes: imbl::OrdMap::new(), layers: Vec::new(), properties: BTreeMap::new(), next_id: 1, editor: EditorData::default() };
+        map.add_layer("Default");
+        map
+    }
+
+    pub fn alloc_id(&mut self) -> NodeId {
+        let id = NodeId(self.next_id);
+        self.next_id += 1;
+        id
+    }
+
+    pub fn default_layer(&self) -> NodeId {
+        self.layers[0]
+    }
+
+    pub fn add_layer(&mut self, name: &str) -> NodeId {
+        let id = self.alloc_id();
+        let color = Color::from_seed(id.0 + 7);
+        self.nodes.insert(
+            id,
+            Node {
+                id,
+                parent: None,
+                children: Vec::new(),
+                kind: NodeKind::Layer(Layer { name: name.into(), color, omit_from_export: false }),
+                hidden: false,
+                locked: false,
+            },
+        );
+        self.layers.push(id);
+        id
+    }
+
+    pub fn get(&self, id: NodeId) -> Option<&Node> {
+        self.nodes.get(&id)
+    }
+
+    pub fn get_mut(&mut self, id: NodeId) -> Option<&mut Node> {
+        self.nodes.get_mut(&id)
+    }
+
+    pub fn contains(&self, id: NodeId) -> bool {
+        self.nodes.contains_key(&id)
+    }
+
+    pub fn brush(&self, id: NodeId) -> Option<&Brush> {
+        self.get(id).and_then(|n| n.brush())
+    }
+
+    pub fn brush_mut(&mut self, id: NodeId) -> Option<&mut Brush> {
+        match &mut self.get_mut(id)?.kind {
+            NodeKind::Brush(b) => Some(b),
+            _ => None,
+        }
+    }
+
+    pub fn entity(&self, id: NodeId) -> Option<&Entity> {
+        self.get(id).and_then(|n| n.entity())
+    }
+
+    pub fn entity_mut(&mut self, id: NodeId) -> Option<&mut Entity> {
+        match &mut self.get_mut(id)?.kind {
+            NodeKind::Entity(e) => Some(e),
+            _ => None,
+        }
+    }
+
+    pub fn mesh(&self, id: NodeId) -> Option<&Mesh> {
+        self.get(id).and_then(|n| n.mesh())
+    }
+
+    pub fn mesh_mut(&mut self, id: NodeId) -> Option<&mut Mesh> {
+        match &mut self.get_mut(id)?.kind {
+            NodeKind::Mesh(m) => Some(m),
+            _ => None,
+        }
+    }
+
+    pub fn terrain(&self, id: NodeId) -> Option<&Terrain> {
+        self.get(id).and_then(|n| n.terrain())
+    }
+
+    pub fn terrain_mut(&mut self, id: NodeId) -> Option<&mut Terrain> {
+        match &mut self.get_mut(id)?.kind {
+            NodeKind::Terrain(t) => Some(t),
+            _ => None,
+        }
+    }
+
+    pub fn scatter(&self, id: NodeId) -> Option<&Scatter> {
+        self.get(id).and_then(|n| n.scatter())
+    }
+
+    pub fn scatter_mut(&mut self, id: NodeId) -> Option<&mut Scatter> {
+        match &mut self.get_mut(id)?.kind {
+            NodeKind::Scatter(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn scatters(&self) -> impl Iterator<Item = (NodeId, &Scatter)> {
+        self.nodes.iter().filter_map(|(id, n)| n.scatter().map(|s| (*id, s)))
+    }
+
+    pub fn meshes(&self) -> impl Iterator<Item = (NodeId, &Mesh)> {
+        self.nodes.iter().filter_map(|(id, n)| n.mesh().map(|m| (*id, m)))
+    }
+
+    pub fn terrains(&self) -> impl Iterator<Item = (NodeId, &Terrain)> {
+        self.nodes.iter().filter_map(|(id, n)| n.terrain().map(|t| (*id, t)))
+    }
+
+    /// Whether the node lies inside the enabled cordon (always true without one).
+    pub fn in_cordon(&self, id: NodeId) -> bool {
+        match (self.editor.cordon_enabled, self.editor.cordon) {
+            (true, Some(c)) => {
+                let b = self.bounds(id);
+                b.is_empty() || c.intersects(&b)
+            }
+            _ => true,
+        }
+    }
+
+    pub fn insert(&mut self, parent: NodeId, kind: NodeKind) -> NodeId {
+        let id = self.alloc_id();
+        self.insert_with_id(id, parent, kind);
+        id
+    }
+
+    pub fn insert_with_id(&mut self, id: NodeId, parent: NodeId, kind: NodeKind) {
+        self.next_id = self.next_id.max(id.0 + 1);
+        self.nodes.insert(id, Node { id, parent: Some(parent), children: Vec::new(), kind, hidden: false, locked: false });
+        if let Some(p) = self.nodes.get_mut(&parent) {
+            p.children.push(id);
+        }
+    }
+
+    /// Removes the node and all descendants. Empty layers are kept, layers themselves are removed only if not the last.
+    pub fn remove(&mut self, id: NodeId) {
+        let Some(node) = self.nodes.get(&id).cloned() else { return };
+        if matches!(node.kind, NodeKind::Layer(_)) && self.layers.len() <= 1 {
+            return;
+        }
+        for child in node.children.clone() {
+            self.remove_subtree(child);
+        }
+        self.nodes.remove(&id);
+        match node.parent {
+            Some(p) => {
+                if let Some(parent) = self.nodes.get_mut(&p) {
+                    parent.children.retain(|c| *c != id);
+                }
+            }
+            None => self.layers.retain(|l| *l != id),
+        }
+    }
+
+    fn remove_subtree(&mut self, id: NodeId) {
+        if let Some(node) = self.nodes.remove(&id) {
+            for c in node.children {
+                self.remove_subtree(c);
+            }
+        }
+    }
+
+    pub fn reparent(&mut self, id: NodeId, new_parent: NodeId) {
+        if id == new_parent || self.is_ancestor(id, new_parent) {
+            return;
+        }
+        let Some(old) = self.get(id).and_then(|n| n.parent) else { return };
+        if old == new_parent {
+            return;
+        }
+        if let Some(p) = self.nodes.get_mut(&old) {
+            p.children.retain(|c| *c != id);
+        }
+        if let Some(p) = self.nodes.get_mut(&new_parent) {
+            p.children.push(id);
+        }
+        if let Some(n) = self.nodes.get_mut(&id) {
+            n.parent = Some(new_parent);
+        }
+    }
+
+    pub fn is_ancestor(&self, ancestor: NodeId, mut node: NodeId) -> bool {
+        while let Some(p) = self.get(node).and_then(|n| n.parent) {
+            if p == ancestor {
+                return true;
+            }
+            node = p;
+        }
+        false
+    }
+
+    pub fn ancestors(&self, id: NodeId) -> Vec<NodeId> {
+        let mut out = Vec::new();
+        let mut cur = id;
+        while let Some(p) = self.get(cur).and_then(|n| n.parent) {
+            out.push(p);
+            cur = p;
+        }
+        out
+    }
+
+    pub fn layer_of(&self, id: NodeId) -> NodeId {
+        let mut cur = id;
+        while let Some(p) = self.get(cur).and_then(|n| n.parent) {
+            cur = p;
+        }
+        cur
+    }
+
+    /// Hidden itself or through any ancestor.
+    pub fn is_hidden(&self, id: NodeId) -> bool {
+        let mut cur = Some(id);
+        while let Some(c) = cur {
+            match self.get(c) {
+                Some(n) if n.hidden => return true,
+                Some(n) => cur = n.parent,
+                None => return false,
+            }
+        }
+        false
+    }
+
+    pub fn is_locked(&self, id: NodeId) -> bool {
+        let mut cur = Some(id);
+        while let Some(c) = cur {
+            match self.get(c) {
+                Some(n) if n.locked => return true,
+                Some(n) => cur = n.parent,
+                None => return false,
+            }
+        }
+        false
+    }
+
+    pub fn is_editable(&self, id: NodeId) -> bool {
+        !self.is_hidden(id) && !self.is_locked(id)
+    }
+
+    /// Depth-first descendants, not including `id`.
+    pub fn descendants(&self, id: NodeId) -> Vec<NodeId> {
+        let mut out = Vec::new();
+        let mut stack: Vec<NodeId> = self.get(id).map(|n| n.children.iter().rev().copied().collect()).unwrap_or_default();
+        while let Some(c) = stack.pop() {
+            out.push(c);
+            if let Some(n) = self.get(c) {
+                stack.extend(n.children.iter().rev());
+            }
+        }
+        out
+    }
+
+    /// All nodes in tree order.
+    pub fn walk(&self) -> Vec<NodeId> {
+        let mut out = Vec::with_capacity(self.nodes.len());
+        for l in &self.layers {
+            out.push(*l);
+            out.extend(self.descendants(*l));
+        }
+        out
+    }
+
+    pub fn brushes(&self) -> impl Iterator<Item = (NodeId, &Brush)> {
+        self.nodes.iter().filter_map(|(id, n)| n.brush().map(|b| (*id, b)))
+    }
+
+    pub fn entities(&self) -> impl Iterator<Item = (NodeId, &Entity)> {
+        self.nodes.iter().filter_map(|(id, n)| n.entity().map(|e| (*id, e)))
+    }
+
+    /// Entity that owns this brush, if it is not a world brush.
+    pub fn owning_entity(&self, brush: NodeId) -> Option<NodeId> {
+        let p = self.get(brush)?.parent?;
+        self.entity(p).map(|_| p)
+    }
+
+    pub fn is_point_entity(&self, id: NodeId) -> bool {
+        self.get(id).is_some_and(|n| matches!(n.kind, NodeKind::Entity(_)) && n.children.is_empty())
+    }
+
+    pub fn bounds(&self, id: NodeId) -> Aabb {
+        let Some(node) = self.get(id) else { return Aabb::EMPTY };
+        match &node.kind {
+            NodeKind::Brush(b) => b.bounds(),
+            NodeKind::Mesh(m) => m.bounds(),
+            NodeKind::Terrain(t) => t.bounds(),
+            NodeKind::Scatter(s) => s.bounds(),
+            NodeKind::Entity(e) if node.children.is_empty() => Aabb::from_center_size(e.origin, DVec3::splat(16.0)),
+            NodeKind::Instance(i) => Aabb::from_center_size(i.origin, DVec3::splat(16.0)),
+            _ => {
+                let mut b = Aabb::EMPTY;
+                for c in &node.children {
+                    b.include(&self.bounds(*c));
+                }
+                b
+            }
+        }
+    }
+
+    pub fn bounds_of(&self, ids: impl IntoIterator<Item = NodeId>) -> Aabb {
+        let mut b = Aabb::EMPTY;
+        for id in ids {
+            b.include(&self.bounds(id));
+        }
+        b
+    }
+
+    /// Nearest ancestor group that is closed, which is what a click in the viewport selects.
+    pub fn selection_target(&self, id: NodeId, open_groups: &[NodeId]) -> NodeId {
+        let mut target = id;
+        for a in self.ancestors(id) {
+            if let Some(Node { kind: NodeKind::Group(_), .. }) = self.get(a)
+                && !open_groups.contains(&a)
+            {
+                target = a;
+            }
+        }
+        target
+    }
+
+    /// Deep copies a subtree under a new parent with fresh ids. Returns the new root id.
+    pub fn duplicate_subtree(&mut self, id: NodeId, parent: NodeId) -> Option<NodeId> {
+        let node = self.get(id)?.clone();
+        let new_id = self.insert(parent, node.kind.clone());
+        if let Some(n) = self.get_mut(new_id) {
+            n.hidden = node.hidden;
+            n.locked = node.locked;
+        }
+        for c in node.children {
+            self.duplicate_subtree(c, new_id);
+        }
+        Some(new_id)
+    }
+
+    pub fn brush_count(&self) -> usize {
+        self.brushes().count()
+    }
+
+    pub fn entity_count(&self) -> usize {
+        self.entities().count()
+    }
+
+    pub fn find_by_targetname(&self, name: &str) -> Vec<NodeId> {
+        self.entities().filter(|(_, e)| e.targetname() == Some(name)).map(|(id, _)| id).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gt_geom::Brush;
+
+    #[test]
+    fn insert_remove_subtree() {
+        let mut m = Map::new();
+        let layer = m.default_layer();
+        let g = m.insert(layer, NodeKind::Group(Group::new("g")));
+        let e = m.insert(g, NodeKind::Entity(Entity::new("func_door")));
+        let b = Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::ONE), "x").unwrap();
+        let bid = m.insert(e, NodeKind::Brush(b));
+        assert_eq!(m.owning_entity(bid), Some(e));
+        assert_eq!(m.layer_of(bid), layer);
+        m.get_mut(g).unwrap().hidden = true;
+        assert!(m.is_hidden(bid));
+        m.remove(g);
+        assert!(!m.contains(bid));
+        assert!(m.get(layer).unwrap().children.is_empty());
+    }
+
+    #[test]
+    fn reparent_rejects_cycles() {
+        let mut m = Map::new();
+        let layer = m.default_layer();
+        let a = m.insert(layer, NodeKind::Group(Group::new("a")));
+        let b = m.insert(a, NodeKind::Group(Group::new("b")));
+        m.reparent(a, b);
+        assert_eq!(m.get(a).unwrap().parent, Some(layer));
+    }
+}

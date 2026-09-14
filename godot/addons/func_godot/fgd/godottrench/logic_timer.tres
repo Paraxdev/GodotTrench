@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_timer.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "logic_timer"
+description = "Fires timer every interval, optionally randomized"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"interval": 1.0,
+"random_min": 0.0,
+"random_max": 0.0,
+"start_on": true,
+"once": false
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"interval": "Seconds between firings",
+"random_min": "With random_max above it, picks a random interval in range",
+"random_max": "Upper end of the random interval",
+"start_on": "Runs from map load",
+"once": "Stops after firing once"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7529412, 0.7529412, 0.7529412, 1),
+"size": AABB(-8, -8, -8, 8, 8, 8),
+"inputs": ["start", "stop", "toggle", "fire"],
+"outputs": ["timer"]
+})
+node_class = "Node3D"

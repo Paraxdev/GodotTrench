@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_debug.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "logic_debug"
+description = "Debug helper: prints inputs with their activator and shows a label in debug builds. trace_all logs every I/O event."
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"message": "{name} received {parameter} from {activator}",
+"show_label": true,
+"trace_all": false
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"message": "Printed text. {name}, {parameter}, {activator} and {time} are replaced",
+"show_label": "Floating label in debug builds",
+"trace_all": "Print every I/O event in the map"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(1, 0.4, 1, 1),
+"size": AABB(-8, -8, -8, 8, 8, 8),
+"inputs": ["write", "show", "hide", "toggle"],
+"outputs": ["printed"]
+})
+node_class = "Node3D"

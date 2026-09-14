@@ -1,0 +1,17 @@
+[remap]
+
+importer="godottrench.bbmodel"
+type="PackedScene"
+uid="uid://dnscab7rlll70"
+path="res://.godot/imported/pine.bbmodel-a6a436335dfb805f38f52387cad68f3a.scn"
+
+[deps]
+
+source_file="res://demo/models/pine.bbmodel"
+dest_files=["res://.godot/imported/pine.bbmodel-a6a436335dfb805f38f52387cad68f3a.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

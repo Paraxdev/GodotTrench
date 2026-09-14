@@ -1,0 +1,14 @@
+[remap]
+
+importer="func_godot.map"
+type="QuakeMapFile"
+uid="uid://c5rafhtt3tnjk"
+path="res://.godot/imported/demo.autosave.gtm-46988c46a5ab17a1bcf2938f70b781bb.tres"
+
+[deps]
+
+source_file="res://demo/maps/demo.autosave.gtm"
+dest_files=["res://.godot/imported/demo.autosave.gtm-46988c46a5ab17a1bcf2938f70b781bb.tres"]
+
+[params]
+

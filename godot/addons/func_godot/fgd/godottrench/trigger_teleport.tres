@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_teleport.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "trigger_teleport"
+description = "Moves bodies to its destination entity"
+build_visuals = false
+collision_shape_type = 1
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"destination": "",
+"filter_group": "player",
+"keep_velocity": false
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"destination": "info_teleport_destination or any named entity",
+"filter_group": "Only bodies in this group",
+"keep_velocity": "Keeps the body's velocity"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.4, 0.8666667, 1, 1),
+"property_types": {"destination": "target_destination"},
+"inputs": ["enable", "disable", "toggle"],
+"outputs": ["teleported"]
+})
+node_class = "Area3D"
