@@ -28,6 +28,7 @@ pub struct Viewport {
     pub rect: Rect,
     pub hovered: bool,
     press_modifiers: egui::Modifiers,
+    pub(crate) pixels_per_point: f32,
 }
 
 // Linear values, the targets are sRGB.
@@ -37,7 +38,15 @@ const BG_LIT: [f64; 4] = [0.18, 0.28, 0.45, 1.0];
 
 impl Viewport {
     pub fn new(kind: ViewKind) -> Self {
-        Self { camera: Camera::new(kind), target: None, drag: None, rect: Rect::NOTHING, hovered: false, press_modifiers: Default::default() }
+        Self {
+            camera: Camera::new(kind),
+            target: None,
+            drag: None,
+            rect: Rect::NOTHING,
+            hovered: false,
+            press_modifiers: Default::default(),
+            pixels_per_point: 1.0,
+        }
     }
 
     pub fn kind(&self) -> ViewKind {
@@ -53,7 +62,8 @@ impl Viewport {
             return;
         }
         let ppp = ui.ctx().pixels_per_point();
-        cx.renderer.ensure_target(&mut self.target, [(rect.width() * ppp) as u32, (rect.height() * ppp) as u32]);
+        self.pixels_per_point = ppp;
+        cx.renderer.ensure_target(&mut self.target, [(rect.width() * ppp).round() as u32, (rect.height() * ppp).round() as u32]);
 
         self.handle_camera(ui, &response, cx);
         self.handle_keys(ui, cx);
@@ -712,6 +722,7 @@ impl Viewport {
             } else {
                 BG_3D
             },
+            line_width: self.pixels_per_point,
         };
         let grid = if is_2d { cx.renderer.upload_lines(&grid_lines(&self.camera, rect, state.grid)) } else { None };
         let tools = cx.renderer.upload_lines(tool_lines);

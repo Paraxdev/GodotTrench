@@ -11,6 +11,8 @@
   `Q`/`Esc` back to select. Ctrl+wheel resizes the scatter, blend and sculpt brushes.
 * `[` / `]` grid, `Ctrl+D` duplicate, `Ctrl+G` group, `Ctrl+K` subtract, `Ctrl+M` merge, `Ctrl+H` hide, `Ctrl+J` isolate, `F` focus.
 * `Ctrl+Shift+E` convert to mesh, `Ctrl+Shift+J` join meshes, `Ctrl+Shift+N` new tab, `Ctrl+Tab` next tab, `Ctrl+W` close tab.
+* `Ctrl+=` / `Ctrl+-` / `Ctrl+0` scale the interface. The scale is saved and also set in Preferences or *View > Interface Scale*.
+  It multiplies the monitor's display scaling, turn that off in Preferences if your monitor reports the wrong scaling.
 * Every binding can be changed in the *Keyboard Shortcuts* window, starting from the TrenchBroom, Hammer or Blender preset
   chosen in Preferences.
 

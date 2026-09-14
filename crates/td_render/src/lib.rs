@@ -36,6 +36,7 @@ struct CameraUniform {
     inv_view_proj: [[f32; 4]; 4],
     eye: [f32; 4],
     params: [f32; 4],
+    viewport: [f32; 4],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -273,6 +274,8 @@ pub struct FrameParams {
     pub shade: ShadeMode,
     pub orthographic: bool,
     pub clear: [f64; 4],
+    /// Line thickness in physical pixels, usually the UI pixels per point.
+    pub line_width: f32,
 }
 
 #[derive(Default)]
@@ -494,13 +497,15 @@ impl Renderer {
         });
 
         let mesh_attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x4];
-        let line_attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4];
+        // One instance per segment, reading both endpoints of the line vertex pair.
+        let line_attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4, 2 => Float32x3, 3 => Float32x4];
 
         let make = |label: &str,
                     shader: &wgpu::ShaderModule,
                     layout: &wgpu::PipelineLayout,
                     attrs: &[wgpu::VertexAttribute],
                     stride: usize,
+                    step_mode: wgpu::VertexStepMode,
                     topology: wgpu::PrimitiveTopology,
                     cull: bool,
                     blend: bool,
@@ -513,7 +518,7 @@ impl Renderer {
                     module: shader,
                     entry_point: Some("vs_main"),
                     compilation_options: Default::default(),
-                    buffers: &[Some(wgpu::VertexBufferLayout { array_stride: stride as u64, step_mode: wgpu::VertexStepMode::Vertex, attributes: attrs })],
+                    buffers: &[Some(wgpu::VertexBufferLayout { array_stride: stride as u64, step_mode, attributes: attrs })],
                 },
                 primitive: wgpu::PrimitiveState {
                     topology,
@@ -545,12 +550,13 @@ impl Renderer {
         };
 
         let mesh_stride = std::mem::size_of::<MeshVertex>();
-        let line_stride = std::mem::size_of::<LineVertex>();
+        let line_stride = std::mem::size_of::<LineVertex>() * 2;
         let tri = wgpu::PrimitiveTopology::TriangleList;
-        let lines = wgpu::PrimitiveTopology::LineList;
         use wgpu::CompareFunction::{Always, Greater, GreaterEqual};
-        let mesh_opaque = make("mesh opaque", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, tri, true, false, true, Greater);
-        let mesh_double = make("mesh double sided", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, tri, false, false, true, Greater);
+        let mesh_opaque =
+            make("mesh opaque", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, wgpu::VertexStepMode::Vertex, tri, true, false, true, Greater);
+        let mesh_double =
+            make("mesh double sided", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, wgpu::VertexStepMode::Vertex, tri, false, false, true, Greater);
         let sky_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("sky"),
             layout: Some(&line_layout),
@@ -593,11 +599,16 @@ impl Renderer {
         };
         let flat_normal = solid_texture("flat normal", wgpu::TextureFormat::Rgba8Unorm, [128, 128, 255, 255]);
         let white = solid_texture("white", wgpu::TextureFormat::Rgba8UnormSrgb, [255, 255, 255, 255]);
-        let mesh_transparent = make("mesh transparent", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, tri, false, true, false, GreaterEqual);
-        let mesh_overlay = make("mesh overlay", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, tri, false, true, false, Always);
-        let line_depth = make("line depth", &line_shader, &line_layout, &line_attrs, line_stride, lines, false, true, false, GreaterEqual);
-        let line_overlay = make("line overlay", &line_shader, &line_layout, &line_attrs, line_stride, lines, false, true, false, Always);
-        let terrain_pipeline = make("terrain", &terrain_shader, &terrain_layout, &mesh_attrs, mesh_stride, tri, true, false, true, Greater);
+        let mesh_transparent =
+            make("mesh transparent", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, wgpu::VertexStepMode::Vertex, tri, false, true, false, GreaterEqual);
+        let mesh_overlay =
+            make("mesh overlay", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, wgpu::VertexStepMode::Vertex, tri, false, true, false, Always);
+        let line_depth =
+            make("line depth", &line_shader, &line_layout, &line_attrs, line_stride, wgpu::VertexStepMode::Instance, tri, false, true, false, GreaterEqual);
+        let line_overlay =
+            make("line overlay", &line_shader, &line_layout, &line_attrs, line_stride, wgpu::VertexStepMode::Instance, tri, false, true, false, Always);
+        let terrain_pipeline =
+            make("terrain", &terrain_shader, &terrain_layout, &mesh_attrs, mesh_stride, wgpu::VertexStepMode::Vertex, tri, true, false, true, Greater);
         let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("shadow"),
             layout: Some(&shadow_layout),
@@ -1067,6 +1078,7 @@ impl Renderer {
                 },
                 if params.orthographic { 1.0 } else { 0.0 },
             ],
+            viewport: [target.size[0] as f32, target.size[1] as f32, params.line_width.max(1.0), 0.0],
         };
         self.queue.write_buffer(&target.camera, 0, bytemuck::bytes_of(&uniform));
 
@@ -1114,7 +1126,7 @@ impl Renderer {
                 pass.set_pipeline(pipeline);
                 for l in lines {
                     pass.set_vertex_buffer(0, l.vertex.slice(..));
-                    pass.draw(0..l.count, 0..1);
+                    pass.draw(0..6, 0..l.count / 2);
                 }
             };
 
@@ -1176,7 +1188,7 @@ mod tests {
 
     #[test]
     fn uniform_sizes_match_shaders() {
-        assert_eq!(std::mem::size_of::<super::CameraUniform>(), 160);
+        assert_eq!(std::mem::size_of::<super::CameraUniform>(), 176);
         assert_eq!(std::mem::size_of::<super::MaterialUniform>(), 64);
         assert_eq!(std::mem::size_of::<super::LightsUniform>(), 28 * 4 + 64 + super::MAX_LIGHTS * 48);
     }

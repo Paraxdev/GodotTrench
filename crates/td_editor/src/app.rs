@@ -56,7 +56,13 @@ pub struct App {
     scatter_palette: ScatterPaletteWindow,
     link_dialog: LinkDialog,
     keep_prefs: bool,
+    window_fitted: bool,
+    /// Scale shown while its slider is dragged, applied on release so the slider does not move under the pointer.
+    ui_scale_draft: Option<f32>,
 }
+
+const PREFS_LABEL_WIDTH: f32 = 180.0;
+const UI_SCALE_PRESETS: [f32; 6] = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
 const PANEL_TABS: [Tab; 8] = [Tab::Outliner, Tab::Inspector, Tab::Materials, Tab::Entities, Tab::History, Tab::Issues, Tab::Uv, Tab::Reference];
 
@@ -215,6 +221,8 @@ impl App {
             state.set_status(format!("Could not open {}: {e}", path.display()));
         }
         cc.egui_ctx.set_visuals(visuals());
+        // UI scale shortcuts go through the keymap so they are rebindable and saved in the preferences.
+        cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
         icons::install(&cc.egui_ctx);
 
         let mut viewports =
@@ -248,6 +256,8 @@ impl App {
             scatter_palette: Default::default(),
             link_dialog: Default::default(),
             keep_prefs,
+            window_fitted: false,
+            ui_scale_draft: None,
         }
     }
 
@@ -685,6 +695,19 @@ impl App {
                     ui.separator();
                     m.toggle(ui, "Snap to Grid", self.state.snap, Action::ToggleSnap);
                 });
+                sub_menu(ui, None, "Interface Scale", |ui| {
+                    m.item(ui, None, "Increase", Action::UiScaleUp);
+                    m.item(ui, None, "Decrease", Action::UiScaleDown);
+                    m.item(ui, None, "Reset", Action::UiScaleReset);
+                    ui.separator();
+                    for scale in UI_SCALE_PRESETS {
+                        let current = (self.state.prefs.ui_scale - scale).abs() < 0.001;
+                        if ui.add(menu_button(current.then_some(icons::CHECK), &format!("{:.0}%", scale * 100.0), None)).clicked() {
+                            self.state.prefs.ui_scale = scale;
+                            ui.close();
+                        }
+                    }
+                });
                 sub_menu(ui, None, "Cordon", |ui| {
                     m.item(ui, None, "Set Cordon from Selection", Action::SetCordonFromSelection);
                     m.toggle(ui, "Cordon Enabled", self.state.doc.map.editor.cordon_enabled, Action::ToggleCordon);
@@ -1069,11 +1092,67 @@ impl App {
         });
     }
 
+    fn apply_ui_scale(&self, ctx: &egui::Context) {
+        let Some(native) = ctx.native_pixels_per_point() else { return };
+        let zoom = self.state.prefs.ui_zoom_factor(native);
+        if (ctx.zoom_factor() - zoom).abs() > 0.001 {
+            ctx.set_zoom_factor(zoom);
+        }
+    }
+
+    /// A saved or default window size can be larger than a scaled monitor, which pushes panels off screen.
+    fn fit_window_to_monitor(&mut self, ctx: &egui::Context) {
+        if self.window_fitted || !self.keep_prefs {
+            return;
+        }
+        let (monitor, outer, maximized) = ctx.input(|i| (i.viewport().monitor_size, i.viewport().outer_rect, i.viewport().maximized));
+        let (Some(monitor), Some(outer)) = (monitor, outer) else { return };
+        self.window_fitted = true;
+        if maximized != Some(true) && (outer.width() > monitor.x * 0.98 || outer.height() > monitor.y * 0.95) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+        }
+    }
+
+    fn ui_scale_prefs(&mut self, ui: &mut Ui) {
+        let native = ui.ctx().native_pixels_per_point().unwrap_or(1.0);
+        let p = &mut self.state.prefs;
+        ui.label("Interface scale");
+        ui.horizontal(|ui| {
+            let mut value = self.ui_scale_draft.unwrap_or(p.ui_scale);
+            let slider = egui::Slider::new(&mut value, crate::state::UI_SCALE_MIN..=crate::state::UI_SCALE_MAX)
+                .step_by(0.05)
+                .custom_formatter(|v, _| format!("{:.0}%", v * 100.0))
+                .custom_parser(|s| s.trim().trim_end_matches('%').trim().parse::<f64>().ok().map(|v| v / 100.0));
+            let response = ui.add(slider);
+            if response.dragged() {
+                self.ui_scale_draft = Some(value);
+            } else {
+                if response.changed() || self.ui_scale_draft.is_some() {
+                    p.ui_scale = value;
+                }
+                self.ui_scale_draft = None;
+            }
+            if ui.button("Reset").clicked() {
+                p.ui_scale = 1.0;
+                p.follow_display_scaling = true;
+            }
+        });
+        ui.end_row();
+        ui.label("Display scaling");
+        let mut follow = p.follow_display_scaling;
+        ui.checkbox(&mut follow, format!("follow the monitor ({:.0}%)", native * 100.0))
+            .on_hover_text("When off, the interface scale is exact pixels per point, for monitors that report the wrong scaling");
+        p.set_follow_display_scaling(follow, native);
+        ui.end_row();
+    }
+
     fn prefs_window(&mut self, ctx: &egui::Context) {
         let mut open = self.show_prefs;
         egui::Window::new("Preferences").open(&mut open).resizable(false).show(ctx, |ui| {
+            egui::Grid::new("prefs_ui").num_columns(2).min_col_width(PREFS_LABEL_WIDTH).show(ui, |ui| self.ui_scale_prefs(ui));
+            ui.separator();
             let p = &mut self.state.prefs;
-            egui::Grid::new("prefs").num_columns(2).show(ui, |ui| {
+            egui::Grid::new("prefs").num_columns(2).min_col_width(PREFS_LABEL_WIDTH).show(ui, |ui| {
                 ui.label("Fly speed");
                 ui.add(egui::Slider::new(&mut p.fly_speed, 64.0..=8192.0).logarithmic(true));
                 ui.end_row();
@@ -1256,6 +1335,8 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.apply_ui_scale(&ctx);
+        self.fit_window_to_monitor(&ctx);
         self.tools.sync(&self.state);
         self.process_mcp(&ctx);
         self.tools.sync(&self.state);
