@@ -155,6 +155,9 @@ pub enum Action {
     /// A trigger volume of this class around the selection bounds.
     VolumeAroundSelection(String),
     ShowReference,
+    UiScaleUp,
+    UiScaleDown,
+    UiScaleReset,
 }
 
 impl Action {
@@ -172,6 +175,9 @@ impl Action {
             Action::Justify(j) => format!("Justify Texture {}", j.label()),
             Action::TexelDensity(d) => format!("Texel Density {d}"),
             Action::MeshUv(k) => format!("Mesh UVs: {}", k.label()),
+            Action::UiScaleUp => "Increase UI Scale".into(),
+            Action::UiScaleDown => "Decrease UI Scale".into(),
+            Action::UiScaleReset => "Reset UI Scale".into(),
             other => format!("{other:?}"),
         }
     }
@@ -263,6 +269,9 @@ fn trenchbroom_bindings() -> Vec<(KeyboardShortcut, Action)> {
         (sc(CTRL, Key::Tab), Action::NextTab),
         (sc(CTRL, Key::W), Action::CloseTab),
         (sc(CTRL_SHIFT, Key::N), Action::NewTab),
+        (sc(CTRL, Key::Equals), Action::UiScaleUp),
+        (sc(CTRL, Key::Minus), Action::UiScaleDown),
+        (sc(CTRL, Key::Num0), Action::UiScaleReset),
     ];
     for (i, key) in DIGITS.iter().enumerate() {
         out.push((sc(CTRL, *key), Action::RecallCamera(i as u8 + 1)));
@@ -588,6 +597,17 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             state.set_status(format!("Grid {}", state.grid));
         }
         Action::ToggleSnap => state.snap = !state.snap,
+        Action::UiScaleUp | Action::UiScaleDown | Action::UiScaleReset => {
+            match action {
+                Action::UiScaleUp => state.prefs.step_ui_scale(1),
+                Action::UiScaleDown => state.prefs.step_ui_scale(-1),
+                _ => {
+                    state.prefs.ui_scale = 1.0;
+                    state.prefs.follow_display_scaling = true;
+                }
+            }
+            state.set_status(format!("UI scale {:.0}%", state.prefs.ui_scale * 100.0));
+        }
         Action::ToggleUvLock => {
             state.uv_lock = !state.uv_lock;
             state.set_status(if state.uv_lock { "UV lock on" } else { "UV lock off" });

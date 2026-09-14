@@ -137,6 +137,35 @@ pub struct Prefs {
     pub volume_class: String,
     /// Height of volumes drawn in the 3D view.
     pub volume_height: f64,
+    /// Size of the whole interface, 1.0 is 100%.
+    pub ui_scale: f32,
+    /// Multiply `ui_scale` by the monitor's scaling. When off, `ui_scale` is the exact pixels per point.
+    pub follow_display_scaling: bool,
+}
+
+pub const UI_SCALE_MIN: f32 = 0.5;
+pub const UI_SCALE_MAX: f32 = 3.0;
+
+impl Prefs {
+    pub fn ui_zoom_factor(&self, native_pixels_per_point: f32) -> f32 {
+        let scale = self.ui_scale.clamp(UI_SCALE_MIN, UI_SCALE_MAX);
+        if self.follow_display_scaling { scale } else { scale / native_pixels_per_point.max(0.25) }
+    }
+
+    pub fn step_ui_scale(&mut self, steps: i32) {
+        self.ui_scale = (((self.ui_scale * 10.0).round() + steps as f32) / 10.0).clamp(UI_SCALE_MIN, UI_SCALE_MAX);
+    }
+
+    /// Switches between following the monitor scaling and fixed pixels, keeping the interface the same size.
+    pub fn set_follow_display_scaling(&mut self, follow: bool, native_pixels_per_point: f32) {
+        if follow == self.follow_display_scaling {
+            return;
+        }
+        let native = native_pixels_per_point.max(0.25);
+        let scale = if follow { self.ui_scale / native } else { self.ui_scale * native };
+        self.ui_scale = ((scale * 100.0).round() / 100.0).clamp(UI_SCALE_MIN, UI_SCALE_MAX);
+        self.follow_display_scaling = follow;
+    }
 }
 
 impl Default for Prefs {
@@ -165,6 +194,8 @@ impl Default for Prefs {
             recent_materials: Vec::new(),
             volume_class: "trigger_once".into(),
             volume_height: 128.0,
+            ui_scale: 1.0,
+            follow_display_scaling: true,
         }
     }
 }
@@ -483,4 +514,28 @@ impl EditorState {
 pub fn autosave_path(path: &Path) -> PathBuf {
     let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "map".into());
     path.with_file_name(format!("{stem}.autosave.gtm"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ui_scale_follows_or_overrides_display_scaling() {
+        let mut p = Prefs { ui_scale: 1.25, ..Prefs::default() };
+        assert_eq!(p.ui_zoom_factor(2.0), 1.25);
+        p.set_follow_display_scaling(false, 2.0);
+        assert_eq!(p.ui_scale, 2.5);
+        assert_eq!(p.ui_zoom_factor(2.0), 1.25);
+        p.set_follow_display_scaling(true, 2.0);
+        assert_eq!(p.ui_scale, 1.25);
+        p.ui_scale = 2.95;
+        p.step_ui_scale(1);
+        assert_eq!(p.ui_scale, UI_SCALE_MAX);
+        p.ui_scale = 1.0;
+        p.step_ui_scale(-1);
+        assert_eq!(p.ui_scale, 0.9);
+        let old: Prefs = serde_json::from_str(r#"{"fly_speed": 100.0}"#).unwrap();
+        assert_eq!((old.ui_scale, old.follow_display_scaling), (1.0, true));
+    }
 }

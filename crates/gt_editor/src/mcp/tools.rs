@@ -331,6 +331,12 @@ impl App {
                     self.state.blend.radius = r;
                     self.state.prefs.scatter.radius = r;
                 }
+                if let Some(scale) = args["ui_scale"].as_f64() {
+                    self.state.prefs.ui_scale = (scale as f32).clamp(crate::state::UI_SCALE_MIN, crate::state::UI_SCALE_MAX);
+                }
+                if let Some(follow) = args["follow_display_scaling"].as_bool() {
+                    self.state.prefs.set_follow_display_scaling(follow, ctx.native_pixels_per_point().unwrap_or(1.0));
+                }
                 if let Some(mode) = args["sculpt_mode"].as_str() {
                     match serde_json::from_value(json!(mode)) {
                         Ok(m) => self.state.sculpt.mode = m,
@@ -468,6 +474,10 @@ impl App {
                 "selected_vertices": self.tools.vertex.selected.iter().map(|p| arr(*p)).collect::<Vec<_>>(),
             },
             "cameras": cameras,
+            "ui": {
+                "scale": (s.prefs.ui_scale as f64 * 100.0).round() / 100.0, "follow_display_scaling": s.prefs.follow_display_scaling,
+                "pixels_per_point": self.viewports.first().map(|v| (v.pixels_per_point as f64 * 1000.0).round() / 1000.0),
+            },
             "game": { "name": s.game.name, "project_root": s.game.project_root, "entity_definitions": s.game.entities.len(), "materials": s.materials.entries.len() },
             "undo": s.doc.history.undo_labels().take(10).collect::<Vec<_>>(),
             "redo": s.doc.history.redo_labels().take(10).collect::<Vec<_>>(),

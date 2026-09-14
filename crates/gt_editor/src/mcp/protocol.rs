@@ -267,7 +267,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "set_editor",
-            "description": "Editor settings: grid size, snapping, uv lock, active tool (select, clip, vertex, rotate, scale, mesh, sculpt, blend, paint, scatter, volume, path, measure, texture), current material, shading, mesh component mode, scatter palette items, brush radius and sculpt mode.",
+            "description": "Editor settings: grid size, snapping, uv lock, active tool (select, clip, vertex, rotate, scale, mesh, sculpt, blend, paint, scatter, volume, path, measure, texture), current material, shading, mesh component mode, scatter palette items, brush radius, sculpt mode and interface scale.",
             "inputSchema": { "type": "object", "properties": {
                 "grid": { "type": "number" }, "snap": { "type": "boolean" }, "uv_lock": { "type": "boolean" },
                 "tool": { "type": "string" }, "material": { "type": "string" }, "textured": { "type": "boolean" },
@@ -275,7 +275,9 @@ pub fn tool_definitions() -> Vec<Value> {
                 "mesh_component": { "type": "string", "enum": ["vertex", "edge", "face"] },
                 "scatter_items": { "type": "array", "items": { "type": "string" } },
                 "brush_radius": { "type": "number" },
-                "sculpt_mode": { "type": "string" }
+                "sculpt_mode": { "type": "string" },
+                "ui_scale": { "type": "number", "description": "Interface scale, 1 is 100%" },
+                "follow_display_scaling": { "type": "boolean" }
             } }
         }),
         json!({
