@@ -50,6 +50,8 @@ class FaceData extends RefCounted:
 	## GodotTrench mesh faces: explicit texture coordinates and vertex colors per surface vertex.
 	var disp_uvs: PackedVector2Array = []
 	var disp_colors: PackedColorArray = []
+	## GodotTrench: covered by a coplanar face of another solid, left out of the visual mesh but kept for collision.
+	var render_hidden: bool = false
 
 	func is_displacement() -> bool:
 		return not disp_indices.is_empty()
@@ -116,6 +118,10 @@ class BrushData extends RefCounted:
 	var has_disp: bool = false
 	## GodotTrench: the brush is a free form mesh whose faces are all custom surfaces.
 	var is_mesh: bool = false
+	## GodotTrench: false for open meshes (sheets with border edges), brushes are always closed.
+	var closed: bool = true
+	## GodotTrench: the map node id, older nodes win when coplanar faces overlap.
+	var node_id: int = 0
 
 ## Data struct representing a patch def entity.
 class PatchData extends RefCounted:

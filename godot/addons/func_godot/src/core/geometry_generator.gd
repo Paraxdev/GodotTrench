@@ -499,7 +499,7 @@ func generate_entity_surfaces(entity_index: int) -> void:
 				var tx_size: Vector2 = texture_sizes.get(face.texture, Vector2.ONE * map_settings.inverse_scale_factor)
 				if build_concave or entity.is_collision_convex():
 					concave_vertices.append_array(GodotTrenchDisplacement.triangles(face, op_entity_ogl_xf))
-				if is_clip(face):
+				if is_clip(face) or face.render_hidden:
 					continue
 				index_offset += GodotTrenchDisplacement.append_surface(arrays, face, op_entity_ogl_xf, tx_size, index_offset, use_colors)
 				continue
@@ -517,7 +517,7 @@ func generate_entity_surfaces(entity_index: int) -> void:
 				concave_vertices.append_array(tris)
 				
 			# Do not generate visuals for clip textures
-			if is_clip(face):
+			if is_clip(face) or face.render_hidden:
 				continue
 			
 			# Handle metadata for this face
@@ -680,6 +680,9 @@ func build(build_flags: int, entities: Array[_EntityData]) -> Error:
 	#	task_id = WorkerThreadPool.add_group_task(smooth_entity_vertices, entity_count, -1, false, "Smooth Entities")
 	#	WorkerThreadPool.wait_for_group_task_completion(task_id)
 	
+	declare_step.emit("Hiding covered coplanar faces")
+	GodotTrenchFaceCull.apply(entity_data, map_settings, texture_materials)
+
 	declare_step.emit("Generating surfaces")
 	# GodotTrench fork: surfaces create ArrayMesh resources, which is not safe from several threads at once
 	# (crashes at shutdown with more than one brush entity), so this step runs on the calling thread.

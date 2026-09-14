@@ -103,7 +103,7 @@ static func _parse_node(ctx: Context, node: Dictionary, group: _GroupData) -> vo
 			if brush:
 				ctx.worldspawn.brushes.append(brush)
 		"mesh":
-			var mesh := GodotTrenchMesh.parse(node, ctx.xform, ctx.map_settings.scale_factor, ctx.map_settings.origin_texture)
+			var mesh := _parse_mesh(ctx, node)
 			if mesh:
 				ctx.worldspawn.brushes.append(mesh)
 		"terrain":
@@ -149,7 +149,7 @@ static func _parse_entity(ctx: Context, node: Dictionary, group: _GroupData) -> 
 					if brush:
 						ent.brushes.append(brush)
 				"mesh":
-					var mesh := GodotTrenchMesh.parse(child, ctx.xform, ctx.map_settings.scale_factor, ctx.map_settings.origin_texture)
+					var mesh := _parse_mesh(ctx, child)
 					if mesh:
 						ent.brushes.append(mesh)
 
@@ -267,7 +267,15 @@ static func _parse_brush(ctx: Context, node: Dictionary) -> _BrushData:
 		brush.faces.append(face)
 	if brush.faces.size() < 4:
 		return null
+	brush.node_id = int(node.get("id", 0)) + ctx.instance_depth * 1000000
 	return brush
+
+
+static func _parse_mesh(ctx: Context, node: Dictionary) -> _BrushData:
+	var mesh := GodotTrenchMesh.parse(node, ctx.xform, ctx.map_settings.scale_factor, ctx.map_settings.origin_texture)
+	if mesh:
+		mesh.node_id = int(node.get("id", 0)) + ctx.instance_depth * 1000000
+	return mesh
 
 
 static func _resolve_instance_path(ctx: Context, path: String) -> String:
