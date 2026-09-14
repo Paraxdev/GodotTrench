@@ -41,6 +41,7 @@ static func build_all(map_node: Node3D, scatters: Array[Dictionary], settings: F
 			parent = group.node
 		parent.add_child(node)
 		if scene_root:
+			node.owner = scene_root
 			_set_owner(node, scene_root)
 		out.append(node)
 	return out

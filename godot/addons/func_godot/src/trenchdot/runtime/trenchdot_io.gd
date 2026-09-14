@@ -167,12 +167,24 @@ static func resolve_method(node: Object, input: StringName) -> StringName:
 			return StringName(variant)
 	return &""
 
-## Declared argument count of a method, -1 when unknown (C# methods may not report it).
-static func method_arg_count(node: Object, method: StringName) -> int:
+## Arguments for an input fired without a parameter: the activator goes into the first argument typed as an object or
+## named activator, untyped arguments before it get null. Inputs taking only values, like a counter's add(amount), are
+## called without arguments so their defaults apply instead of receiving the player node.
+static func activator_arguments(node: Object, method: StringName, activator: Node) -> Array:
 	for m in node.get_method_list():
-		if m["name"] == method:
-			return m["args"].size()
-	return -1
+		if m["name"] != method:
+			continue
+		var args: Array = []
+		for declared in m["args"]:
+			var type := int(declared.get("type", TYPE_NIL))
+			if type == TYPE_OBJECT or (type == TYPE_NIL and str(declared.get("name", "")) == "activator"):
+				args.append(activator)
+				return args
+			if type != TYPE_NIL:
+				return []
+			args.append(null)
+		return []
+	return []
 
 ## Arguments for a call: a JSON array parameter spreads into several arguments, placeholders are replaced.
 static func build_arguments(parameter: String, activator: Node, caller: Node) -> Array:
@@ -241,9 +253,8 @@ static func invoke(node: Node, input: StringName, parameter: String, activator: 
 	var method := resolve_method(node, input)
 	if method != &"":
 		var args := build_arguments(parameter, activator, node)
-		var count := method_arg_count(node, method)
-		if args.is_empty() and count > 0:
-			args = [activator]
+		if args.is_empty():
+			args = activator_arguments(node, method, activator)
 		call_method(node, method, args)
 		return
 	var value: Variant = parse_parameter(parameter)

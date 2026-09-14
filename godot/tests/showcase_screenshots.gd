@@ -12,7 +12,7 @@ func _initialize() -> void:
 	for name in views.keys():
 		if only != "" and only != name:
 			continue
-		var scene: PackedScene = load("res://demo/showcase/%s.tscn" % name)
+		var scene: PackedScene = load("res://demo/showcase/%s.scn" % name)
 		var instance := scene.instantiate()
 		root.add_child(instance)
 		var camera := Camera3D.new()

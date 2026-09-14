@@ -99,6 +99,15 @@ static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_tex
 	brush.has_disp = true
 	brush.is_mesh = true
 	brush.origin = false
+	var edge_uses: Dictionary = {}
+	for face_info in faces:
+		var indices: Array = face_info["indices"]
+		for k in indices.size():
+			var a := int(indices[k])
+			var b := int(indices[(k + 1) % indices.size()])
+			var edge := Vector2i(mini(a, b), maxi(a, b))
+			edge_uses[edge] = int(edge_uses.get(edge, 0)) + 1
+	brush.closed = edge_uses.values().all(func(n): return n == 2)
 	for face_info in faces:
 		var pts: PackedVector3Array = face_info["points"]
 		var unit: Vector3 = face_info["unit"]

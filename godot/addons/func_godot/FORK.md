@@ -27,6 +27,7 @@ Upstream class names are kept so the fork stays a drop-in replacement and upstre
 | `src/trenchdot/runtime/trenchdot_prop.gd` | `TrenchDotProp`: prop entity instancing a `.bbmodel`, `.glb`, `.gltf` or `.tscn` from its `model` property with none, convex or trimesh collision. |
 | `src/trenchdot/runtime/trenchdot_hot_reload.gd` | `TrenchDotHotReload`: autoload for running games that rebuilds maps when the editor saves them (`127.0.0.1:7843`). |
 | `src/trenchdot/runtime/trenchdot_scatter.gd` | `TrenchDotScatter`: scatter sets (trees, rocks, foliage) as one MultiMesh per model mesh, one static body per model with a shared shape, or instanced scenes for scripted models. Keeps a copy of the instance transforms when built headless, because the dummy renderer drops MultiMesh buffers. |
+| `src/trenchdot/trenchdot_face_cull.gd` | `TrenchDotFaceCull`: leaves faces out of the visual mesh when coplanar faces of other static solids fully cover them (same direction by priority, open meshes first, or back to back between closed solids), the rule the editor preview uses. Collision keeps every face. |
 | `src/trenchdot/runtime/trenchdot_blend.gd` | `TrenchDotBlend`: materials for faces with a blend material (`base\|blend` texture keys), mixed by vertex color alpha through `td_blend.gdshader`. |
 | `src/trenchdot/runtime/trenchdot_debug_overlay.gd` | `TrenchDotDebugOverlay`: in-game I/O event log and trigger volume display, toggled with F3. |
 | `src/trenchdot/trenchdot_csharp.gd` | `TrenchDotCSharp`: reads C# sources as text for `[TrenchDotEntity]` classes, their `[Export]` properties, `[Signal]` outputs and `[TrenchDotInput]` inputs, and applies map properties to the PascalCase members. |
@@ -37,10 +38,11 @@ Upstream class names are kept so the fork stays a drop-in replacement and upstre
 
 All changes are small and marked with `TrenchDot` comments.
 
-* `src/core/data.gd`: `FaceData.exact_vertices`, `FaceData.props`, vertex colors and displacement arrays (including explicit `disp_uvs` and `disp_colors`), `BrushData.exact`, `BrushData.has_disp`, `BrushData.is_mesh`, `ParseData.terrains`, `EntityData.outputs`, `EntityData.node`, pending shape data.
+* `src/core/data.gd`: `FaceData.exact_vertices`, `FaceData.props`, vertex colors and displacement arrays (including explicit `disp_uvs` and `disp_colors`), `BrushData.exact`, `BrushData.has_disp`, `BrushData.is_mesh`, `BrushData.closed`, `BrushData.node_id`, `FaceData.render_hidden`, `ParseData.terrains`, `EntityData.outputs`, `EntityData.node`, pending shape data.
 * `src/core/parser.gd`: `.tdm` branch in `parse_map_data`.
 * `src/core/geometry_generator.gd`:
   * exact brushes skip hyperplane clipping,
+  * faces hidden by `TrenchDotFaceCull` (run before surface generation) are skipped for visuals but kept for collision,
   * displacement faces emit their grid instead of the flat face, other faces of a displacement brush are dropped (Hammer
     behaviour), displacements collide as a trimesh even for convex collision entities, vertex colors are written to
     `ARRAY_COLOR` and follow their vertices through face winding,
