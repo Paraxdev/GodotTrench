@@ -1,4 +1,4 @@
-use egui::{Color32, RichText, Ui};
+use egui::{RichText, Ui};
 use egui_dock::{DockArea, DockState, Node, NodeIndex, SplitNode, TabViewer, Tree};
 use gt_render::Renderer;
 
@@ -18,7 +18,7 @@ use crate::tools::ToolKind;
 use crate::toolset::ToolSet;
 use crate::viewport::{ViewCtx, Viewport};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum Tab {
     View(usize),
     Outliner,
@@ -320,6 +320,15 @@ fn capitalize(text: &str) -> String {
     chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
 }
 
+const DOCK_KEY: &str = "dock";
+
+/// A saved layout from an older build can name views that no longer exist or list a tab twice.
+fn valid_dock(dock: &DockState<Tab>) -> bool {
+    let tabs: Vec<Tab> = dock.iter_all_tabs().map(|(_, tab)| *tab).collect();
+    let unique = tabs.iter().enumerate().all(|(i, t)| !tabs[..i].contains(t));
+    unique && tabs.iter().all(|t| !matches!(t, Tab::View(n) if *n >= 4)) && tabs.iter().any(|t| matches!(t, Tab::View(_)))
+}
+
 fn default_dock() -> DockState<Tab> {
     let mut dock = DockState::new(vec![Tab::View(0)]);
     let surface = dock.main_surface_mut();
@@ -370,15 +379,8 @@ impl App {
         {
             state.set_status(format!("Could not open {}: {e}", path.display()));
         }
-        if args.default_prefs {
-            // Bar heights live in the persisted egui memory, automated runs keep the standard layout.
-            cc.egui_ctx.data_mut(|d| {
-                for id in [TOOLBAR_ID, TOOL_OPTIONS_ID] {
-                    d.remove::<egui::containers::panel::PanelState>(egui::Id::new(id));
-                }
-            });
-        }
-        cc.egui_ctx.set_visuals(visuals());
+        let dock: Option<DockState<Tab>> = if keep_prefs { cc.storage.and_then(|s| eframe::get_value(s, DOCK_KEY)).filter(valid_dock) } else { None };
+        cc.egui_ctx.set_visuals(crate::theme::visuals());
         // UI scale shortcuts go through the keymap so they are rebindable and saved in the preferences.
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
         icons::install(&cc.egui_ctx);
@@ -393,7 +395,7 @@ impl App {
             renderer: Renderer::new(render_state),
             scene: SceneCache::default(),
             viewports,
-            dock: default_dock(),
+            dock: dock.unwrap_or_else(default_dock),
             panels: PanelState::default(),
             tools: ToolSet::default(),
             actions: Vec::new(),
@@ -1089,7 +1091,7 @@ impl App {
                     Some(p) => format!("{} ({})", self.state.game.name, p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
                     None => "Open Godot project…".into(),
                 };
-                let button = egui::Button::image_and_text(icons::OPEN.image(icons::SMALL), RichText::new(project).color(Color32::from_rgb(140, 190, 255)))
+                let button = egui::Button::image_and_text(icons::OPEN.image(icons::SMALL), RichText::new(project).color(crate::theme::CYAN))
                     .image_tint_follows_text_color(true);
                 let resp = ui.add(button).on_hover_text("Open a Godot project folder");
                 guide::mark(ui.ctx(), Anchor::ToolbarProject, resp.rect);
@@ -1282,7 +1284,7 @@ impl App {
             let s = &self.state;
             let stats = self.scene.stats;
             let alpha = if s.status_age() > 6.0 { 120 } else { 230 };
-            ui.label(RichText::new(&s.status).color(Color32::from_rgba_unmultiplied(230, 230, 230, alpha)));
+            ui.label(RichText::new(&s.status).color(crate::theme::FG.gamma_multiply_u8(alpha)));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(format!(
                     "{} brushes  {} meshes  {} terrains  {} entities  {} tris",
@@ -1301,11 +1303,11 @@ impl App {
                 }
                 if s.doc.map.editor.cordon_enabled {
                     ui.separator();
-                    ui.label(RichText::new("cordon").color(Color32::from_rgb(255, 210, 60)));
+                    ui.label(RichText::new("cordon").color(crate::theme::YELLOW));
                 }
                 if !s.open_groups.is_empty() {
                     ui.separator();
-                    ui.label(RichText::new(format!("{} open groups", s.open_groups.len())).color(Color32::from_rgb(160, 200, 255)));
+                    ui.label(RichText::new(format!("{} open groups", s.open_groups.len())).color(crate::theme::CYAN));
                 }
             });
         });
@@ -1672,18 +1674,9 @@ impl eframe::App for App {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         if self.keep_prefs {
             eframe::set_value(storage, "prefs", &self.state.prefs);
+            eframe::set_value(storage, DOCK_KEY, &self.dock);
         }
     }
-}
-
-fn visuals() -> egui::Visuals {
-    let mut v = egui::Visuals::dark();
-    v.panel_fill = Color32::from_rgb(30, 31, 36);
-    v.window_fill = Color32::from_rgb(34, 35, 41);
-    v.extreme_bg_color = Color32::from_rgb(20, 21, 25);
-    v.selection.bg_fill = Color32::from_rgb(170, 90, 40);
-    v.hyperlink_color = Color32::from_rgb(255, 160, 80);
-    v
 }
 
 #[cfg(test)]
@@ -1695,6 +1688,23 @@ mod tests {
         let grouped: Vec<MeshOp> = MESH_OP_GROUPS.iter().flat_map(|(_, ops)| ops.iter().copied()).collect();
         assert_eq!(grouped.len(), MeshOp::ALL.len());
         assert!(MeshOp::ALL.iter().all(|op| grouped.contains(op)));
+    }
+
+    #[test]
+    fn saved_dock_layouts_round_trip_and_bad_ones_are_rejected() {
+        let mut dock = default_dock();
+        if let Node::Horizontal(split) = &mut dock.main_surface_mut()[NodeIndex::root()] {
+            split.fraction = 0.6;
+        }
+        let text = ron::to_string(&dock).unwrap();
+        let loaded: DockState<Tab> = ron::from_str(&text).unwrap();
+        assert!(valid_dock(&loaded));
+        assert!(matches!(&loaded.main_surface()[NodeIndex::root()], Node::Horizontal(s) if s.fraction == 0.6));
+        assert_eq!(loaded.iter_all_tabs().count(), dock.iter_all_tabs().count());
+
+        assert!(!valid_dock(&DockState::new(vec![Tab::View(7)])));
+        assert!(!valid_dock(&DockState::new(vec![Tab::View(0), Tab::View(0)])));
+        assert!(!valid_dock(&DockState::new(vec![Tab::Outliner])));
     }
 
     #[test]

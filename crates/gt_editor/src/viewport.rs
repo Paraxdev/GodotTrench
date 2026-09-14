@@ -32,10 +32,8 @@ pub struct Viewport {
 }
 
 // Linear values, the targets are sRGB.
-const BG_3D: [f64; 4] = [0.011, 0.012, 0.015, 1.0];
-const BG_2D: [f64; 4] = [0.006, 0.0065, 0.008, 1.0];
 const BG_LIT: [f64; 4] = [0.18, 0.28, 0.45, 1.0];
-const DROP_COLOR: Color32 = Color32::from_rgb(255, 170, 60);
+const DROP_COLOR: Color32 = crate::theme::CYAN;
 
 impl Viewport {
     pub fn new(kind: ViewKind) -> Self {
@@ -742,11 +740,11 @@ impl Viewport {
             shade: state.shade_mode(),
             orthographic: is_2d,
             clear: if is_2d {
-                BG_2D
+                crate::theme::linear(crate::theme::GRAY_0)
             } else if state.prefs.shade == crate::state::Shade::Lit {
                 BG_LIT
             } else {
-                BG_3D
+                crate::theme::linear(crate::theme::GRAY_1)
             },
             line_width: self.pixels_per_point,
         };
