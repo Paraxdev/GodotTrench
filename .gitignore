@@ -4,5 +4,5 @@
 *.gtm.bak*
 godot/.godot/
 # FuncGodot writes generated materials next to textures on build.
-godot/demo/textures/**/*.tres
+godot/demo/textures/base/*.tres
 /.worktrees
