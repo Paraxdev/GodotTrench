@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  GODOT_VERSION: 4.7.2
+  LINUX_DEPS: >-
+    libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev libx11-dev libxcursor1 libxrandr2 libxi6
+    libvulkan1 mesa-vulkan-drivers xvfb
+
+jobs:
+  rust:
+    name: Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y $LINUX_DEPS
+      - name: Format
+        if: runner.os == 'Linux'
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Tests (unit, fixtures, headless UI panels)
+        run: cargo test --workspace
+
+  e2e:
+    name: Editor end to end (Linux, software Vulkan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e-release
+      - name: Linux packages
+        run: sudo apt-get update && sudo apt-get install -y $LINUX_DEPS
+      - name: End to end tests
+        env:
+          WGPU_BACKEND: vulkan
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" cargo test --release -p gt_editor --test e2e -- --ignored --test-threads=1
+      - name: Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: target/e2e/*.png
+          if-no-files-found: ignore
+
+  godot:
+    name: Godot addon tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Godot
+        run: |
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          echo "GODOT=$PWD/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+      - name: Import project
+        # With an empty cache the first pass only registers script classes.
+        run: |
+          "$GODOT" --headless --path godot --import || true
+          "$GODOT" --headless --path godot --import
+      - name: Addon tests
+        run: |
+          "$GODOT" --headless --path godot --script res://tests/run_tests.gd
+      - name: Build showcase scenes
+        run: |
+          "$GODOT" --headless --path godot --script res://tests/build_showcase.gd
+
+  alpha:
+    name: Rolling alpha (${{ matrix.name }})
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [rust, e2e, godot]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+            exe: godottrench
+          - name: windows-x86_64
+            os: windows-latest
+            exe: godottrench.exe
+          - name: macos-arm64
+            os: macos-latest
+            exe: godottrench
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y $LINUX_DEPS
+      - name: Build editor
+        run: cargo build --release -p gt_editor
+      - name: Package
+        shell: bash
+        run: |
+          dir="godottrench-${{ matrix.name }}"
+          mkdir -p "dist/$dir"
+          cp "target/release/${{ matrix.exe }}" "dist/$dir/"
+          cp README.md "dist/$dir/"
+          cd dist
+          if [ "$RUNNER_OS" = "Windows" ]; then 7z a -bd "$dir.zip" "$dir" > /dev/null; else tar czf "$dir.tar.gz" "$dir"; fi
+          rm -rf "$dir"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: editor-${{ matrix.name }}
+          path: dist/*
+
+  publish:
+    name: Publish rolling alpha
+    needs: [alpha]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: alpha-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Package Godot addon and demo project
+        run: |
+          (cd godot && zip -qr "../dist/func_godot-godottrench-addon.zip" addons/func_godot)
+          zip -qr dist/godottrench-demo-project.zip godot -x "godot/.godot/*"
+      - name: Replace the alpha release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          short="${GITHUB_SHA::7}"
+          notes="Rolling alpha built from ${short} on $(date -u +%Y-%m-%d). Expect bugs.
+
+          * godottrench-*: the editor for Linux, Windows and macOS.
+          * func_godot-godottrench-addon.zip: the forked FuncGodot addon, extract into your Godot project so it becomes res://addons/func_godot.
+          * godottrench-demo-project.zip: the demo Godot project with the showcase maps."
+          gh release delete alpha --yes --cleanup-tag || true
+          gh release create alpha dist/* --prerelease --target "$GITHUB_SHA" --title "GodotTrench rolling alpha" --notes "$notes"

@@ -1,0 +1,8 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="res://demo/textures/showcase/white_paint.png" id="1_81ko0"]
+
+[resource]
+albedo_texture = ExtResource("1_81ko0")
+metallic_specular = 0.0
+texture_filter = 2
