@@ -31,3 +31,5 @@ gltf.workspace = true
 [dev-dependencies]
 egui_kittest = "0.36"
 gt_core.workspace = true
+# Same format eframe's storage writes, JSON cannot hold the infinite rects in a dock layout.
+ron = "0.12"

@@ -651,6 +651,7 @@ dependencies = [
  "duplicate",
  "egui",
  "paste",
+ "serde",
  "thiserror 2.0.20",
 ]
 
@@ -1171,6 +1172,7 @@ dependencies = [
  "image",
  "imbl",
  "rfd",
+ "ron",
  "serde",
  "serde_json",
 ]

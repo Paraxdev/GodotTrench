@@ -10,6 +10,7 @@ use crate::commands::Action;
 use crate::icons;
 use crate::state::EditorState;
 pub use crate::uv_editor::uv_editor;
+use crate::{theme, widgets};
 
 #[derive(Clone, Debug)]
 pub enum DndPayload {
@@ -137,7 +138,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                 {
                     toggles.push((*id, 1));
                 }
-                let (lock, lock_tint) = if node.locked { (icons::LOCK, Color32::from_rgb(255, 170, 80)) } else { (icons::UNLOCK, weak) };
+                let (lock, lock_tint) = if node.locked { (icons::LOCK, theme::YELLOW) } else { (icons::UNLOCK, weak) };
                 if icons::small(ui, lock, "Lock", Some(lock_tint))
                     .on_hover_text(if node.locked { "Locked, click to unlock" } else { "Unlocked, click to lock" })
                     .clicked()
@@ -147,20 +148,20 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                 let selected = state.doc.selection.nodes.contains(id);
                 let (icon, color) = match &node.kind {
                     NodeKind::Layer(l) => (icons::LAYER, Color32::from_rgb((l.color.r * 255.0) as u8, (l.color.g * 255.0) as u8, (l.color.b * 255.0) as u8)),
-                    NodeKind::Group(_) => (icons::GROUP, Color32::from_rgb(160, 200, 255)),
+                    NodeKind::Group(_) => (icons::GROUP, theme::CYAN),
                     NodeKind::Entity(e) => (
                         icons::ENTITY,
                         state
                             .game
                             .entity(&e.classname)
                             .map(|d| Color32::from_rgb((d.color.r * 255.0) as u8, (d.color.g * 255.0) as u8, (d.color.b * 255.0) as u8))
-                            .unwrap_or(Color32::LIGHT_GRAY),
+                            .unwrap_or(theme::GRAY_6),
                     ),
-                    NodeKind::Brush(_) => (icons::BRUSH, Color32::GRAY),
-                    NodeKind::Instance(_) => (icons::INSTANCE, Color32::from_rgb(255, 200, 120)),
-                    NodeKind::Mesh(_) => (icons::MESH, Color32::from_rgb(200, 160, 255)),
-                    NodeKind::Terrain(_) => (icons::TERRAIN, Color32::from_rgb(140, 220, 120)),
-                    NodeKind::Scatter(_) => (icons::SCATTER, Color32::from_rgb(120, 230, 150)),
+                    NodeKind::Brush(_) => (icons::BRUSH, theme::GRAY_5),
+                    NodeKind::Instance(_) => (icons::INSTANCE, theme::YELLOW),
+                    NodeKind::Mesh(_) => (icons::MESH, theme::PINK),
+                    NodeKind::Terrain(_) => (icons::TERRAIN, theme::GREEN),
+                    NodeKind::Scatter(_) => (icons::SCATTER, theme::TEAL),
                 };
                 ui.add(icon.image(icons::SMALL).tint(color));
                 let mut label = node.name();
@@ -554,10 +555,14 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
     ui.label(format!("Heights {:.1} to {:.1}", b.min.y, b.max.y));
     let mut edited = t.clone();
     let mut changed = false;
+    let mut origin = edited.origin.to_array();
+    widgets::row(ui, 0, "Origin", "", widgets::label_width(ui), |ui| {
+        if widgets::vector_input(ui, &mut origin, ui.available_width() - widgets::TRAILING, 1.0) {
+            edited.origin = DVec3::from_array(origin);
+            changed = true;
+        }
+    });
     egui::Grid::new("terrain_props").num_columns(2).show(ui, |ui| {
-        ui.label("Origin");
-        ui.horizontal(|ui| changed |= vec3_editor(ui, &mut edited.origin, 1.0));
-        ui.end_row();
         ui.label("Chunk cells");
         changed |= ui.add(egui::DragValue::new(&mut edited.chunk_cells).range(4..=256)).changed();
         ui.end_row();
@@ -711,34 +716,41 @@ fn worldspawn_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
     ui.label(RichText::new("Nothing selected. Click an object in a view or the outliner to inspect it. These properties apply to the whole map.").weak());
     let props: Vec<(String, String)> = state.doc.map.properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let def = state.game.entity("worldspawn").cloned();
-    egui::Grid::new("world_props").num_columns(2).striped(true).show(ui, |ui| {
-        if let Some(def) = &def {
-            for p in &def.properties {
-                ui.label(&p.name).on_hover_text(&p.description);
-                let mut value = state.doc.map.properties.get(&p.name).cloned().unwrap_or_else(|| p.default.clone());
-                if property_editor(ui, p.ty, &p.options, &mut value, state) {
-                    let key = p.name.clone();
-                    state.doc.edit_coalesced("Set Map Property", |m, _| {
-                        m.properties.insert(key, value);
-                    });
-                }
-                ui.end_row();
-            }
+    let label_w = widgets::label_width(ui);
+    let mut index = 0;
+    let mut rows: Vec<(String, String, Option<gt_formats::PropertyDef>)> = Vec::new();
+    if let Some(def) = &def {
+        for p in &def.properties {
+            let value = state.doc.map.properties.get(&p.name).cloned().unwrap_or_else(|| p.default.clone());
+            rows.push((p.name.clone(), value, Some(p.clone())));
         }
-        for (k, v) in props {
-            if def.as_ref().is_some_and(|d| d.property(&k).is_some()) {
-                continue;
-            }
-            ui.label(&k);
-            let mut value = v.clone();
-            if ui.text_edit_singleline(&mut value).changed() {
-                state.doc.edit_coalesced("Set Map Property", |m, _| {
-                    m.properties.insert(k.clone(), value);
-                });
-            }
-            ui.end_row();
+    }
+    for (k, v) in props {
+        if k != "classname" && !def.as_ref().is_some_and(|d| d.property(&k).is_some()) {
+            rows.push((k, v, None));
         }
-    });
+    }
+    for (key, mut value, p) in rows {
+        let ty = widgets::effective_type(p.as_ref().map(|p| p.ty), &key, &value);
+        let hover = p.as_ref().map(|p| p.description.clone()).unwrap_or_default();
+        let options = p.as_ref().map(|p| p.options.clone()).unwrap_or_default();
+        let custom = p.is_none();
+        let (edited, remove) = widgets::row(ui, index, key.as_str(), &hover, label_w, |ui| {
+            let edited = property_editor(ui, ty, &options, &mut value, state, ui.available_width() - widgets::TRAILING);
+            (edited, custom && ui.small_button("×").on_hover_text("Remove property").clicked())
+        });
+        index += 1;
+        if edited {
+            state.doc.edit_coalesced("Set Map Property", |m, _| {
+                m.properties.insert(key.clone(), value);
+            });
+        }
+        if remove {
+            state.doc.edit("Remove Map Property", |m, _| {
+                m.properties.remove(&key);
+            });
+        }
+    }
     add_property_row(ui, ps, |k, v| {
         state.doc.edit("Add Map Property", |m, _| {
             m.properties.insert(k, v);
@@ -766,7 +778,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
     ui.horizontal(|ui| {
         ui.heading(&entity.classname);
         if def.is_none() {
-            ui.label(RichText::new("no definition").color(Color32::from_rgb(255, 140, 80)));
+            ui.label(RichText::new("no definition").color(theme::WARNING));
         }
     });
     if let Some(d) = &def
@@ -792,11 +804,11 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
         }
     });
 
+    let label_w = widgets::label_width(ui);
     let mut classname = entity.classname.clone();
-    ui.horizontal(|ui| {
-        ui.label("classname");
+    widgets::row(ui, 0, "classname", "", label_w, |ui| {
         let kind_filter = if is_point { gt_formats::EntityKind::Point } else { gt_formats::EntityKind::Solid };
-        egui::ComboBox::from_id_salt("classname").selected_text(&classname).show_ui(ui, |ui| {
+        egui::ComboBox::from_id_salt("classname").selected_text(&classname).width(ui.available_width() - widgets::TRAILING).show_ui(ui, |ui| {
             for d in state.game.entities.iter().filter(|d| d.kind == kind_filter) {
                 ui.selectable_value(&mut classname, d.classname.clone(), &d.classname);
             }
@@ -811,83 +823,89 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
     }
 
     if is_point {
-        ui.separator();
-        let mut origin = entity.origin;
-        let mut angles = entity.angles;
+        let mut origin = [entity.origin.x, entity.origin.y, entity.origin.z];
+        let mut angles = [entity.angles.x, entity.angles.y, entity.angles.z];
         let mut changed = false;
-        ui.horizontal(|ui| {
-            ui.label("origin");
-            changed |= vec3_editor(ui, &mut origin, 1.0);
+        widgets::row(ui, 1, "origin", "Position in map units", label_w, |ui| {
+            changed |= widgets::vector_input(ui, &mut origin, ui.available_width() - widgets::TRAILING, 1.0);
         });
-        ui.horizontal(|ui| {
-            ui.label("angles");
-            changed |= vec3_editor(ui, &mut angles, 1.0);
+        widgets::row(ui, 2, "angles", "Pitch, yaw and roll in degrees", label_w, |ui| {
+            changed |= widgets::vector_input(ui, &mut angles, ui.available_width() - widgets::TRAILING, 1.0);
         });
         if changed {
             state.doc.edit_coalesced("Set Transform", |m, _| {
                 if let Some(e) = m.entity_mut(id) {
-                    e.origin = origin;
-                    e.angles = angles;
+                    e.origin = DVec3::from_array(origin);
+                    e.angles = DVec3::from_array(angles);
                 }
             });
         }
     }
 
+    let value_x = ui.cursor().left() + label_w;
     egui::CollapsingHeader::new(RichText::new("Properties").strong()).id_salt("entity_properties").default_open(true).show(ui, |ui| {
-        egui::Grid::new("entity_props").num_columns(3).striped(true).show(ui, |ui| {
-            if let Some(d) = &def {
-                for p in &d.properties {
-                    let set = entity.properties.contains_key(&p.name);
-                    let label = if set { RichText::new(&p.name).strong() } else { RichText::new(&p.name) };
-                    ui.label(label).on_hover_text(if p.description.is_empty() { &p.name } else { &p.description });
-                    let mut value = entity.properties.get(&p.name).cloned().unwrap_or_else(|| p.default.clone());
-                    if property_editor(ui, p.ty, &p.options, &mut value, state) {
-                        let key = p.name.clone();
-                        state.doc.edit_coalesced(&format!("Set {key}"), |m, s| {
-                            for sel in s.nodes.clone() {
-                                if let Some(e) = m.entity_mut(sel) {
-                                    e.properties.insert(key.clone(), value.clone());
-                                }
+        let label_w = value_x - ui.cursor().left();
+        let mut index = 0;
+        if let Some(d) = &def {
+            for p in &d.properties {
+                let set = entity.properties.contains_key(&p.name);
+                let label = if set { RichText::new(&p.name).strong() } else { RichText::new(&p.name).color(ui.visuals().weak_text_color()) };
+                let hover = if p.description.is_empty() { p.name.clone() } else { format!("{}\n{}", p.name, p.description) };
+                let mut value = entity.properties.get(&p.name).cloned().unwrap_or_else(|| p.default.clone());
+                let ty = widgets::effective_type(Some(p.ty), &p.name, &value);
+                let (edited, reset) = widgets::row(ui, index, label, &hover, label_w, |ui| {
+                    let edited = property_editor(ui, ty, &p.options, &mut value, state, ui.available_width() - widgets::TRAILING);
+                    (edited, set && ui.small_button("×").on_hover_text("Reset to default").clicked())
+                });
+                index += 1;
+                if edited {
+                    let key = p.name.clone();
+                    state.doc.edit_coalesced(&format!("Set {key}"), |m, s| {
+                        for sel in s.nodes.clone() {
+                            if let Some(e) = m.entity_mut(sel) {
+                                e.properties.insert(key.clone(), value.clone());
                             }
-                            let _ = id;
-                        });
-                    }
-                    if set && ui.small_button("×").on_hover_text("Reset to default").clicked() {
-                        let key = p.name.clone();
-                        state.doc.edit("Reset Property", |m, _| {
-                            if let Some(e) = m.entity_mut(id) {
-                                e.properties.remove(&key);
-                            }
-                        });
-                    }
-                    ui.end_row();
-                }
-            }
-            for (k, v) in &entity.properties {
-                if def.as_ref().is_some_and(|d| d.property(k).is_some()) {
-                    continue;
-                }
-                ui.label(RichText::new(k).italics());
-                let mut value = v.clone();
-                if ui.text_edit_singleline(&mut value).changed() {
-                    let key = k.clone();
-                    state.doc.edit_coalesced(&format!("Set {key}"), |m, _| {
-                        if let Some(e) = m.entity_mut(id) {
-                            e.properties.insert(key, value);
                         }
                     });
                 }
-                if ui.small_button("×").clicked() {
-                    let key = k.clone();
-                    state.doc.edit("Remove Property", |m, _| {
+                if reset {
+                    let key = p.name.clone();
+                    state.doc.edit("Reset Property", |m, _| {
                         if let Some(e) = m.entity_mut(id) {
                             e.properties.remove(&key);
                         }
                     });
                 }
-                ui.end_row();
             }
-        });
+        }
+        for (k, v) in &entity.properties {
+            if def.as_ref().is_some_and(|d| d.property(k).is_some()) {
+                continue;
+            }
+            let mut value = v.clone();
+            let ty = widgets::effective_type(None, k, v);
+            let (edited, remove) = widgets::row(ui, index, RichText::new(k).italics(), "Not in the entity definition", label_w, |ui| {
+                let edited = property_editor(ui, ty, &[], &mut value, state, ui.available_width() - widgets::TRAILING);
+                (edited, ui.small_button("×").on_hover_text("Remove property").clicked())
+            });
+            index += 1;
+            if edited {
+                let key = k.clone();
+                state.doc.edit_coalesced(&format!("Set {key}"), |m, _| {
+                    if let Some(e) = m.entity_mut(id) {
+                        e.properties.insert(key, value);
+                    }
+                });
+            }
+            if remove {
+                let key = k.clone();
+                state.doc.edit("Remove Property", |m, _| {
+                    if let Some(e) = m.entity_mut(id) {
+                        e.properties.remove(&key);
+                    }
+                });
+            }
+        }
         add_property_row(ui, ps, |k, v| {
             state.doc.edit("Add Property", |m, _| {
                 if let Some(e) = m.entity_mut(id) {
@@ -921,10 +939,11 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &gt_doc::
                     egui::Id::new(("out", i)),
                     &mut conn.output,
                     def.map(|d| d.outputs.iter().map(|o| o.name.clone()).collect()).unwrap_or_default(),
+                    110.0,
                 );
                 ui.end_row();
                 ui.label("target");
-                changed |= combo_or_text(ui, egui::Id::new(("target", i)), &mut conn.target, targetnames.iter().map(|(n, _)| n.clone()).collect());
+                changed |= combo_or_text(ui, egui::Id::new(("target", i)), &mut conn.target, targetnames.iter().map(|(n, _)| n.clone()).collect(), 110.0);
                 ui.end_row();
                 let target_inputs: Vec<String> = targetnames
                     .iter()
@@ -933,7 +952,7 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &gt_doc::
                     .flat_map(|d| d.inputs.iter().map(|i| i.name.clone()))
                     .collect();
                 ui.label("input");
-                changed |= combo_or_text(ui, egui::Id::new(("input", i)), &mut conn.input, target_inputs);
+                changed |= combo_or_text(ui, egui::Id::new(("input", i)), &mut conn.input, target_inputs, 110.0);
                 ui.end_row();
                 ui.label("parameter");
                 changed |= ui.text_edit_singleline(&mut conn.parameter).changed();
@@ -952,7 +971,7 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &gt_doc::
             let valid_target = conn.target.is_empty() || targetnames.iter().any(|(n, _)| *n == conn.target) || gt_doc::issues::is_dynamic_target(&conn.target);
             ui.horizontal(|ui| {
                 if !valid_target {
-                    ui.label(RichText::new("target not found").color(Color32::from_rgb(255, 120, 80)));
+                    ui.label(RichText::new("target not found").color(theme::ERROR));
                 }
                 if ui.small_button("Remove").clicked() {
                     remove = Some(i);
@@ -978,10 +997,10 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &gt_doc::
     }
 }
 
-fn combo_or_text(ui: &mut Ui, salt: egui::Id, value: &mut String, options: Vec<String>) -> bool {
+fn combo_or_text(ui: &mut Ui, salt: egui::Id, value: &mut String, options: Vec<String>, width: f32) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
-        changed |= ui.add(egui::TextEdit::singleline(value).desired_width(110.0)).changed();
+        changed |= ui.add(egui::TextEdit::singleline(value).desired_width(width)).changed();
         if !options.is_empty() {
             egui::ComboBox::from_id_salt(salt).selected_text("▾").width(24.0).show_ui(ui, |ui| {
                 for o in options {
@@ -996,16 +1015,8 @@ fn combo_or_text(ui: &mut Ui, salt: egui::Id, value: &mut String, options: Vec<S
     changed
 }
 
-fn vec3_editor(ui: &mut Ui, v: &mut DVec3, speed: f64) -> bool {
-    let mut changed = false;
-    changed |= ui.add(egui::DragValue::new(&mut v.x).speed(speed).prefix("x ")).changed();
-    changed |= ui.add(egui::DragValue::new(&mut v.y).speed(speed).prefix("y ")).changed();
-    changed |= ui.add(egui::DragValue::new(&mut v.z).speed(speed).prefix("z ")).changed();
-    changed
-}
-
-/// Typed editor for a string property value. Returns true when changed.
-fn property_editor(ui: &mut Ui, ty: PropertyType, options: &[(String, String)], value: &mut String, state: &EditorState) -> bool {
+/// Typed editor for a string property value, `width` wide. Returns true when changed.
+fn property_editor(ui: &mut Ui, ty: PropertyType, options: &[(String, String)], value: &mut String, state: &EditorState, width: f32) -> bool {
     match ty {
         PropertyType::Bool => {
             let mut b = matches!(value.trim(), "1" | "true" | "True");
@@ -1015,40 +1026,31 @@ fn property_editor(ui: &mut Ui, ty: PropertyType, options: &[(String, String)], 
             }
             false
         }
-        PropertyType::Int => {
-            let mut i: i64 = value.trim().parse().unwrap_or(0);
-            if ui.add(egui::DragValue::new(&mut i)).changed() {
-                *value = i.to_string();
-                return true;
-            }
-            false
-        }
-        PropertyType::Float => {
+        PropertyType::Int | PropertyType::Float => {
+            let integer = ty == PropertyType::Int;
             let mut f: f64 = value.trim().parse().unwrap_or(0.0);
-            if ui.add(egui::DragValue::new(&mut f).speed(0.05)).changed() {
-                *value = format!("{f}");
+            let speed = widgets::drag_speed(&[f]);
+            if widgets::drag_field(ui, &mut f, width, speed, integer) {
+                *value = if integer { (f.round() as i64).to_string() } else { widgets::format_number(f) };
                 return true;
             }
             false
         }
-        PropertyType::Color => {
-            let parts: Vec<f32> = value.split_whitespace().filter_map(|p| p.parse().ok()).collect();
-            let scale = if parts.iter().any(|p| *p > 1.0) { 255.0 } else { 1.0 };
-            let mut rgb = [
-                parts.first().copied().unwrap_or(255.0) / scale,
-                parts.get(1).copied().unwrap_or(255.0) / scale,
-                parts.get(2).copied().unwrap_or(255.0) / scale,
-            ];
-            if ui.color_edit_button_rgb(&mut rgb).changed() {
-                *value = format!("{} {} {}", (rgb[0] * 255.0).round(), (rgb[1] * 255.0).round(), (rgb[2] * 255.0).round());
+        PropertyType::Vector2 | PropertyType::Vector3 => {
+            let mut nums = widgets::parse_numbers(value).unwrap_or_default();
+            nums.resize(if ty == PropertyType::Vector2 { 2 } else { 3 }, 0.0);
+            let speed = widgets::drag_speed(&nums).max(0.1);
+            if widgets::vector_input(ui, &mut nums, width, speed) {
+                *value = nums.iter().map(|n| widgets::format_number(*n)).collect::<Vec<_>>().join(" ");
                 return true;
             }
             false
         }
+        PropertyType::Color => widgets::color_input(ui, value, width),
         PropertyType::Choices => {
             let mut changed = false;
             let current = options.iter().find(|(_, v)| v == value).map(|(l, _)| l.clone()).unwrap_or_else(|| value.clone());
-            egui::ComboBox::from_id_salt(ui.next_auto_id()).selected_text(current).show_ui(ui, |ui| {
+            egui::ComboBox::from_id_salt(ui.next_auto_id()).selected_text(current).width(width - 8.0).show_ui(ui, |ui| {
                 for (label, v) in options {
                     if ui.selectable_label(value == v, label).clicked() {
                         *value = v.clone();
@@ -1078,10 +1080,11 @@ fn property_editor(ui: &mut Ui, ty: PropertyType, options: &[(String, String)], 
         }
         PropertyType::TargetDestination => {
             let names: Vec<String> = state.doc.map.entities().filter_map(|(_, e)| e.targetname().map(str::to_string)).collect();
-            combo_or_text(ui, ui.next_auto_id(), value, names)
+            combo_or_text(ui, ui.next_auto_id(), value, names, width - 36.0)
         }
         PropertyType::Resource => {
-            let mut changed = ui.add(egui::TextEdit::singleline(value).desired_width(120.0)).changed();
+            let browse = state.game.project_root.is_some();
+            let mut changed = widgets::text_field(ui, value, if browse { width - 28.0 } else { width });
             if let Some(root) = &state.game.project_root
                 && ui.small_button("…").clicked()
                 && let Some(p) = rfd::FileDialog::new().set_directory(root).pick_file()
@@ -1092,7 +1095,7 @@ fn property_editor(ui: &mut Ui, ty: PropertyType, options: &[(String, String)], 
             }
             changed
         }
-        _ => ui.text_edit_singleline(value).changed(),
+        _ => widgets::text_field(ui, value, width),
     }
 }
 
@@ -1403,9 +1406,9 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
     let (rect, resp) = ui.allocate_exact_size(cell, Sense::click_and_drag());
     let selected = name == state.current_material;
     if selected {
-        ui.painter().rect_filled(rect, 3.0, Color32::from_rgb(90, 60, 30));
+        ui.painter().rect_filled(rect, 3.0, theme::selected_fill());
     } else if resp.hovered() {
-        ui.painter().rect_filled(rect, 3.0, Color32::from_gray(50));
+        ui.painter().rect_filled(rect, 3.0, theme::GRAY_2);
     }
     let img_rect = egui::Rect::from_min_size(rect.min + Vec2::splat(if label { 4.0 } else { 2.0 }), Vec2::splat(size));
     let ctx = ui.ctx().clone();
@@ -1414,28 +1417,16 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
             ui.painter().image(tex.id(), img_rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
         }
         None => {
-            ui.painter().rect_filled(img_rect, 2.0, Color32::from_gray(35));
+            ui.painter().rect_filled(img_rect, 2.0, theme::GRAY_2);
             ui.ctx().request_repaint();
         }
     }
     if state.prefs.favorite_materials.iter().any(|f| f == name) {
-        ui.painter().text(
-            img_rect.right_top() + Vec2::new(-3.0, 1.0),
-            egui::Align2::RIGHT_TOP,
-            "★",
-            egui::FontId::proportional(13.0),
-            Color32::from_rgb(255, 210, 60),
-        );
+        ui.painter().text(img_rect.right_top() + Vec2::new(-3.0, 1.0), egui::Align2::RIGHT_TOP, "★", egui::FontId::proportional(13.0), theme::YELLOW);
     }
     if label {
         let short = name.rsplit('/').next().unwrap_or(name);
-        ui.painter().text(
-            egui::pos2(rect.center().x, rect.max.y - 9.0),
-            egui::Align2::CENTER_CENTER,
-            short,
-            egui::FontId::proportional(11.0),
-            Color32::LIGHT_GRAY,
-        );
+        ui.painter().text(egui::pos2(rect.center().x, rect.max.y - 9.0), egui::Align2::CENTER_CENTER, short, egui::FontId::proportional(11.0), theme::GRAY_6);
     }
     resp
 }
@@ -1573,7 +1564,7 @@ pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
                             ui.painter().image(tex.id(), rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
                         }
                         None => {
-                            ui.painter().rect_filled(rect, 2.0, Color32::from_gray(35));
+                            ui.painter().rect_filled(rect, 2.0, theme::GRAY_2);
                         }
                     }
                     ui.vertical(|ui| {
@@ -1632,7 +1623,7 @@ fn entity_icon(def: &EntityDef) -> icons::Icon {
 }
 
 fn paint_entity_tile(ui: &Ui, rect: egui::Rect, def: Option<&EntityDef>) {
-    let color = def.map(entity_color).unwrap_or(Color32::LIGHT_GRAY);
+    let color = def.map(entity_color).unwrap_or(theme::GRAY_6);
     ui.painter().rect(rect, 3.0, color.gamma_multiply(0.22), egui::Stroke::new(1.0, color.gamma_multiply(0.7)), egui::StrokeKind::Inside);
     let icon = def.map(entity_icon).unwrap_or(icons::ENTITY);
     icon.image(rect.width() * 0.5).tint(color).paint_at(ui, egui::Rect::from_center_size(rect.center(), Vec2::splat(rect.width() * 0.5)));
@@ -1643,19 +1634,19 @@ fn entity_card(ui: &mut Ui, def: &EntityDef, size: f32, selected: bool) -> egui:
     let (rect, resp) = ui.allocate_exact_size(cell, Sense::click_and_drag());
     resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, &def.classname));
     if selected {
-        ui.painter().rect_filled(rect, 3.0, Color32::from_rgb(90, 60, 30));
+        ui.painter().rect_filled(rect, 3.0, theme::selected_fill());
     } else if resp.hovered() {
-        ui.painter().rect_filled(rect, 3.0, Color32::from_gray(50));
+        ui.painter().rect_filled(rect, 3.0, theme::GRAY_2);
     }
     let tile = egui::Rect::from_min_size(rect.min + Vec2::splat(4.0), Vec2::splat(size));
     paint_entity_tile(ui, tile, Some(def));
     if def.kind == gt_formats::EntityKind::Solid {
-        ui.painter().text(tile.right_top() + Vec2::new(-3.0, 2.0), egui::Align2::RIGHT_TOP, "brush", egui::FontId::proportional(10.0), Color32::from_gray(170));
+        ui.painter().text(tile.right_top() + Vec2::new(-3.0, 2.0), egui::Align2::RIGHT_TOP, "brush", egui::FontId::proportional(10.0), theme::GRAY_5);
     }
-    let mut job = egui::text::LayoutJob::simple_singleline(def.classname.clone(), egui::FontId::proportional(11.0), Color32::LIGHT_GRAY);
+    let mut job = egui::text::LayoutJob::simple_singleline(def.classname.clone(), egui::FontId::proportional(11.0), theme::GRAY_6);
     job.wrap = egui::text::TextWrapping::truncate_at_width(cell.x - 4.0);
     let label = ui.painter().layout_job(job);
-    ui.painter().galley(egui::pos2(rect.center().x, rect.max.y - 9.0) - label.size() / 2.0, label, Color32::LIGHT_GRAY);
+    ui.painter().galley(egui::pos2(rect.center().x, rect.max.y - 9.0) - label.size() / 2.0, label, theme::GRAY_6);
     resp
 }
 
@@ -1836,8 +1827,8 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
     let fixable = ps.issues.iter().filter(|i| issues::fixable(i.code)).count();
     let mut fix: Vec<gt_doc::issues::Issue> = Vec::new();
     ui.horizontal(|ui| {
-        ui.label(RichText::new(format!("{errors} errors")).color(Color32::from_rgb(255, 110, 90)));
-        ui.label(RichText::new(format!("{warnings} warnings")).color(Color32::from_rgb(255, 200, 90)));
+        ui.label(RichText::new(format!("{errors} errors")).color(theme::ERROR));
+        ui.label(RichText::new(format!("{warnings} warnings")).color(theme::WARNING));
         ui.label(format!("{} total", ps.issues.len()));
         if ui.add_enabled(fixable > 0, egui::Button::new(format!("Fix all ({fixable})"))).clicked() {
             fix = ps.issues.iter().filter(|i| issues::fixable(i.code)).cloned().collect();
@@ -1845,16 +1836,16 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
     });
     ui.separator();
     if ps.issues.is_empty() {
-        ui.label(RichText::new("No problems found").color(Color32::from_rgb(120, 220, 120)));
+        ui.label(RichText::new("No problems found").color(theme::SUCCESS));
     }
     let mut select: Option<NodeId> = None;
     ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for issue in &ps.issues {
             ui.horizontal(|ui| {
                 let (icon, color) = match issue.severity {
-                    Severity::Error => ("⛔", Color32::from_rgb(255, 110, 90)),
-                    Severity::Warning => ("⚠", Color32::from_rgb(255, 200, 90)),
-                    Severity::Info => ("ℹ", Color32::from_rgb(140, 190, 255)),
+                    Severity::Error => ("⛔", theme::ERROR),
+                    Severity::Warning => ("⚠", theme::WARNING),
+                    Severity::Info => ("ℹ", theme::INFO),
                 };
                 ui.label(RichText::new(icon).color(color));
                 let name = issue.node.and_then(|n| state.doc.map.get(n)).map(|n| n.name()).unwrap_or_default();
@@ -1987,7 +1978,7 @@ pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
             ui.separator();
             ui.label(RichText::new("Tools").strong());
             for (tool, help) in TOOL_HELP {
-                ui.label(RichText::new(tool).color(Color32::from_rgb(160, 200, 255))).on_hover_text(help);
+                ui.label(RichText::new(tool).color(theme::CYAN)).on_hover_text(help);
             }
         });
     });

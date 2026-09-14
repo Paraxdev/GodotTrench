@@ -24,12 +24,14 @@ pub mod scene;
 pub mod state;
 pub mod texture_ops;
 pub mod texture_tool;
+pub mod theme;
 pub mod tools;
 pub mod toolset;
 pub mod transform_gizmo;
 pub mod uv_editor;
 pub mod viewport;
 pub mod volume_tool;
+pub mod widgets;
 
 use std::path::PathBuf;
 
@@ -69,6 +71,10 @@ impl CliArgs {
 pub fn run(args: CliArgs) -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_title("GodotTrench").with_inner_size([1600.0, 960.0]).with_min_inner_size([800.0, 500.0]),
+        // eframe reads and writes the window geometry on its own, so automated runs get a separate, never written store
+        // instead of loading or overwriting the user's window.
+        persist_window: !args.default_prefs,
+        persistence_path: args.default_prefs.then(|| std::env::temp_dir().join("godottrench-default-prefs")),
         ..Default::default()
     };
     eframe::run_native("GodotTrench", options, Box::new(move |cc| Ok(Box::new(app::App::new(cc, args)))))
