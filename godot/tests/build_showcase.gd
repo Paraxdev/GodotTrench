@@ -43,7 +43,7 @@ func _initialize() -> void:
 		var packed := PackedScene.new()
 		var err := packed.pack(root)
 		if err == OK:
-			err = ResourceSaver.save(packed, "res://demo/showcase/%s.tscn" % name)
+			err = ResourceSaver.save(packed, "res://demo/showcase/%s.scn" % name)
 		print("%s: %d mesh instances, %d terrains, %d scatter sets (%d multimeshes), %d lights, built in %.1f s, save %s" % [name, meshes, terrains, scatters, instances, lights, (Time.get_ticks_msec() - started) / 1000.0, error_string(err)])
 		if err != OK or terrains != 1 or scatters < 2 or instances < 4 or meshes < 10 or environments != 1:
 			failures += 1

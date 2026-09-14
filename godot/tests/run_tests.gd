@@ -62,6 +62,7 @@ func _initialize() -> void:
 	await test_gameplay_entities()
 	await test_spawner()
 	test_scatter_and_blend()
+	test_face_cull()
 	test_csharp_entities()
 	await test_showcase_playthrough()
 	print("%d checks, %d failures" % [checks, failures.size()])
@@ -511,6 +512,26 @@ func test_gameplay_entities() -> void:
 	for i in 3:
 		GodotTrenchIO.invoke(counter, &"add", "1", null)
 	check(counter.value == 3 and hit.size() == 1, "counter fires hit_max once at its limit")
+	counter.reset()
+	var presser := Node3D.new()
+	map.add_child(presser)
+	var button := GTButton.new()
+	map.add_child(button)
+	counter.set_meta(GodotTrenchIO.TARGETNAME_META, "count_presses")
+	var press_output := GodotTrenchOutput.new()
+	press_output.output = &"pressed"
+	press_output.target = "count_presses"
+	press_output.input = &"add"
+	button.add_child(press_output)
+	await process_frame
+	button.use(presser)
+	check(counter.value == 1, "a button output without a parameter adds the default amount instead of passing the player, value %s" % counter.value)
+	GodotTrenchIO.invoke(counter, &"subtract", "", presser)
+	check(counter.value == 0, "empty parameters fall back to the default amount")
+	counter.add(presser)
+	check(counter.value == 1, "a node passed as the amount counts as one")
+	check(GodotTrenchIO.activator_arguments(door, &"open", presser) == [presser], "inputs with an activator argument still receive the activator")
+	check(GodotTrenchIO.activator_arguments(counter, &"add", presser) == [], "value inputs get no activator")
 
 	var trigger := GTTriggerCall.new()
 	var receiver: Node3D = load("res://tests/helpers/io_receiver.gd").new()
@@ -607,11 +628,77 @@ func test_scatter_and_blend() -> void:
 	check(shapes.size() == 2 and shapes[0].shape == shapes[1].shape, "props share one collision shape per model")
 	scatter.free()
 
+	# Nodes without an owner are silently left out when the editor saves the scene.
+	var map_node := Node3D.new()
+	var built_sets := GodotTrenchScatter.build_all(map_node, [{ "data": data, "xform": Transform3D.IDENTITY, "group": null, "id": 1 }], settings)
+	var unowned := collect(map_node, func(n): return n != map_node and n.owner != map_node)
+	check(built_sets.size() == 1 and unowned.is_empty(), "built scatter sets are owned by the scene, unowned: %s" % unowned)
+	var saved := PackedScene.new()
+	saved.pack(map_node)
+	var reloaded := saved.instantiate()
+	check(collect(reloaded, func(n): return n is MultiMeshInstance3D).size() == 1, "scatter sets survive saving the scene")
+	reloaded.free()
+	map_node.free()
+
 	var blend := GodotTrenchBlend.key("showcase/cobble", "showcase/grass")
 	check(GodotTrenchBlend.is_blend(blend) and GodotTrenchBlend.parts(blend) == PackedStringArray(["showcase/cobble", "showcase/grass"]), "blend texture names round trip")
 	var built: Array = GodotTrenchBlend.build(blend, settings, [])
 	var mat := built[0] as ShaderMaterial
 	check(mat != null and mat.get_shader_parameter("texture_a") != null and mat.get_shader_parameter("texture_b") != null, "blend material samples both textures")
+
+func test_face_cull() -> void:
+	print("- coplanar face culling")
+	var tiles: Array[PackedVector2Array] = []
+	for j in 3:
+		for i in 3:
+			tiles.append(PackedVector2Array([Vector2(i, j), Vector2(i + 1, j), Vector2(i + 1, j + 1), Vector2(i, j + 1)]))
+	# The center tile first would punch a hole.
+	var center_first: Array[PackedVector2Array] = [tiles[4]]
+	for k in tiles.size():
+		if k != 4:
+			center_first.append(tiles[k])
+	var square := PackedVector2Array([Vector2(0, 0), Vector2(3, 0), Vector2(3, 3), Vector2(0, 3)])
+	check(GodotTrenchFaceCull.fully_covered(square, center_first), "a grid of covers hides a face in any order")
+	check(not GodotTrenchFaceCull.fully_covered(square, center_first.slice(0, 8)), "one missing tile keeps the face")
+
+	var box_vertices := []
+	for y in [-24.0, -2.0]:
+		for c in [[0.0, 0.0], [128.0, 0.0], [128.0, 128.0], [0.0, 128.0]]:
+			box_vertices.append([c[0], y, c[1]])
+	var box_faces := []
+	for indices in [[4, 7, 6, 5], [0, 1, 2, 3], [1, 5, 6, 2], [0, 3, 7, 4], [3, 2, 6, 7], [0, 4, 5, 1]]:
+		box_faces.append({ "indices": indices, "material": "showcase/cobble" })
+	var grid_vertices := []
+	for j in 3:
+		for i in 3:
+			grid_vertices.append([i * 64.0, -2.0, j * 64.0])
+	var grid_faces := []
+	for j in 2:
+		for i in 2:
+			var a := j * 3 + i
+			grid_faces.append({ "indices": [a, a + 3, a + 4, a + 1], "material": "showcase/cobble", "props": { "blend_material": "showcase/grass" } })
+	var map_json := {
+		"format": "godottrench-map", "properties": {},
+		"layers": [{ "type": "layer", "id": 1, "children": [
+			{ "type": "brush", "id": 2, "vertices": box_vertices, "faces": box_faces },
+			{ "type": "mesh", "id": 3, "vertices": grid_vertices, "faces": grid_faces },
+		] }],
+	}
+	var settings: FuncGodotMapSettings = load(SETTINGS)
+	var path := OS.get_temp_dir().path_join("gt_face_cull_test.gtm")
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify(map_json))
+	var data := FuncGodotParser.new().parse_map_data(path, settings)
+	DirAccess.remove_absolute(path)
+	var generator := FuncGodotGeometryGenerator.new(settings)
+	generator.build(0, data.entities)
+	var brush: FuncGodotData.BrushData = data.entities[0].brushes[0]
+	var sheet: FuncGodotData.BrushData = data.entities[0].brushes[1]
+	var hidden := brush.faces.filter(func(f): return f.render_hidden)
+	check(not sheet.closed and brush.closed, "a grid mesh is an open sheet")
+	# Planes are in id space, up is +Z.
+	check(hidden.size() == 1 and hidden[0].plane.normal.is_equal_approx(Vector3(0, 0, 1)), "the brush top under a blend sheet is hidden, got %s" % [hidden.map(func(f): return f.plane.normal)])
+	check(sheet.faces.all(func(f): return not f.render_hidden), "the blend sheet draws")
+	check(data.entities[0].pending_convex_points.is_empty() and data.entities[0].shapes.size() >= 1, "collision is still built")
 
 func test_csharp_entities() -> void:
 	print("- C# entity definitions")

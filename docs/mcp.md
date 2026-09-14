@@ -37,7 +37,7 @@ in a running editor, read as a reference for the tools, or copy as a starting po
 godottrench --mcp-http --project godot                                        # editor with the demo project
 python tools/mcp_script.py run examples/mcp/lighthouse_forest.json            # replays the script, saves godot/demo/maps/showcase
 python tools/mcp_script.py shot view.png --pos 4300,900,3300 --look 2200,700,1200 --shade lit
-godot --headless --path godot --script res://tests/build_showcase.gd         # builds res://demo/showcase/*.tscn
+godot --headless --path godot --script res://tests/build_showcase.gd         # builds res://demo/showcase/*.scn (binary, built scenes embed every mesh and shape)
 godot --path godot --script res://tests/showcase_screenshots.gd -- <out dir>  # renders every viewpoint
 godot --path godot                                                            # play them: WASD, E use, 1/2/3 switch maps, F3 I/O overlay
 ```

@@ -20,13 +20,13 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	value = start_value
 
 func add(amount: Variant = 1) -> void:
-	set_value(value + (int(amount) if amount != null else 1))
+	set_value(value + _to_int(amount, 1))
 
 func subtract(amount: Variant = 1) -> void:
-	set_value(value - (int(amount) if amount != null else 1))
+	set_value(value - _to_int(amount, 1))
 
 func set_value(new_value: Variant) -> void:
-	var v := clampi(int(new_value), min_value, max_value)
+	var v := clampi(_to_int(new_value, value), min_value, max_value)
 	if v == value:
 		return
 	value = v
@@ -35,6 +35,14 @@ func set_value(new_value: Variant) -> void:
 		hit_max.emit()
 	elif value <= min_value:
 		hit_min.emit()
+
+## Map parameters arrive as numbers or text, anything else (a node, an empty value) falls back.
+static func _to_int(v: Variant, fallback: int) -> int:
+	if v is int or v is float or v is bool:
+		return int(v)
+	if v is String and v.is_valid_float():
+		return int(float(v))
+	return fallback
 
 func reset() -> void:
 	value = start_value

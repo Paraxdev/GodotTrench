@@ -427,16 +427,29 @@ impl EditorState {
     }
 
     pub fn open_map(&mut self, path: &Path) -> Result<(), String> {
-        let map = format::load(path).map_err(|e| e.to_string())?;
-        self.reset_document(Document::from_map(map, Some(path.to_path_buf())));
-        self.add_recent(path);
+        let doc = load_document(path)?;
+        self.reset_document(doc);
+        self.after_open(path);
+        Ok(())
+    }
+
+    /// Recent files, project and status for a map just opened from `path`.
+    pub fn after_open(&mut self, path: &Path) {
+        if let Some(map_path) = self.doc.path.clone() {
+            self.add_recent(&map_path);
+        }
         if let Some(root) = gt_formats::game::find_project_root(path)
             && self.game.project_root.as_deref() != Some(root.as_path())
         {
             self.load_project(&root);
         }
-        self.set_status(format!("Opened {}", path.display()));
-        Ok(())
+        match (&self.doc.recovered_from, &self.doc.path) {
+            (Some(_), Some(map_path)) => {
+                self.set_status(format!("Recovered {} from its autosave, save to keep the changes", map_path.display()))
+            }
+            (Some(_), None) => self.set_status("Recovered an untitled map from its autosave, save it to keep the changes"),
+            _ => self.set_status(format!("Opened {}", path.display())),
+        }
     }
 
     pub fn save_map(&mut self, path: &Path) -> Result<(), String> {
@@ -447,8 +460,17 @@ impl EditorState {
         self.doc.path = Some(path.to_path_buf());
         self.doc.mark_saved();
         self.add_recent(path);
-        let autosave = autosave_path(path);
-        let _ = std::fs::remove_file(autosave);
+        for autosave in [autosave_path(path), legacy_autosave_path(path)] {
+            let _ = std::fs::remove_file(autosave);
+        }
+        if let Some(map_path) = autosave_source(path) {
+            self.set_status(format!(
+                "Saved into the autosave file {}, Godot uses {}, Save As to write the real map",
+                path.display(),
+                map_path.file_name().unwrap_or_default().to_string_lossy()
+            ));
+            return Ok(());
+        }
         self.set_status(format!("Saved {}", path.display()));
         if self.prefs.live_link {
             self.live_link_status =
@@ -515,7 +537,7 @@ impl EditorState {
         self.autosave_revision = self.doc.revision;
         let path = match &self.doc.path {
             Some(p) => autosave_path(p),
-            None => std::env::temp_dir().join("godottrench_untitled.autosave.gtm"),
+            None => std::env::temp_dir().join(UNTITLED_AUTOSAVE),
         };
         if format::save(&self.doc.map, &path).is_ok() {
             self.set_status(format!("Autosaved to {}", path.display()));
@@ -523,14 +545,78 @@ impl EditorState {
     }
 }
 
+const UNTITLED_AUTOSAVE: &str = "godottrench_untitled.gtm.autosave";
+
+// Autosaves must not end in .gtm: Godot would import them and they would sit next to the real map in file dialogs.
 pub fn autosave_path(path: &Path) -> PathBuf {
+    let name = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "map.gtm".into());
+    path.with_file_name(format!("{name}.autosave"))
+}
+
+fn legacy_autosave_path(path: &Path) -> PathBuf {
     let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "map".into());
     path.with_file_name(format!("{stem}.autosave.gtm"))
+}
+
+/// The map an autosave belongs to, for both `level.gtm.autosave` and the older `level.autosave.gtm`.
+pub fn autosave_source(path: &Path) -> Option<PathBuf> {
+    let name = path.file_name()?.to_string_lossy().into_owned();
+    let lower = name.to_lowercase();
+    let stem_len = if lower.ends_with(".gtm.autosave") {
+        name.len() - ".gtm.autosave".len()
+    } else if lower.ends_with(".autosave.gtm") {
+        name.len() - ".autosave.gtm".len()
+    } else {
+        return None;
+    };
+    Some(path.with_file_name(format!("{}.gtm", name.get(..stem_len)?)))
+}
+
+/// Loads a map, turning an autosave into an unsaved recovery of the map it belongs to.
+pub fn load_document(path: &Path) -> Result<Document, String> {
+    let map = format::load(path).map_err(|e| e.to_string())?;
+    let Some(source) = autosave_source(path) else {
+        return Ok(Document::from_map(map, Some(path.to_path_buf())));
+    };
+    let untitled = source.file_stem().is_some_and(|s| s == "godottrench_untitled");
+    let mut doc = Document::from_map(map, (!untitled).then_some(source));
+    doc.recovered_from = Some(path.to_path_buf());
+    doc.mark_unsaved();
+    Ok(doc)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn autosaves_recover_into_their_map() {
+        let map = Path::new("maps/church.gtm");
+        assert_eq!(autosave_path(map), Path::new("maps/church.gtm.autosave"));
+        assert_eq!(autosave_source(&autosave_path(map)).as_deref(), Some(map));
+        assert_eq!(autosave_source(&legacy_autosave_path(map)).as_deref(), Some(map));
+        assert_eq!(autosave_source(map), None);
+
+        let dir = std::env::temp_dir().join(format!("gt_autosave_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let map_path = dir.join("church.gtm");
+        let mut state = EditorState::new(Prefs::default());
+        state.prefs.live_link = false;
+        format::save(&state.doc.map, &autosave_path(&map_path)).unwrap();
+        format::save(&state.doc.map, &legacy_autosave_path(&map_path)).unwrap();
+
+        state.open_map(&legacy_autosave_path(&map_path)).unwrap();
+        assert_eq!(state.doc.path.as_deref(), Some(map_path.as_path()));
+        assert!(state.doc.is_modified());
+        assert_eq!(state.doc.title(), "church.gtm* (recovered)");
+        assert_eq!(state.prefs.recent_files.first(), Some(&map_path));
+
+        state.save_map(&map_path.clone()).unwrap();
+        assert!(map_path.exists());
+        assert!(!autosave_path(&map_path).exists() && !legacy_autosave_path(&map_path).exists());
+        assert_eq!(state.doc.title(), "church.gtm");
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn ui_scale_follows_or_overrides_display_scaling() {

@@ -40,6 +40,8 @@ pub struct Document {
     pub map: Map,
     pub selection: Selection,
     pub path: Option<PathBuf>,
+    /// The autosave this document was loaded from, until it is saved to `path`.
+    pub recovered_from: Option<PathBuf>,
     pub history: History,
     /// Incremented on every change, used by renderers and caches.
     pub revision: u64,
@@ -65,6 +67,7 @@ impl Document {
             map,
             selection: Selection::default(),
             path,
+            recovered_from: None,
             history: History { limit: 512, ..Default::default() },
             revision: 1,
             saved_revision: 1,
@@ -80,11 +83,17 @@ impl Document {
 
     pub fn mark_saved(&mut self) {
         self.saved_revision = self.revision;
+        self.recovered_from = None;
+    }
+
+    pub fn mark_unsaved(&mut self) {
+        self.saved_revision = 0;
     }
 
     pub fn title(&self) -> String {
         let name = self.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "untitled.gtm".into());
-        if self.is_modified() { format!("{name}*") } else { name }
+        let name = if self.is_modified() { format!("{name}*") } else { name };
+        if self.recovered_from.is_some() { format!("{name} (recovered)") } else { name }
     }
 
     fn snapshot(&self, label: &str) -> Snapshot {

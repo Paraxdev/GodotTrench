@@ -500,7 +500,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             state.switch_tab((active + 1) % titles.len());
         }
         Action::OpenMap => {
-            let mut dialog = rfd::FileDialog::new().add_filter("GodotTrench map", &["gtm"]);
+            let mut dialog = rfd::FileDialog::new().add_filter("GodotTrench map", &["gtm"]).add_filter("Autosave (recover a map)", &["autosave"]);
             if let Some(root) = &state.game.project_root {
                 dialog = dialog.set_directory(root);
             }
@@ -1097,27 +1097,25 @@ pub fn time_seed() -> u64 {
 
 /// Opens a map in a new tab, or in the current one when it is an untouched empty map.
 pub fn open_map_in_tab(state: &mut EditorState, path: &std::path::Path) -> Result<(), String> {
+    let map_path = crate::state::autosave_source(path).unwrap_or_else(|| path.to_path_buf());
     let active = state.active_tab.min(state.tabs.len());
     let existing = (0..=state.tabs.len()).position(|i| {
         let doc = if i == active { &state.doc } else { &state.tabs[if i > active { i - 1 } else { i }].doc };
-        doc.path.as_deref() == Some(path)
+        doc.path.as_deref() == Some(map_path.as_path())
     });
     if let Some(i) = existing {
         state.switch_tab(i);
+        if map_path != path {
+            state.set_status(format!("{} is already open, close its tab to recover the autosave", map_path.display()));
+        }
         return Ok(());
     }
     let untouched = state.doc.path.is_none() && !state.doc.is_modified() && state.doc.map.nodes.len() <= 1;
     if untouched {
         return state.open_map(path);
     }
-    let map = format::load(path).map_err(|e| e.to_string())?;
-    state.open_tab(Document::from_map(map, Some(path.to_path_buf())));
-    if let Some(root) = gt_formats::game::find_project_root(path)
-        && state.game.project_root.as_deref() != Some(root.as_path())
-    {
-        state.load_project(&root);
-    }
-    state.set_status(format!("Opened {}", path.display()));
+    state.open_tab(crate::state::load_document(path)?);
+    state.after_open(path);
     Ok(())
 }
 

@@ -12,7 +12,9 @@ its own, and *Help > Guide* shows the same chapters as searchable pages with tip
 * Click selects the object under the cursor, also inside groups, double click selects the whole group. Linked groups are always
   selected as a whole. The outliner expands to and scrolls to whatever you pick in a view.
 * The 3D view skips faces pressed fully against another solid, and where two faces overlap on the same plane only one draws the
-  shared area, so touching or overlapping brushes and meshes do not flicker.
+  shared area, so touching or overlapping brushes and meshes do not flicker. Open meshes such as a blend sheet laid on a floor
+  draw over brushes, brushes over closed meshes. The Godot build hides the same faces when they are fully covered, a face only
+  partly covered by another facing the same way still draws twice in Godot.
 * Left drag on empty space draws a brush, drag the selection to move it (Alt: vertical, Ctrl: duplicate, Shift: lock axis).
 * The selection shows a gizmo in the 3D view: arrows move along an axis, squares move in a plane, the center dot moves freely,
   rings rotate (15° steps, Shift for 1°) and the boxes scale along an axis. *View > Transform Gizmo* hides it.
@@ -24,6 +26,8 @@ its own, and *Help > Guide* shows the same chapters as searchable pages with tip
 * `Ctrl+Shift+E` convert to mesh, `Ctrl+Shift+J` join meshes, `Ctrl+Shift+N` new tab, `Ctrl+Tab` next tab, `Ctrl+W` close tab.
 * `Ctrl+=` / `Ctrl+-` / `Ctrl+0` scale the interface. The scale is saved and also set in Preferences or *View > Interface Scale*.
   It multiplies the monitor's display scaling, turn that off in Preferences if your monitor reports the wrong scaling.
+* Autosaves are written next to the map as `level.gtm.autosave`, so Godot does not import them. Opening one (pick the
+  *Autosave* filter in the Open dialog) recovers the map it belongs to, and saving writes the real `level.gtm`.
 * Every binding can be changed in the *Keyboard Shortcuts* window, starting from the TrenchBroom, Hammer or Blender preset
   chosen in Preferences.
 

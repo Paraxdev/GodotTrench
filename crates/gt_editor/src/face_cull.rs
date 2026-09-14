@@ -176,10 +176,21 @@ impl FaceCull {
 
 enum Cover {
     None,
-    /// Faces the same way on the same plane, the brush, or else the older node, keeps the shared area.
+    /// Faces the same way on the same plane and keeps the shared area, see `priority`.
     Overlap,
     /// Back to back with another closed solid.
     Backing,
+}
+
+/// Open meshes are sheets laid over a solid (blend layers, decals), so they draw over brushes, and brushes over closed
+/// meshes. The Godot build (godottrench_face_cull.gd) uses the same order.
+fn priority(face: &CullFace, id: NodeId) -> (u8, NodeId, usize) {
+    let rank = match (face.is_mesh, face.closed) {
+        (true, false) => 0,
+        (false, _) => 1,
+        (true, true) => 2,
+    };
+    (rank, id, face.face)
 }
 
 fn covers(other: &CullFace, other_id: NodeId, face: &CullFace, id: NodeId) -> Cover {
@@ -187,7 +198,7 @@ fn covers(other: &CullFace, other_id: NodeId, face: &CullFace, id: NodeId) -> Co
         return Cover::None;
     }
     let dot = other.normal.dot(face.normal);
-    if dot > SAME_NORMAL && (other.dist - face.dist).abs() < COPLANAR_DIST && (other.is_mesh, other_id, other.face) < (face.is_mesh, id, face.face) {
+    if dot > SAME_NORMAL && (other.dist - face.dist).abs() < COPLANAR_DIST && priority(other, other_id) < priority(face, id) {
         Cover::Overlap
     } else if dot < -SAME_NORMAL && (other.dist + face.dist).abs() < COPLANAR_DIST && other.closed && face.closed {
         Cover::Backing
@@ -248,6 +259,18 @@ mod tests {
         let pieces = &cull.pieces[&b][&front];
         let area: f64 = pieces.iter().map(|p| polygon::area(p)).sum();
         assert!((area - 48.0 * 64.0).abs() < 1e-6, "only the part past the first brush is drawn, got {area}");
+    }
+
+    #[test]
+    fn an_open_sheet_draws_over_the_brush_below() {
+        let mut map = Map::new();
+        let floor = add_box(&mut map, DVec3::new(0.0, -24.0, 0.0), DVec3::new(128.0, -2.0, 128.0));
+        let layer = map.default_layer();
+        let sheet_bounds = Aabb::new(DVec3::new(0.0, -2.0, 0.0), DVec3::new(128.0, -2.0, 128.0));
+        let sheet = map.insert(layer, NodeKind::Mesh(gt_geom::mesh_shapes::grid(&sheet_bounds, 4, 4, "dev/grey")));
+        let cull = run(&map);
+        assert_eq!(cull.pieces[&floor][&face_towards(&map, floor, DVec3::Y)], Vec::<Vec<DVec3>>::new(), "the floor top gives way to the sheet");
+        assert!(!cull.pieces.contains_key(&sheet), "every sheet face draws");
     }
 
     #[test]

@@ -27,6 +27,7 @@ Upstream class names are kept so the fork stays a drop-in replacement and upstre
 | `src/godottrench/runtime/godottrench_prop.gd` | `GodotTrenchProp`: prop entity instancing a `.bbmodel`, `.glb`, `.gltf` or `.tscn` from its `model` property with none, convex or trimesh collision. |
 | `src/godottrench/runtime/godottrench_hot_reload.gd` | `GodotTrenchHotReload`: autoload for running games that rebuilds maps when the editor saves them (`127.0.0.1:7843`). |
 | `src/godottrench/runtime/godottrench_scatter.gd` | `GodotTrenchScatter`: scatter sets (trees, rocks, foliage) as one MultiMesh per model mesh, one static body per model with a shared shape, or instanced scenes for scripted models. Keeps a copy of the instance transforms when built headless, because the dummy renderer drops MultiMesh buffers. |
+| `src/godottrench/godottrench_face_cull.gd` | `GodotTrenchFaceCull`: leaves faces out of the visual mesh when coplanar faces of other static solids fully cover them (same direction by priority, open meshes first, or back to back between closed solids), the rule the editor preview uses. Collision keeps every face. |
 | `src/godottrench/runtime/godottrench_blend.gd` | `GodotTrenchBlend`: materials for faces with a blend material (`base\|blend` texture keys), mixed by vertex color alpha through `gt_blend.gdshader`. |
 | `src/godottrench/runtime/godottrench_debug_overlay.gd` | `GodotTrenchDebugOverlay`: in-game I/O event log and trigger volume display, toggled with F3. |
 | `src/godottrench/godottrench_csharp.gd` | `GodotTrenchCSharp`: reads C# sources as text for `[GodotTrenchEntity]` classes, their `[Export]` properties, `[Signal]` outputs and `[GodotTrenchInput]` inputs, and applies map properties to the PascalCase members. |
@@ -37,10 +38,11 @@ Upstream class names are kept so the fork stays a drop-in replacement and upstre
 
 All changes are small and marked with `GodotTrench` comments.
 
-* `src/core/data.gd`: `FaceData.exact_vertices`, `FaceData.props`, vertex colors and displacement arrays (including explicit `disp_uvs` and `disp_colors`), `BrushData.exact`, `BrushData.has_disp`, `BrushData.is_mesh`, `ParseData.terrains`, `EntityData.outputs`, `EntityData.node`, pending shape data.
+* `src/core/data.gd`: `FaceData.exact_vertices`, `FaceData.props`, vertex colors and displacement arrays (including explicit `disp_uvs` and `disp_colors`), `BrushData.exact`, `BrushData.has_disp`, `BrushData.is_mesh`, `BrushData.closed`, `BrushData.node_id`, `FaceData.render_hidden`, `ParseData.terrains`, `EntityData.outputs`, `EntityData.node`, pending shape data.
 * `src/core/parser.gd`: `.gtm` branch in `parse_map_data`.
 * `src/core/geometry_generator.gd`:
   * exact brushes skip hyperplane clipping,
+  * faces hidden by `GodotTrenchFaceCull` (run before surface generation) are skipped for visuals but kept for collision,
   * displacement faces emit their grid instead of the flat face, other faces of a displacement brush are dropped (Hammer
     behaviour), displacements collide as a trimesh even for convex collision entities, vertex colors are written to
     `ARRAY_COLOR` and follow their vertices through face winding,
