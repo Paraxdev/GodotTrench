@@ -406,7 +406,7 @@ impl ToolSet {
                 }
                 None => {
                     if let Some(h) = picking::pick(state, &cam.ray(rect, pos)) {
-                        let target = state.doc.map.selection_target(h.node, &state.open_groups);
+                        let target = state.doc.map.click_target(h.node, &state.open_groups);
                         state.doc.select(|_, s| {
                             if !modifiers.command {
                                 s.clear();

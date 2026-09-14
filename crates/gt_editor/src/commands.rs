@@ -47,6 +47,7 @@ pub enum Action {
     GridUp,
     ToggleSnap,
     ToggleUvLock,
+    ToggleTransformGizmo,
     ToggleTextured,
     SetShade(Shade),
     CsgSubtract,
@@ -185,6 +186,7 @@ impl Action {
             Action::ShowGuide => "Guide".into(),
             Action::StartTour => "Guided Tour".into(),
             Action::ShowPreferences => "Preferences".into(),
+            Action::ToggleTransformGizmo => "Toggle Transform Gizmo".into(),
             other => format!("{other:?}"),
         }
     }
@@ -421,6 +423,7 @@ pub fn bindable_actions() -> Vec<Action> {
         Action::ShowGuide,
         Action::StartTour,
         Action::ShowPreferences,
+        Action::ToggleTransformGizmo,
     ]);
     for j in gt_geom::Justify::ALL {
         out.push(Action::Justify(j));
@@ -621,6 +624,10 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::ToggleUvLock => {
             state.uv_lock = !state.uv_lock;
             state.set_status(if state.uv_lock { "UV lock on" } else { "UV lock off" });
+        }
+        Action::ToggleTransformGizmo => {
+            state.prefs.transform_gizmo = !state.prefs.transform_gizmo;
+            state.set_status(if state.prefs.transform_gizmo { "Transform gizmo on" } else { "Transform gizmo off" });
         }
         Action::ToggleTextured => {
             state.prefs.shade = match state.prefs.shade {

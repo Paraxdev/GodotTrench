@@ -117,6 +117,8 @@ pub enum Drag {
         handle: crate::gizmos::GizmoHandle,
         start: DVec3,
     },
+    /// Dragging a move, rotate or scale handle of the transform gizmo.
+    Transform(crate::transform_gizmo::GizmoDrag),
     /// Tool specific drags handled by the tool itself.
     Tool,
 }

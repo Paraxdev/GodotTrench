@@ -144,6 +144,7 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("Help: Guide".into(), Action::ShowGuide),
         ("Help: Guided Tour".into(), Action::StartTour),
         ("File: Preferences".into(), Action::ShowPreferences),
+        ("View: Toggle Transform Gizmo".into(), Action::ToggleTransformGizmo),
         ("Edit: Repeat Last".into(), Action::RepeatLast),
         ("Group: Open Group".into(), Action::OpenGroup),
         ("Brush: Box from Last Bounds".into(), Action::CreateBrushFromBounds),
