@@ -846,7 +846,7 @@ impl ToolSet {
             ToolKind::Sculpt => {
                 let has_terrain = state.doc.map.terrains().next().is_some();
                 let hint = if !has_terrain && gt_doc::terrain::displacement_faces(&state.doc.map, &Self::stroke_targets(state)).is_empty() {
-                    "Sculpt: no terrain or displacements. Brush > Create Terrain, or select quad faces and Create Displacement".to_string()
+                    "Sculpt: no terrain or displacements. Terrain > Create Terrain, or select quad faces and use Brush > Displacement".to_string()
                 } else {
                     format!("Sculpt {:?}: drag to apply, Shift inverts, Ctrl smooths", state.sculpt.mode)
                 };

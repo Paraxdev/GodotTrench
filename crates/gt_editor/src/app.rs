@@ -6,6 +6,7 @@ use crate::CliArgs;
 use crate::camera::ViewKind;
 use crate::commands::{self, Action, ModelImport};
 use crate::dialogs::{CommandPalette, KeymapWindow, LinkDialog, ScatterPaletteWindow, ShapeDialog, TerrainDialog};
+use crate::icons;
 use crate::mcp::tools::{Deferred, InputScript};
 use crate::mcp::{McpHost, ToolExecutor, transport};
 use crate::mesh_tool::MeshOp;
@@ -55,6 +56,113 @@ pub struct App {
     scatter_palette: ScatterPaletteWindow,
     link_dialog: LinkDialog,
     keep_prefs: bool,
+}
+
+const PANEL_TABS: [Tab; 8] = [Tab::Outliner, Tab::Inspector, Tab::Materials, Tab::Entities, Tab::History, Tab::Issues, Tab::Uv, Tab::Reference];
+
+fn tab_title(tab: Tab) -> &'static str {
+    match tab {
+        Tab::View(_) => "View",
+        Tab::Outliner => "Outliner",
+        Tab::Inspector => "Inspector",
+        Tab::Materials => "Materials",
+        Tab::Entities => "Entities",
+        Tab::History => "History",
+        Tab::Issues => "Issues",
+        Tab::Uv => "UV Editor",
+        Tab::Reference => "Reference",
+    }
+}
+
+/// Focuses a panel tab, reopening it in the focused dock leaf when it was closed.
+fn show_tab(dock: &mut DockState<Tab>, tab: Tab) {
+    if let Some(found) = dock.find_tab(&tab) {
+        let _ = dock.set_active_tab(found);
+    } else {
+        dock.push_to_focused_leaf(tab);
+    }
+}
+
+/// Mesh operations grouped for the Mesh menu.
+const MESH_OP_GROUPS: [(&str, &[MeshOp]); 4] = [
+    ("Topology", &[MeshOp::Subdivide, MeshOp::Triangulate, MeshOp::Solidify, MeshOp::Fill, MeshOp::MergeCenter, MeshOp::MergeByDistance]),
+    ("Components", &[MeshOp::SelectLinked, MeshOp::Duplicate, MeshOp::Separate, MeshOp::Dissolve, MeshOp::Delete]),
+    ("Normals and Shading", &[MeshOp::ShadeSmooth, MeshOp::ShadeFlat, MeshOp::Flip]),
+    ("Transform", &[MeshOp::Mirror(0), MeshOp::Mirror(1), MeshOp::Mirror(2), MeshOp::Smooth, MeshOp::SnapToGrid]),
+];
+
+const MENU_WIDTH: f32 = 230.0;
+
+struct MenuCx<'a> {
+    ctx: egui::Context,
+    shortcuts: Vec<(egui::KeyboardShortcut, Action)>,
+    actions: &'a mut Vec<Action>,
+}
+
+impl MenuCx<'_> {
+    fn shortcut(&self, action: &Action) -> Option<String> {
+        self.shortcuts.iter().find(|(_, a)| a == action).map(|(s, _)| self.ctx.format_shortcut(s))
+    }
+
+    fn push_if_clicked(&mut self, ui: &mut Ui, button: egui::Button, action: Action) {
+        if ui.add(button).clicked() {
+            self.actions.push(action);
+            ui.close();
+        }
+    }
+
+    fn item(&mut self, ui: &mut Ui, icon: Option<icons::Icon>, label: &str, action: Action) {
+        let shortcut = self.shortcut(&action);
+        self.push_if_clicked(ui, menu_button(icon, label, shortcut), action);
+    }
+
+    /// Menu item for actions driven by OS clipboard events instead of key bindings.
+    fn item_keys(&mut self, ui: &mut Ui, icon: Option<icons::Icon>, label: &str, keys: &str, action: Action) {
+        self.push_if_clicked(ui, menu_button(icon, label, Some(keys.to_string())), action);
+    }
+
+    fn toggle(&mut self, ui: &mut Ui, label: &str, on: bool, action: Action) {
+        let shortcut = self.shortcut(&action);
+        self.push_if_clicked(ui, menu_button(on.then_some(icons::CHECK), label, shortcut), action);
+    }
+
+    fn point_entities(&mut self, ui: &mut Ui, game: &gt_formats::game::GameConfig, classes: &[&str]) {
+        let mut any = false;
+        for class in classes.iter().filter(|c| game.entity(c).is_some()) {
+            any = true;
+            self.item(ui, None, class, Action::CreatePointEntity { classname: class.to_string(), at: None });
+        }
+        if !any {
+            empty_hint(ui, "Not defined by this game config");
+        }
+    }
+}
+
+fn menu_button<'a>(icon: Option<icons::Icon>, label: &str, shortcut: Option<String>) -> egui::Button<'a> {
+    let button = egui::Button::new((icons::atom(icon, icons::SMALL), label.to_string())).image_tint_follows_text_color(true);
+    match shortcut {
+        Some(s) => button.shortcut_text(s),
+        None => button,
+    }
+}
+
+fn sub_menu<R>(ui: &mut Ui, icon: Option<icons::Icon>, label: &str, add_contents: impl FnOnce(&mut Ui) -> R) {
+    use egui::containers::menu::SubMenuButton;
+    let button =
+        egui::Button::new((icons::atom(icon, icons::SMALL), label.to_string())).right_text(SubMenuButton::RIGHT_ARROW).image_tint_follows_text_color(true);
+    SubMenuButton::from_button(button).ui(ui, |ui| {
+        ui.set_min_width(MENU_WIDTH * 0.8);
+        add_contents(ui)
+    });
+}
+
+fn empty_hint(ui: &mut Ui, text: &str) {
+    ui.label(RichText::new(text).weak().italics());
+}
+
+fn capitalize(text: &str) -> String {
+    let mut chars = text.chars();
+    chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
 }
 
 fn default_dock() -> DockState<Tab> {
@@ -107,6 +215,7 @@ impl App {
             state.set_status(format!("Could not open {}: {e}", path.display()));
         }
         cc.egui_ctx.set_visuals(visuals());
+        icons::install(&cc.egui_ctx);
 
         let mut viewports =
             vec![Viewport::new(ViewKind::Perspective), Viewport::new(ViewKind::Top), Viewport::new(ViewKind::Front), Viewport::new(ViewKind::Side)];
@@ -182,20 +291,8 @@ impl App {
                     self.state.set_status("Select exactly two entities to link");
                 }
             }
-            Action::ShowReference => {
-                if let Some(found) = self.dock.find_tab(&Tab::Reference) {
-                    let _ = self.dock.set_active_tab(found);
-                } else {
-                    self.dock.push_to_focused_leaf(Tab::Reference);
-                }
-            }
-            Action::ShowUvEditor => {
-                if let Some(found) = self.dock.find_tab(&Tab::Uv) {
-                    let _ = self.dock.set_active_tab(found);
-                } else {
-                    self.dock.push_to_focused_leaf(Tab::Uv);
-                }
-            }
+            Action::ShowReference => show_tab(&mut self.dock, Tab::Reference),
+            Action::ShowUvEditor => show_tab(&mut self.dock, Tab::Uv),
             Action::MeshOp(op) => {
                 if self.state.tool != ToolKind::Mesh {
                     self.state.tool = ToolKind::Mesh;
@@ -252,27 +349,19 @@ impl App {
     }
 
     fn menu_bar(&mut self, ui: &mut Ui) {
-        let ctx = ui.ctx().clone();
-        let prefs = self.state.prefs.clone();
-        let actions = &mut self.actions;
-        let item = |ui: &mut Ui, label: &str, action: Action, actions: &mut Vec<Action>| {
-            let shortcut = commands::shortcut_text(&ctx, &prefs, &action);
-            let mut button = egui::Button::new(label);
-            if let Some(s) = shortcut {
-                button = button.shortcut_text(s);
-            }
-            if ui.add(button).clicked() {
-                actions.push(action);
-                ui.close();
-            }
-        };
+        use crate::entity_wizards::{DoorKind, HingeSide, SlideDirection};
+        let mut m = MenuCx { ctx: ui.ctx().clone(), shortcuts: commands::shortcuts(&self.state.prefs), actions: &mut self.actions };
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button("File", |ui| {
-                item(ui, "New Map", Action::NewMap, actions);
-                item(ui, "New Tab", Action::NewTab, actions);
-                item(ui, "Open Map…", Action::OpenMap, actions);
-                ui.menu_button("Open Recent", |ui| {
-                    for path in self.state.prefs.recent_files.clone() {
+                ui.set_min_width(MENU_WIDTH);
+                m.item(ui, Some(icons::NEW), "New Map", Action::NewMap);
+                m.item(ui, Some(icons::OPEN), "Open Map…", Action::OpenMap);
+                sub_menu(ui, Some(icons::RECENT), "Open Recent", |ui| {
+                    let recent = self.state.prefs.recent_files.clone();
+                    if recent.is_empty() {
+                        empty_hint(ui, "No recent maps");
+                    }
+                    for path in recent {
                         if ui.button(path.display().to_string()).clicked() {
                             if let Err(e) = commands::open_map_in_tab(&mut self.state, &path) {
                                 self.state.set_status(format!("Open failed: {e}"));
@@ -282,25 +371,371 @@ impl App {
                         }
                     }
                 });
-                item(ui, "Save", Action::Save, actions);
-                item(ui, "Save As…", Action::SaveAs, actions);
-                item(ui, "Close Tab", Action::CloseTab, actions);
                 ui.separator();
-                item(ui, "Import .map (TrenchBroom / Quake)…", Action::ImportQuakeMap, actions);
-                item(ui, "Import .vmf (Hammer)…", Action::ImportVmf, actions);
-                item(ui, "Export .map (Valve 220)…", Action::ExportQuakeMap, actions);
-                item(ui, "Export .map (cordon only)…", Action::ExportQuakeMapCordon, actions);
-                ui.menu_button("Import Model", |ui| {
-                    item(ui, "Blockbench as Mesh…", Action::ImportModel(ModelImport::Mesh), actions);
-                    item(ui, "Blockbench as Brushes…", Action::ImportModel(ModelImport::Brushes), actions);
-                    item(ui, "Place Model Prop (.bbmodel, .glb)…", Action::ImportModel(ModelImport::Prop), actions);
-                    item(ui, "Reload Models", Action::ReloadModels, actions);
+                m.item(ui, Some(icons::SAVE), "Save", Action::Save);
+                m.item(ui, None, "Save As…", Action::SaveAs);
+                ui.separator();
+                sub_menu(ui, None, "Tabs", |ui| {
+                    m.item(ui, Some(icons::PLUS), "New Tab", Action::NewTab);
+                    m.item(ui, None, "Next Tab", Action::NextTab);
+                    m.item(ui, None, "Close Tab", Action::CloseTab);
+                });
+                sub_menu(ui, Some(icons::IMPORT), "Import", |ui| {
+                    m.item(ui, None, ".map (TrenchBroom, Quake)…", Action::ImportQuakeMap);
+                    m.item(ui, None, ".vmf (Hammer)…", Action::ImportVmf);
+                    ui.separator();
+                    m.item(ui, None, "Model Prop (.bbmodel, .glb)…", Action::ImportModel(ModelImport::Prop));
+                    m.item(ui, None, "Blockbench Model as Mesh…", Action::ImportModel(ModelImport::Mesh));
+                    m.item(ui, None, "Blockbench Model as Brushes…", Action::ImportModel(ModelImport::Brushes));
+                });
+                sub_menu(ui, Some(icons::EXPORT), "Export", |ui| {
+                    m.item(ui, None, ".map (Valve 220)…", Action::ExportQuakeMap);
+                    m.item(ui, None, ".map, cordon only…", Action::ExportQuakeMapCordon);
                 });
                 ui.separator();
-                item(ui, "Open Godot Project…", Action::OpenProject, actions);
-                item(ui, "Reload Game Config", Action::ReloadProject, actions);
-                ui.menu_button("Recent Projects", |ui| {
-                    for path in self.state.prefs.recent_projects.clone() {
+                if ui.add(menu_button(Some(icons::SETTINGS), "Preferences…", None)).clicked() {
+                    self.show_prefs = true;
+                    ui.close();
+                }
+            });
+            ui.menu_button("Edit", |ui| {
+                ui.set_min_width(MENU_WIDTH);
+                m.item(ui, Some(icons::UNDO), "Undo", Action::Undo);
+                m.item(ui, Some(icons::REDO), "Redo", Action::Redo);
+                ui.separator();
+                m.item_keys(ui, None, "Cut", "Ctrl+X", Action::Cut);
+                m.item_keys(ui, Some(icons::COPY), "Copy", "Ctrl+C", Action::Copy);
+                if ui.add(menu_button(Some(icons::PASTE), "Paste", Some("Ctrl+V".into()))).clicked() {
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+                    ui.close();
+                }
+                m.item(ui, None, "Duplicate", Action::Duplicate);
+                m.item(ui, Some(icons::DELETE), "Delete", Action::Delete);
+                ui.separator();
+                sub_menu(ui, Some(icons::SELECT), "Select", |ui| {
+                    m.item(ui, None, "All", Action::SelectAll);
+                    m.item(ui, None, "None", Action::SelectNone);
+                    m.item(ui, None, "Inverse", Action::SelectInverse);
+                    ui.separator();
+                    m.item(ui, None, "Touching", Action::SelectTouching);
+                    m.item(ui, None, "Inside", Action::SelectInside);
+                    m.item(ui, None, "Siblings", Action::SelectSiblings);
+                    m.item(ui, None, "Same Material", Action::SelectSameMaterial);
+                });
+                sub_menu(ui, Some(icons::GROUP), "Groups", |ui| {
+                    m.item(ui, None, "Group", Action::Group);
+                    m.item(ui, None, "Ungroup", Action::Ungroup);
+                    ui.separator();
+                    m.item(ui, None, "Open Group", Action::OpenGroup);
+                    m.item(ui, None, "Close Group", Action::CloseGroup);
+                    ui.separator();
+                    m.item(ui, None, "Duplicate Linked", Action::DuplicateLinked);
+                    m.item(ui, None, "Unlink Groups", Action::UnlinkGroups);
+                });
+                sub_menu(ui, Some(icons::INSTANCE), "Prefabs", |ui| {
+                    m.item(ui, None, "Create from Selection…", Action::CreatePrefab);
+                    m.item(ui, None, "Insert Prefab…", Action::InsertPrefab);
+                    ui.separator();
+                    m.item(ui, None, "Open Prefab", Action::OpenPrefab);
+                    m.item(ui, None, "Explode Instance", Action::ExplodeInstances);
+                });
+                sub_menu(ui, Some(icons::LAYER), "Layers", |ui| {
+                    m.item(ui, Some(icons::PLUS), "Add Layer", Action::AddLayer);
+                    ui.separator();
+                    for layer in self.state.doc.map.layers.clone() {
+                        if let Some(name) = self.state.doc.map.get(layer).map(|n| n.name()) {
+                            m.item(ui, None, &format!("Move Selection to {name}"), Action::MoveToLayer(layer));
+                        }
+                    }
+                });
+                ui.separator();
+                sub_menu(ui, Some(icons::EYE), "Hide and Lock", |ui| {
+                    m.item(ui, Some(icons::EYE_OFF), "Hide Selected", Action::HideSelected);
+                    m.item(ui, None, "Isolate Selected", Action::IsolateSelected);
+                    m.item(ui, Some(icons::EYE), "Show All", Action::UnhideAll);
+                    ui.separator();
+                    m.item(ui, Some(icons::LOCK), "Lock Selected", Action::LockSelected);
+                    m.item(ui, Some(icons::UNLOCK), "Unlock All", Action::UnlockAll);
+                });
+                m.item(ui, None, "Repeat Last", Action::RepeatLast);
+            });
+            ui.menu_button("Brush", |ui| {
+                ui.set_min_width(MENU_WIDTH);
+                m.item(ui, Some(icons::SHAPES), "Shape Generator…", Action::ShowShapeDialog);
+                m.item(ui, Some(icons::BRUSH), "Box from Last Bounds", Action::CreateBrushFromBounds);
+                ui.separator();
+                sub_menu(ui, Some(icons::CSG_SUBTRACT), "CSG", |ui| {
+                    m.item(ui, Some(icons::CSG_SUBTRACT), "Subtract", Action::CsgSubtract);
+                    m.item(ui, Some(icons::CSG_MERGE), "Convex Merge", Action::CsgMerge);
+                    m.item(ui, Some(icons::CSG_INTERSECT), "Intersect", Action::CsgIntersect);
+                    ui.separator();
+                    m.item(ui, Some(icons::CSG_HOLLOW), "Hollow", Action::CsgHollow);
+                    ui.horizontal(|ui| {
+                        ui.add_space(icons::SMALL + ui.spacing().item_spacing.x);
+                        ui.label("Wall thickness");
+                        ui.add(egui::DragValue::new(&mut self.state.hollow_thickness).range(0.125..=1024.0));
+                    });
+                });
+                sub_menu(ui, Some(icons::ROTATE), "Transform", |ui| {
+                    for axis in 0..3 {
+                        let a = commands::axis_name(axis);
+                        m.item(ui, None, &format!("Rotate {a} +90°"), Action::Rotate { axis, degrees: 90.0 });
+                        m.item(ui, None, &format!("Rotate {a} -90°"), Action::Rotate { axis, degrees: -90.0 });
+                    }
+                    ui.separator();
+                    for axis in 0..3 {
+                        m.item(ui, None, &format!("Flip {}", commands::axis_name(axis)), Action::Flip { axis });
+                    }
+                    ui.separator();
+                    sub_menu(ui, None, "Nudge by Grid", |ui| {
+                        for axis in 0..3 {
+                            for sign in [1.0, -1.0] {
+                                let mut offset = gt_core::DVec3::ZERO;
+                                offset[axis] = sign * self.state.grid;
+                                let label = format!("{}{}", if sign > 0.0 { "+" } else { "-" }, commands::axis_name(axis));
+                                m.item(ui, None, &label, Action::Nudge(offset));
+                            }
+                        }
+                    });
+                    m.item(ui, Some(icons::GRID), "Snap Vertices to Grid", Action::SnapVertices);
+                });
+                sub_menu(ui, Some(icons::TERRAIN), "Displacement", |ui| {
+                    for power in [2u8, 3, 4] {
+                        m.item(ui, None, &format!("Create, Power {power} ({0}x{0})", (1 << power) + 1), Action::CreateDisplacement(power));
+                    }
+                    ui.separator();
+                    m.item(ui, None, "Sew Displacements", Action::SewDisplacements);
+                    m.item(ui, None, "Remove Displacement", Action::RemoveDisplacement);
+                });
+                ui.separator();
+                sub_menu(ui, Some(icons::ENTITY), "Brush Entity", |ui| {
+                    let defs: Vec<(String, String)> = self.state.game.solid_entities().map(|d| (d.classname.clone(), d.description.clone())).collect();
+                    if defs.is_empty() {
+                        empty_hint(ui, "No brush entities, open a Godot project");
+                    }
+                    for (class, description) in defs {
+                        let resp = ui.add(menu_button(None, &class, None));
+                        if resp.clicked() {
+                            m.actions.push(Action::CreateBrushEntity(class));
+                            ui.close();
+                        } else if !description.is_empty() {
+                            resp.on_hover_text(description);
+                        }
+                    }
+                });
+                m.item(ui, None, "Move Brushes to World", Action::MoveToWorld);
+            });
+            ui.menu_button("Mesh", |ui| {
+                ui.set_min_width(MENU_WIDTH);
+                m.item(ui, Some(icons::MESH), "Edit Mesh", Action::EditMesh);
+                ui.separator();
+                m.item(ui, None, "Convert Brushes to Mesh", Action::ConvertToMesh);
+                m.item(ui, None, "Convert Meshes to Brushes", Action::ConvertToBrushes);
+                m.item(ui, None, "Join Meshes", Action::JoinMeshes);
+                ui.separator();
+                for (label, ops) in MESH_OP_GROUPS {
+                    sub_menu(ui, None, label, |ui| {
+                        for op in ops {
+                            m.item(ui, None, op.label(), Action::MeshOp(*op));
+                        }
+                    });
+                }
+            });
+            ui.menu_button("Texture", |ui| {
+                ui.set_min_width(MENU_WIDTH);
+                m.item(ui, Some(icons::TEXTURE), "Texture Tool", Action::SetTool(ToolKind::Texture));
+                m.item(ui, None, "UV Editor", Action::ShowUvEditor);
+                m.item(ui, None, "Hotspot Editor…", Action::ShowHotspotEditor);
+                ui.separator();
+                m.toggle(ui, "UV Lock", self.state.uv_lock, Action::ToggleUvLock);
+                ui.separator();
+                sub_menu(ui, None, "Justify", |ui| {
+                    for j in gt_geom::Justify::ALL {
+                        m.item(ui, None, j.label(), Action::Justify(j));
+                    }
+                    ui.separator();
+                    m.toggle(ui, "Treat as One", self.state.treat_as_one, Action::ToggleTreatAsOne);
+                });
+                sub_menu(ui, None, "Alignment", |ui| {
+                    m.item(ui, Some(icons::FOCUS), "Align to 3D View", Action::AlignTextureToView);
+                    m.item(ui, None, "Reset Alignment", Action::ResetTexture);
+                    ui.separator();
+                    m.item(ui, Some(icons::COPY), "Copy Material and Alignment", Action::CopyAlignment);
+                    m.item(ui, Some(icons::PASTE), "Paste Alignment", Action::PasteAlignment);
+                });
+                sub_menu(ui, None, "Texel Density", |ui| {
+                    for d in [0.125, 0.25, 0.5, 1.0, 2.0, 4.0] {
+                        m.item(ui, None, &format!("{d} units per pixel"), Action::TexelDensity(d));
+                    }
+                });
+                sub_menu(ui, None, "Mesh UVs", |ui| {
+                    for k in crate::texture_ops::MeshUvKind::ALL {
+                        m.item(ui, None, k.label(), Action::MeshUv(k));
+                    }
+                });
+                m.item(ui, None, "Hotspot Fit", Action::HotspotTexture);
+            });
+            ui.menu_button("Terrain", |ui| {
+                ui.set_min_width(MENU_WIDTH);
+                m.item(ui, Some(icons::TERRAIN), "Create Terrain…", Action::ShowTerrainDialog);
+                ui.separator();
+                sub_menu(ui, Some(icons::SCULPT), "Sculpt", |ui| {
+                    m.item(ui, Some(icons::SCULPT), "Sculpt Tool", Action::SetTool(ToolKind::Sculpt));
+                    ui.separator();
+                    m.item(ui, None, "Flatten", Action::TerrainFlatten);
+                });
+                sub_menu(ui, Some(icons::BLEND), "Blend", |ui| {
+                    m.item(ui, Some(icons::BLEND), "Blend Tool", Action::SetTool(ToolKind::Blend));
+                    ui.separator();
+                    m.item(ui, None, "Auto Paint Layers", Action::TerrainAutoPaint);
+                    m.item(ui, None, "Set Blend Material (current)", Action::SetBlendMaterial);
+                    m.item(ui, None, "Clear Blend Material", Action::ClearBlendMaterial);
+                });
+                sub_menu(ui, Some(icons::SCATTER), "Scatter", |ui| {
+                    m.item(ui, Some(icons::SCATTER), "Scatter Tool", Action::SetTool(ToolKind::Scatter));
+                    m.item(ui, None, "Scatter Palette…", Action::ShowScatterPalette);
+                    sub_menu(ui, None, "Preset", |ui| {
+                        for preset in gt_doc::scatter::PRESETS {
+                            m.item(ui, None, preset, Action::ScatterPreset(preset.to_string()));
+                        }
+                    });
+                    ui.separator();
+                    m.item(ui, Some(icons::PLUS), "New Scatter Set (new layer)", Action::NewScatterSet);
+                    m.item(ui, None, "Fill Scatter Targets", Action::ScatterFill);
+                    m.item(ui, None, "Scatter Sets to Entities", Action::ScatterToEntities);
+                    ui.separator();
+                    m.item(ui, None, "Install Nature Models", Action::InstallNatureModels);
+                });
+            });
+            ui.menu_button("Gameplay", |ui| {
+                ui.set_min_width(MENU_WIDTH);
+                let game = &self.state.game;
+                sub_menu(ui, Some(icons::DOOR), "Doors and Movers", |ui| {
+                    empty_hint(ui, "From the selected brushes");
+                    let hinged = |side| DoorKind::Hinged { side, angle: 95.0 };
+                    let sliding = |direction| DoorKind::Sliding { direction, lip: 4.0 };
+                    m.item(ui, None, "Hinged Door, left hinge", Action::MakeDoor { kind: hinged(HingeSide::Left), trigger: true });
+                    m.item(ui, None, "Hinged Door, right hinge", Action::MakeDoor { kind: hinged(HingeSide::Right), trigger: true });
+                    m.item(ui, None, "Sliding Door, up", Action::MakeDoor { kind: sliding(SlideDirection::Up), trigger: true });
+                    m.item(ui, None, "Sliding Door, sideways", Action::MakeDoor { kind: sliding(SlideDirection::Left), trigger: true });
+                    ui.separator();
+                    m.item(ui, None, "Lift, Moving Platform", Action::MakePlatform);
+                });
+                sub_menu(ui, Some(icons::VOLUME), "Triggers", |ui| {
+                    m.item(ui, Some(icons::VOLUME), "Volume Tool", Action::SetTool(ToolKind::Volume));
+                    ui.separator();
+                    empty_hint(ui, "Around the selection");
+                    for class in crate::volume_tool::VOLUME_CLASSES {
+                        m.item(ui, None, class, Action::VolumeAroundSelection(class.to_string()));
+                    }
+                });
+                sub_menu(ui, Some(icons::LINK), "Logic", |ui| {
+                    m.item(ui, Some(icons::LINK), "Link Two Selected Entities…", Action::ShowLinkDialog);
+                    ui.separator();
+                    empty_hint(ui, "Place at the cursor");
+                    m.point_entities(ui, game, &["logic_relay", "logic_timer", "logic_counter", "logic_call", "logic_auto", "logic_debug"]);
+                });
+                sub_menu(ui, Some(icons::ENTITY), "Spawning", |ui| {
+                    empty_hint(ui, "Place at the cursor");
+                    m.point_entities(ui, game, &["info_spawner", "info_teleport_destination"]);
+                });
+                sub_menu(ui, Some(icons::PATH), "Paths", |ui| {
+                    m.item(ui, Some(icons::PATH), "Path Tool", Action::SetTool(ToolKind::Path));
+                    ui.separator();
+                    empty_hint(ui, "Place at the cursor");
+                    m.point_entities(ui, game, &["path_corner"]);
+                });
+            });
+            ui.menu_button("Tools", |ui| {
+                ui.set_min_width(MENU_WIDTH);
+                for (i, group) in ToolKind::GROUPS.iter().enumerate() {
+                    if i > 0 {
+                        ui.separator();
+                    }
+                    for t in group.iter().copied() {
+                        let action = if t == ToolKind::Mesh { Action::EditMesh } else { Action::SetTool(t) };
+                        let shortcut = m.shortcut(&action);
+                        let button = menu_button(Some(icons::tool(t)), &format!("{} Tool", t.label()), shortcut).selected(self.state.tool == t);
+                        if ui.add(button).on_hover_text(panels::tool_help(t)).clicked() {
+                            m.actions.push(Action::SetTool(t));
+                            ui.close();
+                        }
+                    }
+                }
+            });
+            ui.menu_button("View", |ui| {
+                ui.set_min_width(MENU_WIDTH);
+                m.item(ui, Some(icons::FOCUS), "Focus Selection", Action::FocusSelection);
+                ui.separator();
+                sub_menu(ui, Some(icons::shade(self.state.prefs.shade)), "Shading", |ui| {
+                    for s in Shade::ALL {
+                        let shortcut = m.shortcut(&Action::SetShade(s));
+                        let label = if s == Shade::Lit { "Lit Preview".to_string() } else { capitalize(s.label()) };
+                        if ui.add(menu_button(Some(icons::shade(s)), &label, shortcut).selected(self.state.prefs.shade == s)).clicked() {
+                            m.actions.push(Action::SetShade(s));
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    m.item(ui, None, "Cycle Shading", Action::ToggleTextured);
+                });
+                sub_menu(ui, Some(icons::GRID), "Grid", |ui| {
+                    m.item(ui, None, "Larger Grid", Action::GridUp);
+                    m.item(ui, None, "Smaller Grid", Action::GridDown);
+                    ui.separator();
+                    m.toggle(ui, "Snap to Grid", self.state.snap, Action::ToggleSnap);
+                });
+                sub_menu(ui, None, "Cordon", |ui| {
+                    m.item(ui, None, "Set Cordon from Selection", Action::SetCordonFromSelection);
+                    m.toggle(ui, "Cordon Enabled", self.state.doc.map.editor.cordon_enabled, Action::ToggleCordon);
+                    m.item(ui, None, "Clear Cordon", Action::ClearCordon);
+                });
+                sub_menu(ui, None, "Camera Bookmarks", |ui| {
+                    egui::Grid::new("camera_bookmarks").num_columns(2).show(ui, |ui| {
+                        for n in 1..=9u8 {
+                            let stored = self.state.doc.map.editor.cameras.contains_key(&n);
+                            let recall = menu_button(None, &format!("Go to {n}"), m.shortcut(&Action::RecallCamera(n)));
+                            if ui.add_enabled(stored, recall).clicked() {
+                                m.actions.push(Action::RecallCamera(n));
+                                ui.close();
+                            }
+                            if ui.add(egui::Button::new(format!("Store {n}")).shortcut_text(m.shortcut(&Action::StoreCamera(n)).unwrap_or_default())).clicked()
+                            {
+                                m.actions.push(Action::StoreCamera(n));
+                                ui.close();
+                            }
+                            ui.end_row();
+                        }
+                    });
+                });
+                ui.separator();
+                sub_menu(ui, None, "Panels", |ui| {
+                    for tab in PANEL_TABS {
+                        let open = self.dock.find_tab(&tab).is_some();
+                        if ui.add(menu_button(open.then_some(icons::CHECK), tab_title(tab), None)).clicked() {
+                            show_tab(&mut self.dock, tab);
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    if ui.add(menu_button(None, "Reset Layout", None)).clicked() {
+                        self.dock = default_dock();
+                        ui.close();
+                    }
+                });
+            });
+            ui.menu_button("Godot", |ui| {
+                ui.set_min_width(MENU_WIDTH);
+                m.item(ui, Some(icons::PLAY), "Run Project", Action::RunGodotProject);
+                m.item(ui, None, "Open Project in Godot Editor", Action::OpenGodotEditor);
+                ui.separator();
+                m.item(ui, Some(icons::OPEN), "Open Godot Project…", Action::OpenProject);
+                sub_menu(ui, Some(icons::RECENT), "Recent Projects", |ui| {
+                    let recent = self.state.prefs.recent_projects.clone();
+                    if recent.is_empty() {
+                        empty_hint(ui, "No recent projects");
+                    }
+                    for path in recent {
                         if ui.button(path.display().to_string()).clicked() {
                             self.state.load_project(&path);
                             self.project_generation += 1;
@@ -309,295 +744,135 @@ impl App {
                     }
                 });
                 ui.separator();
-                if ui.button("Preferences…").clicked() {
-                    self.show_prefs = true;
-                    ui.close();
-                }
-                item(ui, "Keyboard Shortcuts…", Action::ShowKeymap, actions);
-            });
-            ui.menu_button("Edit", |ui| {
-                item(ui, "Undo", Action::Undo, actions);
-                item(ui, "Redo", Action::Redo, actions);
-                ui.separator();
-                item(ui, "Cut", Action::Cut, actions);
-                item(ui, "Copy", Action::Copy, actions);
-                item(ui, "Duplicate", Action::Duplicate, actions);
-                item(ui, "Delete", Action::Delete, actions);
-                ui.separator();
-                item(ui, "Select All", Action::SelectAll, actions);
-                item(ui, "Select None", Action::SelectNone, actions);
-                item(ui, "Select Inverse", Action::SelectInverse, actions);
-                item(ui, "Select Touching", Action::SelectTouching, actions);
-                item(ui, "Select Inside", Action::SelectInside, actions);
-                item(ui, "Select Siblings", Action::SelectSiblings, actions);
-                item(ui, "Select Same Material", Action::SelectSameMaterial, actions);
-                ui.separator();
-                item(ui, "Group", Action::Group, actions);
-                item(ui, "Ungroup", Action::Ungroup, actions);
-                item(ui, "Duplicate Linked", Action::DuplicateLinked, actions);
-                item(ui, "Unlink Groups", Action::UnlinkGroups, actions);
-                item(ui, "Close Group", Action::CloseGroup, actions);
-                ui.separator();
-                item(ui, "Create Prefab from Selection…", Action::CreatePrefab, actions);
-                item(ui, "Insert Prefab…", Action::InsertPrefab, actions);
-                item(ui, "Explode Instance", Action::ExplodeInstances, actions);
-                item(ui, "Open Prefab", Action::OpenPrefab, actions);
-                ui.separator();
-                item(ui, "Hide Selected", Action::HideSelected, actions);
-                item(ui, "Isolate Selected", Action::IsolateSelected, actions);
-                item(ui, "Show All", Action::UnhideAll, actions);
-                item(ui, "Lock Selected", Action::LockSelected, actions);
-                item(ui, "Unlock All", Action::UnlockAll, actions);
-            });
-            ui.menu_button("Brush", |ui| {
-                item(ui, "CSG Subtract", Action::CsgSubtract, actions);
-                item(ui, "CSG Convex Merge", Action::CsgMerge, actions);
-                item(ui, "CSG Intersect", Action::CsgIntersect, actions);
-                item(ui, "Hollow", Action::CsgHollow, actions);
-                ui.horizontal(|ui| {
-                    ui.label("Hollow thickness");
-                    ui.add(egui::DragValue::new(&mut self.state.hollow_thickness).range(0.125..=1024.0));
+                sub_menu(ui, None, "Reload", |ui| {
+                    m.item(ui, None, "Game Config", Action::ReloadProject);
+                    m.item(ui, None, "Materials", Action::ReloadMaterials);
+                    m.item(ui, None, "Models", Action::ReloadModels);
                 });
-                ui.separator();
-                for axis in 0..3 {
-                    item(ui, &format!("Rotate {} +90°", commands::axis_name(axis)), Action::Rotate { axis, degrees: 90.0 }, actions);
-                    item(ui, &format!("Rotate {} -90°", commands::axis_name(axis)), Action::Rotate { axis, degrees: -90.0 }, actions);
-                }
-                ui.separator();
-                for axis in 0..3 {
-                    item(ui, &format!("Flip {}", commands::axis_name(axis)), Action::Flip { axis }, actions);
-                }
-                ui.separator();
-                item(ui, "Snap Vertices to Grid", Action::SnapVertices, actions);
-                ui.menu_button("Create Displacement", |ui| {
-                    for power in [2u8, 3, 4] {
-                        item(ui, &format!("Power {power} ({0}x{0})", (1 << power) + 1), Action::CreateDisplacement(power), actions);
-                    }
-                });
-                item(ui, "Remove Displacement", Action::RemoveDisplacement, actions);
-                item(ui, "Sew Displacements", Action::SewDisplacements, actions);
-                item(ui, "Shape Generator…", Action::ShowShapeDialog, actions);
-                item(ui, "Hotspot Texture", Action::HotspotTexture, actions);
-                item(ui, "Move Brushes to World", Action::MoveToWorld, actions);
-                ui.menu_button("Create Brush Entity", |ui| {
-                    for def in self.state.game.solid_entities() {
-                        if ui.button(&def.classname).clicked() {
-                            actions.push(Action::CreateBrushEntity(def.classname.clone()));
-                            ui.close();
-                        }
-                    }
-                });
-            });
-            ui.menu_button("Mesh", |ui| {
-                item(ui, "Edit Mesh (toggle)", Action::EditMesh, actions);
-                item(ui, "Convert Brushes to Mesh", Action::ConvertToMesh, actions);
-                item(ui, "Convert Meshes to Brushes", Action::ConvertToBrushes, actions);
-                item(ui, "Join", Action::JoinMeshes, actions);
-                ui.separator();
-                for op in MeshOp::ALL {
-                    item(ui, op.label(), Action::MeshOp(op), actions);
-                }
-            });
-            ui.menu_button("Texture", |ui| {
-                item(ui, "Texture Tool", Action::SetTool(ToolKind::Texture), actions);
-                item(ui, "UV Editor", Action::ShowUvEditor, actions);
-                item(ui, "Hotspot Editor…", Action::ShowHotspotEditor, actions);
-                ui.separator();
-                ui.menu_button("Justify", |ui| {
-                    for j in gt_geom::Justify::ALL {
-                        item(ui, j.label(), Action::Justify(j), actions);
-                    }
-                    let mut one = self.state.treat_as_one;
-                    if ui.checkbox(&mut one, "Treat as one").changed() {
-                        actions.push(Action::ToggleTreatAsOne);
-                    }
-                });
-                item(ui, "Align to 3D View", Action::AlignTextureToView, actions);
-                item(ui, "Reset Alignment", Action::ResetTexture, actions);
-                item(ui, "Copy Material and Alignment", Action::CopyAlignment, actions);
-                item(ui, "Paste Alignment", Action::PasteAlignment, actions);
-                ui.menu_button("Texel Density", |ui| {
-                    for d in [0.125, 0.25, 0.5, 1.0, 2.0, 4.0] {
-                        item(ui, &format!("{d} units per pixel"), Action::TexelDensity(d), actions);
-                    }
-                });
-                item(ui, "Hotspot Texture", Action::HotspotTexture, actions);
-                ui.separator();
-                ui.menu_button("Mesh UVs", |ui| {
-                    for k in crate::texture_ops::MeshUvKind::ALL {
-                        item(ui, k.label(), Action::MeshUv(k), actions);
-                    }
-                });
-                ui.separator();
-                item(ui, "Set Blend Material (current)", Action::SetBlendMaterial, actions);
-                item(ui, "Clear Blend Material", Action::ClearBlendMaterial, actions);
-                ui.separator();
-                item(ui, "Reload Materials", Action::ReloadMaterials, actions);
-            });
-            ui.menu_button("Terrain", |ui| {
-                item(ui, "Create Terrain…", Action::ShowTerrainDialog, actions);
-                item(ui, "Sculpt Tool", Action::SetTool(ToolKind::Sculpt), actions);
-                item(ui, "Auto Paint Layers", Action::TerrainAutoPaint, actions);
-                item(ui, "Flatten", Action::TerrainFlatten, actions);
-                item(ui, "Blend Tool", Action::SetTool(ToolKind::Blend), actions);
-                ui.separator();
-                item(ui, "Scatter Tool", Action::SetTool(ToolKind::Scatter), actions);
-                item(ui, "Scatter Palette…", Action::ShowScatterPalette, actions);
-                ui.menu_button("Scatter Preset", |ui| {
-                    for preset in gt_doc::scatter::PRESETS {
-                        item(ui, preset, Action::ScatterPreset(preset.to_string()), actions);
-                    }
-                });
-                item(ui, "New Scatter Set (new layer)", Action::NewScatterSet, actions);
-                item(ui, "Fill Scatter Targets", Action::ScatterFill, actions);
-                item(ui, "Scatter Sets to Entities", Action::ScatterToEntities, actions);
-                item(ui, "Install Nature Models", Action::InstallNatureModels, actions);
-            });
-            ui.menu_button("Gameplay", |ui| {
-                use crate::entity_wizards::{DoorKind, HingeSide, SlideDirection};
-                ui.label(RichText::new("From the selected brushes").weak());
-                item(ui, "Hinged Door, left hinge", Action::MakeDoor { kind: DoorKind::Hinged { side: HingeSide::Left, angle: 95.0 }, trigger: true }, actions);
-                item(
-                    ui,
-                    "Hinged Door, right hinge",
-                    Action::MakeDoor { kind: DoorKind::Hinged { side: HingeSide::Right, angle: 95.0 }, trigger: true },
-                    actions,
-                );
-                item(ui, "Sliding Door, up", Action::MakeDoor { kind: DoorKind::Sliding { direction: SlideDirection::Up, lip: 4.0 }, trigger: true }, actions);
-                item(
-                    ui,
-                    "Sliding Door, sideways",
-                    Action::MakeDoor { kind: DoorKind::Sliding { direction: SlideDirection::Left, lip: 4.0 }, trigger: true },
-                    actions,
-                );
-                item(ui, "Lift / Moving Platform", Action::MakePlatform, actions);
-                ui.menu_button("Volume Around Selection", |ui| {
-                    for class in crate::volume_tool::VOLUME_CLASSES {
-                        item(ui, class, Action::VolumeAroundSelection(class.to_string()), actions);
-                    }
-                });
-                ui.separator();
-                item(ui, "Volume Tool", Action::SetTool(ToolKind::Volume), actions);
-                item(ui, "Link Two Selected Entities…", Action::ShowLinkDialog, actions);
-                ui.separator();
-                ui.label(RichText::new("Place at the cursor").weak());
-                for class in [
-                    "info_spawner",
-                    "logic_call",
-                    "logic_relay",
-                    "logic_timer",
-                    "logic_counter",
-                    "logic_auto",
-                    "logic_debug",
-                    "path_corner",
-                    "info_teleport_destination",
-                ] {
-                    if self.state.game.entity(class).is_some() {
-                        item(ui, class, Action::CreatePointEntity { classname: class.to_string(), at: None }, actions);
-                    }
-                }
-                ui.separator();
-                item(ui, "Entity and Code Reference", Action::ShowReference, actions);
-            });
-            ui.menu_button("Tools", |ui| {
-                for t in ToolKind::all() {
-                    item(ui, &format!("{} Tool", t.label()), Action::SetTool(t), actions);
-                }
-            });
-            ui.menu_button("View", |ui| {
-                item(ui, "Focus Selection", Action::FocusSelection, actions);
-                item(ui, "Cycle Shading (textured, flat, lit, wireframe)", Action::ToggleTextured, actions);
-                item(ui, "Wireframe", Action::SetShade(Shade::Wireframe), actions);
-                item(ui, "Lit Preview", Action::SetShade(Shade::Lit), actions);
-                ui.separator();
-                item(ui, "Set Cordon from Selection", Action::SetCordonFromSelection, actions);
-                item(ui, "Toggle Cordon", Action::ToggleCordon, actions);
-                item(ui, "Clear Cordon", Action::ClearCordon, actions);
-                ui.menu_button("Camera Bookmarks", |ui| {
-                    for n in 1..=9u8 {
-                        ui.horizontal(|ui| {
-                            let stored = self.state.doc.map.editor.cameras.contains_key(&n);
-                            if ui.add_enabled(stored, egui::Button::new(format!("Go to {n}"))).clicked() {
-                                actions.push(Action::RecallCamera(n));
-                                ui.close();
-                            }
-                            if ui.button(format!("Store {n}")).clicked() {
-                                actions.push(Action::StoreCamera(n));
-                                ui.close();
-                            }
-                        });
-                    }
-                });
-                if ui.button("Reset Layout").clicked() {
-                    self.dock = default_dock();
-                    ui.close();
-                }
-                ui.separator();
-                for (tab, label) in [
-                    (Tab::Outliner, "Outliner"),
-                    (Tab::Inspector, "Inspector"),
-                    (Tab::Materials, "Materials"),
-                    (Tab::Entities, "Entities"),
-                    (Tab::History, "History"),
-                    (Tab::Issues, "Issues"),
-                    (Tab::Uv, "UV Editor"),
-                    (Tab::Reference, "Reference"),
-                ] {
-                    if ui.button(label).clicked() {
-                        if let Some(found) = self.dock.find_tab(&tab) {
-                            let _ = self.dock.set_active_tab(found);
-                        } else {
-                            self.dock.push_to_focused_leaf(tab);
-                        }
-                        ui.close();
-                    }
-                }
-            });
-            ui.menu_button("Godot", |ui| {
-                item(ui, "Open Project in Godot Editor", Action::OpenGodotEditor, actions);
-                item(ui, "Run Project", Action::RunGodotProject, actions);
-                item(ui, "Reload Game Config", Action::ReloadProject, actions);
             });
             ui.menu_button("Help", |ui| {
-                item(ui, "Command Palette", Action::ShowCommandPalette, actions);
-                item(ui, "Keyboard Shortcuts", Action::ShowKeymap, actions);
+                ui.set_min_width(MENU_WIDTH);
+                m.item(ui, Some(icons::COMMAND), "Command Palette", Action::ShowCommandPalette);
+                m.item(ui, Some(icons::KEYBOARD), "Keyboard Shortcuts…", Action::ShowKeymap);
+                m.item(ui, Some(icons::REFERENCE), "Entity and Code Reference", Action::ShowReference);
                 ui.separator();
-                ui.label("GodotTrench: brush and mesh level editor for Godot");
-                ui.label("3D: RMB look + WASD fly (Q/E down/up), MMB pan, Alt+LMB orbit");
-                ui.label("2D: RMB/MMB pan, wheel zoom, drag edges to resize");
-                ui.label("Drag empty space to draw a brush, drag selection to move (Alt vertical, Ctrl duplicate)");
-                ui.label("Shift+click selects faces, Shift+drag a face resizes, Ctrl+Shift+drag extrudes");
-                ui.label("Tab edits meshes Blender style: 1/2/3 modes, G/R/S, E extrude, I inset, Ctrl+R loop cut, K knife");
+                ui.label(RichText::new("GodotTrench, a brush and mesh level editor for Godot").strong());
+                for line in [
+                    "3D: RMB look + WASD fly (Q/E down/up), MMB pan, Alt+LMB orbit",
+                    "2D: RMB/MMB pan, wheel zoom, drag edges to resize",
+                    "Drag empty space to draw a brush, drag selection to move (Alt vertical, Ctrl duplicate)",
+                    "Shift+click selects faces, Shift+drag a face resizes, Ctrl+Shift+drag extrudes",
+                    "Tab edits meshes Blender style: 1/2/3 modes, G/R/S, E extrude, I inset, Ctrl+R loop cut, K knife",
+                ] {
+                    ui.label(RichText::new(line).weak());
+                }
             });
         });
     }
 
     fn toolbar(&mut self, ui: &mut Ui) {
+        let ctx = ui.ctx().clone();
+        let shortcuts = commands::shortcuts(&self.state.prefs);
+        let tip = |label: &str, action: &Action| match shortcuts.iter().find(|(_, a)| a == action) {
+            Some((s, _)) => format!("{label} ({})", ctx.format_shortcut(s)),
+            None => label.to_string(),
+        };
+        let group_gap = |ui: &mut Ui| {
+            ui.add_space(4.0);
+            ui.separator();
+            ui.add_space(4.0);
+        };
         ui.horizontal_wrapped(|ui| {
-            for t in ToolKind::all() {
-                if ui.selectable_label(self.state.tool == t, t.label()).clicked() {
-                    self.actions.push(Action::SetTool(t));
+            ui.spacing_mut().item_spacing.x = 2.0;
+            for (icon, label, action) in
+                [(icons::NEW, "New Map", Action::NewMap), (icons::OPEN, "Open Map", Action::OpenMap), (icons::SAVE, "Save", Action::Save)]
+            {
+                if icons::button(ui, icon, label, tip(label, &action)).clicked() {
+                    self.actions.push(action);
                 }
             }
-            ui.separator();
-            ui.label("Grid");
-            egui::ComboBox::from_id_salt("grid").selected_text(format!("{}", self.state.grid)).width(60.0).show_ui(ui, |ui| {
+            group_gap(ui);
+            let history = [
+                (icons::UNDO, "Undo", Action::Undo, self.state.doc.history.can_undo()),
+                (icons::REDO, "Redo", Action::Redo, self.state.doc.history.can_redo()),
+            ];
+            for (icon, label, action, enabled) in history {
+                let resp = ui.add_enabled_ui(enabled, |ui| icons::button(ui, icon, label, tip(label, &action))).inner;
+                if resp.clicked() {
+                    self.actions.push(action);
+                }
+            }
+            group_gap(ui);
+            for (i, group) in ToolKind::GROUPS.iter().enumerate() {
+                if i > 0 {
+                    ui.add_space(6.0);
+                }
+                for t in group.iter().copied() {
+                    let action = if t == ToolKind::Mesh { Action::EditMesh } else { Action::SetTool(t) };
+                    let tooltip = format!("{}\n{}", tip(&format!("{} tool", t.label()), &action), panels::tool_help(t));
+                    if icons::toggle(ui, icons::tool(t), self.state.tool == t, t.label(), tooltip).clicked() {
+                        self.actions.push(Action::SetTool(t));
+                    }
+                }
+            }
+            group_gap(ui);
+            ui.add(icons::GRID.image(icons::TOOLBAR).tint(ui.visuals().text_color())).on_hover_text("Grid size, [ and ] change it");
+            egui::ComboBox::from_id_salt("grid").selected_text(format!("{}", self.state.grid)).width(56.0).show_ui(ui, |ui| {
                 for g in [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0, 256.0, 512.0, 1024.0] {
                     ui.selectable_value(&mut self.state.grid, g, format!("{g}"));
                 }
             });
-            ui.checkbox(&mut self.state.snap, "Snap");
-            ui.checkbox(&mut self.state.uv_lock, "UV lock");
-            egui::ComboBox::from_id_salt("shade").selected_text(self.state.prefs.shade.label()).width(70.0).show_ui(ui, |ui| {
-                for s in Shade::ALL {
-                    ui.selectable_value(&mut self.state.prefs.shade, s, s.label());
+            ui.add_space(2.0);
+            if icons::toggle(ui, icons::SNAP, self.state.snap, "Snap to grid", tip("Snap to grid", &Action::ToggleSnap)).clicked() {
+                self.actions.push(Action::ToggleSnap);
+            }
+            let uv_tip = format!("{}\nTextures stay fixed to faces while moving and rotating", tip("UV lock", &Action::ToggleUvLock));
+            if icons::toggle(ui, icons::UV_LOCK, self.state.uv_lock, "UV lock", uv_tip).clicked() {
+                self.actions.push(Action::ToggleUvLock);
+            }
+            group_gap(ui);
+            for (icon, label, help, action) in [
+                (icons::CSG_SUBTRACT, "CSG subtract", "Carve the selected brushes out of the brushes they touch", Action::CsgSubtract),
+                (icons::CSG_MERGE, "CSG convex merge", "Merge the selected brushes into one convex brush", Action::CsgMerge),
+                (icons::CSG_INTERSECT, "CSG intersect", "Keep only the volume shared by the selected brushes", Action::CsgIntersect),
+                (icons::CSG_HOLLOW, "Hollow", "Turn the selected brushes into walls (thickness in Brush > CSG)", Action::CsgHollow),
+            ] {
+                if icons::button(ui, icon, label, format!("{}\n{help}", tip(label, &action))).clicked() {
+                    self.actions.push(action);
+                }
+            }
+            group_gap(ui);
+            for s in Shade::ALL {
+                let label = format!("{} shading", capitalize(s.label()));
+                if icons::toggle(ui, icons::shade(s), self.state.prefs.shade == s, &label, tip(&label, &Action::SetShade(s))).clicked() {
+                    self.actions.push(Action::SetShade(s));
+                }
+            }
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let project = match &self.state.game.project_root {
+                    Some(p) => format!("{} ({})", self.state.game.name, p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
+                    None => "Open Godot project…".into(),
+                };
+                let button = egui::Button::image_and_text(icons::OPEN.image(icons::SMALL), RichText::new(project).color(Color32::from_rgb(140, 190, 255)))
+                    .image_tint_follows_text_color(true);
+                if ui.add(button).on_hover_text("Open a Godot project folder").clicked() {
+                    self.actions.push(Action::OpenProject);
                 }
             });
+        });
+    }
+
+    fn tool_options(&mut self, ui: &mut Ui) {
+        ui.horizontal_wrapped(|ui| {
+            let tool = self.state.tool;
+            let help = panels::tool_help(tool);
+            ui.add(icons::tool(tool).image(icons::SMALL).tint(ui.visuals().strong_text_color()));
+            ui.label(RichText::new(format!("{} tool", tool.label())).strong()).on_hover_text(help);
             ui.separator();
-            match self.state.tool {
+            match tool {
                 ToolKind::Sculpt | ToolKind::Paint => {
                     use gt_doc::terrain::SculptMode;
-                    if self.state.tool == ToolKind::Sculpt {
+                    if tool == ToolKind::Sculpt {
                         egui::ComboBox::from_id_salt("sculpt_mode").selected_text(format!("{:?}", self.state.sculpt.mode)).width(90.0).show_ui(ui, |ui| {
                             for m in SculptMode::ALL {
                                 ui.selectable_value(&mut self.state.sculpt.mode, m, format!("{m:?}"));
@@ -610,32 +885,34 @@ impl App {
                             ui.add(egui::DragValue::new(&mut self.state.sculpt.terrace_step).range(1.0..=1024.0).prefix("step "));
                         }
                     } else {
+                        ui.label("Color");
                         ui.color_edit_button_rgba_unmultiplied(&mut self.state.paint_color);
                     }
                     ui.add(egui::DragValue::new(&mut self.state.sculpt.radius).range(1.0..=8192.0).prefix("radius "));
                     ui.add(egui::DragValue::new(&mut self.state.sculpt.strength).range(0.01..=256.0).speed(0.1).prefix("strength "));
-                    ui.separator();
                 }
                 ToolKind::Texture => {
-                    ui.checkbox(&mut self.state.treat_as_one, "treat as one");
+                    ui.label("Justify");
                     for j in gt_geom::Justify::ALL {
                         if ui.small_button(j.label()).on_hover_text("Justify the selected faces").clicked() {
                             self.actions.push(Action::Justify(j));
                         }
                     }
-                    if ui.small_button("View").on_hover_text("Align to the 3D view").clicked() {
+                    ui.checkbox(&mut self.state.treat_as_one, "Treat as one");
+                    ui.separator();
+                    if ui.small_button("Align to View").on_hover_text("Project the selected faces along the 3D camera").clicked() {
                         self.actions.push(Action::AlignTextureToView);
                     }
-                    if ui.small_button("Hotspot").clicked() {
+                    if ui.small_button("Hotspot Fit").on_hover_text("Fit to the best rectangle of <texture>.hotspots.json").clicked() {
                         self.actions.push(Action::HotspotTexture);
                     }
-                    ui.separator();
                 }
                 ToolKind::Scatter => {
                     let sets: Vec<(gt_core::NodeId, String)> =
                         self.state.doc.map.scatters().map(|(id, s)| (id, format!("{} ({})", s.name, s.instances.len()))).collect();
                     let active = crate::scatter_tool::active_set(&self.state);
                     let current = active.and_then(|a| sets.iter().find(|(id, _)| *id == a)).map(|(_, n)| n.clone()).unwrap_or_else(|| "new layer".into());
+                    ui.label("Set");
                     egui::ComboBox::from_id_salt("scatter_set").selected_text(current).width(140.0).show_ui(ui, |ui| {
                         if ui.selectable_label(active.is_none(), "new set on a new layer").clicked() {
                             self.actions.push(Action::NewScatterSet);
@@ -647,6 +924,7 @@ impl App {
                         }
                     });
                     let preset = if self.state.prefs.scatter.preset.is_empty() { "custom".to_string() } else { self.state.prefs.scatter.preset.clone() };
+                    ui.label("Preset");
                     egui::ComboBox::from_id_salt("scatter_preset").selected_text(preset).width(90.0).show_ui(ui, |ui| {
                         for p in gt_doc::scatter::PRESETS {
                             if ui.selectable_label(self.state.prefs.scatter.preset == p, p).clicked() {
@@ -658,14 +936,14 @@ impl App {
                     ui.add(egui::DragValue::new(&mut s.radius).range(8.0..=16384.0).prefix("radius "));
                     ui.add(egui::DragValue::new(&mut s.rules.density).range(0.01..=64.0).speed(0.05).prefix("density "));
                     ui.add(egui::DragValue::new(&mut s.rules.slope[1]).range(0.0..=90.0).prefix("max slope ").suffix("°"));
-                    ui.checkbox(&mut s.rules.only_targets, "target only");
-                    if ui.button("Palette…").clicked() {
+                    ui.checkbox(&mut s.rules.only_targets, "Targets only");
+                    ui.separator();
+                    if ui.small_button("Palette…").clicked() {
                         self.actions.push(Action::ShowScatterPalette);
                     }
-                    if ui.button("Fill").on_hover_text("Fill the set's target surfaces").clicked() {
+                    if ui.small_button("Fill").on_hover_text("Fill the set's target surfaces").clicked() {
                         self.actions.push(Action::ScatterFill);
                     }
-                    ui.separator();
                 }
                 ToolKind::Blend => {
                     use gt_doc::blend::{BlendMode, Falloff};
@@ -685,8 +963,8 @@ impl App {
                     ui.add(egui::Slider::new(&mut b.strength, 0.01..=1.0).text("strength"));
                     match b.mode {
                         BlendMode::Slope => {
-                            ui.add(egui::DragValue::new(&mut b.slope[0]).range(0.0..=90.0).suffix("°"));
-                            ui.add(egui::DragValue::new(&mut b.slope[1]).range(0.0..=90.0).suffix("°"));
+                            ui.add(egui::DragValue::new(&mut b.slope[0]).range(0.0..=90.0).prefix("slope ").suffix("°"));
+                            ui.add(egui::DragValue::new(&mut b.slope[1]).range(0.0..=90.0).prefix("to ").suffix("°"));
                         }
                         BlendMode::Height => {
                             ui.add(egui::DragValue::new(&mut b.height[0]).prefix("from "));
@@ -697,28 +975,29 @@ impl App {
                         }
                         _ => {}
                     }
-                    if ui.button("Blend material").on_hover_text("Use the current material as the second texture of the selected faces").clicked() {
+                    ui.separator();
+                    if ui.small_button("Set Blend Material").on_hover_text("Use the current material as the second texture of the selected faces").clicked() {
                         self.actions.push(Action::SetBlendMaterial);
                     }
-                    ui.separator();
                 }
                 ToolKind::Volume => {
                     let p = &mut self.state.prefs;
+                    ui.label("Class");
                     egui::ComboBox::from_id_salt("volume_class").selected_text(p.volume_class.clone()).width(140.0).show_ui(ui, |ui| {
                         for class in crate::volume_tool::VOLUME_CLASSES {
                             ui.selectable_value(&mut p.volume_class, class.to_string(), class);
                         }
                     });
                     ui.add(egui::DragValue::new(&mut p.volume_height).range(1.0..=8192.0).prefix("height "));
-                    ui.separator();
                 }
                 ToolKind::Mesh => {
                     use crate::mesh_tool::Component;
                     for c in [Component::Vertex, Component::Edge, Component::Face] {
-                        if ui.selectable_label(self.tools.mesh.component == c, c.label()).clicked() {
+                        if ui.selectable_label(self.tools.mesh.component == c, capitalize(c.label())).clicked() {
                             self.tools.mesh.component = c;
                         }
                     }
+                    ui.separator();
                     for (label, op) in [
                         ("Subdivide", MeshOp::Subdivide),
                         ("Merge", MeshOp::MergeCenter),
@@ -727,28 +1006,14 @@ impl App {
                         ("Smooth", MeshOp::ShadeSmooth),
                         ("Flat", MeshOp::ShadeFlat),
                     ] {
-                        if ui.button(label).clicked() {
+                        if ui.small_button(label).on_hover_text(op.label()).clicked() {
                             self.actions.push(Action::MeshOp(op));
                         }
                     }
-                    ui.separator();
                 }
-                _ => {}
-            }
-            for (label, action) in
-                [("Subtract", Action::CsgSubtract), ("Merge", Action::CsgMerge), ("Intersect", Action::CsgIntersect), ("Hollow", Action::CsgHollow)]
-            {
-                if ui.button(label).clicked() {
-                    self.actions.push(action);
+                _ => {
+                    ui.label(RichText::new(help).weak());
                 }
-            }
-            ui.separator();
-            let project = match &self.state.game.project_root {
-                Some(p) => format!("{} ({})", self.state.game.name, p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
-                None => "No Godot project".into(),
-            };
-            if ui.button(RichText::new(project).color(Color32::from_rgb(140, 190, 255))).on_hover_text("Open a Godot project folder").clicked() {
-                self.actions.push(Action::OpenProject);
             }
         });
     }
@@ -941,14 +1206,7 @@ impl TabViewer for Tabs<'_> {
     fn title(&mut self, tab: &mut Tab) -> egui::WidgetText {
         match tab {
             Tab::View(i) => self.viewports.get(*i).map(|v| v.kind().label()).unwrap_or("View").into(),
-            Tab::Outliner => "Outliner".into(),
-            Tab::Inspector => "Inspector".into(),
-            Tab::Materials => "Materials".into(),
-            Tab::Entities => "Entities".into(),
-            Tab::History => "History".into(),
-            Tab::Issues => "Issues".into(),
-            Tab::Uv => "UV Editor".into(),
-            Tab::Reference => "Reference".into(),
+            other => tab_title(*other).into(),
         }
     }
 
@@ -1005,6 +1263,7 @@ impl eframe::App for App {
 
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
         egui::Panel::top("toolbar").show(ui, |ui| self.toolbar(ui));
+        egui::Panel::top("tool_options").show(ui, |ui| self.tool_options(ui));
         if !self.state.tabs.is_empty() {
             egui::Panel::top("map_tabs").show(ui, |ui| self.tab_bar(ui));
         }
@@ -1087,4 +1346,22 @@ fn visuals() -> egui::Visuals {
     v.selection.bg_fill = Color32::from_rgb(170, 90, 40);
     v.hyperlink_color = Color32::from_rgb(255, 160, 80);
     v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mesh_menu_groups_cover_every_op() {
+        let grouped: Vec<MeshOp> = MESH_OP_GROUPS.iter().flat_map(|(_, ops)| ops.iter().copied()).collect();
+        assert_eq!(grouped.len(), MeshOp::ALL.len());
+        assert!(MeshOp::ALL.iter().all(|op| grouped.contains(op)));
+    }
+
+    #[test]
+    fn capitalizes_labels() {
+        assert_eq!(capitalize("wireframe"), "Wireframe");
+        assert_eq!(capitalize(""), "");
+    }
 }

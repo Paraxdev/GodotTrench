@@ -97,7 +97,8 @@ impl BlendTool {
         let modifiers = ui.input(|i| i.modifiers);
         if (response.drag_started_by(PointerButton::Primary) || response.clicked_by(PointerButton::Primary)) && !self.stroking && self.hover.is_some() {
             if targets(state).is_empty() {
-                state.set_status("Nothing to blend: add terrain layers, displacements, or set a blend material on faces (Texture > Blend Material)");
+                state
+                    .set_status("Nothing to blend: add terrain layers, displacements, or set a blend material on faces (Terrain > Blend > Set Blend Material)");
                 return;
             }
             self.stroking = true;
