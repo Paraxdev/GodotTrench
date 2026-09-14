@@ -1,0 +1,264 @@
+//! Hides the parts of brush and mesh faces that sit on the same plane as another solid's face. Back to back faces
+//! between closed solids are inside the shape and never visible, and overlapping faces facing the same way z-fight,
+//! so only the one with priority draws the shared area.
+
+use std::collections::{BTreeSet, HashMap};
+
+use gt_core::{Aabb, DVec3, NodeId};
+use gt_doc::{Map, NodeKind};
+use gt_formats::GameConfig;
+use gt_geom::polygon;
+
+/// Pieces to draw instead of a face, empty when the whole face is hidden. Faces without an entry draw unchanged.
+pub type FacePieces = HashMap<usize, Pieces>;
+pub type Pieces = Vec<Vec<DVec3>>;
+
+const COPLANAR_DIST: f64 = 0.02;
+const SAME_NORMAL: f64 = 0.9995;
+
+type PlaneKey = (i64, i64, i64, i64);
+
+#[derive(Clone)]
+struct CullFace {
+    face: usize,
+    key: PlaneKey,
+    normal: DVec3,
+    dist: f64,
+    bounds: Aabb,
+    polygon: Vec<DVec3>,
+    closed: bool,
+    is_mesh: bool,
+}
+
+#[derive(Default)]
+pub struct FaceCull {
+    faces: HashMap<NodeId, Vec<CullFace>>,
+    planes: HashMap<PlaneKey, BTreeSet<(NodeId, usize)>>,
+    pub pieces: HashMap<NodeId, FacePieces>,
+}
+
+/// Opposite normals share a key so back to back faces land in one group.
+fn plane_key(normal: DVec3, dist: f64) -> PlaneKey {
+    let flip = [normal.x, normal.y, normal.z].into_iter().find(|c| c.abs() > 1e-6).is_some_and(|c| c < 0.0);
+    let (n, d) = if flip { (-normal, -dist) } else { (normal, dist) };
+    ((n.x * 1000.0).round() as i64, (n.y * 1000.0).round() as i64, (n.z * 1000.0).round() as i64, (d * 8.0).round() as i64)
+}
+
+impl FaceCull {
+    /// Faces of a node that take part: opaque, single sided, not tool textures, triggers or displacements.
+    fn node_faces(map: &Map, game: &GameConfig, opaque: &dyn Fn(&str) -> bool, id: NodeId) -> Vec<CullFace> {
+        let Some(node) = map.get(id) else { return Vec::new() };
+        if map.is_hidden(id) || !map.in_cordon(id) {
+            return Vec::new();
+        }
+        let entity = map.owning_entity(id).and_then(|e| map.entity(e));
+        let volume = entity.is_some_and(|e| e.classname.starts_with("trigger") || game.entity(&e.classname).is_some_and(|d| d.node_class == "Area3D"));
+        if volume {
+            return Vec::new();
+        }
+        let usable = |material: &str| !game.is_tool_texture(material) && opaque(material);
+        let mut out = Vec::new();
+        let mut push = |face: usize, normal: DVec3, polygon: Vec<DVec3>, closed: bool, is_mesh: bool| {
+            if polygon.len() < 3 || normal == DVec3::ZERO {
+                return;
+            }
+            let dist = normal.dot(polygon::centroid(&polygon));
+            let bounds = Aabb::from_points(polygon.iter().copied());
+            out.push(CullFace { face, key: plane_key(normal, dist), normal, dist, bounds, polygon, closed, is_mesh });
+        };
+        match &node.kind {
+            NodeKind::Brush(b) if b.faces.iter().all(|f| f.data.disp.is_none()) => {
+                for (fi, f) in b.faces.iter().enumerate() {
+                    if usable(&f.data.material) {
+                        push(fi, f.plane.normal, f.indices.iter().map(|i| b.vertices[*i as usize]).collect(), true, false);
+                    }
+                }
+            }
+            NodeKind::Mesh(m) => {
+                let closed = m.edge_faces().values().all(|f| f.len() == 2);
+                for (fi, f) in m.faces.iter().enumerate() {
+                    if f.indices.len() >= 3 && f.indices.iter().all(|i| (*i as usize) < m.vertices.len()) && usable(&f.data.material) {
+                        push(fi, m.face_normal(fi), m.face_points(fi), closed, true);
+                    }
+                }
+            }
+            _ => {}
+        }
+        out
+    }
+
+    /// Refreshes the faces of `dirty` nodes and everything sharing a plane with them. Returns the nodes whose visible pieces changed.
+    pub fn update(&mut self, map: &Map, game: &GameConfig, opaque: &dyn Fn(&str) -> bool, dirty: &BTreeSet<NodeId>, full: bool) -> BTreeSet<NodeId> {
+        let nodes: Vec<NodeId> = if full {
+            *self = Self::default();
+            map.nodes.keys().copied().collect()
+        } else {
+            dirty.iter().copied().collect()
+        };
+        // Areas on each plane that changed, from the old and the new faces of the refreshed nodes.
+        let mut touched: HashMap<PlaneKey, Vec<Aabb>> = HashMap::new();
+        for id in &nodes {
+            if let Some(old) = self.faces.remove(id) {
+                for f in old {
+                    if let Some(members) = self.planes.get_mut(&f.key) {
+                        members.remove(&(*id, f.face));
+                    }
+                    touched.entry(f.key).or_default().push(f.bounds);
+                }
+            }
+            let new = Self::node_faces(map, game, opaque, *id);
+            for f in &new {
+                self.planes.entry(f.key).or_default().insert((*id, f.face));
+                touched.entry(f.key).or_default().push(f.bounds);
+            }
+            if !new.is_empty() {
+                self.faces.insert(*id, new);
+            }
+        }
+        self.planes.retain(|_, members| !members.is_empty());
+
+        let mut changed = BTreeSet::new();
+        for id in &nodes {
+            if self.pieces.remove(id).is_some() {
+                changed.insert(*id);
+            }
+        }
+        for (key, areas) in touched {
+            let Some(members) = self.planes.get(&key) else { continue };
+            let members: Vec<(NodeId, &CullFace)> =
+                members.iter().filter_map(|(id, fi)| self.faces.get(id).and_then(|faces| faces.iter().find(|f| f.face == *fi)).map(|f| (*id, f))).collect();
+            let near = |b: &Aabb| areas.iter().any(|a| a.expanded(COPLANAR_DIST).intersects(b));
+            let mut results: Vec<(NodeId, usize, Option<Pieces>)> = Vec::new();
+            for (id, face) in members.iter().filter(|(_, f)| near(&f.bounds)) {
+                let mut overlapping: Vec<&[DVec3]> = Vec::new();
+                let mut backing: Vec<&[DVec3]> = Vec::new();
+                for (other_id, other) in &members {
+                    match covers(other, *other_id, face, *id) {
+                        Cover::Overlap => overlapping.push(&other.polygon),
+                        Cover::Backing => backing.push(&other.polygon),
+                        Cover::None => {}
+                    }
+                }
+                // Back to back faces are only dropped when fully covered, cutting holes into a floor under every wall adds
+                // triangles and T-junction cracks without hiding anything visible.
+                let hidden = !backing.is_empty() && polygon::visible_pieces(&face.polygon, face.normal, &backing).is_some_and(|p| p.is_empty());
+                let pieces = if hidden {
+                    Some(Vec::new())
+                } else if overlapping.is_empty() {
+                    None
+                } else {
+                    polygon::visible_pieces(&face.polygon, face.normal, &overlapping)
+                };
+                results.push((*id, face.face, pieces));
+            }
+            for (id, fi, pieces) in results {
+                let entry = self.pieces.entry(id).or_default();
+                let before = entry.get(&fi).cloned();
+                match pieces {
+                    Some(p) => {
+                        entry.insert(fi, p);
+                    }
+                    None => {
+                        entry.remove(&fi);
+                    }
+                }
+                if entry.get(&fi) != before.as_ref() {
+                    changed.insert(id);
+                }
+                if entry.is_empty() {
+                    self.pieces.remove(&id);
+                }
+            }
+        }
+        changed
+    }
+}
+
+enum Cover {
+    None,
+    /// Faces the same way on the same plane, the brush, or else the older node, keeps the shared area.
+    Overlap,
+    /// Back to back with another closed solid.
+    Backing,
+}
+
+fn covers(other: &CullFace, other_id: NodeId, face: &CullFace, id: NodeId) -> Cover {
+    if other_id == id || !other.bounds.expanded(COPLANAR_DIST).intersects(&face.bounds) {
+        return Cover::None;
+    }
+    let dot = other.normal.dot(face.normal);
+    if dot > SAME_NORMAL && (other.dist - face.dist).abs() < COPLANAR_DIST && (other.is_mesh, other_id, other.face) < (face.is_mesh, id, face.face) {
+        Cover::Overlap
+    } else if dot < -SAME_NORMAL && (other.dist + face.dist).abs() < COPLANAR_DIST && other.closed && face.closed {
+        Cover::Backing
+    } else {
+        Cover::None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gt_geom::Brush;
+
+    fn add_box(map: &mut Map, min: DVec3, max: DVec3) -> NodeId {
+        let layer = map.default_layer();
+        map.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(min, max), "dev/grey").unwrap()))
+    }
+
+    fn run(map: &Map) -> FaceCull {
+        let mut cull = FaceCull::default();
+        cull.update(map, &GameConfig::default(), &|_| true, &BTreeSet::new(), true);
+        cull
+    }
+
+    fn face_towards(map: &Map, id: NodeId, normal: DVec3) -> usize {
+        map.brush(id).unwrap().faces.iter().position(|f| f.plane.normal.dot(normal) > 0.999).unwrap()
+    }
+
+    #[test]
+    fn touching_boxes_hide_the_faces_between_them() {
+        let mut map = Map::new();
+        let a = add_box(&mut map, DVec3::ZERO, DVec3::splat(64.0));
+        let b = add_box(&mut map, DVec3::new(64.0, 0.0, 0.0), DVec3::new(128.0, 64.0, 64.0));
+        let cull = run(&map);
+        assert_eq!(cull.pieces[&a][&face_towards(&map, a, DVec3::X)], Vec::<Vec<DVec3>>::new());
+        assert_eq!(cull.pieces[&b][&face_towards(&map, b, DVec3::NEG_X)], Vec::<Vec<DVec3>>::new());
+        assert_eq!(cull.pieces[&a].len(), 1, "the tops only share an edge and stay whole");
+    }
+
+    #[test]
+    fn a_floor_under_a_wall_keeps_its_face() {
+        let mut map = Map::new();
+        let floor = add_box(&mut map, DVec3::new(0.0, -16.0, 0.0), DVec3::new(256.0, 0.0, 256.0));
+        let wall = add_box(&mut map, DVec3::new(64.0, 0.0, 64.0), DVec3::new(80.0, 128.0, 192.0));
+        let cull = run(&map);
+        assert!(!cull.pieces.contains_key(&floor), "partly covered back to back faces are not cut up");
+        assert_eq!(cull.pieces[&wall][&face_towards(&map, wall, DVec3::NEG_Y)], Vec::<Vec<DVec3>>::new(), "the wall bottom is fully covered");
+    }
+
+    #[test]
+    fn overlapping_coplanar_faces_draw_the_shared_area_once() {
+        let mut map = Map::new();
+        let a = add_box(&mut map, DVec3::ZERO, DVec3::new(64.0, 64.0, 16.0));
+        let b = add_box(&mut map, DVec3::new(48.0, 0.0, 0.0), DVec3::new(112.0, 64.0, 16.0));
+        let cull = run(&map);
+        let front = face_towards(&map, b, DVec3::Z);
+        assert!(!cull.pieces.get(&a).is_some_and(|p| p.contains_key(&face_towards(&map, a, DVec3::Z))), "the older brush keeps its face");
+        let pieces = &cull.pieces[&b][&front];
+        let area: f64 = pieces.iter().map(|p| polygon::area(p)).sum();
+        assert!((area - 48.0 * 64.0).abs() < 1e-6, "only the part past the first brush is drawn, got {area}");
+    }
+
+    #[test]
+    fn moving_a_brush_away_restores_its_neighbour() {
+        let mut map = Map::new();
+        let a = add_box(&mut map, DVec3::ZERO, DVec3::splat(64.0));
+        let b = add_box(&mut map, DVec3::new(64.0, 0.0, 0.0), DVec3::new(128.0, 64.0, 64.0));
+        let mut cull = run(&map);
+        *map.brush_mut(b).unwrap() = Brush::from_aabb(&Aabb::new(DVec3::new(96.0, 0.0, 0.0), DVec3::new(160.0, 64.0, 64.0)), "dev/grey").unwrap();
+        let changed = cull.update(&map, &GameConfig::default(), &|_| true, &BTreeSet::from([b]), false);
+        assert!(changed.contains(&a) && changed.contains(&b));
+        assert!(cull.pieces.is_empty());
+    }
+}

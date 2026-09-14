@@ -31,6 +31,7 @@ pub struct PanelState {
     new_key: String,
     new_value: String,
     outliner_filter: String,
+    outliner_offset: f32,
     issues: Vec<gt_doc::issues::Issue>,
     issues_revision: u64,
     pub uv: crate::uv_editor::UvEditorState,
@@ -56,6 +57,7 @@ impl Default for PanelState {
             new_key: String::new(),
             new_value: String::new(),
             outliner_filter: String::new(),
+            outliner_offset: 0.0,
             issues: Vec::new(),
             issues_revision: 0,
             uv: Default::default(),
@@ -80,6 +82,10 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
     ui.separator();
 
     let map = &state.doc.map;
+    let reveal = state.outliner_reveal.take().filter(|id| map.contains(*id));
+    if let Some(id) = reveal {
+        ps.expanded.extend(map.ancestors(id));
+    }
     let filter = ps.outliner_filter.to_lowercase();
     let mut rows: Vec<(usize, NodeId)> = Vec::new();
     for layer in &map.layers {
@@ -100,7 +106,15 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
     let mut clicked: Option<(NodeId, bool)> = None;
     let mut set_layer: Option<NodeId> = None;
     let mut rename: Option<(NodeId, String)> = None;
-    ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, row_h, rows.len(), |ui, range| {
+    let mut scroll = ScrollArea::vertical().auto_shrink([false, false]);
+    if let Some(index) = reveal.and_then(|id| rows.iter().position(|(_, r)| *r == id)) {
+        let step = row_h + ui.spacing().item_spacing.y;
+        let (top, view) = (index as f32 * step, ui.available_height());
+        if top < ps.outliner_offset || top + row_h > ps.outliner_offset + view {
+            scroll = scroll.vertical_scroll_offset((top - (view - row_h) / 2.0).max(0.0));
+        }
+    }
+    let output = scroll.show_rows(ui, row_h, rows.len(), |ui, range| {
         for (depth, id) in &rows[range] {
             let Some(node) = map.get(*id) else { continue };
             ui.horizontal(|ui| {
@@ -252,6 +266,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
             });
         }
     });
+    ps.outliner_offset = output.state.offset.y;
 
     for (id, kind) in toggles {
         match kind {

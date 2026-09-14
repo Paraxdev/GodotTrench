@@ -7,6 +7,7 @@ use gt_formats::{EntityDef, GameConfig};
 use gt_geom::{Brush, Mesh, Terrain};
 use gt_render::{Frame, GpuLines, GpuMesh, Lighting, LineVertex, MeshBatch, MeshVertex, PointLight, Renderer};
 
+use crate::face_cull::{FaceCull, FacePieces};
 use crate::prefabs::{self, PrefabCache};
 use crate::state::EditorState;
 
@@ -88,6 +89,7 @@ pub struct SceneCache {
     shadow_dirty: bool,
     shadow_center: Option<DVec3>,
     scene_bounds: Aabb,
+    face_cull: FaceCull,
 }
 
 pub fn v3(v: DVec3) -> [f32; 3] {
@@ -210,6 +212,16 @@ fn face_vertex_color(tint: [f32; 4], painted: Option<[f32; 4]>, blend: bool) -> 
         (Some(vc), false) => [tint[0] * vc[0], tint[1] * vc[1], tint[2] * vc[2], tint[3] * vc[3]],
         (None, false) => tint,
     }
+}
+
+fn mix_corners<const N: usize>(weights: [(usize, f64); 3], value: impl Fn(usize) -> [f32; N]) -> [f32; N] {
+    let mut out = [0.0; N];
+    for (k, w) in weights {
+        for (o, v) in out.iter_mut().zip(value(k)) {
+            *o += v * w as f32;
+        }
+    }
+    out
 }
 
 /// Registers a model's textures, with alpha scissor for textures that have transparent pixels (leaves, grass cards).
@@ -374,6 +386,7 @@ impl Builder<'_> {
         edge_2d: [f32; 4],
         see_through: bool,
         edge_3d: [f32; 4],
+        culled: Option<&FacePieces>,
     ) {
         self.stats.brushes += 1;
         let has_disp = brush.faces.iter().any(|f| f.data.disp.is_some());
@@ -439,9 +452,29 @@ impl Builder<'_> {
                     MeshVertex { pos: v3(p), normal: n, uv: [uv.x as f32, uv.y as f32], color: c }
                 })
                 .collect();
-            self.stats.triangles += verts.len().saturating_sub(2);
             let key = blend.as_deref().unwrap_or(mat);
-            self.batch(key, tool).add_polygon(key, &verts);
+            match culled.and_then(|c| c.get(&fi)) {
+                Some(pieces) => {
+                    let corners: Vec<DVec3> = face.indices.iter().map(|i| brush.vertices[*i as usize]).collect();
+                    let tris = gt_geom::polygon::fan(corners.len());
+                    for piece in pieces {
+                        let piece_verts: Vec<MeshVertex> = piece
+                            .iter()
+                            .map(|p| {
+                                let uv = face.data.uv.uv(*p, size);
+                                let vc = painted.then(|| mix_corners(gt_geom::polygon::corner_weights(&corners, &tris, *p), |k| face.data.colors[k]));
+                                MeshVertex { pos: v3(*p), normal: n, uv: [uv.x as f32, uv.y as f32], color: face_vertex_color(color, vc, blend.is_some()) }
+                            })
+                            .collect();
+                        self.stats.triangles += piece_verts.len().saturating_sub(2);
+                        self.batch(key, tool).add_polygon(key, &piece_verts);
+                    }
+                }
+                None => {
+                    self.stats.triangles += verts.len().saturating_sub(2);
+                    self.batch(key, tool).add_polygon(key, &verts);
+                }
+            }
             if selected_face(fi) {
                 let overlay: Vec<MeshVertex> = verts.iter().map(|v| MeshVertex { color: [1.0, 0.2, 0.2, 0.35], ..*v }).collect();
                 self.face_overlay.add_polygon(gt_render::WHITE_MATERIAL, &overlay);
@@ -463,7 +496,17 @@ impl Builder<'_> {
         }
     }
 
-    fn mesh(&mut self, mesh: &Mesh, tint: [f32; 4], selected: bool, selected_face: impl Fn(usize) -> bool, edge_2d: [f32; 4], see_through: bool) {
+    #[allow(clippy::too_many_arguments)]
+    fn mesh(
+        &mut self,
+        mesh: &Mesh,
+        tint: [f32; 4],
+        selected: bool,
+        selected_face: impl Fn(usize) -> bool,
+        edge_2d: [f32; 4],
+        see_through: bool,
+        culled: Option<&FacePieces>,
+    ) {
         self.stats.meshes += 1;
         let normals = mesh.corner_normals();
         for (fi, face) in mesh.faces.iter().enumerate() {
@@ -489,10 +532,36 @@ impl Builder<'_> {
                     MeshVertex { pos: v3(mesh.vertices[*i as usize]), normal: v3(normals[fi][k]), uv: [uv.x as f32, uv.y as f32], color: c }
                 })
                 .collect();
-            let tris: Vec<u32> = mesh.triangulate_corners(fi).into_iter().flat_map(|[a, b, c]| [a as u32, b as u32, c as u32]).collect();
-            self.stats.triangles += tris.len() / 3;
+            let corner_tris = mesh.triangulate_corners(fi);
+            let tris: Vec<u32> = corner_tris.iter().flat_map(|[a, b, c]| [*a as u32, *b as u32, *c as u32]).collect();
             let key = blend.as_deref().unwrap_or(mat);
-            self.batch(key, tool).add_triangles(key, &verts, &tris);
+            match culled.and_then(|c| c.get(&fi)) {
+                Some(pieces) => {
+                    let corners = mesh.face_points(fi);
+                    for piece in pieces {
+                        let piece_verts: Vec<MeshVertex> = piece
+                            .iter()
+                            .map(|p| {
+                                let w = gt_geom::polygon::corner_weights(&corners, &corner_tris, *p);
+                                let normal = mix_corners(w, |k| verts[k].normal);
+                                let vc = painted.then(|| mix_corners(w, |k| face.data.colors[k]));
+                                MeshVertex {
+                                    pos: v3(*p),
+                                    normal: Vec3::from_array(normal).normalize_or_zero().to_array(),
+                                    uv: mix_corners(w, |k| verts[k].uv),
+                                    color: face_vertex_color(color, vc, blend.is_some()),
+                                }
+                            })
+                            .collect();
+                        self.stats.triangles += piece_verts.len().saturating_sub(2);
+                        self.batch(key, tool).add_polygon(key, &piece_verts);
+                    }
+                }
+                None => {
+                    self.stats.triangles += tris.len() / 3;
+                    self.batch(key, tool).add_triangles(key, &verts, &tris);
+                }
+            }
             if selected_face(fi) {
                 let overlay: Vec<MeshVertex> = verts.iter().map(|v| MeshVertex { color: [1.0, 0.2, 0.2, 0.35], ..*v }).collect();
                 self.face_overlay.add_triangles(gt_render::WHITE_MATERIAL, &overlay, &tris);
@@ -629,12 +698,12 @@ impl Builder<'_> {
                 NodeKind::Brush(b) => {
                     let placed = b.transformed(xform, true);
                     bounds.include(&placed.bounds());
-                    self.brush(&placed, tint, selected, |_| false, INSTANCE_EDGE, false, INSTANCE_EDGE);
+                    self.brush(&placed, tint, selected, |_| false, INSTANCE_EDGE, false, INSTANCE_EDGE, None);
                 }
                 NodeKind::Mesh(m) => {
                     let placed = m.transformed(xform, true);
                     bounds.include(&placed.bounds());
-                    self.mesh(&placed, tint, selected, |_| false, INSTANCE_EDGE, false);
+                    self.mesh(&placed, tint, selected, |_| false, INSTANCE_EDGE, false, None);
                 }
                 NodeKind::Entity(e) if node.children.is_empty() => {
                     let mut placed = e.clone();
@@ -1013,6 +1082,13 @@ impl SceneCache {
             }
         }
 
+        let opaque = |m: &str| {
+            let flags = renderer.material_flags(m);
+            !flags.transparent && !flags.double_sided
+        };
+        let recull = self.face_cull.update(&map, &game, &opaque, &dirty, full);
+        dirty.extend(recull);
+
         let selected_brush_like: BTreeSet<NodeId> = selection.geometry(&map).into_iter().collect();
         let is_selected = |id: NodeId| selection.nodes.contains(&id) || map.ancestors(id).iter().any(|a| selection.nodes.contains(a));
 
@@ -1105,10 +1181,12 @@ impl SceneCache {
                     builder.volume = is_trigger;
                     match &node.kind {
                         NodeKind::Brush(brush) => {
-                            builder.brush(brush, tint, selected, |fi| selected_faces.contains(&(id, fi)), edge_2d, is_trigger, EDGE_COLOR);
+                            let culled = self.face_cull.pieces.get(&id);
+                            builder.brush(brush, tint, selected, |fi| selected_faces.contains(&(id, fi)), edge_2d, is_trigger, EDGE_COLOR, culled);
                         }
                         NodeKind::Mesh(mesh) => {
-                            builder.mesh(mesh, tint, selected, |fi| selected_faces.contains(&(id, fi)), edge_2d, is_trigger);
+                            let culled = self.face_cull.pieces.get(&id);
+                            builder.mesh(mesh, tint, selected, |fi| selected_faces.contains(&(id, fi)), edge_2d, is_trigger, culled);
                         }
                         NodeKind::Terrain(_) => builder.stats.terrains += 1,
                         NodeKind::Entity(e) if node.children.is_empty() => {
