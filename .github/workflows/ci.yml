@@ -151,6 +151,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: editor-*
           merge-multiple: true
       - name: Package Godot addon and demo project
         run: |
