@@ -167,11 +167,21 @@ jobs:
             echo "main moved on to ${head::7}, leaving the alpha to that run"
             exit 0
           fi
+          if ls dist | grep -qiE '\.(png|jpe?g|gif|webp)$'; then
+            echo "images belong in the release notes, not in the downloads"
+            exit 1
+          fi
           short="${GITHUB_SHA::7}"
+          shots="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/docs/screenshots"
           notes="Rolling alpha built from ${short} on $(date -u +%Y-%m-%d). Expect bugs.
 
           * godottrench-*: the editor for Linux, Windows and macOS.
           * func_godot-godottrench-addon.zip: the forked FuncGodot addon, extract into your Godot project so it becomes res://addons/func_godot.
-          * godottrench-demo-project.zip: the demo Godot project with the showcase maps."
+          * godottrench-demo-project.zip: the demo Godot project with the showcase maps.
+
+          ![Editor](${shots}/editor.png)
+          ![Lighthouse and Forest in Godot](${shots}/lighthouse_forest.png)
+          ![Church and School in Godot](${shots}/church_school.png)
+          ![Mountain Hanging House in Godot](${shots}/mountain_house.png)"
           gh release delete alpha --yes --cleanup-tag || true
           gh release create alpha dist/* --prerelease --target "$GITHUB_SHA" --title "GodotTrench rolling alpha" --notes "$notes"

@@ -1,27 +1,24 @@
 # GodotTrench
 
-A brush based level editor for Godot, written in Rust. It aims for TrenchBroom parity plus Hammer / Hammer++ features
-(entity I/O, prefabs, displacements, decals, vertex paint, lit preview) and Godot specific QoL.
+A brush based level editor for Godot, written in Rust. heavily inspired by TrenchBroom and Hammer++, it aims for TrenchBroom parity plus
+Hammer++ features (entity I/O, prefabs, displacements, decals, vertex paint, lit preview) and Godot specific QoL like a live view.
 
-heavily inspired by TrenchBroom and Hammer++
-GodotTrench focuses more on Godot, allowing features like live view and a more custom plugin for Godot (based on FuncGodot)
-
-Maps are saved as `.gtm` (JSON, Y-up, Godot units convention) and loaded in Godot by the GodotTrench fork of
+Maps are saved as `.gtm` (JSON, Y-up, Godot units) and loaded in Godot by our fork of
 [FuncGodot](https://github.com/func-godot/func_godot_plugin) in `godot/addons/func_godot`.
 
 # Disclosure
-This Project makes use of AI / LLMs, specifically Claude.
-Expect bugs and weird shenanigans, you are open to create issues or pull requests with fixes. 
+This project makes use of AI / LLMs, specifically Claude.
+Expect bugs and weird shenanigans, feel free to open issues or pull requests with fixes.
 
-If you want to use AI to create pull requests you must ensure it isn't sloppy (like heavy emdash use, useless and unnecessary comments and a heavy use of emojis)
+If you want to use AI to create pull requests you must ensure it isn't sloppy (like heavy em dash use, useless and unnecessary comments and a heavy use of emojis)
 
-you also by creating a pull request you vouch for the changes the AI made, and if it causes any faults you own the blame.
+by creating a pull request you vouch for the changes the AI made, and if it causes any faults you own the blame.
 
 you must pass the whole test suite and preferably write tests for the feature you changed or added.
 
 ## Godot addon
 
-`godot/` contains a example project containing the addon and demo scenes. you may use the demo scenes in your project.
+`godot/` contains an example project with the addon and demo scenes. you may use the demo scenes in your project.
 
 to use in your own project, add a `FuncGodotMap` node, point it at a `.gtm` file and press *Build Map*. Entity definitions are FuncGodot FGD resources;
 
