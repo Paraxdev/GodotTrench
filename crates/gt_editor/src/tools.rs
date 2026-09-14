@@ -67,6 +67,15 @@ impl ToolKind {
         ]
     }
 
+    /// Tools grouped the way the toolbar and the Tools menu show them: brush editing, meshes, surfaces, terrain, gameplay.
+    pub const GROUPS: [&'static [ToolKind]; 5] = [
+        &[ToolKind::Select, ToolKind::Clip, ToolKind::Vertex, ToolKind::Rotate, ToolKind::Scale],
+        &[ToolKind::Mesh],
+        &[ToolKind::Texture, ToolKind::Paint],
+        &[ToolKind::Sculpt, ToolKind::Blend, ToolKind::Scatter],
+        &[ToolKind::Volume, ToolKind::Path, ToolKind::Measure],
+    ];
+
     /// Accepts labels case insensitively, and "sprinkle" as the old name of the scatter tool.
     pub fn from_name(name: &str) -> Option<ToolKind> {
         if name.eq_ignore_ascii_case("sprinkle") {
@@ -123,4 +132,16 @@ pub fn line_ray_param(origin: DVec3, dir: DVec3, ray: &gt_core::Ray) -> Option<f
         return None;
     }
     Some((b * e - ray.dir.dot(ray.dir) * d) / denom)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn groups_list_every_tool_once() {
+        let grouped: Vec<ToolKind> = ToolKind::GROUPS.iter().flat_map(|g| g.iter().copied()).collect();
+        assert_eq!(grouped.len(), ToolKind::all().len());
+        assert!(ToolKind::all().iter().all(|t| grouped.contains(t)));
+    }
 }

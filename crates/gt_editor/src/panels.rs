@@ -7,6 +7,7 @@ use gt_formats::{EntityDef, PropertyType};
 use gt_geom::FaceUv;
 
 use crate::commands::Action;
+use crate::icons;
 use crate::state::EditorState;
 pub use crate::uv_editor::uv_editor;
 
@@ -62,7 +63,8 @@ impl Default for PanelState {
 
 pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
     ui.horizontal(|ui| {
-        if ui.button("+ Layer").clicked() {
+        let add_layer = egui::Button::image_and_text(icons::LAYER.image(icons::SMALL), "Add Layer").image_tint_follows_text_color(true);
+        if ui.add(add_layer).on_hover_text("New layer, it becomes the current layer new objects go into").clicked() {
             actions.push(Action::AddLayer);
         }
         ui.add(egui::TextEdit::singleline(&mut ps.outliner_filter).hint_text("Filter").desired_width(f32::INFINITY));
@@ -79,6 +81,12 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
         }
     }
 
+    if !filter.is_empty() && rows.iter().all(|(depth, _)| *depth == 0) {
+        ui.label(RichText::new("No objects match the filter").weak());
+    } else if map.layers.iter().all(|l| map.get(*l).is_none_or(|n| n.children.is_empty())) {
+        ui.label(RichText::new("The map is empty. Drag in a 2D view to draw a brush, or drag an entity in from the Entities panel.").weak());
+    }
+
     let row_h = 20.0;
     let mut toggles: Vec<(NodeId, u8)> = Vec::new();
     let mut clicked: Option<(NodeId, bool)> = None;
@@ -92,43 +100,47 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                 let has_children = !node.children.is_empty();
                 let expanded = ps.expanded.contains(id);
                 if has_children {
-                    if ui.add(egui::Button::new(if expanded { "−" } else { "+" }).frame(false).min_size(Vec2::new(14.0, 0.0))).clicked() {
+                    let (icon, label) = if expanded { (icons::COLLAPSE, "Collapse") } else { (icons::EXPAND, "Expand") };
+                    if icons::small(ui, icon, label, None).clicked() {
                         toggles.push((*id, 0));
                     }
                 } else {
-                    ui.add_space(18.0);
+                    ui.add_space(icons::SMALL + ui.spacing().item_spacing.x);
                 }
-                let eye = if node.hidden { RichText::new("👁").weak() } else { RichText::new("👁") };
-                if ui
-                    .add(egui::Button::new(eye).frame(false))
+                let weak = ui.visuals().weak_text_color();
+                let (eye, eye_tint) = if node.hidden { (icons::EYE_OFF, Some(weak)) } else { (icons::EYE, None) };
+                if icons::small(ui, eye, "Visibility", eye_tint)
                     .on_hover_text(if node.hidden { "Hidden, click to show" } else { "Visible, click to hide" })
                     .clicked()
                 {
                     toggles.push((*id, 1));
                 }
-                let lock = if node.locked { RichText::new("🔒").color(Color32::from_rgb(255, 170, 80)) } else { RichText::new("🔓").weak() };
-                if ui.add(egui::Button::new(lock).frame(false)).on_hover_text("Lock").clicked() {
+                let (lock, lock_tint) = if node.locked { (icons::LOCK, Color32::from_rgb(255, 170, 80)) } else { (icons::UNLOCK, weak) };
+                if icons::small(ui, lock, "Lock", Some(lock_tint))
+                    .on_hover_text(if node.locked { "Locked, click to unlock" } else { "Unlocked, click to lock" })
+                    .clicked()
+                {
                     toggles.push((*id, 2));
                 }
                 let selected = state.doc.selection.nodes.contains(id);
                 let (icon, color) = match &node.kind {
-                    NodeKind::Layer(l) => ("☰", Color32::from_rgb((l.color.r * 255.0) as u8, (l.color.g * 255.0) as u8, (l.color.b * 255.0) as u8)),
-                    NodeKind::Group(_) => ("⧉", Color32::from_rgb(160, 200, 255)),
+                    NodeKind::Layer(l) => (icons::LAYER, Color32::from_rgb((l.color.r * 255.0) as u8, (l.color.g * 255.0) as u8, (l.color.b * 255.0) as u8)),
+                    NodeKind::Group(_) => (icons::GROUP, Color32::from_rgb(160, 200, 255)),
                     NodeKind::Entity(e) => (
-                        "◆",
+                        icons::ENTITY,
                         state
                             .game
                             .entity(&e.classname)
                             .map(|d| Color32::from_rgb((d.color.r * 255.0) as u8, (d.color.g * 255.0) as u8, (d.color.b * 255.0) as u8))
                             .unwrap_or(Color32::LIGHT_GRAY),
                     ),
-                    NodeKind::Brush(_) => ("■", Color32::GRAY),
-                    NodeKind::Instance(_) => ("⎘", Color32::from_rgb(255, 200, 120)),
-                    NodeKind::Mesh(_) => ("▲", Color32::from_rgb(200, 160, 255)),
-                    NodeKind::Terrain(_) => ("∿", Color32::from_rgb(140, 220, 120)),
-                    NodeKind::Scatter(_) => ("✿", Color32::from_rgb(120, 230, 150)),
+                    NodeKind::Brush(_) => (icons::BRUSH, Color32::GRAY),
+                    NodeKind::Instance(_) => (icons::INSTANCE, Color32::from_rgb(255, 200, 120)),
+                    NodeKind::Mesh(_) => (icons::MESH, Color32::from_rgb(200, 160, 255)),
+                    NodeKind::Terrain(_) => (icons::TERRAIN, Color32::from_rgb(140, 220, 120)),
+                    NodeKind::Scatter(_) => (icons::SCATTER, Color32::from_rgb(120, 230, 150)),
                 };
-                ui.label(RichText::new(icon).color(color));
+                ui.add(icon.image(icons::SMALL).tint(color));
                 let mut label = node.name();
                 if let NodeKind::Layer(_) = node.kind {
                     if state.current_layer == *id {
@@ -307,28 +319,58 @@ fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mu
             });
         }
     });
-    ui.separator();
-    ui.horizontal_wrapped(|ui| {
-        for (label, action) in [
-            ("Edit (Tab)", Action::EditMesh),
-            ("To Brushes", Action::ConvertToBrushes),
-            ("Subdivide", Action::MeshOp(crate::mesh_tool::MeshOp::Subdivide)),
-            ("Solidify", Action::MeshOp(crate::mesh_tool::MeshOp::Solidify)),
-            ("Weld", Action::MeshOp(crate::mesh_tool::MeshOp::MergeByDistance)),
-            ("Flip Normals", Action::MeshOp(crate::mesh_tool::MeshOp::Flip)),
-        ] {
-            if ui.small_button(label).clicked() {
-                actions.push(action);
+    section(ui, "Mesh Operations", true, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            for (label, action) in [
+                ("Edit (Tab)", Action::EditMesh),
+                ("To Brushes", Action::ConvertToBrushes),
+                ("Subdivide", Action::MeshOp(crate::mesh_tool::MeshOp::Subdivide)),
+                ("Solidify", Action::MeshOp(crate::mesh_tool::MeshOp::Solidify)),
+                ("Weld", Action::MeshOp(crate::mesh_tool::MeshOp::MergeByDistance)),
+                ("Flip Normals", Action::MeshOp(crate::mesh_tool::MeshOp::Flip)),
+            ] {
+                if ui.small_button(label).clicked() {
+                    actions.push(action);
+                }
             }
-        }
+        });
     });
-    ui.separator();
-    ui.label("Brush entity");
-    ui.horizontal_wrapped(|ui| {
-        for def in state.game.solid_entities() {
-            if ui.small_button(&def.classname).clicked() {
-                actions.push(Action::CreateBrushEntity(def.classname.clone()));
-            }
+    brush_entity_section(ui, state, actions);
+}
+
+/// Collapsible inspector section with a strong title.
+fn section<R>(ui: &mut Ui, title: &str, open: bool, add_contents: impl FnOnce(&mut Ui) -> R) {
+    egui::CollapsingHeader::new(RichText::new(title).strong()).id_salt(title).default_open(open).show(ui, add_contents);
+}
+
+fn sub_heading(ui: &mut Ui, text: &str) {
+    ui.label(RichText::new(text).weak());
+}
+
+/// Brush entity classes grouped like the entity browser, collapsed by default since the list is long.
+fn brush_entity_section(ui: &mut Ui, state: &EditorState, actions: &mut Vec<Action>) {
+    let mut groups: Vec<(String, Vec<&EntityDef>)> = Vec::new();
+    for def in state.game.solid_entities() {
+        let group = if def.group.is_empty() { "other".to_string() } else { def.group.clone() };
+        match groups.iter_mut().find(|(g, _)| *g == group) {
+            Some((_, list)) => list.push(def),
+            None => groups.push((group, vec![def])),
+        }
+    }
+    let title = format!("Make Brush Entity ({})", groups.iter().map(|(_, d)| d.len()).sum::<usize>());
+    egui::CollapsingHeader::new(RichText::new(title).strong()).id_salt("brush_entity_section").default_open(false).show(ui, |ui| {
+        if groups.is_empty() {
+            sub_heading(ui, "No brush entities, open a Godot project with a game config");
+        }
+        for (group, defs) in groups {
+            sub_heading(ui, &group);
+            ui.horizontal_wrapped(|ui| {
+                for def in defs {
+                    if ui.small_button(&def.classname).on_hover_text(&def.description).clicked() {
+                        actions.push(Action::CreateBrushEntity(def.classname.clone()));
+                    }
+                }
+            });
         }
     });
 }
@@ -504,98 +546,104 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
 }
 
 fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>) {
+    use crate::entity_wizards::{DoorKind, HingeSide, SlideDirection};
     let map = &state.doc.map;
     let brushes = state.doc.selection.brushes(map);
     let meshes = state.doc.selection.meshes(map);
+    let entity_count = state.doc.selection.nodes.iter().filter(|id| map.entity(**id).is_some()).count();
     let bounds = map.bounds_of(state.doc.selection.nodes.iter().copied());
     ui.heading(format!("{} objects", state.doc.selection.nodes.len()));
     ui.label(format!("{} brushes, {} meshes", brushes.len(), meshes.len()));
-    ui.horizontal_wrapped(|ui| {
-        for (label, action) in [
-            ("Edit Mesh", Action::EditMesh),
-            ("To Mesh", Action::ConvertToMesh),
-            ("Join Meshes", Action::JoinMeshes),
-            ("Duplicate Linked", Action::DuplicateLinked),
-            ("Cordon", Action::SetCordonFromSelection),
-        ] {
-            if ui.small_button(label).clicked() {
-                actions.push(action);
-            }
-        }
-    });
     if !bounds.is_empty() {
-        let s = bounds.size();
-        ui.label(format!("Size {} x {} x {}", s.x, s.y, s.z));
-        let c = bounds.center();
-        ui.label(format!("Center {:.2} {:.2} {:.2}", c.x, c.y, c.z));
+        let (s, c) = (bounds.size(), bounds.center());
+        ui.label(RichText::new(format!("Size {} x {} x {}, center {:.2} {:.2} {:.2}", s.x, s.y, s.z, c.x, c.y, c.z)).weak());
     }
-    ui.separator();
-    ui.label(RichText::new("Gameplay").strong());
-    ui.horizontal_wrapped(|ui| {
-        use crate::entity_wizards::{DoorKind, HingeSide, SlideDirection};
-        for (label, tip, action) in [
-            (
-                "Door, hinge left",
-                "func_door_rotating hinged on the left end, with a trigger that opens it",
-                Action::MakeDoor { kind: DoorKind::Hinged { side: HingeSide::Left, angle: 95.0 }, trigger: true },
-            ),
-            (
-                "Door, hinge right",
-                "func_door_rotating hinged on the right end, with a trigger that opens it",
-                Action::MakeDoor { kind: DoorKind::Hinged { side: HingeSide::Right, angle: 95.0 }, trigger: true },
-            ),
-            (
-                "Sliding door up",
-                "func_door that slides up by its height",
-                Action::MakeDoor { kind: DoorKind::Sliding { direction: SlideDirection::Up, lip: 4.0 }, trigger: true },
-            ),
-            (
-                "Sliding door sideways",
-                "func_door that slides along its width",
-                Action::MakeDoor { kind: DoorKind::Sliding { direction: SlideDirection::Left, lip: 4.0 }, trigger: true },
-            ),
-            ("Lift", "func_platform that travels up, drag its travel handle", Action::MakePlatform),
-            ("Trigger around", "trigger_multiple around the selection", Action::VolumeAroundSelection("trigger_multiple".into())),
-            ("Spawn area around", "trigger_spawn_area around the selection", Action::VolumeAroundSelection("trigger_spawn_area".into())),
-            ("Blend material", "Current material blends into these faces", Action::SetBlendMaterial),
-        ] {
-            if ui.small_button(label).on_hover_text(tip).clicked() {
-                actions.push(action);
+    let buttons = |ui: &mut Ui, actions: &mut Vec<Action>, list: Vec<(&str, &str, Action)>| {
+        ui.horizontal_wrapped(|ui| {
+            for (label, tip, action) in list {
+                if ui.small_button(label).on_hover_text(tip).clicked() {
+                    actions.push(action);
+                }
             }
-        }
-        if state.doc.selection.nodes.iter().filter(|id| state.doc.map.entity(**id).is_some()).count() == 2 && ui.small_button("Link…").clicked() {
-            actions.push(Action::ShowLinkDialog);
+        });
+    };
+    section(ui, "Selection", true, |ui| {
+        buttons(
+            ui,
+            actions,
+            vec![
+                ("Edit Mesh", "Convert brushes to a mesh and edit it Blender style (Tab)", Action::EditMesh),
+                ("To Mesh", "Convert the selected brushes to meshes", Action::ConvertToMesh),
+                ("Join Meshes", "Join the selected meshes and brushes into one mesh", Action::JoinMeshes),
+                ("Duplicate Linked", "Linked copies update together when one is edited", Action::DuplicateLinked),
+                ("Cordon", "Limit the views and export to the selection bounds", Action::SetCordonFromSelection),
+                ("Blend material", "Current material blends into these faces", Action::SetBlendMaterial),
+            ],
+        );
+    });
+    section(ui, "Transform", true, |ui| {
+        buttons(
+            ui,
+            actions,
+            vec![
+                ("Rotate Y 90", "Rotate around the vertical axis", Action::Rotate { axis: 1, degrees: 90.0 }),
+                ("Rotate Y -90", "Rotate around the vertical axis", Action::Rotate { axis: 1, degrees: -90.0 }),
+                ("Flip X", "Mirror along X", Action::Flip { axis: 0 }),
+                ("Flip Y", "Mirror along Y", Action::Flip { axis: 1 }),
+                ("Flip Z", "Mirror along Z", Action::Flip { axis: 2 }),
+                ("Snap Vertices", "Snap every vertex to the grid", Action::SnapVertices),
+            ],
+        );
+    });
+    section(ui, "Gameplay", true, |ui| {
+        sub_heading(ui, "Doors and movers");
+        buttons(
+            ui,
+            actions,
+            vec![
+                (
+                    "Door, hinge left",
+                    "func_door_rotating hinged on the left end, with a trigger that opens it",
+                    Action::MakeDoor { kind: DoorKind::Hinged { side: HingeSide::Left, angle: 95.0 }, trigger: true },
+                ),
+                (
+                    "Door, hinge right",
+                    "func_door_rotating hinged on the right end, with a trigger that opens it",
+                    Action::MakeDoor { kind: DoorKind::Hinged { side: HingeSide::Right, angle: 95.0 }, trigger: true },
+                ),
+                (
+                    "Sliding door up",
+                    "func_door that slides up by its height",
+                    Action::MakeDoor { kind: DoorKind::Sliding { direction: SlideDirection::Up, lip: 4.0 }, trigger: true },
+                ),
+                (
+                    "Sliding door sideways",
+                    "func_door that slides along its width",
+                    Action::MakeDoor { kind: DoorKind::Sliding { direction: SlideDirection::Left, lip: 4.0 }, trigger: true },
+                ),
+                ("Lift", "func_platform that travels up, drag its travel handle", Action::MakePlatform),
+            ],
+        );
+        sub_heading(ui, "Volumes around the selection");
+        buttons(
+            ui,
+            actions,
+            vec![
+                ("Trigger around", "trigger_multiple around the selection", Action::VolumeAroundSelection("trigger_multiple".into())),
+                ("Spawn area around", "trigger_spawn_area around the selection", Action::VolumeAroundSelection("trigger_spawn_area".into())),
+            ],
+        );
+        if entity_count == 2 {
+            sub_heading(ui, "Logic");
+            buttons(ui, actions, vec![("Link…", "Connect an output of one selected entity to an input of the other", Action::ShowLinkDialog)]);
         }
     });
-    ui.separator();
-    ui.label("Brush entity");
-    ui.horizontal_wrapped(|ui| {
-        for def in state.game.solid_entities() {
-            if ui.small_button(&def.classname).on_hover_text(&def.description).clicked() {
-                actions.push(Action::CreateBrushEntity(def.classname.clone()));
-            }
-        }
-    });
-    ui.separator();
-    ui.horizontal_wrapped(|ui| {
-        for (label, action) in [
-            ("Rotate Y 90", Action::Rotate { axis: 1, degrees: 90.0 }),
-            ("Rotate Y -90", Action::Rotate { axis: 1, degrees: -90.0 }),
-            ("Flip X", Action::Flip { axis: 0 }),
-            ("Flip Z", Action::Flip { axis: 2 }),
-            ("Flip Y", Action::Flip { axis: 1 }),
-            ("Snap Vertices", Action::SnapVertices),
-        ] {
-            if ui.small_button(label).clicked() {
-                actions.push(action);
-            }
-        }
-    });
+    brush_entity_section(ui, state, actions);
 }
 
 fn worldspawn_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState) {
     ui.heading("Map (worldspawn)");
-    ui.label(RichText::new("Nothing selected. These properties apply to the whole map.").weak());
+    ui.label(RichText::new("Nothing selected. Click an object in a view or the outliner to inspect it. These properties apply to the whole map.").weak());
     let props: Vec<(String, String)> = state.doc.map.properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let def = state.game.entity("worldspawn").cloned();
     egui::Grid::new("world_props").num_columns(2).striped(true).show(ui, |ui| {
@@ -720,29 +768,53 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
         }
     }
 
-    ui.separator();
-    ui.label(RichText::new("Properties").strong());
-    egui::Grid::new("entity_props").num_columns(3).striped(true).show(ui, |ui| {
-        if let Some(d) = &def {
-            for p in &d.properties {
-                let set = entity.properties.contains_key(&p.name);
-                let label = if set { RichText::new(&p.name).strong() } else { RichText::new(&p.name) };
-                ui.label(label).on_hover_text(if p.description.is_empty() { &p.name } else { &p.description });
-                let mut value = entity.properties.get(&p.name).cloned().unwrap_or_else(|| p.default.clone());
-                if property_editor(ui, p.ty, &p.options, &mut value, state) {
-                    let key = p.name.clone();
-                    state.doc.edit_coalesced(&format!("Set {key}"), |m, s| {
-                        for sel in s.nodes.clone() {
-                            if let Some(e) = m.entity_mut(sel) {
-                                e.properties.insert(key.clone(), value.clone());
+    egui::CollapsingHeader::new(RichText::new("Properties").strong()).id_salt("entity_properties").default_open(true).show(ui, |ui| {
+        egui::Grid::new("entity_props").num_columns(3).striped(true).show(ui, |ui| {
+            if let Some(d) = &def {
+                for p in &d.properties {
+                    let set = entity.properties.contains_key(&p.name);
+                    let label = if set { RichText::new(&p.name).strong() } else { RichText::new(&p.name) };
+                    ui.label(label).on_hover_text(if p.description.is_empty() { &p.name } else { &p.description });
+                    let mut value = entity.properties.get(&p.name).cloned().unwrap_or_else(|| p.default.clone());
+                    if property_editor(ui, p.ty, &p.options, &mut value, state) {
+                        let key = p.name.clone();
+                        state.doc.edit_coalesced(&format!("Set {key}"), |m, s| {
+                            for sel in s.nodes.clone() {
+                                if let Some(e) = m.entity_mut(sel) {
+                                    e.properties.insert(key.clone(), value.clone());
+                                }
                             }
+                            let _ = id;
+                        });
+                    }
+                    if set && ui.small_button("×").on_hover_text("Reset to default").clicked() {
+                        let key = p.name.clone();
+                        state.doc.edit("Reset Property", |m, _| {
+                            if let Some(e) = m.entity_mut(id) {
+                                e.properties.remove(&key);
+                            }
+                        });
+                    }
+                    ui.end_row();
+                }
+            }
+            for (k, v) in &entity.properties {
+                if def.as_ref().is_some_and(|d| d.property(k).is_some()) {
+                    continue;
+                }
+                ui.label(RichText::new(k).italics());
+                let mut value = v.clone();
+                if ui.text_edit_singleline(&mut value).changed() {
+                    let key = k.clone();
+                    state.doc.edit_coalesced(&format!("Set {key}"), |m, _| {
+                        if let Some(e) = m.entity_mut(id) {
+                            e.properties.insert(key, value);
                         }
-                        let _ = id;
                     });
                 }
-                if set && ui.small_button("×").on_hover_text("Reset to default").clicked() {
-                    let key = p.name.clone();
-                    state.doc.edit("Reset Property", |m, _| {
+                if ui.small_button("×").clicked() {
+                    let key = k.clone();
+                    state.doc.edit("Remove Property", |m, _| {
                         if let Some(e) = m.entity_mut(id) {
                             e.properties.remove(&key);
                         }
@@ -750,46 +822,26 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
                 }
                 ui.end_row();
             }
-        }
-        for (k, v) in &entity.properties {
-            if def.as_ref().is_some_and(|d| d.property(k).is_some()) {
-                continue;
-            }
-            ui.label(RichText::new(k).italics());
-            let mut value = v.clone();
-            if ui.text_edit_singleline(&mut value).changed() {
-                let key = k.clone();
-                state.doc.edit_coalesced(&format!("Set {key}"), |m, _| {
-                    if let Some(e) = m.entity_mut(id) {
-                        e.properties.insert(key, value);
-                    }
-                });
-            }
-            if ui.small_button("×").clicked() {
-                let key = k.clone();
-                state.doc.edit("Remove Property", |m, _| {
-                    if let Some(e) = m.entity_mut(id) {
-                        e.properties.remove(&key);
-                    }
-                });
-            }
-            ui.end_row();
-        }
-    });
-    add_property_row(ui, ps, |k, v| {
-        state.doc.edit("Add Property", |m, _| {
-            if let Some(e) = m.entity_mut(id) {
-                e.properties.insert(k, v);
-            }
+        });
+        add_property_row(ui, ps, |k, v| {
+            state.doc.edit("Add Property", |m, _| {
+                if let Some(e) = m.entity_mut(id) {
+                    e.properties.insert(k, v);
+                }
+            });
         });
     });
 
-    ui.separator();
-    io_editor(ui, state, id, &entity, def.as_ref());
+    let title = format!("Outputs (I/O, {})", entity.outputs.len());
+    egui::CollapsingHeader::new(RichText::new(title).strong()).id_salt("entity_outputs").default_open(true).show(ui, |ui| {
+        io_editor(ui, state, id, &entity, def.as_ref());
+    });
 }
 
 fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &gt_doc::Entity, def: Option<&EntityDef>) {
-    ui.label(RichText::new("Outputs (I/O)").strong());
+    if entity.outputs.is_empty() {
+        ui.label(RichText::new("No outputs. Outputs fire inputs on other entities, for example a trigger opening a door.").weak());
+    }
     let targetnames: Vec<(String, String)> =
         state.doc.map.entities().filter_map(|(_, e)| e.targetname().map(|n| (n.to_string(), e.classname.clone()))).collect();
     let mut outputs = entity.outputs.clone();
@@ -1031,160 +1083,167 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
         ui.label(RichText::new(format!("{} x {} px{details}", size[0], size[1])).weak());
     }
 
-    if info.explicit.is_none() {
-        let mut uv = info.uv.clone();
-        let mut changed = false;
-        egui::Grid::new("uv").num_columns(3).show(ui, |ui| {
-            ui.label("offset");
-            changed |= ui.add(egui::DragValue::new(&mut uv.offset.x).speed(1.0)).changed();
-            changed |= ui.add(egui::DragValue::new(&mut uv.offset.y).speed(1.0)).changed();
-            ui.end_row();
-            ui.label("scale");
-            changed |= ui.add(egui::DragValue::new(&mut uv.scale.x).speed(0.01)).changed();
-            changed |= ui.add(egui::DragValue::new(&mut uv.scale.y).speed(0.01)).changed();
-            ui.end_row();
-            ui.label("rotation");
-            let mut rot = uv.rotation;
-            if ui.add(egui::DragValue::new(&mut rot).speed(1.0).suffix("°")).changed() {
-                let delta = rot - uv.rotation;
-                uv.rotate(delta);
-                changed = true;
+    section(ui, "Alignment", true, |ui| {
+        if info.explicit.is_none() {
+            let mut uv = info.uv.clone();
+            let mut changed = false;
+            egui::Grid::new("uv").num_columns(3).show(ui, |ui| {
+                ui.label("offset");
+                changed |= ui.add(egui::DragValue::new(&mut uv.offset.x).speed(1.0)).changed();
+                changed |= ui.add(egui::DragValue::new(&mut uv.offset.y).speed(1.0)).changed();
+                ui.end_row();
+                ui.label("scale");
+                changed |= ui.add(egui::DragValue::new(&mut uv.scale.x).speed(0.01)).changed();
+                changed |= ui.add(egui::DragValue::new(&mut uv.scale.y).speed(0.01)).changed();
+                ui.end_row();
+                ui.label("rotation");
+                let mut rot = uv.rotation;
+                if ui.add(egui::DragValue::new(&mut rot).speed(1.0).suffix("°")).changed() {
+                    let delta = rot - uv.rotation;
+                    uv.rotate(delta);
+                    changed = true;
+                }
+                ui.end_row();
+            });
+            if changed {
+                let (offset, scale, rotation_delta) = (uv.offset, uv.scale, uv.rotation - info.uv.rotation);
+                edit_planar(state, &faces, "Set UV", true, |uv, _, _, _| {
+                    uv.offset = offset;
+                    uv.scale = scale;
+                    if rotation_delta.abs() > 1e-9 {
+                        uv.rotate(rotation_delta);
+                    }
+                });
             }
-            ui.end_row();
+        } else {
+            ui.label(RichText::new("explicit UVs (edit them in the UV editor)").weak());
+        }
+
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Justify");
+            for j in gt_geom::Justify::ALL {
+                if ui.small_button(j.label()).clicked() {
+                    actions.push(Action::Justify(j));
+                }
+            }
+            ui.checkbox(&mut state.treat_as_one, "Treat as one");
         });
-        if changed {
-            let (offset, scale, rotation_delta) = (uv.offset, uv.scale, uv.rotation - info.uv.rotation);
-            edit_planar(state, &faces, "Set UV", true, |uv, _, _, _| {
-                uv.offset = offset;
-                uv.scale = scale;
-                if rotation_delta.abs() > 1e-9 {
-                    uv.rotate(rotation_delta);
+        ui.horizontal_wrapped(|ui| {
+            let mut op: Option<(&str, UvOp)> = None;
+            if ui.button("Reset").clicked() {
+                op = Some(("Reset UV", Box::new(|uv, n, _, _| *uv = FaceUv::paraxial(n, DVec2::ONE))));
+            }
+            if ui.button("Align to Face").clicked() {
+                op = Some(("Align UV", Box::new(|uv, n, _, _| *uv = FaceUv::face_aligned(n, uv.scale))));
+            }
+            if ui.button("Align to View").clicked() {
+                actions.push(Action::AlignTextureToView);
+            }
+            if ui.button("Flip H").clicked() {
+                op = Some(("Flip UV", Box::new(|uv, _, _, _| uv.scale.x = -uv.scale.x)));
+            }
+            if ui.button("Flip V").clicked() {
+                op = Some(("Flip UV", Box::new(|uv, _, _, _| uv.scale.y = -uv.scale.y)));
+            }
+            if ui.button("⟲ 90").clicked() {
+                crate::texture_ops::rotate(state, &faces, -90.0);
+            }
+            if ui.button("⟳ 90").clicked() {
+                crate::texture_ops::rotate(state, &faces, 90.0);
+            }
+            if ui.button("× 2").on_hover_text("Double the texture size").clicked() {
+                crate::texture_ops::scale(state, &faces, DVec2::splat(2.0));
+            }
+            if ui.button("÷ 2").on_hover_text("Halve the texture size").clicked() {
+                crate::texture_ops::scale(state, &faces, DVec2::splat(0.5));
+            }
+            if let Some((label, f)) = op {
+                edit_planar(state, &faces, label, false, f);
+            }
+        });
+    });
+    section(ui, "Texture Tools", true, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Texel density");
+            for d in [0.25, 0.5, 1.0, 2.0, 4.0] {
+                if ui.small_button(format!("{d}")).on_hover_text(format!("{d} world units per texture pixel")).clicked() {
+                    actions.push(Action::TexelDensity(d));
+                }
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Copy").on_hover_text("Copy material and alignment").clicked() {
+                actions.push(Action::CopyAlignment);
+            }
+            let can_paste = state.uv_clipboard.is_some();
+            if ui.add_enabled(can_paste, egui::Button::new("Paste Alignment")).clicked() {
+                actions.push(Action::PasteAlignment);
+            }
+            if ui.button("Hotspot").on_hover_text("Fit to the best rectangle of <texture>.hotspots.json").clicked() {
+                actions.push(Action::HotspotTexture);
+            }
+            if ui.button("Hotspot Editor").clicked() {
+                actions.push(Action::ShowHotspotEditor);
+            }
+            if ui.button("UV Editor").clicked() {
+                actions.push(Action::ShowUvEditor);
+            }
+        });
+        if is_mesh {
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Mesh UVs");
+                for k in crate::texture_ops::MeshUvKind::ALL {
+                    if ui.small_button(k.label()).clicked() {
+                        actions.push(Action::MeshUv(k));
+                    }
                 }
             });
         }
-    } else {
-        ui.label(RichText::new("explicit UVs (edit them in the UV editor)").weak());
-    }
-
-    ui.horizontal_wrapped(|ui| {
-        ui.label("justify");
-        for j in gt_geom::Justify::ALL {
-            if ui.small_button(j.label()).clicked() {
-                actions.push(Action::Justify(j));
-            }
-        }
-        ui.checkbox(&mut state.treat_as_one, "treat as one");
     });
-    ui.horizontal_wrapped(|ui| {
-        let mut op: Option<(&str, UvOp)> = None;
-        if ui.button("Reset").clicked() {
-            op = Some(("Reset UV", Box::new(|uv, n, _, _| *uv = FaceUv::paraxial(n, DVec2::ONE))));
-        }
-        if ui.button("Align to Face").clicked() {
-            op = Some(("Align UV", Box::new(|uv, n, _, _| *uv = FaceUv::face_aligned(n, uv.scale))));
-        }
-        if ui.button("Align to View").clicked() {
-            actions.push(Action::AlignTextureToView);
-        }
-        if ui.button("Flip H").clicked() {
-            op = Some(("Flip UV", Box::new(|uv, _, _, _| uv.scale.x = -uv.scale.x)));
-        }
-        if ui.button("Flip V").clicked() {
-            op = Some(("Flip UV", Box::new(|uv, _, _, _| uv.scale.y = -uv.scale.y)));
-        }
-        if ui.button("⟲ 90").clicked() {
-            crate::texture_ops::rotate(state, &faces, -90.0);
-        }
-        if ui.button("⟳ 90").clicked() {
-            crate::texture_ops::rotate(state, &faces, 90.0);
-        }
-        if ui.button("× 2").on_hover_text("Double the texture size").clicked() {
-            crate::texture_ops::scale(state, &faces, DVec2::splat(2.0));
-        }
-        if ui.button("÷ 2").on_hover_text("Halve the texture size").clicked() {
-            crate::texture_ops::scale(state, &faces, DVec2::splat(0.5));
-        }
-        if let Some((label, f)) = op {
-            edit_planar(state, &faces, label, false, f);
-        }
-    });
-    ui.horizontal_wrapped(|ui| {
-        ui.label("texel density");
-        for d in [0.25, 0.5, 1.0, 2.0, 4.0] {
-            if ui.small_button(format!("{d}")).on_hover_text(format!("{d} world units per texture pixel")).clicked() {
-                actions.push(Action::TexelDensity(d));
-            }
-        }
-    });
-    ui.horizontal_wrapped(|ui| {
-        if ui.button("Copy").on_hover_text("Copy material and alignment").clicked() {
-            actions.push(Action::CopyAlignment);
-        }
-        let can_paste = state.uv_clipboard.is_some();
-        if ui.add_enabled(can_paste, egui::Button::new("Paste Alignment")).clicked() {
-            actions.push(Action::PasteAlignment);
-        }
-        if ui.button("Hotspot").on_hover_text("Fit to the best rectangle of <texture>.hotspots.json").clicked() {
-            actions.push(Action::HotspotTexture);
-        }
-        if ui.button("Hotspot Editor").clicked() {
-            actions.push(Action::ShowHotspotEditor);
-        }
-        if ui.button("UV Editor").clicked() {
-            actions.push(Action::ShowUvEditor);
-        }
-    });
-    if is_mesh {
-        ui.horizontal_wrapped(|ui| {
-            ui.label("mesh UVs");
-            for k in crate::texture_ops::MeshUvKind::ALL {
-                if ui.small_button(k.label()).clicked() {
-                    actions.push(Action::MeshUv(k));
-                }
-            }
-        });
-    }
 
     if is_mesh {
         return;
     }
-    ui.separator();
-    ui.label(RichText::new("Surface properties").strong());
-    let face = state.doc.map.brush(bid).and_then(|b| b.faces.get(fi)).cloned();
-    let Some(face) = face else { return };
-    let mut props = face.data.props.clone();
-    let mut prop_changed = false;
-    let mut remove = None;
-    for (k, v) in props.iter_mut() {
-        ui.horizontal(|ui| {
-            ui.label(k.as_str());
-            prop_changed |= ui.text_edit_singleline(v).changed();
-            if ui.small_button("×").clicked() {
-                remove = Some(k.clone());
-            }
-        });
-    }
-    if let Some(k) = remove {
-        props.remove(&k);
-        prop_changed = true;
-    }
-    ui.horizontal(|ui| {
-        for preset in ["collision_layer", "smoothing_group", "no_collision", "no_shadow"] {
-            if !props.contains_key(preset) && ui.small_button(format!("+ {preset}")).clicked() {
-                props.insert(preset.into(), "1".into());
-                prop_changed = true;
-            }
+    section(ui, "Surface Properties", true, |ui| {
+        let face = state.doc.map.brush(bid).and_then(|b| b.faces.get(fi)).cloned();
+        let Some(face) = face else { return };
+        if face.data.props.is_empty() {
+            ui.label(RichText::new("No surface properties. Add one below, Godot reads them per face.").weak());
         }
-    });
-    if prop_changed {
-        state.doc.edit_coalesced("Set Face Properties", |m, _| {
-            for (id, f) in &faces {
-                if let Some(face) = m.brush_mut(*id).and_then(|b| b.faces.get_mut(*f)) {
-                    face.data.props = props.clone();
+        let mut props = face.data.props.clone();
+        let mut prop_changed = false;
+        let mut remove = None;
+        for (k, v) in props.iter_mut() {
+            ui.horizontal(|ui| {
+                ui.label(k.as_str());
+                prop_changed |= ui.text_edit_singleline(v).changed();
+                if ui.small_button("×").clicked() {
+                    remove = Some(k.clone());
+                }
+            });
+        }
+        if let Some(k) = remove {
+            props.remove(&k);
+            prop_changed = true;
+        }
+        ui.horizontal_wrapped(|ui| {
+            for preset in ["collision_layer", "smoothing_group", "no_collision", "no_shadow"] {
+                if !props.contains_key(preset) && ui.small_button(format!("+ {preset}")).clicked() {
+                    props.insert(preset.into(), "1".into());
+                    prop_changed = true;
                 }
             }
         });
-    }
+        if prop_changed {
+            state.doc.edit_coalesced("Set Face Properties", |m, _| {
+                for (id, f) in &faces {
+                    if let Some(face) = m.brush_mut(*id).and_then(|b| b.faces.get_mut(*f)) {
+                        face.data.props = props.clone();
+                    }
+                }
+            });
+        }
+    });
 }
 
 /// Short description of a Godot material's preview relevant settings.
@@ -1411,6 +1470,11 @@ pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
         .map(|e| e.name.clone())
         .collect();
 
+    if state.materials.entries.is_empty() {
+        ui.label(RichText::new("No materials found. Open a Godot project with textures (Godot > Open Godot Project…).").weak());
+    } else if names.is_empty() {
+        ui.label(RichText::new("No materials match the search and filters").weak());
+    }
     let size = ps.thumb_size;
     let cell = Vec2::new(size + 8.0, size + 22.0);
     let cols = ((ui.available_width() / cell.x).floor() as usize).max(1);
@@ -1444,6 +1508,11 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
             Some((_, list)) => list.push(def.clone()),
             None => groups.push((group, vec![def.clone()])),
         }
+    }
+    if state.game.entities.is_empty() {
+        ui.label(RichText::new("No entity definitions. Open a Godot project with a game config (Godot > Open Godot Project…).").weak());
+    } else if groups.is_empty() {
+        ui.label(RichText::new("No entities match the search").weak());
     }
     ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for (group, defs) in groups {
@@ -1587,6 +1656,10 @@ pub const TOOL_HELP: [(&str, &str); 14] = [
     ("Measure", "Drag or click two points."),
     ("Texture", "Right click applies, Alt+right wraps, Alt+click picks, drag slides, Ctrl+wheel scales, Alt+wheel rotates."),
 ];
+
+pub fn tool_help(tool: crate::tools::ToolKind) -> &'static str {
+    TOOL_HELP.iter().find(|(name, _)| *name == tool.label()).map(|(_, help)| *help).unwrap_or_default()
+}
 
 pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
     use crate::code_refs::{self, CodeKind};
@@ -1741,6 +1814,10 @@ pub fn history(ui: &mut Ui, state: &mut EditorState) {
     let redo: Vec<String> = state.doc.history.redo_labels().map(str::to_string).collect();
     let mut undo_steps = 0;
     let mut redo_steps = 0;
+    if undo.is_empty() && redo.is_empty() {
+        ui.label(RichText::new("No edits yet. Every change shows up here, click one to undo back to it.").weak());
+        return;
+    }
     ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for (i, label) in redo.iter().enumerate().rev() {
             if ui.selectable_label(false, RichText::new(label).weak()).clicked() {

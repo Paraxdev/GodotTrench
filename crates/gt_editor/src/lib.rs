@@ -8,6 +8,7 @@ pub mod entity_wizards;
 pub mod extra_tools;
 pub mod gizmos;
 pub mod hotspot_editor;
+pub mod icons;
 pub mod live_link;
 pub mod materials;
 pub mod mcp;
