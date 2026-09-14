@@ -332,14 +332,16 @@ func generate_entity_node(entity_data: _EntityData, entity_index: int) -> Node:
 ## Main entity assembly process called by [FuncGodotMap]. Generates and sorts group nodes in the [SceneTree] first, 
 ## then generates and assembles [Node]s based upon the provided [FuncGodotData.EntityData] and adds them to the [SceneTree].
 func build(map_node: FuncGodotMap, entities: Array[_EntityData], groups: Array[_GroupData]) -> void:
-	var scene_root := map_node.get_tree().edited_scene_root if map_node.is_inside_tree() else map_node
+	# GodotTrench: one owner rule for every generated node, see GodotTrenchBuild.scene_owner.
+	var scene_root := GodotTrenchBuild.scene_owner(map_node)
 	build_flags = map_node.build_flags
-	
+
 	if map_settings.use_groups_hierarchy:
 		declare_step.emit("Generating %s groups" % groups.size())
 		# Generate group nodes
 		for group in groups:
 			group.node = generate_group_node(group)
+			group.node.set_meta(GodotTrenchBuild.GROUP_META, group.id)
 		# Sort hierarchy and add them to the map
 		for group in groups:
 			if group.parent_id < 0:
@@ -351,34 +353,43 @@ func build(map_node: FuncGodotMap, entities: Array[_EntityData], groups: Array[_
 						parent.node.add_child(group.node)
 						group.node.owner = scene_root
 		declare_step.emit("Groups generation and sorting complete")
-	
+
 	declare_step.emit("Assembling %s entities" % entities.size())
-	var entity_node: Node = null
 	for entity_index in entities.size():
 		var entity_data : _EntityData = entities[entity_index]
-		entity_node = generate_entity_node(entity_data, entity_index)
-		if entity_node:
-			if not map_settings.use_groups_hierarchy or not entity_data.group:
-				map_node.add_child(entity_node)
-				if entity_index == 0:
-					map_node.move_child(entity_node, 0)
-			elif map_settings.use_groups_hierarchy:
-				for group in groups:
-					if entity_data.group.id == group.id:
-						group.node.add_child(entity_node)
-			
-			entity_node.owner = scene_root
-			if entity_data.mesh_instance:
-				entity_data.mesh_instance.owner = scene_root
-			for shape in entity_data.collision_shapes:
-				if shape:
-					shape.owner = scene_root
-			if entity_data.occluder_instance:
-				entity_data.occluder_instance.owner = scene_root
-			
-			entity_data.node = entity_node
-			apply_entity_properties(entity_node, entity_data)
+		var parent: Node = map_node
+		if map_settings.use_groups_hierarchy and entity_data.group:
+			parent = null
+			for group in groups:
+				if entity_data.group.id == group.id:
+					parent = group.node
+		var entity_node := attach_entity(generate_entity_node(entity_data, entity_index), entity_data, parent, scene_root)
+		if entity_node and entity_index == 0 and parent == map_node:
+			map_node.move_child(entity_node, 0)
 	declare_step.emit("Entity assembly and property application complete")
 
 	GodotTrenchIO.setup(entities, scene_root)
 	declare_step.emit("Entity I/O connections complete")
+
+## GodotTrench: adds a node made by [method generate_entity_node] under [param parent], sets owners and applies the
+## entity properties. Returns [param entity_node], or null when there is no node or no parent.
+func attach_entity(entity_node: Node, entity_data: _EntityData, parent: Node, scene_root: Node) -> Node:
+	if not entity_node:
+		return null
+	if not parent:
+		entity_node.free()
+		return null
+	parent.add_child(entity_node)
+	entity_node.owner = scene_root
+	if entity_data.mesh_instance:
+		entity_data.mesh_instance.owner = scene_root
+	for shape in entity_data.collision_shapes:
+		if shape:
+			shape.owner = scene_root
+	if entity_data.occluder_instance:
+		entity_data.occluder_instance.owner = scene_root
+	if entity_data.node_id >= 0:
+		entity_node.set_meta(GodotTrenchBuild.ID_META, entity_data.node_id)
+	entity_data.node = entity_node
+	apply_entity_properties(entity_node, entity_data)
+	return entity_node

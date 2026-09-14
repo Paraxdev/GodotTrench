@@ -53,28 +53,80 @@ static func _decode_u8(text: String) -> PackedByteArray:
 ## Builds terrain nodes for every parsed terrain and adds them under the map (or their group).
 static func build_all(map_node: Node3D, terrains: Array[Dictionary], settings: FuncGodotMapSettings) -> Array[GodotTrenchTerrain]:
 	var out: Array[GodotTrenchTerrain] = []
-	if terrains.is_empty():
-		return out
-	# Same owner rule as the entity assembler: the edited scene in the editor, the map node when built outside a tree.
-	var scene_root: Node = map_node
-	if map_node.is_inside_tree():
-		scene_root = map_node.get_tree().edited_scene_root
 	for entry in terrains:
-		var terrain := create(entry["data"], entry.get("offset", Vector3.ZERO), settings)
-		if not terrain:
-			continue
-		terrain.name = "terrain_%d" % int(entry.get("id", out.size()))
 		var group = entry.get("group", null)
 		var parent: Node = map_node
 		if settings.use_groups_hierarchy and group and group.node:
 			parent = group.node
-		parent.add_child(terrain)
-		if scene_root:
-			terrain.owner = scene_root
-			for child in terrain.get_children():
-				child.owner = scene_root
-		out.append(terrain)
+		var terrain := build_one(map_node, parent, entry["data"], entry.get("offset", Vector3.ZERO), int(entry.get("id", out.size())), settings)
+		if terrain:
+			out.append(terrain)
 	return out
+
+## Creates one terrain node named after its map node id under [param parent], owned like the other generated nodes.
+static func build_one(map_node: Node, parent: Node, data: Dictionary, offset: Vector3, id: int, settings: FuncGodotMapSettings) -> GodotTrenchTerrain:
+	var terrain := create(data, offset, settings)
+	if not terrain:
+		return null
+	terrain.name = "terrain_%d" % id
+	terrain.set_meta(GodotTrenchBuild.ID_META, id)
+	parent.add_child(terrain)
+	var scene_root := GodotTrenchBuild.scene_owner(map_node)
+	terrain.owner = scene_root
+	for child in terrain.get_children():
+		child.owner = scene_root
+	return terrain
+
+## Surface arrays of the chunk starting at cell [param start], empty when every cell is a hole.
+static func _chunk_arrays(start: Vector2i, chunk_cells: int, res: Vector2i, cell: float, heights: PackedFloat32Array, splat: PackedByteArray, holes: PackedByteArray) -> Array:
+	var w := res.x
+	var cells := Vector2i(res.x - 1, res.y - 1)
+	var ci := start.x
+	var cj := start.y
+	var cw := mini(chunk_cells, cells.x - ci)
+	var ch := mini(chunk_cells, cells.y - cj)
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var uvs := PackedVector2Array()
+	for j in range(cj, cj + ch + 1):
+		for i in range(ci, ci + cw + 1):
+			var here := heights[j * w + i]
+			verts.append(Vector3(i * cell, here, j * cell))
+			var dx: float = heights[j * w + mini(i + 1, res.x - 1)] - heights[j * w + maxi(i - 1, 0)]
+			var dz: float = heights[mini(j + 1, res.y - 1) * w + i] - heights[maxi(j - 1, 0) * w + i]
+			normals.append(Vector3(-dx, 2.0 * cell, -dz).normalized())
+			var k := j * w + i
+			if splat.size() >= (k + 1) * 4:
+				colors.append(Color(splat[k * 4] / 255.0, splat[k * 4 + 1] / 255.0, splat[k * 4 + 2] / 255.0, splat[k * 4 + 3] / 255.0))
+			else:
+				colors.append(Color(1, 0, 0, 0))
+			uvs.append(Vector2(float(i) / cells.x, float(j) / cells.y))
+	var row := cw + 1
+	var indices := PackedInt32Array()
+	for y in range(cj, cj + ch):
+		for x in range(ci, ci + cw):
+			if holes.size() > y * cells.x + x and holes[y * cells.x + x] != 0:
+				continue
+			var p00 := (y - cj) * row + (x - ci)
+			var p10 := p00 + 1
+			var p01 := p00 + row
+			var p11 := p01 + 1
+			# Same alternating diagonal as the editor, wound clockwise for Godot's front faces.
+			if (x + y) % 2 == 0:
+				indices.append_array([p00, p11, p01, p00, p10, p11])
+			else:
+				indices.append_array([p00, p10, p01, p01, p10, p11])
+	if indices.is_empty():
+		return []
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_INDEX] = indices
+	return arrays
 
 static func create(data: Dictionary, offset: Vector3, settings: FuncGodotMapSettings) -> GodotTrenchTerrain:
 	var res_raw: Array = data.get("resolution", [0, 0])
@@ -113,63 +165,33 @@ static func create(data: Dictionary, offset: Vector3, settings: FuncGodotMapSett
 	material.set_shader_parameter("tiles", tiles)
 	material.set_shader_parameter("map_offset", t.position)
 
-	var w := res.x
 	var cells := Vector2i(res.x - 1, res.y - 1)
-	var h := func(i: int, j: int) -> float: return t.heights[clampi(j, 0, res.y - 1) * w + clampi(i, 0, res.x - 1)]
-	var cj := 0
-	while cj < cells.y:
-		var ci := 0
-		while ci < cells.x:
-			var cw := mini(chunk_cells, cells.x - ci)
-			var ch := mini(chunk_cells, cells.y - cj)
-			var verts := PackedVector3Array()
-			var normals := PackedVector3Array()
-			var colors := PackedColorArray()
-			var uvs := PackedVector2Array()
-			for j in range(cj, cj + ch + 1):
-				for i in range(ci, ci + cw + 1):
-					verts.append(Vector3(i * cell, h.call(i, j), j * cell))
-					var dx: float = h.call(i + 1, j) - h.call(i - 1, j)
-					var dz: float = h.call(i, j + 1) - h.call(i, j - 1)
-					normals.append(Vector3(-dx, 2.0 * cell, -dz).normalized())
-					var k := j * w + i
-					if splat.size() >= (k + 1) * 4:
-						colors.append(Color(splat[k * 4] / 255.0, splat[k * 4 + 1] / 255.0, splat[k * 4 + 2] / 255.0, splat[k * 4 + 3] / 255.0))
-					else:
-						colors.append(Color(1, 0, 0, 0))
-					uvs.append(Vector2(float(i) / cells.x, float(j) / cells.y))
-			var row := cw + 1
-			var indices := PackedInt32Array()
-			for y in range(cj, cj + ch):
-				for x in range(ci, ci + cw):
-					if holes.size() > y * cells.x + x and holes[y * cells.x + x] != 0:
-						continue
-					var p00 := (y - cj) * row + (x - ci)
-					var p10 := p00 + 1
-					var p01 := p00 + row
-					var p11 := p01 + 1
-					# Same alternating diagonal as the editor, wound clockwise for Godot's front faces.
-					if (x + y) % 2 == 0:
-						indices.append_array([p00, p11, p01, p00, p10, p11])
-					else:
-						indices.append_array([p00, p10, p01, p01, p10, p11])
-			if not indices.is_empty():
-				var arrays := []
-				arrays.resize(Mesh.ARRAY_MAX)
-				arrays[Mesh.ARRAY_VERTEX] = verts
-				arrays[Mesh.ARRAY_NORMAL] = normals
-				arrays[Mesh.ARRAY_COLOR] = colors
-				arrays[Mesh.ARRAY_TEX_UV] = uvs
-				arrays[Mesh.ARRAY_INDEX] = indices
-				var mesh := ArrayMesh.new()
-				mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-				mesh.surface_set_material(0, material)
-				var mi := MeshInstance3D.new()
-				mi.name = "chunk_%d_%d" % [ci / chunk_cells, cj / chunk_cells]
-				mi.mesh = mesh
-				t.add_child(mi)
-			ci += chunk_cells
-		cj += chunk_cells
+	var chunks: Array[Vector2i] = []
+	for cj in range(0, cells.y, chunk_cells):
+		for ci in range(0, cells.x, chunk_cells):
+			chunks.append(Vector2i(ci, cj))
+	var heights := t.heights
+	var surfaces := []
+	surfaces.resize(chunks.size())
+	var build_chunk := func(c: int) -> void:
+		surfaces[c] = _chunk_arrays(chunks[c], chunk_cells, res, cell, heights, splat, holes)
+	# GodotTrench: chunk arrays are plain data, only the ArrayMesh resources are created on this thread.
+	if GodotTrenchBuild.threaded() and chunks.size() > 1:
+		var task := WorkerThreadPool.add_group_task(build_chunk, chunks.size(), -1, false, "Build GodotTrench terrain chunks")
+		WorkerThreadPool.wait_for_group_task_completion(task)
+	else:
+		for c in chunks.size():
+			build_chunk.call(c)
+	for c in chunks.size():
+		if surfaces[c].is_empty():
+			continue
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, surfaces[c])
+		mesh.surface_set_material(0, material)
+		var mi := MeshInstance3D.new()
+		mi.name = "chunk_%d_%d" % [chunks[c].x / chunk_cells, chunks[c].y / chunk_cells]
+		mi.mesh = mesh
+		t.add_child(mi)
 
 	# HeightMapShape3D samples are one unit apart, so the shape is scaled uniformly by the cell size.
 	var shape := HeightMapShape3D.new()
