@@ -667,7 +667,7 @@ impl KeymapWindow {
                 ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text("filter").desired_width(160.0));
             });
             if self.recording.is_some() {
-                ui.label(RichText::new("Press the new shortcut (Esc cancels)").color(egui::Color32::from_rgb(255, 180, 80)));
+                ui.label(RichText::new("Press the new shortcut (Esc cancels)").color(crate::theme::YELLOW));
             }
             ui.separator();
             let active = commands::shortcuts(&state.prefs);
@@ -754,7 +754,7 @@ impl ScatterPaletteWindow {
                         let exists = project.as_ref().is_none_or(|root| {
                             crate::scatter_tool::is_classname(&item.source) || item.source.strip_prefix("res://").is_none_or(|rel| root.join(rel).is_file())
                         });
-                        let label = if exists { RichText::new(item.label()) } else { RichText::new(item.label()).color(egui::Color32::from_rgb(255, 130, 90)) };
+                        let label = if exists { RichText::new(item.label()) } else { RichText::new(item.label()).color(crate::theme::ERROR) };
                         ui.label(label).on_hover_text(if exists {
                             item.source.clone()
                         } else {

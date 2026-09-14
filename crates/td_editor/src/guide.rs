@@ -12,8 +12,8 @@ use crate::panels::tool_help;
 use crate::state::{EditorState, Shade};
 use crate::tools::ToolKind;
 
-const ACCENT: Color32 = Color32::from_rgb(255, 160, 80);
-const DONE: Color32 = Color32::from_rgb(120, 210, 120);
+const ACCENT: Color32 = crate::theme::ACCENT;
+const DONE: Color32 = crate::theme::SUCCESS;
 const POPOVER_WIDTH: f32 = 360.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

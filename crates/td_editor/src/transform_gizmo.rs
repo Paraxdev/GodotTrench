@@ -12,8 +12,8 @@ use crate::commands::axis_name;
 use crate::state::EditorState;
 use crate::tools::ToolKind;
 
-const AXIS_COLORS: [Color32; 3] = [Color32::from_rgb(235, 80, 80), Color32::from_rgb(120, 210, 90), Color32::from_rgb(80, 140, 245)];
-const HOT: Color32 = Color32::from_rgb(255, 210, 70);
+const AXIS_COLORS: [Color32; 3] = crate::theme::AXIS;
+const HOT: Color32 = crate::theme::YELLOW;
 /// Pointer distance in points that still grabs a handle.
 const GRAB: f32 = 8.0;
 const ROTATE_SNAP_DEGREES: f64 = 15.0;

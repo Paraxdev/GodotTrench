@@ -28,7 +28,7 @@ gltf = "1.4"
 eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "persistence", "x11", "wayland"] }
 egui = "0.36"
 egui-wgpu = "0.36"
-egui_dock = "0.21"
+egui_dock = { version = "0.21", features = ["serde"] }
 egui_extras = { version = "0.36", default-features = false, features = ["svg"] }
 rfd = "0.17"
 notify = "8"

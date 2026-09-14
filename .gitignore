@@ -6,3 +6,4 @@ godot/.godot/
 # FuncGodot writes generated materials next to textures on build.
 godot/demo/textures/base/*.tres
 /.worktrees
+__pycache__/
