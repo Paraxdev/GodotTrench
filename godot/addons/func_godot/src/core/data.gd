@@ -190,6 +190,8 @@ class EntityData extends RefCounted:
 	var outputs: Array[Dictionary] = []
 	## Node generated for this entity during assembly.
 	var node: Node = null
+	## TrenchDot: the map node id, written to the generated node for live updates. -1 outside .tdm maps.
+	var node_id: int = -1
 
 	## Checks the entity's FGD resource definition, returning whether the Solid Class has a [MeshInstance3D] built for it.
 	func is_visual() -> bool:
