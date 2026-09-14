@@ -352,7 +352,13 @@ impl App {
                         None => return err(format!("unknown tool {t}")),
                     }
                 }
-                ok(self.state_summary()["editor"].clone())
+                if let Some(live) = args["live_mode"].as_bool() {
+                    self.state.prefs.live_mode = live;
+                }
+                let mut summary = self.state_summary();
+                let mut editor = summary["editor"].take();
+                editor["godot_live_mode"] = json!(self.state.prefs.live_mode);
+                ok(editor)
             }
             "set_camera" => {
                 let Some(kind) = args["view"].as_str().and_then(view_kind) else { return err("unknown view") };
@@ -479,6 +485,12 @@ impl App {
                 "pixels_per_point": self.viewports.first().map(|v| (v.pixels_per_point as f64 * 1000.0).round() / 1000.0),
             },
             "game": { "name": s.game.name, "project_root": s.game.project_root, "entity_definitions": s.game.entities.len(), "materials": s.materials.entries.len() },
+            "godot": {
+                "executable": s.godot.exe, "connected": s.link_state.connected, "addon_outdated": s.link_state.outdated,
+                "project_open": s.godot_has_project(), "version": s.link_state.godot, "busy": s.link_state.busy,
+                "live_mode": s.prefs.live_mode, "live_session": s.live_active(),
+                "maps": s.link_state.maps.keys().collect::<Vec<_>>(),
+            },
             "undo": s.doc.history.undo_labels().take(10).collect::<Vec<_>>(),
             "redo": s.doc.history.redo_labels().take(10).collect::<Vec<_>>(),
             "status": s.status,
@@ -653,6 +665,11 @@ impl App {
             "hotspot_texture" => Action::HotspotTexture,
             "terrain_auto_paint" => Action::TerrainAutoPaint,
             "reload_models" => Action::ReloadModels,
+            "open_godot_editor" => Action::OpenGodotEditor,
+            "run_godot_project" => Action::RunGodotProject,
+            "focus_godot" => Action::FocusGodot,
+            "build_in_godot" => Action::BuildInGodot,
+            "toggle_live_mode" => Action::ToggleLiveMode,
             "insert_prefab" => {
                 let Some(path) = a["path"].as_str() else { return err("path required") };
                 let reference =

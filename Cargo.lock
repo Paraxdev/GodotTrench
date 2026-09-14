@@ -2862,6 +2862,7 @@ dependencies = [
  "td_formats",
  "td_geom",
  "td_render",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
