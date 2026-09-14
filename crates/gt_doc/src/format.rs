@@ -73,6 +73,10 @@ enum FileKind {
 }
 
 fn to_file_node(map: &Map, node: &Node) -> FileNode {
+    FileNode { children: node.children.iter().filter_map(|c| map.get(*c)).map(|c| to_file_node(map, c)).collect(), ..leaf_file_node(node) }
+}
+
+fn leaf_file_node(node: &Node) -> FileNode {
     let kind = match &node.kind {
         NodeKind::Layer(l) => FileKind::Layer(l.clone()),
         NodeKind::Group(g) => FileKind::Group(g.clone()),
@@ -83,13 +87,7 @@ fn to_file_node(map: &Map, node: &Node) -> FileNode {
         NodeKind::Terrain(t) => FileKind::Terrain(t.clone()),
         NodeKind::Scatter(s) => FileKind::Scatter(s.clone()),
     };
-    FileNode {
-        id: node.id.0,
-        kind,
-        hidden: node.hidden,
-        locked: node.locked,
-        children: node.children.iter().filter_map(|c| map.get(*c)).map(|c| to_file_node(map, c)).collect(),
-    }
+    FileNode { id: node.id.0, kind, hidden: node.hidden, locked: node.locked, children: Vec::new() }
 }
 
 pub fn to_value(map: &Map) -> Value {
@@ -105,6 +103,11 @@ pub fn to_value(map: &Map) -> Value {
 
 pub fn to_string(map: &Map) -> String {
     crate::json_fmt::to_string(&to_value(map))
+}
+
+/// One node as it appears in the file, without its children.
+pub fn node_to_json(map: &Map, id: NodeId) -> Option<Value> {
+    serde_json::to_value(leaf_file_node(map.get(id)?)).ok()
 }
 
 /// Serializes only the given subtrees, for the clipboard. Parents are implied.
@@ -279,6 +282,22 @@ mod tests {
         let text = to_string(&sample());
         let face_lines = text.lines().filter(|l| l.trim_start().starts_with("{\"indices\"")).count();
         assert_eq!(face_lines, 12);
+    }
+
+    #[test]
+    fn single_node_json_matches_the_file_without_children() {
+        let m = sample();
+        let file = to_value(&m);
+        let group = &file["layers"][0]["children"][1];
+        let json = node_to_json(&m, NodeId(group["id"].as_u64().unwrap())).unwrap();
+        assert_eq!(json["type"], "group");
+        assert_eq!(json["name"], "room");
+        assert!(json.get("children").is_none());
+        let door = &group["children"][0];
+        let mut expected = door.clone();
+        expected.as_object_mut().unwrap().remove("children");
+        assert_eq!(node_to_json(&m, NodeId(door["id"].as_u64().unwrap())).unwrap(), expected);
+        assert!(node_to_json(&m, NodeId(9999)).is_none());
     }
 
     #[test]
