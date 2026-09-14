@@ -1,6 +1,6 @@
-//! Lucide icons (ISC, see assets/icons/LICENSE-lucide.txt) embedded as SVG.
+//! Lucide icons (ISC, see assets/icons/LICENSE-lucide.txt) and a simplified Godot logo (CC BY 4.0) embedded as SVG.
 //!
-//! The strokes are white so buttons can tint them with the theme text color.
+//! They are drawn in white so buttons can tint them with the theme text color.
 
 use egui::{Atom, Button, Image, ImageSource, Response, Ui, Vec2, Widget, WidgetText};
 
@@ -92,6 +92,7 @@ icons! {
     PASTE = "clipboard-paste",
     DELETE = "trash-2",
     SHAPES = "shapes",
+    GODOT = "godot",
 }
 
 impl Icon {
@@ -173,12 +174,25 @@ pub fn small(ui: &mut Ui, icon: Icon, label: &str, tint: Option<egui::Color32>) 
 mod tests {
     use super::*;
 
+    fn svg_attr<'a>(svg_tag: &'a str, name: &str) -> Option<&'a str> {
+        let start = svg_tag.find(&format!(" {name}=\""))? + name.len() + 3;
+        svg_tag[start..].split('"').next()
+    }
+
     #[test]
-    fn icons_are_white_svgs() {
+    fn icons_are_square_white_svgs() {
         for icon in ALL {
             let text = std::str::from_utf8(icon.bytes).unwrap();
-            assert!(text.contains("<svg") && text.contains("viewBox=\"0 0 24 24\""), "{}", icon.uri);
-            assert!(!text.contains("currentColor"), "{} must use white strokes so it can be tinted", icon.uri);
+            let tag = text.find("<svg").map(|i| &text[i..]).and_then(|t| t.split('>').next()).unwrap_or_else(|| panic!("{} is not an svg", icon.uri));
+            let square = match svg_attr(tag, "viewBox") {
+                Some(view_box) => {
+                    let n: Vec<&str> = view_box.split_whitespace().collect();
+                    n.len() == 4 && n[2] == n[3]
+                }
+                None => svg_attr(tag, "width").is_some() && svg_attr(tag, "width") == svg_attr(tag, "height"),
+            };
+            assert!(square, "{} must be square", icon.uri);
+            assert!(!text.contains("currentColor"), "{} must be drawn in white so it can be tinted", icon.uri);
         }
     }
 }

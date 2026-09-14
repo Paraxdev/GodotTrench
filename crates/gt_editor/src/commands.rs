@@ -99,6 +99,11 @@ pub enum Action {
     ShowUvEditor,
     OpenGodotEditor,
     RunGodotProject,
+    /// Brings the Godot editor that has this project open to the front.
+    FocusGodot,
+    /// Full build in Godot of the map as shown here, saved or not.
+    BuildInGodot,
+    ToggleLiveMode,
     CreateDisplacement(u8),
     RemoveDisplacement,
     SewDisplacements,
@@ -198,6 +203,11 @@ impl Action {
             Action::StartTour => "Guided Tour".into(),
             Action::ShowPreferences => "Preferences".into(),
             Action::ToggleTransformGizmo => "Toggle Transform Gizmo".into(),
+            Action::OpenGodotEditor => "Open Project in Godot".into(),
+            Action::RunGodotProject => "Run Godot Project".into(),
+            Action::FocusGodot => "Show Godot Editor".into(),
+            Action::BuildInGodot => "Build in Godot".into(),
+            Action::ToggleLiveMode => "Toggle Godot Live Mode".into(),
             other => format!("{other:?}"),
         }
     }
@@ -435,6 +445,9 @@ pub fn bindable_actions() -> Vec<Action> {
         Action::StartTour,
         Action::ShowPreferences,
         Action::ToggleTransformGizmo,
+        Action::OpenGodotEditor,
+        Action::BuildInGodot,
+        Action::ToggleLiveMode,
     ]);
     for j in gt_geom::Justify::ALL {
         out.push(Action::Justify(j));
@@ -825,6 +838,19 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         | Action::StoreCamera(_)
         | Action::RecallCamera(_) => {}
         Action::OpenGodotEditor | Action::RunGodotProject => launch_godot(state, action == Action::OpenGodotEditor),
+        Action::FocusGodot => match &state.link {
+            Some(link) if state.godot_has_project() => link.request(crate::live_link::Request::Focus),
+            _ => launch_godot(state, true),
+        },
+        Action::BuildInGodot => build_in_godot(state),
+        Action::ToggleLiveMode => {
+            state.prefs.live_mode = !state.prefs.live_mode;
+            state.set_status(match (state.prefs.live_mode, state.godot_has_project()) {
+                (true, true) => "Live mode on: edits reach Godot before you save",
+                (true, false) => "Live mode on: edits reach Godot once its editor has this project and map open",
+                (false, _) => "Live mode off: Godot keeps what it shows until the next save",
+            });
+        }
         Action::CreateDisplacement(power) => {
             let faces = displacement_candidates(state);
             let n = state.doc.edit("Create Displacement", |m, _| gt_doc::terrain::create_displacements(m, &faces, power));
@@ -1464,25 +1490,14 @@ fn displacement_candidates(state: &EditorState) -> Vec<(NodeId, usize)> {
         .collect()
 }
 
-/// Godot executable from preferences, the GODOT environment variable, or PATH.
-pub fn godot_executable(state: &EditorState) -> Option<std::path::PathBuf> {
-    if !state.prefs.godot_path.as_os_str().is_empty() && state.prefs.godot_path.is_file() {
-        return Some(state.prefs.godot_path.clone());
-    }
-    if let Some(p) = std::env::var_os("GODOT").map(std::path::PathBuf::from).filter(|p| p.is_file()) {
-        return Some(p);
-    }
-    let names = if cfg!(windows) { vec!["godot.exe", "godot4.exe", "Godot.exe"] } else { vec!["godot", "godot4"] };
-    std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).flat_map(|dir| names.iter().map(move |n| dir.join(n))).find(|p| p.is_file()))
-}
-
 fn launch_godot(state: &mut EditorState, editor: bool) {
     let Some(root) = state.game.project_root.clone() else {
         state.set_status("Open a Godot project first");
         return;
     };
-    let Some(exe) = godot_executable(state) else {
-        state.set_status("Godot executable not found. Set it in Preferences or the GODOT environment variable");
+    state.godot.refresh(&state.prefs.godot_path, Some(&root));
+    let Some(exe) = state.godot.exe.clone() else {
+        state.set_status(GODOT_NOT_FOUND);
         return;
     };
     let mut cmd = std::process::Command::new(&exe);
@@ -1493,6 +1508,22 @@ fn launch_godot(state: &mut EditorState, editor: bool) {
     match cmd.spawn() {
         Ok(_) => state.set_status(format!("Launched {}", exe.display())),
         Err(e) => state.set_status(format!("Could not launch Godot: {e}")),
+    }
+}
+
+pub const GODOT_NOT_FOUND: &str = "Godot was not found, set the Godot executable in Preferences or the GODOT environment variable";
+
+fn build_in_godot(state: &mut EditorState) {
+    let Some(path) = state.doc.path.clone() else {
+        state.set_status("Save the map into the Godot project first, Godot builds maps from their file path");
+        return;
+    };
+    match &state.link {
+        Some(link) if state.godot_has_project() => {
+            link.request(crate::live_link::Request::Build { path: crate::live_link::godot_path(&path), map: state.doc.map.clone(), live: state.live_active() });
+            state.set_status("Building in Godot…");
+        }
+        _ => state.set_status("Godot is not open with this project, open it with the Godot button in the toolbar"),
     }
 }
 
