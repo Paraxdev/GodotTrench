@@ -29,6 +29,7 @@ eframe = { version = "0.36", default-features = false, features = ["wgpu", "defa
 egui = "0.36"
 egui-wgpu = "0.36"
 egui_dock = "0.21"
+egui_extras = { version = "0.36", default-features = false, features = ["svg"] }
 rfd = "0.17"
 notify = "8"
 tungstenite = "0.30"
