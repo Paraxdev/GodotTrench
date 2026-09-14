@@ -197,15 +197,15 @@ fn outliner_toggles_visibility_and_adds_layers() {
         .with_size(egui::vec2(360.0, 400.0))
         .build_ui_state(|ui, f: &mut Fixture| panels::outliner(ui, &mut f.state, &mut f.panels, &mut f.actions), fixture);
     harness.run();
-    harness.get_by_label("+ Layer").click();
+    harness.get_by_label("Add Layer").click();
     harness.run();
     assert_eq!(harness.state().actions, vec![Action::AddLayer]);
 
     // Expand the default layer, then hide the light through its eye button.
-    harness.get_by_label("+").click();
+    harness.get_by_label("Expand").click();
     harness.run();
     harness.get_by_label_contains("light");
-    let eyes: Vec<_> = harness.get_all_by_label("👁").collect();
+    let eyes: Vec<_> = harness.get_all_by_label("Visibility").collect();
     assert_eq!(eyes.len(), 2, "layer and light rows");
     eyes[1].click();
     harness.run();
