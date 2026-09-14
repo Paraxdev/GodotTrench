@@ -28,6 +28,9 @@ base64.workspace = true
 imbl.workspace = true
 gltf.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
+
 [dev-dependencies]
 egui_kittest = "0.36"
 gt_core.workspace = true

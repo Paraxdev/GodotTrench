@@ -96,6 +96,24 @@ impl Default for ScatterSettings {
     }
 }
 
+/// Editing has to pause this long before translated nodes are sent exactly.
+const LIVE_IDLE: std::time::Duration = std::time::Duration::from_millis(250);
+
+/// When the live map was last handed to the link.
+struct LiveTick {
+    revision: u64,
+    changed_at: Instant,
+    posted: Option<(PathBuf, u64, bool, u64)>,
+    /// Maps that received live edits, so dropping their unsaved changes can put Godot back to the saved file.
+    sent: std::collections::BTreeSet<PathBuf>,
+}
+
+impl Default for LiveTick {
+    fn default() -> Self {
+        Self { revision: 0, changed_at: Instant::now(), posted: None, sent: Default::default() }
+    }
+}
+
 /// A map open in a background tab.
 pub struct MapTab {
     pub doc: Document,
@@ -119,6 +137,8 @@ pub struct Prefs {
     /// Notify the Godot editor after saving so it rebuilds the map.
     pub live_link: bool,
     pub live_link_port: u16,
+    /// Send edits to a Godot editor that has the map open before saving.
+    pub live_mode: bool,
     pub godot_path: PathBuf,
     /// Also notify a running game (GodotTrenchHotReload autoload) after saving.
     pub hot_reload: bool,
@@ -189,6 +209,7 @@ impl Default for Prefs {
             mcp_port: crate::DEFAULT_MCP_PORT,
             live_link: true,
             live_link_port: crate::live_link::DEFAULT_PORT,
+            live_mode: false,
             godot_path: PathBuf::new(),
             hot_reload: true,
             hot_reload_port: crate::live_link::DEFAULT_GAME_PORT,
@@ -234,6 +255,12 @@ pub struct EditorState {
     last_autosave: Instant,
     autosave_revision: u64,
     live_link_status: Option<std::sync::mpsc::Receiver<String>>,
+    pub godot: crate::godot::GodotStatus,
+    /// Started by the app, tests and tools run without it.
+    pub link: Option<crate::live_link::LiveLink>,
+    /// Link state as of this frame.
+    pub link_state: crate::live_link::LinkState,
+    live: LiveTick,
     pub sculpt: gt_doc::terrain::SculptBrush,
     pub paint_color: [f32; 4],
     pub prefabs: crate::prefabs::PrefabCache,
@@ -286,6 +313,10 @@ impl EditorState {
             last_autosave: Instant::now(),
             autosave_revision: 0,
             live_link_status: None,
+            godot: Default::default(),
+            link: None,
+            link_state: Default::default(),
+            live: LiveTick::default(),
             sculpt: gt_doc::terrain::SculptBrush::default(),
             paint_color: [0.55, 0.45, 0.35, 1.0],
             prefabs: Default::default(),
@@ -416,6 +447,11 @@ impl EditorState {
     }
 
     pub fn reset_document(&mut self, doc: Document) {
+        if self.doc.is_modified()
+            && let Some(path) = self.doc.path.clone()
+        {
+            self.revert_live(vec![path], false);
+        }
         self.current_layer = doc.map.default_layer();
         self.open_groups.clear();
         self.doc = doc;
@@ -472,9 +508,16 @@ impl EditorState {
             return Ok(());
         }
         self.set_status(format!("Saved {}", path.display()));
+        self.live.sent.remove(path);
         if self.prefs.live_link {
-            self.live_link_status =
-                Some(crate::live_link::notify_saved_all(self.prefs.live_link_port, self.prefs.hot_reload.then_some(self.prefs.hot_reload_port), path));
+            let game_port = self.prefs.hot_reload.then_some(self.prefs.hot_reload_port);
+            match &self.link {
+                Some(link) if self.link_state.connected => {
+                    let live = self.live_active().then(|| self.doc.map.clone());
+                    link.request(crate::live_link::Request::MapSaved { path: crate::live_link::godot_path(path), game_port, live })
+                }
+                _ => self.live_link_status = Some(crate::live_link::notify_saved_all(self.prefs.live_link_port, game_port, path)),
+            }
         }
         Ok(())
     }
@@ -486,6 +529,76 @@ impl EditorState {
         {
             self.live_link_status = None;
             self.set_status(msg);
+        }
+    }
+
+    /// Godot has this project open.
+    pub fn godot_has_project(&self) -> bool {
+        self.game.project_root.as_deref().is_some_and(|root| self.link_state.has_project(root))
+    }
+
+    /// Edits of the current map are being sent to Godot.
+    pub fn live_active(&self) -> bool {
+        self.prefs.live_link && self.prefs.live_mode && self.godot_has_project() && self.doc.path.as_deref().is_some_and(|p| self.link_state.has_map(p))
+    }
+
+    /// Per frame: executable detection, link settings, link status messages and live edits.
+    pub fn tick_godot(&mut self, ctx: &egui::Context) {
+        self.godot.refresh(&self.prefs.godot_path, self.game.project_root.as_deref());
+        let Some(link) = &self.link else { return };
+        link.configure(self.prefs.live_link_port, self.prefs.live_link && self.game.project_root.is_some());
+        let state = link.state();
+        let mut messages = Vec::new();
+        while let Some(msg) = link.poll_status() {
+            messages.push(msg);
+        }
+        self.link_state = state;
+        for msg in messages {
+            self.set_status(msg);
+        }
+
+        if self.doc.revision != self.live.revision {
+            self.live.revision = self.doc.revision;
+            self.live.changed_at = Instant::now();
+        }
+        let Some(path) = self.doc.path.clone().filter(|_| self.live_active()) else {
+            self.live.posted = None;
+            return;
+        };
+        let since_change = self.live.changed_at.elapsed();
+        let idle = since_change >= LIVE_IDLE && !self.doc.in_transaction();
+        if !idle {
+            ctx.request_repaint_after(LIVE_IDLE.saturating_sub(since_change) + std::time::Duration::from_millis(10));
+        }
+        let key = (path.clone(), self.doc.revision, idle, self.link_state.resync);
+        if self.live.posted.as_ref() == Some(&key) {
+            return;
+        }
+        if let Some(link) = &self.link {
+            link.sync(&path, crate::live_sync::Frame { map: self.doc.map.clone(), dragging: self.doc.in_transaction(), idle });
+        }
+        if self.doc.is_modified() {
+            self.live.sent.insert(path);
+        }
+        self.live.posted = Some(key);
+    }
+
+    /// Puts Godot back to the saved files before the editor quits without saving. Waits briefly for Godot.
+    pub fn revert_all_live_changes(&mut self) {
+        let modified = std::iter::once(&self.doc).chain(self.tabs.iter().map(|t| &t.doc)).filter(|d| d.is_modified()).filter_map(|d| d.path.clone()).collect();
+        self.revert_live(modified, true);
+    }
+
+    /// Godot goes back to the saved files of maps whose live edits are thrown away.
+    fn revert_live(&mut self, paths: Vec<PathBuf>, blocking: bool) {
+        for path in paths.into_iter().filter(|p| self.live.sent.remove(p)) {
+            let path = crate::live_link::godot_path(&path);
+            if blocking {
+                let message = serde_json::json!({ "event": "live_end", "path": path, "revert": true });
+                let _ = crate::live_link::send_timeout(self.prefs.live_link_port, &message, std::time::Duration::from_secs(2));
+            } else if let Some(link) = &self.link {
+                link.request(crate::live_link::Request::LiveEnd { path, revert: true });
+            }
         }
     }
 

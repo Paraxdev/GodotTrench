@@ -10,6 +10,7 @@ it uses, with their licenses. Everything below keeps its own license.
 | [FuncGodot](https://github.com/func-godot/func_godot_plugin) | forked in `godot/addons/func_godot`, shipped as the addon zip | MIT, full text in [`godot/addons/func_godot/LICENSE`](godot/addons/func_godot/LICENSE) | 2023 func-godot |
 | [Lucide](https://lucide.dev) icons | `crates/gt_editor/assets/icons`, embedded in the editor | ISC, full text in [`LICENSE-lucide.txt`](crates/gt_editor/assets/icons/LICENSE-lucide.txt) | Lucide Icons and Contributors |
 | [Feather](https://github.com/feathericons/feather) icons | the Lucide icons derived from Feather | MIT, same file as above | 2013 to present Cole Bemis |
+| [Godot Engine logo](https://godotengine.org/press/) | monochrome in `crates/gt_editor/assets/icons/godot.svg`, the Open in Godot toolbar button | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | Andrea Calabró |
 | Hack font | embedded in the editor through `epaint_default_fonts` | MIT and Bitstream Vera License | 2018 Source Foundry Authors, 2003 Bitstream Inc. |
 | Ubuntu Light font | embedded in the editor through `epaint_default_fonts` | Ubuntu Font Licence 1.0 | Canonical Ltd. |
 | Noto Emoji font | embedded in the editor through `epaint_default_fonts` | SIL Open Font License 1.1 | Google Inc. |

@@ -56,6 +56,8 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("Godot: Reload Game Config".into(), Action::ReloadProject),
         ("Godot: Open Project in Godot Editor".into(), Action::OpenGodotEditor),
         ("Godot: Run Project".into(), Action::RunGodotProject),
+        ("Godot: Build in Godot".into(), Action::BuildInGodot),
+        ("Godot: Toggle Live Mode".into(), Action::ToggleLiveMode),
         ("Edit: Undo".into(), Action::Undo),
         ("Edit: Redo".into(), Action::Redo),
         ("Edit: Duplicate".into(), Action::Duplicate),
@@ -210,6 +212,9 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         if let Some(n) = state.doc.map.get(*layer) {
             out.push((format!("Layer: Move Selection to {}", n.name()), Action::MoveToLayer(*layer)));
         }
+    }
+    if !state.godot.found() {
+        out.retain(|(_, a)| !matches!(a, Action::OpenGodotEditor | Action::RunGodotProject));
     }
     out
 }

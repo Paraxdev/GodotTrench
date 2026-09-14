@@ -266,6 +266,16 @@ impl MenuCx<'_> {
         self.push_if_clicked(ui, menu_button(icon, label, shortcut), action);
     }
 
+    /// Menu item that is greyed out with `why` on hover when `enabled` is false.
+    fn item_enabled(&mut self, ui: &mut Ui, icon: Option<icons::Icon>, label: &str, action: Action, enabled: bool, why: &str) {
+        let shortcut = self.shortcut(&action);
+        let response = ui.add_enabled(enabled, menu_button(icon, label, shortcut)).on_disabled_hover_text(why);
+        if response.clicked() {
+            self.actions.push(action);
+            ui.close();
+        }
+    }
+
     /// Menu item for actions driven by OS clipboard events instead of key bindings.
     fn item_keys(&mut self, ui: &mut Ui, icon: Option<icons::Icon>, label: &str, keys: &str, action: Action) {
         self.push_if_clicked(ui, menu_button(icon, label, Some(keys.to_string())), action);
@@ -374,11 +384,22 @@ impl App {
             mcp = Some(host);
         }
 
+        let mut map_failed = false;
         if let Some(path) = args.map
             && let Err(e) = state.open_map(&path)
         {
             state.set_status(format!("Could not open {}: {e}", path.display()));
+            map_failed = true;
         }
+        state.godot.refresh(&state.prefs.godot_path, state.game.project_root.as_deref());
+        if !state.godot.found() {
+            let warning = format!("{}. Run Project and Open in Godot stay disabled until then", commands::GODOT_NOT_FOUND);
+            eprintln!("GodotTrench: {warning}");
+            if !map_failed {
+                state.set_status(warning);
+            }
+        }
+        state.link = Some(crate::live_link::LiveLink::start(Some(cc.egui_ctx.clone())));
         let dock: Option<DockState<Tab>> = if keep_prefs { cc.storage.and_then(|s| eframe::get_value(s, DOCK_KEY)).filter(valid_dock) } else { None };
         cc.egui_ctx.set_visuals(crate::theme::visuals());
         // UI scale shortcuts go through the keymap so they are rebindable and saved in the preferences.
@@ -916,8 +937,12 @@ impl App {
             });
             menu(ui, "Godot", |ui| {
                 ui.set_min_width(MENU_WIDTH);
-                m.item(ui, Some(icons::PLAY), "Run Project", Action::RunGodotProject);
-                m.item(ui, None, "Open Project in Godot Editor", Action::OpenGodotEditor);
+                let found = self.state.godot.found();
+                m.item_enabled(ui, Some(icons::PLAY), "Run Project", Action::RunGodotProject, found, commands::GODOT_NOT_FOUND);
+                m.item_enabled(ui, Some(icons::GODOT), "Open Project in Godot Editor", Action::OpenGodotEditor, found, commands::GODOT_NOT_FOUND);
+                let open = self.state.godot_has_project();
+                m.item_enabled(ui, None, "Build in Godot", Action::BuildInGodot, open, "Needs the Godot editor with this project open");
+                m.toggle(ui, "Live Mode", self.state.prefs.live_mode, Action::ToggleLiveMode);
                 ui.separator();
                 m.item(ui, Some(icons::OPEN), "Open Godot Project…", Action::OpenProject);
                 sub_menu(ui, Some(icons::RECENT), "Recent Projects", |ui| {
@@ -1087,6 +1112,7 @@ impl App {
             tools_rect |= group;
             guide::mark(ui.ctx(), Anchor::ToolbarShading, group);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let godot_rect = self.godot_buttons(ui, size);
                 let project = match &self.state.game.project_root {
                     Some(p) => format!("{} ({})", self.state.game.name, p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
                     None => "Open Godot project…".into(),
@@ -1095,7 +1121,7 @@ impl App {
                     .image_tint_follows_text_color(true);
                 let resp = ui.add(button).on_hover_text("Open a Godot project folder");
                 guide::mark(ui.ctx(), Anchor::ToolbarProject, resp.rect);
-                self.toolbar_fit.project_width = resp.rect.width();
+                self.toolbar_fit.project_width = (resp.rect | godot_rect).width();
                 if resp.clicked() {
                     self.actions.push(Action::OpenProject);
                 }
@@ -1104,6 +1130,56 @@ impl App {
         self.toolbar_fit.icon = size;
         self.toolbar_fit.icons = icon_count;
         self.toolbar_fit.tools_width = tools_rect.width();
+    }
+
+    /// Godot robot button (open the project in Godot, or show the editor that has it open) and the live mode toggle, laid
+    /// out right to left. Returns the rect they cover.
+    fn godot_buttons(&mut self, ui: &mut Ui, size: f32) -> egui::Rect {
+        let s = &self.state;
+        let open = s.godot_has_project();
+        let (enabled, tip, action) = if s.game.project_root.is_none() {
+            (false, "Open a Godot project first".to_string(), None)
+        } else if open {
+            let version = if s.link_state.godot.is_empty() { String::new() } else { format!(" {}", s.link_state.godot) };
+            (true, format!("Godot{version} has this project open, click to show it"), Some(Action::FocusGodot))
+        } else if s.godot.found() {
+            let hint = if s.link_state.outdated { "\nThe running Godot has an older GodotTrench addon, update it for live mode" } else { "" };
+            (true, format!("Open project in Godot{hint}"), Some(Action::OpenGodotEditor))
+        } else {
+            (false, commands::GODOT_NOT_FOUND.to_string(), None)
+        };
+        let mut image = icons::GODOT.image(size).alt_text("Open project in Godot");
+        if open {
+            image = image.tint(crate::theme::CYAN);
+        }
+        let button = egui::Button::image(image).image_tint_follows_text_color(!open).frame_when_inactive(false);
+        let resp = ui.add_enabled(enabled, button).on_hover_text(tip.as_str()).on_disabled_hover_text(tip.as_str());
+        let mut rect = resp.rect;
+        if resp.clicked()
+            && let Some(action) = action
+        {
+            self.actions.push(action);
+        }
+
+        let live = s.prefs.live_mode;
+        let live_tip = match (live, open, s.live_active()) {
+            (true, _, true) => "Live mode on: edits reach Godot before you save. Click to turn it off",
+            (true, true, false) => "Live mode on, waiting for Godot to show a scene that uses this map",
+            (true, false, _) => "Live mode on, waiting for the Godot editor with this project",
+            (false, true, _) => "Live mode: send edits to Godot before saving",
+            (false, false, _) => "Live mode needs the Godot editor with this project open",
+        };
+        let toggle = ui.add_enabled_ui(live || open, |ui| icons::toggle(ui, icons::LINK, size, live, "Godot live mode", live_tip)).inner;
+        let toggle = toggle.on_disabled_hover_text(live_tip);
+        rect |= toggle.rect;
+        if toggle.clicked() {
+            self.actions.push(Action::ToggleLiveMode);
+        }
+        if self.state.link_state.busy {
+            rect |= ui.add(egui::Spinner::new().size(size * 0.8)).on_hover_text("Godot is building").rect;
+        }
+        ui.add_space(PROJECT_BUTTON_GAP * 0.5);
+        rect
     }
 
     fn tool_options(&mut self, ui: &mut Ui) {
@@ -1411,6 +1487,12 @@ impl App {
                     }
                 });
                 ui.end_row();
+                ui.label("");
+                match &self.state.godot.exe {
+                    Some(exe) => ui.label(RichText::new(format!("Using {}", exe.display())).weak()),
+                    None => ui.label(RichText::new("Not found, Run Project and Open in Godot are disabled").color(crate::theme::YELLOW)),
+                };
+                ui.end_row();
                 ui.label("Autosave (minutes, 0 = off)");
                 ui.add(egui::DragValue::new(&mut p.autosave_minutes).range(0.0..=60.0));
                 ui.end_row();
@@ -1419,6 +1501,11 @@ impl App {
                     ui.checkbox(&mut p.live_link, "rebuild maps in Godot on save");
                     ui.add(egui::DragValue::new(&mut p.live_link_port).range(1024..=65535));
                 });
+                ui.end_row();
+                ui.label("Godot live mode");
+                ui.add_enabled_ui(p.live_link, |ui| ui.checkbox(&mut p.live_mode, "push edits to Godot before saving"))
+                    .response
+                    .on_hover_text("While the Godot editor shows a scene that uses the map, edits appear there right away. Saving still does a full rebuild.");
                 ui.end_row();
                 ui.label("Running game hot reload");
                 ui.horizontal(|ui| {
@@ -1478,6 +1565,7 @@ impl App {
                     self.confirm_close = false;
                 }
                 if ui.button("Discard").clicked() {
+                    self.state.revert_all_live_changes();
                     self.allow_close = true;
                     self.confirm_close = false;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -1576,6 +1664,7 @@ impl eframe::App for App {
         self.apply_ui_scale(&ctx);
         self.fit_window_to_monitor(&ctx);
         self.tools.sync(&self.state);
+        self.state.tick_godot(&ctx);
         self.process_mcp(&ctx);
         self.tools.sync(&self.state);
         self.collect_input_actions(&ctx);

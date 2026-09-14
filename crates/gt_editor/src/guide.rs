@@ -374,7 +374,7 @@ pub fn chapters() -> Vec<Chapter> {
                 step(
                     Anchor::Menu("File"),
                     "Tell GodotTrench where Godot is",
-                    "Open File > Preferences and set Godot executable to your Godot program. It can also come from the GODOT environment variable or your PATH. Run Project and Open Project in Godot Editor need it.",
+                    "GodotTrench looks for Godot in the GODOT environment variable, your PATH and the usual install folders. If it is somewhere else, open File > Preferences and set Godot executable to your Godot program. Without it GodotTrench still works, only Run Project and Open in Godot stay disabled.",
                 )
                 .button("Open Preferences", Action::ShowPreferences),
                 step(
@@ -402,7 +402,7 @@ pub fn chapters() -> Vec<Chapter> {
                 step(
                     Anchor::Menu("Godot"),
                     "Open it in Godot",
-                    "Godot > Open Project in Godot Editor starts Godot on this project and Run Project starts the game. Keep the Godot editor open while you map, it rebuilds maps when you save (chapter Into Godot).",
+                    "The Godot robot at the right end of the toolbar (or Godot > Open Project in Godot Editor) starts Godot on this project, and Run Project starts the game. Keep the Godot editor open while you map: it rebuilds maps when you save, the robot turns blue while it is connected, and the link button next to it turns on live mode, which shows your edits in Godot before you save.",
                 )
                 .button("Open in Godot Editor", Action::OpenGodotEditor)
                 .keys([("Run project", Action::RunGodotProject)]),
