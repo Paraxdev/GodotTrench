@@ -592,11 +592,13 @@ impl Viewport {
         if !screen.expand(TOL).contains(pos) {
             return None;
         }
+        // View axes can point along negative world axes, so the side of the screen the bounds minimum lands on picks the face.
+        let (r, u) = (r.abs(), u.abs());
         let candidates = [
             ((pos.x - screen.min.x).abs(), if min.x <= max.x { -r } else { r }),
             ((pos.x - screen.max.x).abs(), if min.x <= max.x { r } else { -r }),
-            ((pos.y - screen.min.y).abs(), if min.y <= max.y { u } else { -u }),
-            ((pos.y - screen.max.y).abs(), if min.y <= max.y { -u } else { u }),
+            ((pos.y - screen.min.y).abs(), if min.y <= max.y { -u } else { u }),
+            ((pos.y - screen.max.y).abs(), if min.y <= max.y { u } else { -u }),
         ];
         let (dist, normal) = candidates.into_iter().min_by(|a, b| a.0.total_cmp(&b.0))?;
         if dist > TOL {
