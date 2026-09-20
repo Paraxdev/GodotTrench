@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="crates/gt_editor/assets/logo.png" alt="GodotTrench logo" width="120">
+</p>
+
 # GodotTrench
 
 A brush based level editor for Godot, written in Rust. heavily inspired by TrenchBroom and Hammer++, it aims for TrenchBroom parity plus
