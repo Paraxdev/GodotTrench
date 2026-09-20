@@ -16,6 +16,8 @@ use crate::{theme, widgets};
 pub enum DndPayload {
     Material(String),
     Entities(Vec<String>),
+    /// A model file dragged from the Models panel, placed as an editable mesh on drop.
+    Model(std::path::PathBuf),
 }
 
 pub struct PanelState {
@@ -24,6 +26,8 @@ pub struct PanelState {
     material_folder: Option<String>,
     material_used_only: bool,
     material_favorites_only: bool,
+    model_filter: String,
+    model_folder: Option<String>,
     thumb_size: f32,
     entity_filter: String,
     pub entity_selection: Vec<String>,
@@ -50,6 +54,8 @@ impl Default for PanelState {
             material_folder: None,
             material_used_only: false,
             material_favorites_only: false,
+            model_filter: String::new(),
+            model_folder: None,
             thumb_size: 72.0,
             entity_filter: String::new(),
             entity_selection: Vec::new(),
@@ -1401,10 +1407,20 @@ pub fn replace_material(state: &mut EditorState, from: &str, to: &str) -> usize 
     })
 }
 
+fn badge(painter: &egui::Painter, pos: egui::Pos2, text: &str, color: Color32) {
+    let font = egui::FontId::proportional(9.0);
+    let galley = painter.layout_no_wrap(text.to_string(), font, Color32::BLACK);
+    let pad = Vec2::new(3.0, 1.0);
+    let rect = egui::Rect::from_min_size(pos, galley.size() + pad * 2.0);
+    painter.rect_filled(rect, 2.0, color);
+    painter.galley(rect.min + pad, galley, Color32::BLACK);
+}
+
 fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, label: bool, budget: &mut u32) -> egui::Response {
     let cell = if label { Vec2::new(size + 8.0, size + 22.0) } else { Vec2::splat(size + 4.0) };
     let (rect, resp) = ui.allocate_exact_size(cell, Sense::click_and_drag());
     let selected = name == state.current_material;
+    let (has_normal, missing_albedo) = state.materials.find(name).map(|e| (e.has_normal, e.missing_albedo)).unwrap_or((false, false));
     if selected {
         ui.painter().rect_filled(rect, 3.0, theme::selected_fill());
     } else if resp.hovered() {
@@ -1425,6 +1441,14 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
         ui.painter().text(img_rect.right_top() + Vec2::new(-3.0, 1.0), egui::Align2::RIGHT_TOP, "★", egui::FontId::proportional(13.0), theme::YELLOW);
     }
     if label {
+        let corner = img_rect.left_top() + Vec2::new(2.0, 2.0);
+        if missing_albedo {
+            badge(ui.painter(), corner, "no albedo", theme::WARNING);
+        } else if has_normal {
+            badge(ui.painter(), corner, "normal", theme::INFO);
+        }
+    }
+    if label {
         let short = name.rsplit('/').next().unwrap_or(name);
         ui.painter().text(egui::pos2(rect.center().x, rect.max.y - 9.0), egui::Align2::CENTER_CENTER, short, egui::FontId::proportional(11.0), theme::GRAY_6);
     }
@@ -1435,7 +1459,20 @@ fn material_interactions(resp: egui::Response, state: &mut EditorState, name: &s
     let tooltip = {
         let size = state.materials.size(name).map(|s| format!("\n{} x {} px", s[0], s[1])).unwrap_or_default();
         let info = state.materials.info(name).map(|m| material_summary(&m).trim_start_matches(", ").to_string()).filter(|s| !s.is_empty());
-        format!("{name}{size}{}", info.map(|i| format!("\n{i}")).unwrap_or_default())
+        let note = state
+            .materials
+            .find(name)
+            .map(|e| {
+                if e.missing_albedo {
+                    "\nnormal map with no matching albedo/diffuse texture"
+                } else if e.has_normal {
+                    "\nhas a normal map — dropping it applies valid normals"
+                } else {
+                    ""
+                }
+            })
+            .unwrap_or("");
+        format!("{name}{size}{}{note}", info.map(|i| format!("\n{i}")).unwrap_or_default())
     };
     let resp = resp.on_hover_text(tooltip);
     if resp.clicked() {
@@ -1587,6 +1624,16 @@ pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
                             ui.label(RichText::new(format!("{} entities", many.len())).strong());
                             ui.label(RichText::new("Drop into a view to place them in a row").weak().small());
                         }
+                    });
+                }
+                DndPayload::Model(path) => {
+                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::hover());
+                    ui.painter().rect_filled(rect, 3.0, theme::GRAY_2);
+                    ui.put(rect, icons::MESH.image(18.0).tint(theme::TEAL));
+                    let name = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new(name).strong());
+                        ui.label(RichText::new("Drop into a view to place it as an editable mesh").weak().small());
                     });
                 }
             });

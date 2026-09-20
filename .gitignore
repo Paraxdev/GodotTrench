@@ -9,3 +9,7 @@ godot/.godot/
 godot/demo/textures/base/*.tres
 /.worktrees
 __pycache__/
+
+# Emergent tooling, not part of the project
+.emergent/
+plan.md

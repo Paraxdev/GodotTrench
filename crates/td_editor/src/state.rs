@@ -234,6 +234,8 @@ pub struct EditorState {
     pub doc: Document,
     pub game: GameConfig,
     pub materials: MaterialLibrary,
+    /// The placeable models under `res://models`, shown in the Models panel.
+    pub model_library: crate::models::ModelLibrary,
     pub prefs: Prefs,
     pub grid: f64,
     pub snap: bool,
@@ -289,12 +291,14 @@ impl EditorState {
     pub fn new(prefs: Prefs) -> Self {
         let game = GameConfig::builtin();
         let materials = MaterialLibrary::new(&game);
+        let model_library = crate::models::ModelLibrary::new(&game);
         let doc = Document::new();
         let layer = doc.map.default_layer();
         Self {
             doc,
             game,
             materials,
+            model_library,
             prefs,
             grid: 16.0,
             snap: true,
@@ -630,6 +634,7 @@ impl EditorState {
         };
         game.project_root = Some(root.to_path_buf());
         self.materials.rescan(&game);
+        self.model_library.rescan(&game);
         self.game = game;
         let p = root.to_path_buf();
         self.prefs.recent_projects.retain(|r| r != &p);
