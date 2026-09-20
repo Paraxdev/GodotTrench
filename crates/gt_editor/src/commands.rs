@@ -112,6 +112,11 @@ pub enum Action {
     ExportQuakeMapCordon,
     ImportVmf,
     ImportModel(ModelImport),
+    /// Drops a model from the Models panel into the scene as an editable mesh at `at`.
+    PlaceModel {
+        path: std::path::PathBuf,
+        at: DVec3,
+    },
     ReloadModels,
     ConvertToMesh,
     ConvertToBrushes,
@@ -189,6 +194,9 @@ impl Action {
                 [one] => format!("Create {one}"),
                 many => format!("Place {} Entities", many.len()),
             },
+            Action::PlaceModel { path, .. } => {
+                format!("Place {}", path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Model".into()))
+            }
             Action::MeshOp(op) => format!("Mesh: {}", op.label()),
             Action::StoreCamera(n) => format!("Store Camera {n}"),
             Action::RecallCamera(n) => format!("Recall Camera {n}"),
@@ -750,6 +758,10 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             });
         }
         Action::PlaceEntities { classnames, at, normal, row } => place_entities(state, &classnames, at, normal, row),
+        Action::PlaceModel { path, at } => match place_model_mesh(state, &path, at) {
+            Ok(msg) => state.set_status(msg),
+            Err(e) => state.set_status(format!("Place model failed: {e}")),
+        },
         Action::MoveToWorld => {
             let layer = state.current_layer;
             state.doc.edit("Move to World", |m, s| ops::move_brushes_to_world(m, s, layer));
@@ -932,6 +944,8 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         }
         Action::ReloadModels => {
             state.models.clear();
+            let game = state.game.clone();
+            state.model_library.rescan(&game);
             state.set_status("Models reloaded");
         }
         Action::SetCordonFromSelection => {
@@ -1386,6 +1400,48 @@ pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: Model
         ModelImport::Prop => unreachable!(),
     };
     Ok(count)
+}
+
+/// Places a model from the Models panel into the scene as one editable mesh at `at`. The model's
+/// textures are written into `res://textures/models/<stem>/` and registered as materials so the mesh
+/// keeps its look. Large results are warned about but never blocked.
+pub fn place_model_mesh(state: &mut EditorState, path: &std::path::Path, at: DVec3) -> Result<String, String> {
+    let upm = state.game.units_per_meter;
+    let model = state.models.get(path, upm).ok_or_else(|| "could not load model".to_string())?;
+    let stem = sanitize(&path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into()));
+    let texture_root = state.game.texture_root().filter(|p| p.is_dir());
+    let mut key_to_material: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    if let Some(root) = &texture_root {
+        let dir = root.join("models").join(&stem);
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        for (i, (key, img, _pixelated)) in model.textures.iter().enumerate() {
+            let file = dir.join(format!("tex{i}.png"));
+            img.save(&file).map_err(|e| e.to_string())?;
+            key_to_material.insert(key.clone(), format!("models/{stem}/tex{i}"));
+        }
+        let game = state.game.clone();
+        state.materials.rescan(&game);
+    }
+    let material_of = |key: &str| key_to_material.get(key).cloned().unwrap_or_else(|| "dev/grey".to_string());
+    let mut mesh = crate::models::model_to_mesh(&model, at, material_of);
+    mesh.weld(1e-4);
+    let verts = mesh.vertices.len();
+    let tris: usize = mesh.faces.iter().map(|f| f.indices.len().saturating_sub(2)).sum();
+    let parent = state.insert_parent();
+    state.doc.edit("Place Model", |m, s| {
+        let id = m.insert(parent, gt_doc::NodeKind::Mesh(mesh));
+        s.clear();
+        s.select_node(id);
+    });
+    let name = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into());
+    // Warn but do not hinder: heavy meshes stay placeable, the user just gets a heads up.
+    const HEAVY_VERTS: usize = 20_000;
+    const HEAVY_TRIS: usize = 40_000;
+    if verts > HEAVY_VERTS || tris > HEAVY_TRIS {
+        Ok(format!("Placed {name} as an editable mesh — {verts} vertices, {tris} triangles. That is a lot, editing may be slow."))
+    } else {
+        Ok(format!("Placed {name} as an editable mesh ({verts} vertices, {tris} triangles)"))
+    }
 }
 
 /// `<texture>.hotspots.json` next to a material's albedo image.

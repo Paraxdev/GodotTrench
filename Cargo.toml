@@ -25,6 +25,7 @@ bytemuck = { version = "1", features = ["derive"] }
 imbl = "7"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "tga", "bmp"] }
 gltf = "1.4"
+tobj = "4"
 eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "persistence", "x11", "wayland"] }
 egui = "0.36"
 egui-wgpu = "0.36"

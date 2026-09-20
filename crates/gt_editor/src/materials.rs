@@ -6,8 +6,24 @@ use gt_formats::godot_material::{self, GodotMaterial};
 
 pub const DEV_PREFIX: &str = "dev/";
 
-/// Suffixes of PBR companion maps next to an albedo texture (FuncGodot's map patterns).
-const COMPANIONS: [&str; 7] = ["_normal", "_roughness", "_metallic", "_ao", "_emission", "_height", "_orm"];
+/// Suffixes of non-normal PBR companion maps next to an albedo texture (FuncGodot's map patterns).
+/// These are never shown as their own material.
+const COMPANIONS: [&str; 6] = ["_roughness", "_metallic", "_ao", "_emission", "_height", "_orm"];
+
+/// Filename suffixes that mark a texture as a normal map, longest first so stripping matches the
+/// most specific one. Compared case-insensitively.
+pub const NORMAL_SUFFIXES: [&str; 6] = ["_normalmap", "_normal", "_nmap", "_norm", "_nrm", "_n"];
+
+/// The normal-map suffix a lowercased texture name ends with, if any.
+pub fn normal_suffix(name_lower: &str) -> Option<&'static str> {
+    NORMAL_SUFFIXES.iter().copied().find(|s| name_lower.ends_with(s) && name_lower.len() > s.len())
+}
+
+/// The albedo/diffuse name a normal-map texture belongs to (its name without the normal suffix).
+pub fn albedo_of_normal(name: &str) -> Option<String> {
+    let lower = name.to_ascii_lowercase();
+    normal_suffix(&lower).map(|s| name[..name.len() - s.len()].to_string())
+}
 
 #[derive(Clone, Debug)]
 pub struct MaterialEntry {
@@ -18,6 +34,10 @@ pub struct MaterialEntry {
     pub path: Option<PathBuf>,
     /// Godot material resource with the same name, if any.
     pub material_file: Option<PathBuf>,
+    /// A normal map was found for this texture, so dropping it into the scene gives valid normals.
+    pub has_normal: bool,
+    /// This entry is itself a normal map with no matching albedo/diffuse texture of the same name.
+    pub missing_albedo: bool,
 }
 
 /// Images and settings of one material, ready for the renderer.
@@ -88,12 +108,20 @@ impl MaterialLibrary {
                             .and_then(|m| m.albedo_texture)
                             .and_then(|res| self.resolve_res(&res));
                         if albedo.is_some() {
-                            found.push(MaterialEntry { name: f.name, folder: f.folder, path: albedo, material_file: file });
+                            found.push(MaterialEntry {
+                                name: f.name,
+                                folder: f.folder,
+                                path: albedo,
+                                material_file: file,
+                                has_normal: false,
+                                missing_albedo: false,
+                            });
                         }
                     }
                 }
             }
         }
+        pair_normal_maps(&mut found);
         found.sort_by(|a, b| a.name.cmp(&b.name));
         // Project textures win over built-in placeholders with the same name.
         for (name, _) in dev_textures() {
@@ -103,6 +131,8 @@ impl MaterialLibrary {
                     folder: name.rsplit_once('/').map(|(f, _)| f.to_string()).unwrap_or_default(),
                     path: None,
                     material_file: None,
+                    has_normal: false,
+                    missing_albedo: false,
                 });
             }
         }
@@ -164,6 +194,11 @@ impl MaterialLibrary {
         self.image_exts.iter().map(|ext| dir.join(format!("{stem}{suffix}.{ext}"))).find(|p| p.is_file())
     }
 
+    /// The first normal-map companion next to the albedo, trying every supported suffix.
+    fn normal_companion(&self, name: &str) -> Option<PathBuf> {
+        NORMAL_SUFFIXES.iter().find_map(|s| self.companion(name, s))
+    }
+
     /// Albedo plus normal and emission maps and the Godot settings, for the preview renderer.
     pub fn load_material(&mut self, name: &str) -> Option<LoadedMaterial> {
         let open = |p: &Path| image::open(p).ok().map(|i| i.to_rgba8());
@@ -175,7 +210,7 @@ impl MaterialLibrary {
             return Some(LoadedMaterial { albedo, normal, emission, info });
         }
         let albedo = self.load_image(name)?;
-        let normal = self.companion(name, "_normal").and_then(|p| open(&p));
+        let normal = self.normal_companion(name).and_then(|p| open(&p));
         let emission = self.companion(name, "_emission").and_then(|p| open(&p));
         let info = GodotMaterial { emission: emission.is_some().then_some([1.0; 3]), ..Default::default() };
         Some(LoadedMaterial { albedo, normal, emission, info })
@@ -224,6 +259,33 @@ impl MaterialLibrary {
     }
 }
 
+/// Removes normal-map textures that belong to an albedo of the same name, flagging that albedo as
+/// having valid normals, and marks lone normal maps (no matching albedo) as missing their diffuse.
+fn pair_normal_maps(entries: &mut Vec<MaterialEntry>) {
+    use std::collections::HashSet;
+    let albedos: HashSet<String> =
+        entries.iter().filter(|e| normal_suffix(&e.name.to_ascii_lowercase()).is_none()).map(|e| e.name.to_ascii_lowercase()).collect();
+    let mut with_normal: HashSet<String> = HashSet::new();
+    let mut i = 0;
+    while i < entries.len() {
+        if let Some(base) = albedo_of_normal(&entries[i].name) {
+            let base_lower = base.to_ascii_lowercase();
+            if albedos.contains(&base_lower) {
+                with_normal.insert(base_lower);
+                entries.remove(i);
+                continue;
+            }
+            entries[i].missing_albedo = true;
+        }
+        i += 1;
+    }
+    for e in entries.iter_mut() {
+        if with_normal.contains(&e.name.to_ascii_lowercase()) {
+            e.has_normal = true;
+        }
+    }
+}
+
 fn scan_dir(root: &Path, dir: &Path, exts: &[String], out: &mut Vec<MaterialEntry>) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
@@ -243,7 +305,7 @@ fn scan_dir(root: &Path, dir: &Path, exts: &[String], out: &mut Vec<MaterialEntr
             continue;
         }
         let folder = rel.parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
-        out.push(MaterialEntry { name, folder, path: Some(path), material_file: None });
+        out.push(MaterialEntry { name, folder, path: Some(path), material_file: None, has_normal: false, missing_albedo: false });
     }
 }
 

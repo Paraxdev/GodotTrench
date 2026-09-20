@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use glam::{Mat4, Vec3};
-use gt_core::{Aabb, DVec3};
+use gt_core::{Aabb, DVec2, DVec3};
 
 #[derive(Clone, Copy, Debug)]
 pub struct ModelVertex {
@@ -39,8 +39,12 @@ pub struct ModelCache {
 
 pub fn is_model_path(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
-    lower.ends_with(".glb") || lower.ends_with(".gltf") || lower.ends_with(".bbmodel")
+    lower.ends_with(".glb") || lower.ends_with(".gltf") || lower.ends_with(".bbmodel") || lower.ends_with(".obj")
 }
+
+/// Model file extensions the editor can load and place. FBX is intentionally excluded: it cannot be
+/// loaded in pure Rust, so it would never preview here.
+pub const MODEL_EXTS: [&str; 4] = ["glb", "gltf", "obj", "bbmodel"];
 
 impl ModelCache {
     pub fn get(&mut self, path: &Path, units_per_meter: f64) -> Option<Arc<Model>> {
@@ -71,6 +75,7 @@ fn load(path: &Path, units_per_meter: f64) -> Result<Model, String> {
     match ext.as_str() {
         "bbmodel" => load_bbmodel(path, units_per_meter),
         "glb" | "gltf" => load_gltf(path, units_per_meter),
+        "obj" => load_obj(path, units_per_meter),
         _ => Err(format!("unsupported model format {ext}")),
     }
 }
@@ -214,4 +219,158 @@ pub fn entity_model_path(game: &gt_formats::GameConfig, e: &gt_doc::Entity) -> O
     let from_def = game.entity(&e.classname).map(|d| d.model.as_str()).filter(|m| is_model_path(m));
     let path = from_prop.or(from_def)?;
     if path.starts_with("res://") { game.resolve_res(path) } else { Some(PathBuf::from(path)) }
+}
+
+fn load_obj(path: &Path, units_per_meter: f64) -> Result<Model, String> {
+    let opts = tobj::LoadOptions { triangulate: true, single_index: true, ..Default::default() };
+    let (models, mats_res) = tobj::load_obj(path, &opts).map_err(|e| e.to_string())?;
+    let mats = mats_res.unwrap_or_default();
+    let base = format!("model:{}", path.display());
+    let scale = units_per_meter as f32;
+    let dir = path.parent();
+    let mut textures: Vec<(String, image::RgbaImage, bool)> = Vec::new();
+    let mut mat_keys: Vec<String> = Vec::with_capacity(mats.len());
+    for (i, m) in mats.iter().enumerate() {
+        let key = format!("{base}#mat{i}");
+        let from_file = m
+            .diffuse_texture
+            .as_ref()
+            .filter(|t| !t.is_empty())
+            .and_then(|t| dir.map(|d| d.join(t)))
+            .and_then(|p| image::open(p).ok())
+            .map(|img| img.to_rgba8());
+        let img = from_file.unwrap_or_else(|| {
+            let c = m.diffuse.unwrap_or([0.8, 0.8, 0.8]);
+            image::RgbaImage::from_pixel(4, 4, image::Rgba([(c[0] * 255.0) as u8, (c[1] * 255.0) as u8, (c[2] * 255.0) as u8, 255]))
+        });
+        textures.push((key.clone(), img, false));
+        mat_keys.push(key);
+    }
+    let mut parts = Vec::new();
+    let mut bounds = Aabb::EMPTY;
+    for model in &models {
+        let mesh = &model.mesh;
+        if mesh.positions.is_empty() {
+            continue;
+        }
+        let material = mesh.material_id.and_then(|id| mat_keys.get(id).cloned()).unwrap_or_else(|| gt_render::WHITE_MATERIAL.to_string());
+        let count = mesh.positions.len() / 3;
+        let mut vertices = Vec::with_capacity(count);
+        for i in 0..count {
+            let pos = Vec3::new(mesh.positions[3 * i], mesh.positions[3 * i + 1], mesh.positions[3 * i + 2]) * scale;
+            bounds.include_point(pos.as_dvec3());
+            let normal = if mesh.normals.len() >= 3 * i + 3 {
+                Vec3::new(mesh.normals[3 * i], mesh.normals[3 * i + 1], mesh.normals[3 * i + 2]).normalize_or(Vec3::Y)
+            } else {
+                Vec3::Y
+            };
+            // OBJ texture coordinates use a bottom-left origin, images a top-left one.
+            let uv = if mesh.texcoords.len() >= 2 * i + 2 { [mesh.texcoords[2 * i], 1.0 - mesh.texcoords[2 * i + 1]] } else { [0.0, 0.0] };
+            vertices.push(ModelVertex { pos, normal, uv });
+        }
+        parts.push(ModelPart { material, vertices, indices: mesh.indices.clone() });
+    }
+    if parts.is_empty() {
+        return Err("obj has no triangles".into());
+    }
+    Ok(Model { parts, textures, bounds })
+}
+
+/// Converts a loaded model into an editable polygon mesh, welding coincident vertices and keeping the
+/// model's UVs. `material_of` maps each part's renderer material key to a material name in the library.
+pub fn model_to_mesh(model: &Model, offset: DVec3, material_of: impl Fn(&str) -> String) -> gt_geom::Mesh {
+    use gt_geom::{FaceData, FaceUv, Mesh, MeshFace};
+    let mut mesh = Mesh::default();
+    let mut lookup: HashMap<(i64, i64, i64), u32> = HashMap::new();
+    for part in &model.parts {
+        let material = material_of(&part.material);
+        for tri in part.indices.chunks_exact(3) {
+            let corners = [tri[0] as usize, tri[1] as usize, tri[2] as usize];
+            if corners.iter().any(|&c| c >= part.vertices.len()) {
+                continue;
+            }
+            let mut indices = Vec::with_capacity(3);
+            let mut positions = Vec::with_capacity(3);
+            for &c in &corners {
+                let p = part.vertices[c].pos.as_dvec3() + offset;
+                positions.push(p);
+                let key = ((p.x * 1e4).round() as i64, (p.y * 1e4).round() as i64, (p.z * 1e4).round() as i64);
+                let idx = *lookup.entry(key).or_insert_with(|| {
+                    mesh.vertices.push(p);
+                    (mesh.vertices.len() - 1) as u32
+                });
+                indices.push(idx);
+            }
+            let unique: std::collections::BTreeSet<u32> = indices.iter().copied().collect();
+            if unique.len() < 3 {
+                continue;
+            }
+            let normal = gt_geom::polygon::newell(&positions).normalize_or(DVec3::Y);
+            let mut face = MeshFace::new(indices, FaceData::new(material.clone(), FaceUv::paraxial(normal, DVec2::ONE)));
+            face.uvs = corners.iter().map(|&c| part.vertices[c].uv).collect();
+            mesh.faces.push(face);
+        }
+    }
+    // Models come smooth shaded; a moderate angle keeps rounded surfaces without over-smoothing hard edges.
+    mesh.smooth_angle = 45.0;
+    mesh
+}
+
+#[derive(Clone, Debug)]
+pub struct ModelEntry {
+    /// Path relative to the models root without extension, shown in the panel.
+    pub name: String,
+    pub folder: String,
+    pub path: PathBuf,
+    pub ext: String,
+}
+
+/// The placeable models under `res://models`, listed in the Models panel.
+#[derive(Default)]
+pub struct ModelLibrary {
+    pub entries: Vec<ModelEntry>,
+    pub root: Option<PathBuf>,
+}
+
+impl ModelLibrary {
+    pub fn new(game: &gt_formats::GameConfig) -> Self {
+        let mut lib = Self::default();
+        lib.rescan(game);
+        lib
+    }
+
+    pub fn rescan(&mut self, game: &gt_formats::GameConfig) {
+        self.entries.clear();
+        self.root = game.resolve_res("res://models").filter(|p| p.is_dir());
+        if let Some(root) = self.root.clone() {
+            scan_models(&root, &root, &mut self.entries);
+        }
+        self.entries.sort_by(|a, b| a.name.cmp(&b.name));
+    }
+
+    pub fn folders(&self) -> Vec<String> {
+        let mut f: Vec<String> = self.entries.iter().map(|e| e.folder.clone()).collect();
+        f.sort();
+        f.dedup();
+        f
+    }
+}
+
+fn scan_models(root: &Path, dir: &Path, out: &mut Vec<ModelEntry>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            scan_models(root, &path, out);
+            continue;
+        }
+        let Some(ext) = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()) else { continue };
+        if !MODEL_EXTS.contains(&ext.as_str()) {
+            continue;
+        }
+        let Ok(rel) = path.strip_prefix(root) else { continue };
+        let name = rel.with_extension("").to_string_lossy().replace('\\', "/");
+        let folder = rel.parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+        out.push(ModelEntry { name, folder, path: path.clone(), ext });
+    }
 }
