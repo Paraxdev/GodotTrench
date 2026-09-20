@@ -64,6 +64,8 @@ pub struct App {
     tool_options_height: f32,
     /// Scale shown while its slider is dragged, applied on release so the slider does not move under the pointer.
     ui_scale_draft: Option<f32>,
+    /// The product logo drawn at the left of the menu bar.
+    logo: egui::TextureHandle,
 }
 
 const PREFS_LABEL_WIDTH: f32 = 180.0;
@@ -442,6 +444,7 @@ impl App {
             toolbar_fit: ToolbarFit::default(),
             tool_options_height: 0.0,
             ui_scale_draft: None,
+            logo: crate::brand::texture(&cc.egui_ctx),
         }
     }
 
@@ -548,7 +551,12 @@ impl App {
     fn menu_bar(&mut self, ui: &mut Ui) {
         use crate::entity_wizards::{DoorKind, HingeSide, SlideDirection};
         let mut m = MenuCx { ctx: ui.ctx().clone(), shortcuts: commands::shortcuts(&self.state.prefs), actions: &mut self.actions };
+        let logo = self.logo.clone();
         let bar = egui::MenuBar::new().ui(ui, |ui| {
+            // Product logo, scaled down to sit alongside the menus.
+            let logo_size = egui::Vec2::splat(icons::SMALL + 6.0);
+            ui.add(egui::Image::new(&logo).fit_to_exact_size(logo_size)).on_hover_text("GodotTrench");
+            ui.add_space(6.0);
             menu(ui, "File", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 m.item(ui, Some(icons::NEW), "New Map", Action::NewMap);

@@ -1,5 +1,6 @@
 pub mod app;
 pub mod blend_tool;
+pub mod brand;
 pub mod camera;
 pub mod code_refs;
 pub mod commands;
@@ -72,7 +73,11 @@ impl CliArgs {
 
 pub fn run(args: CliArgs) -> eframe::Result {
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_title("GodotTrench").with_inner_size([1600.0, 960.0]).with_min_inner_size([800.0, 500.0]),
+        viewport: egui::ViewportBuilder::default()
+            .with_title("GodotTrench")
+            .with_icon(brand::icon())
+            .with_inner_size([1600.0, 960.0])
+            .with_min_inner_size([800.0, 500.0]),
         // eframe reads and writes the window geometry on its own, so automated runs get a separate, never written store
         // instead of loading or overwriting the user's window.
         persist_window: !args.default_prefs,
