@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="crates/td_editor/assets/logo.png" alt="TrenchDot logo" width="120">
+</p>
+
 # TrenchDot
 
 A brush based level editor for Godot, written in Rust. heavily inspired by TrenchBroom and Hammer++, it aims for TrenchBroom parity plus
