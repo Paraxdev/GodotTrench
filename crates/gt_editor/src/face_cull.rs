@@ -149,12 +149,16 @@ impl FaceCull {
                 }
             }
         }
-        for (key, areas) in touched {
-            let Some(members) = self.planes.get(&key) else { continue };
-            let members: Vec<(NodeId, &CullFace)> =
-                members.iter().filter_map(|(id, fi)| index.get(&(*id, *fi)).map(|f| (*id, *f))).collect();
+        // Each touched plane's visible pieces are computed independently from immutable data, so they fan
+        // out across threads; only the final apply into `self.pieces` runs on the calling thread.
+        let touched: Vec<(PlaneKey, Vec<Aabb>)> = touched.into_iter().collect();
+        let planes = &self.planes;
+        let index = &index;
+        let per_key = |key: &PlaneKey, areas: &[Aabb]| -> Vec<(NodeId, usize, Option<Pieces>)> {
+            let Some(members) = planes.get(key) else { return Vec::new() };
+            let members: Vec<(NodeId, &CullFace)> = members.iter().filter_map(|(id, fi)| index.get(&(*id, *fi)).map(|f| (*id, *f))).collect();
             let near = |b: &Aabb| areas.iter().any(|a| a.expanded(COPLANAR_DIST).intersects(b));
-            let mut results: Vec<(NodeId, usize, Option<Pieces>)> = Vec::new();
+            let mut results = Vec::new();
             for (id, face) in members.iter().filter(|(_, f)| near(&f.bounds)) {
                 let mut overlapping: Vec<&[DVec3]> = Vec::new();
                 let mut backing: Vec<&[DVec3]> = Vec::new();
@@ -177,23 +181,39 @@ impl FaceCull {
                 };
                 results.push((*id, face.face, pieces));
             }
-            for (id, fi, pieces) in results {
-                let entry = self.pieces.entry(id).or_default();
-                let before = entry.get(&fi).cloned();
-                match pieces {
-                    Some(p) => {
-                        entry.insert(fi, p);
-                    }
-                    None => {
-                        entry.remove(&fi);
-                    }
+            results
+        };
+        let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+        let all_results: Vec<(NodeId, usize, Option<Pieces>)> = if threads <= 1 || touched.len() < 512 {
+            touched.iter().flat_map(|(k, a)| per_key(k, a)).collect()
+        } else {
+            let chunk = touched.len().div_ceil(threads);
+            std::thread::scope(|s| {
+                touched
+                    .chunks(chunk)
+                    .map(|c| s.spawn(|| c.iter().flat_map(|(k, a)| per_key(k, a)).collect::<Vec<_>>()))
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .flat_map(|h| h.join().unwrap())
+                    .collect()
+            })
+        };
+        for (id, fi, pieces) in all_results {
+            let entry = self.pieces.entry(id).or_default();
+            let before = entry.get(&fi).cloned();
+            match pieces {
+                Some(p) => {
+                    entry.insert(fi, p);
                 }
-                if entry.get(&fi) != before.as_ref() {
-                    changed.insert(id);
+                None => {
+                    entry.remove(&fi);
                 }
-                if entry.is_empty() {
-                    self.pieces.remove(&id);
-                }
+            }
+            if entry.get(&fi) != before.as_ref() {
+                changed.insert(id);
+            }
+            if entry.is_empty() {
+                self.pieces.remove(&id);
             }
         }
         changed
