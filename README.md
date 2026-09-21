@@ -74,5 +74,5 @@ and [FuncGodot](https://github.com/func-godot) which was forked and modified to 
 the toolbar, menu and outliner icons are from [Lucide](https://lucide.dev).
 
 # License
-
 GodotTrench is AGPLv3 licensed, see [LICENSE](LICENSE). third party code and assets are listed with their licenses in [LICENSES.md](LICENSES.md).
+
