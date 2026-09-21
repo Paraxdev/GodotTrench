@@ -601,6 +601,11 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             }
 
             let n = state.doc.edit("Delete", ops::delete_selection);
+            // Deleting the current layer would leave new objects homeless, so fall back to the default layer.
+            if !state.doc.map.contains(state.current_layer) {
+                state.current_layer = state.doc.map.default_layer();
+            }
+
             state.set_status(format!("Deleted {n} objects"));
         }
         Action::Duplicate => {
