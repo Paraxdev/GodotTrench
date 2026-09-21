@@ -53,6 +53,10 @@ pub struct Mesh {
     /// Corner normals are shared between faces meeting at less than this angle in degrees. 0 is flat shading.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub smooth_angle: f32,
+    /// A decal sheet: a thin quad drawn with its texture's alpha cut out and double sided, laid over a
+    /// surface. Set on meshes made by the decal tool, cleared on ordinary geometry.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub decal: bool,
 }
 
 fn is_zero(v: &f32) -> bool {
@@ -124,6 +128,7 @@ impl Mesh {
                 vertices: brush.vertices.clone(),
                 faces: brush.faces.iter().map(|f| MeshFace::new(f.indices.clone(), f.data.clone())).collect(),
                 smooth_angle: 0.0,
+                decal: false,
             };
         }
         // Like Hammer, only the displacement surfaces of a displacement brush become geometry.

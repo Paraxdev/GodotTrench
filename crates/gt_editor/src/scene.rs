@@ -128,6 +128,14 @@ fn linear(c: Vec3) -> Vec3 {
     Vec3::new(gt_render::srgb_to_linear(c.x), gt_render::srgb_to_linear(c.y), gt_render::srgb_to_linear(c.z))
 }
 
+/// Materials used by decal sheets are registered under this prefix with alpha cutout and double sided
+/// on, so the same texture can still render opaque on ordinary geometry.
+const DECAL_PREFIX: &str = "decal::";
+
+pub fn decal_key(material: &str) -> String {
+    format!("{DECAL_PREFIX}{material}")
+}
+
 /// Renderer description of a loaded Godot material.
 pub fn material_desc(m: &crate::materials::LoadedMaterial, filter: crate::state::TextureFilter) -> gt_render::MaterialDesc<'_> {
     use gt_formats::godot_material::Transparency;
@@ -534,7 +542,13 @@ impl Builder<'_> {
                 .collect();
             let corner_tris = mesh.triangulate_corners(fi);
             let tris: Vec<u32> = corner_tris.iter().flat_map(|[a, b, c]| [*a as u32, *b as u32, *c as u32]).collect();
-            let key = blend.as_deref().unwrap_or(mat);
+            let decal_mat;
+            let key = if mesh.decal {
+                decal_mat = decal_key(mat);
+                decal_mat.as_str()
+            } else {
+                blend.as_deref().unwrap_or(mat)
+            };
             match culled.and_then(|c| c.get(&fi)) {
                 Some(pieces) => {
                     let corners = mesh.face_points(fi);
@@ -1025,7 +1039,12 @@ impl SceneCache {
         needed.extend(blend_pairs.iter().map(|(_, b)| b.clone()));
         let collect = |node: &gt_doc::Node, needed: &mut BTreeSet<String>| match &node.kind {
             NodeKind::Brush(b) => needed.extend(b.faces.iter().map(|f| f.data.material.clone())),
-            NodeKind::Mesh(m) => needed.extend(m.faces.iter().map(|f| f.data.material.clone())),
+            NodeKind::Mesh(m) => {
+                needed.extend(m.faces.iter().map(|f| f.data.material.clone()));
+                if m.decal {
+                    needed.extend(m.faces.iter().map(|f| decal_key(&f.data.material)));
+                }
+            }
             NodeKind::Terrain(t) => needed.extend(t.layers.iter().map(|l| l.material.clone())),
             NodeKind::Entity(e) => needed.extend(e.property("texture").filter(|t| t.starts_with("res://")).map(str::to_string)),
             _ => {}
@@ -1057,6 +1076,16 @@ impl SceneCache {
         }
         for name in needed {
             if name.is_empty() || renderer.has_material(&name) {
+                continue;
+            }
+            if let Some(base) = name.strip_prefix(DECAL_PREFIX) {
+                // A decal variant of a material: same textures, but alpha cut out and double sided.
+                if let Some(loaded) = state.materials.load_material(base) {
+                    let mut desc = material_desc(&loaded, state.prefs.texture_filter);
+                    desc.alpha = gt_render::AlphaMode::Scissor(0.5);
+                    desc.double_sided = true;
+                    renderer.set_material_desc(&name, &desc);
+                }
                 continue;
             }
             if let Some(loaded) = state.materials.load_material(&name) {
