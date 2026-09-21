@@ -458,6 +458,11 @@ impl Scatter {
                 }
                 let offset = (basis.0 * angle.cos() + basis.1 * angle.sin()) * radius * t;
                 let Some(hit) = cast(center + offset + normal * radius, -normal) else { continue };
+                // A tilted or edge normal makes the cast skate off the brush and land far away, so drop hits that
+                // fall outside the disc (or came back non-finite) rather than flinging an instance to a random spot.
+                if !hit.point.is_finite() || (hit.point - center).reject_from(normal).length() > radius * 1.5 {
+                    continue;
+                }
                 let spacing = self.items[item].spacing;
                 if !self.accepts(&hit, rules) || grid.blocked(hit.point, spacing) {
                     continue;
@@ -498,7 +503,7 @@ impl Scatter {
                 let x = bounds.min.x + rng.next_f64() * size.x;
                 let z = bounds.min.z + rng.next_f64() * size.z;
                 let Some(hit) = cast(DVec3::new(x, top, z), DVec3::NEG_Y) else { continue };
-                if !self.accepts(&hit, rules) || grid.blocked(hit.point, spacing) {
+                if !hit.point.is_finite() || !self.accepts(&hit, rules) || grid.blocked(hit.point, spacing) {
                     continue;
                 }
                 grid.insert(hit.point, spacing);
@@ -621,6 +626,28 @@ mod tests {
         let back: Scatter = serde_json::from_str(&text).unwrap();
         assert_eq!(back.instances.len(), set.instances.len());
         assert!((back.instances[0].position - set.instances[0].position).length() < 0.01);
+    }
+
+    #[test]
+    fn paint_keeps_instances_inside_the_brush_disc() {
+        // A narrow ledge under the brush: samples that clear it skim on and strike a wall far to the side. Without a
+        // footprint guard those instances teleport to the wall; with it every placed instance stays within the disc.
+        let ledge = flat(NodeId(1), 0.0);
+        let cast = |origin: DVec3, dir: DVec3| match ledge(origin, dir) {
+            Some(h) if h.point.length() <= 40.0 => Some(h),
+            _ => Some(SurfaceHit { point: DVec3::new(600.0, 0.0, 600.0), normal: DVec3::Y, node: NodeId(2) }),
+        };
+        let mut set = Scatter::new("s", ScatterKind::Props, vec![ScatterItem { spacing: 8.0, ..ScatterItem::new("res://a.glb") }]);
+        let mut rng = Rng::new(4);
+        let radius = 200.0;
+        let center = DVec3::ZERO;
+        let rules = ScatterRules { density: 40.0, slope: [0.0, 90.0], only_targets: false, falloff: 0.0, ..Default::default() };
+        let placed = set.paint(center, DVec3::Y, radius, &rules, &mut rng, &[], cast);
+        assert!(placed > 0, "instances on the ledge still land");
+        for i in &set.instances {
+            let lateral = (i.position - center).reject_from(DVec3::Y).length();
+            assert!(lateral <= radius * 1.5 + 1e-6, "instance flung to {:?}", i.position);
+        }
     }
 
     #[test]
