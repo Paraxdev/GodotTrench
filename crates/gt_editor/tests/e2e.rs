@@ -572,3 +572,22 @@ fn keyboard_shortcuts_and_views() {
     ed.input("window", json!([{ "type": "key", "key": "0", "modifiers": ["ctrl"] }]));
     assert_eq!(ed.state()["ui"]["scale"], 1.0);
 }
+
+#[test]
+#[ignore]
+fn vertex_gizmo_moves_a_vertex_along_one_axis() {
+    let ed = Editor::launch("vertex_gizmo");
+    let id = ed.box_brush([-32.0, -32.0, -32.0], [32.0, 32.0, 32.0]);
+    ed.call("select", json!({ "ids": [id] }));
+    ed.call("set_editor", json!({ "tool": "vertex" }));
+    ed.call("set_camera", json!({ "view": "3d", "position": [190.0, 150.0, 210.0], "look_at": [0.0, 0.0, 0.0] }));
+
+    // Double click the +x+y+z corner to attach the precise-move gizmo, then drag its x arrow by +32.
+    ed.input("3d", json!([{ "type": "double_click", "world": [32.0, 32.0, 32.0] }]));
+    ed.screenshot("3d", "vertex_gizmo");
+    let (_, before) = ed.selection_bounds();
+    ed.input("3d", json!([{ "type": "drag", "world": [50.0, 32.0, 32.0], "to_world": [82.0, 32.0, 32.0], "steps": 10 }]));
+    let (_, after) = ed.selection_bounds();
+    assert!((after[0] - 64.0).abs() < 2.0, "x corner should move +32 to 64 via the gizmo, before {before:?} after {after:?}");
+    assert!((after[1] - before[1]).abs() < 1e-3 && (after[2] - before[2]).abs() < 1e-3, "only x should change, after {after:?}");
+}
