@@ -15,7 +15,10 @@
         { "name": "sky_ground_color", "type": "color", "default": "100 104 108", "description": "Below the horizon" },
         { "name": "fog_color", "type": "color", "default": "190 204 218", "description": "Fog color" },
         { "name": "fog_density", "type": "float", "default": "0", "description": "Fog density per meter, 0 disables fog" },
-        { "name": "environment", "type": "bool", "default": "1", "description": "Build the WorldEnvironment and sun in Godot" }
+        { "name": "environment", "type": "bool", "default": "1", "description": "Build the WorldEnvironment and sun in Godot" },
+        { "name": "chunk_streaming", "type": "bool", "default": "0", "description": "Group the built map into chunks and only draw the ones near the camera" },
+        { "name": "chunk_size", "type": "float", "default": "2048", "description": "Size of a streaming chunk in map units" },
+        { "name": "load_radius", "type": "float", "default": "8192", "description": "Distance from the camera a chunk stays drawn within, in map units" }
       ]
     },
     {

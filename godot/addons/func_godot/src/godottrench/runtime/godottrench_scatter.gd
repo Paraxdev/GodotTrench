@@ -7,6 +7,8 @@ class_name GodotTrenchScatter extends Node3D
 @export var kind := "props"
 @export var collision := "convex"
 @export var instance_count := 0
+## Map units per chunk cell the instances were split into, 0 when the set is one MultiMesh per mesh.
+@export var chunk_size := 0.0
 
 const BUFFER_META := &"gt_transforms"
 
@@ -109,6 +111,58 @@ static func instance_transform(raw: Array, xform: Transform3D, scale_factor: flo
 	var basis := xform.basis * Basis.from_euler(angles, EULER_ORDER_YXZ).scaled(Vector3.ONE * float(raw[7]))
 	return Transform3D(basis, (xform * pos) * scale_factor)
 
+## Grid cell an instance falls into, in map units, matching Scatter::chunks() in the editor.
+static func _cell(raw: Array, chunk_size: float) -> Vector3i:
+	if chunk_size <= 0.0:
+		return Vector3i.ZERO
+	return Vector3i(floori(float(raw[1]) / chunk_size), floori(float(raw[2]) / chunk_size), floori(float(raw[3]) / chunk_size))
+
+## Cells in a fixed order, so a set always builds the same way.
+static func _sorted_cells(buckets: Dictionary) -> Array:
+	var cells := buckets.keys()
+	cells.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
+		if a.x != b.x:
+			return a.x < b.x
+		if a.y != b.y:
+			return a.y < b.y
+		return a.z < b.z)
+	return cells
+
+## One MultiMeshInstance3D for the transforms of a single mesh in a single chunk.
+static func _chunk_instance(mi: MeshInstance3D, rel: Transform3D, transforms: Array, name: String, shadows: bool, range_end: float) -> MultiMeshInstance3D:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mi.mesh
+	mm.instance_count = transforms.size()
+	var buffer := PackedFloat32Array()
+	buffer.resize(transforms.size() * 12)
+	var box := AABB()
+	var mesh_box := mi.mesh.get_aabb()
+	for i in transforms.size():
+		var t: Transform3D = transforms[i] * rel
+		var b := t.basis
+		var o := i * 12
+		buffer[o] = b.x.x; buffer[o + 1] = b.y.x; buffer[o + 2] = b.z.x; buffer[o + 3] = t.origin.x
+		buffer[o + 4] = b.x.y; buffer[o + 5] = b.y.y; buffer[o + 6] = b.z.y; buffer[o + 7] = t.origin.y
+		buffer[o + 8] = b.x.z; buffer[o + 9] = b.y.z; buffer[o + 10] = b.z.z; buffer[o + 11] = t.origin.z
+		box = (t * mesh_box) if i == 0 else box.merge(t * mesh_box)
+	mm.buffer = buffer
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = name
+	mmi.multimesh = mm
+	# The headless renderer drops MultiMesh buffers, so scenes built there keep a copy and restore it on load.
+	if mm.buffer.size() != buffer.size():
+		mmi.set_meta(BUFFER_META, buffer)
+	# Without an explicit box a chunk whose buffer was dropped reports an empty AABB and is culled away.
+	mmi.custom_aabb = box
+	mmi.material_override = mi.material_override
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if range_end > 0.0:
+		mmi.visibility_range_end = range_end
+		mmi.visibility_range_end_margin = range_end * 0.1
+		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+	return mmi
+
 static func create(data: Dictionary, xform: Transform3D, settings: FuncGodotMapSettings) -> GodotTrenchScatter:
 	var node := GodotTrenchScatter.new()
 	node.kind = str(data.get("kind", "props"))
@@ -119,14 +173,24 @@ static func create(data: Dictionary, xform: Transform3D, settings: FuncGodotMapS
 	node.instance_count = instances.size()
 	var shadows := bool(data.get("cast_shadows", true))
 	var range_end := float(data.get("visibility_range", 0.0)) * scale
-	var per_item: Array[Array] = []
+	node.chunk_size = float(data.get("chunk_size", 0.0))
+	var props_as_multimesh := bool(data.get("static_props_multimesh", false))
+	# Per palette entry, the instance transforms grouped by chunk cell, so each cell becomes a MultiMesh with its
+	# own bounds that Godot frustum culls on its own instead of one set spanning the whole map.
+	var per_item: Array[Dictionary] = []
 	per_item.resize(items.size())
+	for k in items.size():
+		per_item[k] = {}
 	for raw in instances:
 		if raw is Array and raw.size() >= 8 and int(raw[0]) < items.size():
-			per_item[int(raw[0])].append(instance_transform(raw, xform, scale))
+			var cell := _cell(raw, node.chunk_size)
+			var buckets: Dictionary = per_item[int(raw[0])]
+			if not buckets.has(cell):
+				buckets[cell] = []
+			buckets[cell].append(instance_transform(raw, xform, scale))
 	for k in items.size():
-		var transforms: Array = per_item[k]
-		if transforms.is_empty():
+		var buckets: Dictionary = per_item[k]
+		if buckets.is_empty():
 			continue
 		var source := str(items[k].get("source", ""))
 		if source == "" or not ResourceLoader.exists(source):
@@ -137,8 +201,12 @@ static func create(data: Dictionary, xform: Transform3D, settings: FuncGodotMapS
 			continue
 		var template := scene.instantiate()
 		var item_name := source.get_file().get_basename().validate_node_name()
-		if node.kind != "foliage" and _has_script(template):
-			for t in transforms:
+		var cells := _sorted_cells(buckets)
+		var all: Array[Transform3D] = []
+		for cell: Vector3i in cells:
+			all.append_array(buckets[cell])
+		if node.kind != "foliage" and not props_as_multimesh and _has_script(template):
+			for t in all:
 				var inst := scene.instantiate()
 				inst.name = "%s_%d" % [item_name, node.get_child_count()]
 				if inst is Node3D:
@@ -148,40 +216,18 @@ static func create(data: Dictionary, xform: Transform3D, settings: FuncGodotMapS
 			continue
 		for mi in _mesh_instances(template):
 			var rel := _relative_transform(mi, template)
-			var mm := MultiMesh.new()
-			mm.transform_format = MultiMesh.TRANSFORM_3D
-			mm.mesh = mi.mesh
-			mm.instance_count = transforms.size()
-			var buffer := PackedFloat32Array()
-			buffer.resize(transforms.size() * 12)
-			for i in transforms.size():
-				var t: Transform3D = transforms[i] * rel
-				var b := t.basis
-				var o := i * 12
-				buffer[o] = b.x.x; buffer[o + 1] = b.y.x; buffer[o + 2] = b.z.x; buffer[o + 3] = t.origin.x
-				buffer[o + 4] = b.x.y; buffer[o + 5] = b.y.y; buffer[o + 6] = b.z.y; buffer[o + 7] = t.origin.y
-				buffer[o + 8] = b.x.z; buffer[o + 9] = b.y.z; buffer[o + 10] = b.z.z; buffer[o + 11] = t.origin.z
-			mm.buffer = buffer
-			var mmi := MultiMeshInstance3D.new()
-			mmi.name = "%s_%s" % [item_name, mi.name]
-			mmi.multimesh = mm
-			# The headless renderer drops MultiMesh buffers, so scenes built there keep a copy and restore it on load.
-			if mm.buffer.size() != buffer.size():
-				mmi.set_meta(BUFFER_META, buffer)
-			mmi.material_override = mi.material_override
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			if range_end > 0.0:
-				mmi.visibility_range_end = range_end
-				mmi.visibility_range_end_margin = range_end * 0.1
-				mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
-			node.add_child(mmi)
+			for cell: Vector3i in cells:
+				var chunk_name := "%s_%s" % [item_name, mi.name]
+				if node.chunk_size > 0.0:
+					chunk_name = "%s_%d_%d_%d" % [chunk_name, cell.x, cell.y, cell.z]
+				node.add_child(_chunk_instance(mi, rel, buckets[cell], chunk_name.validate_node_name(), shadows, range_end))
 		if node.collision != "none":
 			var shape := _shape_for(template, node.collision)
 			if shape:
 				var body := StaticBody3D.new()
 				body.name = "%s_collision" % item_name
 				node.add_child(body)
-				for t in transforms:
+				for t in all:
 					var cs := CollisionShape3D.new()
 					cs.shape = shape
 					cs.transform = t

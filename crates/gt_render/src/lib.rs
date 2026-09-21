@@ -829,15 +829,20 @@ impl Renderer {
     }
 
     /// Key for a terrain draw with up to four layers `(material, world units per repeat)`. Creates the bind group once.
-    pub fn prepare_terrain_material(&mut self, layers: &[(String, f32)]) -> String {
-        let mut names: Vec<String> = layers.iter().take(4).map(|(m, _)| m.clone()).collect();
-        let mut tiles: Vec<f32> = layers.iter().take(4).map(|(_, t)| *t).collect();
+    pub fn prepare_terrain_material(&mut self, layers: &[(String, f32, f32, f32)]) -> String {
+        let mut names: Vec<String> = layers.iter().take(4).map(|(m, ..)| m.clone()).collect();
+        let mut tiles: Vec<f32> = layers.iter().take(4).map(|(_, t, ..)| *t).collect();
+        let mut detiles: Vec<f32> = layers.iter().take(4).map(|(_, _, d, _)| *d).collect();
+        let mut sharpens: Vec<f32> = layers.iter().take(4).map(|(.., s)| *s).collect();
         while names.len() < 4 {
             names.push(names.first().cloned().unwrap_or_else(|| MISSING_MATERIAL.to_string()));
             tiles.push(tiles.first().copied().unwrap_or(256.0));
+            detiles.push(detiles.first().copied().unwrap_or(0.0));
+            sharpens.push(sharpens.first().copied().unwrap_or(0.5));
         }
 
-        let key = format!("{}|{}|{}|{}|{}", names[0], names[1], names[2], names[3], tiles.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(","));
+        let numbers = tiles.iter().chain(detiles.iter()).chain(sharpens.iter()).map(|t| t.to_string()).collect::<Vec<_>>().join(",");
+        let key = format!("{}|{}|{}|{}|{}", names[0], names[1], names[2], names[3], numbers);
         if self.terrain_materials.contains_key(&key) {
             return key;
         }
@@ -845,7 +850,20 @@ impl Renderer {
         let view = |n: &str| &self.materials.get(n).or_else(|| self.materials.get(MISSING_MATERIAL)).expect("missing material exists").view;
         let tiles_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("terrain tiles"),
-            contents: bytemuck::cast_slice(&[tiles[0], tiles[1], tiles[2], tiles[3]]),
+            contents: bytemuck::cast_slice(&[
+                tiles[0],
+                tiles[1],
+                tiles[2],
+                tiles[3],
+                detiles[0],
+                detiles[1],
+                detiles[2],
+                detiles[3],
+                sharpens[0],
+                sharpens[1],
+                sharpens[2],
+                sharpens[3],
+            ]),
             usage: wgpu::BufferUsages::UNIFORM,
         });
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {

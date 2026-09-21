@@ -1396,6 +1396,18 @@ impl App {
                     if ui.small_button("Set Blend Material").on_hover_text("Use the current material as the second texture of the selected faces").clicked() {
                         self.actions.push(Action::SetBlendMaterial);
                     }
+
+                    let p = &mut self.state.prefs;
+                    ui.add(egui::DragValue::new(&mut p.blend_uv_scale).range(0.01..=64.0).speed(0.05).prefix("repeat "))
+                        .on_hover_text("How much more often the blend material repeats across the face");
+                    ui.add(egui::DragValue::new(&mut p.blend_detile).range(0.0..=1.0).speed(0.02).prefix("detile "))
+                        .on_hover_text("Turns and shifts every tile and blends the joins, so a path does not look repeated");
+                    ui.add(egui::DragValue::new(&mut p.blend_detile_sharpen).range(0.0..=1.0).speed(0.02).prefix("sharpen "))
+                        .on_hover_text("Keeps the de-tiled texture crisp: 0 mixes the tiles evenly and looks soft, 1 mixes only where they join");
+                    let (detile, uv_scale, sharpen) = (p.blend_detile, p.blend_uv_scale, p.blend_detile_sharpen);
+                    if ui.small_button("Apply Tiling").on_hover_text("Give the selected faces the repeat and de-tiling above").clicked() {
+                        self.actions.push(Action::SetBlendTiling { detile, uv_scale, sharpen });
+                    }
                 }
                 ToolKind::Volume => {
                     let p = &mut self.state.prefs;

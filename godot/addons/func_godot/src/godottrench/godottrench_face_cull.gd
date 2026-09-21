@@ -23,22 +23,111 @@ class Entry:
 	## Corners in map units.
 	var points: PackedVector3Array
 
+## A closed solid that can swallow another solid's faces. Convex brushes test against their own planes, closed
+## meshes by ray parity. Everything is in map units, like [member Entry.points].
+class Solid:
+	var brush: FuncGodotData.BrushData
+	var bounds: AABB
+	var is_mesh: bool
+	var normals: PackedVector3Array
+	var dists: PackedFloat32Array
+	var tris: PackedVector3Array
+
+	func contains(p: Vector3) -> bool:
+		if not bounds.grow(COPLANAR_DIST).has_point(p):
+			return false
+		if not is_mesh:
+			for i in normals.size():
+				if normals[i].dot(p) - dists[i] > 0.0:
+					return false
+			return true
+		# A ray leaving a point inside a closed surface crosses it an odd number of times. The direction is
+		# irregular so it rarely grazes an edge, and hits at the same distance (a shared edge) count once.
+		var dir := Vector3(0.5773, 0.5574, 0.5964).normalized()
+		var hits := PackedFloat32Array()
+		var i := 0
+		while i < tris.size():
+			var at = Geometry3D.ray_intersects_triangle(p, dir, tris[i], tris[i + 1], tris[i + 2])
+			if at != null:
+				hits.append(p.distance_to(at))
+			i += 3
+		hits.sort()
+		var crossings := 0
+		for k in hits.size():
+			if k == 0 or absf(hits[k] - hits[k - 1]) > 1e-5:
+				crossings += 1
+		return crossings % 2 == 1
+
+## True when [param face] has solid material on both of its sides inside [param solid]. Probing to both sides
+## keeps a face resting on the solid's surface out of it, that one belongs to the coplanar pass.
+static func _buried_in(solid: Solid, entry: Entry) -> bool:
+	var nudge := entry.normal * COPLANAR_DIST
+	var centroid := Vector3.ZERO
+	for p in entry.points:
+		centroid += p
+	centroid /= float(entry.points.size())
+	var samples := entry.points.duplicate()
+	samples.append(centroid)
+	for p in samples:
+		if not solid.contains(p + nudge) or not solid.contains(p - nudge):
+			return false
+	return true
+
+static func _solid(brush: FuncGodotData.BrushData, inv_scale: float) -> Solid:
+	if not brush.closed:
+		return null
+	var solid := Solid.new()
+	solid.brush = brush
+	solid.is_mesh = brush.is_mesh
+	var first := true
+	for fi in brush.faces.size():
+		var face := brush.faces[fi]
+		var source := face.disp_vertices if brush.is_mesh else face.vertices
+		if source.size() < 3:
+			continue
+		var points := PackedVector3Array()
+		var centroid := Vector3.ZERO
+		for p in source:
+			var q: Vector3 = p * inv_scale
+			points.append(q)
+			centroid += q
+			solid.bounds = AABB(q, Vector3.ZERO) if first else solid.bounds.expand(q)
+			first = false
+		centroid /= float(points.size())
+		if solid.is_mesh:
+			# Fan triangulation is enough, the map's faces are convex.
+			for k in range(1, points.size() - 1):
+				solid.tris.append_array([points[0], points[k], points[k + 1]])
+		else:
+			solid.normals.append(face.plane.normal)
+			solid.dists.append(face.plane.normal.dot(centroid))
+	if first or (solid.is_mesh and solid.tris.is_empty()) or (not solid.is_mesh and solid.normals.is_empty()):
+		return null
+	return solid
+
 ## Marks hidden faces, returns how many.
 static func apply(entities: Array[FuncGodotData.EntityData], settings: FuncGodotMapSettings, materials: Dictionary) -> int:
 	var inv_scale := 1.0 / maxf(settings.scale_factor, 1e-9)
 	var planes: Dictionary = {}
+	var entries: Array[Entry] = []
+	var solids: Array[Solid] = []
 	for entity in entities:
 		if not _static_entity(entity):
 			continue
 		for brush in entity.brushes:
 			if brush.origin or (brush.has_disp and not brush.is_mesh):
 				continue
+			# A solid hides what is inside it whatever its textures are, so this is not filtered by material.
+			var solid := _solid(brush, inv_scale)
+			if solid:
+				solids.append(solid)
 			for fi in brush.faces.size():
 				var face := brush.faces[fi]
 				if FuncGodotUtil.filter_face(face.texture, settings) or not _opaque(materials.get(face.texture)):
 					continue
 				var entry := _entry(face, brush, fi, inv_scale)
 				if entry:
+					entries.append(entry)
 					var key := _plane_key(entry.normal, entry.dist)
 					if not planes.has(key):
 						planes[key] = []
@@ -62,6 +151,19 @@ static func apply(entities: Array[FuncGodotData.EntityData], settings: FuncGodot
 			if not covers.is_empty() and fully_covered(_flatten(entry.points, basis), covers):
 				entry.face.render_hidden = true
 				hidden += 1
+
+	# Interior faces: a face buried inside another closed solid never shows, however the two intersect, so a
+	# pile of overlapping solids draws as one outer shell instead of every solid's whole surface.
+	for entry: Entry in entries:
+		if entry.face.render_hidden or not entry.closed:
+			continue
+		for solid: Solid in solids:
+			if solid.brush == entry.brush or not solid.bounds.encloses(entry.bounds):
+				continue
+			if _buried_in(solid, entry):
+				entry.face.render_hidden = true
+				hidden += 1
+				break
 	return hidden
 
 ## True when [param covers] leave nothing of [param polygon] larger than a sliver.

@@ -776,7 +776,7 @@ impl Viewport {
                             if let Some(t) = m.terrain_mut(node) {
                                 while t.layers.len() <= layer.min(3) {
                                     let tile = t.layers.last().map(|l| l.tile).unwrap_or(256.0);
-                                    t.layers.push(gt_geom::TerrainLayer { material: name.clone(), tile });
+                                    t.layers.push(gt_geom::TerrainLayer::new(name.clone(), tile));
                                 }
 
                                 t.layers[layer.min(3)].material = name.clone();

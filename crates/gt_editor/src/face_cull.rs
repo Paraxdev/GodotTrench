@@ -34,7 +34,48 @@ struct CullFace {
 pub struct FaceCull {
     faces: HashMap<NodeId, Vec<CullFace>>,
     planes: HashMap<PlaneKey, BTreeSet<(NodeId, usize)>>,
+    /// Bounds of every closed solid, for the broad phase of the interior pass.
+    solids: HashMap<NodeId, Aabb>,
     pub pieces: HashMap<NodeId, FacePieces>,
+}
+
+/// Bounds of a node that can swallow another solid's faces: a closed, visible solid. Same eligibility as
+/// `FaceCull::node_faces`, but the material does not matter, a tool textured box still hides what is inside it.
+fn solid_bounds(map: &Map, game: &GameConfig, id: NodeId) -> Option<Aabb> {
+    let node = map.get(id)?;
+    if map.is_hidden(id) || !map.in_cordon(id) {
+        return None;
+    }
+
+    let entity = map.owning_entity(id).and_then(|e| map.entity(e));
+    if entity.is_some_and(|e| e.classname.starts_with("trigger") || game.entity(&e.classname).is_some_and(|d| d.node_class == "Area3D")) {
+        return None;
+    }
+
+    match &node.kind {
+        NodeKind::Brush(b) if b.faces.iter().all(|f| f.data.disp.is_none()) => Some(b.bounds()),
+        NodeKind::Mesh(m) if m.edge_faces().values().all(|f| f.len() == 2) => Some(m.bounds()),
+        _ => None,
+    }
+}
+
+/// True when every corner of `face` sits well inside the solid `id`. Each sample is probed a little to both
+/// sides of the face: a face resting on the other solid's surface leaves it on one side and is left to the
+/// coplanar pass, only a face with solid material on both sides counts as buried.
+fn buried_in(map: &Map, id: NodeId, face: &CullFace) -> bool {
+    let Some(node) = map.get(id) else { return false };
+    let nudge = face.normal * COPLANAR_DIST;
+    let mut samples: Vec<DVec3> = Vec::with_capacity((face.polygon.len() + 1) * 2);
+    for p in face.polygon.iter().chain(std::iter::once(&polygon::centroid(&face.polygon))) {
+        samples.push(*p + nudge);
+        samples.push(*p - nudge);
+    }
+
+    match &node.kind {
+        NodeKind::Brush(b) => samples.iter().all(|p| b.contains_point(*p)),
+        NodeKind::Mesh(m) => samples.iter().all(|p| m.contains_point(*p)),
+        _ => false,
+    }
 }
 
 /// Opposite normals share a key so back to back faces land in one group.
@@ -125,13 +166,65 @@ impl FaceCull {
         changed
     }
 
+    /// The changed nodes plus every closed solid sharing space with them. Moving a solid buries or uncovers the
+    /// faces of its neighbours, so those are recomputed in the same pass and stay consistent.
+    fn with_neighbours(&self, map: &Map, game: &GameConfig, dirty: &BTreeSet<NodeId>) -> Vec<NodeId> {
+        let mut regions: Vec<Aabb> = Vec::new();
+        for id in dirty {
+            regions.extend(self.solids.get(id).copied());
+            regions.extend(solid_bounds(map, game, *id));
+        }
+
+        let mut nodes = dirty.clone();
+        if !regions.is_empty() {
+            for (id, b) in &self.solids {
+                if !nodes.contains(id) && regions.iter().any(|r| r.intersects(b)) {
+                    nodes.insert(*id);
+                }
+            }
+        }
+
+        nodes.into_iter().collect()
+    }
+
+    /// Hides faces buried inside another closed solid, so a pile of intersecting solids draws as one outer
+    /// shell instead of every solid's whole surface. Whole faces only, like the coplanar pass.
+    fn hide_buried_faces(&mut self, map: &Map, nodes: &[NodeId], changed: &mut BTreeSet<NodeId>) {
+        let solids: Vec<(NodeId, Aabb)> = self.solids.iter().map(|(id, b)| (*id, *b)).collect();
+        for id in nodes {
+            let Some(faces) = self.faces.get(id) else { continue };
+            let reach = faces.iter().fold(Aabb::EMPTY, |mut b, f| {
+                b.include(&f.bounds);
+                b
+            });
+            // Only solids overlapping this node can contain any of its faces, and most nodes have none.
+            let containers: Vec<NodeId> = solids.iter().filter(|(other, b)| other != id && b.intersects(&reach)).map(|(other, _)| *other).collect();
+            if containers.is_empty() {
+                continue;
+            }
+
+            let buried: Vec<usize> = faces
+                .iter()
+                .filter(|f| {
+                    let already_hidden = self.pieces.get(id).and_then(|p| p.get(&f.face)).is_some_and(|p| p.is_empty());
+                    !already_hidden && containers.iter().any(|other| self.solids.get(other).is_some_and(|b| b.contains(&f.bounds)) && buried_in(map, *other, f))
+                })
+                .map(|f| f.face)
+                .collect();
+            for fi in buried {
+                self.pieces.entry(*id).or_default().insert(fi, Vec::new());
+                changed.insert(*id);
+            }
+        }
+    }
+
     /// Refreshes the faces of `dirty` nodes and everything sharing a plane with them. Returns the nodes whose visible pieces changed.
     pub fn update(&mut self, map: &Map, game: &GameConfig, opaque: &(dyn Fn(&str) -> bool + Sync), dirty: &BTreeSet<NodeId>, full: bool) -> BTreeSet<NodeId> {
         let nodes: Vec<NodeId> = if full {
             *self = Self::default();
             map.nodes.keys().copied().collect()
         } else {
-            dirty.iter().copied().collect()
+            self.with_neighbours(map, game, dirty)
         };
         // Areas on each plane that changed, from the old and the new faces of the refreshed nodes.
         let mut touched: HashMap<PlaneKey, Vec<Aabb>> = HashMap::new();
@@ -154,6 +247,11 @@ impl FaceCull {
 
             if !new.is_empty() {
                 self.faces.insert(*id, new);
+            }
+
+            self.solids.remove(id);
+            if let Some(b) = solid_bounds(map, game, *id) {
+                self.solids.insert(*id, b);
             }
         }
 
@@ -251,6 +349,7 @@ impl FaceCull {
             }
         }
 
+        self.hide_buried_faces(map, &nodes, &mut changed);
         changed
     }
 }
@@ -353,6 +452,50 @@ mod tests {
         let cull = run(&map);
         assert_eq!(cull.pieces[&floor][&face_towards(&map, floor, DVec3::Y)], Vec::<Vec<DVec3>>::new(), "the floor top gives way to the sheet");
         assert!(!cull.pieces.contains_key(&sheet), "every sheet face draws");
+    }
+
+    #[test]
+    fn a_solid_buried_in_another_loses_every_face() {
+        let mut map = Map::new();
+        let big = add_box(&mut map, DVec3::splat(-128.0), DVec3::splat(128.0));
+        let inner = add_box(&mut map, DVec3::splat(-16.0), DVec3::splat(16.0));
+        let cull = run(&map);
+        let hidden = &cull.pieces[&inner];
+        assert_eq!(hidden.len(), 6, "every face of the swallowed box is dropped");
+        assert!(hidden.values().all(|p| p.is_empty()));
+        assert!(!cull.pieces.contains_key(&big), "the outer shell keeps all of its faces");
+    }
+
+    #[test]
+    fn half_overlapping_solids_keep_their_faces() {
+        let mut map = Map::new();
+        let a = add_box(&mut map, DVec3::ZERO, DVec3::splat(64.0));
+        let b = add_box(&mut map, DVec3::splat(32.0), DVec3::splat(96.0));
+        let cull = run(&map);
+        // Each box pokes out of the other, so no whole face is buried and nothing is dropped.
+        for id in [a, b] {
+            assert!(!cull.pieces.get(&id).is_some_and(|p| p.values().any(|v| v.is_empty())), "{id} lost a face it still shows");
+        }
+    }
+
+    #[test]
+    fn a_closed_mesh_inside_a_brush_is_dropped_and_restored_when_it_moves_out() {
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        let hill = add_box(&mut map, DVec3::splat(-256.0), DVec3::splat(256.0));
+        let rock_bounds = Aabb::new(DVec3::splat(-32.0), DVec3::splat(32.0));
+        let rock = map.insert(layer, NodeKind::Mesh(gt_geom::mesh_shapes::sphere(&rock_bounds, 8, 6, "dev/grey")));
+        let mut cull = run(&map);
+        let faces = map.mesh(rock).unwrap().faces.len();
+        assert_eq!(cull.pieces[&rock].len(), faces, "the whole buried rock is dropped");
+
+        // Move it clear of the brush: every face comes back.
+        let moved = gt_geom::mesh_shapes::sphere(&rock_bounds.translated(DVec3::new(4096.0, 0.0, 0.0)), 8, 6, "dev/grey");
+        *map.mesh_mut(rock).unwrap() = moved;
+        let changed = cull.update(&map, &GameConfig::default(), &|_| true, &BTreeSet::from([rock]), false);
+        assert!(changed.contains(&rock));
+        assert!(!cull.pieces.contains_key(&rock), "the rock draws again once it is outside");
+        let _ = hill;
     }
 
     #[test]
