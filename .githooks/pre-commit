@@ -6,7 +6,7 @@ set -eu
 staged=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs')
 [ -z "$staged" ] && exit 0
 
-cargo fmt --all
+"$(git rev-parse --show-toplevel)/tools/fmt"
 
 # Re-stage the Rust files that were already part of this commit so their formatting is included.
 printf '%s\n' "$staged" | tr '\n' '\0' | xargs -0 git add --

@@ -12,8 +12,10 @@ Requires a GPU with Vulkan, DX12 or Metal support. On Linux the window needs X11
 ## Formatting
 
 All Rust is formatted with the settings in [rustfmt.toml](../rustfmt.toml), so hand written and AI written commits share one
-style. Run `tools/fmt --install` once per clone to enable the pre-commit hook in [.githooks](../.githooks); it formats staged
-Rust before each commit. `tools/fmt` formats the workspace on demand and `tools/fmt --check` verifies it, which is what CI runs.
+style. `tools/fmt` runs rustfmt and then [tools/space_blocks.py](../tools/space_blocks.py), a pass that adds one blank line
+after a multi-line block so humans get vertical breathing room that stable rustfmt will not insert on its own (it only ever
+adds blank lines, never touches tokens). Run `tools/fmt --install` once per clone to enable the pre-commit hook in
+[.githooks](../.githooks); it formats staged Rust before each commit. `tools/fmt --check` verifies both passes, which is what CI runs.
 
 ## Tests
 
