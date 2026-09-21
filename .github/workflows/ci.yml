@@ -149,6 +149,8 @@ jobs:
     concurrency:
       group: alpha-release
       cancel-in-progress: false
+    env:
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -188,3 +190,27 @@ jobs:
           ![Mountain Hanging House in Godot](${shots}/mountain_house.png)"
           gh release delete alpha --yes --cleanup-tag || true
           gh release create alpha dist/* --prerelease --target "$GITHUB_SHA" --title "GodotTrench rolling alpha" --notes "$notes"
+      - name: Push to itch.io
+        # Skips cleanly on forks and until the BUTLER_API_KEY secret is added.
+        if: ${{ env.BUTLER_API_KEY != '' }}
+        run: |
+          curl -sL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip -d butler-bin && chmod +x butler-bin/butler
+          butler=butler-bin/butler
+          "$butler" -V
+          version="alpha-$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
+          push() {
+            archive="$1"; channel="$2"; out="itch/$channel"
+            rm -rf "$out" && mkdir -p "$out"
+            case "$archive" in
+              *.zip) unzip -q "$archive" -d "$out" ;;
+              *.tar.gz) tar xzf "$archive" -C "$out" ;;
+            esac
+            # butler wants the build root, so drop the single wrapping folder the archives carry.
+            inner=$(find "$out" -mindepth 1 -maxdepth 1 -type d | head -n1)
+            [ -n "$inner" ] && out="$inner"
+            "$butler" push "$out" "paraxdev/godottrench:$channel" --userversion "$version"
+          }
+          push dist/godottrench-linux-x86_64.tar.gz linux
+          push dist/godottrench-windows-x86_64.zip windows
+          push dist/godottrench-macos-arm64.tar.gz mac
