@@ -14,7 +14,7 @@ fn data(material: &str, pts: &[DVec3]) -> FaceData {
 }
 
 fn build(vertices: Vec<DVec3>, faces: Vec<Vec<u32>>, material: &str, smooth_angle: f32) -> Mesh {
-    let mut mesh = Mesh { vertices, faces: Vec::with_capacity(faces.len()), smooth_angle };
+    let mut mesh = Mesh { vertices, faces: Vec::with_capacity(faces.len()), smooth_angle, decal: false };
     for idx in faces {
         let pts: Vec<DVec3> = idx.iter().map(|i| mesh.vertices[*i as usize]).collect();
         mesh.faces.push(MeshFace::new(idx, data(material, &pts)));
