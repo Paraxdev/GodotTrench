@@ -84,11 +84,21 @@ struct Layout {
 }
 
 impl Layout {
-    fn new(cam: &Camera, bounds: &Aabb) -> Self {
+    fn new(cam: &Camera, rect: Rect, bounds: &Aabb) -> Self {
         let center = bounds.center();
-        let to_cam = cam.position - center;
+        let to_cam = cam.eye() - center;
         let facing = DVec3::new(if to_cam.x < 0.0 { -1.0 } else { 1.0 }, if to_cam.y < 0.0 { -1.0 } else { 1.0 }, if to_cam.z < 0.0 { -1.0 } else { 1.0 });
-        Self { center, len: to_cam.length().max(1.0) * GIZMO_SCALE, facing }
+        // The arrows reach a little past the selection, so the gizmo tracks the object rather than the
+        // camera. It is then clamped to a pixel range so it stays grabbable on tiny objects and never
+        // grows gigantic when zoomed far out.
+        let object = bounds.size().length() * 0.5 * 1.15;
+        let min_px = pixel_length(cam, rect, center, 56.0);
+        let max_px = pixel_length(cam, rect, center, (rect.width().min(rect.height()) as f64 * 0.28).max(80.0));
+        let len = match (min_px, max_px) {
+            (Some(lo), Some(hi)) => object.clamp(lo.min(hi), lo.max(hi)),
+            _ => (to_cam.length().max(1.0) * GIZMO_SCALE).max(object),
+        };
+        Self { center, len, facing }
     }
 
     fn along(&self, i: usize, fraction: f64) -> DVec3 {
@@ -114,6 +124,15 @@ impl Layout {
     }
 }
 
+/// The world length at `center` that projects to `target` pixels on screen, so the gizmo can be sized
+/// in pixels regardless of the camera being perspective or orthographic. None if `center` is off screen.
+fn pixel_length(cam: &Camera, rect: Rect, center: DVec3, target: f64) -> Option<f64> {
+    let c = cam.project(rect, center)?;
+    let p = cam.project(rect, center + cam.right())?;
+    let per_unit = (p - c).length() as f64;
+    (per_unit > 1e-6).then(|| target / per_unit)
+}
+
 fn project_all(cam: &Camera, rect: Rect, points: &[DVec3]) -> Option<Vec<Pos2>> {
     points.iter().map(|p| cam.project(rect, *p)).collect()
 }
@@ -131,7 +150,7 @@ fn inside_convex(points: &[Pos2], p: Pos2) -> bool {
 }
 
 fn part_at(cam: &Camera, rect: Rect, bounds: &Aabb, pos: Pos2) -> Option<Part> {
-    let l = Layout::new(cam, bounds);
+    let l = Layout::new(cam, rect, bounds);
     let screen = |p: DVec3| cam.project(rect, p);
     if screen(l.center).is_some_and(|c| c.distance(pos) < GRAB) {
         return Some(Part::Free);
@@ -251,7 +270,7 @@ pub fn paint(ui: &Ui, cam: &Camera, rect: Rect, state: &EditorState, active: Opt
     if hovered.is_some() {
         ui.ctx().set_cursor_icon(if active.is_some() { CursorIcon::Grabbing } else { CursorIcon::Grab });
     }
-    let l = Layout::new(cam, &bounds);
+    let l = Layout::new(cam, rect, &bounds);
     let painter = ui.painter_at(rect);
     let color = |part: Part, base: Color32| if hovered == Some(part) { HOT } else { base };
 
@@ -318,7 +337,7 @@ mod tests {
     }
 
     fn screen(cam: &Camera, rect: Rect, state: &EditorState, i: usize, fraction: f64) -> Pos2 {
-        let l = Layout::new(cam, &state.doc.map.bounds(state.doc.selection.nodes.iter().copied().next().unwrap()));
+        let l = Layout::new(cam, rect, &state.doc.map.bounds(state.doc.selection.nodes.iter().copied().next().unwrap()));
         cam.project(rect, l.along(i, fraction)).unwrap()
     }
 
@@ -361,7 +380,7 @@ mod tests {
         assert_eq!(scaled.size().x, before.size().x);
 
         let mut state2 = scene().0;
-        let l = Layout::new(&cam, &state2.doc.map.bounds_of(state2.doc.selection.nodes.iter().copied()));
+        let l = Layout::new(&cam, rect, &state2.doc.map.bounds_of(state2.doc.selection.nodes.iter().copied()));
         let ring = l.ring(1);
         let grab = cam.project(rect, ring[8]).unwrap();
         let drag_rot = begin(&mut state2, &cam, rect, grab).expect("grabs the y ring");
