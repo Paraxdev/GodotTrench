@@ -755,6 +755,57 @@ pub struct ScatterPaletteWindow {
     new_source: String,
 }
 
+/// The active set's real contents: what actually scatters, with per-model counts and a remove that also drops the
+/// instances. Painting only ever adds models to a set, so this is the one place to prune one painted earlier that no
+/// longer belongs (the brush palette above is only a template for new strokes).
+fn scatter_active_set_section(ui: &mut egui::Ui, state: &mut EditorState) {
+    let Some(id) = crate::scatter_tool::active_set(state) else {
+        ui.label(RichText::new("No active set yet. Paint a stroke, or press \"New set on a new layer\".").weak());
+        return;
+    };
+    let Some(set) = state.doc.map.scatter(id).cloned() else { return };
+    ui.horizontal(|ui| {
+        ui.strong(format!("Active set '{}'", set.name));
+        ui.label(RichText::new(format!("{} instances, {} targets", set.instances.len(), set.targets.len())).weak());
+        if ui.small_button("Clear instances").on_hover_text("Remove every placed instance, keep the models").clicked() {
+            state.doc.edit("Clear Scatter", |m, _| {
+                if let Some(s) = m.scatter_mut(id) {
+                    s.instances.clear();
+                }
+            });
+        }
+    });
+    if set.items.is_empty() {
+        return;
+    }
+
+    let counts = set.counts();
+    let mut remove = None;
+    egui::Grid::new("scatter_active_items").num_columns(3).striped(true).spacing([16.0, 4.0]).show(ui, |ui| {
+        for h in ["model", "count", ""] {
+            ui.label(RichText::new(h).weak());
+        }
+
+        ui.end_row();
+        for (k, itm) in set.items.iter().enumerate() {
+            ui.label(itm.label()).on_hover_text(&itm.source);
+            ui.label(counts.get(k).copied().unwrap_or(0).to_string());
+            if ui.small_button("×").on_hover_text("Remove this model and its instances from the set").clicked() {
+                remove = Some(k);
+            }
+
+            ui.end_row();
+        }
+    });
+    if let Some(k) = remove {
+        state.doc.edit("Remove Scatter Model", |m, _| {
+            if let Some(s) = m.scatter_mut(id) {
+                s.remove_item(k);
+            }
+        });
+    }
+}
+
 impl ScatterPaletteWindow {
     pub fn show(&mut self, ctx: &egui::Context, state: &mut EditorState, actions: &mut Vec<Action>) {
         use crate::state::ScatterOutput;
@@ -776,6 +827,15 @@ impl ScatterPaletteWindow {
                     actions.push(Action::InstallNatureModels);
                 }
             });
+
+            ui.add_space(6.0);
+            ui.separator();
+            scatter_active_set_section(ui, state);
+
+            ui.add_space(6.0);
+            ui.separator();
+            ui.strong("Brush palette");
+            ui.label(RichText::new("Models a stroke drops. Painting merges them into the active set above.").weak());
             let project = state.game.project_root.clone();
             let s = &mut state.prefs.scatter;
             ui.horizontal(|ui| {
@@ -795,7 +855,7 @@ impl ScatterPaletteWindow {
             ui.separator();
             let mut remove = None;
             egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
-                egui::Grid::new("palette_items").num_columns(9).striped(true).show(ui, |ui| {
+                egui::Grid::new("palette_items").num_columns(9).striped(true).spacing([12.0, 6.0]).show(ui, |ui| {
                     for h in ["model", "weight", "scale", "", "spread", "align", "tilt", "sink", ""] {
                         ui.label(RichText::new(h).strong());
                     }
@@ -876,9 +936,12 @@ impl ScatterPaletteWindow {
                     }
                 }
             });
+
+            ui.add_space(6.0);
             ui.separator();
+            ui.strong("Placement");
             let s = &mut state.prefs.scatter;
-            egui::Grid::new("scatter_rules").num_columns(2).show(ui, |ui| {
+            egui::Grid::new("scatter_rules").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
                 ui.label("Brush radius");
                 ui.add(egui::DragValue::new(&mut s.radius).range(8.0..=16384.0));
                 ui.end_row();
