@@ -1112,7 +1112,10 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                     let _ = crate::scatter_tool::install_nature(state, false);
                 }
 
-                state.set_status(format!("Scatter palette: {name}"));
+                // A different preset is a different kind of set, so paint it onto its own layer instead of merging it
+                // into whatever set was active.
+                state.active_scatter = None;
+                state.set_status(format!("Scatter palette: {name}. The next stroke starts a new layer."));
             }
         }
         Action::InstallNatureModels => match crate::scatter_tool::install_nature(state, false) {
@@ -1773,6 +1776,14 @@ fn first_selected_material(state: &EditorState) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn switching_preset_starts_a_new_scatter_layer() {
+        let mut state = EditorState::new(Default::default());
+        state.active_scatter = Some(NodeId(1));
+        execute(&mut state, Action::ScatterPreset("forest".into()), &egui::Context::default());
+        assert_eq!(state.active_scatter, None, "a preset switch clears the active set so the next stroke makes its own layer");
+    }
 
     #[test]
     fn presets_and_overrides() {
