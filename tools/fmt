@@ -1,15 +1,28 @@
 #!/bin/sh
-# Applies the repo's unified Rust formatting (rustfmt.toml) across the whole workspace, so hand written and
-# AI written code land in one consistent style.
+# Applies the repo's unified Rust formatting: rustfmt (rustfmt.toml) followed by a blank-line pass that spaces out
+# multi-line blocks for human readers. Hand written and AI written code land in one consistent, readable style.
 #
 #   tools/fmt            format every crate in place
 #   tools/fmt --check    verify formatting, exit 1 when anything would change (this is what CI runs)
 #   tools/fmt --install  point git at .githooks so the pre-commit formatter runs on this clone
 set -eu
 cd "$(dirname "$0")/.."
+# Pick a Python that actually runs: skips the Windows Store "python3" stub, and the missing "python" on Linux.
+py=""
+for c in python3 python; do
+  if command -v "$c" >/dev/null 2>&1 && "$c" -c "" >/dev/null 2>&1; then py=$c; break; fi
+done
+[ -n "$py" ] || { echo "python not found on PATH" >&2; exit 1; }
+
 case "${1:-}" in
-  --check) exec cargo fmt --all --check ;;
   --install) git config core.hooksPath .githooks && echo "pre-commit formatter installed (core.hooksPath=.githooks)" ;;
-  "") exec cargo fmt --all ;;
+  --check)
+    cargo fmt --all --check
+    git ls-files -z '*.rs' | xargs -0 "$py" tools/space_blocks.py --check
+    ;;
+  "")
+    cargo fmt --all
+    git ls-files -z '*.rs' | xargs -0 "$py" tools/space_blocks.py
+    ;;
   *) echo "usage: tools/fmt [--check|--install]" >&2; exit 2 ;;
 esac

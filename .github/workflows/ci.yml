@@ -38,7 +38,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y $LINUX_DEPS
       - name: Format
         if: runner.os == 'Linux'
-        run: cargo fmt --all --check
+        run: ./tools/fmt --check
       - name: Third party license table is current
         if: runner.os == 'Linux'
         run: python3 tools/gen_licenses.py --check
