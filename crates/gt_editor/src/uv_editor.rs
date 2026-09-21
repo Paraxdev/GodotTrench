@@ -51,7 +51,9 @@ fn stitched(state: &EditorState, faces: &[FaceInfo], corner: UvCorner) -> Vec<Uv
 pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
     let selected_faces: Vec<(NodeId, usize)> = state.doc.selection.faces.iter().copied().collect();
     let Some(first) = selected_faces.first().and_then(|(id, f)| texture_ops::face_info(&state.doc.map, *id, *f)) else {
-        ui.label(RichText::new("Select brush or mesh faces (Shift+click, or the Texture tool) to edit their UVs.").weak());
+        ui.label(
+            RichText::new("Select faces to edit their UVs: Shift+click a face, or Ctrl+click an object to grab all its sides, or use the Texture tool.").weak(),
+        );
         return;
     };
     let material = first.material.clone();
@@ -66,6 +68,9 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
         ui.label(RichText::new(format!("{} x {} px, {} faces", tex.x, tex.y, faces.len())).weak());
         ui.checkbox(&mut uv_state.pixel_snap, "pixel snap");
         ui.checkbox(&mut uv_state.show_hotspots, "hotspots");
+        if ui.small_button("Reset UVs").on_hover_text("Drop any custom UVs on the selected faces back to a clean face-aligned projection").clicked() {
+            actions.push(Action::ResetTexture);
+        }
         for (label, action) in [("Hotspot", Action::HotspotTexture), ("Hotspot Editor", Action::ShowHotspotEditor), ("UV Lock", Action::ToggleUvLock)] {
             if ui.small_button(label).clicked() {
                 actions.push(action);

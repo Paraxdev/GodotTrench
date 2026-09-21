@@ -118,6 +118,12 @@ pub enum Action {
         at: DVec3,
     },
     ReloadModels,
+    /// Lays a thin decal sheet (a quad with alpha cutout) on a surface, facing along `normal`.
+    CreateDecal {
+        material: String,
+        at: DVec3,
+        normal: DVec3,
+    },
     ConvertToMesh,
     ConvertToBrushes,
     JoinMeshes,
@@ -725,7 +731,15 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 state.doc.edit("Convert to Mesh", |m, s| ops::convert_to_mesh(m, s, false));
             }
             state.tool = ToolKind::Mesh;
-            state.set_status("Mesh edit mode (Tab returns to object mode)");
+            let (verts, tris) = edit_mesh_weight(state);
+            if verts > HEAVY_VERTS || tris > HEAVY_TRIS {
+                // High-res meshes are heavy to edit vertex by vertex, warn but never block, the tools still work.
+                state.set_status(format!(
+                    "Mesh edit mode, {verts} vertices, {tris} triangles, that is high res so editing may be slow (Tab returns to object mode)"
+                ));
+            } else {
+                state.set_status("Mesh edit mode (Tab returns to object mode)");
+            }
         }
         Action::ConvertToMesh => {
             let n = state.doc.edit("Convert to Mesh", |m, s| ops::convert_to_mesh(m, s, false)).len();
@@ -762,6 +776,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             Ok(msg) => state.set_status(msg),
             Err(e) => state.set_status(format!("Place model failed: {e}")),
         },
+        Action::CreateDecal { material, at, normal } => create_decal(state, &material, at, normal),
         Action::MoveToWorld => {
             let layer = state.current_layer;
             state.doc.edit("Move to World", |m, s| ops::move_brushes_to_world(m, s, layer));
@@ -934,7 +949,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             }
         }
         Action::ImportModel(mode) => {
-            if let Some(path) = rfd::FileDialog::new().add_filter("Models", &["bbmodel", "glb", "gltf"]).pick_file() {
+            if let Some(path) = rfd::FileDialog::new().add_filter("Models", &crate::models::MODEL_EXTS).pick_file() {
                 let at = state.snap(state.cursor_world.unwrap_or(DVec3::ZERO));
                 match import_model(state, &path, mode, at) {
                     Ok(n) => state.set_status(format!("Imported {} ({n} object(s))", path.display())),
@@ -1402,6 +1417,24 @@ pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: Model
     Ok(count)
 }
 
+/// A mesh past either of these is heavy enough that vertex editing gets sluggish, so entering edit
+/// mode or placing it warns the user, without ever blocking the action.
+pub const HEAVY_VERTS: usize = 20_000;
+pub const HEAVY_TRIS: usize = 40_000;
+
+/// Total vertices and triangles across the meshes that mesh edit mode would act on.
+fn edit_mesh_weight(state: &EditorState) -> (usize, usize) {
+    let mut verts = 0;
+    let mut tris = 0;
+    for id in state.doc.selection.meshes(&state.doc.map) {
+        if let Some(mesh) = state.doc.map.mesh(id) {
+            verts += mesh.vertices.len();
+            tris += mesh.faces.iter().map(|f| f.indices.len().saturating_sub(2)).sum::<usize>();
+        }
+    }
+    (verts, tris)
+}
+
 /// Places a model from the Models panel into the scene as one editable mesh at `at`. The model's
 /// textures are written into `res://textures/models/<stem>/` and registered as materials so the mesh
 /// keeps its look. Large results are warned about but never blocked.
@@ -1435,13 +1468,36 @@ pub fn place_model_mesh(state: &mut EditorState, path: &std::path::Path, at: DVe
     });
     let name = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into());
     // Warn but do not hinder: heavy meshes stay placeable, the user just gets a heads up.
-    const HEAVY_VERTS: usize = 20_000;
-    const HEAVY_TRIS: usize = 40_000;
     if verts > HEAVY_VERTS || tris > HEAVY_TRIS {
-        Ok(format!("Placed {name} as an editable mesh — {verts} vertices, {tris} triangles. That is a lot, editing may be slow."))
+        Ok(format!("Placed {name} as an editable mesh, {verts} vertices, {tris} triangles. That is a lot, editing may be slow."))
     } else {
         Ok(format!("Placed {name} as an editable mesh ({verts} vertices, {tris} triangles)"))
     }
+}
+
+/// Lays a decal sheet on a surface: a thin quad facing along `normal`, textured with `material` and
+/// drawn with alpha cutout so the texture's shape shows through. Sized one metre square by default, it
+/// can be moved, rotated and scaled with the ordinary tools.
+fn create_decal(state: &mut EditorState, material: &str, at: DVec3, normal: DVec3) {
+    let n = normal.normalize_or(DVec3::Y);
+    // Any two axes in the surface plane; avoid a degenerate cross when the normal is near vertical.
+    let up = if n.y.abs() > 0.9 { DVec3::Z } else { DVec3::Y };
+    let u = up.cross(n).normalize_or(DVec3::X);
+    let v = n.cross(u);
+    let half = state.game.units_per_meter.max(1.0) * 0.5;
+    let center = at + n * 0.1; // lift just off the surface so it draws cleanly over it
+    let corners = [center - u * half - v * half, center + u * half - v * half, center + u * half + v * half, center - u * half + v * half];
+    let mut mesh = gt_geom::Mesh { vertices: corners.to_vec(), decal: true, ..Default::default() };
+    let mut face = gt_geom::MeshFace::new(vec![0, 1, 2, 3], gt_geom::FaceData::new(material, gt_geom::FaceUv::default()));
+    face.uvs = vec![[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
+    mesh.faces.push(face);
+    let parent = state.insert_parent();
+    state.doc.edit("Create Decal", |m, s| {
+        let id = m.insert(parent, gt_doc::NodeKind::Mesh(mesh));
+        s.clear();
+        s.select_node(id);
+    });
+    state.set_status(format!("Placed a decal with {material}"));
 }
 
 /// `<texture>.hotspots.json` next to a material's albedo image.

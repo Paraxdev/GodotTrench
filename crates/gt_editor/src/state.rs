@@ -282,6 +282,8 @@ pub struct EditorState {
     pub uv_clipboard: Option<crate::texture_ops::UvClipboard>,
     /// Justify selected faces against their combined extent.
     pub treat_as_one: bool,
+    /// The UV editor panel is open, so a ctrl+click in a view selects all of a brush's faces.
+    pub uv_panel_open: bool,
     /// Scatter set the scatter tool paints into. A new one is created on its own layer when unset.
     pub active_scatter: Option<NodeId>,
     pub blend: gt_doc::blend::BlendBrush,
@@ -333,6 +335,7 @@ impl EditorState {
             material_reload: false,
             uv_clipboard: None,
             treat_as_one: false,
+            uv_panel_open: false,
             active_scatter: None,
             blend: Default::default(),
         }

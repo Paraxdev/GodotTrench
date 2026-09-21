@@ -24,6 +24,7 @@ enum Tab {
     Outliner,
     Inspector,
     Materials,
+    Models,
     Entities,
     History,
     Issues,
@@ -71,7 +72,7 @@ pub struct App {
 const PREFS_LABEL_WIDTH: f32 = 180.0;
 const UI_SCALE_PRESETS: [f32; 6] = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
-const PANEL_TABS: [Tab; 8] = [Tab::Outliner, Tab::Inspector, Tab::Materials, Tab::Entities, Tab::History, Tab::Issues, Tab::Uv, Tab::Reference];
+const PANEL_TABS: [Tab; 9] = [Tab::Outliner, Tab::Inspector, Tab::Materials, Tab::Models, Tab::Entities, Tab::History, Tab::Issues, Tab::Uv, Tab::Reference];
 
 fn tab_title(tab: Tab) -> &'static str {
     match tab {
@@ -79,6 +80,7 @@ fn tab_title(tab: Tab) -> &'static str {
         Tab::Outliner => "Outliner",
         Tab::Inspector => "Inspector",
         Tab::Materials => "Materials",
+        Tab::Models => "Models",
         Tab::Entities => "Entities",
         Tab::History => "History",
         Tab::Issues => "Issues",
@@ -341,12 +343,25 @@ fn valid_dock(dock: &DockState<Tab>) -> bool {
     unique && tabs.iter().all(|t| !matches!(t, Tab::View(n) if *n >= 4)) && tabs.iter().any(|t| matches!(t, Tab::View(_)))
 }
 
+/// Adds a panel tab a restored layout is missing, next to `beside` (or the default dock's copy of it).
+/// Layouts saved before a panel existed do not carry it, so this brings it in on the next launch.
+fn ensure_tab(dock: &mut DockState<Tab>, tab: Tab, beside: Tab) {
+    if dock.find_tab(&tab).is_some() {
+        return;
+    }
+    if let Some(path) = dock.find_tab(&beside) {
+        dock[path.surface][path.node].append_tab(tab);
+    } else {
+        dock.push_to_focused_leaf(tab);
+    }
+}
+
 fn default_dock() -> DockState<Tab> {
     let mut dock = DockState::new(vec![Tab::View(0)]);
     let surface = dock.main_surface_mut();
     let [center, _right] = surface.split_right(NodeIndex::root(), 0.78, vec![Tab::Inspector, Tab::Entities, Tab::Uv]);
     let [center, _left] = surface.split_left(center, 0.2, vec![Tab::Outliner, Tab::History, Tab::Issues]);
-    let [views, _bottom] = surface.split_below(center, 0.72, vec![Tab::Materials]);
+    let [views, _bottom] = surface.split_below(center, 0.72, vec![Tab::Materials, Tab::Models]);
     let [left_col, right_col] = surface.split_right(views, 0.5, vec![Tab::View(1)]);
     surface.split_below(left_col, 0.5, vec![Tab::View(2)]);
     surface.split_below(right_col, 0.5, vec![Tab::View(3)]);
@@ -413,12 +428,14 @@ impl App {
         for v in &mut viewports[1..] {
             v.camera.zoom = 0.6;
         }
+        let mut dock = dock.unwrap_or_else(default_dock);
+        ensure_tab(&mut dock, Tab::Models, Tab::Materials);
         Self {
             state,
             renderer: Renderer::new(render_state),
             scene: SceneCache::default(),
             viewports,
-            dock: dock.unwrap_or_else(default_dock),
+            dock,
             panels: PanelState::default(),
             tools: ToolSet::default(),
             actions: Vec::new(),
@@ -553,7 +570,9 @@ impl App {
         let mut m = MenuCx { ctx: ui.ctx().clone(), shortcuts: commands::shortcuts(&self.state.prefs), actions: &mut self.actions };
         let logo = self.logo.clone();
         let bar = egui::MenuBar::new().ui(ui, |ui| {
-            // Product logo, scaled down to sit alongside the menus.
+            // Product logo, scaled down to sit alongside the menus, with a left gutter so it does not
+            // jam against the window edge and read as off-centre.
+            ui.add_space(6.0);
             let logo_size = egui::Vec2::splat(icons::SMALL + 6.0);
             ui.add(egui::Image::new(&logo).fit_to_exact_size(logo_size)).on_hover_text("GodotTrench");
             ui.add_space(6.0);
@@ -1633,6 +1652,7 @@ impl TabViewer for Tabs<'_> {
             Tab::Outliner => panels::outliner(ui, self.state, self.panels, self.actions),
             Tab::Inspector => panels::inspector(ui, self.state, self.panels, self.actions),
             Tab::Materials => panels::material_browser(ui, self.state, self.panels, self.actions),
+            Tab::Models => panels::model_browser(ui, self.state, self.panels, self.actions),
             Tab::Entities => panels::entity_browser(ui, self.state, self.panels, self.actions),
             Tab::History => panels::history(ui, self.state),
             Tab::Issues => panels::issues(ui, self.state, self.panels, self.actions),
@@ -1713,6 +1733,8 @@ impl eframe::App for App {
         let focus = cam.position + cam.forward() * 1200.0;
         self.scene.update_shadows(&mut self.renderer, focus, self.state.prefs.shade == Shade::Lit);
 
+        // The viewports read this to know a ctrl+click should grab all of a brush's faces for UV work.
+        self.state.uv_panel_open = self.dock.find_tab(&Tab::Uv).is_some();
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
             let mut tabs = Tabs {
                 state: &mut self.state,
@@ -1802,6 +1824,21 @@ mod tests {
         assert!(!valid_dock(&DockState::new(vec![Tab::View(7)])));
         assert!(!valid_dock(&DockState::new(vec![Tab::View(0), Tab::View(0)])));
         assert!(!valid_dock(&DockState::new(vec![Tab::Outliner])));
+    }
+
+    #[test]
+    fn migration_adds_the_models_tab_next_to_materials() {
+        // A layout saved before the Models tab existed: Materials but no Models.
+        let mut dock = DockState::new(vec![Tab::View(0)]);
+        dock.main_surface_mut().split_below(NodeIndex::root(), 0.7, vec![Tab::Materials]);
+        assert!(dock.find_tab(&Tab::Models).is_none());
+        ensure_tab(&mut dock, Tab::Models, Tab::Materials);
+        let materials = dock.find_tab(&Tab::Materials).expect("materials still there");
+        let models = dock.find_tab(&Tab::Models).expect("models added");
+        assert_eq!((materials.surface, materials.node), (models.surface, models.node), "models sits in the materials leaf");
+        // Running it again does not duplicate the tab.
+        ensure_tab(&mut dock, Tab::Models, Tab::Materials);
+        assert_eq!(dock.iter_all_tabs().filter(|(_, t)| **t == Tab::Models).count(), 1);
     }
 
     #[test]
