@@ -387,9 +387,23 @@ fn load_obj(path: &Path, units_per_meter: f64) -> Result<Model, String> {
     Ok(Model { parts, textures, bounds })
 }
 
+/// Uniform scale to place a model at, from its natural (unit-scaled) bounds and the import prefs. Auto-fit
+/// rescales pathologically small or large models to a usable size; the manual multiplier always applies.
+pub fn placement_scale(bounds: &Aabb, units_per_meter: f64, autofit: bool, manual: f64) -> f64 {
+    let dim = bounds.size().max_element();
+    let fit = if autofit && dim > 1e-6 {
+        let (target, min, max) = (units_per_meter * 2.0, units_per_meter * 0.25, units_per_meter * 256.0);
+        if dim < min || dim > max { target / dim } else { 1.0 }
+    } else {
+        1.0
+    };
+    (fit * manual.max(0.0)).max(1e-4)
+}
+
 /// Converts a loaded model into an editable polygon mesh, welding coincident vertices and keeping the
-/// model's UVs. `material_of` maps each part's renderer material key to a material name in the library.
-pub fn model_to_mesh(model: &Model, offset: DVec3, material_of: impl Fn(&str) -> String) -> gt_geom::Mesh {
+/// model's UVs. `scale` sizes it about its origin. `material_of` maps each part's renderer material key to
+/// a material name in the library.
+pub fn model_to_mesh(model: &Model, offset: DVec3, scale: f64, material_of: impl Fn(&str) -> String) -> gt_geom::Mesh {
     use gt_geom::{FaceData, FaceUv, Mesh, MeshFace};
     let mut mesh = Mesh::default();
     let mut lookup: HashMap<(i64, i64, i64), u32> = HashMap::new();
@@ -403,7 +417,7 @@ pub fn model_to_mesh(model: &Model, offset: DVec3, material_of: impl Fn(&str) ->
             let mut indices = Vec::with_capacity(3);
             let mut positions = Vec::with_capacity(3);
             for &c in &corners {
-                let p = part.vertices[c].pos.as_dvec3() + offset;
+                let p = part.vertices[c].pos.as_dvec3() * scale + offset;
                 positions.push(p);
                 let key = ((p.x * 1e4).round() as i64, (p.y * 1e4).round() as i64, (p.z * 1e4).round() as i64);
                 let idx = *lookup.entry(key).or_insert_with(|| {
@@ -483,5 +497,41 @@ fn scan_models(root: &Path, dir: &Path, out: &mut Vec<ModelEntry>) {
         let name = rel.with_extension("").to_string_lossy().replace('\\', "/");
         let folder = rel.parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
         out.push(ModelEntry { name, folder, path: path.clone(), ext });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn aabb(dim: f64) -> Aabb {
+        Aabb::new(DVec3::ZERO, DVec3::splat(dim))
+    }
+
+    #[test]
+    fn autofit_grows_tiny_metric_models() {
+        // A 2.4u toy car at 32 units/metre fits to the 2m (64u) target.
+        let s = placement_scale(&aabb(2.4), 32.0, true, 1.0);
+        assert!((2.4 * s - 64.0).abs() < 1e-6, "scaled dim {}", 2.4 * s);
+    }
+
+    #[test]
+    fn autofit_leaves_level_scale_models_alone() {
+        assert_eq!(placement_scale(&aabb(48.0), 32.0, true, 1.0), 1.0);
+    }
+
+    #[test]
+    fn autofit_shrinks_huge_models() {
+        let s = placement_scale(&aabb(20000.0), 32.0, true, 1.0);
+        assert!((20000.0 * s - 64.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn manual_multiplier_stacks_on_fit_and_overrides_when_off() {
+        // Fit (26.67x) times the manual 2x.
+        let both = placement_scale(&aabb(2.4), 32.0, true, 2.0);
+        assert!((2.4 * both - 128.0).abs() < 1e-6);
+        // With fit off, only the manual multiplier applies to the real size.
+        assert_eq!(placement_scale(&aabb(2.4), 32.0, false, 3.0), 3.0);
     }
 }

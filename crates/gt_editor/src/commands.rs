@@ -1456,7 +1456,9 @@ pub fn place_model_mesh(state: &mut EditorState, path: &std::path::Path, at: DVe
         state.materials.rescan(&game);
     }
     let material_of = |key: &str| key_to_material.get(key).cloned().unwrap_or_else(|| "dev/grey".to_string());
-    let mut mesh = crate::models::model_to_mesh(&model, at, material_of);
+    let mi = state.prefs.model_import;
+    let scale = crate::models::placement_scale(&model.bounds, upm, mi.autofit, mi.scale as f64);
+    let mut mesh = crate::models::model_to_mesh(&model, at, scale, material_of);
     mesh.weld(1e-4);
     let verts = mesh.vertices.len();
     let tris: usize = mesh.faces.iter().map(|f| f.indices.len().saturating_sub(2)).sum();
@@ -1467,11 +1469,12 @@ pub fn place_model_mesh(state: &mut EditorState, path: &std::path::Path, at: DVe
         s.select_node(id);
     });
     let name = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into());
+    let scaled = if (scale - 1.0).abs() > 1e-3 { format!(", scaled {scale:.3}x to fit") } else { String::new() };
     // Warn but do not hinder: heavy meshes stay placeable, the user just gets a heads up.
     if verts > HEAVY_VERTS || tris > HEAVY_TRIS {
-        Ok(format!("Placed {name} as an editable mesh, {verts} vertices, {tris} triangles. That is a lot, editing may be slow."))
+        Ok(format!("Placed {name} as an editable mesh, {verts} vertices, {tris} triangles{scaled}. That is a lot, editing may be slow."))
     } else {
-        Ok(format!("Placed {name} as an editable mesh ({verts} vertices, {tris} triangles)"))
+        Ok(format!("Placed {name} as an editable mesh ({verts} vertices, {tris} triangles){scaled}"))
     }
 }
 

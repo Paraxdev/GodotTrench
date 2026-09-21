@@ -121,6 +121,23 @@ pub struct MapTab {
     pub current_layer: NodeId,
 }
 
+/// How placed models are sized. Real-world-scale assets (many glTF samples are authored in metres) come in
+/// as sub-grid specks otherwise.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ModelImportPrefs {
+    /// Scale pathologically small or large models to a usable size on placement.
+    pub autofit: bool,
+    /// Extra size multiplier, applied on top of auto-fit (or on the model's real size when auto-fit is off).
+    pub scale: f32,
+}
+
+impl Default for ModelImportPrefs {
+    fn default() -> Self {
+        Self { autofit: true, scale: 1.0 }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Prefs {
@@ -148,6 +165,7 @@ pub struct Prefs {
     /// Binding id to shortcut text ("Ctrl+Shift+K"), an empty string unbinds.
     pub key_overrides: std::collections::BTreeMap<String, String>,
     pub scatter: ScatterSettings,
+    pub model_import: ModelImportPrefs,
     pub texture_filter: TextureFilter,
     /// Materials marked as favourites in the material browser.
     pub favorite_materials: Vec<String>,
@@ -216,6 +234,7 @@ impl Default for Prefs {
             keymap_preset: "trenchbroom".into(),
             key_overrides: Default::default(),
             scatter: ScatterSettings::default(),
+            model_import: ModelImportPrefs::default(),
             texture_filter: TextureFilter::Auto,
             favorite_materials: Vec::new(),
             recent_materials: Vec::new(),
@@ -287,6 +306,15 @@ pub struct EditorState {
     /// Scatter set the scatter tool paints into. A new one is created on its own layer when unset.
     pub active_scatter: Option<NodeId>,
     pub blend: gt_doc::blend::BlendBrush,
+    /// Live move in progress: the dragged nodes and their offset from the drag start. The scene renders
+    /// these from their pre-drag geometry translated on the GPU, skipping the per-frame rebuild.
+    pub drag_preview: Option<DragPreview>,
+}
+
+#[derive(Clone, Default)]
+pub struct DragPreview {
+    pub nodes: std::collections::BTreeSet<NodeId>,
+    pub offset: DVec3,
 }
 
 impl EditorState {
@@ -338,6 +366,7 @@ impl EditorState {
             uv_panel_open: false,
             active_scatter: None,
             blend: Default::default(),
+            drag_preview: None,
         }
     }
 

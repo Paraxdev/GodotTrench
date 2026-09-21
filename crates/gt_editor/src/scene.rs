@@ -23,6 +23,17 @@ const TARGET_LINK: [f32; 4] = [0.35, 0.95, 0.45, 0.55];
 const IO_LINK: [f32; 4] = [1.0, 0.62, 0.2, 0.6];
 const TERRAIN_EDGE: [f32; 4] = [0.55, 0.8, 0.45, 0.7];
 const BUCKETS: u64 = 64;
+/// Above this many faces in the moving selection, face culling is deferred to drag release. Ordinary
+/// brush drags stay well under it and keep live culling.
+const CULL_DEFER_FACES: usize = 4000;
+
+fn node_face_count(node: &gt_doc::Node) -> usize {
+    match &node.kind {
+        NodeKind::Brush(b) => b.faces.len(),
+        NodeKind::Mesh(m) => m.faces.len(),
+        _ => 0,
+    }
+}
 
 #[derive(Default, Clone, Copy)]
 pub struct SceneStats {
@@ -69,6 +80,64 @@ struct TerrainGpu {
     triangles: usize,
 }
 
+/// Geometry being interactively moved, kept as its pre-drag batches so each frame only re-uploads a
+/// translated copy instead of re-tessellating. These nodes are left out of the buckets while the drag runs.
+struct DragLayer {
+    nodes: BTreeSet<NodeId>,
+    opaque: MeshBatch,
+    double: MeshBatch,
+    transparent: MeshBatch,
+    edges: Vec<LineVertex>,
+    gpu_opaque: Option<GpuMesh>,
+    gpu_double: Option<GpuMesh>,
+    gpu_transparent: Option<GpuMesh>,
+    gpu_edges: Option<GpuLines>,
+}
+
+/// Builds the batches of the dragged nodes from their pre-drag geometry, drawn un-culled and selected.
+fn build_drag_batches(renderer: &Renderer, game: &GameConfig, base: &Map, nodes: &BTreeSet<NodeId>) -> DragLayer {
+    let mut b = Builder {
+        renderer,
+        game,
+        fallback: game.textures.fallback_size as f64,
+        opaque: MeshBatch::default(),
+        double: MeshBatch::default(),
+        transparent: MeshBatch::default(),
+        volumes: MeshBatch::default(),
+        volume: false,
+        face_overlay: MeshBatch::default(),
+        edges: Vec::new(),
+        edges_2d: Vec::new(),
+        sel_edges: Vec::new(),
+        stats: SceneStats::default(),
+        instance_bounds: HashMap::new(),
+        model_bounds: HashMap::new(),
+    };
+    for id in nodes {
+        match base.get(*id).map(|n| &n.kind) {
+            Some(NodeKind::Brush(brush)) => b.brush(brush, SELECTED_TINT, true, |_| false, EDGE_COLOR_2D, false, EDGE_COLOR, None),
+            Some(NodeKind::Mesh(mesh)) => b.mesh(mesh, SELECTED_TINT, true, |_| false, EDGE_COLOR_2D, false, None),
+            _ => {}
+        }
+    }
+    DragLayer {
+        nodes: nodes.clone(),
+        opaque: b.opaque,
+        double: b.double,
+        transparent: b.transparent,
+        edges: b.sel_edges,
+        gpu_opaque: None,
+        gpu_double: None,
+        gpu_transparent: None,
+        gpu_edges: None,
+    }
+}
+
+fn translate_lines(lines: &[LineVertex], offset: DVec3) -> Vec<LineVertex> {
+    let o = v3(offset);
+    lines.iter().map(|l| LineVertex { pos: [l.pos[0] + o[0], l.pos[1] + o[1], l.pos[2] + o[2]], color: l.color }).collect()
+}
+
 #[derive(Default)]
 pub struct SceneCache {
     prev_map: Option<Map>,
@@ -90,6 +159,7 @@ pub struct SceneCache {
     shadow_center: Option<DVec3>,
     scene_bounds: Aabb,
     face_cull: FaceCull,
+    drag: Option<DragLayer>,
 }
 
 pub fn v3(v: DVec3) -> [f32; 3] {
@@ -968,6 +1038,13 @@ impl SceneCache {
         }
         let map = state.doc.map.clone();
         let selection = state.doc.selection.clone();
+        // Only heavy moves use the drag layer; ordinary brush drags keep the live rebuild-and-cull path.
+        let drag_req = state
+            .drag_preview
+            .clone()
+            .filter(|d| d.nodes.iter().filter_map(|id| map.get(*id)).map(node_face_count).sum::<usize>() > CULL_DEFER_FACES);
+        let drag_base = drag_req.as_ref().and_then(|_| state.doc.transaction_base().cloned());
+        let drag_nodes: BTreeSet<NodeId> = drag_req.as_ref().map(|d| d.nodes.clone()).unwrap_or_default();
         let full = match &self.prev_map {
             None => true,
             Some(prev) => {
@@ -1017,6 +1094,13 @@ impl SceneCache {
             }
             let faces_changed: BTreeSet<NodeId> = self.prev_selection.faces.symmetric_difference(&selection.faces).map(|(id, _)| *id).collect();
             dirty.extend(faces_changed);
+        }
+        // Nodes entering or leaving a live drag need their buckets rebuilt, to drop them into the drag layer
+        // or fold them back in.
+        let prev_drag_nodes: BTreeSet<NodeId> = self.drag.as_ref().map(|d| d.nodes.clone()).unwrap_or_default();
+        if drag_nodes != prev_drag_nodes {
+            dirty.extend(drag_nodes.iter().copied());
+            dirty.extend(prev_drag_nodes.iter().copied());
         }
         let entities_changed = full || dirty.iter().any(|id| map.entity(*id).is_some() || self.prev_map.as_ref().is_some_and(|p| p.entity(*id).is_some()));
 
@@ -1115,7 +1199,17 @@ impl SceneCache {
             let flags = renderer.material_flags(m);
             !flags.transparent && !flags.double_sided
         };
-        let recull = self.face_cull.update(&map, &game, &opaque, &dirty, full);
+        // While a heavy selection is being dragged, re-culling it every frame dominates the frame time and
+        // its result cannot be seen until the drag ends, so defer it: draw the moving nodes un-culled now
+        // and let the commit (which ends the transaction) run the real cull once.
+        let heavy_drag = !full
+            && state.doc.in_transaction()
+            && dirty.iter().filter_map(|id| map.get(*id)).map(node_face_count).sum::<usize>() > CULL_DEFER_FACES;
+        let recull = if heavy_drag {
+            self.face_cull.clear_pieces(&dirty)
+        } else {
+            self.face_cull.update(&map, &game, &opaque, &dirty, full)
+        };
         dirty.extend(recull);
 
         let selected_brush_like: BTreeSet<NodeId> = selection.geometry(&map).into_iter().collect();
@@ -1189,6 +1283,10 @@ impl SceneCache {
                 for id in per_bucket.get(&b).map(|v| v.as_slice()).unwrap_or(&[]) {
                     let id = *id;
                     let Some(node) = map.get(id) else { continue };
+                    // Dragged geometry lives in the drag layer while the move is in progress.
+                    if drag_nodes.contains(&id) {
+                        continue;
+                    }
                     if map.is_hidden(id) || (!matches!(node.kind, NodeKind::Layer(_) | NodeKind::Group(_)) && !map.in_cordon(id)) {
                         continue;
                     }
@@ -1257,6 +1355,24 @@ impl SceneCache {
                     model_bounds: builder.model_bounds,
                 };
             }
+        }
+
+        // Live drag layer: rebuild its base batches when the dragged set changes, then re-upload a
+        // translated copy for the current offset. No re-tessellation while the move runs.
+        match (&drag_req, &drag_base) {
+            (Some(req), Some(base)) => {
+                if self.drag.as_ref().map(|d| d.nodes != req.nodes).unwrap_or(true) {
+                    self.drag = Some(build_drag_batches(renderer, &game, base, &req.nodes));
+                }
+                if let Some(dl) = &mut self.drag {
+                    let off = v3(req.offset);
+                    dl.gpu_opaque = renderer.upload_mesh(&dl.opaque.translated(off));
+                    dl.gpu_double = renderer.upload_mesh(&dl.double.translated(off));
+                    dl.gpu_transparent = renderer.upload_mesh(&dl.transparent.translated(off));
+                    dl.gpu_edges = renderer.upload_lines(&translate_lines(&dl.edges, req.offset));
+                }
+            }
+            _ => self.drag = None,
         }
 
         // Target and I/O link lines between entities.
@@ -1409,6 +1525,16 @@ impl SceneCache {
                 }
                 frame.overlay_meshes.extend(b.overlay.as_ref());
                 frame.overlay_lines.extend(b.xray.as_ref());
+            }
+        }
+        if let Some(dl) = &self.drag {
+            if is_2d {
+                frame.overlay_lines.extend(dl.gpu_edges.as_ref());
+            } else {
+                frame.opaque.extend(dl.gpu_opaque.as_ref());
+                frame.double_sided.extend(dl.gpu_double.as_ref());
+                frame.transparent.extend(dl.gpu_transparent.as_ref());
+                frame.lines.extend(dl.gpu_edges.as_ref());
             }
         }
         frame.overlay_lines.extend(self.links.as_ref());
