@@ -46,7 +46,7 @@ fn plane_key(normal: DVec3, dist: f64) -> PlaneKey {
 
 impl FaceCull {
     /// Faces of a node that take part: opaque, single sided, not tool textures, triggers or displacements.
-    fn node_faces(map: &Map, game: &GameConfig, opaque: &dyn Fn(&str) -> bool, id: NodeId) -> Vec<CullFace> {
+    fn node_faces(map: &Map, game: &GameConfig, opaque: &(dyn Fn(&str) -> bool + Sync), id: NodeId) -> Vec<CullFace> {
         let Some(node) = map.get(id) else { return Vec::new() };
         if map.is_hidden(id) || !map.in_cordon(id) {
             return Vec::new();
@@ -57,34 +57,53 @@ impl FaceCull {
             return Vec::new();
         }
         let usable = |material: &str| !game.is_tool_texture(material) && opaque(material);
-        let mut out = Vec::new();
-        let mut push = |face: usize, normal: DVec3, polygon: Vec<DVec3>, closed: bool, is_mesh: bool| {
+        let make = |face: usize, normal: DVec3, polygon: Vec<DVec3>, closed: bool, is_mesh: bool| -> Option<CullFace> {
             if polygon.len() < 3 || normal == DVec3::ZERO {
-                return;
+                return None;
             }
             let dist = normal.dot(polygon::centroid(&polygon));
             let bounds = Aabb::from_points(polygon.iter().copied());
-            out.push(CullFace { face, key: plane_key(normal, dist), normal, dist, bounds, polygon, closed, is_mesh });
+            Some(CullFace { face, key: plane_key(normal, dist), normal, dist, bounds, polygon, closed, is_mesh })
         };
         match &node.kind {
-            NodeKind::Brush(b) if b.faces.iter().all(|f| f.data.disp.is_none()) => {
-                for (fi, f) in b.faces.iter().enumerate() {
-                    if usable(&f.data.material) {
-                        push(fi, f.plane.normal, f.indices.iter().map(|i| b.vertices[*i as usize]).collect(), true, false);
-                    }
-                }
-            }
+            NodeKind::Brush(b) if b.faces.iter().all(|f| f.data.disp.is_none()) => (0..b.faces.len())
+                .filter_map(|fi| {
+                    let f = &b.faces[fi];
+                    usable(&f.data.material).then(|| make(fi, f.plane.normal, f.indices.iter().map(|i| b.vertices[*i as usize]).collect(), true, false)).flatten()
+                })
+                .collect(),
             NodeKind::Mesh(m) => {
                 let closed = m.edge_faces().values().all(|f| f.len() == 2);
-                for (fi, f) in m.faces.iter().enumerate() {
+                let face_of = |fi: usize| -> Option<CullFace> {
+                    let f = &m.faces[fi];
                     if f.indices.len() >= 3 && f.indices.iter().all(|i| (*i as usize) < m.vertices.len()) && usable(&f.data.material) {
-                        push(fi, m.face_normal(fi), m.face_points(fi), closed, true);
+                        make(fi, m.face_normal(fi), m.face_points(fi), closed, true)
+                    } else {
+                        None
                     }
+                };
+                // A dense mesh's per-face work is independent, so build the cull faces across threads.
+                let n = m.faces.len();
+                let threads = std::thread::available_parallelism().map(|t| t.get()).unwrap_or(1);
+                if threads <= 1 || n < 2000 {
+                    (0..n).filter_map(face_of).collect()
+                } else {
+                    let chunk = n.div_ceil(threads);
+                    std::thread::scope(|s| {
+                        (0..threads)
+                            .map(|t| {
+                                let range = (t * chunk).min(n)..((t + 1) * chunk).min(n);
+                                s.spawn(|| range.filter_map(&face_of).collect::<Vec<_>>())
+                            })
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .flat_map(|h| h.join().unwrap())
+                            .collect()
+                    })
                 }
             }
-            _ => {}
+            _ => Vec::new(),
         }
-        out
     }
 
     /// Drops the cached visible pieces of `ids` so they draw whole, returning those that had any.
@@ -101,7 +120,7 @@ impl FaceCull {
     }
 
     /// Refreshes the faces of `dirty` nodes and everything sharing a plane with them. Returns the nodes whose visible pieces changed.
-    pub fn update(&mut self, map: &Map, game: &GameConfig, opaque: &dyn Fn(&str) -> bool, dirty: &BTreeSet<NodeId>, full: bool) -> BTreeSet<NodeId> {
+    pub fn update(&mut self, map: &Map, game: &GameConfig, opaque: &(dyn Fn(&str) -> bool + Sync), dirty: &BTreeSet<NodeId>, full: bool) -> BTreeSet<NodeId> {
         let nodes: Vec<NodeId> = if full {
             *self = Self::default();
             map.nodes.keys().copied().collect()
