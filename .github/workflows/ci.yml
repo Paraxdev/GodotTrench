@@ -214,3 +214,6 @@ jobs:
           push dist/trenchdot-linux-x86_64.tar.gz linux
           push dist/trenchdot-windows-x86_64.zip windows
           push dist/trenchdot-macos-arm64.tar.gz mac
+          # The addon and demo project ship as their own zips so their folder layout (addons/func_godot, the project) survives.
+          "$butler" push dist/func_godot-trenchdot-addon.zip "paraxdev/trenchdot:addon" --userversion "$version"
+          "$butler" push dist/trenchdot-demo-project.zip "paraxdev/trenchdot:demo-project" --userversion "$version"
