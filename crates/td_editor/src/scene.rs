@@ -1068,7 +1068,9 @@ fn build_bucket<'a>(ctx: &BucketCtx<'a>, ids: &[NodeId]) -> Builder<'a> {
         let is_trigger = entity.is_some_and(|e| e.classname.starts_with("trigger")) || entity_def.is_some_and(|d| d.node_class == "Area3D");
         builder.volume = is_trigger;
         match &node.kind {
-            NodeKind::Brush(brush) => builder.brush(brush, tint, selected, |fi| ctx.selected_faces.contains(&(id, fi)), edge_2d, is_trigger, EDGE_COLOR, ctx.pieces.get(&id)),
+            NodeKind::Brush(brush) => {
+                builder.brush(brush, tint, selected, |fi| ctx.selected_faces.contains(&(id, fi)), edge_2d, is_trigger, EDGE_COLOR, ctx.pieces.get(&id))
+            }
             NodeKind::Mesh(mesh) => builder.mesh(mesh, tint, selected, |fi| ctx.selected_faces.contains(&(id, fi)), edge_2d, is_trigger, ctx.pieces.get(&id)),
             NodeKind::Terrain(_) => builder.stats.terrains += 1,
             NodeKind::Entity(e) if node.children.is_empty() => {
@@ -1129,10 +1131,8 @@ impl SceneCache {
         let map = state.doc.map.clone();
         let selection = state.doc.selection.clone();
         // Only heavy moves use the drag layer; ordinary brush drags keep the live rebuild-and-cull path.
-        let drag_req = state
-            .drag_preview
-            .clone()
-            .filter(|d| d.nodes.iter().filter_map(|id| map.get(*id)).map(node_face_count).sum::<usize>() > CULL_DEFER_FACES);
+        let drag_req =
+            state.drag_preview.clone().filter(|d| d.nodes.iter().filter_map(|id| map.get(*id)).map(node_face_count).sum::<usize>() > CULL_DEFER_FACES);
         let drag_base = drag_req.as_ref().and_then(|_| state.doc.transaction_base().cloned());
         let drag_nodes: BTreeSet<NodeId> = drag_req.as_ref().map(|d| d.nodes.clone()).unwrap_or_default();
         let full = match &self.prev_map {
@@ -1292,14 +1292,9 @@ impl SceneCache {
         // While a heavy selection is being dragged, re-culling it every frame dominates the frame time and
         // its result cannot be seen until the drag ends, so defer it: draw the moving nodes un-culled now
         // and let the commit (which ends the transaction) run the real cull once.
-        let heavy_drag = !full
-            && state.doc.in_transaction()
-            && dirty.iter().filter_map(|id| map.get(*id)).map(node_face_count).sum::<usize>() > CULL_DEFER_FACES;
-        let recull = if heavy_drag {
-            self.face_cull.clear_pieces(&dirty)
-        } else {
-            self.face_cull.update(&map, &game, &opaque, &dirty, full)
-        };
+        let heavy_drag =
+            !full && state.doc.in_transaction() && dirty.iter().filter_map(|id| map.get(*id)).map(node_face_count).sum::<usize>() > CULL_DEFER_FACES;
+        let recull = if heavy_drag { self.face_cull.clear_pieces(&dirty) } else { self.face_cull.update(&map, &game, &opaque, &dirty, full) };
         dirty.extend(recull);
 
         let selected_brush_like: BTreeSet<NodeId> = selection.geometry(&map).into_iter().collect();
@@ -1381,8 +1376,9 @@ impl SceneCache {
                     entity_models: &entity_models,
                     drag_nodes: &drag_nodes,
                 };
-                let has_instance =
-                    |b: usize| per_bucket_ref.get(&b).is_some_and(|ids| ids.iter().any(|id| matches!(map.get(*id).map(|n| &n.kind), Some(NodeKind::Instance(_)))));
+                let has_instance = |b: usize| {
+                    per_bucket_ref.get(&b).is_some_and(|ids| ids.iter().any(|id| matches!(map.get(*id).map(|n| &n.kind), Some(NodeKind::Instance(_)))))
+                };
                 let parallel: Vec<usize> = dirty_buckets.iter().copied().filter(|b| !has_instance(*b)).collect();
                 let serial: Vec<usize> = dirty_buckets.iter().copied().filter(|b| has_instance(*b)).collect();
 

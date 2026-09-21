@@ -202,7 +202,7 @@ fn face_normal(a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> [f32; 3] {
 mod tests {
     use super::*;
 
-    fn put_i32(v: &mut Vec<u8>, at: usize, n: i32) {
+    fn put_i32(v: &mut [u8], at: usize, n: i32) {
         v[at..at + 4].copy_from_slice(&n.to_le_bytes());
     }
 
@@ -263,7 +263,7 @@ mod tests {
         put_i32(&mut d, 4, 15);
         put_i32(&mut d, 84, 1); // num_surfaces
         let ofs_surface = 108;
-        put_i32(&mut d, 96, ofs_surface as i32);
+        put_i32(&mut d, 96, ofs_surface);
         // Surface header is 108 bytes.
         let mut surf = vec![0u8; 108];
         put_i32(&mut surf, 0, MD3_MAGIC as i32);
@@ -280,11 +280,11 @@ mod tests {
         let st_at = tris_at + 12;
         let xyz_at = st_at + 3 * 8;
         let end = xyz_at + 3 * 8;
-        put_i32(&mut surf, 88, (tris_at - 0) as i32); // ofs_triangles (relative to surface)
-        put_i32(&mut surf, 92, (shaders_at) as i32);
-        put_i32(&mut surf, 96, (st_at) as i32);
-        put_i32(&mut surf, 100, (xyz_at) as i32);
-        put_i32(&mut surf, 104, end as i32);
+        put_i32(&mut surf, 88, tris_at); // ofs_triangles (relative to surface)
+        put_i32(&mut surf, 92, shaders_at);
+        put_i32(&mut surf, 96, st_at);
+        put_i32(&mut surf, 100, xyz_at);
+        put_i32(&mut surf, 104, end);
 
         d.extend(&surf); // header
         d.extend(&shader); // shaders

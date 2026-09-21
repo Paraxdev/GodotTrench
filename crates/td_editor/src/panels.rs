@@ -1646,10 +1646,8 @@ pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, 
         ui.add(egui::Slider::new(&mut ps.thumb_size, 40.0..=160.0).show_value(false));
         ui.checkbox(&mut state.prefs.model_import.autofit, "Fit")
             .on_hover_text("Scale tiny or huge models to a usable size when placed. Real-world-scale assets are otherwise sub-grid specks.");
-        ui.add(
-            egui::DragValue::new(&mut state.prefs.model_import.scale).speed(0.05).range(0.01..=1000.0).prefix("×").fixed_decimals(2),
-        )
-        .on_hover_text("Size multiplier applied on top of Fit (or on the model's real size when Fit is off)");
+        ui.add(egui::DragValue::new(&mut state.prefs.model_import.scale).speed(0.05).range(0.01..=1000.0).prefix("×").fixed_decimals(2))
+            .on_hover_text("Size multiplier applied on top of Fit (or on the model's real size when Fit is off)");
         if ui.small_button("⟳").on_hover_text("Rescan res://models for model files").clicked() {
             actions.push(Action::ReloadModels);
         }
