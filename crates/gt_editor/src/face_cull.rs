@@ -69,7 +69,9 @@ impl FaceCull {
             NodeKind::Brush(b) if b.faces.iter().all(|f| f.data.disp.is_none()) => (0..b.faces.len())
                 .filter_map(|fi| {
                     let f = &b.faces[fi];
-                    usable(&f.data.material).then(|| make(fi, f.plane.normal, f.indices.iter().map(|i| b.vertices[*i as usize]).collect(), true, false)).flatten()
+                    usable(&f.data.material)
+                        .then(|| make(fi, f.plane.normal, f.indices.iter().map(|i| b.vertices[*i as usize]).collect(), true, false))
+                        .flatten()
                 })
                 .collect(),
             NodeKind::Mesh(m) => {
@@ -158,8 +160,7 @@ impl FaceCull {
         // Direct lookup from (node, face) to its CullFace. Without it, resolving a plane's members
         // scans the whole node face list per member, which is O(faces^2) on a dense model. Only the
         // nodes that share a touched plane are indexed, so ordinary small edits stay cheap.
-        let member_ids: BTreeSet<NodeId> =
-            touched.keys().filter_map(|k| self.planes.get(k)).flat_map(|m| m.iter().map(|(id, _)| *id)).collect();
+        let member_ids: BTreeSet<NodeId> = touched.keys().filter_map(|k| self.planes.get(k)).flat_map(|m| m.iter().map(|(id, _)| *id)).collect();
         let mut index: HashMap<(NodeId, usize), &CullFace> = HashMap::new();
         for id in &member_ids {
             if let Some(faces) = self.faces.get(id) {
