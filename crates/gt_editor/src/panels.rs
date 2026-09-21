@@ -189,11 +189,12 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
 
                 let resp = ui.selectable_label(selected, label);
                 if resp.clicked() {
+                    // A layer click also makes it current; selecting it as well lets Delete and the other node ops act on it.
                     if matches!(node.kind, NodeKind::Layer(_)) {
                         set_layer = Some(*id);
-                    } else {
-                        clicked = Some((*id, ui.input(|i| i.modifiers.command)));
                     }
+
+                    clicked = Some((*id, ui.input(|i| i.modifiers.command)));
                 }
 
                 if resp.double_clicked() {

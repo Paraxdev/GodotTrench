@@ -721,6 +721,19 @@ mod tests {
     }
 
     #[test]
+    fn deleting_a_selected_layer_removes_it_and_its_contents() {
+        let mut m = Map::new();
+        let l2 = m.add_layer("Trees");
+        let brush = create_brush(&mut m, l2, Brush::from_aabb(&Aabb::new(DVec3::splat(-8.0), DVec3::splat(8.0)), "t").unwrap());
+        let mut sel = Selection::default();
+        sel.nodes.insert(l2);
+        delete_selection(&mut m, &mut sel);
+        assert!(m.get(l2).is_none(), "the layer is gone");
+        assert!(m.get(brush).is_none(), "its brush went with it");
+        assert!(!m.layers.contains(&l2));
+    }
+
+    #[test]
     fn select_touching_finds_intersections() {
         let (mut m, ids) = world_with_boxes();
         let mut sel = Selection::default();
