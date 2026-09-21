@@ -276,6 +276,18 @@ impl Viewport {
                         }
                     });
                 }
+                // With the UV editor open, ctrl+click grabs every face of the object so all sides are
+                // edited at once. Repeating on another object adds its faces.
+                Some(h) if cx.state.uv_panel_open && modifiers.command && h.face.is_some() => {
+                    let id = h.node;
+                    let count = map.brush(id).map(|b| b.faces.len()).or_else(|| map.mesh(id).map(|m| m.faces.len())).unwrap_or(0);
+                    cx.state.outliner_reveal = Some(id);
+                    cx.state.doc.select(|_, s| {
+                        for f in 0..count {
+                            s.select_face(id, f);
+                        }
+                    });
+                }
                 Some(h) => {
                     let target = map.click_target(h.node, &open_groups);
                     cx.state.last_bounds = map.bounds(target);
@@ -652,7 +664,7 @@ impl Viewport {
                     }
                 }
             }
-            DndPayload::Entities(_) => {
+            DndPayload::Entities(_) | DndPayload::Model(_) => {
                 if let Some(point) = self.camera.project(self.rect, hit.point) {
                     painter.circle(point, 5.0, DROP_COLOR.gamma_multiply(0.4), stroke);
                 }
@@ -678,6 +690,13 @@ impl Viewport {
             DndPayload::Material(name) => {
                 let name = name.clone();
                 cx.state.current_material = name.clone();
+                // Alt while dropping on a surface lays the material as a decal sheet instead of painting it.
+                if ui.input(|i| i.modifiers.alt) {
+                    if let Some(h) = hit {
+                        cx.actions.push(Action::CreateDecal { material: name, at: h.point, normal: h.normal });
+                    }
+                    return;
+                }
                 let apply_whole = ui.input(|i| i.modifiers.shift);
                 match hit {
                     Some(Hit { node, face: Some(face), .. }) => {
@@ -723,6 +742,14 @@ impl Viewport {
                 let axis = right.abs().max_position();
                 let row = DVec3::AXES[axis] * right[axis].signum();
                 cx.actions.push(Action::PlaceEntities { classnames: classnames.clone(), at: Some(at), normal, row });
+            }
+            DndPayload::Model(path) => {
+                let at = match (self.camera.kind, hit) {
+                    (_, Some(h)) => h.point,
+                    (ViewKind::Perspective, None) => cx.state.cursor_world.unwrap_or(ray.at(256.0)),
+                    (_, None) => self.camera.screen_to_plane(self.rect, pos),
+                };
+                cx.actions.push(Action::PlaceModel { path: path.clone(), at: cx.state.snap(at) });
             }
         }
     }

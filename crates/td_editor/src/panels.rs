@@ -371,9 +371,21 @@ pub fn inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
 
 fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mut Vec<Action>) {
     let Some(mesh) = state.doc.map.mesh(id).cloned() else { return };
-    ui.heading("Mesh");
+    ui.heading(if mesh.decal { "Decal" } else { "Mesh" });
     ui.label(format!("{} vertices, {} faces, {} triangles", mesh.vertices.len(), mesh.faces.len(), mesh.triangle_count()));
     ui.label(if mesh.is_closed() { "closed" } else { "open surface" });
+    let mut decal = mesh.decal;
+    if ui
+        .checkbox(&mut decal, "Decal (alpha cutout, double sided)")
+        .on_hover_text("Draw this thin mesh with its texture's alpha cut out, laid over the surface behind it")
+        .changed()
+    {
+        state.doc.edit("Toggle Decal", |m, _| {
+            if let Some(mesh) = m.mesh_mut(id) {
+                mesh.decal = decal;
+            }
+        });
+    }
     if mesh.is_convex() {
         ui.label(RichText::new("convex, exports to .map as a brush").weak());
     }
@@ -1420,7 +1432,7 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
     let cell = if label { Vec2::new(size + 8.0, size + 22.0) } else { Vec2::splat(size + 4.0) };
     let (rect, resp) = ui.allocate_exact_size(cell, Sense::click_and_drag());
     let selected = name == state.current_material;
-    let (has_normal, missing_albedo) = state.materials.find(name).map(|e| (e.has_normal, e.missing_albedo)).unwrap_or((false, false));
+    let (has_normal, missing_albedo, is_pbr) = state.materials.find(name).map(|e| (e.has_normal, e.missing_albedo, e.is_pbr)).unwrap_or((false, false, false));
     if selected {
         ui.painter().rect_filled(rect, 3.0, theme::selected_fill());
     } else if resp.hovered() {
@@ -1444,6 +1456,8 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
         let corner = img_rect.left_top() + Vec2::new(2.0, 2.0);
         if missing_albedo {
             badge(ui.painter(), corner, "no albedo", theme::WARNING);
+        } else if is_pbr {
+            badge(ui.painter(), corner, "PBR", theme::GREEN);
         } else if has_normal {
             badge(ui.painter(), corner, "normal", theme::INFO);
         }
@@ -1465,8 +1479,10 @@ fn material_interactions(resp: egui::Response, state: &mut EditorState, name: &s
             .map(|e| {
                 if e.missing_albedo {
                     "\nnormal map with no matching albedo/diffuse texture"
+                } else if e.is_pbr {
+                    "\nPBR set: companion maps found and auto mapped, dropping it applies them"
                 } else if e.has_normal {
-                    "\nhas a normal map — dropping it applies valid normals"
+                    "\nhas a normal map, dropping it applies valid normals"
                 } else {
                     ""
                 }
@@ -1584,6 +1600,110 @@ pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
     });
 }
 
+// -------------------------------------------------------------------- models
+
+/// A tint per model format so the cards read apart at a glance.
+fn model_ext_color(ext: &str) -> Color32 {
+    match ext {
+        "glb" | "gltf" => theme::TEAL,
+        "obj" => theme::CYAN,
+        "bbmodel" => theme::YELLOW,
+        "stl" => theme::GRAY_6,
+        "md2" | "md3" | "mdl" => theme::PINK,
+        "map" | "vmf" => theme::GREEN,
+        _ => theme::GRAY_5,
+    }
+}
+
+fn model_cell(ui: &mut Ui, selected: bool, entry: &crate::models::ModelEntry, size: f32) -> egui::Response {
+    let cell = Vec2::new(size + 8.0, size + 22.0);
+    let (rect, resp) = ui.allocate_exact_size(cell, Sense::click_and_drag());
+    if selected {
+        ui.painter().rect_filled(rect, 3.0, theme::selected_fill());
+    } else if resp.hovered() {
+        ui.painter().rect_filled(rect, 3.0, theme::GRAY_2);
+    }
+    let img_rect = egui::Rect::from_min_size(rect.min + Vec2::splat(4.0), Vec2::splat(size));
+    ui.painter().rect_filled(img_rect, 2.0, theme::GRAY_1);
+    let icon = icons::MESH.image((size * 0.55).min(48.0)).tint(model_ext_color(&entry.ext));
+    ui.put(img_rect, icon);
+    badge(ui.painter(), img_rect.left_top() + Vec2::new(2.0, 2.0), &entry.ext, model_ext_color(&entry.ext));
+    let short = entry.name.rsplit('/').next().unwrap_or(&entry.name);
+    ui.painter().text(egui::pos2(rect.center().x, rect.max.y - 9.0), egui::Align2::CENTER_CENTER, short, egui::FontId::proportional(11.0), theme::GRAY_6);
+    resp
+}
+
+pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
+    ui.horizontal_wrapped(|ui| {
+        ui.add(egui::TextEdit::singleline(&mut ps.model_filter).hint_text("Search models").desired_width(160.0));
+        let folders = state.model_library.folders();
+        egui::ComboBox::from_id_salt("model_folder").selected_text(ps.model_folder.clone().unwrap_or_else(|| "All folders".into())).show_ui(ui, |ui| {
+            ui.selectable_value(&mut ps.model_folder, None, "All folders");
+            for f in folders {
+                ui.selectable_value(&mut ps.model_folder, Some(f.clone()), if f.is_empty() { "(root)".to_string() } else { f });
+            }
+        });
+        ui.add(egui::Slider::new(&mut ps.thumb_size, 40.0..=160.0).show_value(false));
+        if ui.small_button("⟳").on_hover_text("Rescan res://models for model files").clicked() {
+            actions.push(Action::ReloadModels);
+        }
+        if ui.small_button("Import…").on_hover_text("Pick a model file to place, from anywhere on disk").clicked() {
+            actions.push(Action::ImportModel(crate::commands::ModelImport::Mesh));
+        }
+    });
+    ui.separator();
+
+    let filter = ps.model_filter.to_lowercase();
+    let entries: Vec<crate::models::ModelEntry> = state
+        .model_library
+        .entries
+        .iter()
+        .filter(|e| filter.is_empty() || e.name.to_lowercase().contains(&filter))
+        .filter(|e| ps.model_folder.as_ref().is_none_or(|f| &e.folder == f))
+        .cloned()
+        .collect();
+
+    if state.model_library.entries.is_empty() {
+        ui.label(
+            RichText::new(
+                "No models found. Put .glb, .gltf, .obj, .bbmodel, .stl, .md2 or .md3 files under res://models, or use Import… to place one from anywhere.",
+            )
+            .weak(),
+        );
+    } else if entries.is_empty() {
+        ui.label(RichText::new("No models match the search and filters").weak());
+    }
+    let size = ps.thumb_size;
+    let cell = Vec2::new(size + 8.0, size + 22.0);
+    let cols = ((ui.available_width() / cell.x).floor() as usize).max(1);
+    let rows = entries.len().div_ceil(cols);
+    let cursor = state.cursor_world;
+    ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, cell.y, rows, |ui, range| {
+        for row in range {
+            ui.horizontal(|ui| {
+                for entry in entries.iter().skip(row * cols).take(cols) {
+                    let resp = model_cell(ui, false, entry, size);
+                    let resp = resp.on_hover_text(format!("{}\n{}\nDrag into a view to place it as an editable mesh", entry.name, entry.path.display()));
+                    if resp.drag_started() {
+                        resp.dnd_set_drag_payload(DndPayload::Model(entry.path.clone()));
+                    }
+                    resp.context_menu(|ui| {
+                        if ui.button("Place at cursor").clicked() {
+                            let at = state.snap(cursor.unwrap_or(DVec3::ZERO));
+                            actions.push(Action::PlaceModel { path: entry.path.clone(), at });
+                            ui.close();
+                        }
+                        if ui.button("Copy path").clicked() {
+                            ui.ctx().copy_text(entry.path.display().to_string());
+                            ui.close();
+                        }
+                    });
+                }
+            });
+        }
+    });
+}
+
 /// Follows the pointer while a material or entity is dragged. Views set the copy cursor where a drop works.
 pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
     let Some(payload) = egui::DragAndDrop::payload::<DndPayload>(ctx) else { return };
@@ -1606,7 +1726,7 @@ pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
                     }
                     ui.vertical(|ui| {
                         ui.label(RichText::new(name).strong());
-                        ui.label(RichText::new("Drop on a face, Shift covers the whole brush").weak().small());
+                        ui.label(RichText::new("Drop on a face, Shift covers the whole brush, Alt drops a decal").weak().small());
                     });
                 }
                 DndPayload::Entities(classnames) => {
