@@ -114,6 +114,7 @@ pub fn face_info(map: &Map, id: NodeId, face: usize) -> Option<FaceInfo> {
             explicit: None,
         });
     }
+
     let m = map.mesh(id)?;
     let f = m.faces.get(face)?;
     Some(FaceInfo {
@@ -137,6 +138,7 @@ pub fn target_faces(state: &EditorState) -> Vec<(NodeId, usize)> {
     if sel.has_faces() {
         return sel.faces.iter().copied().collect();
     }
+
     let map = &state.doc.map;
     sel.geometry(map)
         .into_iter()
@@ -187,6 +189,7 @@ fn commit(state: &mut EditorState, label: &str, coalesce: bool, plans: Vec<(Node
     if n == 0 {
         return 0;
     }
+
     let apply = move |m: &mut Map| {
         for (id, f, plan) in plans {
             match plan {
@@ -200,6 +203,7 @@ fn commit(state: &mut EditorState, label: &str, coalesce: bool, plans: Vec<(Node
     } else {
         state.doc.edit(label, |m, _| apply(m));
     }
+
     n
 }
 
@@ -235,10 +239,12 @@ pub fn justify(state: &mut EditorState, faces: &[(NodeId, usize)], mode: Justify
             plans.push((info.id, info.face, Plan::Explicit(uvs.iter().map(map).collect())));
             continue;
         }
+
         let mut uv = info.uv.clone();
         uv.justify(if treat_as_one { &all_points } else { &info.points }, tex, mode);
         plans.push((info.id, info.face, Plan::Planar(uv)));
     }
+
     commit(state, &format!("Justify {}", mode.label()), false, plans)
 }
 
@@ -417,12 +423,14 @@ pub fn project_mesh(state: &mut EditorState, faces: &[(NodeId, usize)], projecti
             per_mesh.entry(*id).or_default().push(*f);
         }
     }
+
     let mut jobs = Vec::new();
     for (id, list) in per_mesh {
         let Some(info) = list.first().and_then(|f| face_info(&state.doc.map, id, *f)) else { continue };
         let r = repeat.unwrap_or_else(|| tex_size(state, &info.material) * info.uv.scale.abs().max(DVec2::splat(1e-3)));
         jobs.push((id, list, r));
     }
+
     let n: usize = jobs.iter().map(|(_, l, _)| l.len()).sum();
     if n > 0 {
         state.doc.edit(&format!("{} UV Projection", projection.label()), |m, _| {
@@ -433,6 +441,7 @@ pub fn project_mesh(state: &mut EditorState, faces: &[(NodeId, usize)], projecti
             }
         });
     }
+
     n
 }
 
@@ -444,6 +453,7 @@ pub fn normalize_mesh_uvs(state: &mut EditorState, faces: &[(NodeId, usize)], ke
             per_mesh.entry(*id).or_default().push(*f);
         }
     }
+
     let n = per_mesh.values().map(|v| v.len()).sum();
     state.doc.edit("Normalize UVs", |m, _| {
         for (id, list) in &per_mesh {
@@ -463,6 +473,7 @@ pub fn pack_mesh_uvs(state: &mut EditorState, faces: &[(NodeId, usize)], stack: 
             per_mesh.entry(*id).or_default().push(*f);
         }
     }
+
     let n = per_mesh.values().map(|v| v.len()).sum();
     if n > 0 {
         state.doc.edit("Pack UVs", |m, _| {
@@ -473,6 +484,7 @@ pub fn pack_mesh_uvs(state: &mut EditorState, faces: &[(NodeId, usize)], stack: 
             }
         });
     }
+
     n
 }
 

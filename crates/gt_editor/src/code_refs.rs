@@ -113,26 +113,32 @@ pub fn gdscript_class(def: &EntityDef) -> String {
     if !def.description.is_empty() {
         out += &format!("## {}\n", def.description);
     }
+
     out += "\n";
     for o in &def.outputs {
         let args: Vec<String> = params(&o.parameter).iter().map(|a| format!("{a}: Variant")).collect();
         out += &format!("signal {}{}\n", o.name, if args.is_empty() { String::new() } else { format!("({})", args.join(", ")) });
     }
+
     if !def.outputs.is_empty() {
         out += "\n";
     }
+
     let props: Vec<&PropertyDef> = def.properties.iter().filter(|p| !is_name_property(p)).collect();
     for p in &props {
         let (ty, default) = gd_type(p);
         if !p.description.is_empty() {
             out += &format!("## {}\n", p.description);
         }
+
         out += &format!("@export var {}: {ty} = {default}\n", p.name);
     }
+
     out += "\n## FuncGodot passes the entity's map properties here when the map is built.\nfunc _func_godot_apply_properties(props: Dictionary) -> void:\n";
     if props.is_empty() {
         out += "\tpass\n";
     }
+
     for p in &props {
         let line = match p.ty {
             PropertyType::Int | PropertyType::Flags => format!("\t{0} = int(props.get(\"{0}\", {0}))\n", p.name),
@@ -144,6 +150,7 @@ pub fn gdscript_class(def: &EntityDef) -> String {
         };
         out += &line;
     }
+
     for i in &def.inputs {
         let args: Vec<String> = params(&i.parameter).iter().map(|a| format!("{a}: Variant = null")).collect();
         out += &format!(
@@ -153,6 +160,7 @@ pub fn gdscript_class(def: &EntityDef) -> String {
             args.join(", ")
         );
     }
+
     out
 }
 
@@ -162,22 +170,27 @@ pub fn csharp_class(def: &EntityDef) -> String {
     if !def.description.is_empty() {
         out += &format!("/// <summary>{}</summary>\n", def.description);
     }
+
     out += &format!("[GlobalClass, Tool]\npublic partial class {class} : {}\n{{\n", node_class(def));
     for o in &def.outputs {
         let args: Vec<String> = params(&o.parameter).iter().map(|a| format!("Variant {a}")).collect();
         out += &format!("    [Signal] public delegate void {}EventHandler({});\n", pascal(&o.name), args.join(", "));
     }
+
     if !def.outputs.is_empty() {
         out += "\n";
     }
+
     let props: Vec<&PropertyDef> = def.properties.iter().filter(|p| !is_name_property(p)).collect();
     for p in &props {
         let (ty, default) = cs_type(p);
         if !p.description.is_empty() {
             out += &format!("    /// <summary>{}</summary>\n", p.description);
         }
+
         out += &format!("    [Export] public {ty} {} {{ get; set; }} = {default};\n", pascal(&p.name));
     }
+
     out += "\n    // FuncGodot calls this by name when the map is built, so it keeps the snake_case spelling.\n";
     out += "    public void _func_godot_apply_properties(Dictionary props)\n    {\n";
     for p in &props {
@@ -191,6 +204,7 @@ pub fn csharp_class(def: &EntityDef) -> String {
         };
         out += &format!("        {} = {getter}(props, \"{}\", {});\n", pascal(&p.name), p.name, pascal(&p.name));
     }
+
     out += "    }\n";
     for i in &def.inputs {
         let args: Vec<String> = params(&i.parameter).iter().map(|a| format!("Variant {a} = default")).collect();
@@ -201,6 +215,7 @@ pub fn csharp_class(def: &EntityDef) -> String {
             args.join(", ")
         );
     }
+
     out += "}\n";
     out
 }
@@ -234,6 +249,7 @@ pub fn gdscript_usage(def: &EntityDef) -> String {
             out += &format!("#   {} ({:?}) = {:?}  {}\n", p.name, p.ty, p.default, p.description);
         }
     }
+
     out
 }
 
@@ -323,17 +339,21 @@ pub fn fgd_resource(def: &EntityDef) -> String {
     if !def.script.is_empty() {
         out += &format!("[ext_resource type=\"Script\" path=\"{}\" id=\"2_script\"]\n", def.script);
     }
+
     out +=
         &format!("\n[resource]\nscript = ExtResource(\"1_class\")\nclassname = {}\ndescription = {}\n", gd_string(&def.classname), gd_string(&def.description));
     if solid && def.classname.starts_with("trigger") {
         out += "build_visuals = false\n";
     }
+
     if solid {
         out += "collision_shape_type = 1\n";
     }
+
     if !def.script.is_empty() {
         out += "script_class = ExtResource(\"2_script\")\n";
     }
+
     let props: Vec<String> = def.properties.iter().map(|p| format!("{}: {}", gd_string(&p.name), godot_value(p))).collect();
     out += &format!("class_properties = Dictionary[String, Variant]({{\n{}\n}})\n", props.join(",\n"));
     let descs: Vec<String> = def
@@ -355,19 +375,24 @@ pub fn fgd_resource(def: &EntityDef) -> String {
         let [a, b] = def.size;
         meta.push(format!("\"size\": AABB({}, {}, {}, {}, {}, {})", a.z, a.x, a.y, b.z, b.x, b.y));
     }
+
     let types: Vec<String> = def.properties.iter().filter_map(|p| declared_type(p).map(|t| format!("{}: {}", gd_string(&p.name), gd_string(t)))).collect();
     if !types.is_empty() {
         meta.push(format!("\"property_types\": {{{}}}", types.join(", ")));
     }
+
     if !def.gizmos.is_empty() {
         meta.push(format!("\"gizmos\": [{}]", def.gizmos.iter().map(gizmo_dict).collect::<Vec<_>>().join(", ")));
     }
+
     if !def.inputs.is_empty() {
         meta.push(format!("\"inputs\": {}", name_list(&def.inputs)));
     }
+
     if !def.outputs.is_empty() {
         meta.push(format!("\"outputs\": {}", name_list(&def.outputs)));
     }
+
     out += &format!("meta_properties = Dictionary[String, Variant]({{\n{}\n}})\n", meta.join(",\n"));
     out += &format!("node_class = {}\n", gd_string(node_class(def)));
     out
@@ -409,11 +434,13 @@ pub fn addon_fgd_files() -> Vec<(String, String)> {
             out.push((format!("{class}.tres"), fgd_resource(def)));
         }
     }
+
     let mut file = format!("[gd_resource type=\"Resource\" script_class=\"FuncGodotFGDFile\" load_steps={} format=3]\n\n", ADDON_ENTITIES.len() + 2);
     file += "[ext_resource type=\"Script\" path=\"res://addons/func_godot/src/fgd/func_godot_fgd_file.gd\" id=\"1_fgd\"]\n";
     for (i, class) in ADDON_ENTITIES.iter().enumerate() {
         file += &format!("[ext_resource type=\"Resource\" path=\"res://addons/func_godot/fgd/godottrench/{class}.tres\" id=\"{}_{class}\"]\n", i + 2);
     }
+
     let refs: Vec<String> = ADDON_ENTITIES.iter().enumerate().map(|(i, class)| format!("ExtResource(\"{}_{class}\")", i + 2)).collect();
     file +=
         &format!("\n[resource]\nscript = ExtResource(\"1_fgd\")\nfgd_name = \"GodotTrench\"\nentity_definitions = Array[Resource]([{}])\n", refs.join(", "));

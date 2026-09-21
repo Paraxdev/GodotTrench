@@ -150,6 +150,7 @@ impl<'de> Deserialize<'de> for ScatterInstance {
         if v.len() < 8 {
             return Err(serde::de::Error::custom("scatter instance needs [item, x, y, z, pitch, yaw, roll, scale]"));
         }
+
         Ok(ScatterInstance { item: v[0].max(0.0) as u32, position: DVec3::new(v[1], v[2], v[3]), angles: DVec3::new(v[4], v[5], v[6]), scale: v[7] })
     }
 }
@@ -194,6 +195,7 @@ impl Scatter {
         for i in &self.instances {
             b.include(&Aabb::from_center_size(i.position + DVec3::Y * 16.0 * i.scale, DVec3::splat(32.0 * i.scale.max(0.1))));
         }
+
         b
     }
 
@@ -204,6 +206,7 @@ impl Scatter {
                 *c += 1;
             }
         }
+
         out
     }
 
@@ -217,6 +220,7 @@ impl Scatter {
             inst.angles = DVec3::new(x.to_degrees(), y.to_degrees(), z.to_degrees());
             inst.scale *= uniform;
         }
+
         for item in &mut self.items {
             item.spacing *= uniform;
             item.sink *= uniform;
@@ -228,6 +232,7 @@ impl Scatter {
         if index >= self.items.len() {
             return;
         }
+
         self.items.remove(index);
         self.instances.retain(|i| i.item as usize != index);
         for i in &mut self.instances {
@@ -260,6 +265,7 @@ impl Scatter {
         if total <= 0.0 {
             return None;
         }
+
         let mut roll = rng.next_f64() * total;
         for k in &candidates {
             roll -= self.items[*k].weight;
@@ -267,6 +273,7 @@ impl Scatter {
                 return Some(*k);
             }
         }
+
         candidates.last().copied()
     }
 
@@ -374,6 +381,7 @@ impl SpacingGrid {
                 }
             }
         }
+
         false
     }
 }
@@ -395,9 +403,11 @@ impl Scatter {
             let spacing = self.items.get(i.item as usize).map(|it| it.spacing).unwrap_or(0.0);
             grid.insert(i.position, spacing);
         }
+
         for (p, s) in others {
             grid.insert(*p, *s);
         }
+
         grid
     }
 
@@ -439,6 +449,7 @@ impl Scatter {
         if self.items.is_empty() || radius <= 0.0 {
             return 0;
         }
+
         let normal = normal.normalize_or(DVec3::Y);
         let area = std::f64::consts::PI * radius * radius;
         let count = ((area / 4096.0) * rules.density).round().max(1.0) as usize;
@@ -451,11 +462,13 @@ impl Scatter {
                 if placed_item >= share {
                     break;
                 }
+
                 let angle = rng.range(0.0, std::f64::consts::TAU);
                 let t = rng.next_f64().sqrt();
                 if rules.falloff > 0.0 && rng.next_f64() > 1.0 - rules.falloff.clamp(0.0, 1.0) * t * t {
                     continue;
                 }
+
                 let offset = (basis.0 * angle.cos() + basis.1 * angle.sin()) * radius * t;
                 let Some(hit) = cast(center + offset + normal * radius, -normal) else { continue };
                 // A tilted or edge normal makes the cast skate off the brush and land far away, so drop hits that
@@ -463,17 +476,21 @@ impl Scatter {
                 if !hit.point.is_finite() || (hit.point - center).reject_from(normal).length() > radius * 1.5 {
                     continue;
                 }
+
                 let spacing = self.items[item].spacing;
                 if !self.accepts(&hit, rules) || grid.blocked(hit.point, spacing) {
                     continue;
                 }
+
                 grid.insert(hit.point, spacing);
                 let inst = self.make_instance(item, &hit, rng);
                 self.instances.push(inst);
                 placed_item += 1;
             }
+
             placed += placed_item;
         }
+
         placed
     }
 
@@ -489,11 +506,13 @@ impl Scatter {
         if self.items.is_empty() || bounds.is_empty() || rules.density <= 0.0 {
             return 0;
         }
+
         let size = bounds.size();
         let samples = ((size.x.max(1.0) * size.z.max(1.0) / 4096.0) * rules.density).ceil() as usize;
         if samples > 4_000_000 {
             return 0;
         }
+
         let mut grid = self.spacing_grid(others);
         let top = bounds.max.y + 64.0;
         let mut placed = 0;
@@ -506,12 +525,14 @@ impl Scatter {
                 if !hit.point.is_finite() || !self.accepts(&hit, rules) || grid.blocked(hit.point, spacing) {
                     continue;
                 }
+
                 grid.insert(hit.point, spacing);
                 let inst = self.make_instance(item, &hit, rng);
                 self.instances.push(inst);
                 placed += 1;
             }
         }
+
         placed
     }
 
@@ -580,6 +601,7 @@ mod tests {
             if dir.y >= 0.0 {
                 return None;
             }
+
             let t = (origin.y - y) / -dir.y;
             (t >= 0.0).then(|| SurfaceHit { point: origin + dir * t, normal: DVec3::Y, node })
         }
@@ -601,6 +623,7 @@ mod tests {
                 assert!((a.position - b.position).length() >= s - 1e-6);
             }
         }
+
         let counts = set.counts();
         assert!(counts[0] > counts[2], "pines weigh three times the birches: {counts:?}");
         // A surface that is not a target gets nothing.

@@ -68,6 +68,7 @@ impl App {
                 if profile.len() < 2 {
                     return err("lathe needs a profile of at least two [radius, height] points");
                 }
+
                 mesh_shapes::lathe(vec3(&args["center"]).unwrap_or_default(), &profile, sides, args["caps"].as_bool().unwrap_or(true), &material, 40.0)
             }
             "prism" => {
@@ -75,6 +76,7 @@ impl App {
                 if footprint.len() < 3 {
                     return err("prism needs a footprint of at least three [x, z] points");
                 }
+
                 mesh_shapes::prism(&footprint, args["bottom"].as_f64().unwrap_or(bounds.min.y), args["top"].as_f64().unwrap_or(bounds.max.y), &material)
             }
             other => return err(format!("unknown mesh shape {other}")),
@@ -82,6 +84,7 @@ impl App {
         if let Some(angle) = args["smooth_angle"].as_f64() {
             mesh.smooth_angle = angle as f32;
         }
+
         if let Some(r) = args["roughen"].as_object() {
             let amount = r.get("amount").and_then(|v| v.as_f64()).unwrap_or(16.0);
             let seed = r.get("seed").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
@@ -91,13 +94,16 @@ impl App {
                 *p += (*p - center).normalize_or(DVec3::Y) * n * amount;
             }
         }
+
         if let Some(deg) = args["rotate_y"].as_f64() {
             let c = mesh.bounds().center();
             mesh = mesh.transformed(&(DMat4::from_translation(c) * DMat4::from_rotation_y(deg.to_radians()) * DMat4::from_translation(-c)), false);
         }
+
         if let Some(t) = vec3(&args["translate"]) {
             mesh = mesh.transformed(&DMat4::from_translation(t), false);
         }
+
         if let Some(scale) = args["uv_scale"].as_f64() {
             for fi in 0..mesh.faces.len() {
                 let n = mesh.face_normal(fi);
@@ -105,6 +111,7 @@ impl App {
                 mesh.faces[fi].uvs.clear();
             }
         }
+
         let parent = args["parent"].as_u64().map(NodeId).filter(|p| self.state.doc.map.contains(*p)).unwrap_or_else(|| self.state.insert_parent());
         let faces = mesh.faces.len();
         let id = self.state.doc.edit("Create Mesh", |m, s| {
@@ -121,6 +128,7 @@ impl App {
         if self.state.doc.map.mesh(id).is_none() {
             return err(format!("{id} is not a mesh"));
         }
+
         let op = args["op"].as_str().unwrap_or_default().to_string();
         let faces: Vec<usize> = args["faces"].as_array().into_iter().flatten().filter_map(|v| v.as_u64()).map(|v| v as usize).collect();
         let verts: Vec<u32> = args["verts"].as_array().into_iter().flatten().filter_map(|v| v.as_u64()).map(|v| v as u32).collect();
@@ -159,11 +167,13 @@ impl App {
                         Some("back") => mesh.delete_side(&plane, true),
                         _ => {}
                     }
+
                     if a["fill"].as_bool().unwrap_or(false) {
                         let set = mesh.vertices.iter().enumerate().filter(|(_, v)| plane.distance(**v).abs() < 1e-4).map(|(i, _)| i as u32).collect();
                         let data = mesh.faces.first().map(|f| f.data.clone()).unwrap_or_default();
                         mesh.fill_boundary_loops(&set, &data);
                     }
+
                     json!({ "cut_vertices": on.len() })
                 }
                 "subdivide" => json!({ "faces": mesh.subdivide_faces(&faces) }),
@@ -199,6 +209,7 @@ impl App {
                             n += 1;
                         }
                     }
+
                     json!({ "changed": n })
                 }
                 "delete_vertices" => {
@@ -239,6 +250,7 @@ impl App {
                             face.data.material = material.to_string();
                         }
                     }
+
                     json!({})
                 }
                 "separate" => {
@@ -259,6 +271,7 @@ impl App {
                     v["closed"] = json!(mesh.is_closed());
                     v["bounds"] = bounds_json(&mesh.bounds());
                 }
+
                 ok(v)
             }
             Err(e) => {
@@ -277,6 +290,7 @@ impl App {
         if faces.is_empty() {
             faces = tex::target_faces(&self.state);
         }
+
         let vec2 = |v: &Value| -> Option<DVec2> {
             match v {
                 Value::Number(n) => n.as_f64().map(DVec2::splat),
@@ -336,6 +350,7 @@ impl App {
                 if let Err(e) = crate::commands::write_hotspots(&self.state, &material, &rects) {
                     return err(e);
                 }
+
                 rects.len()
             }
             "material_info" => {
@@ -386,6 +401,7 @@ impl App {
                 Err(_) => return err("shape must be flat, hills, mountain, island, valley or ridges"),
             }
         }
+
         params.height = args["height"].as_f64().unwrap_or(params.height);
         params.seed = args["seed"].as_u64().unwrap_or(1) as u32;
         params.feature_size = args["feature_size"].as_f64().unwrap_or(params.feature_size);

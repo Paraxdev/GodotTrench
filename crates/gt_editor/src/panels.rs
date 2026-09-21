@@ -84,6 +84,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
         if ui.add(add_layer).on_hover_text("New layer, it becomes the current layer new objects go into").clicked() {
             actions.push(Action::AddLayer);
         }
+
         ui.add(egui::TextEdit::singleline(&mut ps.outliner_filter).hint_text("Filter").desired_width(f32::INFINITY));
     });
     ui.separator();
@@ -93,6 +94,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
     if let Some(id) = reveal {
         ps.expanded.extend(map.ancestors(id));
     }
+
     let filter = ps.outliner_filter.to_lowercase();
     let mut rows: Vec<(usize, NodeId)> = Vec::new();
     for layer in &map.layers {
@@ -121,6 +123,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
             scroll = scroll.vertical_scroll_offset((top - (view - row_h) / 2.0).max(0.0));
         }
     }
+
     let output = scroll.show_rows(ui, row_h, rows.len(), |ui, range| {
         for (depth, id) in &rows[range] {
             let Some(node) = map.get(*id) else { continue };
@@ -136,6 +139,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                 } else {
                     ui.add_space(icons::SMALL + ui.spacing().item_spacing.x);
                 }
+
                 let weak = ui.visuals().weak_text_color();
                 let (eye, eye_tint) = if node.hidden { (icons::EYE_OFF, Some(weak)) } else { (icons::EYE, None) };
                 if icons::small(ui, eye, "Visibility", eye_tint)
@@ -144,6 +148,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                 {
                     toggles.push((*id, 1));
                 }
+
                 let (lock, lock_tint) = if node.locked { (icons::LOCK, theme::YELLOW) } else { (icons::UNLOCK, weak) };
                 if icons::small(ui, lock, "Lock", Some(lock_tint))
                     .on_hover_text(if node.locked { "Locked, click to unlock" } else { "Unlocked, click to lock" })
@@ -151,6 +156,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                 {
                     toggles.push((*id, 2));
                 }
+
                 let selected = state.doc.selection.nodes.contains(id);
                 let (icon, color) = match &node.kind {
                     NodeKind::Layer(l) => (icons::LAYER, Color32::from_rgb((l.color.r * 255.0) as u8, (l.color.g * 255.0) as u8, (l.color.b * 255.0) as u8)),
@@ -175,10 +181,12 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                     if state.current_layer == *id {
                         label = format!("{label}  (current)");
                     }
+
                     if state.doc.map.get(*id).is_some_and(|n| matches!(&n.kind, NodeKind::Layer(l) if l.omit_from_export)) {
                         label = format!("{label}  [omitted]");
                     }
                 }
+
                 let resp = ui.selectable_label(selected, label);
                 if resp.clicked() {
                     if matches!(node.kind, NodeKind::Layer(_)) {
@@ -187,30 +195,37 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                         clicked = Some((*id, ui.input(|i| i.modifiers.command)));
                     }
                 }
+
                 if resp.double_clicked() {
                     toggles.push((*id, 0));
                 }
+
                 if resp.secondary_clicked() && !selected && !matches!(node.kind, NodeKind::Layer(_)) {
                     clicked = Some((*id, false));
                 }
+
                 resp.context_menu(|ui| {
                     if let NodeKind::Layer(l) = &node.kind {
                         let mut name = l.name.clone();
                         if ui.text_edit_singleline(&mut name).changed() {
                             rename = Some((*id, name));
                         }
+
                         if ui.button("Set Current Layer").clicked() {
                             set_layer = Some(*id);
                             ui.close();
                         }
+
                         if ui.button("Toggle Omit From Export").clicked() {
                             toggles.push((*id, 3));
                             ui.close();
                         }
+
                         if ui.button("Move Selection Here").clicked() {
                             actions.push(Action::MoveToLayer(*id));
                             ui.close();
                         }
+
                         if ui.button("Delete Layer").clicked() {
                             toggles.push((*id, 4));
                             ui.close();
@@ -225,8 +240,10 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                             if ui.text_edit_singleline(&mut name).changed() {
                                 rename = Some((*id, name));
                             }
+
                             ui.separator();
                         }
+
                         let mut item = |ui: &mut Ui, label: &str, action: Action| {
                             if ui.button(label).clicked() {
                                 actions.push(action);
@@ -249,15 +266,18 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                             }
                             _ => {}
                         }
+
                         item(ui, "Focus", Action::FocusSelection);
                         if ui.button(if node.hidden { "Show" } else { "Hide" }).clicked() {
                             toggles.push((*id, 1));
                             ui.close();
                         }
+
                         if ui.button(if node.locked { "Unlock" } else { "Lock" }).clicked() {
                             toggles.push((*id, 2));
                             ui.close();
                         }
+
                         ui.separator();
                         item(ui, "Duplicate", Action::Duplicate);
                         ui.menu_button("Move to Layer", |ui| {
@@ -305,6 +325,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
             }
         }
     }
+
     if let Some((id, name)) = rename {
         state.doc.edit_coalesced("Rename", |m, _| match m.get_mut(id).map(|n| &mut n.kind) {
             Some(NodeKind::Layer(l)) => l.name = name,
@@ -313,9 +334,11 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
             _ => {}
         });
     }
+
     if let Some(l) = set_layer {
         state.current_layer = l;
     }
+
     if let Some((id, toggle)) = clicked {
         state.last_bounds = state.doc.map.bounds(id);
         state.doc.select(|_, s| {
@@ -337,6 +360,7 @@ fn push_rows(map: &gt_doc::Map, id: NodeId, depth: usize, expanded: &HashSet<Nod
         if matches {
             rows.push((depth, *c));
         }
+
         if expanded.contains(c) || (!filter.is_empty() && !child.children.is_empty()) {
             push_rows(map, *c, depth + 1, expanded, filter, rows);
         }
@@ -351,6 +375,7 @@ pub fn inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
             face_inspector(ui, state, actions);
             return;
         }
+
         let entities: Vec<NodeId> = state.doc.selection.nodes.iter().copied().filter(|id| state.doc.map.entity(*id).is_some()).collect();
         let single = (state.doc.selection.nodes.len() == 1).then(|| state.doc.selection.nodes.iter().next().copied()).flatten();
         if let Some(first) = entities.first().copied() {
@@ -386,9 +411,11 @@ fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mu
             }
         });
     }
+
     if mesh.is_convex() {
         ui.label(RichText::new("convex, exports to .map as a brush").weak());
     }
+
     let bounds = mesh.bounds();
     let s = bounds.size();
     ui.label(format!("Size {:.1} x {:.1} x {:.1}", s.x, s.y, s.z));
@@ -441,11 +468,13 @@ fn brush_entity_section(ui: &mut Ui, state: &EditorState, actions: &mut Vec<Acti
             None => groups.push((group, vec![def])),
         }
     }
+
     let title = format!("Make Brush Entity ({})", groups.iter().map(|(_, d)| d.len()).sum::<usize>());
     egui::CollapsingHeader::new(RichText::new(title).strong()).id_salt("brush_entity_section").default_open(false).show(ui, |ui| {
         if groups.is_empty() {
             sub_heading(ui, "No brush entities, open a Godot project with a game config");
         }
+
         for (group, defs) in groups {
             sub_heading(ui, &group);
             ui.horizontal_wrapped(|ui| {
@@ -521,6 +550,7 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
             if ui.small_button("×").on_hover_text("Remove the entry and its instances").clicked() {
                 remove = Some(k);
             }
+
             ui.end_row();
         }
     });
@@ -528,6 +558,7 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
         edited.remove_item(k);
         changed = true;
     }
+
     if changed {
         state.doc.edit_coalesced("Edit Scatter Set", |m, _| {
             if let Some(slot) = m.scatter_mut(id) {
@@ -535,6 +566,7 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
             }
         });
     }
+
     ui.horizontal_wrapped(|ui| {
         for (label, action) in [
             ("Paint Into This Set", Action::ActivateScatter(id)),
@@ -546,9 +578,11 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
                 if matches!(action, Action::ScatterFill) {
                     actions.push(Action::ActivateScatter(id));
                 }
+
                 actions.push(action);
             }
         }
+
         if ui.small_button("Clear Instances").clicked() {
             state.doc.edit("Clear Scatter", |m, _| {
                 if let Some(s) = m.scatter_mut(id) {
@@ -598,10 +632,12 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
             edited.layers.push(gt_geom::TerrainLayer { material: state.current_material.clone(), tile: edited.layers.last().map(|l| l.tile).unwrap_or(256.0) });
             changed = true;
         }
+
         if edited.layers.len() > 1 && ui.small_button("- last layer").clicked() {
             edited.layers.pop();
             changed = true;
         }
+
         for res in [65u32, 129, 257, 513] {
             if res != t.resolution[0] && ui.small_button(format!("resample {res}")).clicked() {
                 edited = t.resample([res, res]);
@@ -616,6 +652,7 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
             }
         });
     }
+
     ui.separator();
     ui.horizontal_wrapped(|ui| {
         for (label, action) in [
@@ -646,6 +683,7 @@ fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Act
         let (s, c) = (bounds.size(), bounds.center());
         ui.label(RichText::new(format!("Size {} x {} x {}, center {:.2} {:.2} {:.2}", s.x, s.y, s.z, c.x, c.y, c.z)).weak());
     }
+
     let buttons = |ui: &mut Ui, actions: &mut Vec<Action>, list: Vec<(&str, &str, Action)>| {
         ui.horizontal_wrapped(|ui| {
             for (label, tip, action) in list {
@@ -743,11 +781,13 @@ fn worldspawn_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
             rows.push((p.name.clone(), value, Some(p.clone())));
         }
     }
+
     for (k, v) in props {
         if k != "classname" && !def.as_ref().is_some_and(|d| d.property(&k).is_some()) {
             rows.push((k, v, None));
         }
     }
+
     for (key, mut value, p) in rows {
         let ty = widgets::effective_type(p.as_ref().map(|p| p.ty), &key, &value);
         let hover = p.as_ref().map(|p| p.description.clone()).unwrap_or_default();
@@ -763,12 +803,14 @@ fn worldspawn_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
                 m.properties.insert(key.clone(), value);
             });
         }
+
         if remove {
             state.doc.edit("Remove Map Property", |m, _| {
                 m.properties.remove(&key);
             });
         }
     }
+
     add_property_row(ui, ps, |k, v| {
         state.doc.edit("Add Map Property", |m, _| {
             m.properties.insert(k, v);
@@ -804,15 +846,18 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
     {
         ui.label(RichText::new(&d.description).weak());
     }
+
     ui.horizontal_wrapped(|ui| {
         if ui.small_button("Code Reference").on_hover_text("GDScript and C# for this entity").clicked() {
             ps.reference_class = entity.classname.clone();
             actions.push(Action::ShowReference);
         }
+
         let entity_count = state.doc.selection.nodes.iter().filter(|n| state.doc.map.entity(**n).is_some()).count();
         if entity_count == 2 && ui.small_button("Link…").on_hover_text("Connect an output of one selected entity to an input of the other").clicked() {
             actions.push(Action::ShowLinkDialog);
         }
+
         if let Some(d) = &def {
             let gizmos = d.gizmos(state.game.units_per_meter);
             if !gizmos.is_empty() {
@@ -886,6 +931,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
                         }
                     });
                 }
+
                 if reset {
                     let key = p.name.clone();
                     state.doc.edit("Reset Property", |m, _| {
@@ -896,10 +942,12 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
                 }
             }
         }
+
         for (k, v) in &entity.properties {
             if def.as_ref().is_some_and(|d| d.property(k).is_some()) {
                 continue;
             }
+
             let mut value = v.clone();
             let ty = widgets::effective_type(None, k, v);
             let (edited, remove) = widgets::row(ui, index, RichText::new(k).italics(), "Not in the entity definition", label_w, |ui| {
@@ -915,6 +963,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
                     }
                 });
             }
+
             if remove {
                 let key = k.clone();
                 state.doc.edit("Remove Property", |m, _| {
@@ -924,6 +973,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
                 });
             }
         }
+
         add_property_row(ui, ps, |k, v| {
             state.doc.edit("Add Property", |m, _| {
                 if let Some(e) = m.entity_mut(id) {
@@ -943,6 +993,7 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &gt_doc::
     if entity.outputs.is_empty() {
         ui.label(RichText::new("No outputs. Outputs fire inputs on other entities, for example a trigger opening a door.").weak());
     }
+
     let targetnames: Vec<(String, String)> =
         state.doc.map.entities().filter_map(|(_, e)| e.targetname().map(|n| (n.to_string(), e.classname.clone()))).collect();
     let mut outputs = entity.outputs.clone();
@@ -984,6 +1035,7 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &gt_doc::
                     conn.times = if once { 1 } else { -1 };
                     changed = true;
                 }
+
                 ui.end_row();
             });
             let valid_target = conn.target.is_empty() || targetnames.iter().any(|(n, _)| *n == conn.target) || gt_doc::issues::is_dynamic_target(&conn.target);
@@ -991,21 +1043,25 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &gt_doc::
                 if !valid_target {
                     ui.label(RichText::new("target not found").color(theme::ERROR));
                 }
+
                 if ui.small_button("Remove").clicked() {
                     remove = Some(i);
                 }
             });
         });
     }
+
     if let Some(i) = remove {
         outputs.remove(i);
         changed = true;
     }
+
     if ui.button("+ Add Output").clicked() {
         let output = def.and_then(|d| d.outputs.first()).map(|o| o.name.clone()).unwrap_or_default();
         outputs.push(IoConnection { output, target: String::new(), input: String::new(), parameter: String::new(), delay: 0.0, times: -1 });
         changed = true;
     }
+
     if changed {
         state.doc.edit_coalesced("Edit Outputs", |m, _| {
             if let Some(e) = m.entity_mut(id) {
@@ -1042,6 +1098,7 @@ fn property_editor(ui: &mut Ui, ty: PropertyType, options: &[(String, String)], 
                 *value = if b { "1".into() } else { "0".into() };
                 return true;
             }
+
             false
         }
         PropertyType::Int | PropertyType::Float => {
@@ -1052,6 +1109,7 @@ fn property_editor(ui: &mut Ui, ty: PropertyType, options: &[(String, String)], 
                 *value = if integer { (f.round() as i64).to_string() } else { widgets::format_number(f) };
                 return true;
             }
+
             false
         }
         PropertyType::Vector2 | PropertyType::Vector3 => {
@@ -1062,6 +1120,7 @@ fn property_editor(ui: &mut Ui, ty: PropertyType, options: &[(String, String)], 
                 *value = nums.iter().map(|n| widgets::format_number(*n)).collect::<Vec<_>>().join(" ");
                 return true;
             }
+
             false
         }
         PropertyType::Color => widgets::color_input(ui, value, width),
@@ -1094,6 +1153,7 @@ fn property_editor(ui: &mut Ui, ty: PropertyType, options: &[(String, String)], 
             if changed {
                 *value = bits.to_string();
             }
+
             changed
         }
         PropertyType::TargetDestination => {
@@ -1111,6 +1171,7 @@ fn property_editor(ui: &mut Ui, ty: PropertyType, options: &[(String, String)], 
                 *value = res;
                 changed = true;
             }
+
             changed
         }
         _ => widgets::text_field(ui, value, width),
@@ -1135,6 +1196,7 @@ fn edit_planar(state: &mut EditorState, faces: &[(NodeId, usize)], label: &str, 
     if plans.is_empty() {
         return;
     }
+
     let apply = |m: &mut gt_doc::Map| {
         for (id, fi, n, pts, size) in &plans {
             if let Some(face) = m.brush_mut(*id).and_then(|b| b.faces.get_mut(*fi)) {
@@ -1189,6 +1251,7 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
                     uv.rotate(delta);
                     changed = true;
                 }
+
                 ui.end_row();
             });
             if changed {
@@ -1212,6 +1275,7 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
                     actions.push(Action::Justify(j));
                 }
             }
+
             ui.checkbox(&mut state.treat_as_one, "Treat as one");
         });
         ui.horizontal_wrapped(|ui| {
@@ -1219,30 +1283,39 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
             if ui.button("Reset").clicked() {
                 op = Some(("Reset UV", Box::new(|uv, n, _, _| *uv = FaceUv::paraxial(n, DVec2::ONE))));
             }
+
             if ui.button("Align to Face").clicked() {
                 op = Some(("Align UV", Box::new(|uv, n, _, _| *uv = FaceUv::face_aligned(n, uv.scale))));
             }
+
             if ui.button("Align to View").clicked() {
                 actions.push(Action::AlignTextureToView);
             }
+
             if ui.button("Flip H").clicked() {
                 op = Some(("Flip UV", Box::new(|uv, _, _, _| uv.scale.x = -uv.scale.x)));
             }
+
             if ui.button("Flip V").clicked() {
                 op = Some(("Flip UV", Box::new(|uv, _, _, _| uv.scale.y = -uv.scale.y)));
             }
+
             if ui.button("⟲ 90").clicked() {
                 crate::texture_ops::rotate(state, &faces, -90.0);
             }
+
             if ui.button("⟳ 90").clicked() {
                 crate::texture_ops::rotate(state, &faces, 90.0);
             }
+
             if ui.button("× 2").on_hover_text("Double the texture size").clicked() {
                 crate::texture_ops::scale(state, &faces, DVec2::splat(2.0));
             }
+
             if ui.button("÷ 2").on_hover_text("Halve the texture size").clicked() {
                 crate::texture_ops::scale(state, &faces, DVec2::splat(0.5));
             }
+
             if let Some((label, f)) = op {
                 edit_planar(state, &faces, label, false, f);
             }
@@ -1261,16 +1334,20 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
             if ui.button("Copy").on_hover_text("Copy material and alignment").clicked() {
                 actions.push(Action::CopyAlignment);
             }
+
             let can_paste = state.uv_clipboard.is_some();
             if ui.add_enabled(can_paste, egui::Button::new("Paste Alignment")).clicked() {
                 actions.push(Action::PasteAlignment);
             }
+
             if ui.button("Hotspot").on_hover_text("Fit to the best rectangle of <texture>.hotspots.json").clicked() {
                 actions.push(Action::HotspotTexture);
             }
+
             if ui.button("Hotspot Editor").clicked() {
                 actions.push(Action::ShowHotspotEditor);
             }
+
             if ui.button("UV Editor").clicked() {
                 actions.push(Action::ShowUvEditor);
             }
@@ -1290,12 +1367,14 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
     if is_mesh {
         return;
     }
+
     section(ui, "Surface Properties", true, |ui| {
         let face = state.doc.map.brush(bid).and_then(|b| b.faces.get(fi)).cloned();
         let Some(face) = face else { return };
         if face.data.props.is_empty() {
             ui.label(RichText::new("No surface properties. Add one below, Godot reads them per face.").weak());
         }
+
         let mut props = face.data.props.clone();
         let mut prop_changed = false;
         let mut remove = None;
@@ -1308,10 +1387,12 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
                 }
             });
         }
+
         if let Some(k) = remove {
             props.remove(&k);
             prop_changed = true;
         }
+
         ui.horizontal_wrapped(|ui| {
             for preset in ["collision_layer", "smoothing_group", "no_collision", "no_shadow"] {
                 if !props.contains_key(preset) && ui.small_button(format!("+ {preset}")).clicked() {
@@ -1341,21 +1422,27 @@ pub fn material_summary(m: &gt_formats::godot_material::GodotMaterial) -> String
         Transparency::Scissor(t) => parts.push(format!("alpha scissor {t}")),
         Transparency::Opaque => {}
     }
+
     if m.emission.is_some() {
         parts.push(format!("emissive x{}", m.emission_energy));
     }
+
     if m.normal_texture.is_some() {
         parts.push("normal map".into());
     }
+
     if m.double_sided {
         parts.push("double sided".into());
     }
+
     if m.unshaded {
         parts.push("unshaded".into());
     }
+
     if m.nearest == Some(true) {
         parts.push("pixel filter".into());
     }
+
     if parts.is_empty() { String::new() } else { format!(", {}", parts.join(", ")) }
 }
 
@@ -1378,11 +1465,13 @@ pub fn select_faces_with_material(state: &mut EditorState, material: &str) -> us
             faces.extend(b.faces.iter().enumerate().filter(|(_, f)| f.data.material == material).map(|(i, _)| (id, i)));
         }
     }
+
     for (id, m) in map.meshes() {
         if map.is_editable(id) {
             faces.extend(m.faces.iter().enumerate().filter(|(_, f)| f.data.material == material).map(|(i, _)| (id, i)));
         }
     }
+
     let n = faces.len();
     state.doc.select(|_, s| {
         s.clear();
@@ -1415,6 +1504,7 @@ pub fn replace_material(state: &mut EditorState, from: &str, to: &str) -> usize 
                 _ => {}
             }
         }
+
         n
     })
 }
@@ -1438,6 +1528,7 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
     } else if resp.hovered() {
         ui.painter().rect_filled(rect, 3.0, theme::GRAY_2);
     }
+
     let img_rect = egui::Rect::from_min_size(rect.min + Vec2::splat(if label { 4.0 } else { 2.0 }), Vec2::splat(size));
     let ctx = ui.ctx().clone();
     match state.materials.thumbnail(&ctx, name, budget) {
@@ -1449,9 +1540,11 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
             ui.ctx().request_repaint();
         }
     }
+
     if state.prefs.favorite_materials.iter().any(|f| f == name) {
         ui.painter().text(img_rect.right_top() + Vec2::new(-3.0, 1.0), egui::Align2::RIGHT_TOP, "★", egui::FontId::proportional(13.0), theme::YELLOW);
     }
+
     if label {
         let corner = img_rect.left_top() + Vec2::new(2.0, 2.0);
         if missing_albedo {
@@ -1462,10 +1555,12 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
             badge(ui.painter(), corner, "normal", theme::INFO);
         }
     }
+
     if label {
         let short = name.rsplit('/').next().unwrap_or(name);
         ui.painter().text(egui::pos2(rect.center().x, rect.max.y - 9.0), egui::Align2::CENTER_CENTER, short, egui::FontId::proportional(11.0), theme::GRAY_6);
     }
+
     resp
 }
 
@@ -1494,14 +1589,17 @@ fn material_interactions(resp: egui::Response, state: &mut EditorState, name: &s
     if resp.clicked() {
         actions.push(Action::ApplyMaterial(name.to_string()));
     }
+
     if resp.drag_started() {
         resp.dnd_set_drag_payload(DndPayload::Material(name.to_string()));
     }
+
     resp.context_menu(|ui| {
         if ui.button("Apply to selection").clicked() {
             actions.push(Action::ApplyMaterial(name.to_string()));
             ui.close();
         }
+
         let favorite = state.prefs.favorite_materials.iter().any(|f| f == name);
         if ui.button(if favorite { "Remove from favourites" } else { "Add to favourites" }).clicked() {
             if favorite {
@@ -1509,24 +1607,29 @@ fn material_interactions(resp: egui::Response, state: &mut EditorState, name: &s
             } else {
                 state.prefs.favorite_materials.push(name.to_string());
             }
+
             ui.close();
         }
+
         if ui.button("Select faces using it").clicked() {
             let n = select_faces_with_material(state, name);
             state.set_status(format!("Selected {n} faces using {name}"));
             ui.close();
         }
+
         let current = state.current_material.clone();
         if current != name && ui.button(format!("Replace {current} with it in the map")).clicked() {
             let n = replace_material(state, &current, name);
             state.set_status(format!("Replaced {current} on {n} faces"));
             ui.close();
         }
+
         if ui.button("Hotspot editor").clicked() {
             state.current_material = name.to_string();
             actions.push(Action::ShowHotspotEditor);
             ui.close();
         }
+
         if ui.button("Copy name").clicked() {
             ui.ctx().copy_text(name.to_string());
             ui.close();
@@ -1550,6 +1653,7 @@ pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
         if ui.small_button("⟳").on_hover_text("Reload materials and Godot material settings").clicked() {
             actions.push(Action::ReloadMaterials);
         }
+
         ui.label(RichText::new(format!("current: {}", state.current_material)).weak());
     });
     let mut budget = 6;
@@ -1563,6 +1667,7 @@ pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
             }
         });
     }
+
     ui.separator();
 
     let used = if ps.material_used_only { used_materials(&state.doc.map) } else { HashSet::new() };
@@ -1584,6 +1689,7 @@ pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
     } else if names.is_empty() {
         ui.label(RichText::new("No materials match the search and filters").weak());
     }
+
     let size = ps.thumb_size;
     let cell = Vec2::new(size + 8.0, size + 22.0);
     let cols = ((ui.available_width() / cell.x).floor() as usize).max(1);
@@ -1623,6 +1729,7 @@ fn model_cell(ui: &mut Ui, selected: bool, entry: &crate::models::ModelEntry, si
     } else if resp.hovered() {
         ui.painter().rect_filled(rect, 3.0, theme::GRAY_2);
     }
+
     let img_rect = egui::Rect::from_min_size(rect.min + Vec2::splat(4.0), Vec2::splat(size));
     ui.painter().rect_filled(img_rect, 2.0, theme::GRAY_1);
     let icon = icons::MESH.image((size * 0.55).min(48.0)).tint(model_ext_color(&entry.ext));
@@ -1651,6 +1758,7 @@ pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, 
         if ui.small_button("⟳").on_hover_text("Rescan res://models for model files").clicked() {
             actions.push(Action::ReloadModels);
         }
+
         if ui.small_button("Import…").on_hover_text("Pick a model file to place, from anywhere on disk").clicked() {
             actions.push(Action::ImportModel(crate::commands::ModelImport::Mesh));
         }
@@ -1677,6 +1785,7 @@ pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, 
     } else if entries.is_empty() {
         ui.label(RichText::new("No models match the search and filters").weak());
     }
+
     let size = ps.thumb_size;
     let cell = Vec2::new(size + 8.0, size + 22.0);
     let cols = ((ui.available_width() / cell.x).floor() as usize).max(1);
@@ -1691,12 +1800,14 @@ pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, 
                     if resp.drag_started() {
                         resp.dnd_set_drag_payload(DndPayload::Model(entry.path.clone()));
                     }
+
                     resp.context_menu(|ui| {
                         if ui.button("Place at cursor").clicked() {
                             let at = state.snap(cursor.unwrap_or(DVec3::ZERO));
                             actions.push(Action::PlaceModel { path: entry.path.clone(), at });
                             ui.close();
                         }
+
                         if ui.button("Copy path").clicked() {
                             ui.ctx().copy_text(entry.path.display().to_string());
                             ui.close();
@@ -1715,6 +1826,7 @@ pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
     if ctx.output(|o| o.cursor_icon) == egui::CursorIcon::Default {
         ctx.set_cursor_icon(egui::CursorIcon::NoDrop);
     }
+
     egui::Area::new(egui::Id::new("dnd_preview")).order(egui::Order::Tooltip).interactable(false).fixed_pos(pointer + Vec2::new(18.0, 14.0)).show(ctx, |ui| {
         egui::Frame::popup(ui.style()).show(ui, |ui| {
             ui.horizontal(|ui| match payload.as_ref() {
@@ -1728,6 +1840,7 @@ pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
                             ui.painter().rect_filled(rect, 2.0, theme::GRAY_2);
                         }
                     }
+
                     ui.vertical(|ui| {
                         ui.label(RichText::new(name).strong());
                         ui.label(RichText::new("Drop on a face, Shift covers the whole brush, Alt drops a decal").weak().small());
@@ -1739,6 +1852,7 @@ pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
                         let (rect, _) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::hover());
                         paint_entity_tile(ui, rect, def);
                     }
+
                     ui.vertical(|ui| match classnames.as_slice() {
                         [one] => {
                             ui.label(RichText::new(one).strong());
@@ -1809,11 +1923,13 @@ fn entity_card(ui: &mut Ui, def: &EntityDef, size: f32, selected: bool) -> egui:
     } else if resp.hovered() {
         ui.painter().rect_filled(rect, 3.0, theme::GRAY_2);
     }
+
     let tile = egui::Rect::from_min_size(rect.min + Vec2::splat(4.0), Vec2::splat(size));
     paint_entity_tile(ui, tile, Some(def));
     if def.kind == gt_formats::EntityKind::Solid {
         ui.painter().text(tile.right_top() + Vec2::new(-3.0, 2.0), egui::Align2::RIGHT_TOP, "brush", egui::FontId::proportional(10.0), theme::GRAY_5);
     }
+
     let mut job = egui::text::LayoutJob::simple_singleline(def.classname.clone(), egui::FontId::proportional(11.0), theme::GRAY_6);
     job.wrap = egui::text::TextWrapping::truncate_at_width(cell.x - 4.0);
     let label = ui.painter().layout_job(job);
@@ -1834,6 +1950,7 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
             {
                 actions.push(place_action(state, ps.entity_selection.clone()));
             }
+
             if ui.small_button("Clear").clicked() {
                 ps.entity_selection.clear();
             }
@@ -1849,17 +1966,20 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
         if !filter.is_empty() && !def.classname.to_lowercase().contains(&filter) && !def.description.to_lowercase().contains(&filter) {
             continue;
         }
+
         let group = if def.group.is_empty() { "other".to_string() } else { def.group.clone() };
         match groups.iter_mut().find(|(g, _)| *g == group) {
             Some((_, list)) => list.push(def),
             None => groups.push((group, vec![def])),
         }
     }
+
     if state.game.entities.is_empty() {
         ui.label(RichText::new("No entity definitions. Open a Godot project with a game config (Godot > Open Godot Project…).").weak());
     } else if groups.is_empty() {
         ui.label(RichText::new("No entities match the search").weak());
     }
+
     ps.entity_selection.retain(|c| state.game.entity(c).is_some());
     let order: Vec<String> = groups.iter().flat_map(|(_, defs)| defs.iter().map(|d| d.classname.clone())).collect();
     let size = ps.entity_card_size;
@@ -1884,22 +2004,27 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
                             } else if resp.clicked() {
                                 clicked = Some((def.classname.clone(), ui.input(|i| i.modifiers)));
                             }
+
                             if resp.drag_started() {
                                 dragged = Some((resp.clone(), def.classname.clone()));
                             }
+
                             resp.context_menu(|ui| {
                                 if ui.button("Place at cursor").clicked() {
                                     actions.push(place_action(state, vec![def.classname.clone()]));
                                     ui.close();
                                 }
+
                                 if def.kind == gt_formats::EntityKind::Solid && ui.button("Turn selected brushes into it").clicked() {
                                     actions.push(Action::CreateBrushEntity(def.classname.clone()));
                                     ui.close();
                                 }
+
                                 if ui.button("Show in Reference").clicked() {
                                     to_reference = Some(def.classname.clone());
                                     ui.close();
                                 }
+
                                 if ui.button("Copy classname").clicked() {
                                     ui.ctx().copy_text(def.classname.clone());
                                     ui.close();
@@ -1914,17 +2039,21 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
     if let Some((classname, modifiers)) = clicked {
         select_entity_card(ps, &order, classname, modifiers);
     }
+
     if let Some(classname) = placed {
         let classnames = if ps.entity_selection.contains(&classname) { ps.entity_selection.clone() } else { vec![classname] };
         actions.push(place_action(state, classnames));
     }
+
     if let Some((resp, classname)) = dragged {
         if !ps.entity_selection.contains(&classname) {
             ps.entity_selection = vec![classname.clone()];
             ps.entity_anchor = Some(classname);
         }
+
         resp.dnd_set_drag_payload(DndPayload::Entities(ps.entity_selection.clone()));
     }
+
     if let Some(classname) = to_reference {
         ps.reference_class = classname;
         actions.push(Action::ShowReference);
@@ -1940,11 +2069,13 @@ pub fn select_entity_card(ps: &mut PanelState, order: &[String], classname: Stri
             if !modifiers.command {
                 ps.entity_selection.clear();
             }
+
             for c in range {
                 if !ps.entity_selection.contains(c) {
                     ps.entity_selection.push(c.clone());
                 }
             }
+
             return;
         }
         _ if modifiers.command => {
@@ -1956,6 +2087,7 @@ pub fn select_entity_card(ps: &mut PanelState, order: &[String], classname: Stri
         }
         _ => ps.entity_selection = vec![classname.clone()],
     }
+
     ps.entity_anchor = Some(classname);
 }
 
@@ -1983,6 +2115,7 @@ fn collect_issues(state: &EditorState) -> Vec<gt_doc::issues::Issue> {
             });
         }
     }
+
     list.sort_by_key(|i| std::cmp::Reverse(i.severity));
     list
 }
@@ -1993,6 +2126,7 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
         ps.issues = collect_issues(state);
         ps.issues_revision = state.doc.revision;
     }
+
     let errors = ps.issues.iter().filter(|i| i.severity == Severity::Error).count();
     let warnings = ps.issues.iter().filter(|i| i.severity == Severity::Warning).count();
     let fixable = ps.issues.iter().filter(|i| issues::fixable(i.code)).count();
@@ -2009,6 +2143,7 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
     if ps.issues.is_empty() {
         ui.label(RichText::new("No problems found").color(theme::SUCCESS));
     }
+
     let mut select: Option<NodeId> = None;
     ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for issue in &ps.issues {
@@ -2023,6 +2158,7 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
                 if ui.selectable_label(false, format!("{}  {}", issue.message, RichText::new(name).weak().text())).clicked() {
                     select = issue.node;
                 }
+
                 if issues::fixable(issue.code) && ui.small_button("Fix").clicked() {
                     fix.push(issue.clone());
                 }
@@ -2037,6 +2173,7 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
         });
         actions.push(Action::FocusSelection);
     }
+
     if !fix.is_empty() {
         let material = state.current_material.clone();
         state.doc.edit("Fix Issues", |m, _| {
@@ -2105,6 +2242,7 @@ pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
     {
         ps.reference_class = e.classname.clone();
     }
+
     let area = ui.available_rect_before_wrap();
     let min_width = 80.0_f32.min(area.width() / 2.0);
     let max_width = (area.width() - 200.0).max(min_width);
@@ -2126,9 +2264,11 @@ pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
     {
         ps.reference_list_width = Some((pointer.x - area.left()).clamp(min_width, max_width));
     }
+
     if handle.double_clicked() {
         ps.reference_list_width = None;
     }
+
     let line = if handle.hovered() || handle.dragged() { ui.visuals().widgets.active.bg_stroke } else { ui.visuals().widgets.noninteractive.bg_stroke };
     ui.painter().vline(split, area.y_range(), line);
 
@@ -2142,10 +2282,12 @@ pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
                     group = d.group.clone();
                     ui.label(RichText::new(&group).strong());
                 }
+
                 if ui.selectable_label(ps.reference_class == d.classname, &d.classname).on_hover_text(&d.description).clicked() {
                     ps.reference_class = d.classname.clone();
                 }
             }
+
             ui.separator();
             ui.label(RichText::new("Tools").strong());
             for (tool, help) in TOOL_HELP {
@@ -2169,6 +2311,7 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
             ui.label(RichText::new(tool).strong());
             ui.label(RichText::new(help).weak());
         }
+
         return;
     };
     ui.heading(&def.classname);
@@ -2189,6 +2332,7 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
             }
         });
     }
+
     egui::CollapsingHeader::new(format!("Properties ({})", def.properties.len())).default_open(true).show(ui, |ui| {
         for p in &def.properties {
             ui.horizontal_wrapped(|ui| {
@@ -2202,6 +2346,7 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
         for i in &def.inputs {
             ui.label(format!("input  {}({})", i.name, i.parameter));
         }
+
         for o in &def.outputs {
             ui.label(format!("output {}({})", o.name, o.parameter));
         }
@@ -2218,6 +2363,7 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
             ui.ctx().copy_text(code.clone());
             state.set_status("Copied to the clipboard");
         }
+
         if matches!(kind, CodeKind::GdscriptClass | CodeKind::CsharpClass | CodeKind::FgdResource)
             && let Some(root) = state.game.project_root.clone()
             && ui.button("Create in project").on_hover_text("Writes the file under res://entities/ unless it exists").clicked()
@@ -2234,6 +2380,7 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
                 Err(e) => format!("{}: {e}", path.display()),
             });
         }
+
         if ui.button("Place").on_hover_text("Point entities at the cursor, brush entities from the selection").clicked() {
             actions.push(if def.kind == gt_formats::EntityKind::Point {
                 Action::CreatePointEntity { classname: def.classname.clone(), at: None }
@@ -2269,12 +2416,14 @@ pub fn history(ui: &mut Ui, state: &mut EditorState) {
         ui.label(RichText::new("No edits yet. Every change shows up here, click one to undo back to it.").weak());
         return;
     }
+
     ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for (i, label) in redo.iter().enumerate().rev() {
             if ui.selectable_label(false, RichText::new(label).weak()).clicked() {
                 redo_steps = i + 1;
             }
         }
+
         ui.label(RichText::new("▶ current").strong());
         for (i, label) in undo.iter().enumerate() {
             if ui.selectable_label(false, label).clicked() {
@@ -2285,6 +2434,7 @@ pub fn history(ui: &mut Ui, state: &mut EditorState) {
     for _ in 0..undo_steps {
         state.doc.undo();
     }
+
     for _ in 0..redo_steps {
         state.doc.redo();
     }

@@ -113,14 +113,17 @@ impl Brush {
                 if i == j {
                     continue;
                 }
+
                 winding = polygon::clip_back(&winding, other);
                 if winding.len() < 3 {
                     break;
                 }
             }
+
             if winding.len() < 3 || polygon::area(&winding) < 1e-8 {
                 continue;
             }
+
             let mut indices: Vec<u32> = Vec::with_capacity(winding.len());
             for p in winding {
                 let p = gt_core::snap_vec(p);
@@ -135,12 +138,15 @@ impl Brush {
                     indices.push(idx);
                 }
             }
+
             while indices.len() > 1 && indices.first() == indices.last() {
                 indices.pop();
             }
+
             if indices.len() < 3 {
                 continue;
             }
+
             faces.push(Face { indices, data: data.clone(), plane: *plane });
         }
 
@@ -191,6 +197,7 @@ impl Brush {
                 used[*i as usize] = true;
             }
         }
+
         let mut remap = vec![0u32; self.vertices.len()];
         let mut out = Vec::with_capacity(self.vertices.len());
         for (i, v) in self.vertices.iter().enumerate() {
@@ -199,11 +206,13 @@ impl Brush {
                 out.push(*v);
             }
         }
+
         for f in &mut self.faces {
             for i in &mut f.indices {
                 *i = remap[*i as usize];
             }
         }
+
         self.vertices = out;
     }
 
@@ -211,9 +220,11 @@ impl Brush {
         if self.faces.is_empty() {
             return Err(BrushError::Empty);
         }
+
         if self.faces.len() < 4 {
             return Err(BrushError::TooFewFaces);
         }
+
         Ok(())
     }
 
@@ -225,6 +236,7 @@ impl Brush {
             if f.indices.len() < 3 {
                 return Err(BrushError::DegenerateFace(fi));
             }
+
             for k in 0..f.indices.len() {
                 let a = f.indices[k];
                 let b = f.indices[(k + 1) % f.indices.len()];
@@ -235,11 +247,13 @@ impl Brush {
                 }
             }
         }
+
         for (a, b) in edges.keys() {
             if edges.get(&(*b, *a)) != Some(&1) {
                 return Err(BrushError::NotClosed);
             }
         }
+
         for f in &self.faces {
             for v in &self.vertices {
                 if f.plane.distance(*v) > 1e-3 {
@@ -247,6 +261,7 @@ impl Brush {
                 }
             }
         }
+
         Ok(())
     }
 
@@ -283,6 +298,7 @@ impl Brush {
                 }
             }
         }
+
         out
     }
 
@@ -297,6 +313,7 @@ impl Brush {
                 vol += (p0 - c).dot((p1 - c).cross(p2 - c)) / 6.0;
             }
         }
+
         vol
     }
 
@@ -309,6 +326,7 @@ impl Brush {
         if !self.bounds().overlaps(&other.bounds(), EPSILON) {
             return false;
         }
+
         let mut planes = self.planes();
         planes.extend(other.planes());
         Brush::from_planes(planes).map(|b| b.volume() > 1e-6).unwrap_or(false)
@@ -329,8 +347,10 @@ impl Brush {
                 if dist > EPSILON {
                     return None;
                 }
+
                 continue;
             }
+
             let t = -dist / denom;
             if denom < 0.0 {
                 if t > t_enter {
@@ -340,13 +360,16 @@ impl Brush {
             } else if t < t_exit {
                 t_exit = t;
             }
+
             if t_enter > t_exit {
                 return None;
             }
         }
+
         if enter_face == usize::MAX || t_enter < 0.0 {
             return None;
         }
+
         Some(RayHit { distance: t_enter, face: enter_face, point: ray.at(t_enter) })
     }
 
@@ -368,9 +391,11 @@ impl Brush {
                         d.flip_v();
                     }
                 }
+
                 if uv_lock {
                     data.uv = data.uv.transformed(m);
                 }
+
                 Face { indices, data, plane: f.plane }
             })
             .collect();
@@ -384,6 +409,7 @@ impl Brush {
                 }
             }
         }
+
         b
     }
 
@@ -392,12 +418,14 @@ impl Brush {
         for v in &mut b.vertices {
             *v = gt_core::snap_vec(*v + offset);
         }
+
         for f in &mut b.faces {
             f.plane = f.plane.translated(offset);
             if uv_lock {
                 f.data.uv = f.data.uv.translated(offset);
             }
         }
+
         b
     }
 
@@ -412,12 +440,15 @@ impl Brush {
                 PlaneSide::On => {}
             }
         }
+
         if back == 0 {
             return (Some(self.clone()), None);
         }
+
         if front == 0 {
             return (None, Some(self.clone()));
         }
+
         let mut back_planes = self.planes();
         back_planes.push((*plane, cap.clone()));
         let mut front_planes = self.planes();
@@ -442,10 +473,12 @@ impl Brush {
         if uv_lock {
             planes[face].1.uv = planes[face].1.uv.translated(offset);
         }
+
         let b = Brush::from_planes(planes)?;
         if b.faces.len() != self.faces.len() {
             return Err(BrushError::NotConvex);
         }
+
         Ok(b)
     }
 
@@ -464,6 +497,7 @@ impl Brush {
                 ));
             }
         }
+
         out
     }
 }
@@ -472,6 +506,7 @@ pub fn best_face_data<'a>(plane: &Plane, template: &'a [(Plane, FaceData)]) -> O
     if let Some((_, d)) = template.iter().find(|(p, _)| p.approx_eq(plane, 1e-6, 1e-3)) {
         return Some(d);
     }
+
     template.iter().max_by(|(a, _), (b, _)| a.normal.dot(plane.normal).total_cmp(&b.normal.dot(plane.normal))).map(|(_, d)| d)
 }
 

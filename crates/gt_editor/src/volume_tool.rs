@@ -40,11 +40,13 @@ impl VolumeTool {
         } else {
             max.y = min.y + state.prefs.volume_height;
         }
+
         for i in 0..3 {
             if max[i] - min[i] < grid {
                 max[i] = min[i] + grid;
             }
         }
+
         Some(Aabb::new(min, max))
     }
 
@@ -69,10 +71,12 @@ impl VolumeTool {
                 self.current = Some(p);
             }
         }
+
         if let (Some((_, plane)), Some(pos)) = (self.start, pointer) {
             if let Some(p) = point_on(pos, &plane) {
                 self.current = Some(p);
             }
+
             if !ui.input(|i| i.pointer.primary_down()) {
                 if let Some(bounds) = self.preview(state, cam) {
                     let class = state.prefs.volume_class.clone();
@@ -84,6 +88,7 @@ impl VolumeTool {
                         Err(e) => state.set_status(e),
                     }
                 }
+
                 self.reset();
             }
         }

@@ -167,6 +167,7 @@ pub fn small(ui: &mut Ui, icon: Icon, label: &str, tint: Option<egui::Color32>) 
     if let Some(color) = tint {
         image = image.tint(color);
     }
+
     Button::image(image).frame(false).image_tint_follows_text_color(tint.is_none()).ui(ui)
 }
 

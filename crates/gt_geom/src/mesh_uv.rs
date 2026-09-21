@@ -50,6 +50,7 @@ fn unwrap_angles(values: &mut [f64], period: f64) {
             while *v - first > period * 0.5 {
                 *v -= period;
             }
+
             while first - *v > period * 0.5 {
                 *v += period;
             }
@@ -65,6 +66,7 @@ impl Mesh {
         if faces.is_empty() {
             return;
         }
+
         let repeat = repeat.max(DVec2::splat(1e-6));
         let points: Vec<DVec3> = faces.iter().flat_map(|f| self.face_points(*f)).collect();
         let center = points.iter().copied().sum::<DVec3>() / points.len() as f64;
@@ -123,6 +125,7 @@ impl Mesh {
             if done.contains_key(&seed) {
                 continue;
             }
+
             // Each island starts from a face aligned projection, in world units.
             let n = self.face_normal(seed);
             let base = FaceUv::face_aligned(n, DVec2::ONE);
@@ -139,12 +142,14 @@ impl Mesh {
                         if other == fi || !selected.contains(&other) || done.contains_key(&other) {
                             continue;
                         }
+
                         let (pa, pb) = (self.vertices[a as usize], self.vertices[b as usize]);
                         let edge = pb - pa;
                         let euv = uvb - uva;
                         if edge.length() < 1e-9 || euv.length() < 1e-12 {
                             continue;
                         }
+
                         let on = self.face_normal(other);
                         let x = edge / edge.length();
                         let y = on.cross(x) * flip;
@@ -164,6 +169,7 @@ impl Mesh {
                 }
             }
         }
+
         for (fi, uvs) in done {
             self.faces[fi].uvs = uvs.into_iter().map(|u| to_f32(u / repeat)).collect();
         }
@@ -179,14 +185,17 @@ impl Mesh {
             while parent[&r] != r {
                 r = parent[&r];
             }
+
             let mut c = x;
             while parent[&c] != r {
                 let next = parent[&c];
                 parent.insert(c, r);
                 c = next;
             }
+
             r
         }
+
         let in_set: BTreeSet<usize> = valid.iter().copied().collect();
         let edge_faces = self.edge_faces();
         for &f in &valid {
@@ -198,6 +207,7 @@ impl Mesh {
                     if other == f || !in_set.contains(&other) {
                         continue;
                     }
+
                     // The islands join only where the shared edge carries the same UV on both faces.
                     let of = &self.faces[other];
                     let uv_at = |vertex: u32| of.indices.iter().position(|v| *v == vertex).map(|p| of.uvs[p]);
@@ -211,11 +221,13 @@ impl Mesh {
                 }
             }
         }
+
         let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
         for &f in &valid {
             let r = find(&mut parent, f);
             groups.entry(r).or_default().push(f);
         }
+
         groups.into_values().collect()
     }
 
@@ -227,6 +239,7 @@ impl Mesh {
         if islands.is_empty() {
             return;
         }
+
         // Per island: UV min, size, and a shape signature (corner offsets from the min, rounded).
         struct Island {
             faces: Vec<usize>,
@@ -234,6 +247,7 @@ impl Mesh {
             size: DVec2,
             sig: Vec<(i32, i32)>,
         }
+
         let mut items: Vec<Island> = islands
             .into_iter()
             .map(|fs| {
@@ -303,6 +317,7 @@ impl Mesh {
             let m = size[0].max(size[1]);
             size = [m, m];
         }
+
         for f in faces {
             for u in &mut self.faces[f].uvs {
                 *u = [(u[0] - lo[0]) / size[0], (u[1] - lo[1]) / size[1]];
@@ -326,6 +341,7 @@ mod tests {
                 }
             }
         }
+
         out
     }
 
@@ -336,6 +352,7 @@ mod tests {
         for v in &mut grid.vertices {
             v.y = (v.x / 32.0).floor() * 8.0;
         }
+
         grid.project_uvs(&[], UvProjection::Unfold, DVec2::splat(64.0));
         let edges = grid.edge_faces();
         let mut checked = 0;
@@ -345,6 +362,7 @@ mod tests {
                 checked += 1;
             }
         }
+
         assert!(checked > 20);
         // Every face keeps the same UV winding, nothing is folded back over its neighbour.
         let signed_area = |uvs: &[[f32; 2]]| {
@@ -364,6 +382,7 @@ mod tests {
         for c in [DVec3::ZERO, DVec3::new(1.0, 0.0, 0.0), DVec3::new(1.0, 1.0, 0.0), DVec3::new(0.0, 1.0, 0.0)] {
             mesh.vertices.push(at + c);
         }
+
         let mut f = crate::MeshFace::new(vec![base, base + 1, base + 2, base + 3], crate::FaceData::new("m", FaceUv::default()));
         // A 2x2 texture-space island, identical for every quad so stacking can fold them together.
         f.uvs = vec![[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]];
@@ -405,6 +424,7 @@ mod tests {
             let span = us.iter().cloned().fold(f32::MIN, f32::max) - us.iter().cloned().fold(f32::MAX, f32::min);
             assert!(span < 0.1, "each side covers about 1/16 of the texture, got {span}");
         }
+
         c.normalize_uvs(&sides, false);
         let all: Vec<[f32; 2]> = sides.iter().flat_map(|f| c.faces[*f].uvs.clone()).collect();
         assert!(all.iter().all(|u| (-1e-4..=1.0001).contains(&u[0]) && (-1e-4..=1.0001).contains(&u[1])));

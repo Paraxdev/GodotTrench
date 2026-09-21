@@ -126,6 +126,7 @@ fn bar_contents(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui)) -> f32 {
         ui.ctx().data_mut(|d| d.insert_temp(id, height));
         ui.ctx().request_repaint();
     }
+
     height
 }
 
@@ -196,6 +197,7 @@ fn fraction_at(min: f32, size: f32, pos: f32) -> f32 {
     if size <= MIN_VIEW_SIZE * 2.0 {
         return 0.5;
     }
+
     (pos - min).clamp(MIN_VIEW_SIZE, size - MIN_VIEW_SIZE) / size
 }
 
@@ -213,18 +215,22 @@ fn view_grid_corner(ui: &mut Ui, dock: &mut DockState<Tab>) {
     if response.hovered() || response.dragged() {
         ui.painter().circle_filled(corner, 4.0, ui.visuals().selection.bg_fill);
     }
+
     if !response.dragged() {
         return;
     }
+
     let Some(pointer) = response.interact_pointer_pos() else { return };
     if let Node::Horizontal(s) = &mut tree[h] {
         s.fraction = fraction_at(s.rect.min.x, s.rect.width(), pointer.x);
     }
+
     for column in [left, right] {
         if let Node::Vertical(s) = &mut tree[column] {
             s.fraction = fraction_at(s.rect.min.y, s.rect.height(), pointer.y);
         }
     }
+
     ui.ctx().request_repaint();
 }
 
@@ -296,6 +302,7 @@ impl MenuCx<'_> {
             any = true;
             self.item(ui, None, class, Action::CreatePointEntity { classname: class.to_string(), at: None });
         }
+
         if !any {
             empty_hint(ui, "Not defined by this game config");
         }
@@ -349,6 +356,7 @@ fn ensure_tab(dock: &mut DockState<Tab>, tab: Tab, beside: Tab) {
     if dock.find_tab(&tab).is_some() {
         return;
     }
+
     if let Some(path) = dock.find_tab(&beside) {
         dock[path.surface][path.node].append_tab(tab);
     } else {
@@ -389,6 +397,7 @@ impl App {
             if args.mcp_stdio {
                 transport::spawn_stdio(exec.clone());
             }
+
             if let Some(port) = http_port {
                 match transport::spawn_http(port, exec) {
                     Ok(addr) => {
@@ -398,6 +407,7 @@ impl App {
                     Err(e) => state.set_status(format!("MCP HTTP server failed on port {port}: {e}")),
                 }
             }
+
             mcp = Some(host);
         }
 
@@ -408,6 +418,7 @@ impl App {
             state.set_status(format!("Could not open {}: {e}", path.display()));
             map_failed = true;
         }
+
         state.godot.refresh(&state.prefs.godot_path, state.game.project_root.as_deref());
         if !state.godot.found() {
             let warning = format!("{}. Run Project and Open in Godot stay disabled until then", commands::GODOT_NOT_FOUND);
@@ -416,6 +427,7 @@ impl App {
                 state.set_status(warning);
             }
         }
+
         state.link = Some(crate::live_link::LiveLink::start(Some(cc.egui_ctx.clone())));
         let dock: Option<DockState<Tab>> = if keep_prefs { cc.storage.and_then(|s| eframe::get_value(s, DOCK_KEY)).filter(valid_dock) } else { None };
         cc.egui_ctx.set_visuals(crate::theme::visuals());
@@ -428,6 +440,7 @@ impl App {
         for v in &mut viewports[1..] {
             v.camera.zoom = 0.6;
         }
+
         let mut dock = dock.unwrap_or_else(default_dock);
         ensure_tab(&mut dock, Tab::Models, Tab::Materials);
         Self {
@@ -469,9 +482,11 @@ impl App {
         if ctx.egui_wants_keyboard_input() || self.keymap.open {
             return;
         }
+
         if self.tools.keys(ctx, &mut self.state) {
             return;
         }
+
         let events = ctx.input(|i| i.events.clone());
         for e in events {
             match e {
@@ -481,6 +496,7 @@ impl App {
                 _ => {}
             }
         }
+
         let mut shortcuts = commands::shortcuts(&self.state.prefs);
         // Most specific modifier combinations first, so Ctrl+Shift+Z is not taken by Ctrl+Z.
         shortcuts.sort_by_key(|(s, _)| std::cmp::Reverse(s.modifiers.shift as u8 + s.modifiers.command as u8 + s.modifiers.alt as u8));
@@ -515,10 +531,12 @@ impl App {
                     self.state.tool = ToolKind::Mesh;
                     self.tools.sync(&self.state);
                 }
+
                 self.tools.mesh.prune(&self.state);
                 if self.tools.mesh.selection.values().all(|s| s.is_empty()) && !matches!(op, MeshOp::ShadeSmooth | MeshOp::ShadeFlat) {
                     self.tools.mesh.select_all(&self.state);
                 }
+
                 self.tools.mesh.run(&mut self.state, op);
             }
             Action::ShowHotspotEditor => {
@@ -562,6 +580,7 @@ impl App {
             },
             other => return Some(other),
         }
+
         None
     }
 
@@ -585,11 +604,13 @@ impl App {
                     if recent.is_empty() {
                         empty_hint(ui, "No recent maps");
                     }
+
                     for path in recent {
                         if ui.button(path.display().to_string()).clicked() {
                             if let Err(e) = commands::open_map_in_tab(&mut self.state, &path) {
                                 self.state.set_status(format!("Open failed: {e}"));
                             }
+
                             self.project_generation += 1;
                             ui.close();
                         }
@@ -633,6 +654,7 @@ impl App {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste);
                     ui.close();
                 }
+
                 m.item(ui, None, "Duplicate", Action::Duplicate);
                 m.item(ui, Some(icons::DELETE), "Delete", Action::Delete);
                 ui.separator();
@@ -706,10 +728,12 @@ impl App {
                         m.item(ui, None, &format!("Rotate {a} +90°"), Action::Rotate { axis, degrees: 90.0 });
                         m.item(ui, None, &format!("Rotate {a} -90°"), Action::Rotate { axis, degrees: -90.0 });
                     }
+
                     ui.separator();
                     for axis in 0..3 {
                         m.item(ui, None, &format!("Flip {}", commands::axis_name(axis)), Action::Flip { axis });
                     }
+
                     ui.separator();
                     sub_menu(ui, None, "Nudge by Grid", |ui| {
                         for axis in 0..3 {
@@ -727,6 +751,7 @@ impl App {
                     for power in [2u8, 3, 4] {
                         m.item(ui, None, &format!("Create, Power {power} ({0}x{0})", (1 << power) + 1), Action::CreateDisplacement(power));
                     }
+
                     ui.separator();
                     m.item(ui, None, "Sew Displacements", Action::SewDisplacements);
                     m.item(ui, None, "Remove Displacement", Action::RemoveDisplacement);
@@ -737,6 +762,7 @@ impl App {
                     if defs.is_empty() {
                         empty_hint(ui, "No brush entities, open a Godot project");
                     }
+
                     for (class, description) in defs {
                         let resp = ui.add(menu_button(None, &class, None));
                         if resp.clicked() {
@@ -777,6 +803,7 @@ impl App {
                     for j in gt_geom::Justify::ALL {
                         m.item(ui, None, j.label(), Action::Justify(j));
                     }
+
                     ui.separator();
                     m.toggle(ui, "Treat as One", self.state.treat_as_one, Action::ToggleTreatAsOne);
                 });
@@ -876,6 +903,7 @@ impl App {
                     if i > 0 {
                         ui.separator();
                     }
+
                     for t in group.iter().copied() {
                         let action = if t == ToolKind::Mesh { Action::EditMesh } else { Action::SetTool(t) };
                         let shortcut = m.shortcut(&action);
@@ -901,6 +929,7 @@ impl App {
                             ui.close();
                         }
                     }
+
                     ui.separator();
                     m.item(ui, None, "Cycle Shading", Action::ToggleTextured);
                 });
@@ -937,11 +966,13 @@ impl App {
                                 m.actions.push(Action::RecallCamera(n));
                                 ui.close();
                             }
+
                             if ui.add(egui::Button::new(format!("Store {n}")).shortcut_text(m.shortcut(&Action::StoreCamera(n)).unwrap_or_default())).clicked()
                             {
                                 m.actions.push(Action::StoreCamera(n));
                                 ui.close();
                             }
+
                             ui.end_row();
                         }
                     });
@@ -955,6 +986,7 @@ impl App {
                             ui.close();
                         }
                     }
+
                     ui.separator();
                     if ui.add(menu_button(None, "Reset Layout", None)).clicked() {
                         self.dock = default_dock();
@@ -977,6 +1009,7 @@ impl App {
                     if recent.is_empty() {
                         empty_hint(ui, "No recent projects");
                     }
+
                     for path in recent {
                         if ui.button(path.display().to_string()).clicked() {
                             self.state.load_project(&path);
@@ -1045,6 +1078,7 @@ impl App {
                     self.actions.push(action);
                 }
             }
+
             tools_rect |= group;
             guide::mark(ui.ctx(), Anchor::ToolbarFile, std::mem::replace(&mut group, egui::Rect::NOTHING));
             group_gap(ui);
@@ -1060,6 +1094,7 @@ impl App {
                     self.actions.push(action);
                 }
             }
+
             tools_rect |= group;
             guide::mark(ui.ctx(), Anchor::ToolbarHistory, std::mem::replace(&mut group, egui::Rect::NOTHING));
             group_gap(ui);
@@ -1067,6 +1102,7 @@ impl App {
                 if i > 0 {
                     ui.add_space(6.0);
                 }
+
                 for t in tools.iter().copied() {
                     let action = if t == ToolKind::Mesh { Action::EditMesh } else { Action::SetTool(t) };
                     let tooltip = format!("{}\n{}", tip(&format!("{} tool", t.label()), &action), panels::tool_help(t));
@@ -1079,6 +1115,7 @@ impl App {
                     }
                 }
             }
+
             tools_rect |= group;
             guide::mark(ui.ctx(), Anchor::ToolbarTools, std::mem::replace(&mut group, egui::Rect::NOTHING));
             group_gap(ui);
@@ -1101,6 +1138,7 @@ impl App {
             if resp.clicked() {
                 self.actions.push(Action::ToggleSnap);
             }
+
             let uv_tip = format!("{}\nTextures stay fixed to faces while moving and rotating", tip("UV lock", &Action::ToggleUvLock));
             let resp = icons::toggle(ui, icons::UV_LOCK, size, self.state.uv_lock, "UV lock", uv_tip);
             group |= resp.rect;
@@ -1108,6 +1146,7 @@ impl App {
             if resp.clicked() {
                 self.actions.push(Action::ToggleUvLock);
             }
+
             tools_rect |= group;
             guide::mark(ui.ctx(), Anchor::ToolbarGrid, std::mem::replace(&mut group, egui::Rect::NOTHING));
             group_gap(ui);
@@ -1124,6 +1163,7 @@ impl App {
                     self.actions.push(action);
                 }
             }
+
             tools_rect |= group;
             guide::mark(ui.ctx(), Anchor::ToolbarCsg, std::mem::replace(&mut group, egui::Rect::NOTHING));
             group_gap(ui);
@@ -1136,6 +1176,7 @@ impl App {
                     self.actions.push(Action::SetShade(s));
                 }
             }
+
             tools_rect |= group;
             guide::mark(ui.ctx(), Anchor::ToolbarShading, group);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1179,6 +1220,7 @@ impl App {
         if open {
             image = image.tint(crate::theme::CYAN);
         }
+
         let button = egui::Button::image(image).image_tint_follows_text_color(!open).frame_when_inactive(false);
         let resp = ui.add_enabled(enabled, button).on_hover_text(tip.as_str()).on_disabled_hover_text(tip.as_str());
         let mut rect = resp.rect;
@@ -1202,9 +1244,11 @@ impl App {
         if toggle.clicked() {
             self.actions.push(Action::ToggleLiveMode);
         }
+
         if self.state.link_state.busy {
             rect |= ui.add(egui::Spinner::new().size(size * 0.8)).on_hover_text("Godot is building").rect;
         }
+
         ui.add_space(PROJECT_BUTTON_GAP * 0.5);
         rect
     }
@@ -1228,6 +1272,7 @@ impl App {
                         if self.state.sculpt.mode == SculptMode::PaintLayer {
                             ui.add(egui::DragValue::new(&mut self.state.sculpt.layer).range(0..=3).prefix("layer "));
                         }
+
                         if self.state.sculpt.mode == SculptMode::Terrace {
                             ui.add(egui::DragValue::new(&mut self.state.sculpt.terrace_step).range(1.0..=1024.0).prefix("step "));
                         }
@@ -1235,6 +1280,7 @@ impl App {
                         ui.label("Color");
                         ui.color_edit_button_rgba_unmultiplied(&mut self.state.paint_color);
                     }
+
                     ui.add(egui::DragValue::new(&mut self.state.sculpt.radius).range(1.0..=8192.0).prefix("radius "));
                     ui.add(egui::DragValue::new(&mut self.state.sculpt.strength).range(0.01..=256.0).speed(0.1).prefix("strength "));
                 }
@@ -1245,11 +1291,13 @@ impl App {
                             self.actions.push(Action::Justify(j));
                         }
                     }
+
                     ui.checkbox(&mut self.state.treat_as_one, "Treat as one");
                     ui.separator();
                     if ui.small_button("Align to View").on_hover_text("Project the selected faces along the 3D camera").clicked() {
                         self.actions.push(Action::AlignTextureToView);
                     }
+
                     if ui.small_button("Hotspot Fit").on_hover_text("Fit to the best rectangle of <texture>.hotspots.json").clicked() {
                         self.actions.push(Action::HotspotTexture);
                     }
@@ -1264,6 +1312,7 @@ impl App {
                         if ui.selectable_label(active.is_none(), "new set on a new layer").clicked() {
                             self.actions.push(Action::NewScatterSet);
                         }
+
                         for (id, name) in &sets {
                             if ui.selectable_label(active == Some(*id), name).clicked() {
                                 self.actions.push(Action::ActivateScatter(*id));
@@ -1288,6 +1337,7 @@ impl App {
                     if ui.small_button("Palette…").clicked() {
                         self.actions.push(Action::ShowScatterPalette);
                     }
+
                     if ui.small_button("Fill").on_hover_text("Fill the set's target surfaces").clicked() {
                         self.actions.push(Action::ScatterFill);
                     }
@@ -1322,6 +1372,7 @@ impl App {
                         }
                         _ => {}
                     }
+
                     ui.separator();
                     if ui.small_button("Set Blend Material").on_hover_text("Use the current material as the second texture of the selected faces").clicked() {
                         self.actions.push(Action::SetBlendMaterial);
@@ -1344,6 +1395,7 @@ impl App {
                             self.tools.mesh.component = c;
                         }
                     }
+
                     ui.separator();
                     for (label, op) in [
                         ("Subdivide", MeshOp::Subdivide),
@@ -1370,12 +1422,14 @@ impl App {
         if titles.len() < 2 {
             return;
         }
+
         ui.horizontal(|ui| {
             for (i, title) in titles.iter().enumerate() {
                 if ui.selectable_label(i == active, title).clicked() && i != active {
                     self.state.switch_tab(i);
                 }
             }
+
             if ui.small_button("+").on_hover_text("New tab").clicked() {
                 self.actions.push(Action::NewTab);
             }
@@ -1397,6 +1451,7 @@ impl App {
                 if let Some(c) = s.cursor_world {
                     ui.monospace(format!("{:8.1} {:8.1} {:8.1}", c.x, c.y, c.z));
                 }
+
                 ui.separator();
                 let sel = &s.doc.selection;
                 if sel.has_faces() {
@@ -1404,10 +1459,12 @@ impl App {
                 } else if !sel.nodes.is_empty() {
                     ui.label(format!("{} selected", sel.nodes.len()));
                 }
+
                 if s.doc.map.editor.cordon_enabled {
                     ui.separator();
                     ui.label(RichText::new("cordon").color(crate::theme::YELLOW));
                 }
+
                 if !s.open_groups.is_empty() {
                     ui.separator();
                     ui.label(RichText::new(format!("{} open groups", s.open_groups.len())).color(crate::theme::CYAN));
@@ -1429,6 +1486,7 @@ impl App {
         if self.window_fitted || !self.keep_prefs {
             return;
         }
+
         let (monitor, outer, maximized) = ctx.input(|i| (i.viewport().monitor_size, i.viewport().outer_rect, i.viewport().maximized));
         let (Some(monitor), Some(outer)) = (monitor, outer) else { return };
         self.window_fitted = true;
@@ -1454,8 +1512,10 @@ impl App {
                 if response.changed() || self.ui_scale_draft.is_some() {
                     p.ui_scale = value;
                 }
+
                 self.ui_scale_draft = None;
             }
+
             if ui.button("Reset").clicked() {
                 p.ui_scale = 1.0;
                 p.follow_display_scaling = true;
@@ -1500,6 +1560,7 @@ impl App {
                 if p.texture_filter != before {
                     self.state.material_reload = true;
                 }
+
                 ui.end_row();
                 ui.label("Godot executable");
                 ui.horizontal(|ui| {
@@ -1507,6 +1568,7 @@ impl App {
                     if ui.add(egui::TextEdit::singleline(&mut text).hint_text("auto (GODOT env or PATH)").desired_width(220.0)).changed() {
                         p.godot_path = std::path::PathBuf::from(text);
                     }
+
                     if ui.button("…").clicked()
                         && let Some(f) = rfd::FileDialog::new().pick_file()
                     {
@@ -1573,15 +1635,18 @@ impl App {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.confirm_close = true;
         }
+
         if !self.confirm_close {
             return;
         }
+
         egui::Modal::new(egui::Id::new("confirm_close")).show(ctx, |ui| {
             ui.heading("Unsaved changes");
             ui.label(format!("Save changes to {} before closing?", self.state.doc.title()));
             if self.state.tabs.iter().any(|t| t.doc.is_modified()) {
                 ui.label("Other tabs have unsaved changes too.");
             }
+
             ui.horizontal(|ui| {
                 if ui.button("Save").clicked() {
                     commands::execute(&mut self.state, Action::Save, ctx);
@@ -1589,14 +1654,17 @@ impl App {
                         self.allow_close = true;
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
+
                     self.confirm_close = false;
                 }
+
                 if ui.button("Discard").clicked() {
                     self.state.revert_all_live_changes();
                     self.allow_close = true;
                     self.confirm_close = false;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
+
                 if ui.button("Cancel").clicked() {
                     self.confirm_close = false;
                 }
@@ -1643,6 +1711,7 @@ impl TabViewer for Tabs<'_> {
         if let Some(anchor) = anchor {
             guide::mark(ui.ctx(), anchor, ui.clip_rect());
         }
+
         match tab {
             Tab::View(i) => {
                 let Some(vp) = self.viewports.get_mut(*i) else { return };
@@ -1716,6 +1785,7 @@ impl eframe::App for App {
         if !self.state.tabs.is_empty() {
             egui::Panel::top("map_tabs").show(ui, |ui| self.tab_bar(ui));
         }
+
         let status = egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
         guide::mark(&ctx, Anchor::StatusBar, status.response.rect);
 
@@ -1724,10 +1794,12 @@ impl eframe::App for App {
             self.state.materials.rescan(&game);
             self.project_generation += 1;
         }
+
         if std::mem::take(&mut self.state.scene_reset) {
             self.scene.invalidate();
             self.tools.mesh.selection.clear();
         }
+
         self.scene.update(&mut self.renderer, &mut self.state, self.project_generation);
         let cam = &self.viewports[0].camera;
         let focus = cam.position + cam.forward() * 1200.0;
@@ -1767,6 +1839,7 @@ impl eframe::App for App {
                 self.project_generation += 1;
             }
         }
+
         if let Some(bounds) = self.state.focus_request.take() {
             for v in &mut self.viewports {
                 v.focus(&bounds);
@@ -1815,6 +1888,7 @@ mod tests {
         if let Node::Horizontal(split) = &mut dock.main_surface_mut()[NodeIndex::root()] {
             split.fraction = 0.6;
         }
+
         let text = ron::to_string(&dock).unwrap();
         let loaded: DockState<Tab> = ron::from_str(&text).unwrap();
         assert!(valid_dock(&loaded));

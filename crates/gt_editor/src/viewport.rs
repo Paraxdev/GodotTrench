@@ -60,6 +60,7 @@ impl Viewport {
         if rect.width() < 2.0 || rect.height() < 2.0 {
             return;
         }
+
         let ppp = ui.ctx().pixels_per_point();
         self.pixels_per_point = ppp;
         cx.renderer.ensure_target(&mut self.target, [(rect.width() * ppp).round() as u32, (rect.height() * ppp).round() as u32]);
@@ -72,6 +73,7 @@ impl Viewport {
             let hover = response.hover_pos();
             cx.tools.viewport_input(ui, &response, &self.camera, rect, hover, cx.state);
         }
+
         self.handle_drop(ui, &response, cx);
         self.update_cursor_world(&response, cx);
 
@@ -80,6 +82,7 @@ impl Viewport {
         if let Some(target) = &self.target {
             ui.painter().image(target.texture_id, rect, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
         }
+
         self.paint_overlay(ui, cx);
         cx.tools.paint_overlay(ui, &self.camera, rect, cx.state);
 
@@ -111,6 +114,7 @@ impl Viewport {
                         .unwrap_or(self.camera.position + self.camera.forward() * 256.0);
                     self.drag = Some(Drag::Orbit { pivot });
                 }
+
                 let invert = if invert_y { -1.0 } else { 1.0 };
                 match self.drag {
                     Some(Drag::Look) => self.camera.rotate(Vec2::new(delta.x, delta.y * invert), look_sensitivity),
@@ -118,6 +122,7 @@ impl Viewport {
                     Some(Drag::Orbit { pivot }) => self.camera.orbit(pivot, delta, look_sensitivity),
                     _ => {}
                 }
+
                 let brush_tool = matches!(cx.state.tool, ToolKind::Scatter | ToolKind::Blend | ToolKind::Sculpt);
                 if self.hovered && scroll != 0.0 && brush_tool && modifiers.command {
                     let factor = (1.0015f64).powf(scroll as f64);
@@ -129,25 +134,31 @@ impl Viewport {
                 } else if self.hovered && scroll != 0.0 && !(cx.state.tool == ToolKind::Texture && modifiers.alt) {
                     self.camera.position += self.camera.forward() * (scroll as f64) * fly_speed * 0.004;
                 }
+
                 if (self.hovered || matches!(self.drag, Some(Drag::Look))) && !ui.ctx().egui_wants_keyboard_input() && !modifiers.command {
                     let mut dir = DVec3::ZERO;
                     ui.input(|i| {
                         if i.key_down(Key::W) {
                             dir += self.camera.forward();
                         }
+
                         if i.key_down(Key::S) {
                             dir -= self.camera.forward();
                         }
+
                         if i.key_down(Key::D) {
                             dir += self.camera.right();
                         }
+
                         if i.key_down(Key::A) {
                             dir -= self.camera.right();
                         }
+
                         if matches!(self.drag, Some(Drag::Look)) {
                             if i.key_down(Key::E) {
                                 dir += DVec3::Y;
                             }
+
                             if i.key_down(Key::Q) {
                                 dir -= DVec3::Y;
                             }
@@ -164,9 +175,11 @@ impl Viewport {
                 if response.drag_started_by(PointerButton::Secondary) || response.drag_started_by(PointerButton::Middle) {
                     self.drag = Some(Drag::Pan);
                 }
+
                 if let Some(Drag::Pan) = self.drag {
                     self.camera.pan(delta, rect);
                 }
+
                 if self.hovered
                     && scroll != 0.0
                     && let Some(pos) = response.hover_pos()
@@ -175,6 +188,7 @@ impl Viewport {
                 }
             }
         }
+
         if self.is_camera_drag() && (response.drag_stopped() || !ui.input(|i| i.pointer.any_down())) {
             self.drag = None;
         }
@@ -184,6 +198,7 @@ impl Viewport {
         if !self.hovered || ui.ctx().egui_wants_keyboard_input() || cx.state.tool != ToolKind::Select {
             return;
         }
+
         let grid = cx.state.grid;
         let (right, up) = match self.camera.kind {
             ViewKind::Perspective => {
@@ -207,21 +222,27 @@ impl Viewport {
             if i.key_pressed(Key::ArrowLeft) {
                 offset -= right;
             }
+
             if i.key_pressed(Key::ArrowRight) {
                 offset += right;
             }
+
             if i.key_pressed(Key::ArrowUp) {
                 offset += up;
             }
+
             if i.key_pressed(Key::ArrowDown) {
                 offset -= up;
             }
+
             if i.key_pressed(Key::PageUp) {
                 offset += if self.camera.kind == ViewKind::Perspective { DVec3::Y } else { -self.camera.forward() };
             }
+
             if i.key_pressed(Key::PageDown) {
                 offset -= if self.camera.kind == ViewKind::Perspective { DVec3::Y } else { -self.camera.forward() };
             }
+
             if offset != DVec3::ZERO {
                 cx.actions.push(Action::Nudge(offset * grid));
             }
@@ -276,6 +297,7 @@ impl Viewport {
                         }
                     });
                 }
+
                 // With the UV editor open, ctrl+click grabs every face of the object so all sides are
                 // edited at once. Repeating on another object adds its faces.
                 Some(h) if cx.state.uv_panel_open && modifiers.command && h.face.is_some() => {
@@ -358,6 +380,7 @@ impl Viewport {
                     cx.state.last_bounds = b;
                 }
             }
+
             cx.state.drag_preview = None;
             cx.state.doc.commit();
         }
@@ -370,6 +393,7 @@ impl Viewport {
             let icon = if normal.dot(self.camera.kind.axes().0).abs() > 0.5 { CursorIcon::ResizeHorizontal } else { CursorIcon::ResizeVertical };
             ui.ctx().set_cursor_icon(icon);
         }
+
         let _ = rect;
     }
 
@@ -380,9 +404,11 @@ impl Viewport {
             cx.state.doc.begin("Edit Gizmo");
             return Some(Drag::Gizmo { handle, start });
         }
+
         if let Some(drag) = crate::transform_gizmo::begin(cx.state, &self.camera, self.rect, origin) {
             return Some(Drag::Transform(drag));
         }
+
         if self.camera.kind.is_2d()
             && !cx.state.doc.selection.nodes.is_empty()
             && let Some((normal, faces)) = self.edge_under_cursor(origin, cx)
@@ -391,6 +417,7 @@ impl Viewport {
             cx.state.doc.begin("Resize Brushes");
             return Some(Drag::FaceResize { faces, origin: origin_world, normal });
         }
+
         let state = &mut *cx.state;
         let map = &state.doc.map;
         let ray = self.camera.ray(self.rect, origin);
@@ -412,6 +439,7 @@ impl Viewport {
                 state.doc.begin(if modifiers.command { "Extrude" } else { "Resize Brushes" });
                 return Some(Drag::FaceResize { faces, origin: h.point, normal: plane.normal });
             }
+
             if is_selected(h.node) && !modifiers.shift {
                 let plane = match self.camera.kind {
                     ViewKind::Perspective => {
@@ -475,12 +503,14 @@ impl Viewport {
                 if let Some(a) = axis {
                     delta = *a * delta.dot(*a);
                 }
+
                 if modifiers.shift {
                     let i = gt_core::major_axis(delta);
                     let keep = delta[i];
                     delta = DVec3::ZERO;
                     delta[i] = keep;
                 }
+
                 let delta = state.snap(delta);
                 state.doc.reset_transaction();
                 if *duplicate {
@@ -488,6 +518,7 @@ impl Viewport {
                     if delta == DVec3::ZERO {
                         return;
                     }
+
                     state.doc.edit("Duplicate", |m, s| ops::duplicate_selection(m, s, delta, opts));
                 } else {
                     // Render the moved geometry from its pre-drag shape translated on the GPU, so heavy
@@ -497,8 +528,10 @@ impl Viewport {
                     if delta == DVec3::ZERO {
                         return;
                     }
+
                     state.doc.edit("Move", |m, s| ops::translate_selection(m, s, delta, opts));
                 }
+
                 state.set_status(format!("Move {:.3} {:.3} {:.3}", delta.x, delta.y, delta.z));
             }
             Drag::CreateBrush { start, normal, anchor } => {
@@ -509,6 +542,7 @@ impl Viewport {
                 if t < 0.0 {
                     return;
                 }
+
                 let current = ray.at(t);
                 let grid = state.grid;
                 let mut a = state.snap(*start);
@@ -527,6 +561,7 @@ impl Viewport {
                         }
                     }
                 }
+
                 self.replace_created_brush(Aabb::new(a, b), state);
             }
             Drag::CreateBrush2d { start } => {
@@ -551,6 +586,7 @@ impl Viewport {
                         }
                     }
                 }
+
                 let _ = (r, u);
                 self.replace_created_brush(Aabb::new(a, b), state);
             }
@@ -565,6 +601,7 @@ impl Viewport {
                 if dist.abs() < 1e-9 {
                     return;
                 }
+
                 let faces = faces.clone();
                 let normal = *normal;
                 let extrude = self.press_modifiers.command && self.camera.kind == ViewKind::Perspective;
@@ -613,6 +650,7 @@ impl Viewport {
         if brushes.is_empty() {
             return None;
         }
+
         let bounds = state.doc.map.bounds_of(brushes.iter().copied());
         let (r, u, _) = self.camera.kind.axes();
         let min = self.camera.project(self.rect, bounds.min)?;
@@ -622,6 +660,7 @@ impl Viewport {
         if !screen.expand(TOL).contains(pos) {
             return None;
         }
+
         // View axes can point along negative world axes, so the side of the screen the bounds minimum lands on picks the face.
         let (r, u) = (r.abs(), u.abs());
         let candidates = [
@@ -634,6 +673,7 @@ impl Viewport {
         if dist > TOL {
             return None;
         }
+
         let extreme = if normal.element_sum() > 0.0 { bounds.max.dot(normal) } else { bounds.min.dot(normal) };
         let mut faces = Vec::new();
         for id in brushes {
@@ -644,6 +684,7 @@ impl Viewport {
                 }
             }
         }
+
         (!faces.is_empty()).then_some((normal, faces))
     }
 
@@ -690,6 +731,7 @@ impl Viewport {
                     self.paint_drop_target(ui, cx, &payload, pos);
                 }
             }
+
             return;
         };
         let Some(pos) = response.hover_pos() else { return };
@@ -704,8 +746,10 @@ impl Viewport {
                     if let Some(h) = hit {
                         cx.actions.push(Action::CreateDecal { material: name, at: h.point, normal: h.normal });
                     }
+
                     return;
                 }
+
                 let apply_whole = ui.input(|i| i.modifiers.shift);
                 match hit {
                     Some(Hit { node, face: Some(face), .. }) => {
@@ -734,6 +778,7 @@ impl Viewport {
                                     let tile = t.layers.last().map(|l| l.tile).unwrap_or(256.0);
                                     t.layers.push(gt_geom::TerrainLayer { material: name.clone(), tile });
                                 }
+
                                 t.layers[layer.min(3)].material = name.clone();
                             }
                         });
@@ -791,6 +836,7 @@ impl Viewport {
         if is_2d {
             frame.overlay_lines.extend(grid.as_ref());
         }
+
         let lit = state.prefs.shade == crate::state::Shade::Lit;
         scene.fill_frame(&mut frame, is_2d, lit);
         frame.sky = !is_2d && lit;
@@ -840,6 +886,7 @@ impl Viewport {
                 if !selected || state.doc.map.is_hidden(id) {
                     continue;
                 }
+
                 let pos = if state.doc.map.is_point_entity(id) { e.origin } else { state.doc.map.bounds(id).center() };
                 if let Some(p) = self.camera.project(self.rect, pos) {
                     painter.text(p + Vec2::new(0.0, -18.0), Align2::CENTER_BOTTOM, e.classname.as_str(), FontId::proportional(12.0), Color32::WHITE);
@@ -878,6 +925,7 @@ fn coplanar_selected_faces(state: &EditorState, plane: &Plane) -> Vec<(NodeId, u
             out.push((id, f));
         }
     }
+
     out
 }
 
@@ -888,6 +936,7 @@ fn grid_lines(cam: &Camera, rect: Rect, grid: f64) -> Vec<LineVertex> {
     while spacing * cam.zoom < 10.0 {
         spacing *= 2.0;
     }
+
     let depth = cam.kind.depth_axis();
     let mut base = DVec3::ZERO;
     base[depth] = 0.0;
@@ -916,10 +965,12 @@ fn grid_lines(cam: &Camera, rect: Rect, grid: f64) -> Vec<LineVertex> {
     for i in i0..=i1 {
         push(r, u, i as f64 * spacing, u0, u1, (i as f64 * spacing / grid).round() as i64);
     }
+
     let (j0, j1) = ((u0 / spacing).floor() as i64, (u1 / spacing).ceil() as i64);
     for j in j0..=j1 {
         push(u, r, j as f64 * spacing, r0, r1, (j as f64 * spacing / grid).round() as i64);
     }
+
     out
 }
 
@@ -979,6 +1030,7 @@ fn context_menu(ui: &mut Ui, cx: &mut ViewCtx) {
             }
         }
     }
+
     ui.add_enabled_ui(has_sel, |ui| {
         ui.menu_button("Move to Layer", |ui| {
             for (id, name) in layers {

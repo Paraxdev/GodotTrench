@@ -9,5 +9,6 @@ fn main() {
     for (name, text) in &files {
         std::fs::write(dir.join(name), text).expect("write fgd resource");
     }
+
     println!("wrote {} files to {}", files.len(), dir.display());
 }

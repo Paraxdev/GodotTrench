@@ -18,6 +18,7 @@ fn link_sets(map: &Map) -> BTreeMap<u64, Vec<NodeId>> {
             sets.entry(link).or_default().push(*id);
         }
     }
+
     sets
 }
 
@@ -55,6 +56,7 @@ fn normalized(map: &Map, group: NodeId) -> Vec<(usize, NodeKind)> {
         out.push((depth, kind));
         stack.extend(node.children.iter().rev().map(|c| (*c, depth + 1)));
     }
+
     out
 }
 
@@ -94,6 +96,7 @@ fn subtree_changed(before: &Map, after: &Map, group: NodeId) -> bool {
     if now != then {
         return true;
     }
+
     now.iter().any(|id| match (before.get(*id), after.get(*id)) {
         (Some(a), Some(b)) => a.kind != b.kind || a.children != b.children,
         _ => true,
@@ -107,6 +110,7 @@ pub fn sync(before: &Map, after: &mut Map) -> usize {
         if members.len() < 2 {
             continue;
         }
+
         let Some(&source) = members.iter().find(|g| subtree_changed(before, after, **g)) else { continue };
         let source_content = normalized(after, source);
         let source_transform = group_transform(after, source);
@@ -116,15 +120,18 @@ pub fn sync(before: &Map, after: &mut Map) -> usize {
             if target == source {
                 continue;
             }
+
             let target_content = normalized(after, target);
             let same = target_content.len() == source_content.len()
                 && target_content.iter().zip(&source_content).all(|((da, ka), (db, kb))| da == db && kinds_match(ka, kb));
             if same {
                 continue;
             }
+
             for c in after.get(target).map(|n| n.children.clone()).unwrap_or_default() {
                 after.remove(c);
             }
+
             let Ok(ids) = format::paste_nodes(after, target, &text) else { continue };
             let mut sel = Selection::default();
             sel.nodes.extend(ids);
@@ -134,6 +141,7 @@ pub fn sync(before: &Map, after: &mut Map) -> usize {
             updated += 1;
         }
     }
+
     updated
 }
 

@@ -64,6 +64,7 @@ impl LiveSession {
             self.base = map;
             return Some(json!({ "event": "live_resync", "path": self.path, "text": text }));
         }
+
         let removed: BTreeSet<NodeId> = ops.iter().filter_map(|op| if let Op::Remove(id) = op { Some(*id) } else { None }).collect();
         let mut sent: BTreeSet<NodeId> = BTreeSet::new();
         for op in &ops {
@@ -75,6 +76,7 @@ impl LiveSession {
                 _ => {}
             }
         }
+
         if idle {
             let pending: Vec<NodeId> =
                 self.unsettled.iter().chain(&self.held).copied().filter(|id| map.contains(*id) && !sent.contains(id) && !removed.contains(id)).collect();
@@ -83,9 +85,11 @@ impl LiveSession {
                     ops.push(Op::Set(id));
                 }
             }
+
             self.unsettled.clear();
             self.held.clear();
         }
+
         let mut json_ops = Vec::with_capacity(ops.len());
         for op in ops {
             match op {
@@ -101,6 +105,7 @@ impl LiveSession {
                         self.held.insert(id);
                         continue;
                     }
+
                     self.held.remove(&id);
                     let (parent, index) = placement(&map, id);
                     json_ops.push(json!({ "op": "set", "id": id.0, "parent": parent, "index": index, "node": node }));
@@ -111,6 +116,7 @@ impl LiveSession {
                 Op::Properties => json_ops.push(json!({ "op": "properties", "properties": map.properties })),
             }
         }
+
         self.base = map;
         (!json_ops.is_empty()).then(|| json!({ "event": "live_delta", "path": self.path, "ops": json_ops }))
     }
@@ -141,6 +147,7 @@ pub fn diff(base: &Map, new: &Map, dragging: bool) -> Vec<Op> {
                 if same_for_godot(old, node) {
                     continue;
                 }
+
                 match translation(old, node).filter(|_| dragging) {
                     Some(offset) => {
                         let key = [offset.x, offset.y, offset.z].map(|v| (v * 1e4).round() as i64);
@@ -151,6 +158,7 @@ pub fn diff(base: &Map, new: &Map, dragging: bool) -> Vec<Op> {
             }
         }
     }
+
     let mut ops: Vec<Op> =
         removed.iter().filter(|id| base.get(**id).and_then(|n| n.parent).is_none_or(|p| !removed.contains(&p))).map(|id| Op::Remove(*id)).collect();
     set.sort_by_key(|id| (depth(new, *id), *id));
@@ -159,6 +167,7 @@ pub fn diff(base: &Map, new: &Map, dragging: bool) -> Vec<Op> {
     if base.properties != new.properties {
         ops.push(Op::Properties);
     }
+
     ops
 }
 
@@ -171,6 +180,7 @@ fn same_for_godot(old: &Node, new: &Node) -> bool {
     if old.parent != new.parent {
         return false;
     }
+
     match (&old.kind, &new.kind) {
         (NodeKind::Layer(a), NodeKind::Layer(b)) => a.name == b.name && a.omit_from_export == b.omit_from_export,
         (NodeKind::Group(a), NodeKind::Group(b)) => a.name == b.name,
@@ -268,6 +278,7 @@ mod tests {
             if let Some(NodeKind::Brush(b)) = m.get_mut(brush).map(|n| &mut n.kind) {
                 *b = b.translated(offset, true);
             }
+
             if let Some(NodeKind::Entity(e)) = m.get_mut(light).map(|n| &mut n.kind) {
                 e.origin += offset;
             }

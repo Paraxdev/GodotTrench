@@ -17,6 +17,7 @@ pub fn spawn_stdio(exec: Arc<dyn ToolExecutor>) {
                 if line.trim().is_empty() {
                     continue;
                 }
+
                 let response = match serde_json::from_str::<Value>(&line) {
                     Ok(msg) => protocol::handle(msg, exec.as_ref()),
                     Err(e) => Some(serde_json::json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": e.to_string() } })),
@@ -64,6 +65,7 @@ fn read_request(reader: &mut BufReader<TcpStream>) -> std::io::Result<Option<Req
     if reader.read_line(&mut line)? == 0 {
         return Ok(None);
     }
+
     let mut parts = line.split_whitespace();
     let method = parts.next().unwrap_or_default().to_string();
     let path = parts.next().unwrap_or_default().to_string();
@@ -73,14 +75,17 @@ fn read_request(reader: &mut BufReader<TcpStream>) -> std::io::Result<Option<Req
         if reader.read_line(&mut h)? == 0 {
             break;
         }
+
         let h = h.trim_end();
         if h.is_empty() {
             break;
         }
+
         if let Some((k, v)) = h.split_once(':') {
             headers.push((k.trim().to_string(), v.trim().to_string()));
         }
     }
+
     let len: usize = headers.iter().find(|(k, _)| k.eq_ignore_ascii_case("content-length")).and_then(|(_, v)| v.parse().ok()).unwrap_or(0);
     let mut body = vec![0u8; len.min(64 * 1024 * 1024)];
     reader.read_exact(&mut body)?;
@@ -92,6 +97,7 @@ fn respond(stream: &mut TcpStream, status: &str, extra_headers: &[(&str, String)
     for (k, v) in extra_headers {
         head.push_str(&format!("{k}: {v}\r\n"));
     }
+
     head.push_str("\r\n");
     stream.write_all(head.as_bytes())?;
     stream.write_all(body)?;
@@ -115,9 +121,11 @@ fn serve_connection(stream: TcpStream, exec: &dyn ToolExecutor) -> std::io::Resu
     {
         return respond(&mut writer, "403 Forbidden", &[], b"forbidden origin");
     }
+
     if req.path != "/mcp" && req.path != "/" {
         return respond(&mut writer, "404 Not Found", &[], b"not found");
     }
+
     match req.method.as_str() {
         "POST" => {
             let msg: Value = match serde_json::from_slice(&req.body) {
@@ -135,6 +143,7 @@ fn serve_connection(stream: TcpStream, exec: &dyn ToolExecutor) -> std::io::Resu
                         let session = format!("gt-{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0));
                         headers.push(("Mcp-Session-Id", session));
                     }
+
                     respond(&mut writer, "200 OK", &headers, response.to_string().as_bytes())
                 }
                 None => respond(&mut writer, "202 Accepted", &[], b""),

@@ -131,6 +131,7 @@ impl Mesh {
                 decal: false,
             };
         }
+
         // Like Hammer, only the displacement surfaces of a displacement brush become geometry.
         let mut polys = Vec::new();
         for fi in 0..brush.faces.len() {
@@ -146,6 +147,7 @@ impl Mesh {
                 }
             }
         }
+
         let mut mesh = Mesh::from_polygons(polys);
         mesh.smooth_angle = 60.0;
         mesh
@@ -166,13 +168,16 @@ impl Mesh {
                     indices.push(idx);
                 }
             }
+
             while indices.len() > 1 && indices.first() == indices.last() {
                 indices.pop();
             }
+
             if indices.len() >= 3 {
                 mesh.faces.push(MeshFace::new(indices, data));
             }
         }
+
         mesh
     }
 
@@ -217,6 +222,7 @@ impl Mesh {
                 set.insert(edge_key(a, b));
             }
         }
+
         set.into_iter().collect()
     }
 
@@ -227,6 +233,7 @@ impl Mesh {
                 map.entry(edge_key(a, b)).or_default().push(fi);
             }
         }
+
         map
     }
 
@@ -241,6 +248,7 @@ impl Mesh {
                 }
             }
         }
+
         out
     }
 
@@ -251,6 +259,7 @@ impl Mesh {
                 map.insert(e, fi);
             }
         }
+
         map
     }
 
@@ -290,6 +299,7 @@ impl Mesh {
         if self.smooth_angle <= 0.0 {
             return self.faces.iter().enumerate().map(|(fi, f)| vec![unit[fi]; f.indices.len()]).collect();
         }
+
         let cos = (self.smooth_angle as f64).to_radians().cos() - 1e-6;
         let vertex_faces = self.vertex_faces();
         self.faces
@@ -322,6 +332,7 @@ impl Mesh {
         if !b.contains_point(ray.origin) && ray.intersect_aabb(&b).is_none() {
             return None;
         }
+
         let mut best: Option<(f64, usize)> = None;
         for fi in 0..self.faces.len() {
             for [a, bb, c] in self.triangulate_face(fi) {
@@ -332,6 +343,7 @@ impl Mesh {
                 }
             }
         }
+
         best
     }
 
@@ -341,19 +353,23 @@ impl Mesh {
         for v in &mut out.vertices {
             *v = gt_core::snap_vec(m.transform_point3(*v));
         }
+
         for f in &mut out.faces {
             if mirror {
                 f.indices.reverse();
                 f.uvs.reverse();
                 f.data.colors.reverse();
             }
+
             if uv_lock {
                 f.data.uv = f.data.uv.transformed(m);
             }
         }
+
         if !uv_lock {
             out.refresh_degenerate_uvs();
         }
+
         out
     }
 
@@ -362,11 +378,13 @@ impl Mesh {
         for v in &mut out.vertices {
             *v = gt_core::snap_vec(*v + offset);
         }
+
         if uv_lock {
             for f in &mut out.faces {
                 f.data.uv = f.data.uv.translated(offset);
             }
         }
+
         out
     }
 
@@ -385,15 +403,18 @@ impl Mesh {
         if self.faces.is_empty() {
             return Err(MeshError::Empty);
         }
+
         for (fi, f) in self.faces.iter().enumerate() {
             if f.indices.iter().any(|i| *i as usize >= self.vertices.len()) {
                 return Err(MeshError::BadIndex(fi));
             }
+
             let unique: BTreeSet<u32> = f.indices.iter().copied().collect();
             if unique.len() < 3 {
                 return Err(MeshError::Degenerate(fi));
             }
         }
+
         Ok(())
     }
 
@@ -406,6 +427,7 @@ impl Mesh {
                 vol += pa.dot(pb.cross(pc)) / 6.0;
             }
         }
+
         vol
     }
 
@@ -418,6 +440,7 @@ impl Mesh {
                     keep.push(k);
                 }
             }
+
             if keep.len() != f.indices.len() {
                 let uvs_ok = f.uvs.len() == f.indices.len();
                 let colors_ok = f.data.colors.len() == f.indices.len();
@@ -426,6 +449,7 @@ impl Mesh {
                 f.indices = keep.iter().map(|k| f.indices[*k]).collect();
             }
         }
+
         self.faces.retain(|f| f.indices.iter().collect::<BTreeSet<_>>().len() >= 3);
         self.remove_unused_vertices();
     }
@@ -438,6 +462,7 @@ impl Mesh {
                 used[*i as usize] = true;
             }
         }
+
         let mut remap = vec![None; self.vertices.len()];
         let mut out = Vec::with_capacity(self.vertices.len());
         for (i, v) in self.vertices.iter().enumerate() {
@@ -446,11 +471,13 @@ impl Mesh {
                 out.push(*v);
             }
         }
+
         for f in &mut self.faces {
             for i in &mut f.indices {
                 *i = remap[*i as usize].unwrap_or(0);
             }
         }
+
         self.vertices = out;
         remap
     }
@@ -485,6 +512,7 @@ impl Mesh {
                 *p = gt_core::snap_vec(m.transform_point3(*p));
             }
         }
+
         self.refresh_degenerate_uvs();
     }
 
@@ -511,12 +539,14 @@ impl Mesh {
         if region.is_empty() {
             return Vec::new();
         }
+
         let mut directed: HashMap<(u32, u32), usize> = HashMap::new();
         for &fi in &region {
             for e in self.face_edges(fi) {
                 directed.insert(e, fi);
             }
         }
+
         let mut boundary: Vec<(u32, u32)> = directed.keys().filter(|(a, b)| !directed.contains_key(&(*b, *a))).copied().collect();
         boundary.sort();
         let verts: BTreeSet<u32> = region.iter().flat_map(|fi| self.faces[*fi].indices.iter().copied()).collect();
@@ -525,6 +555,7 @@ impl Mesh {
             map.insert(v, self.vertices.len() as u32);
             self.vertices.push(self.vertices[v as usize]);
         }
+
         for (a, b) in boundary {
             let src = &self.faces[directed[&(a, b)]];
             let ka = src.indices.iter().position(|v| *v == a).unwrap_or(0);
@@ -534,11 +565,13 @@ impl Mesh {
             side.uvs.clear();
             self.faces.push(side);
         }
+
         for &fi in &region {
             for v in &mut self.faces[fi].indices {
                 *v = map[v];
             }
         }
+
         map.values().copied().collect()
     }
 
@@ -553,6 +586,7 @@ impl Mesh {
                 if directed.contains_key(&(*b, *a)) {
                     continue;
                 }
+
                 (*b, *a, *fi)
             } else if let Some(fi) = directed.get(&(*b, *a)) {
                 (*a, *b, *fi)
@@ -565,9 +599,11 @@ impl Mesh {
                     (self.vertices.len() - 1) as u32
                 });
             }
+
             let data = self.faces[fi].data.clone();
             new_faces.push(face_from(vec![a, b, map[&b], map[&a]], &[CornerAttr { uv: None, color: None }; 4], &data));
         }
+
         self.faces.extend(new_faces);
         map.into_iter().collect()
     }
@@ -591,6 +627,7 @@ impl Mesh {
                 let s = bis.dot(in1).max(0.25);
                 inner.push(cur + bis * (thickness / s));
             }
+
             let face = self.faces[fi].clone();
             let centroid_attr = CornerAttr::average(&(0..m).map(|k| CornerAttr::of(&face, k)).collect::<Vec<_>>());
             let mut inner_idx = Vec::with_capacity(m);
@@ -600,13 +637,16 @@ impl Mesh {
                 self.vertices.push(p);
                 inner_attr.push(CornerAttr::lerp(CornerAttr::of(&face, k), centroid_attr, 0.1));
             }
+
             for k in 0..m {
                 let j = (k + 1) % m;
                 let attrs = [CornerAttr::of(&face, k), CornerAttr::of(&face, j), inner_attr[j], inner_attr[k]];
                 new_faces.push(face_from(vec![face.indices[k], face.indices[j], inner_idx[j], inner_idx[k]], &attrs, &face.data));
             }
+
             self.faces[fi] = face_from(inner_idx, &inner_attr, &face.data);
         }
+
         self.faces.extend(new_faces);
         targets.into_iter().collect()
     }
@@ -617,6 +657,7 @@ impl Mesh {
         if !efaces.contains_key(&edge_key(edge.0, edge.1)) {
             return Vec::new();
         }
+
         let mut ring = vec![edge];
         let mut visited: BTreeSet<usize> = BTreeSet::new();
         for pass in 0..2 {
@@ -640,14 +681,17 @@ impl Mesh {
                 if edge_key(next.0, next.1) == edge_key(edge.0, edge.1) {
                     break;
                 }
+
                 if pass == 0 {
                     ring.push(next);
                 } else {
                     ring.insert(0, next);
                 }
+
                 cur = next;
             }
         }
+
         ring
     }
 
@@ -657,6 +701,7 @@ impl Mesh {
         if ring.is_empty() {
             return Vec::new();
         }
+
         let cuts = cuts.max(1);
         let mut rungs: HashMap<(u32, u32), (u32, Vec<u32>)> = HashMap::new();
         let mut created = Vec::new();
@@ -665,6 +710,7 @@ impl Mesh {
             if rungs.contains_key(&key) {
                 continue;
             }
+
             let (pa, pb) = (self.vertices[*a as usize], self.vertices[*b as usize]);
             let mut ids = Vec::with_capacity(cuts);
             for c in 1..=cuts {
@@ -672,9 +718,11 @@ impl Mesh {
                 ids.push(self.vertices.len() as u32);
                 self.vertices.push(pa.lerp(pb, t));
             }
+
             created.extend(ids.iter().copied());
             rungs.insert(key, (*a, ids));
         }
+
         // New points along a rung, ordered from `from` to the other end.
         let along = |from: u32, to: u32| -> Option<Vec<u32>> {
             let (start, ids) = rungs.get(&edge_key(from, to))?;
@@ -682,6 +730,7 @@ impl Mesh {
             if *start != from {
                 out.reverse();
             }
+
             Some(out)
         };
         let t_of = |s: usize| s as f64 / (cuts + 1) as f64;
@@ -706,8 +755,10 @@ impl Mesh {
                     ];
                     result.push(face_from(vec![top[s], top[s + 1], bottom[s + 1], bottom[s]], &attrs, &face.data));
                 }
+
                 continue;
             }
+
             // Faces that only touch the ring get the new points inserted to stay connected.
             let mut indices = Vec::new();
             let mut attrs = Vec::new();
@@ -722,8 +773,10 @@ impl Mesh {
                     }
                 }
             }
+
             result.push(face_from(indices, &attrs, &face.data));
         }
+
         self.faces = result;
         created
     }
@@ -736,6 +789,7 @@ impl Mesh {
             neighbours.entry(*a).or_default().insert(*b);
             neighbours.entry(*b).or_default().insert(*a);
         }
+
         let mut out = vec![edge];
         let mut seen: BTreeSet<(u32, u32)> = BTreeSet::from([edge_key(edge.0, edge.1)]);
         for (from, to) in [(edge.0, edge.1), (edge.1, edge.0)] {
@@ -750,11 +804,13 @@ impl Mesh {
                 if !seen.insert(edge_key(cur, next)) {
                     break;
                 }
+
                 out.push((cur, next));
                 prev = cur;
                 cur = next;
             }
         }
+
         out
     }
 
@@ -771,6 +827,7 @@ impl Mesh {
                 *d = 0.0;
             }
         }
+
         let mut edge_points: HashMap<(u32, u32), (u32, f64, u32)> = HashMap::new();
         for &fi in &targets {
             for (a, b) in self.face_edges(fi).collect::<Vec<_>>() {
@@ -784,6 +841,7 @@ impl Mesh {
                 }
             }
         }
+
         let mut on_cut: BTreeSet<u32> = BTreeSet::new();
         let mut result = Vec::with_capacity(self.faces.len());
         for (fi, face) in self.faces.iter().enumerate() {
@@ -801,10 +859,12 @@ impl Mesh {
                     attrs.push(CornerAttr::lerp(CornerAttr::of(face, k), CornerAttr::of(face, j), t));
                 }
             }
+
             if !targets.contains(&fi) {
                 result.push(face_from(indices, &attrs, &face.data));
                 continue;
             }
+
             let on: Vec<usize> = (0..indices.len()).filter(|k| dist[indices[*k] as usize] == 0.0).collect();
             on_cut.extend(on.iter().map(|k| indices[*k]));
             let has_front = indices.iter().any(|v| dist[*v as usize] > 0.0);
@@ -823,6 +883,7 @@ impl Mesh {
                 result.push(face_from(indices, &attrs, &face.data));
             }
         }
+
         self.faces = result;
         on_cut.into_iter().collect()
     }
@@ -846,6 +907,7 @@ impl Mesh {
                 next.insert(b, a);
             }
         }
+
         let mut out = Vec::new();
         while let Some((&start, _)) = next.iter().next() {
             let mut lp = vec![start];
@@ -857,6 +919,7 @@ impl Mesh {
                     None => break,
                 }
             }
+
             if cur == start && lp.len() >= 3 {
                 let pts: Vec<DVec3> = lp.iter().map(|v| self.vertices[*v as usize]).collect();
                 let mut d = data.clone();
@@ -865,6 +928,7 @@ impl Mesh {
                 out.push(self.faces.len() - 1);
             }
         }
+
         out
     }
 
@@ -880,6 +944,7 @@ impl Mesh {
                 });
             }
         }
+
         let mut result = Vec::with_capacity(self.faces.len() + targets.len() * 3);
         let mut created = Vec::new();
         for (fi, face) in self.faces.clone().iter().enumerate() {
@@ -901,8 +966,10 @@ impl Mesh {
                     created.push(result.len());
                     result.push(face_from(vec![a, mids[&edge_key(a, b)], center, mids[&edge_key(p, a)]], &attrs, &face.data));
                 }
+
                 continue;
             }
+
             let mut indices = Vec::new();
             let mut attrs = Vec::new();
             for k in 0..n {
@@ -914,8 +981,10 @@ impl Mesh {
                     attrs.push(CornerAttr::lerp(CornerAttr::of(face, k), CornerAttr::of(face, j), 0.5));
                 }
             }
+
             result.push(face_from(indices, &attrs, &face.data));
         }
+
         self.faces = result;
         created
     }
@@ -932,6 +1001,7 @@ impl Mesh {
                 }
             }
         }
+
         self.cleanup();
     }
 
@@ -960,6 +1030,7 @@ impl Mesh {
                     }
                 }
             }
+
             match found {
                 Some(o) => {
                     target.insert(v, o);
@@ -967,9 +1038,11 @@ impl Mesh {
                 None => buckets.entry(key).or_default().push(v),
             }
         }
+
         if target.is_empty() {
             return 0;
         }
+
         for f in &mut self.faces {
             for v in &mut f.indices {
                 if let Some(t) = target.get(v) {
@@ -977,6 +1050,7 @@ impl Mesh {
                 }
             }
         }
+
         self.cleanup();
         before - self.vertices.len()
     }
@@ -1013,6 +1087,7 @@ impl Mesh {
             if f.indices.len() <= 3 {
                 continue;
             }
+
             let keep: Vec<usize> = (0..f.indices.len()).filter(|k| !set.contains(&f.indices[*k])).collect();
             if keep.len() >= 3 && keep.len() != f.indices.len() {
                 let uvs_ok = f.uvs.len() == f.indices.len();
@@ -1022,6 +1097,7 @@ impl Mesh {
                 f.indices = keep.iter().map(|k| f.indices[*k]).collect();
             }
         }
+
         self.cleanup();
     }
 
@@ -1032,9 +1108,11 @@ impl Mesh {
         if set.len() < 3 {
             return None;
         }
+
         if let Some(f) = self.fill_boundary_loops(&set, data).last() {
             return Some(*f);
         }
+
         let pts: Vec<DVec3> = set.iter().map(|v| self.vertices[*v as usize]).collect();
         let center = polygon::centroid(&pts);
         let vertex_faces = self.vertex_faces();
@@ -1043,6 +1121,7 @@ impl Mesh {
             let given: Vec<DVec3> = verts.iter().map(|v| self.vertices[*v as usize]).collect();
             normal = polygon::newell(&given).normalize_or(DVec3::Y);
         }
+
         let plane = Plane::from_point_normal(center, normal);
         let (u, v) = plane.basis();
         let mut order: Vec<(f64, u32)> = set
@@ -1059,6 +1138,7 @@ impl Mesh {
         if clashes {
             indices.reverse();
         }
+
         let pts: Vec<DVec3> = indices.iter().map(|i| self.vertices[*i as usize]).collect();
         let mut d = data.clone();
         d.uv = FaceUv::paraxial(polygon::newell(&pts).normalize_or(DVec3::Y), data.uv.scale);
@@ -1083,6 +1163,7 @@ impl Mesh {
             neighbours.entry(a).or_default().insert(b);
             neighbours.entry(b).or_default().insert(a);
         }
+
         let set: BTreeSet<u32> = verts.iter().copied().collect();
         for _ in 0..iterations {
             let snapshot = self.vertices.clone();
@@ -1107,9 +1188,11 @@ impl Mesh {
                     (self.vertices.len() - 1) as u32
                 });
             }
+
             self.faces.push(face);
             out.push(self.faces.len() - 1);
         }
+
         out
     }
 
@@ -1127,8 +1210,10 @@ impl Mesh {
                     (part.vertices.len() - 1) as u32
                 });
             }
+
             part.faces.push(face);
         }
+
         self.delete_faces(&set.into_iter().collect::<Vec<_>>());
         part
     }
@@ -1141,6 +1226,7 @@ impl Mesh {
             for v in &mut face.indices {
                 *v += base;
             }
+
             self.faces.push(face);
         }
     }
@@ -1154,10 +1240,12 @@ impl Mesh {
             if !seen.insert(fi) {
                 continue;
             }
+
             for v in &self.faces[fi].indices {
                 stack.extend(vertex_faces[*v as usize].iter().filter(|f| !seen.contains(f)));
             }
         }
+
         seen.into_iter().collect()
     }
 
@@ -1171,11 +1259,13 @@ impl Mesh {
                 normals[*v as usize] += n;
             }
         }
+
         let boundary = self.boundary_edges();
         let base = n_verts as u32;
         for (i, n) in normals.iter().enumerate() {
             self.vertices.push(self.vertices[i] - n.normalize_or_zero() * thickness);
         }
+
         let shell: Vec<MeshFace> = self
             .faces
             .iter()
@@ -1192,6 +1282,7 @@ impl Mesh {
         for (a, b) in boundary {
             self.faces.push(face_from(vec![b, a, a + base, b + base], &[CornerAttr { uv: None, color: None }; 4], &rim_data));
         }
+
         self.refresh_degenerate_uvs();
     }
 
@@ -1202,10 +1293,12 @@ impl Mesh {
             if v as usize >= self.vertices.len() {
                 continue;
             }
+
             let faces_using: Vec<usize> = (0..self.faces.len()).filter(|f| self.faces[*f].indices.contains(&v)).collect();
             if faces_using.len() < 2 {
                 continue;
             }
+
             let center = self.vertices[v as usize];
             let mut edge_point: BTreeMap<u32, u32> = BTreeMap::new();
             let mut cap_next: BTreeMap<u32, u32> = BTreeMap::new();
@@ -1234,6 +1327,7 @@ impl Mesh {
                 // The cap walks the new points in the opposite direction of the faces around it.
                 cap_next.insert(p_next, p_prev);
             }
+
             let Some((&start, _)) = cap_next.iter().next() else { continue };
             let mut lp = vec![start];
             let mut cur = cap_next[&start];
@@ -1244,6 +1338,7 @@ impl Mesh {
                     None => break,
                 }
             }
+
             if cur == start && lp.len() >= 3 {
                 let data = self.faces[faces_using[0]].data.clone();
                 let pts: Vec<DVec3> = lp.iter().map(|i| self.vertices[*i as usize]).collect();
@@ -1253,6 +1348,7 @@ impl Mesh {
                 created.push(self.faces.len() - 1);
             }
         }
+
         let before = self.faces.len();
         self.cleanup();
         created.retain(|f| *f < before.min(self.faces.len()));
@@ -1275,6 +1371,7 @@ impl Mesh {
             if !uses(f1, a, b) || !uses(f2, b, a) {
                 continue;
             }
+
             // Offset point of `v` sliding along the edge of face `fi` that is not the beveled edge.
             let slide = |mesh: &Mesh, fi: usize, v: u32, other: u32| -> Option<(u32, DVec3)> {
                 let idx = &mesh.faces[fi].indices;
@@ -1302,6 +1399,7 @@ impl Mesh {
                         *x = with;
                     }
                 }
+
                 mesh.faces[fi].uvs.clear();
                 mesh.faces[fi].data.colors.clear();
             };
@@ -1315,6 +1413,7 @@ impl Mesh {
                     if fi == skip {
                         continue;
                     }
+
                     let idx = mesh.faces[fi].indices.clone();
                     let n = idx.len();
                     for k in 0..n {
@@ -1356,6 +1455,7 @@ impl Mesh {
                 }
             }
         }
+
         self.cleanup();
         created
     }
@@ -1369,11 +1469,13 @@ impl Mesh {
                 result.push(face.clone());
                 continue;
             }
+
             for [a, b, c] in self.triangulate_corners(fi) {
                 let attrs = [CornerAttr::of(face, a), CornerAttr::of(face, b), CornerAttr::of(face, c)];
                 result.push(face_from(vec![face.indices[a], face.indices[b], face.indices[c]], &attrs, &face.data));
             }
         }
+
         self.faces = result;
     }
 }

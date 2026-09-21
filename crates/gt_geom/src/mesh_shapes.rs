@@ -19,6 +19,7 @@ fn build(vertices: Vec<DVec3>, faces: Vec<Vec<u32>>, material: &str, smooth_angl
         let pts: Vec<DVec3> = idx.iter().map(|i| mesh.vertices[*i as usize]).collect();
         mesh.faces.push(MeshFace::new(idx, data(material, &pts)));
     }
+
     mesh
 }
 
@@ -37,6 +38,7 @@ pub fn grid(bounds: &Aabb, nx: usize, nz: usize, material: &str) -> Mesh {
             vertices.push(DVec3::new(bounds.min.x + size.x * i as f64 / nx as f64, bounds.min.y, bounds.min.z + size.z * j as f64 / nz as f64));
         }
     }
+
     let row = nx as u32 + 1;
     let mut faces = Vec::with_capacity(nx * nz);
     for j in 0..nz as u32 {
@@ -45,6 +47,7 @@ pub fn grid(bounds: &Aabb, nx: usize, nz: usize, material: &str) -> Mesh {
             faces.push(vec![a, a + row, a + row + 1, a + 1]);
         }
     }
+
     build(vertices, faces, material, 0.0)
 }
 
@@ -60,14 +63,17 @@ pub fn lathe(center: DVec3, profile: &[DVec2], sides: usize, caps: bool, materia
             rings.push(vec![(vertices.len() - 1) as u32; sides]);
             continue;
         }
+
         let mut ring = Vec::with_capacity(sides);
         for s in 0..sides {
             let a = TAU * s as f64 / sides as f64;
             ring.push(vertices.len() as u32);
             vertices.push(center + DVec3::new(a.cos() * p.x, p.y, a.sin() * p.x));
         }
+
         rings.push(ring);
     }
+
     let mut faces = Vec::new();
     for r in 0..rings.len().saturating_sub(1) {
         for s in 0..sides {
@@ -79,23 +85,27 @@ pub fn lathe(center: DVec3, profile: &[DVec2], sides: usize, caps: bool, materia
                     f.push(v);
                 }
             }
+
             if f.len() >= 3 {
                 faces.push(f);
             }
         }
     }
+
     if caps {
         if let (Some(first), Some(p)) = (rings.first(), profile.first())
             && p.x.abs() > 1e-9
         {
             faces.push(first.clone());
         }
+
         if let (Some(last), Some(p)) = (rings.last(), profile.last())
             && p.x.abs() > 1e-9
         {
             faces.push(last.iter().rev().copied().collect());
         }
     }
+
     let mut mesh = build(vertices, faces, material, smooth_angle);
     // Caps stay flat even on smooth shaded solids: their normals differ from the sides by 90 degrees.
     mesh.cleanup();
@@ -130,6 +140,7 @@ pub fn sphere(bounds: &Aabb, sides: usize, rings: usize, material: &str) -> Mesh
         let local = *v - DVec3::new(c.x, 0.0, c.z);
         *v = DVec3::new(c.x, 0.0, c.z) + local * scale;
     }
+
     m
 }
 
@@ -152,6 +163,7 @@ pub fn extrude_polygon(points: &[DVec3], offset: DVec3, material: &str) -> Mesh 
     if n < 3 {
         return Mesh::default();
     }
+
     let normal = polygon::newell(points);
     // The back cap faces against the extrusion, so the outline has to wind away from it.
     let outline: Vec<DVec3> = if normal.dot(offset) > 0.0 { points.iter().rev().copied().collect() } else { points.to_vec() };
@@ -163,6 +175,7 @@ pub fn extrude_polygon(points: &[DVec3], offset: DVec3, material: &str) -> Mesh 
         let j = (i + 1) % n32;
         faces.push(vec![j, i, i + n32, j + n32]);
     }
+
     build(vertices, faces, material, 0.0)
 }
 
@@ -183,6 +196,7 @@ pub fn arch_wall(bounds: &Aabb, opening_width: f64, opening_height: f64, segment
         let a = PI - PI * s as f64 / segments as f64;
         outline.push(DVec2::new(cx + half * a.cos(), spring + half * a.sin()));
     }
+
     outline.extend([
         DVec2::new(cx + half, bounds.min.y),
         DVec2::new(bounds.max.x, bounds.min.y),

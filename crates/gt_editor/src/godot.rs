@@ -17,6 +17,7 @@ impl GodotStatus {
         if self.detected_for.as_ref() == Some(&key) {
             return false;
         }
+
         self.exe = detect(pref, std::env::var_os("GODOT"), std::env::var_os("PATH"), &install_dirs(), project_root);
         self.detected_for = Some(key);
         true
@@ -32,9 +33,11 @@ pub fn detect(pref: &Path, env: Option<OsString>, path_var: Option<OsString>, in
     if !pref.as_os_str().is_empty() && pref.is_file() {
         return Some(pref.to_path_buf());
     }
+
     if let Some(p) = env.map(PathBuf::from).filter(|p| p.is_file()) {
         return Some(p);
     }
+
     let mono = project_root.is_some_and(has_csharp_project);
     let path_dirs: Vec<PathBuf> = path_var.map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
     path_dirs.iter().chain(install_dirs).find_map(|dir| find_in(dir, mono))
@@ -64,6 +67,7 @@ fn find_in(dir: &Path, mono: bool) -> Option<PathBuf> {
             if !path.is_file() {
                 continue;
             }
+
             if EXACT_NAMES.contains(&name.as_str()) {
                 exact.get_or_insert(path);
             } else {
@@ -71,6 +75,7 @@ fn find_in(dir: &Path, mono: bool) -> Option<PathBuf> {
             }
         }
     }
+
     // Mono builds only when the project uses C#, newest version name first.
     releases.sort_by(|a, b| (a.0.contains("mono") != mono).cmp(&(b.0.contains("mono") != mono)).then(b.0.cmp(&a.0)));
     exact.or_else(|| releases.into_iter().next().map(|(_, p)| p))
@@ -92,6 +97,7 @@ fn install_dirs() -> Vec<PathBuf> {
         dirs.extend(env_dir("HOME", ".local/bin"));
         dirs.push(PathBuf::from("/Applications/Godot.app/Contents/MacOS"));
     }
+
     dirs
 }
 

@@ -154,6 +154,7 @@ impl Camera {
         if clip.w <= 1e-6 {
             return None;
         }
+
         let ndc = clip.truncate() / clip.w;
         Some(Pos2::new(rect.min.x + ((ndc.x + 1.0) * 0.5) as f32 * rect.width(), rect.min.y + ((1.0 - ndc.y) * 0.5) as f32 * rect.height()))
     }
@@ -202,6 +203,7 @@ impl Camera {
         if bounds.is_empty() {
             return;
         }
+
         let c = bounds.center();
         let radius = bounds.size().length().max(32.0) * 0.5;
         match self.kind {

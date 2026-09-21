@@ -105,6 +105,7 @@ fn outliner_reveals_an_object_picked_in_a_view() {
             let min = DVec3::new(i as f64 * 64.0, 0.0, 0.0);
             m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(min, min + DVec3::splat(32.0)), "dev/grey").unwrap()));
         }
+
         let outer = m.insert(layer, NodeKind::Group(gt_doc::Group::new("outer")));
         let inner = m.insert(outer, NodeKind::Group(gt_doc::Group::new("inner")));
         m.insert(inner, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(8.0)), "dev/grey").unwrap()));
@@ -248,6 +249,7 @@ fn reference_list_fits_the_names_and_the_divider_drags() {
         harness.event(egui::Event::PointerMoved(split + egui::vec2(30.0 * step as f32, 0.0)));
         harness.run();
     }
+
     harness.event(egui::Event::PointerButton {
         pos: split + egui::vec2(150.0, 0.0),
         button: egui::PointerButton::Primary,
@@ -343,6 +345,7 @@ fn outliner_context_menu_selects_and_acts_on_objects() {
     for entry in ["Focus", "Hide", "Duplicate"] {
         harness.get_by_label(entry);
     }
+
     harness.get_by_label_contains("Move to Layer");
     assert_eq!(harness.get_all_by_label("Lock").count(), 3, "the two row lock icons and the menu entry");
     harness.get_by_label("Delete").click();
@@ -471,6 +474,7 @@ fn history_panel_undoes_to_clicked_step() {
     for i in 0..3 {
         f.state.doc.edit(&format!("step {i}"), |m, _| ops::create_point_entity(m, layer, "light", DVec3::ZERO));
     }
+
     let mut harness = Harness::new_ui_state(|ui, f: &mut Fixture| panels::history(ui, &mut f.state), f);
     harness.run();
     harness.get_by_label("step 1").click();

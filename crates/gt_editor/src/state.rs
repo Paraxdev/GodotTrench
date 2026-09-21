@@ -205,6 +205,7 @@ impl Prefs {
         if follow == self.follow_display_scaling {
             return;
         }
+
         let native = native_pixels_per_point.max(0.25);
         let scale = if follow { self.ui_scale / native } else { self.ui_scale * native };
         self.ui_scale = ((scale * 100.0).round() / 100.0).clamp(UI_SCALE_MIN, UI_SCALE_MAX);
@@ -402,6 +403,7 @@ impl EditorState {
                 return *g;
             }
         }
+
         if self.doc.map.contains(self.current_layer) { self.current_layer } else { self.doc.map.default_layer() }
     }
 
@@ -449,6 +451,7 @@ impl EditorState {
         if index > self.tabs.len() || index == self.active_tab {
             return;
         }
+
         let mut all = std::mem::take(&mut self.tabs);
         let current = self.take_active();
         all.insert(self.active_tab.min(all.len()), current);
@@ -476,6 +479,7 @@ impl EditorState {
         if self.tabs.is_empty() {
             return false;
         }
+
         let all = std::mem::take(&mut self.tabs);
         let index = self.active_tab.min(all.len() - 1);
         self.activate(all, index);
@@ -488,6 +492,7 @@ impl EditorState {
         {
             self.revert_live(vec![path], false);
         }
+
         self.current_layer = doc.map.default_layer();
         self.open_groups.clear();
         self.doc = doc;
@@ -510,11 +515,13 @@ impl EditorState {
         if let Some(map_path) = self.doc.path.clone() {
             self.add_recent(&map_path);
         }
+
         if let Some(root) = gt_formats::game::find_project_root(path)
             && self.game.project_root.as_deref() != Some(root.as_path())
         {
             self.load_project(&root);
         }
+
         match (&self.doc.recovered_from, &self.doc.path) {
             (Some(_), Some(map_path)) => self.set_status(format!("Recovered {} from its autosave, save to keep the changes", map_path.display())),
             (Some(_), None) => self.set_status("Recovered an untitled map from its autosave, save it to keep the changes"),
@@ -526,6 +533,7 @@ impl EditorState {
         if path.exists() {
             let _ = std::fs::copy(path, path.with_extension("gtm.bak"));
         }
+
         format::save(&self.doc.map, path).map_err(|e| e.to_string())?;
         self.doc.path = Some(path.to_path_buf());
         self.doc.mark_saved();
@@ -533,6 +541,7 @@ impl EditorState {
         for autosave in [autosave_path(path), legacy_autosave_path(path)] {
             let _ = std::fs::remove_file(autosave);
         }
+
         if let Some(map_path) = autosave_source(path) {
             self.set_status(format!(
                 "Saved into the autosave file {}, Godot uses {}, Save As to write the real map",
@@ -541,6 +550,7 @@ impl EditorState {
             ));
             return Ok(());
         }
+
         self.set_status(format!("Saved {}", path.display()));
         self.live.sent.remove(path);
         if self.prefs.live_link {
@@ -553,6 +563,7 @@ impl EditorState {
                 _ => self.live_link_status = Some(crate::live_link::notify_saved_all(self.prefs.live_link_port, game_port, path)),
             }
         }
+
         Ok(())
     }
 
@@ -586,6 +597,7 @@ impl EditorState {
         while let Some(msg) = link.poll_status() {
             messages.push(msg);
         }
+
         self.link_state = state;
         for msg in messages {
             self.set_status(msg);
@@ -595,6 +607,7 @@ impl EditorState {
             self.live.revision = self.doc.revision;
             self.live.changed_at = Instant::now();
         }
+
         let Some(path) = self.doc.path.clone().filter(|_| self.live_active()) else {
             self.live.posted = None;
             return;
@@ -604,16 +617,20 @@ impl EditorState {
         if !idle {
             ctx.request_repaint_after(LIVE_IDLE.saturating_sub(since_change) + std::time::Duration::from_millis(10));
         }
+
         let key = (path.clone(), self.doc.revision, idle, self.link_state.resync);
         if self.live.posted.as_ref() == Some(&key) {
             return;
         }
+
         if let Some(link) = &self.link {
             link.sync(&path, crate::live_sync::Frame { map: self.doc.map.clone(), dragging: self.doc.in_transaction(), idle });
         }
+
         if self.doc.is_modified() {
             self.live.sent.insert(path);
         }
+
         self.live.posted = Some(key);
     }
 
@@ -678,9 +695,11 @@ impl EditorState {
         if self.prefs.autosave_minutes <= 0.0 || !self.doc.is_modified() || self.doc.in_transaction() {
             return;
         }
+
         if self.last_autosave.elapsed().as_secs_f64() < self.prefs.autosave_minutes * 60.0 || self.autosave_revision == self.doc.revision {
             return;
         }
+
         self.last_autosave = Instant::now();
         self.autosave_revision = self.doc.revision;
         let path = match &self.doc.path {

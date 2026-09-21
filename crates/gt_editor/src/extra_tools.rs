@@ -27,6 +27,7 @@ impl PathTool {
         if !response.clicked_by(PointerButton::Primary) {
             return;
         }
+
         let Some(pos) = response.interact_pointer_pos() else { return };
         let ray = cam.ray(rect, pos);
         let point = match picking::pick(state, &ray) {
@@ -50,6 +51,7 @@ impl PathTool {
             {
                 pe.properties.insert("target".into(), name.clone());
             }
+
             s.clear();
             s.select_node(id);
             id
@@ -88,6 +90,7 @@ impl MeasureTool {
             self.start = Some(Self::point(cam, rect, origin, state));
             self.dragging = true;
         }
+
         if self.dragging
             && let Some(pos) = ui.input(|i| i.pointer.interact_pos())
         {
@@ -96,6 +99,7 @@ impl MeasureTool {
                 self.dragging = false;
             }
         }
+
         if response.clicked_by(PointerButton::Primary)
             && let Some(pos) = response.interact_pointer_pos()
         {
@@ -134,6 +138,7 @@ impl MeasureTool {
                         Color32::from_rgb(255, 255, 120),
                     );
                 }
+
                 format!(
                     "Measure: {:.2} units, {:.3} m   dx {:.2}  dy {:.2}  dz {:.2}   horizontal {:.2}",
                     d.length(),

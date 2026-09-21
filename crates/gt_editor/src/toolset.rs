@@ -123,6 +123,7 @@ impl ToolSet {
             if self.rotate.snap_degrees == 0.0 {
                 self.rotate.snap_degrees = 15.0;
             }
+
             self.mesh.reset();
             self.path.finish();
             self.texture.reset();
@@ -136,6 +137,7 @@ impl ToolSet {
         if ctx.egui_wants_keyboard_input() {
             return false;
         }
+
         match state.tool {
             ToolKind::Clip => {
                 if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Tab)) {
@@ -146,10 +148,12 @@ impl ToolSet {
                     });
                     return true;
                 }
+
                 if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Enter)) {
                     self.apply_clip(state);
                     return true;
                 }
+
                 if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Backspace)) && !self.clip.points.is_empty() {
                     self.clip.points.pop();
                     return true;
@@ -171,6 +175,7 @@ impl ToolSet {
             }
             _ => {}
         }
+
         false
     }
 
@@ -228,6 +233,7 @@ impl ToolSet {
             state.sculpt.flatten_height = p.dot(n);
             state.doc.begin(if sculpting { "Sculpt" } else { "Vertex Paint" });
         }
+
         if self.stroke.stroking {
             let dt = ui.input(|i| i.stable_dt as f64).min(0.05);
             if let Some((p, _)) = self.stroke.hover {
@@ -243,9 +249,11 @@ impl ToolSet {
                             other => other,
                         };
                     }
+
                     if modifiers.command {
                         brush.mode = gt_doc::terrain::SculptMode::Smooth;
                     }
+
                     // Continuous brushes scale with frame time so the result does not depend on frame rate.
                     let is_alpha = brush.mode.is_paint();
                     brush.strength = if is_alpha { (brush.strength * dt * 2.0).min(1.0) } else { brush.strength * dt * 8.0 };
@@ -264,6 +272,7 @@ impl ToolSet {
                     ui.ctx().request_repaint();
                 }
             }
+
             if !ui.input(|i| i.pointer.primary_down()) {
                 self.stroke.stroking = false;
                 state.doc.commit();
@@ -296,17 +305,21 @@ impl ToolSet {
         {
             self.clip.dragging = self.clip.points.iter().position(|p| screen_dist(cam, rect, *p, origin) < HANDLE_RADIUS);
         }
+
         if let (Some(i), Some(pos)) = (self.clip.dragging, pointer) {
             if response.dragged_by(PointerButton::Primary)
                 && let Some((p, _)) = self.clip_point_at(cam, rect, pos, state)
             {
                 self.clip.points[i] = p;
             }
+
             if response.drag_stopped() {
                 self.clip.dragging = None;
             }
+
             return;
         }
+
         if response.clicked()
             && self.clip.points.len() < 3
             && let Some(pos) = response.interact_pointer_pos()
@@ -315,6 +328,7 @@ impl ToolSet {
             if self.clip.points.is_empty() {
                 self.clip.second_axis = n;
             }
+
             if !self.clip.points.iter().any(|q| (*q - p).length() < 1e-6) {
                 self.clip.points.push(p);
             }
@@ -380,13 +394,16 @@ impl ToolSet {
                     verts.push(*v);
                 }
             }
+
             for (a, c) in b.edges() {
                 extra.push((b.vertices[a as usize] + b.vertices[c as usize]) * 0.5);
             }
+
             for f in 0..b.faces.len() {
                 extra.push(b.face_center(f));
             }
         }
+
         (verts, extra)
     }
 
@@ -423,9 +440,11 @@ impl ToolSet {
                             if !modifiers.command {
                                 s.clear();
                             }
+
                             s.toggle_node(target);
                         });
                     }
+
                     self.vertex.selected.clear();
                     self.vertex.gizmo = None;
                 }
@@ -458,14 +477,17 @@ impl ToolSet {
                     state.doc.begin("Move Vertex");
                     self.vertex.gizmo_drag = Some(VGizmoDrag { axis: i, start: ray.at(t), plane, base: g });
                 }
+
                 return;
             }
+
             let grabbed = nearest(origin, &verts).map(|v| (v, false)).or_else(|| nearest(origin, &extra).map(|v| (v, true)));
             if let Some((v, is_new)) = grabbed {
                 // Grabbing an unselected handle (or an edge/face point) drags just that one.
                 if is_new || !self.vertex.selected.iter().any(|q| (*q - v).length() < 1e-6) {
                     self.vertex.selected = vec![v];
                 }
+
                 let plane = match cam.kind {
                     ViewKind::Perspective if modifiers.alt => {
                         let f = cam.forward();
@@ -489,6 +511,7 @@ impl ToolSet {
                     if cam.kind == ViewKind::Perspective && modifiers.alt {
                         delta = DVec3::new(0.0, delta.y, 0.0);
                     }
+
                     let target = state.snap(drag.start + delta);
                     let delta = target - drag.start;
                     state.doc.reset_transaction();
@@ -499,6 +522,7 @@ impl ToolSet {
                     }
                 }
             }
+
             if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
                 self.vertex.drag = None;
                 state.doc.commit();
@@ -524,6 +548,7 @@ impl ToolSet {
                     }
                 }
             }
+
             if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
                 self.vertex.gizmo_drag = None;
                 state.doc.commit();
@@ -542,6 +567,7 @@ impl ToolSet {
                 if pts.len() == b.vertices.len() {
                     continue;
                 }
+
                 if let Ok(nb) = Brush::from_points(&pts, &b.planes(), "")
                     && let Some(slot) = m.brush_mut(id)
                 {
@@ -596,6 +622,7 @@ impl ToolSet {
                     .map(|(_, a)| a)
             });
         }
+
         if response.drag_started_by(PointerButton::Primary)
             && let (Some(axis), Some(origin)) = (self.rotate.hover_axis, ui.input(|i| i.pointer.press_origin()))
         {
@@ -606,6 +633,7 @@ impl ToolSet {
                 self.rotate.drag = Some(RotateDrag { axis: n, center, start_vec: (p - center).normalize_or_zero(), screen_start: origin });
             }
         }
+
         if let Some(drag) = &self.rotate.drag {
             if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
                 if let Some(p) = ring_plane_point(cam, rect, pos, drag.center, drag.axis) {
@@ -619,10 +647,13 @@ impl ToolSet {
                         let opts = state.opts();
                         state.doc.edit("Rotate", |map, s| ops::transform_selection(map, s, &m, opts));
                     }
+
                     state.set_status(format!("Rotate {angle:.1}°"));
                 }
+
                 let _ = drag.screen_start;
             }
+
             if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
                 self.rotate.drag = None;
                 state.doc.commit();
@@ -641,17 +672,21 @@ impl ToolSet {
                     if h == DVec3::ZERO {
                         continue;
                     }
+
                     if cam.kind.is_2d() && h[cam.kind.depth_axis()] != 0.0 {
                         continue;
                     }
+
                     // 3D shows face handles only to keep the view readable.
                     if !cam.kind.is_2d() && h.abs().element_sum() != 1.0 {
                         continue;
                     }
+
                     out.push(h);
                 }
             }
         }
+
         let _ = bounds;
         out
     }
@@ -665,6 +700,7 @@ impl ToolSet {
         if bounds.is_empty() {
             return;
         }
+
         if response.drag_started_by(PointerButton::Primary) {
             let Some(origin) = ui.input(|i| i.pointer.press_origin()) else { return };
             let best = Self::scale_handles(&bounds, cam)
@@ -686,6 +722,7 @@ impl ToolSet {
                 self.scale.drag = Some(ScaleDrag { base: bounds, handle: h, plane, start: p });
             }
         }
+
         if let Some(drag) = &self.scale.drag {
             if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
                 let ray = cam.ray(rect, pos);
@@ -706,6 +743,7 @@ impl ToolSet {
                             }
                         }
                     }
+
                     let valid = (0..3).all(|i| new.max[i] - new.min[i] > 1e-3 || drag.base.size()[i] < 1e-6);
                     state.doc.reset_transaction();
                     if valid && new != drag.base {
@@ -717,6 +755,7 @@ impl ToolSet {
                     }
                 }
             }
+
             if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
                 self.scale.drag = None;
                 state.doc.commit();
@@ -734,9 +773,11 @@ impl ToolSet {
                 for w in pts.windows(2) {
                     line(&mut out, w[0], w[1], [0.3, 1.0, 1.0, 1.0]);
                 }
+
                 if pts.len() == 3 {
                     line(&mut out, pts[2], pts[0], [0.3, 1.0, 1.0, 1.0]);
                 }
+
                 if let Some(plane) = self.clip_plane() {
                     let side = self.clip.side.unwrap_or(ClipSide::Front);
                     for id in state.doc.selection.brushes(&state.doc.map) {
@@ -768,6 +809,7 @@ impl ToolSet {
                         if active {
                             color = [1.0, 1.0, 0.3, 1.0];
                         }
+
                         let pts = Self::ring_points(center, a, radius);
                         for w in pts.windows(2) {
                             line(&mut out, w[0], w[1], color);
@@ -804,11 +846,13 @@ impl ToolSet {
                     for w in ring.windows(2) {
                         line(&mut out, w[0], w[1], color);
                     }
+
                     line(&mut out, p, p + n * r * 0.4, color);
                 }
             }
             _ => {}
         }
+
         crate::gizmos::lines(state, &mut out);
         let _ = rect;
         out
@@ -831,6 +875,7 @@ impl ToolSet {
                         painter.text(sp + Vec2::new(8.0, -8.0), Align2::LEFT_BOTTOM, format!("{}", i + 1), FontId::monospace(11.0), Color32::WHITE);
                     }
                 }
+
                 let side = match self.clip.side.unwrap_or(ClipSide::Front) {
                     ClipSide::Front => "front",
                     ClipSide::Back => "back",
@@ -851,6 +896,7 @@ impl ToolSet {
                         painter.circle_filled(sp, 2.5, Color32::from_rgb(120, 200, 255));
                     }
                 }
+
                 for v in verts {
                     if let Some(sp) = cam.project(rect, v) {
                         let selected = self.vertex.selected.iter().any(|s| (*s - v).length() < 1e-6);
@@ -858,6 +904,7 @@ impl ToolSet {
                         handle(sp, if selected { Color32::from_rgb(255, 60, 40) } else { Color32::from_rgb(255, 220, 80) }, hot);
                     }
                 }
+
                 if let Some(g) = self.vertex.gizmo.filter(|_| cam.kind == ViewKind::Perspective) {
                     let len = vgizmo_len(cam, rect, g);
                     let hot_axis = self.vertex.gizmo_drag.as_ref().map(|d| d.axis).or_else(|| hover.and_then(|p| vgizmo_axis_at(cam, rect, g, p)));
@@ -876,10 +923,12 @@ impl ToolSet {
                             painter.add(egui::Shape::convex_polygon(vec![tip, head + side, head - side], c, Stroke::NONE));
                         }
                     }
+
                     if let Some(sp) = cam.project(rect, g) {
                         painter.circle_filled(sp, 3.0, Color32::WHITE);
                     }
                 }
+
                 painter.text(
                     rect.left_bottom() + Vec2::new(8.0, -8.0),
                     Align2::LEFT_BOTTOM,
@@ -898,6 +947,7 @@ impl ToolSet {
                         }
                     }
                 }
+
                 painter.text(
                     rect.left_bottom() + Vec2::new(8.0, -8.0),
                     Align2::LEFT_BOTTOM,
@@ -1032,9 +1082,11 @@ fn move_vertices(state: &mut EditorState, base: &[DVec3], delta: DVec3) -> bool 
                     }
                 }
             }
+
             if !touched {
                 continue;
             }
+
             if let Ok(nb) = Brush::from_points(&pts, &b.planes(), "") {
                 let kept = base.iter().all(|bp| {
                     let target = *bp + delta;

@@ -43,6 +43,7 @@ pub fn new_set(state: &mut EditorState, name: Option<&str>) -> NodeId {
     if s.kind == gt_doc::ScatterKind::Foliage {
         set.collision = gt_doc::scatter::ScatterCollision::None;
     }
+
     let id = state.doc.edit("New Scatter Set", |m, _| {
         let layer = m.add_layer(&format!("Scatter: {label}"));
         m.insert(layer, NodeKind::Scatter(set))
@@ -56,6 +57,7 @@ fn other_footprints(state: &EditorState, skip: Option<NodeId>, region: &Aabb) ->
     if !state.prefs.scatter.avoid_other_sets {
         return Vec::new();
     }
+
     state
         .doc
         .map
@@ -73,9 +75,11 @@ pub fn paint(state: &mut EditorState, center: DVec3, normal: DVec3, rng: &mut Rn
         state.set_status("The scatter palette is empty, add models in the palette window");
         return 0;
     }
+
     if settings.output == ScatterOutput::Entities {
         return paint_entities(state, center, normal, settings.radius, &settings.rules, rng).len();
     }
+
     let id = active_set(state).unwrap_or_else(|| new_set(state, None));
     let region = dab_region(center, settings.radius);
     let others = other_footprints(state, Some(id), &region);
@@ -89,6 +93,7 @@ pub fn paint(state: &mut EditorState, center: DVec3, normal: DVec3, rng: &mut Rn
         {
             set.targets.push(hit.node);
         }
+
         let rules = ScatterRules { items: Some(indices), ..settings.rules.clone() };
         set.paint(center, normal, settings.radius, &rules, rng, &others, |o, d| caster.cast(o, d))
     };
@@ -106,6 +111,7 @@ pub fn erase(state: &mut EditorState, center: DVec3, rng: &mut Rng) -> usize {
     if s.output == ScatterOutput::Entities {
         return erase_entities(state, center, s.radius);
     }
+
     let Some(id) = active_set(state) else {
         state.set_status("No active scatter set to erase from, pick one in the toolbar");
         return 0;
@@ -120,6 +126,7 @@ pub fn erase(state: &mut EditorState, center: DVec3, rng: &mut Rng) -> usize {
             }
         });
     }
+
     removed
 }
 
@@ -131,9 +138,11 @@ pub fn fill(state: &mut EditorState, rng: &mut Rng) -> Result<usize, String> {
     if set.targets.is_empty() {
         set.targets = state.doc.selection.geometry(&state.doc.map);
     }
+
     if set.targets.is_empty() {
         return Err("Select the surfaces to fill, or paint a stroke first so the set has a target".into());
     }
+
     let region = state.doc.map.bounds_of(set.targets.iter().copied());
     let indices = set.merge_items(&settings.palette);
     let others = other_footprints(state, Some(id), &region.expanded(256.0));
@@ -201,9 +210,11 @@ pub fn paint_entities(state: &mut EditorState, center: DVec3, normal: DVec3, rad
         let caster = SurfaceCaster::new(state, &region);
         temp.paint(center, normal, radius, &rules, rng, &existing, |o, d| caster.cast(o, d));
     }
+
     if temp.instances.is_empty() {
         return Vec::new();
     }
+
     let parent = state.insert_parent();
     let prop_class = s.prop_class.clone();
     state.doc.edit("Scatter Entities", |m, _| {
@@ -217,6 +228,7 @@ pub fn paint_entities(state: &mut EditorState, center: DVec3, normal: DVec3, rad
                 if (inst.scale - 1.0).abs() > 1e-3 && !is_classname(&item.source) {
                     e.properties.insert("scale".into(), format!("{:.2}", inst.scale));
                 }
+
                 m.insert(parent, NodeKind::Entity(e))
             })
             .collect()
@@ -237,6 +249,7 @@ fn erase_entities(state: &mut EditorState, center: DVec3, radius: f64) -> usize 
     if !ids.is_empty() {
         state.doc.edit("Erase Entities", |m, _| ids.iter().for_each(|id| m.remove(*id)));
     }
+
     ids.len()
 }
 
@@ -256,8 +269,10 @@ pub fn bake_to_entities(state: &mut EditorState, id: NodeId) -> usize {
             if (inst.scale - 1.0).abs() > 1e-3 {
                 e.properties.insert("scale".into(), format!("{:.2}", inst.scale));
             }
+
             m.insert(group, NodeKind::Entity(e));
         }
+
         m.remove(id);
         s.clear();
         s.select_node(group);
@@ -272,6 +287,7 @@ pub fn install_nature(state: &mut EditorState, overwrite: bool) -> Result<usize,
     if !written.is_empty() {
         state.models.clear();
     }
+
     Ok(written.len())
 }
 
@@ -285,6 +301,7 @@ pub fn apply_preset(state: &mut EditorState, name: &str) -> bool {
         s.rules.density = s.rules.density.max(4.0);
         s.radius = s.radius.min(256.0);
     }
+
     true
 }
 
@@ -328,11 +345,14 @@ impl ScatterTool {
                 if active_set(state).is_none() {
                     new_set(state, None);
                 }
+
                 let added = toggle_target(state, node);
                 state.set_status(if added { format!("{node} is now a target of the scatter set") } else { format!("{node} removed from the scatter targets") });
             }
+
             return;
         }
+
         let rng = self
             .rng
             .get_or_insert_with(|| Rng::new(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7)));
@@ -343,6 +363,7 @@ impl ScatterTool {
             self.last = None;
             state.doc.begin(if self.erasing { "Erase Scatter" } else { "Scatter" });
         }
+
         if self.stroking {
             if let Some((p, n, _)) = self.hover {
                 let spacing = state.prefs.scatter.radius * 0.5;
@@ -353,10 +374,12 @@ impl ScatterTool {
                     } else {
                         paint(state, p, n, &mut r);
                     }
+
                     *rng = r;
                     self.last = Some(p);
                 }
             }
+
             if !down {
                 self.stroking = false;
                 state.doc.commit();
@@ -379,14 +402,17 @@ impl ScatterTool {
             for w in ring.windows(2) {
                 line(out, w[0], w[1], color);
             }
+
             let inner = r * (1.0 - state.prefs.scatter.rules.falloff.clamp(0.0, 1.0) * 0.5);
             for k in 0..24 {
                 let a = std::f64::consts::TAU * k as f64 / 24.0;
                 let q = p + (basis.0 * a.cos() + basis.1 * a.sin()) * inner + n;
                 line(out, q, q + n * 6.0, [color[0], color[1], color[2], 0.5]);
             }
+
             line(out, p, p + n * r * 0.25, color);
         }
+
         if let Some(id) = active_set(state)
             && let Some(set) = state.doc.map.scatter(id)
         {
@@ -395,6 +421,7 @@ impl ScatterTool {
                 if b.is_empty() {
                     continue;
                 }
+
                 let c = b.corners();
                 for (i, j) in Aabb::EDGES {
                     line(out, c[i], c[j], [0.45, 1.0, 0.55, 0.35]);
@@ -476,6 +503,7 @@ mod tests {
                 assert!((*a - *b).length() >= 48.0 - 1e-6);
             }
         }
+
         assert_eq!(erase(&mut state, DVec3::ZERO, &mut rng), points.len());
     }
 }

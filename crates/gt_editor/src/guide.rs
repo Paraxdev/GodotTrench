@@ -104,12 +104,14 @@ pub fn mark(ctx: &egui::Context, anchor: Anchor, rect: Rect) {
     if !rect.is_positive() {
         return;
     }
+
     let frame = ctx.cumulative_frame_nr();
     ctx.data_mut(|d| {
         let slot = d.get_temp_mut_or_insert_with(anchor_id(anchor), || (frame, Vec::<Rect>::new()));
         if slot.0 != frame {
             *slot = (frame, Vec::new());
         }
+
         slot.1.push(rect);
     });
 }
@@ -786,6 +788,7 @@ impl Guide {
         if !self.welcome_open {
             return;
         }
+
         let mut open = true;
         let mut choice = None;
         egui::Window::new("Welcome to GodotTrench")
@@ -801,9 +804,11 @@ impl Guide {
                     if ui.button(RichText::new("Take the guided tour").strong()).clicked() {
                         choice = Some(Nav::Next);
                     }
+
                     if ui.button("Browse the guide").clicked() {
                         choice = Some(Nav::Page);
                     }
+
                     if ui.button("Not now").clicked() {
                         choice = Some(Nav::Close);
                     }
@@ -814,6 +819,7 @@ impl Guide {
         if open && choice.is_none() {
             return;
         }
+
         self.welcome_open = false;
         state.prefs.guide_welcome_seen = true;
         match choice {
@@ -827,6 +833,7 @@ impl Guide {
         if !self.window_open {
             return;
         }
+
         let mut open = true;
         let mut start = None;
         egui::Window::new("Guide").open(&mut open).default_size([800.0, 580.0]).min_size([520.0, 320.0]).show(ctx, |ui| {
@@ -863,6 +870,7 @@ impl Guide {
             if ui.button(RichText::new("Start the guided tour").strong()).clicked() {
                 *start = Some((0, 0));
             }
+
             ui.separator();
             for (i, chapter) in self.chapters.iter().enumerate() {
                 let done = state.prefs.guide_done.iter().any(|d| d == chapter.id);
@@ -875,6 +883,7 @@ impl Guide {
                     self.search.clear();
                 }
             }
+
             ui.separator();
             let selected = self.search.trim().is_empty() && self.page == Page::Tips;
             if ui.add(egui::Button::new((icons::spacer(icons::SMALL), "Tips")).selected(selected).frame_when_inactive(selected)).clicked() {
@@ -892,24 +901,29 @@ impl Guide {
         if ui.button("Show me in the editor").on_hover_text("Starts the tour at this chapter").clicked() {
             *start = Some((c, 0));
         }
+
         ui.separator();
         for (s, step) in chapter.steps.iter().enumerate() {
             let title = ui.label(RichText::new(&step.title).strong().size(15.0));
             if self.scroll_to == Some(s) {
                 title.scroll_to_me(Some(Align::TOP));
             }
+
             step_body(ui, state, step, actions, (c, s));
             if step.anchor != Anchor::Screen && ui.small_button("Show me").on_hover_text("Points at it in the editor").clicked() {
                 *start = Some((c, s));
             }
+
             ui.add_space(10.0);
         }
+
         self.scroll_to = None;
         ui.separator();
         ui.horizontal(|ui| {
             if c > 0 && ui.button(format!("‹ {}", self.chapters[c - 1].title)).clicked() {
                 self.page = Page::Chapter(c - 1);
             }
+
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if c + 1 < self.chapters.len() {
                     if ui.button(format!("{} ›", self.chapters[c + 1].title)).clicked() {
@@ -938,6 +952,7 @@ impl Guide {
                 }
             }
         }
+
         let tips: Vec<&str> = TIPS.iter().copied().filter(|t| t.to_lowercase().contains(&query)).collect();
         if !tips.is_empty() {
             ui.label(RichText::new("Tips").strong());
@@ -945,9 +960,11 @@ impl Guide {
                 ui.label(format!("• {tip}"));
             }
         }
+
         if found == 0 && tips.is_empty() {
             ui.label(RichText::new("Nothing matches. Try another word, or the command palette for commands.").weak());
         }
+
         if let Some((c, s)) = open {
             self.page = Page::Chapter(c);
             self.scroll_to = Some(s);
@@ -998,6 +1015,7 @@ impl Guide {
                 if targets.is_empty() && step.anchor != Anchor::Screen {
                     ui.label(RichText::new("That part of the window is not visible right now. View > Panels brings closed panels back.").weak().italics());
                 }
+
                 ui.add_space(4.0);
                 ui.separator();
                 ui.horizontal(|ui| {
@@ -1005,6 +1023,7 @@ impl Guide {
                     if ui.small_button("Open as page").on_hover_text("Shows this chapter in the Guide window").clicked() {
                         nav = Some(Nav::Page);
                     }
+
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         let next = match (s + 1 == chapter.steps.len(), c + 1 == self.chapters.len()) {
                             (false, _) => "Next",
@@ -1014,6 +1033,7 @@ impl Guide {
                         if ui.button(RichText::new(next).strong()).clicked() {
                             nav = Some(Nav::Next);
                         }
+
                         if ui.add_enabled(c > 0 || s > 0, egui::Button::new("Back")).clicked() {
                             nav = Some(Nav::Back);
                         }
@@ -1033,6 +1053,7 @@ fn step_body(ui: &mut Ui, state: &EditorState, step: &Step, actions: &mut Vec<Ac
     if !step.body.is_empty() {
         ui.label(&step.body);
     }
+
     if !step.keys.is_empty() {
         ui.add_space(2.0);
         egui::Grid::new(("guide_keys", salt)).num_columns(2).spacing([16.0, 2.0]).show(ui, |ui| {
@@ -1044,6 +1065,7 @@ fn step_body(ui: &mut Ui, state: &EditorState, step: &Step, actions: &mut Vec<Ac
             }
         });
     }
+
     if let Some(task) = &step.task {
         ui.add_space(2.0);
         ui.horizontal(|ui| {
@@ -1056,6 +1078,7 @@ fn step_body(ui: &mut Ui, state: &EditorState, step: &Step, actions: &mut Vec<Ac
             }
         });
     }
+
     if let Some((label, action)) = &step.button {
         ui.add_space(2.0);
         if ui.button(*label).clicked() {
@@ -1084,14 +1107,17 @@ fn spotlight(ctx: &egui::Context, screen: Rect, targets: &[Rect]) {
     for cell in dim_cells(screen, &holes) {
         mesh.add_colored_rect(cell, dim);
     }
+
     painter.add(egui::Shape::mesh(mesh));
     if holes.is_empty() {
         return;
     }
+
     let pulse = ((ctx.input(|i| i.time) * 3.0).sin() * 0.5 + 0.5) as f32;
     for hole in &holes {
         painter.rect_stroke(*hole, 4.0, Stroke::new(1.5 + pulse * 1.5, ACCENT), StrokeKind::Outside);
     }
+
     ctx.request_repaint_after(std::time::Duration::from_millis(50));
 }
 
@@ -1103,10 +1129,12 @@ fn dim_cells(screen: Rect, holes: &[Rect]) -> Vec<Rect> {
         xs.extend([h.min.x, h.max.x]);
         ys.extend([h.min.y, h.max.y]);
     }
+
     for v in [&mut xs, &mut ys] {
         v.sort_by(f32::total_cmp);
         v.dedup();
     }
+
     let mut cells = Vec::new();
     for y in ys.windows(2) {
         for x in xs.windows(2) {
@@ -1116,6 +1144,7 @@ fn dim_cells(screen: Rect, holes: &[Rect]) -> Vec<Rect> {
             }
         }
     }
+
     cells
 }
 
@@ -1155,6 +1184,7 @@ mod tests {
                 assert!(!step.title.is_empty() && !step.body.is_empty(), "{}: empty step {:?}", chapter.id, step.title);
             }
         }
+
         let tools: Vec<ToolKind> = list
             .iter()
             .flat_map(|c| &c.steps)

@@ -77,15 +77,18 @@ impl HotspotEditor {
         if !self.open {
             return;
         }
+
         if self.material.is_empty() {
             self.material = state.current_material.clone();
         }
+
         if self.loaded.as_deref() != Some(self.material.as_str()) {
             self.rects = commands::hotspot_rects(state, &self.material);
             self.loaded = Some(self.material.clone());
             self.selected = None;
             self.dirty = false;
         }
+
         let mut open = self.open;
         egui::Window::new("Hotspot Editor").open(&mut open).default_size([640.0, 560.0]).resizable(true).show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -94,6 +97,7 @@ impl HotspotEditor {
                     self.material = state.current_material.clone();
                     return;
                 }
+
                 ui.label("snap");
                 egui::ComboBox::from_id_salt("hotspot_snap").selected_text(format!("{} px", self.snap)).width(60.0).show_ui(ui, |ui| {
                     for s in [1, 2, 4, 8, 16, 32, 64] {
@@ -114,17 +118,20 @@ impl HotspotEditor {
                     self.rects = grid_rects(size, self.split[0], self.split[1]);
                     self.dirty = true;
                 }
+
                 if ui.add_enabled(self.selected.is_some(), egui::Button::new("Delete")).clicked()
                     && let Some(i) = self.selected.take()
                 {
                     self.rects.remove(i);
                     self.dirty = true;
                 }
+
                 if ui.button("Clear").clicked() {
                     self.rects.clear();
                     self.selected = None;
                     self.dirty = true;
                 }
+
                 let save = ui.add_enabled(self.dirty, egui::Button::new("Save"));
                 if save.clicked() {
                     match commands::write_hotspots(state, &self.material, &self.rects) {
@@ -135,12 +142,15 @@ impl HotspotEditor {
                         Err(e) => state.set_status(e),
                     }
                 }
+
                 if ui.button("Apply to selection").on_hover_text("Saves, then fits the selected faces to their best rectangle").clicked() {
                     if self.dirty && commands::write_hotspots(state, &self.material, &self.rects).is_ok() {
                         self.dirty = false;
                     }
+
                     actions.push(Action::HotspotTexture);
                 }
+
                 ui.label(RichText::new(format!("{} rectangles{}", self.rects.len(), if self.dirty { ", unsaved" } else { "" })).weak());
             });
             ui.label(
@@ -163,12 +173,14 @@ impl HotspotEditor {
                         painter.vline(rect.min.x + (x * zoom) as f32, rect.y_range(), grid);
                         x += step;
                     }
+
                     let mut y = step;
                     while y < size[1] {
                         painter.hline(rect.x_range(), rect.min.y + (y * zoom) as f32, grid);
                         y += step;
                     }
                 }
+
                 let pointer = response.interact_pointer_pos().or(response.hover_pos());
                 let hit = |p: Pos2, rects: &[[f64; 4]]| rects.iter().rposition(|r| to_screen(r).contains(p));
                 let handle_of = |r: &[f64; 4]| to_screen(r).max;
@@ -185,6 +197,7 @@ impl HotspotEditor {
                         Some(HotDrag::Create { start: px })
                     };
                 }
+
                 if let (Some(drag), Some(p)) = (self.drag, pointer) {
                     let px = to_px(p);
                     match drag {
@@ -208,6 +221,7 @@ impl HotspotEditor {
                             if let Some(r) = self.rects.get_mut(index) {
                                 *r = [(orig[0] + dx).clamp(0.0, size[0] - orig[2]), (orig[1] + dy).clamp(0.0, size[1] - orig[3]), orig[2], orig[3]];
                             }
+
                             self.selected = Some(index);
                             self.dirty = true;
                         }
@@ -215,19 +229,23 @@ impl HotspotEditor {
                             if let Some(r) = self.rects.get_mut(index) {
                                 *r = rect_from_corners([orig[0], orig[1]], px, self.snap, size);
                             }
+
                             self.selected = Some(index);
                             self.dirty = true;
                         }
                     }
+
                     if response.drag_stopped() || !ui.input(|i| i.pointer.any_down()) {
                         self.drag = None;
                     }
                 }
+
                 if response.clicked()
                     && let Some(p) = response.interact_pointer_pos()
                 {
                     self.selected = hit(p, &self.rects);
                 }
+
                 if response.secondary_clicked()
                     && let Some(i) = response.interact_pointer_pos().and_then(|p| hit(p, &self.rects))
                 {
@@ -235,12 +253,14 @@ impl HotspotEditor {
                     self.selected = None;
                     self.dirty = true;
                 }
+
                 for (i, r) in self.rects.iter().enumerate() {
                     let sr = to_screen(r);
                     let selected = self.selected == Some(i);
                     if selected {
                         painter.rect_filled(sr, 0.0, Color32::from_rgba_unmultiplied(255, 160, 40, 50));
                     }
+
                     painter.rect_stroke(
                         sr,
                         0.0,

@@ -73,6 +73,7 @@ pub fn falloff(distance: f64, radius: f64) -> f64 {
     if distance >= radius || radius <= 0.0 {
         return 0.0;
     }
+
     let t = distance / radius;
     (1.0 - t * t).powi(2)
 }
@@ -86,6 +87,7 @@ pub fn create_displacements(map: &mut Map, faces: &[(NodeId, usize)], power: u8)
         if f.indices.len() != 4 {
             continue;
         }
+
         f.data.disp = Some(match &f.data.disp {
             Some(existing) if existing.power != power => existing.resample(power),
             Some(existing) => existing.clone(),
@@ -93,6 +95,7 @@ pub fn create_displacements(map: &mut Map, faces: &[(NodeId, usize)], power: u8)
         });
         count += 1;
     }
+
     count
 }
 
@@ -117,6 +120,7 @@ pub fn displacement_faces(map: &Map, brushes: &[NodeId]) -> Vec<(NodeId, usize)>
             }
         }
     }
+
     out
 }
 
@@ -127,6 +131,7 @@ pub fn ray_cast(map: &Map, faces: &[(NodeId, usize)], ray: &Ray) -> Option<(f64,
         if map.is_hidden(*id) {
             continue;
         }
+
         let Some(brush) = map.brush(*id) else { continue };
         let Some(grid) = displacement::grid(brush, *face) else { continue };
         for (a, b, c) in displacement::triangles(grid.size) {
@@ -137,6 +142,7 @@ pub fn ray_cast(map: &Map, faces: &[(NodeId, usize)], ray: &Ray) -> Option<(f64,
             }
         }
     }
+
     best
 }
 
@@ -157,16 +163,19 @@ pub fn sculpt(map: &mut Map, faces: &[(NodeId, usize)], center: DVec3, brush: &S
         if weights.iter().all(|w| *w <= 0.0) {
             continue;
         }
+
         let old_heights = b.faces[*face].data.disp.as_ref().unwrap().heights.clone();
         let Some(disp) = map.brush_mut(*id).and_then(|b| b.faces[*face].data.disp.as_mut()) else { continue };
         if matches!(brush.mode, SculptMode::PaintAlpha | SculptMode::EraseAlpha) && disp.alphas.is_empty() {
             disp.alphas = vec![0.0; n * n];
         }
+
         for k in 0..n * n {
             let w = weights[k];
             if w <= 0.0 {
                 continue;
             }
+
             let (i, j) = (k % n, k / n);
             match brush.mode {
                 SculptMode::Raise => disp.heights[k] += (brush.strength * w) as f32,
@@ -181,6 +190,7 @@ pub fn sculpt(map: &mut Map, faces: &[(NodeId, usize)], center: DVec3, brush: &S
                             cnt += 1.0;
                         }
                     }
+
                     let avg = sum / cnt;
                     let t = (w * brush.strength.clamp(0.0, 16.0) / 16.0).clamp(0.0, 1.0);
                     disp.heights[k] = (old_heights[k] as f64 * (1.0 - t) + avg * t) as f32;
@@ -202,9 +212,11 @@ pub fn sculpt(map: &mut Map, faces: &[(NodeId, usize)], center: DVec3, brush: &S
                 }
                 SculptMode::Hole | SculptMode::Unhole => {}
             }
+
             changed = true;
         }
     }
+
     changed
 }
 
@@ -227,6 +239,7 @@ pub fn sculpt_terrains(map: &mut Map, terrains: &[NodeId], center: DVec3, brush:
             changed |= sculpt_terrains_single(t, center, brush);
         }
     }
+
     changed
 }
 
@@ -267,6 +280,7 @@ pub fn sew(map: &mut Map, faces: &[(NodeId, usize)]) -> usize {
             }
         }
     }
+
     let mut sewn = 0;
     for entries in groups.values().filter(|e| e.len() > 1) {
         let avg = entries.iter().map(|e| e.3).sum::<DVec3>() / entries.len() as f64;
@@ -276,8 +290,10 @@ pub fn sew(map: &mut Map, faces: &[(NodeId, usize)]) -> usize {
                 d.heights[*k] = (avg - *base).dot(*normal) as f32;
             }
         }
+
         sewn += 1;
     }
+
     sewn
 }
 
@@ -291,23 +307,28 @@ pub fn paint_vertices(map: &mut Map, brushes: &[NodeId], center: DVec3, radius: 
             if f.data.disp.is_some() {
                 continue;
             }
+
             for (k, vi) in f.indices.iter().enumerate() {
                 let w = falloff((b.vertices[*vi as usize] - center).length(), radius) * strength;
                 if w <= 0.0 {
                     continue;
                 }
+
                 let face = &mut bm.faces[fi];
                 if face.data.colors.len() != face.indices.len() {
                     face.data.colors = vec![[1.0; 4]; face.indices.len()];
                 }
+
                 let c = &mut face.data.colors[k];
                 for ch in 0..4 {
                     c[ch] += (color[ch] - c[ch]) * w.clamp(0.0, 1.0) as f32;
                 }
+
                 changed = true;
             }
         }
     }
+
     changed
 }
 

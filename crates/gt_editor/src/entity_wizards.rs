@@ -84,6 +84,7 @@ pub fn make_door(state: &mut EditorState, ids: &[NodeId], kind: &DoorKind, trigg
     if geometry.is_empty() {
         return Err("Select the brushes or meshes of the door first".into());
     }
+
     let bounds = state.doc.map.bounds_of(geometry.iter().copied());
     let name = unique_name(state, "door");
     let (classname, props): (&str, Vec<(String, String)>) = match kind {
@@ -101,6 +102,7 @@ pub fn make_door(state: &mut EditorState, ids: &[NodeId], kind: &DoorKind, trigg
                 SlideDirection::Left => travel[axis] = -(s[axis] - lip),
                 SlideDirection::Right => travel[axis] = s[axis] - lip,
             }
+
             ("func_door", vec![("travel".into(), fmt_vec3(travel))])
         }
     };
@@ -113,6 +115,7 @@ pub fn make_door(state: &mut EditorState, ids: &[NodeId], kind: &DoorKind, trigg
             e.properties.insert("targetname".into(), name.clone());
             e.properties.extend(props);
         }
+
         Some(id)
     });
     let door = door.ok_or("Could not create the door entity")?;
@@ -133,6 +136,7 @@ pub fn make_door(state: &mut EditorState, ids: &[NodeId], kind: &DoorKind, trigg
             s.select_node(door);
         });
     }
+
     state.set_status(format!("{classname} '{name}' created, drag its gizmo handles to adjust"));
     Ok(door)
 }
@@ -143,6 +147,7 @@ pub fn make_platform(state: &mut EditorState, ids: &[NodeId], travel: DVec3, mod
     if geometry.is_empty() {
         return Err("Select the brushes of the platform first".into());
     }
+
     let name = unique_name(state, "lift");
     let parent = state.insert_parent();
     state
@@ -156,6 +161,7 @@ pub fn make_platform(state: &mut EditorState, ids: &[NodeId], travel: DVec3, mod
                 e.properties.insert("travel".into(), fmt_vec3(travel));
                 e.properties.insert("mode".into(), mode.to_string());
             }
+
             Some(id)
         })
         .ok_or_else(|| "Could not create the platform".to_string())
@@ -167,6 +173,7 @@ pub fn make_button(state: &mut EditorState, ids: &[NodeId], target: &str, input:
     if geometry.is_empty() {
         return Err("Select the brushes of the button first".into());
     }
+
     let name = unique_name(state, "button");
     let parent = state.insert_parent();
     let (target, input) = (target.to_string(), input.to_string());
@@ -182,6 +189,7 @@ pub fn make_button(state: &mut EditorState, ids: &[NodeId], target: &str, input:
                     e.outputs.push(IoConnection { output: "pressed".into(), target, input, parameter: String::new(), delay: 0.0, times: -1 });
                 }
             }
+
             Some(id)
         })
         .ok_or_else(|| "Could not create the button".to_string())
@@ -213,6 +221,7 @@ pub fn ensure_targetname(state: &mut EditorState, id: NodeId) -> Option<String> 
     if let Some(n) = e.targetname() {
         return Some(n.to_string());
     }
+
     let base = e.classname.split_once('_').map(|(_, rest)| rest).unwrap_or(&e.classname).to_string();
     let name = unique_name(state, &base);
     state.doc.edit("Name Entity", |m, _| {
@@ -228,6 +237,7 @@ pub fn link(state: &mut EditorState, from: NodeId, to: NodeId, output: &str, inp
     if state.doc.map.entity(from).is_none() || state.doc.map.entity(to).is_none() {
         return Err("Both ends of a link must be entities".into());
     }
+
     let target = ensure_targetname(state, to).ok_or("target has no name")?;
     let conn = IoConnection { output: output.into(), target, input: input.into(), parameter: parameter.into(), delay, times: -1 };
     let c = conn.clone();
@@ -249,6 +259,7 @@ pub fn link_options(state: &EditorState, from: NodeId, to: NodeId) -> (Vec<Strin
             inputs.push(builtin.into());
         }
     }
+
     (outputs, inputs)
 }
 
@@ -262,6 +273,7 @@ pub fn place_entity(state: &mut EditorState, classname: &str, at: DVec3, props: 
         if let Some(e) = m.entity_mut(id) {
             e.properties.extend(props);
         }
+
         s.clear();
         s.select_node(id);
         id

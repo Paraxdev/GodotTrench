@@ -49,6 +49,7 @@ impl MeshSel {
             set.insert(*a);
             set.insert(*b);
         }
+
         set.extend(mesh.face_vertices(&self.faces.iter().copied().collect::<Vec<_>>()));
         set.into_iter().filter(|v| (*v as usize) < mesh.vertices.len()).collect()
     }
@@ -137,6 +138,7 @@ impl MeshTool {
                 n += 1.0;
             }
         }
+
         (n > 0.0).then(|| sum / n)
     }
 
@@ -147,6 +149,7 @@ impl MeshTool {
             for f in &sel.faces {
                 sum += m.face_normal(*f);
             }
+
             if sel.faces.is_empty() {
                 let verts: BTreeSet<u32> = sel.moved_vertices(m).into_iter().collect();
                 for (fi, face) in m.faces.iter().enumerate() {
@@ -156,6 +159,7 @@ impl MeshTool {
                 }
             }
         }
+
         sum.normalize_or(DVec3::Y)
     }
 
@@ -170,10 +174,12 @@ impl MeshTool {
                 self.cancel(state);
                 return true;
             }
+
             if pressed(ctx, Modifiers::NONE, Key::Enter) {
                 self.confirm(state);
                 return true;
             }
+
             if let Modal::Transform { kind, constraint, start, center, mut numeric, view } = modal {
                 let mut constraint = constraint;
                 for (key, dir, label) in [(Key::X, DVec3::X, "X"), (Key::Y, DVec3::Y, "Y"), (Key::Z, DVec3::Z, "Z")] {
@@ -185,6 +191,7 @@ impl MeshTool {
                         };
                     }
                 }
+
                 let typed: String = ctx.input(|i| {
                     i.events
                         .iter()
@@ -198,22 +205,27 @@ impl MeshTool {
                 if pressed(ctx, Modifiers::NONE, Key::Backspace) {
                     numeric.pop();
                 }
+
                 self.modal = Some(Modal::Transform { kind, constraint, start, center, numeric, view });
                 // Swallow remaining letters so they do not trigger tool shortcuts mid transform.
                 ctx.input_mut(|i| i.events.retain(|e| !matches!(e, egui::Event::Key { pressed: true, .. } | egui::Event::Text(_))));
                 return true;
             }
+
             if let Modal::LoopCut { hover, cuts } = modal {
                 let delta = ctx.input(|i| i.smooth_scroll_delta.y);
                 let mut cuts = cuts;
                 if pressed(ctx, Modifiers::NONE, Key::Plus) || pressed(ctx, Modifiers::NONE, Key::Equals) || delta > 0.0 {
                     cuts = (cuts + 1).min(32);
                 }
+
                 if pressed(ctx, Modifiers::NONE, Key::Minus) || delta < 0.0 {
                     cuts = cuts.saturating_sub(1).max(1);
                 }
+
                 self.modal = Some(Modal::LoopCut { hover, cuts });
             }
+
             return false;
         }
 
@@ -226,100 +238,125 @@ impl MeshTool {
             self.component = Component::Vertex;
             return true;
         }
+
         if pressed(ctx, none, Key::Num2) {
             self.component = Component::Edge;
             return true;
         }
+
         if pressed(ctx, none, Key::Num3) {
             self.component = Component::Face;
             return true;
         }
+
         if pressed(ctx, alt, Key::A) {
             self.selection.values_mut().for_each(|s| *s = MeshSel::default());
             return true;
         }
+
         if pressed(ctx, none, Key::A) || pressed(ctx, ctrl, Key::A) {
             self.select_all(state);
             return true;
         }
+
         if pressed(ctx, ctrl, Key::R) {
             self.modal = Some(Modal::LoopCut { hover: None, cuts: 1 });
             return true;
         }
+
         if pressed(ctx, none, Key::K) {
             self.modal = Some(Modal::Knife { first: None, view: None });
             state.set_status("Knife: click two points to cut, Esc cancels");
             return true;
         }
+
         if !self.has_selection() {
             return false;
         }
+
         if pressed(ctx, none, Key::G) {
             self.start_transform(TransformKind::Grab, None, state);
             return true;
         }
+
         if pressed(ctx, none, Key::R) {
             self.start_transform(TransformKind::Rotate, None, state);
             return true;
         }
+
         if pressed(ctx, none, Key::S) {
             self.start_transform(TransformKind::Scale, None, state);
             return true;
         }
+
         if pressed(ctx, none, Key::E) {
             self.extrude(state);
             return true;
         }
+
         if pressed(ctx, none, Key::I) {
             if let Some(center) = self.selection_center(state) {
                 state.doc.begin("Inset Faces");
                 self.modal = Some(Modal::Inset { start: None, center, view: None });
             }
+
             return true;
         }
+
         if pressed(ctx, ctrl_shift, Key::B) {
             if let Some(center) = self.selection_center(state) {
                 state.doc.begin("Bevel Vertices");
                 self.modal = Some(Modal::Bevel { start: None, center, vertices: true, view: None });
             }
+
             return true;
         }
+
         if pressed(ctx, ctrl, Key::B) {
             if let Some(center) = self.selection_center(state) {
                 state.doc.begin("Bevel Edges");
                 self.modal = Some(Modal::Bevel { start: None, center, vertices: false, view: None });
             }
+
             return true;
         }
+
         if pressed(ctx, none, Key::M) {
             self.run(state, MeshOp::MergeCenter);
             return true;
         }
+
         if pressed(ctx, none, Key::F) {
             self.run(state, MeshOp::Fill);
             return true;
         }
+
         if pressed(ctx, none, Key::X) || pressed(ctx, none, Key::Delete) {
             self.run(state, MeshOp::Delete);
             return true;
         }
+
         if pressed(ctx, shift, Key::D) {
             self.run(state, MeshOp::Duplicate);
             self.start_transform(TransformKind::Grab, None, state);
             return true;
         }
+
         if pressed(ctx, none, Key::P) {
             self.run(state, MeshOp::Separate);
             return true;
         }
+
         if pressed(ctx, alt, Key::F) {
             self.run(state, MeshOp::Flip);
             return true;
         }
+
         if pressed(ctx, ctrl, Key::L) {
             self.run(state, MeshOp::SelectLinked);
             return true;
         }
+
         false
     }
 
@@ -372,6 +409,7 @@ impl MeshTool {
                         out.edges = edges.iter().filter_map(|(a, b)| Some(gt_geom::mesh::edge_key(*map.get(a)?, *map.get(b)?))).collect();
                     }
                 }
+
                 new_sel.insert(*id, out);
             }
         });
@@ -385,6 +423,7 @@ impl MeshTool {
         if matches!(self.modal, Some(Modal::Transform { .. } | Modal::Inset { .. } | Modal::Bevel { .. })) {
             state.doc.cancel();
         }
+
         self.modal = None;
         self.prune(state);
     }
@@ -393,6 +432,7 @@ impl MeshTool {
         if matches!(self.modal, Some(Modal::Transform { .. } | Modal::Inset { .. } | Modal::Bevel { .. })) {
             state.doc.commit();
         }
+
         self.modal = None;
         self.prune(state);
     }
@@ -510,25 +550,31 @@ impl MeshTool {
                                 mesh.flip_faces(&faces);
                             }
                         }
+
                         out = sel.clone();
                     }
                     MeshOp::SnapToGrid => {
                         for v in &verts {
                             mesh.vertices[*v as usize] = gt_core::snap_vec_to_grid(mesh.vertices[*v as usize], grid);
                         }
+
                         out = sel.clone();
                     }
                 }
+
                 next.insert(*id, out);
             }
+
             if !new_nodes.is_empty() {
                 s.nodes.extend(new_nodes.iter().copied());
             }
+
             new_selection = Some(next);
         });
         if let Some(sel) = new_selection {
             self.selection = sel;
         }
+
         self.prune(state);
         state.set_status(label);
     }
@@ -571,11 +617,13 @@ impl MeshTool {
                 self.box_start = Some(origin);
             }
         }
+
         if let Some(start) = self.box_start {
             if !ui.input(|i| i.pointer.primary_down()) {
                 if let Some(end) = pointer {
                     self.box_select(cam, rect, Rect::from_two_pos(start, end), modifiers.shift || modifiers.command, state);
                 }
+
                 self.box_start = None;
             } else {
                 ui.ctx().request_repaint();
@@ -593,6 +641,7 @@ impl MeshTool {
                 if view.is_some_and(|v| v != cam.kind) || !hovered {
                     return;
                 }
+
                 let Some(pos) = pointer else { return };
                 let start = start.unwrap_or(pos);
                 self.modal = Some(Modal::Transform { kind, constraint, start: Some(start), center, numeric: numeric.clone(), view: Some(cam.kind) });
@@ -601,6 +650,7 @@ impl MeshTool {
                     self.drag_grab = false;
                     return;
                 }
+
                 let snap = state.snap != ui.input(|i| i.modifiers.command);
                 let m = transform_matrix(kind, constraint, start, pos, center, &numeric, cam, rect, snap, state.grid);
                 state.doc.reset_transaction();
@@ -623,12 +673,14 @@ impl MeshTool {
                     self.confirm(state);
                     self.drag_grab = false;
                 }
+
                 ui.ctx().request_repaint();
             }
             Modal::Inset { start, center, view } | Modal::Bevel { start, center, view, .. } => {
                 if view.is_some_and(|v| v != cam.kind) || !response.hovered() {
                     return;
                 }
+
                 let Some(pos) = pointer else { return };
                 let start = start.unwrap_or(pos);
                 let vertices = matches!(self.modal, Some(Modal::Bevel { vertices: true, .. }));
@@ -642,6 +694,7 @@ impl MeshTool {
                     self.cancel(state);
                     return;
                 }
+
                 let px_per_unit = cam
                     .project(rect, center)
                     .zip(cam.project(rect, center + cam.right() * 16.0))
@@ -657,6 +710,7 @@ impl MeshTool {
                         if amount <= 0.0 {
                             continue;
                         }
+
                         if !is_bevel {
                             mesh.inset_faces(&sel.faces.iter().copied().collect::<Vec<_>>(), amount);
                         } else if vertices || component == Component::Vertex {
@@ -673,6 +727,7 @@ impl MeshTool {
                         self.selection.values_mut().for_each(|s| *s = MeshSel::default());
                     }
                 }
+
                 ui.ctx().request_repaint();
             }
             Modal::LoopCut { cuts, .. } => {
@@ -682,6 +737,7 @@ impl MeshTool {
                     self.modal = None;
                     return;
                 }
+
                 if response.clicked_by(PointerButton::Primary)
                     && let Some((id, edge)) = hover
                 {
@@ -703,6 +759,7 @@ impl MeshTool {
                     self.modal = None;
                     return;
                 }
+
                 if response.clicked_by(PointerButton::Primary)
                     && let Some(pos) = response.interact_pointer_pos()
                 {
@@ -748,6 +805,7 @@ impl MeshTool {
                         if pts.len() != mesh.faces[*f].indices.len() {
                             return false;
                         }
+
                         let ts: Vec<f32> = pts.iter().map(|p| (*p - a).dot(ab) / ab.length_sq().max(1e-6)).collect();
                         let lo = ts.iter().cloned().fold(f32::MAX, f32::min);
                         let hi = ts.iter().cloned().fold(f32::MIN, f32::max);
@@ -758,6 +816,7 @@ impl MeshTool {
                 if faces.is_empty() {
                     continue;
                 }
+
                 mesh.bisect(&plane, Some(&faces));
                 changed += faces.len();
             }
@@ -787,6 +846,7 @@ impl MeshTool {
                 }
             }
         }
+
         best.map(|(_, id, e)| (id, e))
     }
 
@@ -804,6 +864,7 @@ impl MeshTool {
                         }
                     }
                 }
+
                 best.map(|(_, id, v)| (id, Picked::Vertex(v)))
             }
             Component::Edge => self.edge_at(cam, rect, pos, state).map(|(id, e)| (id, Picked::Edge(e))),
@@ -823,6 +884,7 @@ impl MeshTool {
         if !extend {
             self.selection.values_mut().for_each(|s| *s = MeshSel::default());
         }
+
         let Some((id, c)) = picked else {
             // Clicking another object switches the edited mesh, like Blender's multi object edit.
             if !extend
@@ -834,6 +896,7 @@ impl MeshTool {
                     s.select_node(h.node);
                 });
             }
+
             return;
         };
         let sel = self.selection.entry(id).or_default();
@@ -863,6 +926,7 @@ impl MeshTool {
         if !extend {
             self.selection.values_mut().for_each(|s| *s = MeshSel::default());
         }
+
         let edges = if ring { mesh.edge_ring(edge) } else { mesh.edge_loop(edge) };
         let sel = self.selection.entry(id).or_default();
         match self.component {
@@ -886,9 +950,11 @@ impl MeshTool {
         if area.width() < 3.0 && area.height() < 3.0 {
             return;
         }
+
         if !extend {
             self.selection.values_mut().for_each(|s| *s = MeshSel::default());
         }
+
         for id in edit_meshes(state) {
             let Some(mesh) = state.doc.map.mesh(id) else { continue };
             let screen = project_all(cam, rect, mesh);
@@ -922,11 +988,13 @@ impl MeshTool {
                     face_edges.extend((0..idx.len()).map(|k| gt_geom::mesh::edge_key(idx[k], idx[(k + 1) % idx.len()])));
                 }
             }
+
             for (a, b) in mesh.edges() {
                 let selected = face_edges.contains(&(a, b)) || sel.is_some_and(|s| s.edges.contains(&(a, b)) || (s.verts.contains(&a) && s.verts.contains(&b)));
                 let color = if selected { [1.0, 0.6, 0.1, 1.0] } else { [0.1, 0.1, 0.12, 0.85] };
                 line(mesh.vertices[a as usize], mesh.vertices[b as usize], color);
             }
+
             if let Some(sel) = sel {
                 for f in &sel.faces {
                     if let Some(face) = mesh.faces.get(*f) {
@@ -940,6 +1008,7 @@ impl MeshTool {
                 }
             }
         }
+
         match &self.modal {
             Some(Modal::LoopCut { hover: Some((id, edge)), cuts }) => {
                 if let Some(mesh) = state.doc.map.mesh(*id) {
@@ -950,6 +1019,7 @@ impl MeshTool {
                         for w in pts.windows(2) {
                             line(w[0], w[1], [1.0, 0.9, 0.2, 1.0]);
                         }
+
                         if ring.len() > 2
                             && let (Some(first), Some(last)) = (pts.first(), pts.last())
                         {
@@ -978,6 +1048,7 @@ impl MeshTool {
             }
             _ => {}
         }
+
         let _ = (cam, rect);
         out
     }
@@ -997,11 +1068,13 @@ impl MeshTool {
                     if dense && !selected {
                         continue;
                     }
+
                     let (size, color) = if selected { (6.0, Color32::from_rgb(255, 150, 30)) } else { (4.0, Color32::from_rgb(20, 20, 24)) };
                     painter.rect_filled(Rect::from_center_size(p, Vec2::splat(size)), 0.0, color);
                 }
             }
         }
+
         if self.component == Component::Face {
             for id in &meshes {
                 let Some(mesh) = state.doc.map.mesh(*id) else { continue };
@@ -1018,17 +1091,20 @@ impl MeshTool {
                 }
             }
         }
+
         if let (Some(start), Some(end)) = (self.box_start, ui.input(|i| i.pointer.hover_pos())) {
             let r = Rect::from_two_pos(start, end);
             painter.rect_filled(r, 0.0, Color32::from_rgba_unmultiplied(255, 160, 60, 20));
             painter.rect_stroke(r, 0.0, Stroke::new(1.0, Color32::from_rgb(255, 160, 60)), egui::StrokeKind::Inside);
         }
+
         if let Some(Modal::Knife { first: Some(a), view }) = &self.modal
             && *view == Some(cam.kind)
             && let Some(b) = ui.input(|i| i.pointer.hover_pos())
         {
             painter.line_segment([*a, b], Stroke::new(2.0, Color32::from_rgb(120, 255, 120)));
         }
+
         let hint = match &self.modal {
             Some(Modal::Transform { .. }) => "Transform: X/Y/Z axis, Shift+X/Y/Z plane, type a value, click or Enter confirms, Esc cancels".to_string(),
             Some(Modal::Inset { .. }) => "Inset: move the mouse away from the selection, click to confirm".to_string(),
@@ -1194,6 +1270,7 @@ fn transform_matrix(
                 if axis.dot(-cam.forward()) < 0.0 {
                     d = -d;
                 }
+
                 if snap { (d / 15.0).round() * 15.0 } else { d }
             };
             DMat4::from_translation(center)
@@ -1220,6 +1297,7 @@ fn transform_matrix(
                     * DMat4::from_quat(q)
                     * DMat4::from_translation(-center);
             }
+
             let scale = match constraint {
                 Some(c) if !c.exclude => DVec3::ONE + c.dir.abs() * (factor - 1.0),
                 Some(c) => DVec3::splat(factor) - c.dir.abs() * (factor - 1.0),

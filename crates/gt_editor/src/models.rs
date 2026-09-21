@@ -56,10 +56,12 @@ impl ModelCache {
         {
             return model.clone();
         }
+
         let model = load(path, units_per_meter).map(Arc::new);
         if let Err(e) = &model {
             eprintln!("model {}: {e}", path.display());
         }
+
         let model = model.ok();
         self.entries.insert(path.to_path_buf(), (mtime, model.clone()));
         self.generation += 1;
@@ -102,6 +104,7 @@ fn load_stl(path: &Path, units_per_meter: f64) -> Result<Model, String> {
     if tris.is_empty() {
         return Err("stl has no triangles".into());
     }
+
     let mut vertices = Vec::with_capacity(tris.len() * 3);
     let mut indices = Vec::with_capacity(tris.len() * 3);
     let mut bounds = Aabb::EMPTY;
@@ -114,6 +117,7 @@ fn load_stl(path: &Path, units_per_meter: f64) -> Result<Model, String> {
             vertices.push(ModelVertex { pos: p, normal: n, uv: [0.0, 0.0] });
         }
     }
+
     let part = ModelPart { material: gt_render::WHITE_MATERIAL.to_string(), vertices, indices };
     Ok(Model { parts: vec![part], textures: Vec::new(), bounds })
 }
@@ -131,9 +135,11 @@ fn parse_stl(data: &[u8]) -> Result<Vec<[[f32; 3]; 3]>, String> {
                 let v = |k: usize| [f(&data[o + k * 12..]), f(&data[o + k * 12 + 4..]), f(&data[o + k * 12 + 8..])];
                 tris.push([v(0), v(1), v(2)]);
             }
+
             return Ok(tris);
         }
     }
+
     let text = std::str::from_utf8(data).map_err(|_| "stl is neither valid binary nor ascii".to_string())?;
     let mut tris = Vec::new();
     let mut verts: Vec<[f32; 3]> = Vec::new();
@@ -147,6 +153,7 @@ fn parse_stl(data: &[u8]) -> Result<Vec<[[f32; 3]; 3]>, String> {
             }
         }
     }
+
     Ok(tris)
 }
 
@@ -175,8 +182,10 @@ fn id_model_to_model(path: &Path, mesh: gt_formats::idmodel::IdModel, units_per_
             bounds.include_point(pos.as_dvec3());
             vertices.push(ModelVertex { pos, normal: Vec3::from(v.normal).normalize_or(Vec3::Y), uv: v.uv });
         }
+
         parts.push(ModelPart { material, vertices, indices: surf.indices.clone() });
     }
+
     Model { parts, textures, bounds }
 }
 
@@ -186,6 +195,7 @@ fn skin_image(model: &Path, skin: &str) -> Option<image::RgbaImage> {
     if skin.is_empty() {
         return None;
     }
+
     let candidates = [PathBuf::from(skin), model.parent().map(|d| d.join(skin)).unwrap_or_default()];
     let try_exts = |p: &Path| image::open(p).ok().or_else(|| ["png", "tga", "jpg", "jpeg", "bmp"].iter().find_map(|e| image::open(p.with_extension(e)).ok()));
     candidates.iter().filter(|p| !p.as_os_str().is_empty()).find_map(|p| try_exts(p)).map(|i| i.to_rgba8())
@@ -209,6 +219,7 @@ fn load_bbmodel(path: &Path, units_per_meter: f64) -> Result<Model, String> {
         };
         textures.push((format!("{base}#{i}"), img.unwrap_or_else(|| image::RgbaImage::from_pixel(2, 2, image::Rgba([200, 60, 200, 255]))), true));
     }
+
     let mut parts: HashMap<Option<usize>, ModelPart> = HashMap::new();
     let mut bounds = Aabb::EMPTY;
     for poly in bb.polygons() {
@@ -224,10 +235,12 @@ fn load_bbmodel(path: &Path, units_per_meter: f64) -> Result<Model, String> {
             bounds.include_point(pos.as_dvec3());
             part.vertices.push(ModelVertex { pos, normal: n.as_vec3(), uv: [uv.x as f32, uv.y as f32] });
         }
+
         for [a, b, c] in gt_geom::polygon::triangulate(&poly.positions, n) {
             part.indices.extend([base_index + a as u32, base_index + b as u32, base_index + c as u32]);
         }
     }
+
     Ok(Model { parts: parts.into_values().collect(), textures, bounds })
 }
 
@@ -254,6 +267,7 @@ fn load_gltf(path: &Path, units_per_meter: f64) -> Result<Model, String> {
             image_keys.insert(i, key);
         }
     }
+
     let mut parts: Vec<ModelPart> = Vec::new();
     let mut bounds = Aabb::EMPTY;
     let scene = doc.default_scene().or_else(|| doc.scenes().next()).ok_or("gltf has no scene")?;
@@ -266,6 +280,7 @@ fn load_gltf(path: &Path, units_per_meter: f64) -> Result<Model, String> {
                 if prim.mode() != gltf::mesh::Mode::Triangles {
                     continue;
                 }
+
                 let reader = prim.reader(|b| Some(&buffers[b.index()]));
                 let Some(positions) = reader.read_positions() else { continue };
                 let positions: Vec<Vec3> = positions.map(|p| world.transform_point3(Vec3::from(p))).collect();
@@ -282,6 +297,7 @@ fn load_gltf(path: &Path, units_per_meter: f64) -> Result<Model, String> {
                             let px = image::Rgba([(c[0] * 255.0) as u8, (c[1] * 255.0) as u8, (c[2] * 255.0) as u8, 255]);
                             textures.push((key.clone(), image::RgbaImage::from_pixel(4, 4, px), false));
                         }
+
                         key
                     }
                 };
@@ -304,6 +320,7 @@ fn load_gltf(path: &Path, units_per_meter: f64) -> Result<Model, String> {
                         tri.swap(1, 2);
                     }
                 }
+
                 if normals.is_none() {
                     let mut vs = vertices;
                     for tri in idx.as_chunks::<3>().0 {
@@ -313,14 +330,17 @@ fn load_gltf(path: &Path, units_per_meter: f64) -> Result<Model, String> {
                             vs[*k as usize].normal = n;
                         }
                     }
+
                     parts.push(ModelPart { material, vertices: vs, indices: idx });
                 } else {
                     parts.push(ModelPart { material, vertices, indices: idx });
                 }
             }
         }
+
         stack.extend(node.children().map(|c| (c, world)));
     }
+
     Ok(Model { parts, textures, bounds })
 }
 
@@ -357,6 +377,7 @@ fn load_obj(path: &Path, units_per_meter: f64) -> Result<Model, String> {
         textures.push((key.clone(), img, false));
         mat_keys.push(key);
     }
+
     let mut parts = Vec::new();
     let mut bounds = Aabb::EMPTY;
     for model in &models {
@@ -364,6 +385,7 @@ fn load_obj(path: &Path, units_per_meter: f64) -> Result<Model, String> {
         if mesh.positions.is_empty() {
             continue;
         }
+
         let material = mesh.material_id.and_then(|id| mat_keys.get(id).cloned()).unwrap_or_else(|| gt_render::WHITE_MATERIAL.to_string());
         let count = mesh.positions.len() / 3;
         let mut vertices = Vec::with_capacity(count);
@@ -379,11 +401,14 @@ fn load_obj(path: &Path, units_per_meter: f64) -> Result<Model, String> {
             let uv = if mesh.texcoords.len() >= 2 * i + 2 { [mesh.texcoords[2 * i], 1.0 - mesh.texcoords[2 * i + 1]] } else { [0.0, 0.0] };
             vertices.push(ModelVertex { pos, normal, uv });
         }
+
         parts.push(ModelPart { material, vertices, indices: mesh.indices.clone() });
     }
+
     if parts.is_empty() {
         return Err("obj has no triangles".into());
     }
+
     Ok(Model { parts, textures, bounds })
 }
 
@@ -414,6 +439,7 @@ pub fn model_to_mesh(model: &Model, offset: DVec3, scale: f64, material_of: impl
             if corners.iter().any(|&c| c >= part.vertices.len()) {
                 continue;
             }
+
             let mut indices = Vec::with_capacity(3);
             let mut positions = Vec::with_capacity(3);
             for &c in &corners {
@@ -426,16 +452,19 @@ pub fn model_to_mesh(model: &Model, offset: DVec3, scale: f64, material_of: impl
                 });
                 indices.push(idx);
             }
+
             let unique: std::collections::BTreeSet<u32> = indices.iter().copied().collect();
             if unique.len() < 3 {
                 continue;
             }
+
             let normal = gt_geom::polygon::newell(&positions).normalize_or(DVec3::Y);
             let mut face = MeshFace::new(indices, FaceData::new(material.clone(), FaceUv::paraxial(normal, DVec2::ONE)));
             face.uvs = corners.iter().map(|&c| part.vertices[c].uv).collect();
             mesh.faces.push(face);
         }
     }
+
     // Models come smooth shaded; a moderate angle keeps rounded surfaces without over-smoothing hard edges.
     mesh.smooth_angle = 45.0;
     mesh
@@ -470,6 +499,7 @@ impl ModelLibrary {
         if let Some(root) = self.root.clone() {
             scan_models(&root, &root, &mut self.entries);
         }
+
         self.entries.sort_by(|a, b| a.name.cmp(&b.name));
     }
 
@@ -489,10 +519,12 @@ fn scan_models(root: &Path, dir: &Path, out: &mut Vec<ModelEntry>) {
             scan_models(root, &path, out);
             continue;
         }
+
         let Some(ext) = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()) else { continue };
         if !MODEL_EXTS.contains(&ext.as_str()) {
             continue;
         }
+
         let Ok(rel) = path.strip_prefix(root) else { continue };
         let name = rel.with_extension("").to_string_lossy().replace('\\', "/");
         let folder = rel.parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();

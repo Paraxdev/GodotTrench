@@ -59,11 +59,14 @@ pub fn parse_keyvalues(src: &str) -> Result<Vec<Block>, VmfError> {
                     if c == '"' {
                         break;
                     }
+
                     if c == '\n' {
                         line += 1;
                     }
+
                     s.push(c);
                 }
+
                 tokens.push((line, s, true));
             }
             _ => {
@@ -72,13 +75,16 @@ pub fn parse_keyvalues(src: &str) -> Result<Vec<Block>, VmfError> {
                     if n.is_whitespace() || n == '{' || n == '}' || n == '"' {
                         break;
                     }
+
                     s.push(n);
                     chars.next();
                 }
+
                 tokens.push((line, s, false));
             }
         }
     }
+
     let mut pos = 0;
     fn block_body(tokens: &[(usize, String, bool)], pos: &mut usize, name: String) -> Result<Block, VmfError> {
         let mut block = Block { name, ..Default::default() };
@@ -88,6 +94,7 @@ pub fn parse_keyvalues(src: &str) -> Result<Vec<Block>, VmfError> {
                 *pos += 1;
                 return Ok(block);
             }
+
             let next = tokens.get(*pos + 1);
             match next {
                 Some((_, n, false)) if n == "{" => {
@@ -102,17 +109,21 @@ pub fn parse_keyvalues(src: &str) -> Result<Vec<Block>, VmfError> {
                 None => return Err(VmfError::Syntax(*line, format!("dangling token {tok}"))),
             }
         }
+
         Ok(block)
     }
+
     let mut out = Vec::new();
     while pos < tokens.len() {
         let (line, name, _) = tokens[pos].clone();
         if tokens.get(pos + 1).map(|t| t.1.as_str()) != Some("{") {
             return Err(VmfError::Syntax(line, format!("expected {{ after {name}")));
         }
+
         pos += 2;
         out.push(block_body(&tokens, &mut pos, name)?);
     }
+
     Ok(out)
 }
 
@@ -159,6 +170,7 @@ fn parse_solid(solid: &Block) -> Option<Brush> {
                         out.push(b.get(&format!("row{r}")).map(nums).unwrap_or_default());
                     }
                 }
+
                 out
             };
             let normals = rows("normals");
@@ -181,14 +193,18 @@ fn parse_solid(solid: &Block) -> Option<Brush> {
                         if disp.alphas.is_empty() {
                             disp.alphas = vec![0.0; n * n];
                         }
+
                         disp.alphas[k] = (*a / 255.0).clamp(0.0, 1.0) as f32;
                     }
                 }
             }
+
             disps.push((plane, disp, start));
         }
+
         planes.push((plane, FaceData::new(material, uv)));
     }
+
     let mut brush = Brush::from_planes(planes).ok()?;
     for (plane, disp, start) in disps {
         let Some(fi) = brush.find_face_by_plane(&plane) else { continue };
@@ -196,6 +212,7 @@ fn parse_solid(solid: &Block) -> Option<Brush> {
         if face.indices.len() != 4 {
             continue;
         }
+
         let first = (0..4).min_by(|a, b| {
             let da = (brush.vertices[face.indices[*a] as usize] - start).length();
             let db = (brush.vertices[face.indices[*b] as usize] - start).length();
@@ -204,6 +221,7 @@ fn parse_solid(solid: &Block) -> Option<Brush> {
         face.indices.rotate_left(first);
         face.data.disp = Some(disp);
     }
+
     Some(brush)
 }
 
@@ -232,6 +250,7 @@ fn solids(block: &Block) -> Vec<&Block> {
     for hidden in block.children_named("hidden") {
         out.extend(hidden.children_named("solid"));
     }
+
     out
 }
 
@@ -249,9 +268,11 @@ pub fn import(src: &str) -> Result<Map, VmfError> {
                         map.properties.insert(k.clone(), v.clone());
                     }
                 }
+
                 if let Some(sky) = b.get("skyname") {
                     map.properties.insert("skyname".into(), sky.into());
                 }
+
                 for s in solids(b) {
                     if let Some(brush) = parse_solid(s) {
                         map.insert(layer, NodeKind::Brush(brush));
@@ -263,6 +284,7 @@ pub fn import(src: &str) -> Result<Map, VmfError> {
             _ => {}
         }
     }
+
     map.properties.insert("classname".into(), "worldspawn".into());
     for b in entity_blocks {
         let classname = b.get("classname").unwrap_or("info_null").to_string();
@@ -288,6 +310,7 @@ pub fn import(src: &str) -> Result<Map, VmfError> {
                 }
             }
         }
+
         e.outputs = parse_connections(b.child("connections"));
         let id = map.insert(layer, NodeKind::Entity(e));
         for s in brush_solids {
@@ -296,6 +319,7 @@ pub fn import(src: &str) -> Result<Map, VmfError> {
             }
         }
     }
+
     Ok(map)
 }
 

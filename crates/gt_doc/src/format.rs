@@ -124,10 +124,12 @@ pub fn paste_nodes(map: &mut Map, parent: NodeId, text: &str) -> Result<Vec<Node
         format: String,
         nodes: Vec<FileNode>,
     }
+
     let clip: Clip = serde_json::from_str(text)?;
     if clip.format != "godottrench-clipboard" {
         return Err(FormatError::WrongFormat(clip.format));
     }
+
     let mut out = Vec::new();
     for node in clip.nodes {
         if matches!(node.kind, FileKind::Layer(_)) {
@@ -138,6 +140,7 @@ pub fn paste_nodes(map: &mut Map, parent: NodeId, text: &str) -> Result<Vec<Node
             out.push(insert_fresh(map, parent, node));
         }
     }
+
     Ok(out)
 }
 
@@ -160,9 +163,11 @@ fn insert_fresh(map: &mut Map, parent: NodeId, node: FileNode) -> NodeId {
         n.hidden = node.hidden;
         n.locked = node.locked;
     }
+
     for c in node.children {
         insert_fresh(map, id, c);
     }
+
     id
 }
 
@@ -179,10 +184,12 @@ fn insert_file_node(map: &mut Map, parent: Option<NodeId>, node: FileNode) {
             map.layers.push(id);
         }
     }
+
     if let Some(n) = map.get_mut(id) {
         n.hidden = node.hidden;
         n.locked = node.locked;
     }
+
     for c in node.children {
         insert_file_node(map, Some(id), c);
     }
@@ -199,10 +206,12 @@ pub fn from_str(text: &str) -> Result<Map, FormatError> {
     if format != FORMAT_NAME {
         return Err(FormatError::WrongFormat(format));
     }
+
     let version = value.get("version").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
     if version > FORMAT_VERSION {
         return Err(FormatError::TooNew(version));
     }
+
     migrate(&mut value, version);
     let file: FileMap = serde_json::from_value(value)?;
 
@@ -212,9 +221,11 @@ pub fn from_str(text: &str) -> Result<Map, FormatError> {
             insert_file_node(&mut map, None, layer);
         }
     }
+
     if map.layers.is_empty() {
         map.add_layer("Default");
     }
+
     Ok(map)
 }
 
@@ -274,6 +285,7 @@ mod tests {
             assert_eq!(node.hidden, other.hidden);
             assert_eq!(node.kind.type_name(), other.kind.type_name());
         }
+
         assert_eq!(to_string(&back), text);
     }
 

@@ -330,9 +330,11 @@ impl Map {
         if matches!(node.kind, NodeKind::Layer(_)) && self.layers.len() <= 1 {
             return;
         }
+
         for child in node.children.clone() {
             self.remove_subtree(child);
         }
+
         self.nodes.remove(&id);
         match node.parent {
             Some(p) => {
@@ -356,16 +358,20 @@ impl Map {
         if id == new_parent || self.is_ancestor(id, new_parent) {
             return;
         }
+
         let Some(old) = self.get(id).and_then(|n| n.parent) else { return };
         if old == new_parent {
             return;
         }
+
         if let Some(p) = self.nodes.get_mut(&old) {
             p.children.retain(|c| *c != id);
         }
+
         if let Some(p) = self.nodes.get_mut(&new_parent) {
             p.children.push(id);
         }
+
         if let Some(n) = self.nodes.get_mut(&id) {
             n.parent = Some(new_parent);
         }
@@ -376,8 +382,10 @@ impl Map {
             if p == ancestor {
                 return true;
             }
+
             node = p;
         }
+
         false
     }
 
@@ -388,6 +396,7 @@ impl Map {
             out.push(p);
             cur = p;
         }
+
         out
     }
 
@@ -396,6 +405,7 @@ impl Map {
         while let Some(p) = self.get(cur).and_then(|n| n.parent) {
             cur = p;
         }
+
         cur
     }
 
@@ -409,6 +419,7 @@ impl Map {
                 None => return false,
             }
         }
+
         false
     }
 
@@ -421,6 +432,7 @@ impl Map {
                 None => return false,
             }
         }
+
         false
     }
 
@@ -438,6 +450,7 @@ impl Map {
                 stack.extend(n.children.iter().rev());
             }
         }
+
         out
     }
 
@@ -448,6 +461,7 @@ impl Map {
             out.push(*l);
             out.extend(self.descendants(*l));
         }
+
         out
     }
 
@@ -483,6 +497,7 @@ impl Map {
                 for c in &node.children {
                     b.include(&self.bounds(*c));
                 }
+
                 b
             }
         }
@@ -493,6 +508,7 @@ impl Map {
         for id in ids {
             b.include(&self.bounds(id));
         }
+
         b
     }
 
@@ -506,6 +522,7 @@ impl Map {
                 target = a;
             }
         }
+
         target
     }
 
@@ -521,6 +538,7 @@ impl Map {
                 target = a;
             }
         }
+
         target
     }
 
@@ -532,9 +550,11 @@ impl Map {
             n.hidden = node.hidden;
             n.locked = node.locked;
         }
+
         for c in node.children {
             self.duplicate_subtree(c, new_id);
         }
+
         Some(new_id)
     }
 

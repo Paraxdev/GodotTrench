@@ -127,6 +127,7 @@ pub fn parse(text: &str) -> Result<BbModel, BbError> {
     if root.get("meta").is_none() {
         return Err(BbError::NotBbModel);
     }
+
     let resolution = DVec2::new(
         root.pointer("/resolution/width").and_then(|v| v.as_f64()).unwrap_or(16.0),
         root.pointer("/resolution/height").and_then(|v| v.as_f64()).unwrap_or(16.0),
@@ -144,11 +145,14 @@ pub fn parse(text: &str) -> Result<BbModel, BbError> {
         if let Some(id) = t.get("id").and_then(|v| v.as_str()) {
             texture_index.insert(id.to_string(), i);
         }
+
         if let Some(uuid) = t.get("uuid").and_then(|v| v.as_str()) {
             texture_index.insert(uuid.to_string(), i);
         }
+
         model.textures.push(BbTexture { name, png, path: t.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string(), uv_size });
     }
+
     let uv_size = |tex: Option<usize>| tex.and_then(|t| model.textures.get(t)).map(|t| t.uv_size).unwrap_or(resolution);
     let texture_ref = |v: Option<&Value>| -> Option<usize> {
         match v? {
@@ -176,6 +180,7 @@ pub fn parse(text: &str) -> Result<BbModel, BbError> {
             _ => {}
         }
     }
+
     for node in root.get("outliner").and_then(|o| o.as_array()).into_iter().flatten() {
         walk(node, DMat4::IDENTITY, &mut element_xform);
     }
@@ -184,6 +189,7 @@ pub fn parse(text: &str) -> Result<BbModel, BbError> {
         if el.get("visibility").and_then(|v| v.as_bool()) == Some(false) {
             continue;
         }
+
         let uuid = el.get("uuid").and_then(|v| v.as_str()).unwrap_or("");
         let group = element_xform.get(uuid).copied().unwrap_or(DMat4::IDENTITY);
         let origin = vec3(el.get("origin"));
@@ -204,6 +210,7 @@ pub fn parse(text: &str) -> Result<BbModel, BbError> {
                     if keys.len() < 3 || keys.iter().any(|k| !verts.contains_key(k)) {
                         continue;
                     }
+
                     let texture = texture_ref(face.get("texture"));
                     let size = uv_size(texture);
                     let order = sorted_face_order(&keys.iter().map(|k| verts[k]).collect::<Vec<_>>());
@@ -242,6 +249,7 @@ pub fn parse(text: &str) -> Result<BbModel, BbError> {
                     if face.get("texture").is_some_and(|t| t.is_null()) {
                         continue;
                     }
+
                     let texture = texture_ref(face.get("texture"));
                     let tex_size = uv_size(texture);
                     let rect = if box_uv {
@@ -264,6 +272,7 @@ pub fn parse(text: &str) -> Result<BbModel, BbError> {
                             };
                             p[a] = if pick { to[a] } else { from[a] };
                         }
+
                         transform.transform_point3(p)
                     };
                     let (tl, tr, bl, br) = (corner(-1.0, 1.0), corner(1.0, 1.0), corner(-1.0, -1.0), corner(1.0, -1.0));
@@ -277,15 +286,18 @@ pub fn parse(text: &str) -> Result<BbModel, BbError> {
                         arr[1] = a;
                         rot -= 90;
                     }
+
                     let n = |c: [f64; 2]| DVec2::new(c[0] / tex_size.x, c[1] / tex_size.y);
                     let poly = BbPolygon { positions: vec![tl, bl, br, tr], uvs: vec![n(arr[0]), n(arr[2]), n(arr[3]), n(arr[1])], texture };
                     faces.push((dir, poly));
                 }
+
                 model.cubes.push(BbCube { name: el.get("name").and_then(|v| v.as_str()).unwrap_or("cube").to_string(), from, to, transform, faces });
             }
             _ => {}
         }
     }
+
     Ok(model)
 }
 
@@ -294,6 +306,7 @@ fn sorted_face_order(pts: &[DVec3]) -> Vec<usize> {
     if pts.len() != 4 {
         return (0..pts.len()).collect();
     }
+
     let candidates = [[0usize, 1, 2, 3], [0, 1, 3, 2], [0, 2, 1, 3]];
     let area = |o: &[usize; 4]| gt_geom::polygon::newell(&o.iter().map(|i| pts[*i]).collect::<Vec<_>>()).length();
     candidates.into_iter().max_by(|a, b| area(a).total_cmp(&area(b))).map(|o| o.to_vec()).unwrap()
@@ -324,15 +337,18 @@ impl BbModel {
                 });
                 indices.push(idx);
             }
+
             let unique: std::collections::BTreeSet<u32> = indices.iter().copied().collect();
             if unique.len() < 3 || unique.len() != indices.len() {
                 continue;
             }
+
             let normal = gt_geom::polygon::newell(&positions).normalize_or(DVec3::Y);
             let mut face = MeshFace::new(indices, FaceData::new(material(poly.texture), FaceUv::paraxial(normal, DVec2::ONE)));
             face.uvs = poly.uvs.iter().map(|uv| [uv.x as f32, uv.y as f32]).collect();
             mesh.faces.push(face);
         }
+
         mesh
     }
 
@@ -344,6 +360,7 @@ impl BbModel {
             if (cube.to - cube.from).abs().min_element() < 1e-6 {
                 continue;
             }
+
             let m = place * cube.transform;
             let Ok(mut brush) = Brush::from_aabb(&Aabb::new(cube.from, cube.to), "").map(|b| b.transformed(&m, false)) else { continue };
             for face in &mut brush.faces {
@@ -359,8 +376,10 @@ impl BbModel {
                     face.data.uv = uv;
                 }
             }
+
             out.push(brush);
         }
+
         out
     }
 }
@@ -370,6 +389,7 @@ pub fn uv_from_corners(positions: &[DVec3], uvs: &[DVec2], px: DVec2) -> Option<
     if positions.len() < 3 || uvs.len() < 3 {
         return None;
     }
+
     let normal = Plane::from_polygon(positions)?.normal;
     let (p0, p1, p2) = (positions[0], positions[1], positions[positions.len() - 1]);
     let (t0, t1, t2) = (uvs[0] * px, uvs[1] * px, uvs[uvs.len() - 1] * px);
@@ -380,6 +400,7 @@ pub fn uv_from_corners(positions: &[DVec3], uvs: &[DVec2], px: DVec2) -> Option<
     if m.determinant().abs() < 1e-12 {
         return None;
     }
+
     let inv = m.inverse();
     let a_u = inv * DVec3::new(d1.x, d2.x, 0.0);
     let a_v = inv * DVec3::new(d1.y, d2.y, 0.0);
@@ -387,6 +408,7 @@ pub fn uv_from_corners(positions: &[DVec3], uvs: &[DVec2], px: DVec2) -> Option<
     if lu < 1e-12 || lv < 1e-12 {
         return None;
     }
+
     Some(FaceUv {
         u_axis: a_u / lu,
         v_axis: a_v / lv,
@@ -442,6 +464,7 @@ mod tests {
             assert!((n - dir.basis().0).length() < 1e-9, "{dir:?} normal {n}");
             assert!(n.dot(gt_geom::polygon::centroid(&poly.positions) - center) > 0.0);
         }
+
         let (_, south) = trunk.faces.iter().find(|(d, _)| *d == CubeFace::South).unwrap();
         // Top left corner of the south face is at -X, +Y seen from +Z.
         assert!((south.positions[0] - DVec3::new(6.0, 16.0, 10.0)).length() < 1e-9);

@@ -33,8 +33,10 @@ pub fn delete_selection(map: &mut Map, sel: &mut Selection) -> usize {
         if let Some(p) = map.get(*id).and_then(|n| n.parent) {
             parents.insert(p);
         }
+
         map.remove(*id);
     }
+
     remove_empty_containers(map, parents);
     sel.clear();
     roots.len()
@@ -119,6 +121,7 @@ fn update_group_transforms(map: &mut Map, sel: &Selection, m: &DMat4) {
             }
         }
     }
+
     for g in groups {
         if let Some(Node { kind: NodeKind::Group(group), .. }) = map.get_mut(g) {
             group.transform = *m * group.transform;
@@ -149,6 +152,7 @@ pub fn selection_center(map: &Map, sel: &Selection, grid: f64) -> DVec3 {
     if b.is_empty() {
         return DVec3::ZERO;
     }
+
     gt_core::snap_vec_to_grid(b.center(), grid.max(1.0))
 }
 
@@ -161,10 +165,12 @@ pub fn duplicate_selection(map: &mut Map, sel: &mut Selection, offset: DVec3, op
             new_ids.push(new_id);
         }
     }
+
     sel.clear();
     for id in &new_ids {
         sel.nodes.insert(*id);
     }
+
     translate_selection(map, sel, offset, opts);
     new_ids
 }
@@ -178,6 +184,7 @@ pub fn group_selection(map: &mut Map, sel: &mut Selection, name: &str, parent: N
     if roots.is_empty() {
         return None;
     }
+
     let group = map.insert(parent, NodeKind::Group(Group::new(name)));
     for id in roots {
         let target = match map.owning_entity(id) {
@@ -186,6 +193,7 @@ pub fn group_selection(map: &mut Map, sel: &mut Selection, name: &str, parent: N
         };
         map.reparent(target, group);
     }
+
     sel.clear();
     sel.nodes.insert(group);
     Some(group)
@@ -201,6 +209,7 @@ pub fn ungroup_selection(map: &mut Map, sel: &mut Selection) {
             map.reparent(c, parent);
             sel.nodes.insert(c);
         }
+
         map.remove(g);
     }
 }
@@ -235,12 +244,14 @@ pub fn isolate_selection(map: &mut Map, sel: &Selection) {
         keep.extend(map.ancestors(*id));
         keep.extend(map.descendants(*id));
     }
+
     let all: Vec<NodeId> = map.nodes.keys().copied().collect();
     for id in all {
         let Some(n) = map.get(id) else { continue };
         if matches!(n.kind, NodeKind::Layer(_)) {
             continue;
         }
+
         let hide = !keep.contains(&id);
         let parent_kept = n.parent.is_none_or(|p| keep.contains(&p) || matches!(map.get(p).map(|n| &n.kind), Some(NodeKind::Layer(_))));
         if hide && parent_kept {
@@ -267,6 +278,7 @@ pub fn selectable_objects(map: &Map, open_groups: &[NodeId]) -> Vec<NodeId> {
             out.insert(map.selection_target(*id, open_groups));
         }
     }
+
     out.into_iter().collect()
 }
 
@@ -287,12 +299,14 @@ pub fn select_touching(map: &mut Map, sel: &mut Selection, open_groups: &[NodeId
     if selectors.is_empty() {
         return;
     }
+
     let selector_ids: BTreeSet<NodeId> = selectors.iter().map(|(id, _)| *id).collect();
     let mut result = BTreeSet::new();
     for obj in selectable_objects(map, open_groups) {
         if selector_ids.contains(&obj) || sel.nodes.contains(&obj) {
             continue;
         }
+
         let mut leaves = vec![obj];
         leaves.extend(map.descendants(obj));
         let hit = leaves.iter().any(|leaf| {
@@ -314,10 +328,12 @@ pub fn select_touching(map: &mut Map, sel: &mut Selection, open_groups: &[NodeId
             result.insert(obj);
         }
     }
+
     let roots = selection_roots(map, sel);
     for r in roots {
         map.remove(r);
     }
+
     sel.clear();
     sel.nodes = result;
 }
@@ -329,6 +345,7 @@ pub fn select_by_material(map: &Map, sel: &mut Selection, material: &str, open_g
             sel.nodes.insert(map.selection_target(id, open_groups));
         }
     }
+
     for (id, m) in map.meshes() {
         if map.is_editable(id) && m.faces.iter().any(|f| f.data.material.eq_ignore_ascii_case(material)) {
             sel.nodes.insert(map.selection_target(id, open_groups));
@@ -388,6 +405,7 @@ pub fn csg_subtract(map: &mut Map, sel: &mut Selection) -> usize {
     if cutters.is_empty() {
         return 0;
     }
+
     let cutter_ids: BTreeSet<NodeId> = cutters.iter().map(|(id, _)| *id).collect();
     let targets: Vec<NodeId> = map.brushes().filter(|(id, _)| !cutter_ids.contains(id) && map.is_editable(*id)).map(|(id, _)| id).collect();
     let mut changed = 0;
@@ -397,9 +415,11 @@ pub fn csg_subtract(map: &mut Map, sel: &mut Selection) -> usize {
         for (_, c) in &cutters {
             pieces = pieces.iter().flat_map(|p| csg::subtract(p, c)).collect();
         }
+
         if pieces.len() == 1 && pieces[0] == original {
             continue;
         }
+
         changed += 1;
         let parent = map.get(t).and_then(|n| n.parent).unwrap_or(map.default_layer());
         map.remove(t);
@@ -407,9 +427,11 @@ pub fn csg_subtract(map: &mut Map, sel: &mut Selection) -> usize {
             map.insert(parent, NodeKind::Brush(p));
         }
     }
+
     for id in cutter_ids {
         map.remove(id);
     }
+
     sel.clear();
     changed
 }
@@ -419,6 +441,7 @@ pub fn csg_merge(map: &mut Map, sel: &mut Selection, default_material: &str) -> 
     if ids.len() < 2 {
         return None;
     }
+
     let brushes: Vec<Brush> = ids.iter().filter_map(|id| map.brush(*id).cloned()).collect();
     let refs: Vec<&Brush> = brushes.iter().collect();
     let merged = csg::convex_merge(&refs, default_material).ok()?;
@@ -426,6 +449,7 @@ pub fn csg_merge(map: &mut Map, sel: &mut Selection, default_material: &str) -> 
     for id in &ids {
         map.remove(*id);
     }
+
     let new_id = map.insert(parent, NodeKind::Brush(merged));
     sel.clear();
     sel.nodes.insert(new_id);
@@ -437,14 +461,17 @@ pub fn csg_intersect(map: &mut Map, sel: &mut Selection) -> Option<NodeId> {
     if ids.len() < 2 {
         return None;
     }
+
     let mut result = map.brush(ids[0])?.clone();
     for id in &ids[1..] {
         result = csg::intersect(&result, map.brush(*id)?).ok()?;
     }
+
     let parent = map.get(ids[0]).and_then(|n| n.parent).unwrap_or(map.default_layer());
     for id in &ids {
         map.remove(*id);
     }
+
     let new_id = map.insert(parent, NodeKind::Brush(result));
     sel.clear();
     sel.nodes.insert(new_id);
@@ -460,12 +487,14 @@ pub fn csg_hollow(map: &mut Map, sel: &mut Selection, thickness: f64) -> Vec<Nod
         if walls.len() <= 1 {
             continue;
         }
+
         let parent = map.get(id).and_then(|n| n.parent).unwrap_or(map.default_layer());
         map.remove(id);
         for w in walls {
             out.push(map.insert(parent, NodeKind::Brush(w)));
         }
     }
+
     sel.clear();
     sel.nodes.extend(out.iter().copied());
     out
@@ -477,12 +506,14 @@ pub fn create_brush_entity(map: &mut Map, sel: &mut Selection, classname: &str, 
     if brushes.is_empty() {
         return None;
     }
+
     let e = Entity::new(classname);
     let old_parents: BTreeSet<NodeId> = brushes.iter().filter_map(|b| map.get(*b).and_then(|n| n.parent)).collect();
     let entity = map.insert(parent, NodeKind::Entity(e));
     for b in brushes {
         map.reparent(b, entity);
     }
+
     remove_empty_containers(map, old_parents);
     sel.clear();
     sel.nodes.insert(entity);
@@ -495,6 +526,7 @@ pub fn move_brushes_to_world(map: &mut Map, sel: &mut Selection, layer: NodeId) 
     for b in &brushes {
         map.reparent(*b, layer);
     }
+
     remove_empty_containers(map, old_parents);
     sel.clear();
     sel.nodes.extend(brushes);
@@ -548,10 +580,12 @@ pub fn convert_to_mesh(map: &mut Map, sel: &mut Selection, join: bool) -> Vec<No
             out.push(map.insert(parent, NodeKind::Mesh(mesh)));
         }
     }
+
     if let Some((parent, mut mesh)) = joined {
         mesh.weld(1e-4);
         out.push(map.insert(parent, NodeKind::Mesh(mesh)));
     }
+
     sel.clear();
     sel.nodes.extend(out.iter().copied());
     out
@@ -567,6 +601,7 @@ pub fn convert_to_brushes(map: &mut Map, sel: &mut Selection) -> Vec<NodeId> {
         map.remove(id);
         out.push(map.insert(parent, NodeKind::Brush(b)));
     }
+
     sel.clear();
     sel.nodes.extend(out.iter().copied());
     out
@@ -578,6 +613,7 @@ pub fn join_meshes(map: &mut Map, sel: &mut Selection) -> Option<NodeId> {
     if ids.len() < 2 {
         return None;
     }
+
     let mut result = Mesh::default();
     let parent = map.get(ids[0]).and_then(|n| n.parent).unwrap_or(map.default_layer());
     for id in &ids {
@@ -590,10 +626,12 @@ pub fn join_meshes(map: &mut Map, sel: &mut Selection) -> Option<NodeId> {
             _ => {}
         }
     }
+
     result.weld(1e-4);
     for id in &ids {
         map.remove(*id);
     }
+
     let new_id = map.insert(parent, NodeKind::Mesh(result));
     sel.clear();
     sel.nodes.insert(new_id);
@@ -627,9 +665,11 @@ pub fn duplicate_linked(map: &mut Map, sel: &mut Selection, offset: DVec3, opts:
             if let Some(NodeKind::Group(group)) = map.get_mut(copy).map(|n| &mut n.kind) {
                 group.link_id = Some(link);
             }
+
             new_ids.push(copy);
         }
     }
+
     sel.clear();
     sel.nodes.extend(new_ids.iter().copied());
     translate_selection(map, sel, offset, opts);

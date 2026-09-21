@@ -59,6 +59,7 @@ impl Displacement {
             if data.len() != n * n {
                 continue;
             }
+
             for j in 0..n / 2 {
                 for i in 0..n {
                     data.swap(j * n + i, (n - 1 - j) * n + i);
@@ -75,6 +76,7 @@ impl Displacement {
             if data.len() != old_n * old_n {
                 return 0.0;
             }
+
             let (x, y) = (u * (old_n - 1) as f64, v * (old_n - 1) as f64);
             let (x0, y0) = (x.floor() as usize, y.floor() as usize);
             let (x1, y1) = ((x0 + 1).min(old_n - 1), (y0 + 1).min(old_n - 1));
@@ -89,6 +91,7 @@ impl Displacement {
         if has_alpha {
             out.alphas = vec![0.0; new_n * new_n];
         }
+
         for j in 0..new_n {
             for i in 0..new_n {
                 let (u, v) = (i as f64 / (new_n - 1) as f64, j as f64 / (new_n - 1) as f64);
@@ -98,6 +101,7 @@ impl Displacement {
                 }
             }
         }
+
         out
     }
 }
@@ -109,6 +113,7 @@ pub fn grid(brush: &Brush, face: usize) -> Option<DisplacementGrid> {
     if f.indices.len() != 4 || !disp.is_valid() {
         return None;
     }
+
     let c: Vec<DVec3> = f.indices.iter().map(|i| brush.vertices[*i as usize]).collect();
     let normal = f.plane.normal;
     let n = disp.size();
@@ -124,6 +129,7 @@ pub fn grid(brush: &Brush, face: usize) -> Option<DisplacementGrid> {
             positions.push(p + normal * disp.heights[j * n + i] as f64);
         }
     }
+
     let normals = grid_normals(&positions, n, normal);
     let alphas = (0..n * n).map(|k| disp.alpha(k)).collect();
     Some(DisplacementGrid { size: n, base, positions, normals, alphas })
@@ -137,6 +143,7 @@ fn grid_normals(positions: &[DVec3], n: usize, fallback: DVec3) -> Vec<DVec3> {
         normals[b] += fnorm;
         normals[c] += fnorm;
     }
+
     normals.into_iter().map(|v| v.try_normalize().unwrap_or(fallback)).collect()
 }
 

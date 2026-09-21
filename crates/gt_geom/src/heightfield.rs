@@ -77,6 +77,7 @@ pub fn falloff(distance: f64, radius: f64) -> f64 {
     if distance >= radius || radius <= 0.0 {
         return 0.0;
     }
+
     let t = distance / radius;
     (1.0 - t * t).powi(2)
 }
@@ -122,6 +123,7 @@ pub fn noise2(p: DVec2, seed: u32) -> f64 {
         h = h.wrapping_mul(0x5bd1_e995);
         h ^ (h >> 15)
     }
+
     let grad = |ix: i64, iy: i64, d: DVec2| {
         let a = hash(ix, iy, seed) as f64 / u32::MAX as f64 * std::f64::consts::TAU;
         a.cos() * d.x + a.sin() * d.y
@@ -151,6 +153,7 @@ pub fn fbm(p: DVec2, seed: u32, octaves: u32, roughness: f64) -> f64 {
         amp *= roughness;
         q = q * 2.03 + DVec2::new(17.1, -9.7);
     }
+
     sum / norm
 }
 
@@ -208,10 +211,12 @@ impl Terrain {
             lo = lo.min(*h);
             hi = hi.max(*h);
         }
+
         if self.heights.is_empty() {
             lo = 0.0;
             hi = 0.0;
         }
+
         let s = self.size();
         Aabb::new(self.origin + DVec3::new(0.0, lo as f64, 0.0), self.origin + DVec3::new(s.x, hi as f64, s.y))
     }
@@ -227,6 +232,7 @@ impl Terrain {
         if self.splat.len() < k + 4 {
             return [1.0, 0.0, 0.0, 0.0];
         }
+
         let w = [self.splat[k] as f32, self.splat[k + 1] as f32, self.splat[k + 2] as f32, self.splat[k + 3] as f32];
         let sum = w.iter().sum::<f32>();
         if sum <= 0.0 { [1.0, 0.0, 0.0, 0.0] } else { [w[0] / sum, w[1] / sum, w[2] / sum, w[3] / sum] }
@@ -249,6 +255,7 @@ impl Terrain {
         if local.x < 0.0 || local.y < 0.0 || local.x > cw as f64 || local.y > cd as f64 {
             return None;
         }
+
         let ci = (local.x.floor() as u32).min(cw - 1);
         let cj = (local.y.floor() as u32).min(cd - 1);
         let ray = Ray::new(DVec3::new(x, self.origin.y + 1e7, z), DVec3::NEG_Y);
@@ -258,6 +265,7 @@ impl Terrain {
                 return Some(ray.at(t).y);
             }
         }
+
         Some(self.vertex(ci, cj).y)
     }
 
@@ -266,6 +274,7 @@ impl Terrain {
         if !self.is_valid() {
             return None;
         }
+
         let bounds = self.bounds().expanded(1.0);
         let t0 = if bounds.contains_point(ray.origin) { 0.0 } else { ray.intersect_aabb(&bounds)? };
         let [cw, cd] = self.cells();
@@ -274,6 +283,7 @@ impl Terrain {
             if ci < 0 || cj < 0 || ci >= cw as i64 || cj >= cd as i64 || self.is_hole(ci as u32, cj as u32) {
                 return None;
             }
+
             let mut best: Option<f64> = None;
             for tri in Self::cell_triangles(ci as u32, cj as u32) {
                 let [a, b, c] = tri.map(|(i, j)| self.vertex(i, j));
@@ -283,6 +293,7 @@ impl Terrain {
                     best = Some(t);
                 }
             }
+
             best
         };
         let start = ray.at(t0);
@@ -291,6 +302,7 @@ impl Terrain {
             let (ci, cj) = cell_of(start);
             return test_cell(ci, cj).map(|t| (t, ray.at(t)));
         }
+
         // 2D DDA over the grid.
         let (mut ci, mut cj) = cell_of(start);
         let step_x: i64 = if flat.x > 0.0 { 1 } else { -1 };
@@ -314,9 +326,11 @@ impl Terrain {
                     best = Some(t);
                 }
             }
+
             if let Some(t) = best {
                 return Some((t, ray.at(t)));
             }
+
             if t_max_x < t_max_z {
                 ci += step_x;
                 t_max_x += inv.x;
@@ -324,12 +338,14 @@ impl Terrain {
                 cj += step_z;
                 t_max_z += inv.y;
             }
+
             let outside_x = (step_x > 0 && ci > cw as i64) || (step_x < 0 && ci < -1);
             let outside_z = (step_z > 0 && cj > cd as i64) || (step_z < 0 && cj < -1);
             if outside_x || outside_z {
                 break;
             }
         }
+
         None
     }
 
@@ -343,6 +359,7 @@ impl Terrain {
         if hi_x < 0 || hi_z < 0 || lo_x >= w as i64 || lo_z >= d as i64 {
             return None;
         }
+
         Some((lo_x as u32, (hi_x as u32).min(w - 1), lo_z as u32, (hi_z as u32).min(d - 1)))
     }
 
@@ -365,6 +382,7 @@ impl Terrain {
                 }
             }
         }
+
         changed
     }
 
@@ -380,6 +398,7 @@ impl Terrain {
                 if wgt <= 0.0 {
                     continue;
                 }
+
                 let mut sum = 0.0;
                 let mut n = 0.0;
                 for (dx, dz) in [(-1i64, 0i64), (1, 0), (0, -1), (0, 1), (-1, -1), (1, 1), (-1, 1), (1, -1)] {
@@ -389,12 +408,14 @@ impl Terrain {
                         n += 1.0;
                     }
                 }
+
                 let k = self.index(i, j);
                 let avg = sum / n;
                 self.heights[k] = (old[k] as f64 * (1.0 - wgt) + avg * wgt) as f32;
                 changed = true;
             }
         }
+
         changed
     }
 
@@ -413,6 +434,7 @@ impl Terrain {
                 }
             }
         }
+
         changed
     }
 
@@ -430,6 +452,7 @@ impl Terrain {
                 }
             }
         }
+
         changed
     }
 
@@ -450,6 +473,7 @@ impl Terrain {
                 }
             }
         }
+
         changed
     }
 
@@ -483,6 +507,7 @@ impl Terrain {
                 }
             }
         }
+
         changed
     }
 
@@ -517,6 +542,7 @@ impl Terrain {
                 }
             }
         }
+
         changed
     }
 
@@ -528,6 +554,7 @@ impl Terrain {
         if self.splat.len() != n * 4 {
             self.splat = (0..n).flat_map(|_| [255u8, 0, 0, 0]).collect();
         }
+
         let mut changed = false;
         for j in z0..=z1 {
             for i in x0..=x1 {
@@ -535,18 +562,22 @@ impl Terrain {
                 if w <= 0.0 {
                     continue;
                 }
+
                 let k = self.index(i, j) * 4;
                 let mut weights = self.weights(i, j);
                 for (l, wl) in weights.iter_mut().enumerate() {
                     let target = if l == layer { 1.0 } else { 0.0 };
                     *wl += (target - *wl) * w as f32;
                 }
+
                 for (dst, wl) in self.splat[k..k + 4].iter_mut().zip(weights) {
                     *dst = (wl * 255.0).round().clamp(0.0, 255.0) as u8;
                 }
+
                 changed = true;
             }
         }
+
         changed
     }
 
@@ -556,6 +587,7 @@ impl Terrain {
         if self.holes.len() != (cw * cd) as usize {
             self.holes = vec![0; (cw * cd) as usize];
         }
+
         let mut changed = false;
         for cj in 0..cd {
             for ci in 0..cw {
@@ -570,9 +602,11 @@ impl Terrain {
                 }
             }
         }
+
         if self.holes.iter().all(|h| *h == 0) {
             self.holes.clear();
         }
+
         changed
     }
 
@@ -611,6 +645,7 @@ impl Terrain {
                 self.heights[k] = h as f32;
             }
         }
+
         self.erode(params.erosion_iterations, self.cell_size * 0.9);
     }
 
@@ -631,6 +666,7 @@ impl Terrain {
                             lowest = (nk, diff);
                         }
                     }
+
                     if lowest.1 > talus {
                         let moved = ((lowest.1 - talus) * 0.25) as f32;
                         self.heights[k] -= moved;
@@ -674,6 +710,7 @@ impl Terrain {
         if iw < 2 || ih < 2 || values.len() < (iw * ih) as usize {
             return;
         }
+
         let [w, d] = self.resolution;
         for j in 0..d {
             for i in 0..w {
@@ -703,8 +740,10 @@ impl Terrain {
                 out.push((ci, cj, size.min(cw - ci), size.min(cd - cj)));
                 ci += size;
             }
+
             cj += size;
         }
+
         out
     }
 
@@ -728,6 +767,7 @@ impl Terrain {
                 *h *= scale.y.abs() as f32;
             }
         }
+
         let new_size = t.size();
         t.origin = gt_core::snap_vec(new_center - DVec3::new(new_size.x * 0.5, 0.0, new_size.y * 0.5));
         t
@@ -753,6 +793,7 @@ impl Terrain {
                 }
             }
         }
+
         out
     }
 }

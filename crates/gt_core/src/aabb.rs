@@ -25,6 +25,7 @@ impl Aabb {
         for p in points {
             b.include_point(p);
         }
+
         b
     }
 
@@ -45,6 +46,7 @@ impl Aabb {
         if other.is_empty() {
             return;
         }
+
         self.min = self.min.min(other.min);
         self.max = self.max.max(other.max);
     }

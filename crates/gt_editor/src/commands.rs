@@ -321,6 +321,7 @@ fn trenchbroom_bindings() -> Vec<(KeyboardShortcut, Action)> {
         out.push((sc(CTRL, *key), Action::RecallCamera(i as u8 + 1)));
         out.push((sc(CTRL_SHIFT, *key), Action::StoreCamera(i as u8 + 1)));
     }
+
     out
 }
 
@@ -361,6 +362,7 @@ pub fn preset_bindings(preset: &str) -> Vec<(KeyboardShortcut, Action)> {
         base.retain(|(s, a)| *s != shortcut && *a != action);
         base.push((shortcut, action));
     }
+
     base
 }
 
@@ -375,6 +377,7 @@ pub fn parse_shortcut(text: &str) -> Option<KeyboardShortcut> {
             _ => key = Key::from_name(part).or_else(|| Key::from_name(&part.to_ascii_uppercase())),
         }
     }
+
     key.map(|k| KeyboardShortcut::new(modifiers, k))
 }
 
@@ -383,12 +386,15 @@ pub fn shortcut_to_text(s: &KeyboardShortcut) -> String {
     if s.modifiers.command || s.modifiers.ctrl {
         parts.push("Ctrl".to_string());
     }
+
     if s.modifiers.shift {
         parts.push("Shift".to_string());
     }
+
     if s.modifiers.alt {
         parts.push("Alt".to_string());
     }
+
     parts.push(s.logical_key.name().to_string());
     parts.join("+")
 }
@@ -404,6 +410,7 @@ pub fn shortcuts(prefs: &Prefs) -> Vec<(KeyboardShortcut, Action)> {
             list.push((s, action));
         }
     }
+
     list
 }
 
@@ -413,6 +420,7 @@ pub fn bindable_actions() -> Vec<Action> {
     for preset in PRESETS {
         out.extend(preset_bindings(preset).into_iter().map(|(_, a)| a));
     }
+
     out.extend([
         Action::SelectSiblings,
         Action::SelectSameMaterial,
@@ -466,12 +474,15 @@ pub fn bindable_actions() -> Vec<Action> {
     for j in gt_geom::Justify::ALL {
         out.push(Action::Justify(j));
     }
+
     for k in crate::texture_ops::MeshUvKind::ALL {
         out.push(Action::MeshUv(k));
     }
+
     for op in MeshOp::ALL {
         out.push(Action::MeshOp(op));
     }
+
     let mut seen = std::collections::BTreeSet::new();
     out.retain(|a| seen.insert(a.binding_id()));
     out
@@ -496,8 +507,10 @@ fn selection_bounds(state: &EditorState) -> Aabb {
                 }
             }
         }
+
         return b;
     }
+
     map.bounds_of(state.doc.selection.nodes.iter().copied())
 }
 
@@ -531,6 +544,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             if let Some(root) = &state.game.project_root {
                 dialog = dialog.set_directory(root);
             }
+
             if let Some(path) = dialog.pick_file()
                 && let Err(e) = open_map_in_tab(state, &path)
             {
@@ -563,6 +577,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             if let Some(root) = &state.game.project_root {
                 dialog = dialog.set_directory(root);
             }
+
             if let Some(path) = dialog.save_file()
                 && let Err(e) = state.save_map(&path)
             {
@@ -584,6 +599,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             if state.doc.selection.nodes.is_empty() {
                 return;
             }
+
             let n = state.doc.edit("Delete", ops::delete_selection);
             state.set_status(format!("Deleted {n} objects"));
         }
@@ -598,8 +614,10 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 if state.doc.selection.nodes.is_empty() {
                     return;
                 }
+
                 state.doc.edit("Group", |m, s| ops::group_selection(m, s, "Linked", parent));
             }
+
             let n = state.doc.edit("Duplicate Linked", |m, s| ops::duplicate_linked(m, s, offset, opts)).len();
             state.set_status(format!("Created {n} linked group(s). Edits inside one update the others"));
         }
@@ -657,6 +675,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                     state.prefs.follow_display_scaling = true;
                 }
             }
+
             state.set_status(format!("UI scale {:.0}%", state.prefs.ui_scale * 100.0));
         }
         Action::ToggleUvLock => {
@@ -726,10 +745,12 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 state.set_status("Object mode");
                 return;
             }
+
             let has_meshes = !state.doc.selection.meshes(&state.doc.map).is_empty();
             if !has_meshes && !state.doc.selection.brushes(&state.doc.map).is_empty() {
                 state.doc.edit("Convert to Mesh", |m, s| ops::convert_to_mesh(m, s, false));
             }
+
             state.tool = ToolKind::Mesh;
             let (verts, tris) = edit_mesh_weight(state);
             if verts > HEAVY_VERTS || tris > HEAVY_TRIS {
@@ -800,10 +821,12 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             if roots.is_empty() {
                 return;
             }
+
             ctx.copy_text(format::nodes_to_string(&state.doc.map, &roots));
             if action == Action::Cut {
                 state.doc.edit("Cut", ops::delete_selection);
             }
+
             state.set_status(format!("Copied {} objects", roots.len()));
         }
         Action::Paste(text) => {
@@ -855,6 +878,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 });
             }
         }
+
         // Handled by the app, which owns dialogs, viewports and tool state.
         Action::ShowCommandPalette
         | Action::ShowShapeDialog
@@ -969,6 +993,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 state.set_status("Select the objects that define the cordon");
                 return;
             }
+
             state.doc.edit("Set Cordon", |m, _| {
                 m.editor.cordon = Some(b);
                 m.editor.cordon_enabled = true;
@@ -979,6 +1004,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 state.set_status("No cordon set, use View > Cordon > Set Cordon from Selection");
                 return;
             }
+
             state.doc.edit("Toggle Cordon", |m, _| m.editor.cordon_enabled = !m.editor.cordon_enabled);
         }
         Action::ClearCordon => state.doc.edit("Clear Cordon", |m, _| {
@@ -1035,6 +1061,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             if let Some(dir) = state.doc.path.as_ref().and_then(|p| p.parent()) {
                 dialog = dialog.set_directory(dir);
             }
+
             if let Some(path) = dialog.pick_file() {
                 let reference = prefab_reference(&path, state.doc.path.as_deref(), state.game.project_root.as_deref());
                 let origin = state.snap(state.cursor_world.unwrap_or(DVec3::ZERO));
@@ -1084,6 +1111,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 if missing {
                     let _ = crate::scatter_tool::install_nature(state, false);
                 }
+
                 state.set_status(format!("Scatter palette: {name}"));
             }
         }
@@ -1126,6 +1154,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 state.set_status("Select what the volume should surround");
                 return;
             }
+
             let props = crate::volume_tool::default_props(&classname);
             if let Err(e) = crate::entity_wizards::make_volume(state, &classname, &b.expanded(grid), &props, Vec::new()) {
                 state.set_status(e);
@@ -1163,12 +1192,15 @@ pub fn open_map_in_tab(state: &mut EditorState, path: &std::path::Path) -> Resul
         if map_path != path {
             state.set_status(format!("{} is already open, close its tab to recover the autosave", map_path.display()));
         }
+
         return Ok(());
     }
+
     let untouched = state.doc.path.is_none() && !state.doc.is_modified() && state.doc.map.nodes.len() <= 1;
     if untouched {
         return state.open_map(path);
     }
+
     state.open_tab(crate::state::load_document(path)?);
     state.after_open(path);
     Ok(())
@@ -1181,11 +1213,13 @@ pub fn prefab_reference(prefab: &std::path::Path, map_path: Option<&std::path::P
     {
         return rel.to_string_lossy().replace('\\', "/");
     }
+
     if let Some(root) = project_root
         && let Some(res) = gt_formats::game::to_res_path(root, prefab)
     {
         return res;
     }
+
     prefab.to_string_lossy().replace('\\', "/")
 }
 
@@ -1195,6 +1229,7 @@ fn create_prefab(state: &mut EditorState) {
         state.set_status("Select objects to turn into a prefab");
         return;
     }
+
     let Some(map_path) = state.doc.path.clone() else {
         state.set_status("Save the map first, prefab paths are stored relative to it");
         return;
@@ -1223,6 +1258,7 @@ fn create_prefab(state: &mut EditorState) {
         state.set_status(format!("Could not save prefab: {e}"));
         return;
     }
+
     let reference = prefab_reference(&path, Some(&map_path), state.game.project_root.as_deref());
     let parent = state.insert_parent();
     state.doc.edit("Create Prefab", |m, s| {
@@ -1247,6 +1283,7 @@ pub fn place_entities(state: &mut EditorState, classnames: &[String], at: Option
         Point { origin: DVec3, angles: DVec3 },
         Brush(gt_geom::Brush),
     }
+
     let start = at.or(state.cursor_world).unwrap_or(DVec3::ZERO);
     let gap = state.grid.max(8.0);
     let items: Vec<(&String, Option<&gt_formats::EntityDef>, Aabb)> = classnames
@@ -1286,9 +1323,11 @@ pub fn place_entities(state: &mut EditorState, classnames: &[String], at: Option
         };
         placed.push((classname.to_string(), item));
     }
+
     if placed.is_empty() {
         return;
     }
+
     let parent = state.insert_parent();
     let label = Action::PlaceEntities { classnames: classnames.to_vec(), at, normal, row }.label();
     state.doc.edit(&label, |m, s| {
@@ -1307,6 +1346,7 @@ pub fn place_entities(state: &mut EditorState, classnames: &[String], at: Option
             if let Some(b) = brush {
                 m.insert(id, gt_doc::NodeKind::Brush(b));
             }
+
             s.select_node(id);
         }
     });
@@ -1355,6 +1395,7 @@ pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: Model
         });
         return Ok(1);
     }
+
     let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let model = gt_formats::bbmodel::parse(&text).map_err(|e| e.to_string())?;
     let stem = sanitize(&path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into()));
@@ -1382,10 +1423,12 @@ pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: Model
         };
         materials.push(name);
     }
+
     if texture_root.is_some() {
         let game = state.game.clone();
         state.materials.rescan(&game);
     }
+
     let scale = state.game.units_per_meter / crate::models::BB_UNITS_PER_METER;
     let material = |t: Option<usize>| t.and_then(|i| materials.get(i).cloned()).unwrap_or_else(|| "dev/grey".to_string());
     let count = match mode {
@@ -1408,6 +1451,7 @@ pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: Model
                 for b in brushes {
                     m.insert(group, gt_doc::NodeKind::Brush(b));
                 }
+
                 s.select_node(group);
             });
             n
@@ -1432,6 +1476,7 @@ fn edit_mesh_weight(state: &EditorState) -> (usize, usize) {
             tris += mesh.faces.iter().map(|f| f.indices.len().saturating_sub(2)).sum::<usize>();
         }
     }
+
     (verts, tris)
 }
 
@@ -1452,9 +1497,11 @@ pub fn place_model_mesh(state: &mut EditorState, path: &std::path::Path, at: DVe
             img.save(&file).map_err(|e| e.to_string())?;
             key_to_material.insert(key.clone(), format!("models/{stem}/tex{i}"));
         }
+
         let game = state.game.clone();
         state.materials.rescan(&game);
     }
+
     let material_of = |key: &str| key_to_material.get(key).cloned().unwrap_or_else(|| "dev/grey".to_string());
     let mi = state.prefs.model_import;
     let scale = crate::models::placement_scale(&model.bounds, upm, mi.autofit, mi.scale as f64);
@@ -1555,6 +1602,7 @@ fn hotspot_texture(state: &mut EditorState) -> usize {
         if rects.is_empty() {
             continue;
         }
+
         let pts = info.points.clone();
         let normal = info.plane.normal;
         let best = rects
@@ -1571,6 +1619,7 @@ fn hotspot_texture(state: &mut EditorState) -> usize {
             plans.push((id, f, uv));
         }
     }
+
     let n = plans.len();
     if n > 0 {
         state.doc.edit("Hotspot Texture", |m, _| {
@@ -1584,6 +1633,7 @@ fn hotspot_texture(state: &mut EditorState) -> usize {
             }
         });
     }
+
     n
 }
 
@@ -1592,6 +1642,7 @@ fn displacement_candidates(state: &EditorState) -> Vec<(NodeId, usize)> {
     if state.doc.selection.has_faces() {
         return state.doc.selection.faces.iter().copied().filter(|(id, _)| state.doc.map.brush(*id).is_some()).collect();
     }
+
     state
         .doc
         .selection
@@ -1620,6 +1671,7 @@ fn launch_godot(state: &mut EditorState, editor: bool) {
     if editor {
         cmd.arg("--editor");
     }
+
     match cmd.spawn() {
         Ok(_) => state.set_status(format!("Launched {}", exe.display())),
         Err(e) => state.set_status(format!("Could not launch Godot: {e}")),
@@ -1661,6 +1713,7 @@ fn explode_instances(state: &mut EditorState) {
         state.set_status("Select prefab instances to explode");
         return;
     }
+
     let mut contents = Vec::new();
     for (id, inst) in &instances {
         let Some(path) = crate::prefabs::resolve(&inst.path, state.doc.path.as_deref(), state.game.project_root.as_deref()) else { continue };
@@ -1671,6 +1724,7 @@ fn explode_instances(state: &mut EditorState) {
         let roots: Vec<NodeId> = prefab.layers.iter().flat_map(|l| prefab.get(*l).map(|n| n.children.clone()).unwrap_or_default()).collect();
         contents.push((*id, inst.clone(), format::nodes_to_string(&prefab, &roots)));
     }
+
     state.doc.edit("Explode Instance", |m, s| {
         s.clear();
         for (id, inst, text) in contents {
@@ -1688,6 +1742,7 @@ fn explode_instances(state: &mut EditorState) {
                                 *v = format!("{prefix}{v}");
                             }
                         }
+
                         for o in &mut e.outputs {
                             if !o.target.starts_with('!') {
                                 o.target = format!("{prefix}{}", o.target);
@@ -1696,6 +1751,7 @@ fn explode_instances(state: &mut EditorState) {
                     }
                 }
             }
+
             m.remove(id);
             s.nodes.extend(ids);
         }
@@ -1710,6 +1766,7 @@ fn first_selected_material(state: &EditorState) -> Option<String> {
             .map(|b| b.faces[*f].data.material.clone())
             .or_else(|| map.mesh(*id).and_then(|m| m.faces.get(*f)).map(|f| f.data.material.clone()));
     }
+
     state.doc.selection.brushes(map).first().and_then(|id| map.brush(*id)).map(|b| b.faces[0].data.material.clone())
 }
 

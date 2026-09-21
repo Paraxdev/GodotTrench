@@ -49,6 +49,7 @@ pub fn path_key(path: &str) -> String {
     while key.len() > 1 && key.ends_with('/') {
         key.pop();
     }
+
     if cfg!(windows) { key.to_lowercase() } else { key }
 }
 
@@ -270,10 +271,12 @@ impl Worker {
             if s.shutdown {
                 return None;
             }
+
             if s.port != self.port {
                 self.port = s.port;
                 self.conn = None;
             }
+
             if !s.enabled {
                 s.requests.clear();
                 s.live = None;
@@ -281,18 +284,23 @@ impl Worker {
                     self.sessions.clear();
                     s.state = LinkState { resync: s.state.resync + 1, ..Default::default() };
                 }
+
                 s = cvar.wait_timeout(s, Duration::from_secs(60)).unwrap_or_else(|e| e.into_inner()).0;
                 continue;
             }
+
             if let Some(r) = s.requests.pop_front() {
                 return Some(Work::Request(r));
             }
+
             if self.heartbeat_due() {
                 return Some(Work::Heartbeat);
             }
+
             if let Some(job) = s.live.take() {
                 return Some(Work::Live(job));
             }
+
             let wait = self.last_heartbeat.map_or(Duration::ZERO, |t| HEARTBEAT.saturating_sub(t.elapsed()));
             s = cvar.wait_timeout(s, wait.max(Duration::from_millis(5))).unwrap_or_else(|e| e.into_inner()).0;
         }
@@ -312,9 +320,11 @@ impl Worker {
         if self.conn.is_some() {
             return true;
         }
+
         if !eager && self.last_attempt.is_some_and(|t| t.elapsed() < RECONNECT) {
             return false;
         }
+
         self.last_attempt = Some(Instant::now());
         let addr = SocketAddr::from(([127, 0, 0, 1], self.port));
         let Ok(stream) = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT) else { return false };
@@ -344,6 +354,7 @@ impl Worker {
                 if conn.reader.read_line(&mut line).map_err(|e| e.to_string())? == 0 {
                     return Err("Godot closed the connection".to_string());
                 }
+
                 let Ok(reply) = serde_json::from_str::<Value>(&line) else { continue };
                 // Addons from before the heartbeat answer without a seq.
                 if reply["seq"].as_u64().is_none_or(|s| s == seq) {
@@ -354,6 +365,7 @@ impl Worker {
         if result.is_err() {
             self.disconnect();
         }
+
         result
     }
 
@@ -363,8 +375,10 @@ impl Worker {
             if self.last_attempt.is_some() {
                 self.update(|s| s.connected = false);
             }
+
             return;
         }
+
         let Ok(reply) = self.call(json!({ "event": "status" }), QUICK_REPLY) else { return };
         if reply["ok"].as_bool() != Some(true) {
             self.update(|s| {
@@ -372,6 +386,7 @@ impl Worker {
             });
             return;
         }
+
         let maps: BTreeMap<String, u64> =
             reply["maps"].as_array().into_iter().flatten().filter_map(|m| Some((path_key(m["path"].as_str()?), m["epoch"].as_u64().unwrap_or(0)))).collect();
         let before = self.sessions.len();
@@ -406,8 +421,10 @@ impl Worker {
             } else if !matches!(request, Request::LiveEnd { .. }) {
                 self.say("Godot is not running with the GodotTrench addon".into());
             }
+
             return;
         }
+
         match request {
             Request::MapSaved { path, game_port, live } => {
                 let key = path_key(&path);
@@ -443,6 +460,7 @@ impl Worker {
                 if let Some(pid) = self.shared.0.lock().unwrap_or_else(|e| e.into_inner()).state.pid {
                     allow_foreground(pid);
                 }
+
                 if let Err(e) = self.call(json!({ "event": "focus" }), QUICK_REPLY) {
                     self.say(format!("Could not reach Godot: {e}"));
                 }
@@ -460,6 +478,7 @@ impl Worker {
         if !known || !self.connect(false) {
             return;
         }
+
         let map = job.frame.map.clone();
         let message = match self.sessions.get_mut(&key) {
             Some(session) => match session.step(job.frame) {
@@ -574,6 +593,7 @@ mod tests {
                     if reader.read_line(&mut line).unwrap_or(0) == 0 {
                         break;
                     }
+
                     let msg: Value = serde_json::from_str(&line).unwrap();
                     let event = msg["event"].as_str().unwrap_or_default().to_string();
                     let mut reply = json!({ "ok": true, "seq": msg["seq"], "epoch": epoch });
@@ -589,6 +609,7 @@ mod tests {
                         }
                         _ => std::thread::sleep(delay),
                     }
+
                     log.lock().unwrap().push(msg);
                     if writeln!(&stream, "{reply}").is_err() {
                         break;
@@ -634,6 +655,7 @@ mod tests {
             link.sync(&map_path, Frame { map: map.clone(), dragging: false, idle: false });
             std::thread::sleep(Duration::from_millis(2));
         }
+
         wait_for("last delta", || {
             log.lock().unwrap().iter().filter(|m| m["event"] == "live_delta").flat_map(|m| m["ops"].as_array().cloned().unwrap_or_default()).count() == 50
         });

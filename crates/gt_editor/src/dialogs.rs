@@ -16,6 +16,7 @@ pub fn fuzzy_score(query: &str, text: &str) -> Option<i32> {
     if query.is_empty() {
         return Some(0);
     }
+
     let text_lower = text.to_lowercase();
     let mut score = 0;
     let mut last: Option<usize> = None;
@@ -27,13 +28,16 @@ pub fn fuzzy_score(query: &str, text: &str) -> Option<i32> {
         if last.is_some_and(|l| l + 1 == found) {
             score += 8;
         }
+
         if found == 0 || !chars[found - 1].is_alphanumeric() {
             score += 6;
         }
+
         score -= (found - pos).min(10) as i32;
         last = Some(found);
         pos = found + 1;
     }
+
     Some(score)
 }
 
@@ -162,18 +166,23 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
     for j in gt_geom::Justify::ALL {
         out.push((format!("Texture: Justify {}", j.label()), Action::Justify(j)));
     }
+
     for d in [0.125, 0.25, 0.5, 1.0, 2.0, 4.0] {
         out.push((format!("Texture: Texel Density {d}"), Action::TexelDensity(d)));
     }
+
     for k in crate::texture_ops::MeshUvKind::ALL {
         out.push((format!("Mesh UVs: {}", k.label()), Action::MeshUv(k)));
     }
+
     for preset in gt_doc::scatter::PRESETS {
         out.push((format!("Scatter: Preset {preset}"), Action::ScatterPreset(preset.to_string())));
     }
+
     for class in crate::volume_tool::VOLUME_CLASSES {
         out.push((format!("Gameplay: {class} Around Selection"), Action::VolumeAroundSelection(class.to_string())));
     }
+
     {
         use crate::entity_wizards::{DoorKind, HingeSide, SlideDirection};
         for (label, kind) in [
@@ -186,36 +195,45 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
             out.push((format!("Gameplay: {label}"), Action::MakeDoor { kind, trigger: false }));
         }
     }
+
     for op in MeshOp::ALL {
         out.push((format!("Mesh: {}", op.label()), Action::MeshOp(op)));
     }
+
     for n in 1..=9u8 {
         out.push((format!("Camera: Store Bookmark {n}"), Action::StoreCamera(n)));
         out.push((format!("Camera: Recall Bookmark {n}"), Action::RecallCamera(n)));
     }
+
     for t in ToolKind::all() {
         out.push((format!("Tool: {}", t.label()), Action::SetTool(t)));
     }
+
     for axis in 0..3 {
         let a = commands::axis_name(axis);
         out.push((format!("Transform: Rotate {a} +90"), Action::Rotate { axis, degrees: 90.0 }));
         out.push((format!("Transform: Rotate {a} -90"), Action::Rotate { axis, degrees: -90.0 }));
         out.push((format!("Transform: Flip {a}"), Action::Flip { axis }));
     }
+
     for def in state.game.solid_entities() {
         out.push((format!("Brush Entity: {}", def.classname), Action::CreateBrushEntity(def.classname.clone())));
     }
+
     for def in state.game.point_entities() {
         out.push((format!("Entity: Place {}", def.classname), Action::CreatePointEntity { classname: def.classname.clone(), at: None }));
     }
+
     for layer in &state.doc.map.layers {
         if let Some(n) = state.doc.map.get(*layer) {
             out.push((format!("Layer: Move Selection to {}", n.name()), Action::MoveToLayer(*layer)));
         }
     }
+
     if !state.godot.found() {
         out.retain(|(_, a)| !matches!(a, Action::OpenGodotEditor | Action::RunGodotProject));
     }
+
     out
 }
 
@@ -230,6 +248,7 @@ impl CommandPalette {
         if !self.open {
             return;
         }
+
         let mut matches: Vec<(i32, String, Action)> =
             palette_entries(state).into_iter().filter_map(|(label, action)| fuzzy_score(&self.query, &label).map(|s| (s, label, action))).collect();
         matches.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
@@ -247,12 +266,15 @@ impl CommandPalette {
             self.open = false;
             return;
         }
+
         if down {
             self.selected = (self.selected + 1).min(matches.len().saturating_sub(1));
         }
+
         if up {
             self.selected = self.selected.saturating_sub(1);
         }
+
         let mut run: Option<Action> = None;
         if enter && let Some((_, _, a)) = matches.get(self.selected) {
             run = Some(a.clone());
@@ -272,6 +294,7 @@ impl CommandPalette {
                 if edit.changed() {
                     self.selected = 0;
                 }
+
                 ui.separator();
                 egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
                     for (i, (_, label, action)) in matches.iter().enumerate().take(200) {
@@ -284,6 +307,7 @@ impl CommandPalette {
                         if i == self.selected {
                             resp.inner.scroll_to_me(None);
                         }
+
                         if resp.inner.clicked() {
                             run = Some(action.clone());
                         }
@@ -422,6 +446,7 @@ impl ShapeDialog {
                     "sides"
                 }));
             }
+
             if matches!(self.kind, ShapeKind::Arch | ShapeKind::Pipe | ShapeKind::Torus | ShapeKind::ArchWall | ShapeKind::GableRoof | ShapeKind::SpiralStairs)
             {
                 ui.add(egui::DragValue::new(&mut self.thickness).range(1.0..=4096.0).prefix(if self.kind == ShapeKind::SpiralStairs {
@@ -430,15 +455,19 @@ impl ShapeDialog {
                     "thickness "
                 }));
             }
+
             if matches!(self.kind, ShapeKind::Stairs | ShapeKind::SpiralStairs | ShapeKind::Grid) {
                 ui.add(egui::Slider::new(&mut self.steps, 1..=128).text(if self.kind == ShapeKind::Grid { "divisions" } else { "steps" }));
             }
+
             if !self.kind.mesh_only() && matches!(self.kind, ShapeKind::Cylinder | ShapeKind::Cone | ShapeKind::Sphere) {
                 ui.checkbox(&mut self.as_mesh, "Create as editable mesh");
             }
+
             if self.as_mesh || matches!(self.kind, ShapeKind::Torus) {
                 ui.checkbox(&mut self.smooth, "Smooth shading");
             }
+
             let size = bounds.size();
             ui.label(format!("Bounds {} x {} x {} ({})", size.x, size.y, size.z, if brushes.is_empty() { "last brush" } else { "replaces selection" }));
             let preview = self.generate(&bounds, &state.current_material);
@@ -450,6 +479,7 @@ impl ShapeDialog {
                     for b in &brushes {
                         m.remove(*b);
                     }
+
                     s.clear();
                     for kind in preview {
                         let id = m.insert(target_parent, kind);
@@ -507,11 +537,13 @@ pub fn make_terrain(
         }
         None => t.generate(params),
     }
+
     if auto_paint && t.layers.len() > 1 {
         let b = t.bounds();
         let span = (b.max.y - b.min.y).max(1.0);
         t.auto_paint(0.35, b.min.y - origin.y + span * 0.78, b.min.y - origin.y + span * 0.06);
     }
+
     t
 }
 
@@ -567,10 +599,12 @@ impl TerrainDialog {
                         if ui.button("use current").clicked() {
                             self.layers[i] = state.current_material.clone();
                         }
+
                         ui.add(egui::DragValue::new(&mut self.tiles[i]).range(8.0..=8192.0).prefix("tile "));
                     });
                     ui.end_row();
                 }
+
                 ui.label("Heightmap");
                 ui.horizontal(|ui| {
                     ui.label(
@@ -582,6 +616,7 @@ impl TerrainDialog {
                     if ui.button("Import PNG…").clicked() {
                         self.heightmap = rfd::FileDialog::new().add_filter("Heightmap", &["png", "tga", "bmp"]).pick_file();
                     }
+
                     if self.heightmap.is_some() && ui.button("clear").clicked() {
                         self.heightmap = None;
                     }
@@ -636,6 +671,7 @@ impl KeymapWindow {
         if !self.open {
             return;
         }
+
         if let Some(id) = self.recording.clone() {
             let captured = ctx.input_mut(|i| {
                 let found = i.events.iter().find_map(|e| match e {
@@ -657,6 +693,7 @@ impl KeymapWindow {
                 _ => {}
             }
         }
+
         let mut open = self.open;
         egui::Window::new("Keyboard Shortcuts").open(&mut open).default_size([520.0, 520.0]).show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -669,11 +706,13 @@ impl KeymapWindow {
                 if ui.button("Reset overrides").clicked() {
                     state.prefs.key_overrides.clear();
                 }
+
                 ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text("filter").desired_width(160.0));
             });
             if self.recording.is_some() {
                 ui.label(RichText::new("Press the new shortcut (Esc cancels)").color(crate::theme::YELLOW));
             }
+
             ui.separator();
             let active = commands::shortcuts(&state.prefs);
             egui::ScrollArea::vertical().show(ui, |ui| {
@@ -683,6 +722,7 @@ impl KeymapWindow {
                         if !self.filter.is_empty() && fuzzy_score(&self.filter, &label).is_none() {
                             continue;
                         }
+
                         let id = action.binding_id();
                         let keys: Vec<String> = active.iter().filter(|(_, a)| *a == action).map(|(s, _)| commands::shortcut_to_text(s)).collect();
                         ui.label(label);
@@ -691,9 +731,11 @@ impl KeymapWindow {
                             if ui.small_button(if self.recording.as_deref() == Some(id.as_str()) { "…" } else { "Set" }).clicked() {
                                 self.recording = Some(id.clone());
                             }
+
                             if ui.small_button("Clear").clicked() {
                                 state.prefs.key_overrides.insert(id.clone(), String::new());
                             }
+
                             if state.prefs.key_overrides.contains_key(&id) && ui.small_button("Default").clicked() {
                                 state.prefs.key_overrides.remove(&id);
                             }
@@ -719,6 +761,7 @@ impl ScatterPaletteWindow {
         if !self.open {
             return;
         }
+
         let mut open = self.open;
         egui::Window::new("Scatter Palette").open(&mut open).default_width(640.0).show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
@@ -728,6 +771,7 @@ impl ScatterPaletteWindow {
                         actions.push(Action::ScatterPreset(preset.to_string()));
                     }
                 }
+
                 if ui.small_button("Install nature models").on_hover_text(gt_doc::scatter::NATURE_DIR).clicked() {
                     actions.push(Action::InstallNatureModels);
                 }
@@ -739,6 +783,7 @@ impl ScatterPaletteWindow {
                 for k in gt_doc::ScatterKind::ALL {
                     ui.selectable_value(&mut s.kind, k, k.label());
                 }
+
                 ui.separator();
                 ui.label("Output");
                 ui.selectable_value(&mut s.output, ScatterOutput::Set, "scatter layer");
@@ -754,6 +799,7 @@ impl ScatterPaletteWindow {
                     for h in ["model", "weight", "scale", "", "spread", "align", "tilt", "sink", ""] {
                         ui.label(RichText::new(h).strong());
                     }
+
                     ui.end_row();
                     for (k, item) in s.palette.iter_mut().enumerate() {
                         let exists = project.as_ref().is_none_or(|root| {
@@ -775,6 +821,7 @@ impl ScatterPaletteWindow {
                         if ui.small_button("×").clicked() {
                             remove = Some(k);
                         }
+
                         ui.end_row();
                     }
                 });
@@ -783,12 +830,14 @@ impl ScatterPaletteWindow {
                 s.palette.remove(k);
                 s.preset.clear();
             }
+
             ui.horizontal(|ui| {
                 if ui.button("Add models…").on_hover_text("Pick several .bbmodel, .glb, .gltf or .tscn files at once").clicked() {
                     let mut dialog = rfd::FileDialog::new().add_filter("Models and scenes", &["bbmodel", "glb", "gltf", "tscn", "scn"]);
                     if let Some(root) = &project {
                         dialog = dialog.set_directory(root);
                     }
+
                     if let Some(paths) = dialog.pick_files() {
                         let items = crate::scatter_tool::items_from_paths(state, &paths);
                         let s = &mut state.prefs.scatter;
@@ -797,9 +846,11 @@ impl ScatterPaletteWindow {
                                 s.palette.push(item);
                             }
                         }
+
                         s.preset.clear();
                     }
                 }
+
                 ui.add(egui::TextEdit::singleline(&mut self.new_source).hint_text("res:// model or classname").desired_width(200.0));
                 if ui.button("Add").clicked() && !self.new_source.trim().is_empty() {
                     let s = &mut state.prefs.scatter;
@@ -807,6 +858,7 @@ impl ScatterPaletteWindow {
                     s.preset.clear();
                     self.new_source.clear();
                 }
+
                 if ui.button("Add selected props").clicked() {
                     let sources: Vec<String> = state
                         .doc
@@ -846,6 +898,7 @@ impl ScatterPaletteWindow {
                     if ui.checkbox(&mut limited, "limit").changed() {
                         s.rules.height = limited.then_some([-1024.0, 4096.0]);
                     }
+
                     if let Some(h) = &mut s.rules.height {
                         ui.add(egui::DragValue::new(&mut h[0]));
                         ui.add(egui::DragValue::new(&mut h[1]));
@@ -872,9 +925,11 @@ impl ScatterPaletteWindow {
                 if ui.button("New set on a new layer").clicked() {
                     actions.push(Action::NewScatterSet);
                 }
+
                 if ui.button("Fill targets").clicked() {
                     actions.push(Action::ScatterFill);
                 }
+
                 if ui.button("Scatter tool").clicked() {
                     actions.push(Action::SetTool(ToolKind::Scatter));
                 }
@@ -902,6 +957,7 @@ impl LinkDialog {
         if entities.len() != 2 {
             return;
         }
+
         self.from = Some(entities[0]);
         self.to = Some(entities[1]);
         let (outs, ins) = crate::entity_wizards::link_options(state, entities[0], entities[1]);
@@ -917,10 +973,12 @@ impl LinkDialog {
         if !self.open {
             return;
         }
+
         if state.doc.map.entity(from).is_none() || state.doc.map.entity(to).is_none() {
             self.open = false;
             return;
         }
+
         let name = |id| state.doc.map.get(id).map(|n| n.name()).unwrap_or_default();
         let (from_name, to_name) = (name(from), name(to));
         let (outs, ins) = crate::entity_wizards::link_options(state, from, to);
@@ -932,6 +990,7 @@ impl LinkDialog {
                 if ui.small_button("⇄").on_hover_text("Swap").clicked() {
                     std::mem::swap(&mut self.from, &mut self.to);
                 }
+
                 ui.label(RichText::new(&to_name).strong());
             });
             egui::Grid::new("link_grid").num_columns(2).show(ui, |ui| {
@@ -965,8 +1024,10 @@ impl LinkDialog {
                     Err(e) => state.set_status(e),
                 }
             }
+
             open = false;
         }
+
         self.open = open;
     }
 }

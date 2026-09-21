@@ -34,14 +34,17 @@ pub fn check(map: &Map) -> Vec<Issue> {
                 if let Err(e) = b.validate() {
                     out.push(Issue { node: Some(*id), severity: Severity::Error, code: "invalid_brush", message: format!("Invalid brush: {e}") });
                 }
+
                 if b.volume() < 1e-3 {
                     out.push(Issue { node: Some(*id), severity: Severity::Error, code: "degenerate_brush", message: "Brush has no volume".into() });
                 }
+
                 for (fi, f) in b.faces.iter().enumerate() {
                     if f.data.material.is_empty() {
                         out.push(Issue { node: Some(*id), severity: Severity::Warning, code: "no_material", message: format!("Face {fi} has no material") });
                     }
                 }
+
                 let mut key: Vec<i64> =
                     b.vertices.iter().flat_map(|v| [(v.x * 64.0).round() as i64, (v.y * 64.0).round() as i64, (v.z * 64.0).round() as i64]).collect();
                 key.sort();
@@ -58,6 +61,7 @@ pub fn check(map: &Map) -> Vec<Issue> {
                 if e.classname.trim().is_empty() {
                     out.push(Issue { node: Some(*id), severity: Severity::Error, code: "missing_classname", message: "Entity has no classname".into() });
                 }
+
                 for (i, o) in e.outputs.iter().enumerate() {
                     let wildcard = is_dynamic_target(&o.target);
                     if o.target.is_empty() {
@@ -75,6 +79,7 @@ pub fn check(map: &Map) -> Vec<Issue> {
                             message: format!("Output {} targets unknown entity '{}'", o.output, o.target),
                         });
                     }
+
                     if o.input.is_empty() {
                         out.push(Issue {
                             node: Some(*id),
@@ -84,6 +89,7 @@ pub fn check(map: &Map) -> Vec<Issue> {
                         });
                     }
                 }
+
                 if let Some(t) = e.property("target")
                     && !t.is_empty()
                     && !names.contains(t)
@@ -95,6 +101,7 @@ pub fn check(map: &Map) -> Vec<Issue> {
                 if let Err(e) = m.validate() {
                     out.push(Issue { node: Some(*id), severity: Severity::Error, code: "invalid_mesh", message: format!("Invalid mesh: {e}") });
                 }
+
                 if m.faces.iter().any(|f| f.data.material.is_empty()) {
                     out.push(Issue { node: Some(*id), severity: Severity::Warning, code: "no_material", message: "Mesh has faces without material".into() });
                 }
@@ -108,6 +115,7 @@ pub fn check(map: &Map) -> Vec<Issue> {
                         message: "Terrain height data does not match its resolution".into(),
                     });
                 }
+
                 if t.layers.is_empty() {
                     out.push(Issue { node: Some(*id), severity: Severity::Warning, code: "no_material", message: "Terrain has no layers".into() });
                 }
@@ -116,6 +124,7 @@ pub fn check(map: &Map) -> Vec<Issue> {
                 if s.items.iter().any(|i| i.source.trim().is_empty()) {
                     out.push(Issue { node: Some(*id), severity: Severity::Warning, code: "scatter_no_source", message: "Scatter item has no model".into() });
                 }
+
                 if s.instances.iter().any(|i| i.item as usize >= s.items.len()) {
                     out.push(Issue {
                         node: Some(*id),
@@ -124,6 +133,7 @@ pub fn check(map: &Map) -> Vec<Issue> {
                         message: "Scatter instances refer to a missing palette entry".into(),
                     });
                 }
+
                 if s.targets.iter().any(|t| !map.contains(*t)) {
                     out.push(Issue {
                         node: Some(*id),
@@ -139,6 +149,7 @@ pub fn check(map: &Map) -> Vec<Issue> {
             _ => {}
         }
     }
+
     let mut seen: BTreeMap<&str, NodeId> = BTreeMap::new();
     for (id, e) in map.entities() {
         if let Some(n) = e.targetname()
@@ -152,6 +163,7 @@ pub fn check(map: &Map) -> Vec<Issue> {
             });
         }
     }
+
     out.sort_by_key(|i| std::cmp::Reverse(i.severity));
     out
 }
@@ -186,6 +198,7 @@ pub fn fix(map: &mut Map, issue: &Issue, default_material: &str) -> bool {
     if !map.contains(id) {
         return false;
     }
+
     match issue.code {
         "invalid_brush" | "degenerate_brush" | "duplicate_brush" | "empty_group" | "invalid_terrain" => {
             map.remove(id);
@@ -199,6 +212,7 @@ pub fn fix(map: &mut Map, issue: &Issue, default_material: &str) -> bool {
             if m.faces.is_empty() {
                 map.remove(id);
             }
+
             true
         }
         "io_missing_target" | "io_no_target" => {
@@ -234,6 +248,7 @@ pub fn fix(map: &mut Map, issue: &Issue, default_material: &str) -> bool {
                 }
                 _ => return false,
             }
+
             true
         }
         _ => false,
@@ -266,6 +281,7 @@ mod tests {
         for issue in issues.iter().filter(|i| fixable(i.code)) {
             fix(&mut m, issue, "dev/grey");
         }
+
         assert!(check(&m).iter().all(|i| !fixable(i.code)), "{:?}", check(&m));
     }
 }

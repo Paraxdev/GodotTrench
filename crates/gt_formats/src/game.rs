@@ -251,6 +251,7 @@ impl EntityDef {
         if !self.gizmos.is_empty() {
             return self.gizmos.clone();
         }
+
         let has = |n: &str| self.property(n).is_some();
         let mut out = Vec::new();
         if has("hinge") {
@@ -260,30 +261,37 @@ impl EntityDef {
                 axis: if has("axis") { "axis".into() } else { String::new() },
             });
         }
+
         for travel in ["travel", "move_offset"] {
             if has(travel) {
                 out.push(GizmoDef::Travel { property: travel.into() });
             }
         }
+
         for radius in ["radius", "spawn_radius", "trigger_radius"] {
             if has(radius) {
                 out.push(GizmoDef::Radius { property: radius.into(), scale: 1.0 });
             }
         }
+
         if has("omni_range") {
             out.push(GizmoDef::Radius { property: "omni_range".into(), scale: units_per_meter });
         }
+
         if has("spot_range") && has("spot_angle") {
             out.push(GizmoDef::Cone { angle: "spot_angle".into(), range: "spot_range".into(), scale: units_per_meter });
         }
+
         if has("size") && self.kind == EntityKind::Point {
             out.push(GizmoDef::Box { property: "size".into() });
         }
+
         for point in ["target_offset", "look_at", "exit_offset"] {
             if has(point) {
                 out.push(GizmoDef::Point { property: point.into(), world: false });
             }
         }
+
         out
     }
 }
@@ -316,6 +324,7 @@ impl GameConfig {
         if direct.is_file() {
             return Some(direct);
         }
+
         let entries = std::fs::read_dir(project_root).ok()?;
         for entry in entries.flatten() {
             let p = entry.path();
@@ -326,6 +335,7 @@ impl GameConfig {
                 }
             }
         }
+
         None
     }
 
@@ -366,6 +376,7 @@ impl GameConfig {
                 e.group = e.classname.split('_').next().unwrap_or_default().into();
             }
         }
+
         cfg
     }
 }
@@ -379,8 +390,10 @@ pub fn find_project_root(start: &Path) -> Option<PathBuf> {
         if d.join("project.godot").is_file() {
             return Some(d.to_path_buf());
         }
+
         dir = d.parent();
     }
+
     None
 }
 

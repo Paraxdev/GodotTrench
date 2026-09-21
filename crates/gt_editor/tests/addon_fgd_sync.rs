@@ -8,6 +8,7 @@ fn addon_fgd_matches_builtin_entities() {
         let on_disk = std::fs::read_to_string(dir.join(&name)).unwrap_or_default().replace("\r\n", "\n");
         assert_eq!(on_disk, text, "{name} is out of date, run the export_addon_fgd example");
     }
+
     let cfg = gt_formats::GameConfig::builtin();
     for class in gt_editor::code_refs::ADDON_ENTITIES {
         let def = cfg.entity(class).unwrap_or_else(|| panic!("{class} missing from builtin_entities.json"));

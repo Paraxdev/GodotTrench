@@ -49,6 +49,7 @@ pub fn dab(state: &mut EditorState, center: DVec3, brush: &blend::BlendBrush) ->
                 changed |= blend::blend_terrain(terrain, center, brush);
             }
         }
+
         changed |= blend::blend_displacements(m, &t.displacements, center, brush);
         changed |= blend::blend_face_corners(m, &t.faces, center, brush);
         changed
@@ -101,10 +102,12 @@ impl BlendTool {
                     .set_status("Nothing to blend: add terrain layers, displacements, or set a blend material on faces (Terrain > Blend > Set Blend Material)");
                 return;
             }
+
             self.stroking = true;
             self.last = None;
             state.doc.begin("Blend");
         }
+
         if self.stroking {
             if let Some((p, _)) = self.hover {
                 let spacing = (state.blend.radius * 0.2).max(1.0);
@@ -118,15 +121,18 @@ impl BlendTool {
                             BlendMode::Smooth => BlendMode::Sharpen,
                         };
                     }
+
                     if modifiers.command {
                         brush.mode = BlendMode::Smooth;
                     }
+
                     self.dabs = self.dabs.wrapping_add(1);
                     brush.seed = state.blend.seed.wrapping_add(if brush.falloff == blend::Falloff::Spray { self.dabs } else { 0 });
                     dab(state, p, &brush);
                     self.last = Some(p);
                 }
             }
+
             if !ui.input(|i| i.pointer.primary_down()) {
                 self.stroking = false;
                 state.doc.commit();
@@ -151,6 +157,7 @@ impl BlendTool {
             out.push(LineVertex { pos: v3(w[0]), color });
             out.push(LineVertex { pos: v3(w[1]), color });
         }
+
         let inner = [color[0], color[1], color[2], 0.4];
         for w in ring(state.blend.strength.clamp(0.05, 1.0)).windows(2) {
             out.push(LineVertex { pos: v3(w[0]), color: inner });

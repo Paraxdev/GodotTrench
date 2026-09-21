@@ -20,6 +20,7 @@ pub fn handle(msg: Value, exec: &dyn ToolExecutor) -> Option<Value> {
         let out: Vec<Value> = items.into_iter().filter_map(|m| handle(m, exec)).collect();
         return (!out.is_empty()).then_some(Value::Array(out));
     }
+
     let id = msg.get("id").cloned()?;
     let Some(method) = msg.get("method").and_then(|m| m.as_str()) else {
         // A response from the client, nothing to answer.
@@ -49,6 +50,7 @@ pub fn handle(msg: Value, exec: &dyn ToolExecutor) -> Option<Value> {
             if !tool_definitions().iter().any(|t| t["name"] == name) {
                 return Some(error(&id, -32602, &format!("unknown tool {name}")));
             }
+
             let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
             result(&id, tool_result_json(exec.call(name, args)))
         }

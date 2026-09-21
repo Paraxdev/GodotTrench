@@ -131,6 +131,7 @@ impl BlendBrush {
         if d >= self.radius || self.radius <= 0.0 {
             return 0.0;
         }
+
         let t = d / self.radius;
         let w = match self.falloff {
             Falloff::Smooth => (1.0 - t * t).powi(2),
@@ -205,6 +206,7 @@ fn apply(brush: &BlendBrush, influence: f64, p: DVec3, normal: DVec3, current: &
             }
         }
     }
+
     normalize(&mut w);
     w
 }
@@ -216,6 +218,7 @@ pub fn blend_terrain(t: &mut gt_geom::Terrain, center: DVec3, brush: &BlendBrush
     if !t.is_valid() {
         return false;
     }
+
     let local = center - t.origin;
     let r = brush.radius / t.cell_size;
     let (x0, x1) = (((local.x / t.cell_size) - r).floor().max(0.0) as u32, (((local.x / t.cell_size) + r).ceil().max(0.0) as u32).min(w - 1));
@@ -223,10 +226,12 @@ pub fn blend_terrain(t: &mut gt_geom::Terrain, center: DVec3, brush: &BlendBrush
     if x0 > x1 || z0 > z1 || local.x + brush.radius < 0.0 || local.z + brush.radius < 0.0 {
         return false;
     }
+
     let layers = t.layers.len().clamp(1, MAX_LAYERS);
     if t.splat.len() != n * 4 {
         t.splat = (0..n).flat_map(|_| [255u8, 0, 0, 0]).collect();
     }
+
     let old: Vec<[f32; 4]> = (z0..=z1).flat_map(|j| (x0..=x1).map(move |i| (i, j))).map(|(i, j)| t.weights(i, j)).collect();
     let row = (x1 - x0 + 1) as usize;
     let get = |i: u32, j: u32| old[(j - z0) as usize * row + (i - x0) as usize];
@@ -238,6 +243,7 @@ pub fn blend_terrain(t: &mut gt_geom::Terrain, center: DVec3, brush: &BlendBrush
             if influence <= 0.0 {
                 continue;
             }
+
             let current: Vec<f64> = get(i, j).iter().take(layers).map(|v| *v as f64).collect();
             let neighbours = (brush.mode == BlendMode::Smooth).then(|| {
                 let mut sum = vec![0.0; layers];
@@ -249,9 +255,11 @@ pub fn blend_terrain(t: &mut gt_geom::Terrain, center: DVec3, brush: &BlendBrush
                         for (s, v) in sum.iter_mut().zip(nw) {
                             *s += v as f64;
                         }
+
                         count += 1.0;
                     }
                 }
+
                 sum.iter().map(|s| s / f64::max(count, 1.0)).collect::<Vec<_>>()
             });
             let new = apply(brush, influence, p, t.normal(i, j), &current, neighbours.as_deref());
@@ -265,6 +273,7 @@ pub fn blend_terrain(t: &mut gt_geom::Terrain, center: DVec3, brush: &BlendBrush
             }
         }
     }
+
     changed
 }
 
@@ -279,16 +288,19 @@ pub fn blend_displacements(map: &mut Map, faces: &[(NodeId, usize)], center: DVe
         if influences.iter().all(|w| *w <= 0.0) {
             continue;
         }
+
         let normal = b.faces[*face].plane.normal;
         let Some(disp) = map.brush_mut(*id).and_then(|b| b.faces[*face].data.disp.as_mut()) else { continue };
         if disp.alphas.len() != n * n {
             disp.alphas = vec![0.0; n * n];
         }
+
         let old = disp.alphas.clone();
         for k in 0..n * n {
             if influences[k] <= 0.0 {
                 continue;
             }
+
             let (i, j) = (k % n, k / n);
             let a = old[k] as f64;
             let neighbours = (brush.mode == BlendMode::Smooth).then(|| {
@@ -301,6 +313,7 @@ pub fn blend_displacements(map: &mut Map, faces: &[(NodeId, usize)], center: DVe
                         count += 1.0;
                     }
                 }
+
                 let avg = sum / f64::max(count, 1.0);
                 vec![1.0 - avg, avg]
             });
@@ -309,6 +322,7 @@ pub fn blend_displacements(map: &mut Map, faces: &[(NodeId, usize)], center: DVe
             changed |= (new[1] - a).abs() > 1e-6;
         }
     }
+
     changed
 }
 
@@ -323,6 +337,7 @@ pub fn blend_faces(map: &Map, nodes: &[NodeId]) -> Vec<(NodeId, usize)> {
             out.extend(m.faces.iter().enumerate().filter(|(_, f)| f.data.props.contains_key(BLEND_MATERIAL)).map(|(i, _)| (id, i)));
         }
     }
+
     out
 }
 
@@ -336,6 +351,7 @@ pub fn blend_face_corners(map: &mut Map, faces: &[(NodeId, usize)], center: DVec
         normal: DVec3,
         alpha: f64,
     }
+
     let mut corners = Vec::new();
     for (id, face) in faces {
         let (points, normal, colors) = if let Some(b) = map.brush(*id) {
@@ -352,6 +368,7 @@ pub fn blend_face_corners(map: &mut Map, faces: &[(NodeId, usize)], center: DVec
             corners.push(Corner { id: *id, face: *face, corner: k, pos: *p, normal, alpha });
         }
     }
+
     let key = |p: DVec3| ((p.x * 8.0).round() as i64, (p.y * 8.0).round() as i64, (p.z * 8.0).round() as i64);
     let mut shared: HashMap<(i64, i64, i64), (f64, f64)> = HashMap::new();
     for c in &corners {
@@ -359,12 +376,14 @@ pub fn blend_face_corners(map: &mut Map, faces: &[(NodeId, usize)], center: DVec
         e.0 += c.alpha;
         e.1 += 1.0;
     }
+
     let mut writes = Vec::new();
     for c in &corners {
         let influence = brush.influence(c.pos, center, false);
         if influence <= 0.0 {
             continue;
         }
+
         let neighbours = (brush.mode == BlendMode::Smooth).then(|| {
             // Neighbouring corners inside the brush, so a brush wide stroke evens out whole faces.
             let (mut sum, mut count) = shared.get(&key(c.pos)).copied().unwrap_or((c.alpha, 1.0));
@@ -374,6 +393,7 @@ pub fn blend_face_corners(map: &mut Map, faces: &[(NodeId, usize)], center: DVec
                     count += 1.0;
                 }
             }
+
             let avg = sum / count.max(1.0);
             vec![1.0 - avg, avg]
         });
@@ -382,6 +402,7 @@ pub fn blend_face_corners(map: &mut Map, faces: &[(NodeId, usize)], center: DVec
             writes.push((c.id, c.face, c.corner, new[1] as f32));
         }
     }
+
     let changed = !writes.is_empty();
     for (id, face, corner, alpha) in writes {
         let data = if let Some(b) = map.brush_mut(id) {
@@ -393,8 +414,10 @@ pub fn blend_face_corners(map: &mut Map, faces: &[(NodeId, usize)], center: DVec
         if data.colors.len() != len {
             data.colors = vec![[1.0, 1.0, 1.0, 0.0]; len];
         }
+
         data.colors[corner][3] = alpha;
     }
+
     changed
 }
 
@@ -416,8 +439,10 @@ pub fn set_blend_material(map: &mut Map, faces: &[(NodeId, usize)], material: Op
                 data.props.remove(BLEND_MATERIAL);
             }
         }
+
         n += 1;
     }
+
     n
 }
 
@@ -469,6 +494,7 @@ mod tests {
                 t.heights[k] = (i as f32 - 16.0) * 32.0;
             }
         }
+
         let brush = BlendBrush {
             mode: BlendMode::Slope,
             layer: 1,

@@ -25,6 +25,7 @@ pub fn parse(doc: &Value) -> Result<Vec<Step>, String> {
             {
                 return Err(format!("not a GodotTrench MCP script (format {f})"));
             }
+
             o.get("steps").and_then(|s| s.as_array()).ok_or("script needs a steps array")?
         }
         _ => return Err("script must be an object or an array".into()),
@@ -53,6 +54,7 @@ fn lookup<'a>(vars: &'a BTreeMap<String, Value>, path: &str) -> Option<&'a Value
             _ => cur.get(p)?,
         };
     }
+
     Some(cur)
 }
 
@@ -70,9 +72,11 @@ pub fn resolve(args: &Value, vars: &BTreeMap<String, Value>) -> Result<Value, St
             if let Some(path) = s.strip_prefix('$').filter(|p| !p.starts_with('{') && !p.is_empty() && !p.contains(' ')) {
                 return lookup(vars, path).cloned().ok_or_else(|| format!("unknown variable ${path}"));
             }
+
             if !s.contains("${") {
                 return Ok(args.clone());
             }
+
             let mut out = String::new();
             let mut rest = s.as_str();
             while let Some(start) = rest.find("${") {
@@ -83,6 +87,7 @@ pub fn resolve(args: &Value, vars: &BTreeMap<String, Value>) -> Result<Value, St
                 out.push_str(&text_of(lookup(vars, path).ok_or_else(|| format!("unknown variable ${{{path}}}"))?));
                 rest = &after[end + 1..];
             }
+
             out.push_str(rest);
             Value::String(out)
         }

@@ -30,6 +30,7 @@ pub fn pick_all(state: &EditorState, ray: &Ray) -> Vec<Hit> {
                 if (!bb.contains_point(ray.origin) && ray.intersect_aabb(&bb).is_none()) || !map.is_editable(*id) || !map.in_cordon(*id) {
                     continue;
                 }
+
                 if let Some(h) = b.ray_cast(ray) {
                     hits.push(Hit { node: *id, face: Some(h.face), distance: h.distance, point: h.point, normal: b.faces[h.face].plane.normal });
                 }
@@ -40,6 +41,7 @@ pub fn pick_all(state: &EditorState, ray: &Ray) -> Vec<Hit> {
                     if normal.dot(ray.dir) > 0.0 {
                         normal = -normal;
                     }
+
                     hits.push(Hit { node: *id, face: Some(face), distance: t, point: ray.at(t), normal });
                 }
             }
@@ -61,6 +63,7 @@ pub fn pick_all(state: &EditorState, ray: &Ray) -> Vec<Hit> {
                 if ray.intersect_aabb(&s.bounds()).is_none() {
                     continue;
                 }
+
                 // Instances pick as spheres around their lower half, closest first.
                 let best = s
                     .instances
@@ -82,6 +85,7 @@ pub fn pick_all(state: &EditorState, ray: &Ray) -> Vec<Hit> {
             _ => {}
         }
     }
+
     hits.sort_by(|a, b| a.distance.total_cmp(&b.distance));
     hits
 }
@@ -116,17 +120,20 @@ impl<'a> SurfaceCaster<'a> {
             if map.is_hidden(*id) || !map.in_cordon(*id) {
                 continue;
             }
+
             // Trigger volumes and other entity brushes that do not render are not ground.
             if let Some(e) = map.owning_entity(*id).and_then(|e| map.entity(e))
                 && (e.classname.starts_with("trigger") || e.classname.starts_with("func_illusionary") || e.classname.contains("area"))
             {
                 continue;
             }
+
             let b = map.bounds(*id).expanded(1.0);
             if b.intersects(region) {
                 surfaces.push((*id, b, surface));
             }
         }
+
         Self { surfaces }
     }
 
@@ -141,6 +148,7 @@ impl<'a> SurfaceCaster<'a> {
             if !bounds.contains_point(origin) && ray.intersect_aabb(bounds).is_none_or(|t| best.as_ref().is_some_and(|(bt, _)| t > *bt)) {
                 continue;
             }
+
             let hit = match surface {
                 Surface::Brush(b) => b.ray_cast(&ray).map(|h| (h.distance, b.faces[h.face].plane.normal)),
                 Surface::Mesh(m) => m.ray_cast(&ray).map(|(t, f)| {
@@ -161,6 +169,7 @@ impl<'a> SurfaceCaster<'a> {
                 best = Some((t, gt_doc::scatter::SurfaceHit { point: ray.at(t), normal, node: *id }));
             }
         }
+
         best.map(|(_, h)| h)
     }
 }

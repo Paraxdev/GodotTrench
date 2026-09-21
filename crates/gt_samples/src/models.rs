@@ -23,6 +23,7 @@ fn tree_atlas(leaf: [f32; 3], seed: u32) -> RgbaImage {
             let k = 0.8 + ((x % 4 == 0) as u8 as f32) * -0.25 + hash(x as i64, y as i64, seed) * 0.2;
             return image::Rgba([(98.0 * k) as u8, (68.0 * k) as u8, (44.0 * k) as u8, 255]);
         }
+
         let n = value_noise(x * 2, y * 2, 8, seed + 1);
         let k = 0.7 + n * 0.5 + if hash(x as i64, y as i64, seed + 2) > 0.85 { 0.2 } else { 0.0 };
         let hole = hash(x as i64 * 3, y as i64 * 5, seed + 3) < 0.08;
@@ -87,6 +88,7 @@ pub fn pine() -> String {
         let yaw = if i % 2 == 0 { 0.0 } else { 45.0 };
         b.cube(&format!("tier{i}"), [-half, *bottom, -half], [*half, *top - 8.0, *half], [0.0, yaw, 0.0], FOLIAGE);
     }
+
     b.cube("tip", [-5.0, 150.0, -5.0], [5.0, 176.0, 5.0], [0.0, 22.5, 0.0], FOLIAGE);
     b.finish("pine", "pine_atlas", &tree_atlas([46.0, 96.0, 54.0], 40))
 }
@@ -106,6 +108,7 @@ pub fn oak() -> String {
     for (i, (from, to, yaw)) in blobs.iter().enumerate() {
         b.cube(&format!("crown{i}"), *from, *to, [0.0, *yaw, 0.0], FOLIAGE);
     }
+
     b.finish("oak", "oak_atlas", &tree_atlas([70.0, 128.0, 52.0], 41))
 }
 

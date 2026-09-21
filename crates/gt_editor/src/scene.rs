@@ -120,6 +120,7 @@ fn build_drag_batches(renderer: &Renderer, game: &GameConfig, base: &Map, nodes:
             _ => {}
         }
     }
+
     DragLayer {
         nodes: nodes.clone(),
         opaque: b.opaque,
@@ -190,6 +191,7 @@ pub fn parse_color(s: &str) -> Option<Vec3> {
     if v.len() < 3 {
         return None;
     }
+
     let scale = if v.iter().take(3).any(|c| *c > 1.0) { 255.0 } else { 1.0 };
     Some(Vec3::new(v[0], v[1], v[2]) / scale)
 }
@@ -299,6 +301,7 @@ fn mix_corners<const N: usize>(weights: [(usize, f64); 3], value: impl Fn(usize)
             *o += v * w as f32;
         }
     }
+
     out
 }
 
@@ -308,10 +311,12 @@ fn register_model_textures(renderer: &mut Renderer, model: &crate::models::Model
         if renderer.has_material(key) {
             continue;
         }
+
         let mut desc = gt_render::MaterialDesc::plain(img, *pixelated);
         if img.pixels().any(|p| p.0[3] < 128) {
             desc.alpha = gt_render::AlphaMode::Scissor(0.5);
         }
+
         renderer.set_material_desc(key, &desc);
     }
 }
@@ -338,6 +343,7 @@ fn instance_hash(set: &gt_doc::Scatter, instances: &[&gt_doc::scatter::ScatterIn
             v.to_bits().hash(&mut h);
         }
     }
+
     h.finish()
 }
 
@@ -353,6 +359,7 @@ fn build_scatter(
     for inst in &set.instances {
         by_chunk.entry(((inst.position.x / SCATTER_CHUNK).floor() as i64, (inst.position.z / SCATTER_CHUNK).floor() as i64)).or_default().push(inst);
     }
+
     let item_models: Vec<Option<std::sync::Arc<crate::models::Model>>> = set
         .items
         .iter()
@@ -364,6 +371,7 @@ fn build_scatter(
     for m in item_models.iter().flatten() {
         register_model_textures(renderer, m);
     }
+
     let mut old = previous.map(|p| p.chunks).unwrap_or_default();
     let mut out = ScatterGpu::default();
     let tint = if selected { SELECTED_TINT } else { [1.0; 4] };
@@ -375,6 +383,7 @@ fn build_scatter(
             out.chunks.insert(key, (hash, mesh));
             continue;
         }
+
         let mut batch = MeshBatch::default();
         for inst in instances {
             let xform = inst.transform().as_mat4();
@@ -403,8 +412,10 @@ fn build_scatter(
                 }
             }
         }
+
         out.chunks.insert(key, (hash, renderer.upload_mesh(&batch)));
     }
+
     let bounds = set.bounds();
     let color = if selected { SELECTED_COLOR } else { [0.45, 0.95, 0.5, 0.6] };
     let mut lines = Vec::new();
@@ -415,6 +426,7 @@ fn build_scatter(
             push_line(&mut lines, inst.position - DVec3::Z * r, inst.position + DVec3::Z * r, color);
         }
     }
+
     let mut outline = Vec::new();
     if !bounds.is_empty() {
         let c = bounds.corners();
@@ -422,6 +434,7 @@ fn build_scatter(
             push_line(&mut outline, c[i], c[j], [color[0], color[1], color[2], 0.5]);
         }
     }
+
     lines.extend(outline.iter().copied());
     out.lines_2d = renderer.upload_lines(&lines);
     out.sel_lines = if selected { renderer.upload_lines(&outline) } else { None };
@@ -478,6 +491,7 @@ impl Builder<'_> {
             if tool {
                 color[3] = if has_disp && face.data.disp.is_none() { 0.12 } else { 0.45 };
             }
+
             if let Some(grid) = gt_geom::displacement::grid(brush, fi) {
                 let blend = self.blend_material(&face.data);
                 let verts: Vec<MeshVertex> = (0..grid.size * grid.size)
@@ -506,17 +520,21 @@ impl Builder<'_> {
                         if i + 1 < n_side {
                             push_line(list, grid.positions[k], grid.positions[k + 1], line);
                         }
+
                         if j + 1 < n_side {
                             push_line(list, grid.positions[k], grid.positions[k + n_side], line);
                         }
                     }
                 }
+
                 if selected_face(fi) {
                     let overlay: Vec<MeshVertex> = verts.iter().map(|v| MeshVertex { color: [1.0, 0.2, 0.2, 0.3], ..*v }).collect();
                     self.face_overlay.add_triangles(gt_render::WHITE_MATERIAL, &overlay, &indices);
                 }
+
                 continue;
             }
+
             let painted = face.data.colors.len() == face.indices.len();
             let blend = self.blend_material(&face.data);
             let verts: Vec<MeshVertex> = face
@@ -553,6 +571,7 @@ impl Builder<'_> {
                     self.batch(key, tool).add_polygon(key, &verts);
                 }
             }
+
             if selected_face(fi) {
                 let overlay: Vec<MeshVertex> = verts.iter().map(|v| MeshVertex { color: [1.0, 0.2, 0.2, 0.35], ..*v }).collect();
                 self.face_overlay.add_polygon(gt_render::WHITE_MATERIAL, &overlay);
@@ -563,6 +582,7 @@ impl Builder<'_> {
                 }
             }
         }
+
         for (a, b) in brush.edges() {
             let (pa, pb) = (brush.vertices[a as usize], brush.vertices[b as usize]);
             if selected {
@@ -591,6 +611,7 @@ impl Builder<'_> {
             if face.indices.len() < 3 || face.indices.iter().any(|i| *i as usize >= mesh.vertices.len()) {
                 continue;
             }
+
             let mat = face.data.material.as_str();
             let size = self.tex_size(mat);
             let tool = see_through || self.game.is_tool_texture(mat);
@@ -598,6 +619,7 @@ impl Builder<'_> {
             if tool {
                 color[3] = 0.45;
             }
+
             let painted = face.data.colors.len() == face.indices.len();
             let blend = self.blend_material(&face.data);
             let verts: Vec<MeshVertex> = face
@@ -646,11 +668,13 @@ impl Builder<'_> {
                     self.batch(key, tool).add_triangles(key, &verts, &tris);
                 }
             }
+
             if selected_face(fi) {
                 let overlay: Vec<MeshVertex> = verts.iter().map(|v| MeshVertex { color: [1.0, 0.2, 0.2, 0.35], ..*v }).collect();
                 self.face_overlay.add_triangles(gt_render::WHITE_MATERIAL, &overlay, &tris);
             }
         }
+
         // Smooth shaded meshes only show feature edges, every face edge would turn cylinders into a wire cage.
         let face_normals: Vec<DVec3> = (0..mesh.faces.len()).map(|f| mesh.face_normal(f)).collect();
         let cos = if mesh.smooth_angle > 0.0 { (mesh.smooth_angle as f64).to_radians().cos() } else { 2.0 };
@@ -659,6 +683,7 @@ impl Builder<'_> {
             if !feature && !selected {
                 continue;
             }
+
             let (pa, pb) = (mesh.vertices[key.0 as usize], mesh.vertices[key.1 as usize]);
             if selected {
                 let c = if feature { SELECTED_COLOR } else { [1.0, 0.4, 0.3, 0.35] };
@@ -695,11 +720,13 @@ impl Builder<'_> {
                     self.stats.triangles += part.indices.len() / 3;
                     self.batch(&part.material, false).add_triangles(&part.material, &verts, &part.indices);
                 }
+
                 let corners = m.bounds.corners();
                 let b = Aabb::from_points(corners.iter().map(|p| xform.transform_point3(*p)));
                 if let Some(id) = id {
                     self.model_bounds.insert(id, b);
                 }
+
                 b
             }
             None => {
@@ -717,12 +744,15 @@ impl Builder<'_> {
                 if model.is_none() {
                     push_line(&mut self.edges, corners[a], corners[b], line_color);
                 }
+
                 push_line(&mut self.edges_2d, corners[a], corners[b], [c.r, c.g, c.b, 1.0]);
             }
         }
+
         if is_decal(def) {
             self.decal_preview(e, selected);
         }
+
         // Models already show their orientation, arrows on hundreds of scattered props only add noise.
         if model.is_none() || selected {
             let fwd = e.rotation() * DVec3::NEG_Z;
@@ -774,6 +804,7 @@ impl Builder<'_> {
         if depth > prefabs::MAX_DEPTH {
             return Aabb::EMPTY;
         }
+
         let Some(map) = cx.prefabs.get(path).map.clone() else { return Aabb::EMPTY };
         let mut bounds = Aabb::EMPTY;
         let tint = if selected { SELECTED_TINT } else { INSTANCE_TINT };
@@ -805,6 +836,7 @@ impl Builder<'_> {
                 _ => {}
             }
         }
+
         bounds
     }
 }
@@ -829,11 +861,13 @@ fn terrain_wire(t: &Terrain, color: [f32; 4]) -> Vec<LineVertex> {
             push_line(&mut lines, t.vertex(i, j), t.vertex(i + stride, j), color);
         }
     }
+
     for i in (0..rx).step_by(stride as usize) {
         for j in (0..rz.saturating_sub(stride)).step_by(stride as usize) {
             push_line(&mut lines, t.vertex(i, j), t.vertex(i, j + stride), color);
         }
     }
+
     lines
 }
 
@@ -862,6 +896,7 @@ fn build_terrain(
         if chunks_to_build.is_some_and(|set| !set.contains(&index)) {
             continue;
         }
+
         let mut verts = Vec::with_capacity(((w + 1) * (h + 1)) as usize);
         for j in cj..=cj + h {
             for i in ci..=ci + w {
@@ -869,6 +904,7 @@ fn build_terrain(
                 verts.push(MeshVertex { pos: v3(t.vertex(i, j)), normal: v3(t.normal(i, j)), uv: [flag, 0.0], color: weights });
             }
         }
+
         let row = w + 1;
         let mut indices = Vec::with_capacity((w * h * 6) as usize);
         for y in cj..cj + h {
@@ -876,15 +912,18 @@ fn build_terrain(
                 if t.is_hole(x, y) {
                     continue;
                 }
+
                 for tri in Terrain::cell_triangles(x, y) {
                     indices.extend(tri.iter().map(|(i, j)| (j - cj) * row + (i - ci)));
                 }
             }
         }
+
         let mut batch = MeshBatch::default();
         batch.add_triangles(&key, &verts, &indices);
         out.chunks[index] = renderer.upload_mesh(&batch);
     }
+
     out.triangles = (t.cells()[0] * t.cells()[1] * 2) as usize;
     let b = t.bounds();
     let mut lines = Vec::new();
@@ -893,6 +932,7 @@ fn build_terrain(
     for (i, j) in Aabb::EDGES {
         push_line(&mut lines, corners[i], corners[j], color);
     }
+
     let size = t.size();
     let step = t.chunk_cells.max(1) as f64 * t.cell_size;
     let top = b.max.y - t.origin.y;
@@ -901,11 +941,13 @@ fn build_terrain(
         push_line(&mut lines, t.origin + DVec3::new(x, top, 0.0), t.origin + DVec3::new(x, top, size.y), [color[0], color[1], color[2], 0.35]);
         x += step;
     }
+
     let mut z = 0.0;
     while z <= size.y + 1e-6 {
         push_line(&mut lines, t.origin + DVec3::new(0.0, top, z), t.origin + DVec3::new(size.x, top, z), [color[0], color[1], color[2], 0.35]);
         z += step;
     }
+
     out.lines_2d = renderer.upload_lines(&lines);
     out.sel_lines = if selected { renderer.upload_lines(&lines[..24]) } else { None };
     out
@@ -921,6 +963,7 @@ fn changed_chunks(old: &Terrain, new: &Terrain) -> Option<BTreeSet<usize>> {
     {
         return None;
     }
+
     let mut out = BTreeSet::new();
     for (index, (ci, cj, w, h)) in new.chunks().into_iter().enumerate() {
         // Normals look one vertex further, so the comparison window is one larger on each side.
@@ -937,6 +980,7 @@ fn changed_chunks(old: &Terrain, new: &Terrain) -> Option<BTreeSet<usize>> {
             out.insert(index);
         }
     }
+
     Some(out)
 }
 
@@ -950,15 +994,19 @@ pub fn compute_lighting(map: &Map, game: &GameConfig) -> Lighting {
         let q = gt_core::DQuat::from_euler(gt_core::EulerRot::YXZ, angles[1].to_radians(), angles[0].to_radians(), 0.0);
         lighting.sun_direction = (q * DVec3::NEG_Z).as_vec3();
     }
+
     if let Some(c) = props.get("sun_color").and_then(|s| parse_color(s)) {
         lighting.sun_color = c;
     }
+
     if let Some(e) = props.get("sun_energy").and_then(|s| s.parse().ok()) {
         lighting.sun_energy = e;
     }
+
     if let Some(c) = props.get("ambient_color").and_then(|s| parse_color(s)) {
         lighting.ambient = c;
     }
+
     for (key, slot) in [
         ("sky_top_color", &mut lighting.sky_top),
         ("sky_horizon_color", &mut lighting.sky_horizon),
@@ -969,20 +1017,24 @@ pub fn compute_lighting(map: &Map, game: &GameConfig) -> Lighting {
             *slot = linear(c);
         }
     }
+
     // Godot fog density is per meter.
     if let Some(d) = props.get("fog_density").and_then(|s| s.parse::<f32>().ok()) {
         lighting.fog_density = d.max(0.0) / upm.max(1.0);
     }
+
     for (id, e) in map.entities() {
         if map.is_hidden(id) || !map.is_point_entity(id) {
             continue;
         }
+
         let node_class = game.entity(&e.classname).map(|d| d.node_class.as_str()).unwrap_or("");
         let is_light =
             matches!(node_class, "OmniLight3D" | "SpotLight3D" | "DirectionalLight3D") || (node_class.is_empty() && e.classname.starts_with("light"));
         if !is_light || e.property("start_on") == Some("0") {
             continue;
         }
+
         let color = e.property("light_color").and_then(parse_color).unwrap_or(Vec3::ONE);
         let energy = e.property("light_energy").and_then(|s| s.parse().ok()).unwrap_or(1.0f32);
         let forward = (e.rotation() * DVec3::NEG_Z).as_vec3();
@@ -992,6 +1044,7 @@ pub fn compute_lighting(map: &Map, game: &GameConfig) -> Lighting {
             lighting.sun_energy = energy;
             continue;
         }
+
         let spot = node_class == "SpotLight3D" || e.classname.contains("spot");
         let range_m = e.property(if spot { "spot_range" } else { "omni_range" }).and_then(|s| s.parse().ok()).unwrap_or(10.0f32);
         let cone = e.property("spot_angle").and_then(|s| s.parse::<f32>().ok()).unwrap_or(45.0);
@@ -1003,6 +1056,7 @@ pub fn compute_lighting(map: &Map, game: &GameConfig) -> Lighting {
             spot: spot.then(|| (forward, cone.to_radians().cos())),
         });
     }
+
     lighting.lights.sort_by(|a, b| (b.energy * b.range).total_cmp(&(a.energy * a.range)));
     lighting.lights.truncate(gt_render::MAX_LIGHTS);
     lighting
@@ -1048,9 +1102,11 @@ fn build_bucket<'a>(ctx: &BucketCtx<'a>, ids: &[NodeId]) -> Builder<'a> {
         if ctx.drag_nodes.contains(&id) {
             continue;
         }
+
         if map.is_hidden(id) || (!matches!(node.kind, NodeKind::Layer(_) | NodeKind::Group(_)) && !map.in_cordon(id)) {
             continue;
         }
+
         let entity = map.owning_entity(id).and_then(|e| map.entity(e));
         let entity_def = entity.and_then(|e| ctx.game.entity(&e.classname));
         let selected = ctx.selected_brush_like.contains(&id);
@@ -1079,6 +1135,7 @@ fn build_bucket<'a>(ctx: &BucketCtx<'a>, ids: &[NodeId]) -> Builder<'a> {
             _ => {}
         }
     }
+
     builder
 }
 
@@ -1125,9 +1182,11 @@ impl SceneCache {
         {
             return;
         }
+
         if self.project_generation != project_generation {
             renderer.clear_materials();
         }
+
         let map = state.doc.map.clone();
         let selection = state.doc.selection.clone();
         // Only heavy moves use the drag layer; ordinary brush drags keep the live rebuild-and-cull path.
@@ -1161,6 +1220,7 @@ impl SceneCache {
             if let Some(prev) = &self.prev_map {
                 dirty.extend(prev.nodes.keys().copied());
             }
+
             if self.prev_map.is_none() {
                 self.terrains.clear();
                 self.scatters.clear();
@@ -1177,14 +1237,17 @@ impl SceneCache {
                 dirty.insert(id);
                 dirty.extend(map.descendants(id));
             }
+
             let sel_changed: BTreeSet<NodeId> = self.prev_selection.nodes.symmetric_difference(&selection.nodes).copied().collect();
             for id in sel_changed {
                 dirty.insert(id);
                 dirty.extend(map.descendants(id));
             }
+
             let faces_changed: BTreeSet<NodeId> = self.prev_selection.faces.symmetric_difference(&selection.faces).map(|(id, _)| *id).collect();
             dirty.extend(faces_changed);
         }
+
         // Nodes entering or leaving a live drag need their buckets rebuilt, to drop them into the drag layer
         // or fold them back in.
         let prev_drag_nodes: BTreeSet<NodeId> = self.drag.as_ref().map(|d| d.nodes.clone()).unwrap_or_default();
@@ -1192,6 +1255,7 @@ impl SceneCache {
             dirty.extend(drag_nodes.iter().copied());
             dirty.extend(prev_drag_nodes.iter().copied());
         }
+
         let entities_changed = full || dirty.iter().any(|id| map.entity(*id).is_some() || self.prev_map.as_ref().is_some_and(|p| p.entity(*id).is_some()));
 
         // Textures needed by the changed nodes and the prefabs they place.
@@ -1210,6 +1274,7 @@ impl SceneCache {
                 }
             }
         }
+
         needed.extend(blend_pairs.iter().map(|(_, b)| b.clone()));
         let collect = |node: &gt_doc::Node, needed: &mut BTreeSet<String>| match &node.kind {
             NodeKind::Brush(b) => needed.extend(b.faces.iter().map(|f| f.data.material.clone())),
@@ -1232,11 +1297,13 @@ impl SceneCache {
                 pending_prefabs.push((p, 0));
             }
         }
+
         let mut visited = BTreeSet::new();
         while let Some((path, depth)) = pending_prefabs.pop() {
             if depth > prefabs::MAX_DEPTH || !visited.insert(path.clone()) {
                 continue;
             }
+
             if let Some(prefab) = state.prefabs.get(&path).map.clone() {
                 for n in prefab.nodes.values() {
                     collect(n, &mut needed);
@@ -1248,10 +1315,12 @@ impl SceneCache {
                 }
             }
         }
+
         for name in needed {
             if name.is_empty() || renderer.has_material(&name) {
                 continue;
             }
+
             if let Some(base) = name.strip_prefix(DECAL_PREFIX) {
                 // A decal variant of a material: same textures, but alpha cut out and double sided.
                 if let Some(loaded) = state.materials.load_material(base) {
@@ -1260,8 +1329,10 @@ impl SceneCache {
                     desc.double_sided = true;
                     renderer.set_material_desc(&name, &desc);
                 }
+
                 continue;
             }
+
             if let Some(loaded) = state.materials.load_material(&name) {
                 state.materials.remember_size(&name, [loaded.albedo.width(), loaded.albedo.height()]);
                 renderer.set_material_desc(&name, &material_desc(&loaded, state.prefs.texture_filter));
@@ -1269,11 +1340,13 @@ impl SceneCache {
                 renderer.set_material_desc(&name, &gt_render::MaterialDesc::plain(&img, true));
             }
         }
+
         for (base, blend) in &blend_pairs {
             if renderer.has_material(base) && renderer.has_material(blend) {
                 renderer.prepare_blend_material(base, blend);
             }
         }
+
         // Models of changed point entities.
         let game = state.game.clone();
         for id in &dirty {
@@ -1345,6 +1418,7 @@ impl SceneCache {
                     per_bucket.entry(b).or_default().push(*id);
                 }
             }
+
             let selected_faces = selection.faces.clone();
 
             // Point-entity models load on demand from the main-thread cache, so resolve them here and hand
@@ -1432,11 +1506,14 @@ impl SceneCache {
                             for (i, j) in Aabb::EDGES {
                                 push_line(if selected { &mut builder.sel_edges } else { &mut builder.edges_2d }, corners[i], corners[j], color);
                             }
+
                             builder.instance_bounds.insert(id, bounds);
                         }
+
                         results.push((b, upload_bucket(ctx.renderer, builder)));
                     }
                 }
+
                 results
             };
             for (b, bucket) in results {
@@ -1451,6 +1528,7 @@ impl SceneCache {
                 if self.drag.as_ref().map(|d| d.nodes != req.nodes).unwrap_or(true) {
                     self.drag = Some(build_drag_batches(renderer, &game, base, &req.nodes));
                 }
+
                 if let Some(dl) = &mut self.drag {
                     let off = v3(req.offset);
                     dl.gpu_opaque = renderer.upload_mesh(&dl.opaque.translated(off));
@@ -1469,11 +1547,13 @@ impl SceneCache {
                 names.entry(n).or_default().push(id);
             }
         }
+
         let mut links = Vec::new();
         for (id, e) in map.entities() {
             if map.is_hidden(id) {
                 continue;
             }
+
             let Some(from) = entity_center(&map, &game, id) else { continue };
             let emphasis = if is_selected(id) { 1.0 } else { 0.5 };
             let mut link = |target: &str, color: [f32; 4]| {
@@ -1491,10 +1571,12 @@ impl SceneCache {
             if let Some(t) = e.property("target").filter(|t| !t.is_empty()) {
                 link(t, TARGET_LINK);
             }
+
             for o in &e.outputs {
                 link(&o.target, IO_LINK);
             }
         }
+
         self.links = renderer.upload_lines(&links);
         self.cordon = match map.editor.cordon {
             Some(c) => {
@@ -1504,6 +1586,7 @@ impl SceneCache {
                 for (i, j) in Aabb::EDGES {
                     push_line(&mut lines, corners[i], corners[j], color);
                 }
+
                 renderer.upload_lines(&lines)
             }
             None => None,
@@ -1517,12 +1600,15 @@ impl SceneCache {
             instance_bounds.extend(b.instance_bounds.iter().map(|(k, v)| (*k, *v)));
             model_bounds.extend(b.model_bounds.iter().map(|(k, v)| (*k, *v)));
         }
+
         for t in self.terrains.values() {
             stats.triangles += t.triangles;
         }
+
         for s in self.scatters.values() {
             stats.triangles += s.triangles;
         }
+
         self.stats = stats;
         state.instance_bounds = instance_bounds;
         state.model_bounds = model_bounds;
@@ -1531,9 +1617,11 @@ impl SceneCache {
         if entities_changed || full || lit_changed || properties_changed {
             self.lighting = compute_lighting(&map, &game);
         }
+
         if lit && (!dirty.is_empty() || lit_changed || full || properties_changed) {
             self.shadow_dirty = true;
         }
+
         self.scene_bounds = map.bounds_of(map.layers.iter().copied());
 
         self.prev_map = Some(map);
@@ -1550,10 +1638,12 @@ impl SceneCache {
             self.shadow_center = None;
             return;
         }
+
         let moved = self.shadow_center.is_none_or(|c| (c - focus).length() > HALF * 0.35);
         if !self.shadow_dirty && !moved {
             return;
         }
+
         let bounds = self.scene_bounds;
         let vp = if bounds.is_empty() {
             None
@@ -1586,6 +1676,7 @@ impl SceneCache {
                 frame.wire_lines.extend(t.wire.as_ref());
             }
         }
+
         for s in self.scatters.values() {
             if is_2d {
                 frame.overlay_lines.extend(s.lines_2d.as_ref());
@@ -1594,6 +1685,7 @@ impl SceneCache {
                 frame.overlay_lines.extend(s.sel_lines.as_ref());
             }
         }
+
         for b in &self.buckets {
             if is_2d {
                 frame.overlay_lines.extend(b.edges_2d.as_ref());
@@ -1605,15 +1697,18 @@ impl SceneCache {
                 if !lit {
                     frame.lines.extend(b.edges.as_ref());
                 }
+
                 frame.lines.extend(b.sel_edges.as_ref());
                 frame.transparent.extend(b.transparent.as_ref());
                 if !lit {
                     frame.transparent.extend(b.volumes.as_ref());
                 }
+
                 frame.overlay_meshes.extend(b.overlay.as_ref());
                 frame.overlay_lines.extend(b.xray.as_ref());
             }
         }
+
         if let Some(dl) = &self.drag {
             if is_2d {
                 frame.overlay_lines.extend(dl.gpu_edges.as_ref());
@@ -1624,6 +1719,7 @@ impl SceneCache {
                 frame.lines.extend(dl.gpu_edges.as_ref());
             }
         }
+
         frame.overlay_lines.extend(self.links.as_ref());
         frame.lines.extend(self.cordon.as_ref());
     }

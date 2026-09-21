@@ -69,6 +69,7 @@ fn write_brush(out: &mut String, brush: &Brush) {
             num(uv.scale.y)
         );
     }
+
     out.push_str("}\n");
 }
 
@@ -110,6 +111,7 @@ pub fn export_with(map: &Map, options: ExportOptions) -> String {
             map.remove(l);
         }
     }
+
     if options.cordon {
         let outside: Vec<NodeId> = map
             .nodes
@@ -121,6 +123,7 @@ pub fn export_with(map: &Map, options: ExportOptions) -> String {
             map.remove(id);
         }
     }
+
     let map = &map;
     let mut out = String::from("// Game: Godot\n// Format: Valve\n// Exported by GodotTrench\n");
     let mut tb_ids: HashMap<NodeId, u64> = HashMap::new();
@@ -131,6 +134,7 @@ pub fn export_with(map: &Map, options: ExportOptions) -> String {
             next_id += 1;
         }
     }
+
     // The nearest enclosing TB container (group or non-default layer) of a node.
     let container = |id: NodeId| -> Option<(String, String)> {
         let parent = map.get(id)?.parent?;
@@ -151,6 +155,7 @@ pub fn export_with(map: &Map, options: ExportOptions) -> String {
             write_brush(&mut out, &brush);
         }
     }
+
     out.push_str("}\n");
 
     let mut entity_index = 1;
@@ -167,6 +172,7 @@ pub fn export_with(map: &Map, options: ExportOptions) -> String {
                 if l.omit_from_export {
                     props.push(("_tb_layer_omit_from_export".into(), "1".into()));
                 }
+
                 let _ = writeln!(out, "// entity {entity_index}\n{{");
                 write_props(&mut out, &props);
                 for c in &node.children {
@@ -174,6 +180,7 @@ pub fn export_with(map: &Map, options: ExportOptions) -> String {
                         write_brush(&mut out, &b);
                     }
                 }
+
                 out.push_str("}\n");
                 entity_index += 1;
             }
@@ -192,6 +199,7 @@ pub fn export_with(map: &Map, options: ExportOptions) -> String {
                         write_brush(&mut out, &b);
                     }
                 }
+
                 out.push_str("}\n");
                 entity_index += 1;
             }
@@ -203,6 +211,7 @@ pub fn export_with(map: &Map, options: ExportOptions) -> String {
                         props.push(("angles".into(), vec_str(angles_to_quake(e.angles))));
                     }
                 }
+
                 props.extend(e.properties.iter().filter(|(k, _)| k.as_str() != "origin" && k.as_str() != "angles").map(|(k, v)| (k.clone(), v.clone())));
                 props.extend(container(id));
                 let _ = writeln!(out, "// entity {entity_index}\n{{");
@@ -212,12 +221,14 @@ pub fn export_with(map: &Map, options: ExportOptions) -> String {
                         write_brush(&mut out, &b);
                     }
                 }
+
                 out.push_str("}\n");
                 entity_index += 1;
             }
             _ => {}
         }
     }
+
     out
 }
 
@@ -263,12 +274,14 @@ impl<'a> Lexer<'a> {
                     if *c == '\n' {
                         break;
                     }
+
                     self.chars.next();
                 }
             } else {
                 break;
             }
         }
+
         let (start, c) = self.chars.next()?;
         Some(match c {
             '{' => Tok::Open,
@@ -293,6 +306,7 @@ impl<'a> Lexer<'a> {
                         _ => s.push(c),
                     }
                 }
+
                 Tok::Str(s)
             }
             _ => {
@@ -301,9 +315,11 @@ impl<'a> Lexer<'a> {
                     if c.is_whitespace() || matches!(c, '{' | '}' | '(' | ')' | '[' | ']' | '"') {
                         break;
                     }
+
                     end = *i + c.len_utf8();
                     self.chars.next();
                 }
+
                 Tok::Word(self.src[start..end].to_string())
             }
         })
@@ -349,6 +365,7 @@ fn standard_axes(id_normal: DVec3, rotation: f64) -> (DVec3, DVec3) {
         vec[sv] = ns;
         vec[tv] = nt;
     }
+
     (u, v)
 }
 
@@ -371,11 +388,13 @@ fn parse_brush(lx: &mut Lexer) -> Result<Option<Brush>, MapError> {
                     if k > 0 && lx.next() != Some(Tok::ParenOpen) {
                         return Err(MapError::Syntax { line, message: "expected (".into() });
                     }
+
                     *p = DVec3::new(parse_f(lx.next(), line)?, parse_f(lx.next(), line)?, parse_f(lx.next(), line)?);
                     if lx.next() != Some(Tok::ParenClose) {
                         return Err(MapError::Syntax { line, message: "expected )".into() });
                     }
                 }
+
                 let texture = match lx.next() {
                     Some(Tok::Word(w)) | Some(Tok::Str(w)) => w,
                     other => return Err(MapError::Syntax { line, message: format!("expected texture, got {other:?}") }),
@@ -423,6 +442,7 @@ fn parse_brush(lx: &mut Lexer) -> Result<Option<Brush>, MapError> {
             Some(other) => return Err(MapError::Syntax { line, message: format!("unexpected {other:?} in brush") }),
         }
     }
+
     Ok(Brush::from_planes(planes).ok())
 }
 
@@ -433,6 +453,7 @@ fn parse_entities(src: &str) -> Result<Vec<RawEntity>, MapError> {
         if tok != Tok::Open {
             return Err(MapError::Syntax { line: lx.line, message: format!("expected {{, got {tok:?}") });
         }
+
         let mut ent = RawEntity { props: Vec::new(), brushes: Vec::new() };
         loop {
             let line = lx.line;
@@ -451,8 +472,10 @@ fn parse_entities(src: &str) -> Result<Vec<RawEntity>, MapError> {
                 Some(other) => return Err(MapError::Syntax { line, message: format!("unexpected {other:?}") }),
             }
         }
+
         out.push(ent);
     }
+
     Ok(out)
 }
 
@@ -475,6 +498,7 @@ pub fn import(src: &str) -> Result<Map, MapError> {
         if get("classname") != Some("func_group") {
             continue;
         }
+
         let Some(tb_id) = get("_tb_id") else { continue };
         let name = get("_tb_name").unwrap_or("Unnamed").to_string();
         let id = match get("_tb_type") {
@@ -483,6 +507,7 @@ pub fn import(src: &str) -> Result<Map, MapError> {
                 if let Some(NodeKind::Layer(layer)) = map.get_mut(l).map(|n| &mut n.kind) {
                     *layer = Layer { name, color: layer.color, omit_from_export: get("_tb_layer_omit_from_export") == Some("1") };
                 }
+
                 l
             }
             _ => {
@@ -490,6 +515,7 @@ pub fn import(src: &str) -> Result<Map, MapError> {
                 if let Some(parent) = get("_tb_group").or(get("_tb_layer")) {
                     pending_parent.push((g, parent.to_string()));
                 }
+
                 g
             }
         };
@@ -498,6 +524,7 @@ pub fn import(src: &str) -> Result<Map, MapError> {
             map.insert(id, NodeKind::Brush(b.clone()));
         }
     }
+
     for (node, parent) in pending_parent {
         if let Some(p) = containers.get(&parent) {
             map.reparent(node, *p);
@@ -510,6 +537,7 @@ pub fn import(src: &str) -> Result<Map, MapError> {
         if classname == "func_group" && get("_tb_id").is_some() {
             continue;
         }
+
         let parent = get("_tb_group").or(get("_tb_layer")).and_then(|id| containers.get(id).copied()).unwrap_or(default_layer);
         if classname == "worldspawn" {
             for (k, v) in &ent.props {
@@ -517,11 +545,14 @@ pub fn import(src: &str) -> Result<Map, MapError> {
                     map.properties.insert(k.clone(), v.clone());
                 }
             }
+
             for b in &ent.brushes {
                 map.insert(default_layer, NodeKind::Brush(b.clone()));
             }
+
             continue;
         }
+
         let mut e = Entity::new(classname);
         for (k, v) in &ent.props {
             match k.as_str() {
@@ -543,11 +574,13 @@ pub fn import(src: &str) -> Result<Map, MapError> {
                 }
             }
         }
+
         let id = map.insert(parent, NodeKind::Entity(e));
         for b in &ent.brushes {
             map.insert(id, NodeKind::Brush(b.clone()));
         }
     }
+
     Ok(map)
 }
 

@@ -59,6 +59,7 @@ pub fn resample(points: &[DVec3], spacing: f64) -> Vec<DVec3> {
             out.push(w[0].lerp(w[1], k as f64 / n as f64));
         }
     }
+
     out
 }
 
@@ -84,6 +85,7 @@ fn outputs(v: &Value) -> Result<Vec<IoConnection>, String> {
     if v.is_null() {
         return Ok(Vec::new());
     }
+
     serde_json::from_value(v.clone()).map_err(|e| format!("outputs must be objects with output, target and input: {e}"))
 }
 
@@ -95,6 +97,7 @@ fn scatter_item(v: &Value) -> Option<ScatterItem> {
             if let Some(s) = v.get("scale").and_then(|s| s.as_f64()) {
                 item.scale = [s, s];
             }
+
             Some(item)
         }
         _ => None,
@@ -109,42 +112,54 @@ impl App {
         {
             return Err(format!("unknown preset {preset}, use one of {}", gt_doc::scatter::PRESETS.join(", ")));
         }
+
         let s = &mut self.state.prefs.scatter;
         if let Some(items) = a["items"].as_array() {
             s.palette = items.iter().filter_map(scatter_item).collect();
             s.preset.clear();
         }
+
         if let Some(k) = a["kind"].as_str() {
             s.kind = serde_json::from_value(json!(k)).map_err(|_| "kind must be props or foliage".to_string())?;
         }
+
         if let Some(r) = a["radius"].as_f64() {
             s.radius = r;
         }
+
         if let Some(d) = a["density"].as_f64() {
             s.rules.density = d;
         }
+
         if let Some(sl) = a["slope"].as_array() {
             s.rules.slope = [sl.first().and_then(|v| v.as_f64()).unwrap_or(0.0), sl.get(1).and_then(|v| v.as_f64()).unwrap_or(90.0)];
         }
+
         if a.get("height").is_some() {
             s.rules.height =
                 a["height"].as_array().map(|h| [h.first().and_then(|v| v.as_f64()).unwrap_or(-1e9), h.get(1).and_then(|v| v.as_f64()).unwrap_or(1e9)]);
         }
+
         if let Some(b) = a["only_targets"].as_bool() {
             s.rules.only_targets = b;
         }
+
         if let Some(f) = a["falloff"].as_f64() {
             s.rules.falloff = f;
         }
+
         if let Some(b) = a["avoid_other_sets"].as_bool() {
             s.avoid_other_sets = b;
         }
+
         if let Some(amount) = a["amount"].as_f64() {
             s.erase_amount = amount;
         }
+
         if let Some(o) = a["output"].as_str() {
             s.output = serde_json::from_value(json!(o)).map_err(|_| "output must be set or entities".to_string())?;
         }
+
         Ok(())
     }
 
@@ -167,13 +182,16 @@ impl App {
             self.state.prefs.scatter = saved;
             return err(e);
         }
+
         if let Some(id) = args["id"].as_u64().map(NodeId) {
             if self.state.doc.map.scatter(id).is_none() {
                 self.state.prefs.scatter = saved;
                 return err(format!("{id} is not a scatter set"));
             }
+
             self.state.active_scatter = Some(id);
         }
+
         let mut rng = Rng::new(args["seed"].as_u64().unwrap_or_else(crate::commands::time_seed));
         // Settings passed for one call apply to that call only, the palette and preset stay for later calls.
         let persistent = matches!(op, "palette" | "preset");
@@ -194,9 +212,11 @@ impl App {
                         if let Some(c) = props["collision"].as_str().and_then(|c| serde_json::from_value(json!(c)).ok()) {
                             s.collision = c;
                         }
+
                         if let Some(b) = props["cast_shadows"].as_bool() {
                             s.cast_shadows = b;
                         }
+
                         if let Some(r) = props["visibility_range"].as_f64() {
                             s.visibility_range = r;
                         }
@@ -218,6 +238,7 @@ impl App {
                     self.state.prefs.scatter = saved;
                     return err("center (paint, erase) or points (stroke) required");
                 }
+
                 let erase = op == "erase" || args["erase"].as_bool().unwrap_or(false);
                 let normal = vec3(&args["normal"]).unwrap_or(DVec3::Y);
                 let spacing = self.state.prefs.scatter.radius * 0.5;
@@ -239,6 +260,7 @@ impl App {
                         crate::scatter_tool::paint(&mut self.state, center, normal, &mut rng)
                     };
                 }
+
                 self.state.doc.commit();
                 let set = crate::scatter_tool::active_set(&self.state);
                 ok(json!({ if erase { "removed" } else { "placed" }: changed, "set": set.map(|id| self.scatter_summary(id)) }))
@@ -254,6 +276,7 @@ impl App {
                         }
                     });
                 }
+
                 match crate::scatter_tool::fill(&mut self.state, &mut rng) {
                     Ok(n) => {
                         let id = crate::scatter_tool::active_set(&self.state);
@@ -307,6 +330,7 @@ impl App {
                 self.state.prefs.scatter.preset = preset;
             }
         }
+
         result
     }
 
@@ -327,6 +351,7 @@ impl App {
                 }
             }
         }
+
         brush.radius = args["radius"].as_f64().unwrap_or(brush.radius);
         brush.strength = args["strength"].as_f64().unwrap_or(brush.strength);
         brush.layer = args["layer"].as_u64().map(|l| l as usize).unwrap_or(brush.layer);
@@ -335,9 +360,11 @@ impl App {
         if let Some(s) = args["slope"].as_array() {
             brush.slope = [s.first().and_then(|v| v.as_f64()).unwrap_or(0.0), s.get(1).and_then(|v| v.as_f64()).unwrap_or(90.0)];
         }
+
         if let Some(h) = args["height"].as_array() {
             brush.height = [h.first().and_then(|v| v.as_f64()).unwrap_or(-1e9), h.get(1).and_then(|v| v.as_f64()).unwrap_or(1e9)];
         }
+
         let select_ids = ids(&args["ids"]);
         if !select_ids.is_empty() {
             self.state.doc.select(|_, s| {
@@ -345,6 +372,7 @@ impl App {
                 s.nodes.extend(select_ids.iter().copied());
             });
         }
+
         match op {
             "set_material" | "clear_material" => {
                 let material = if op == "clear_material" {
@@ -360,6 +388,7 @@ impl App {
                         s.faces.extend(faces.iter().copied());
                     });
                 }
+
                 let n = crate::blend_tool::set_blend_material(&mut self.state, material.as_deref());
                 ok(json!({ "faces": n }))
             }
@@ -372,10 +401,12 @@ impl App {
                 if points.is_empty() {
                     return err("center (dab) or points (stroke) required");
                 }
+
                 let targets = crate::blend_tool::targets(&self.state);
                 if targets.is_empty() {
                     return err("nothing to blend: select terrains, displacements, or faces with a blend material");
                 }
+
                 let spacing = (brush.radius * 0.25).max(1.0);
                 let mut changed = false;
                 self.state.doc.begin("Blend");
@@ -384,6 +415,7 @@ impl App {
                     b.seed = brush.seed.wrapping_add(k as u32);
                     changed |= crate::blend_tool::dab(&mut self.state, p, &b);
                 }
+
                 self.state.doc.commit();
                 ok(
                     json!({ "changed": changed, "terrains": targets.terrains.len(), "displacements": targets.displacements.len(), "faces": targets.faces.len() }),
@@ -434,6 +466,7 @@ impl App {
                             if let Some(e) = m.entity_mut(id) {
                                 e.properties.extend(props);
                             }
+
                             // Outputs created for the door follow a new targetname.
                             let new_name = m.entity(id).and_then(|e| e.targetname()).map(str::to_string);
                             if let (Some(old), Some(new)) = (old_name, new_name)
@@ -448,6 +481,7 @@ impl App {
                             }
                         });
                     }
+
                     entity_json(self, id)
                 })
             }
@@ -475,6 +509,7 @@ impl App {
                                 e.properties.extend(props);
                                 e.outputs = outs;
                             }
+
                             Some(id)
                         })
                         .ok_or_else(|| "select or pass the brushes (ids)".to_string())
@@ -517,6 +552,7 @@ impl App {
                         origin = h.point;
                     }
                 }
+
                 let props = string_map(&args["properties"]);
                 let id = wiz::place_entity(&mut self.state, classname, origin, &props);
                 let angles = vec3(&args["angles"]);
@@ -542,6 +578,7 @@ impl App {
                         s.nodes.extend(target_ids.iter().copied());
                     });
                 }
+
                 let handles: Vec<Value> = crate::gizmos::handles(&self.state)
                     .into_iter()
                     .map(|(h, p, label)| json!({ "entity": h.entity.0, "gizmo": h.gizmo, "part": h.part, "position": arr(p), "label": label }))
@@ -598,6 +635,7 @@ impl App {
                 if args["open"].as_bool().unwrap_or(true) {
                     self.state.open_groups.push(id);
                 }
+
                 ok(json!({ "id": id.0, "parent": parent.0 }))
             }
             "open_group" => match args["id"].as_u64().map(NodeId).filter(|g| self.state.doc.map.contains(*g)) {
@@ -613,6 +651,7 @@ impl App {
                 } else {
                     self.state.open_groups.pop();
                 }
+
                 ok(json!({ "insert_parent": self.state.insert_parent().0 }))
             }
             "set_current_layer" => match args["id"].as_u64().map(NodeId).filter(|l| self.state.doc.map.layers.contains(l)) {
@@ -651,9 +690,11 @@ impl App {
                             if let Some(h) = hidden {
                                 n.hidden = h;
                             }
+
                             if let Some(l) = locked {
                                 n.locked = l;
                             }
+
                             if let (Some(o), NodeKind::Layer(layer)) = (omit, &mut n.kind) {
                                 layer.omit_from_export = o;
                             }
@@ -677,6 +718,7 @@ impl App {
                     m.properties.remove(k);
                 }
             }
+
             m.properties.extend(string_map(&Value::Object(props.clone())));
         });
         ok(json!({ "properties": self.state.doc.map.properties }))
@@ -718,6 +760,7 @@ impl App {
                     for p in resample(&points, a["spacing"].as_f64().unwrap_or(radius * 0.5)) {
                         any |= gt_doc::terrain::sculpt_terrains_single(t, p, &brush);
                     }
+
                     any
                 }
                 "paint_path" => {
@@ -728,6 +771,7 @@ impl App {
                     for p in resample(&points, radius * 0.4) {
                         any |= t.paint_layer(p, radius, layer, amount);
                     }
+
                     any
                 }
                 "flatten_rect" => {
@@ -767,6 +811,7 @@ impl App {
                     if layers.is_empty() {
                         return Err("layers [[material, tile], ...] required".to_string());
                     }
+
                     t.layers = layers;
                     true
                 }
@@ -790,6 +835,7 @@ impl App {
                 {
                     v["probe_height"] = json!(t.height_at(p.x, p.z));
                 }
+
                 ok(v)
             }
             Err(e) => {
@@ -807,6 +853,7 @@ impl App {
         if source.is_empty() {
             return err("nothing to duplicate, pass ids or select objects");
         }
+
         let offset = vec3(&args["offset"]).unwrap_or(DVec3::new(self.state.grid, 0.0, 0.0));
         let count = args["count"].as_u64().unwrap_or(1).clamp(1, 512) as usize;
         let linked = args["linked"].as_bool().unwrap_or(false);
@@ -823,6 +870,7 @@ impl App {
         if linked && !source.iter().any(|id| matches!(self.state.doc.map.get(*id).map(|n| &n.kind), Some(NodeKind::Group(_)))) {
             self.state.doc.edit("Group", |m, s| ops::group_selection(m, s, "Linked", parent));
         }
+
         for _ in 0..count {
             let copies = if linked {
                 self.state.doc.edit("Duplicate Linked", |m, s| ops::duplicate_linked(m, s, offset, opts))
@@ -841,8 +889,10 @@ impl App {
                     s.nodes = only.iter().copied().collect();
                 });
             }
+
             all.push(copies.iter().map(|i| i.0).collect::<Vec<_>>());
         }
+
         self.state.doc.commit();
         ok(json!({ "copies": all, "selection": self.state.doc.selection.nodes.iter().map(|i| i.0).collect::<Vec<_>>() }))
     }
@@ -871,11 +921,13 @@ impl App {
         if let Some(extra) = args["vars"].as_object() {
             vars.extend(extra.iter().map(|(k, v)| (k.clone(), v.clone())));
         }
+
         if let Some(defaults) = doc["vars"].as_object() {
             for (k, v) in defaults {
                 if vars.contains_key(k) {
                     continue;
                 }
+
                 match super::script::resolve(v, &vars) {
                     Ok(v) => {
                         vars.insert(k.clone(), v);
@@ -884,6 +936,7 @@ impl App {
                 }
             }
         }
+
         let continue_on_error = args["continue_on_error"].as_bool().unwrap_or(false);
         let mut errors = Vec::new();
         let mut ran = 0;
@@ -893,8 +946,10 @@ impl App {
                 if !continue_on_error {
                     break;
                 }
+
                 continue;
             }
+
             let resolved = match super::script::resolve(&step.args, &vars) {
                 Ok(a) => a,
                 Err(e) => {
@@ -902,6 +957,7 @@ impl App {
                     if continue_on_error {
                         continue;
                     }
+
                     break;
                 }
             };
@@ -912,6 +968,7 @@ impl App {
                     if let Some(name) = &step.save {
                         vars.insert(name.clone(), v.clone());
                     }
+
                     vars.insert("last".into(), v);
                 }
                 Some(ToolResult::Error(e)) => {
@@ -923,11 +980,13 @@ impl App {
                 _ => {}
             }
         }
+
         if let Some(bounds) = self.state.focus_request.take() {
             for v in &mut self.viewports {
                 v.focus(&bounds);
             }
         }
+
         let saved: serde_json::Map<String, Value> = vars.into_iter().filter(|(k, _)| k != "last").collect();
         let summary = json!({ "steps": steps.len(), "ran": ran, "errors": errors, "vars": saved, "state": self.state_summary()["map"] });
         if errors.is_empty() || continue_on_error { ok(summary) } else { Some(ToolResult::Error(serde_json::to_string_pretty(&summary).unwrap_or_default())) }

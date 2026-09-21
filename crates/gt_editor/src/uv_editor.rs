@@ -45,6 +45,7 @@ fn stitched(state: &EditorState, faces: &[FaceInfo], corner: UvCorner) -> Vec<Uv
             }
         }
     }
+
     out
 }
 
@@ -71,6 +72,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
         if ui.small_button("Reset UVs").on_hover_text("Drop any custom UVs on the selected faces back to a clean face-aligned projection").clicked() {
             actions.push(Action::ResetTexture);
         }
+
         for (label, action) in [("Hotspot", Action::HotspotTexture), ("Hotspot Editor", Action::ShowHotspotEditor), ("UV Lock", Action::ToggleUvLock)] {
             if ui.small_button(label).clicked() {
                 actions.push(action);
@@ -86,6 +88,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
             }
         });
     }
+
     ui.label(RichText::new("Drag moves, wheel scales, right drag rotates. Mesh UV corners: click, Shift+click, drag.").weak());
 
     let face_uvs: Vec<Vec<DVec2>> = faces.iter().map(|f| corner_uvs(f, tex)).collect();
@@ -120,10 +123,12 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
                     painter.rect_stroke(r, 0.0, Stroke::new(1.0, Color32::from_black_alpha(90)), StrokeKind::Inside);
                     x += 1.0;
                 }
+
                 y += 1.0;
             }
         }
     }
+
     if uv_state.show_hotspots {
         for r in crate::commands::hotspot_rects(state, &material) {
             let a = to_screen(DVec2::new(r[0], r[1]) / tex);
@@ -131,6 +136,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
             painter.rect_stroke(Rect::from_two_pos(a, b), 0.0, Stroke::new(1.0, Color32::from_rgb(90, 220, 255)), StrokeKind::Inside);
         }
     }
+
     for (info, uvs) in faces.iter().zip(&face_uvs) {
         let pts: Vec<Pos2> = uvs.iter().map(|u| to_screen(*u)).collect();
         let color = if info.explicit.is_some() { Color32::from_rgb(120, 200, 255) } else { Color32::from_rgb(255, 150, 60) };
@@ -138,6 +144,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
         if info.explicit.is_none() {
             painter.add(Shape::convex_polygon(pts.clone(), Color32::from_rgba_unmultiplied(255, 120, 40, 30), Stroke::NONE));
         }
+
         for (k, p) in pts.iter().enumerate() {
             let sel = uv_state.selected.contains(&(info.id, info.face, k));
             painter.circle_filled(*p, if sel { 4.5 } else { 3.0 }, if sel { Color32::from_rgb(255, 230, 90) } else { Color32::from_rgb(230, 230, 230) });
@@ -164,6 +171,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
                 if !shift {
                     uv_state.selected.clear();
                 }
+
                 for s in stitched(state, &faces, c) {
                     uv_state.selected.insert(s);
                 }
@@ -172,6 +180,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
             None => {}
         }
     }
+
     if response.drag_started_by(egui::PointerButton::Primary)
         && let Some(origin_pos) = ui.input(|i| i.pointer.press_origin())
     {
@@ -181,10 +190,12 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
                     if !shift {
                         uv_state.selected.clear();
                     }
+
                     for s in stitched(state, &faces, c) {
                         uv_state.selected.insert(s);
                     }
                 }
+
                 true
             }
             None => false,
@@ -210,6 +221,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
                         if snap && selected.len() == 1 {
                             next = (target.unwrap_or(next) * tex).round() / tex;
                         }
+
                         *u = [next.x as f32, next.y as f32];
                     }
                 }
@@ -219,13 +231,16 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
             texture_ops::shift(state, &all, duv * tex);
         }
     }
+
     if response.dragged_by(egui::PointerButton::Secondary) && delta.x != 0.0 {
         texture_ops::rotate(state, &all, delta.x as f64 * 0.5);
     }
+
     if scroll != 0.0 {
         let factor = (1.0 + scroll as f64 * 0.002).clamp(0.5, 2.0);
         texture_ops::scale(state, &all, DVec2::splat(factor));
     }
+
     if response.drag_stopped() {
         uv_state.dragging_corners = false;
         if uv_state.pixel_snap {

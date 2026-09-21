@@ -53,9 +53,11 @@ impl Editor {
             {
                 break;
             }
+
             assert!(Instant::now() < deadline, "editor did not start");
             std::thread::sleep(Duration::from_millis(250));
         }
+
         // Let the first frames lay out the viewports.
         std::thread::sleep(Duration::from_millis(500));
         editor
@@ -117,6 +119,7 @@ impl Editor {
                 colors.insert(p.0);
             }
         }
+
         (img.width(), img.height(), colors.len())
     }
 

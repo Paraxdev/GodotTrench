@@ -5,13 +5,16 @@ pub fn clip_back(poly: &[DVec3], plane: &Plane) -> Vec<DVec3> {
     if poly.is_empty() {
         return Vec::new();
     }
+
     let dists: Vec<f64> = poly.iter().map(|p| plane.distance(*p)).collect();
     if dists.iter().all(|d| *d <= EPSILON) {
         return poly.to_vec();
     }
+
     if dists.iter().all(|d| *d >= -EPSILON) {
         return Vec::new();
     }
+
     let mut out = Vec::with_capacity(poly.len() + 1);
     for i in 0..poly.len() {
         let j = (i + 1) % poly.len();
@@ -20,11 +23,13 @@ pub fn clip_back(poly: &[DVec3], plane: &Plane) -> Vec<DVec3> {
         if da <= EPSILON {
             out.push(a);
         }
+
         if (da > EPSILON && db < -EPSILON) || (da < -EPSILON && db > EPSILON) {
             let t = da / (da - db);
             out.push(a + (b - a) * t);
         }
     }
+
     out
 }
 
@@ -40,6 +45,7 @@ pub fn centroid(points: &[DVec3]) -> DVec3 {
     if points.is_empty() {
         return DVec3::ZERO;
     }
+
     points.iter().copied().sum::<DVec3>() / points.len() as f64
 }
 
@@ -48,6 +54,7 @@ pub fn area(points: &[DVec3]) -> f64 {
     for i in 1..points.len().saturating_sub(1) {
         n += (points[i] - points[0]).cross(points[i + 1] - points[0]);
     }
+
     n.length() * 0.5
 }
 
@@ -61,6 +68,7 @@ pub fn newell(points: &[DVec3]) -> DVec3 {
         n.y += (cur.z - next.z) * (cur.x + next.x);
         n.z += (cur.x - next.x) * (cur.y + next.y);
     }
+
     n
 }
 
@@ -71,9 +79,11 @@ pub fn triangulate(points: &[DVec3], normal: DVec3) -> Vec<[usize; 3]> {
     if n < 3 {
         return Vec::new();
     }
+
     if n == 3 {
         return vec![[0, 1, 2]];
     }
+
     let normal = normal.normalize_or(DVec3::Y);
     let helper = if normal.y.abs() < 0.9 { DVec3::Y } else { DVec3::X };
     let u = helper.cross(normal).normalize();
@@ -85,6 +95,7 @@ pub fn triangulate(points: &[DVec3], normal: DVec3) -> Vec<[usize; 3]> {
         // Split along the shorter diagonal, it keeps slivers out of near-planar quads.
         return if (p2[0] - p2[2]).length_squared() <= (p2[1] - p2[3]).length_squared() { vec![[0, 1, 2], [0, 2, 3]] } else { vec![[0, 1, 3], [1, 2, 3]] };
     }
+
     let mut idx: Vec<usize> = (0..n).collect();
     let mut out = Vec::with_capacity(n - 2);
     let inside = |p: DVec2, a: DVec2, b: DVec2, c: DVec2| cross(a, b, p) >= -1e-9 && cross(b, c, p) >= -1e-9 && cross(c, a, p) >= -1e-9;
@@ -99,19 +110,23 @@ pub fn triangulate(points: &[DVec3], normal: DVec3) -> Vec<[usize; 3]> {
             if cross(a, b, c) <= 1e-12 {
                 continue;
             }
+
             let blocked = idx.iter().any(|&j| j != ia && j != ib && j != ic && p2[j] != a && p2[j] != b && p2[j] != c && inside(p2[j], a, b, c));
             if blocked {
                 continue;
             }
+
             out.push([ia, ib, ic]);
             idx.remove(k);
             clipped = true;
             break;
         }
+
         if !clipped {
             break;
         }
     }
+
     if idx.len() == 3 {
         out.push([idx[0], idx[1], idx[2]]);
     } else if idx.len() > 3 {
@@ -119,6 +134,7 @@ pub fn triangulate(points: &[DVec3], normal: DVec3) -> Vec<[usize; 3]> {
             out.push([idx[0], idx[k], idx[k + 1]]);
         }
     }
+
     out
 }
 
@@ -136,15 +152,18 @@ pub fn split(poly: &[DVec3], normal: DVec3, offset: f64, eps: f64) -> (Vec<DVec3
         if da >= -eps {
             front.push(a);
         }
+
         if da <= eps {
             back.push(a);
         }
+
         if (da > eps && db < -eps) || (da < -eps && db > eps) {
             let x = a + (b - a) * (da / (da - db));
             front.push(x);
             back.push(x);
         }
     }
+
     (front, back)
 }
 
@@ -165,18 +184,23 @@ pub fn subtract_convex(a: &[DVec3], b: &[DVec3], normal: DVec3) -> Option<Vec<Ve
         if inward == DVec3::ZERO {
             continue;
         }
+
         if inward.dot(center - p) < 0.0 {
             inward = -inward;
         }
+
         let (inside, outside) = split(&rest, inward, inward.dot(p), OVERLAP_EPS);
         if inside.len() < 3 || area(&inside) < MIN_PIECE_AREA {
             return None;
         }
+
         if outside.len() >= 3 && area(&outside) >= MIN_PIECE_AREA {
             out.push(outside);
         }
+
         rest = inside;
     }
+
     Some(out)
 }
 
@@ -198,12 +222,14 @@ pub fn visible_pieces(face: &[DVec3], normal: DVec3, occluders: &[&[DVec3]]) -> 
                     None => next.push(piece),
                 }
             }
+
             pieces = next;
             if pieces.is_empty() {
                 return Some(pieces);
             }
         }
     }
+
     changed.then_some(pieces)
 }
 
@@ -221,6 +247,7 @@ pub fn corner_weights(corners: &[DVec3], triangles: &[[usize; 3]], p: DVec3) -> 
         if len2 < 1e-18 {
             continue;
         }
+
         let wa = (b - p).cross(c - p).dot(normal) / len2;
         let wb = (c - p).cross(a - p).dot(normal) / len2;
         let wc = 1.0 - wa - wb;
@@ -229,6 +256,7 @@ pub fn corner_weights(corners: &[DVec3], triangles: &[[usize; 3]], p: DVec3) -> 
             best = (worst, [(ia, wa), (ib, wb), (ic, wc)]);
         }
     }
+
     best.1
 }
 

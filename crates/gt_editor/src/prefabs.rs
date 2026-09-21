@@ -35,10 +35,12 @@ pub fn resolve(path: &str, map_path: Option<&Path>, project_root: Option<&Path>)
     if let Some(rel) = path.strip_prefix("res://") {
         return project_root.map(|r| r.join(rel));
     }
+
     let p = Path::new(path);
     if p.is_absolute() {
         return Some(p.to_path_buf());
     }
+
     map_path.and_then(|m| m.parent()).map(|dir| dir.join(p))
 }
 
@@ -46,6 +48,7 @@ fn transformed_bounds(b: &Aabb, m: &DMat4) -> Aabb {
     if b.is_empty() {
         return *b;
     }
+
     Aabb::from_points(b.corners().iter().map(|c| m.transform_point3(*c)))
 }
 
@@ -66,6 +69,7 @@ impl PrefabCache {
                 e.bounds = bounds;
             }
         }
+
         &self.entries[path]
     }
 
@@ -73,6 +77,7 @@ impl PrefabCache {
         if depth > MAX_DEPTH {
             return Aabb::EMPTY;
         }
+
         let Some(map) = self.entries.get(path).and_then(|e| e.map.clone()) else { return Aabb::EMPTY };
         let mut b = Aabb::EMPTY;
         for (id, node) in map.nodes.iter() {
@@ -88,8 +93,10 @@ impl PrefabCache {
                 }
                 _ => {}
             }
+
             let _ = id;
         }
+
         b
     }
 

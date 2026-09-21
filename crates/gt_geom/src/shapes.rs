@@ -195,6 +195,7 @@ mod tests {
         for s in sphere(&b(), 12, 6, "m") {
             s.validate().unwrap();
         }
+
         assert_eq!(pipe(&b(), 12, 8.0, "m").len(), 12);
         assert_eq!(arch(&b(), 8, 8.0, "m").len(), 8);
         assert_eq!(stairs(&b(), 4, "m").len(), 4);

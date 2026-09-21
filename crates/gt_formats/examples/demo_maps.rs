@@ -93,6 +93,7 @@ fn demo() -> Map {
     if let Some(NodeKind::Layer(l)) = m.get_mut(omitted).map(|n| &mut n.kind) {
         l.omit_from_export = true;
     }
+
     m.insert(omitted, NodeKind::Brush(boxb([1000.0, 0.0, 1000.0], [1064.0, 64.0, 1064.0], "base/wall")));
     m
 }
@@ -140,6 +141,7 @@ fn geometry() -> Map {
     for (k, v) in [("sun_angles", "-30 60"), ("sky_top_color", "51 90 150"), ("fog_density", "0.004"), ("fog_color", "200 210 220")] {
         m.properties.insert(k.into(), v.into());
     }
+
     let layer = m.default_layer();
 
     // A 64 cube with its top extruded by 32: closed, flat shaded, one surface.

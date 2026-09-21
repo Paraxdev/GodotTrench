@@ -81,6 +81,7 @@ impl ToolKind {
         if name.eq_ignore_ascii_case("sprinkle") {
             return Some(ToolKind::Scatter);
         }
+
         ToolKind::all().into_iter().find(|t| t.label().eq_ignore_ascii_case(name))
     }
 }
@@ -133,6 +134,7 @@ pub fn line_ray_param(origin: DVec3, dir: DVec3, ray: &gt_core::Ray) -> Option<f
     if denom.abs() < 1e-6 {
         return None;
     }
+
     Some((b * e - ray.dir.dot(ray.dir) * d) / denom)
 }
 

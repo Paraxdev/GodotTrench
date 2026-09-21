@@ -93,6 +93,7 @@ impl App {
                 let _ = call.reply.send(result);
             }
         }
+
         for e in ctx.input(|i| i.raw.events.clone()) {
             if let Event::Screenshot { image, .. } = e {
                 let rgba = image::RgbaImage::from_raw(image.width() as u32, image.height() as u32, image.as_raw().to_vec());
@@ -118,6 +119,7 @@ impl App {
                 ctx.request_repaint();
             }
         }
+
         if !self.deferred.is_empty() {
             ctx.request_repaint();
         }
@@ -142,6 +144,7 @@ impl App {
                 if !self.state.doc.map.contains(id) {
                     return err(format!("no node {id}"));
                 }
+
                 let text = format::nodes_to_string(&self.state.doc.map, &[id]);
                 let v: Value = serde_json::from_str(&text).ok()?;
                 ok(v["nodes"][0].clone())
@@ -169,6 +172,7 @@ impl App {
                         e.properties.extend(props);
                         e.outputs = outputs;
                     }
+
                     s.clear();
                     s.select_node(id);
                     id
@@ -216,6 +220,7 @@ impl App {
                         for id in &ids {
                             s.nodes.remove(id);
                         }
+
                         for f in &faces {
                             s.faces.remove(f);
                         }
@@ -224,6 +229,7 @@ impl App {
                         if m == "replace" {
                             s.clear();
                         }
+
                         if !faces.is_empty() {
                             s.nodes.clear();
                             s.faces.extend(faces.iter().copied());
@@ -237,6 +243,7 @@ impl App {
                 if !b.is_empty() {
                     self.state.last_bounds = b;
                 }
+
                 ok(
                     json!({ "selected": self.state.doc.selection.nodes.iter().map(|i| i.0).collect::<Vec<_>>(), "faces": self.state.doc.selection.faces.iter().map(|(i, f)| json!([i.0, f])).collect::<Vec<_>>() }),
                 )
@@ -300,21 +307,26 @@ impl App {
                 if let Some(g) = args["grid"].as_f64() {
                     self.state.grid = g.clamp(0.125, 1024.0);
                 }
+
                 if let Some(b) = args["snap"].as_bool() {
                     self.state.snap = b;
                 }
+
                 if let Some(b) = args["uv_lock"].as_bool() {
                     self.state.uv_lock = b;
                 }
+
                 if let Some(b) = args["textured"].as_bool() {
                     self.state.prefs.shade = if b { crate::state::Shade::Textured } else { crate::state::Shade::Flat };
                 }
+
                 if let Some(s) = args["shade"].as_str() {
                     self.state.prefs.shade = match crate::state::Shade::from_name(s) {
                         Some(shade) => shade,
                         None => return err(format!("unknown shade {s}")),
                     };
                 }
+
                 if let Some(c) = args["mesh_component"].as_str() {
                     self.tools.mesh.component = match c {
                         "vertex" => crate::mesh_tool::Component::Vertex,
@@ -322,39 +334,48 @@ impl App {
                         _ => crate::mesh_tool::Component::Face,
                     };
                 }
+
                 if let Some(items) = args["scatter_items"].as_array().or(args["sprinkle_items"].as_array()) {
                     self.state.prefs.scatter.palette = items.iter().filter_map(|i| i.as_str().map(gt_doc::ScatterItem::new)).collect();
                     self.state.prefs.scatter.preset.clear();
                 }
+
                 if let Some(r) = args["brush_radius"].as_f64() {
                     self.state.sculpt.radius = r;
                     self.state.blend.radius = r;
                     self.state.prefs.scatter.radius = r;
                 }
+
                 if let Some(scale) = args["ui_scale"].as_f64() {
                     self.state.prefs.ui_scale = (scale as f32).clamp(crate::state::UI_SCALE_MIN, crate::state::UI_SCALE_MAX);
                 }
+
                 if let Some(follow) = args["follow_display_scaling"].as_bool() {
                     self.state.prefs.set_follow_display_scaling(follow, ctx.native_pixels_per_point().unwrap_or(1.0));
                 }
+
                 if let Some(mode) = args["sculpt_mode"].as_str() {
                     match serde_json::from_value(json!(mode)) {
                         Ok(m) => self.state.sculpt.mode = m,
                         Err(_) => return err(format!("unknown sculpt mode {mode}")),
                     }
                 }
+
                 if let Some(m) = args["material"].as_str() {
                     self.state.current_material = m.to_string();
                 }
+
                 if let Some(t) = args["tool"].as_str() {
                     match ToolKind::from_name(t) {
                         Some(k) => self.state.tool = k,
                         None => return err(format!("unknown tool {t}")),
                     }
                 }
+
                 if let Some(live) = args["live_mode"].as_bool() {
                     self.state.prefs.live_mode = live;
                 }
+
                 let mut summary = self.state_summary();
                 let mut editor = summary["editor"].take();
                 editor["godot_live_mode"] = json!(self.state.prefs.live_mode);
@@ -366,18 +387,23 @@ impl App {
                 if let Some(p) = vec3(&args["position"]) {
                     vp.camera.position = p;
                 }
+
                 if let Some(t) = vec3(&args["look_at"]) {
                     vp.camera.look_at(t);
                 }
+
                 if let Some(c) = vec3(&args["center"]) {
                     vp.camera.center = c;
                 }
+
                 if let Some(z) = args["zoom"].as_f64() {
                     vp.camera.zoom = z.clamp(0.005, 64.0);
                 }
+
                 if let (Some(min), Some(max)) = (vec3(&args["focus"]["min"]), vec3(&args["focus"]["max"])) {
                     vp.focus(&Aabb::new(min, max));
                 }
+
                 ctx.request_repaint();
                 ok(json!({ "ok": true }))
             }
@@ -389,6 +415,7 @@ impl App {
                     ctx.request_repaint();
                     return None;
                 }
+
                 let Some(kind) = view_kind(target) else { return err("unknown target") };
                 let Some(vp) = self.viewports.iter().find(|v| v.kind() == kind) else { return err("view not open") };
                 let Some(t) = vp.target() else { return err("view has not rendered yet, is its tab visible?") };
@@ -402,6 +429,7 @@ impl App {
                     if self.input_script.is_some() {
                         return err("another input script is still running");
                     }
+
                     self.input_script = Some(script);
                     ctx.request_repaint();
                     None
@@ -415,6 +443,7 @@ impl App {
                         list.push(json!({ "node": id.0, "severity": "warning", "code": "unknown_class", "message": format!("No entity definition for '{}'", e.classname) }));
                     }
                 }
+
                 ok(json!({ "count": list.len(), "issues": list }))
             }
             "get_game_config" => match args["classname"].as_str() {
@@ -510,17 +539,21 @@ impl App {
             if ty.is_some_and(|t| t != n.kind.type_name()) {
                 continue;
             }
+
             if classname.is_some_and(|c| n.entity().is_none_or(|e| e.classname != c)) {
                 continue;
             }
+
             let selected = self.state.doc.selection.nodes.contains(&id);
             if selected_only && !selected {
                 continue;
             }
+
             total += 1;
             if nodes.len() >= limit {
                 continue;
             }
+
             let bounds = self.state.instance_bounds.get(&id).copied().unwrap_or_else(|| map.bounds(id));
             let mut v = json!({
                 "id": id.0, "type": n.kind.type_name(), "name": n.name(), "parent": n.parent.map(|p| p.0),
@@ -529,8 +562,10 @@ impl App {
             if let Some(e) = n.entity() {
                 v["classname"] = json!(e.classname);
             }
+
             nodes.push(v);
         }
+
         json!({ "total": total, "nodes": nodes })
     }
 
@@ -712,11 +747,13 @@ impl App {
         if self.state.game.project_root != project_before {
             self.project_generation += 1;
         }
+
         if let Some(bounds) = self.state.focus_request.take() {
             for v in &mut self.viewports {
                 v.focus(&bounds);
             }
         }
+
         ok(
             json!({ "ok": true, "status": self.state.status, "brushes": self.state.doc.map.brush_count(), "selection": self.state.doc.selection.nodes.iter().map(|i| i.0).collect::<Vec<_>>() }),
         )
@@ -771,10 +808,12 @@ impl App {
         if brushes.is_empty() {
             return err("shape produced no valid brushes, check the bounds");
         }
+
         let mut brushes = brushes;
         if let Some(t) = args["hollow"].as_f64().filter(|t| *t > 0.0) {
             brushes = brushes.iter().flat_map(|b| gt_geom::csg::hollow(b, t)).collect();
         }
+
         for opening in args["openings"].as_array().into_iter().flatten() {
             let (min, max) = match opening {
                 Value::Array(pair) if pair.len() == 2 => (vec3(&pair[0]), vec3(&pair[1])),
@@ -785,6 +824,7 @@ impl App {
             let Ok(cutter) = Brush::from_aabb(&Aabb::new(min, max), &material) else { return err("opening has no volume") };
             brushes = brushes.iter().flat_map(|b| if b.intersects(&cutter) { gt_geom::csg::subtract(b, &cutter) } else { vec![b.clone()] }).collect();
         }
+
         if let Some(s) = args["uv_scale"].as_f64() {
             for b in &mut brushes {
                 for f in &mut b.faces {
@@ -792,15 +832,18 @@ impl App {
                 }
             }
         }
+
         let parent = args["parent"].as_u64().map(NodeId).filter(|p| self.state.doc.map.contains(*p)).unwrap_or_else(|| self.state.insert_parent());
         let entity = args["entity"].as_object().map(|e| {
             let mut ent = gt_doc::Entity::new(e.get("classname").and_then(|c| c.as_str()).unwrap_or("func_detail"));
             if let Some(props) = e.get("properties").and_then(|p| p.as_object()) {
                 ent.properties.extend(props.iter().map(|(k, v)| (k.clone(), value_string(v))));
             }
+
             if let Some(outs) = e.get("outputs").and_then(|o| serde_json::from_value::<Vec<IoConnection>>(o.clone()).ok()) {
                 ent.outputs = outs;
             }
+
             ent
         });
         let (ids, entity_id) = self.state.doc.edit("Create Brush", |m, s| {
@@ -819,12 +862,14 @@ impl App {
                     if entity_id.is_none() {
                         s.nodes.insert(id);
                     }
+
                     id.0
                 })
                 .collect::<Vec<_>>();
             if let Some(e) = entity_id {
                 s.nodes.insert(e);
             }
+
             (ids, entity_id)
         });
         self.state.last_bounds = bounds;
@@ -836,6 +881,7 @@ impl App {
         if self.state.doc.map.entity(id).is_none() {
             return err(format!("{id} is not an entity"));
         }
+
         let classname = args["classname"].as_str().map(str::to_string);
         let origin = vec3(&args["origin"]);
         let angles = vec3(&args["angles"]);
@@ -844,17 +890,21 @@ impl App {
         if args.get("outputs").is_some_and(|v| v.is_array()) && outputs.is_none() {
             return err("outputs must be objects with output, target and input");
         }
+
         self.state.doc.edit("Update Entity", |m, _| {
             let Some(e) = m.entity_mut(id) else { return };
             if let Some(c) = classname {
                 e.classname = c;
             }
+
             if let Some(o) = origin {
                 e.origin = o;
             }
+
             if let Some(a) = angles {
                 e.angles = a;
             }
+
             if let Some(p) = props {
                 for (k, v) in p {
                     if v.is_null() {
@@ -864,6 +914,7 @@ impl App {
                     }
                 }
             }
+
             if let Some(o) = outputs {
                 e.outputs = o;
             }
@@ -876,12 +927,14 @@ impl App {
         if self.state.doc.selection.nodes.is_empty() {
             return err("nothing selected");
         }
+
         let opts = self.state.opts();
         let grid = self.state.grid;
         let center = ops::selection_center(&self.state.doc.map, &self.state.doc.selection, grid);
         if let Some(t) = vec3(&args["translate"]) {
             self.state.doc.edit("Move", |m, s| ops::translate_selection(m, s, t, opts));
         }
+
         if args["rotate"].is_object() {
             let axis = axis_index(&args["rotate"]["axis"]).unwrap_or(1);
             let degrees = args["rotate"]["degrees"].as_f64().unwrap_or(0.0);
@@ -891,15 +944,18 @@ impl App {
             let mat = ops::rotation_about(c, dir, degrees);
             self.state.doc.edit("Rotate", |m, s| ops::transform_selection(m, s, &mat, opts));
         }
+
         if let Some(axis) = axis_index(&args["flip"]) {
             let mat = ops::flip_about(center, axis);
             self.state.doc.edit("Flip", |m, s| ops::transform_selection(m, s, &mat, opts));
         }
+
         if let (Some(min), Some(max)) = (vec3(&args["scale_to"]["min"]), vec3(&args["scale_to"]["max"])) {
             let old = self.state.doc.map.bounds_of(self.state.doc.selection.nodes.iter().copied());
             let mat = ops::scale_bounds(&old, &Aabb::new(min, max));
             self.state.doc.edit("Scale", |m, s| ops::transform_selection(m, s, &mat, opts));
         }
+
         ok(json!({ "bounds": bounds_json(&self.state.doc.map.bounds_of(self.state.doc.selection.nodes.iter().copied())) }))
     }
 
@@ -910,6 +966,7 @@ impl App {
         if face >= brush.faces.len() {
             return err(format!("brush has {} faces", brush.faces.len()));
         }
+
         let material = args["material"].as_str().map(str::to_string);
         let offset = vec2(&args["offset"]);
         let scale = vec2(&args["scale"]);
@@ -929,15 +986,19 @@ impl App {
             if let Some(mat) = material {
                 f.data.material = mat;
             }
+
             if let Some(o) = offset {
                 f.data.uv.offset = o;
             }
+
             if let Some(s) = scale {
                 f.data.uv.scale = s;
             }
+
             if let Some(r) = rotate {
                 f.data.uv.rotate(r);
             }
+
             if fit {
                 f.data.uv.fit(&pts, size, DVec2::ONE);
             }
@@ -956,6 +1017,7 @@ impl App {
                 _ => Err("window events need x and y".into()),
             };
         }
+
         let kind = view_kind(target).ok_or("unknown target")?;
         let vp = self.viewports.iter().find(|v| v.kind() == kind).ok_or("view not open")?;
         if let Some(w) = vec3(&ev[key_world]) {
@@ -964,8 +1026,10 @@ impl App {
             if key_world == "world" && !vp.rect.contains(p) {
                 return Err(format!("world position [{}, {}, {}] is outside the {target} view, move its camera with set_camera first", w.x, w.y, w.z));
             }
+
             return Ok(p);
         }
+
         let (x, y) = if key_x == "x" { (ev["x"].as_f64(), ev["y"].as_f64()) } else { (ev[key_x][0].as_f64(), ev[key_x][1].as_f64()) };
         match (x, y) {
             (Some(x), Some(y)) => Ok(vp.rect.min + Vec2::new(x as f32, y as f32)),
@@ -991,6 +1055,7 @@ impl App {
                     _ => {}
                 }
             }
+
             let button = match ev["button"].as_str().unwrap_or("left") {
                 "right" => PointerButton::Secondary,
                 "middle" => PointerButton::Middle,
@@ -1011,6 +1076,7 @@ impl App {
                         steps.push_back(step(vec![press(p, true)]));
                         steps.push_back(step(vec![press(p, false)]));
                     }
+
                     steps.push_back(step(vec![]));
                 }
                 "drag" => {
@@ -1022,6 +1088,7 @@ impl App {
                     for i in 1..=n {
                         steps.push_back(step(vec![Event::PointerMoved(from.lerp(to, i as f32 / n as f32))]));
                     }
+
                     steps.push_back(step(vec![press(to, false)]));
                     steps.push_back(step(vec![]));
                 }
@@ -1047,6 +1114,7 @@ impl App {
                 other => return Err(format!("unknown event type {other}")),
             }
         }
+
         steps.push_back(InputStep { events: vec![], modifiers: Modifiers::NONE });
         Ok(InputScript { steps, reply, frames: 0 })
     }

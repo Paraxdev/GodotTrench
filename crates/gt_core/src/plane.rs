@@ -40,6 +40,7 @@ impl Plane {
         if len < 1e-12 {
             return None;
         }
+
         let n = n / len;
         Some(Self { normal: n, dist: n.dot(a) })
     }
@@ -49,6 +50,7 @@ impl Plane {
         if points.len() < 3 {
             return None;
         }
+
         let mut n = DVec3::ZERO;
         let mut centroid = DVec3::ZERO;
         for i in 0..points.len() {
@@ -59,10 +61,12 @@ impl Plane {
             n.z += (cur.x - next.x) * (cur.y + next.y);
             centroid += cur;
         }
+
         let len = n.length();
         if len < 1e-12 {
             return None;
         }
+
         centroid /= points.len() as f64;
         Some(Self::from_point_normal(centroid, n / len))
     }
@@ -122,6 +126,7 @@ impl Plane {
         if denom.abs() < 1e-12 {
             return None;
         }
+
         Some((self.dist - self.normal.dot(origin)) / denom)
     }
 
@@ -133,6 +138,7 @@ impl Plane {
         if denom.abs() < 1e-12 {
             return None;
         }
+
         Some((n2.cross(n3) * a.dist + n3.cross(n1) * b.dist + n1.cross(n2) * c.dist) / denom)
     }
 

@@ -75,6 +75,7 @@ impl FaceUv {
             if len < 1e-12 {
                 return (axis, scale, offset);
             }
+
             let new_offset = offset - a.dot(translation) / scale;
             (a / len, scale / len, new_offset)
         };
@@ -98,6 +99,7 @@ impl FaceUv {
         if points.is_empty() {
             return;
         }
+
         let (mut umin, mut umax, mut vmin, mut vmax) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
         for p in points {
             let (u, v) = (p.dot(self.u_axis), p.dot(self.v_axis));
@@ -106,11 +108,13 @@ impl FaceUv {
             vmin = vmin.min(v);
             vmax = vmax.max(v);
         }
+
         let reps = repeats.max(DVec2::splat(1e-6));
         if umax - umin > 1e-9 {
             self.scale.x = (umax - umin) / (tex_size.x * reps.x);
             self.offset.x = -umin / self.scale.x;
         }
+
         if vmax - vmin > 1e-9 {
             self.scale.y = (vmax - vmin) / (tex_size.y * reps.y);
             self.offset.y = -vmin / self.scale.y;
@@ -126,6 +130,7 @@ impl FaceUv {
             if rotated && !allow_rotate {
                 continue;
             }
+
             let (u, v) = if rotated { (base.v_axis, -base.u_axis) } else { (base.u_axis, base.v_axis) };
             let (mut umin, mut umax, mut vmin, mut vmax) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
             for p in points {
@@ -134,6 +139,7 @@ impl FaceUv {
                 vmin = vmin.min(p.dot(v));
                 vmax = vmax.max(p.dot(v));
             }
+
             let (w, h) = ((umax - umin).max(1e-6), (vmax - vmin).max(1e-6));
             let (rw, rh) = (rect[2].max(1e-6), rect[3].max(1e-6));
             let score = ((w / h).ln() - (rw / rh).ln()).abs();
@@ -149,6 +155,7 @@ impl FaceUv {
                 best = Some((score, uv));
             }
         }
+
         let (score, uv) = best.expect("at least one orientation");
         *self = uv;
         score
@@ -165,6 +172,7 @@ impl FaceUv {
         if points.is_empty() {
             return;
         }
+
         let tex = tex_size.max(DVec2::ONE);
         if matches!(mode, Justify::FitWidth | Justify::FitHeight) {
             let (lo, hi) = self.texel_bounds(points);
@@ -174,10 +182,12 @@ impl FaceUv {
                 self.scale = DVec2::new(factor * self.scale.x.signum(), factor * self.scale.y.signum());
             }
         }
+
         if mode == Justify::Fit {
             self.fit(points, tex, DVec2::ONE);
             return;
         }
+
         let (lo, hi) = self.texel_bounds(points);
         match mode {
             Justify::Left => self.offset.x = -lo.x,
@@ -203,6 +213,7 @@ impl FaceUv {
         if dir.length_squared() < 1e-10 {
             return src.clone();
         }
+
         let Some(point) = gt_core::Plane::intersect_three(src_plane, dst_plane, &gt_core::Plane::new(dir.normalize(), 0.0)) else { return src.clone() };
         let q = DQuat::from_rotation_arc(n1, n2);
         let map_axis = |axis: DVec3, scale: f64, offset: f64| -> (DVec3, f64) {
@@ -346,6 +357,7 @@ mod tests {
             let corner = DVec3::new(64.0, y, 0.0);
             assert!((src.texel(corner) - wrapped.texel(corner)).length() < 1e-6, "edge texels match at y {y}");
         }
+
         // Moving 10 units away from the edge continues in the same direction on both faces.
         let a = src.texel(DVec3::new(54.0, 5.0, 0.0)) - src.texel(DVec3::new(64.0, 5.0, 0.0));
         let b = wrapped.texel(DVec3::new(64.0, 5.0, 10.0)) - wrapped.texel(DVec3::new(64.0, 5.0, 0.0));

@@ -105,6 +105,7 @@ impl Document {
         if self.history.undo.len() > self.history.limit {
             self.history.undo.remove(0);
         }
+
         self.history.redo.clear();
     }
 
@@ -115,6 +116,7 @@ impl Document {
             self.revision += 1;
             return r;
         }
+
         let snap = self.snapshot(label);
         let r = f(&mut self.map, &mut self.selection);
         crate::linked::sync(&snap.map, &mut self.map);
@@ -137,6 +139,7 @@ impl Document {
             self.last_edit = Some((label.into(), now));
             return r;
         }
+
         let r = self.edit(label, f);
         self.last_edit = Some((label.into(), now));
         r
@@ -261,6 +264,7 @@ mod tests {
         for i in 0..10 {
             doc.edit("drag", |m, _| m.entity_mut(id).unwrap().origin.x = i as f64);
         }
+
         doc.commit();
         assert_eq!(doc.map.entity(id).unwrap().origin.x, 9.0);
         doc.undo();

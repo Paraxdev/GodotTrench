@@ -93,6 +93,7 @@ pub fn visuals() -> Visuals {
     for state in [&mut w.noninteractive, &mut w.inactive, &mut w.hovered, &mut w.active, &mut w.open] {
         state.corner_radius = radius;
     }
+
     v
 }
 
