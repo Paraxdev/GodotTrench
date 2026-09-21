@@ -804,12 +804,15 @@ impl App {
                         .into_iter()
                         .flatten()
                         .filter_map(|l| {
-                            Some(gt_geom::TerrainLayer { material: l.get(0)?.as_str()?.to_string(), tile: l.get(1).and_then(|v| v.as_f64()).unwrap_or(256.0) })
+                            let mut layer = gt_geom::TerrainLayer::new(l.get(0)?.as_str()?.to_string(), l.get(1).and_then(|v| v.as_f64()).unwrap_or(256.0));
+                            layer.detile = l.get(2).and_then(|v| v.as_f64()).unwrap_or(0.0).clamp(0.0, 1.0);
+                            layer.detile_sharpen = l.get(3).and_then(|v| v.as_f64()).unwrap_or(0.5).clamp(0.0, 1.0);
+                            Some(layer)
                         })
                         .take(gt_geom::heightfield::MAX_LAYERS)
                         .collect();
                     if layers.is_empty() {
-                        return Err("layers [[material, tile], ...] required".to_string());
+                        return Err("layers [[material, tile, detile?, sharpen?], ...] required".to_string());
                     }
 
                     t.layers = layers;

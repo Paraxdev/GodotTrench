@@ -157,7 +157,7 @@ fn geometry() -> Map {
     m.insert(layer, NodeKind::Mesh(column));
 
     let mut terrain = Terrain::new(DVec3::new(-320.0, -8.0, -320.0), [17, 17], 40.0, "base/floor");
-    terrain.layers.push(TerrainLayer { material: "base/wall".into(), tile: 128.0 });
+    terrain.layers.push(TerrainLayer::new("base/wall", 128.0));
     terrain.generate(&TerrainGen { shape: TerrainShape::Hills, height: 96.0, feature_size: 400.0, erosion_iterations: 0, ..Default::default() });
     // Known height at the center vertex for the test.
     let center = terrain.index(8, 8);

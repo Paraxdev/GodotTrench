@@ -169,6 +169,10 @@ func _build(text: String) -> void:
 	# GodotTrench: sky, fog and sun from worldspawn keys, the same values the editor's lit preview uses.
 	if is_gtm:
 		GodotTrenchEnvironment.build(self, entities[0].properties)
+	# GodotTrench: the chunk streamer goes in last, it groups everything built above.
+	var streamer := GodotTrenchStreamer.build(self, entities[0].properties, map_settings)
+	if streamer:
+		streamer.rebuild()
 
 	time_elapsed = Time.get_ticks_msec() - time_elapsed
 

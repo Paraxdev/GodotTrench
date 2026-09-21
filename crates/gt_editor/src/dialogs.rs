@@ -529,7 +529,7 @@ pub fn make_terrain(
     auto_paint: bool,
 ) -> Terrain {
     let mut t = Terrain::new(origin, [resolution, resolution], cell_size, "");
-    t.layers = layers.iter().filter(|(m, _)| !m.is_empty()).map(|(m, tile)| TerrainLayer { material: m.clone(), tile: *tile }).collect();
+    t.layers = layers.iter().filter(|(m, _)| !m.is_empty()).map(|(m, tile)| TerrainLayer::new(m.clone(), *tile)).collect();
     match heightmap {
         Some((values, size)) => {
             t.import_heightmap(values, size, params.height);
@@ -982,6 +982,47 @@ impl ScatterPaletteWindow {
                 ui.end_row();
                 ui.label("");
                 ui.checkbox(&mut s.erase_palette_only, "erase only the palette entries above");
+                ui.end_row();
+            });
+            ui.separator();
+            ui.label(RichText::new("Optimization").strong()).on_hover_text("Applied to new sets, each set keeps its own values in the inspector");
+            egui::Grid::new("scatter_optimization").num_columns(2).show(ui, |ui| {
+                ui.label("Chunk size");
+                ui.horizontal(|ui| {
+                    let mut chunked = s.chunk_size > 0.0;
+                    if ui.checkbox(&mut chunked, "").changed() {
+                        s.chunk_size = if chunked { gt_doc::scatter::DEFAULT_CHUNK_SIZE } else { 0.0 };
+                    }
+
+                    if s.chunk_size > 0.0 {
+                        ui.add(egui::DragValue::new(&mut s.chunk_size).range(64.0..=65536.0).suffix(" u"));
+                    }
+                })
+                .response
+                .on_hover_text("Splits the set into cells, each drawn as its own MultiMesh so Godot culls the ones off screen");
+                ui.end_row();
+                ui.label("Visibility range");
+                ui.horizontal(|ui| {
+                    let mut limited = s.visibility_range.is_some();
+                    if ui.checkbox(&mut limited, "").changed() {
+                        s.visibility_range = limited.then_some(2400.0);
+                    }
+
+                    match &mut s.visibility_range {
+                        Some(range) => {
+                            ui.add(egui::DragValue::new(range).range(0.0..=100_000.0).suffix(" u"));
+                        }
+                        None => {
+                            ui.label(RichText::new("from the kind").weak());
+                        }
+                    }
+                })
+                .response
+                .on_hover_text("Distance instances fade out at. Unset lets foliage fade and keeps props visible");
+                ui.end_row();
+                ui.label("");
+                ui.checkbox(&mut s.static_props_multimesh, "draw prop scenes as MultiMesh")
+                    .on_hover_text("Much cheaper for many props, but scripts on those scenes are dropped");
                 ui.end_row();
             });
             ui.horizontal(|ui| {

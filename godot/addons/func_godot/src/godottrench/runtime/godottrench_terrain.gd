@@ -153,6 +153,8 @@ static func create(data: Dictionary, offset: Vector3, settings: FuncGodotMapSett
 	var material := ShaderMaterial.new()
 	var layers: Array = data.get("layers", [])
 	var tiles := Vector4(8, 8, 8, 8)
+	var detiles := Vector4.ZERO
+	var sharpens := Vector4(0.5, 0.5, 0.5, 0.5)
 	var pixelated := false
 	for l in 4:
 		var layer: Dictionary = layers[mini(l, layers.size() - 1)] if not layers.is_empty() else {}
@@ -161,8 +163,12 @@ static func create(data: Dictionary, offset: Vector3, settings: FuncGodotMapSett
 			material.set_shader_parameter("layer%d" % l, FuncGodotUtil.load_texture(texture_name, [], settings))
 			pixelated = pixelated or _is_pixelated(texture_name, settings)
 		tiles[l] = float(layer.get("tile", 256.0)) * scale
+		detiles[l] = clampf(float(layer.get("detile", 0.0)), 0.0, 1.0)
+		sharpens[l] = clampf(float(layer.get("detile_sharpen", 0.5)), 0.0, 1.0)
 	material.shader = _shader(pixelated)
 	material.set_shader_parameter("tiles", tiles)
+	material.set_shader_parameter("detiles", detiles)
+	material.set_shader_parameter("sharpens", sharpens)
 	material.set_shader_parameter("map_offset", t.position)
 
 	var cells := Vector2i(res.x - 1, res.y - 1)

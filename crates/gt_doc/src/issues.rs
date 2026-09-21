@@ -243,9 +243,7 @@ pub fn fix(map: &mut Map, issue: &Issue, default_material: &str) -> bool {
                 Some(NodeKind::Mesh(m)) => {
                     m.faces.iter_mut().filter(|f| f.data.material.is_empty()).for_each(|f| f.data.material = default_material.to_string())
                 }
-                Some(NodeKind::Terrain(t)) if t.layers.is_empty() => {
-                    t.layers.push(gt_geom::TerrainLayer { material: default_material.to_string(), tile: 256.0 })
-                }
+                Some(NodeKind::Terrain(t)) if t.layers.is_empty() => t.layers.push(gt_geom::TerrainLayer::new(default_material, 256.0)),
                 _ => return false,
             }
 

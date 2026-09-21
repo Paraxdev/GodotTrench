@@ -63,6 +63,8 @@ func _initialize() -> void:
 	await test_spawner()
 	test_scatter_and_blend()
 	test_face_cull()
+	test_interior_face_culling()
+	test_chunk_streamer()
 	test_csharp_entities()
 	await test_live_session()
 	test_live_link_lines()
@@ -648,6 +650,21 @@ func test_scatter_and_blend() -> void:
 	var built: Array = GodotTrenchBlend.build(blend, settings, [])
 	var mat := built[0] as ShaderMaterial
 	check(mat != null and mat.get_shader_parameter("texture_a") != null and mat.get_shader_parameter("texture_b") != null, "blend material samples both textures")
+	check(GodotTrenchBlend.options(blend) == [0.0, 1.0, 0.5], "a plain blend tiles as authored")
+
+	# A path face asks for de-tiling, a tighter repeat and a crispness, which ride along with the texture name
+	# so faces with different settings do not share one material.
+	var path := GodotTrenchBlend.key("showcase/cobble", "showcase/grass", 0.75, 4.0, 0.9)
+	check(GodotTrenchBlend.parts(path) == PackedStringArray(["showcase/cobble", "showcase/grass"]), "options do not disturb the texture names")
+	var opts := GodotTrenchBlend.options(path)
+	check(is_equal_approx(opts[0], 0.75) and is_equal_approx(opts[1], 4.0) and is_equal_approx(opts[2], 0.9), "options round trip, got %s" % [opts])
+	check(path != blend, "a de-tiled face gets its own material")
+	var path_mat := GodotTrenchBlend.build(path, settings, [])[0] as ShaderMaterial
+	check(is_equal_approx(path_mat.get_shader_parameter("detile_b"), 0.75), "the painted texture is de-tiled")
+	check(path_mat.get_shader_parameter("uv_scale_b").is_equal_approx(Vector2.ONE * 4.0), "the painted texture takes the repeat")
+	check(is_equal_approx(path_mat.get_shader_parameter("detile_sharpen_b"), 0.9), "the painted texture keeps its crispness")
+	# Older names without the crispness still load, they just take the default.
+	check(is_equal_approx(GodotTrenchBlend.options("a|blend|b|opt|0.500,2.000")[2], 0.5), "a two value option tail still parses")
 
 func test_face_cull() -> void:
 	print("- coplanar face culling")
@@ -702,6 +719,130 @@ func test_face_cull() -> void:
 	check(hidden.size() == 1 and hidden[0].plane.normal.is_equal_approx(Vector3(0, 0, 1)), "the brush top under a blend sheet is hidden, got %s" % [hidden.map(func(f): return f.plane.normal)])
 	check(sheet.faces.all(func(f): return not f.render_hidden), "the blend sheet draws")
 	check(data.entities[0].pending_convex_points.is_empty() and data.entities[0].shapes.size() >= 1, "collision is still built")
+
+func box_node(id: int, min_c: Vector3, max_c: Vector3, material := "showcase/cobble") -> Dictionary:
+	var vertices := []
+	for y in [min_c.y, max_c.y]:
+		for c in [[min_c.x, min_c.z], [max_c.x, min_c.z], [max_c.x, max_c.z], [min_c.x, max_c.z]]:
+			vertices.append([c[0], y, c[1]])
+	var faces := []
+	for indices in [[4, 7, 6, 5], [0, 1, 2, 3], [1, 5, 6, 2], [0, 3, 7, 4], [3, 2, 6, 7], [0, 4, 5, 1]]:
+		faces.append({ "indices": indices, "material": material })
+	return { "type": "brush", "id": id, "vertices": vertices, "faces": faces }
+
+func cull_brushes(children: Array) -> Array[FuncGodotData.BrushData]:
+	var settings: FuncGodotMapSettings = load(SETTINGS)
+	var path := OS.get_temp_dir().path_join("gt_interior_cull_test.gtm")
+	var map_json := { "format": "godottrench-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": children }] }
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify(map_json))
+	var data := FuncGodotParser.new().parse_map_data(path, settings)
+	DirAccess.remove_absolute(path)
+	FuncGodotGeometryGenerator.new(settings).build(0, data.entities)
+	return data.entities[0].brushes
+
+func test_interior_face_culling() -> void:
+	print("- interior face culling")
+	# A small box swallowed by a big one: the whole inner surface is interior and never drawn.
+	var swallowed := cull_brushes([box_node(2, Vector3(-256, -256, -256), Vector3(256, 256, 256)), box_node(3, Vector3(-32, -32, -32), Vector3(32, 32, 32))])
+	check(swallowed[1].faces.all(func(f): return f.render_hidden), "every face of the buried box is dropped")
+	check(swallowed[0].faces.all(func(f): return not f.render_hidden), "the outer shell keeps its faces")
+
+	# Two boxes poking out of each other keep everything: no whole face is buried.
+	var overlapping := cull_brushes([box_node(2, Vector3(0, 0, 0), Vector3(64, 64, 64)), box_node(3, Vector3(32, 32, 32), Vector3(96, 96, 96))])
+	for b: FuncGodotData.BrushData in overlapping:
+		check(b.faces.all(func(f): return not f.render_hidden), "half overlapping solids keep their faces")
+
+func test_chunk_streamer() -> void:
+	print("- chunk streaming and render culling")
+	# Two boxes far apart, so they land in different chunks and one can be culled while the other shows.
+	var near_box := box_node(2, Vector3(-64, -64, -64), Vector3(64, 64, 64))
+	var far_box := box_node(3, Vector3(8192, -64, -64), Vector3(8320, 64, 64))
+	var map_json := {
+		"format": "godottrench-map",
+		"properties": { "chunk_streaming": "1", "chunk_size": "512", "load_radius": "2048" },
+		"layers": [{ "type": "layer", "id": 1, "children": [near_box, far_box] }],
+	}
+	var path := OS.get_temp_dir().path_join("gt_streamer_test.gtm")
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify(map_json))
+	var map := FuncGodotMap.new()
+	map.map_settings = load(SETTINGS)
+	map.local_map_file = path
+	root.add_child(map)
+	map.build()
+
+	var streamer := find_named(map, "streamer") as GodotTrenchStreamer
+	check(streamer != null, "worldspawn chunk_streaming builds a streamer")
+	if streamer:
+		var scale: float = (load(SETTINGS) as FuncGodotMapSettings).scale_factor
+		check(is_equal_approx(streamer.chunk_size, 512.0 * scale), "chunk size converted to meters, got %f" % streamer.chunk_size)
+		check(streamer.chunk_count() >= 2, "the two distant boxes land in different chunks, got %d" % streamer.chunk_count())
+		# Drive it from a camera next to the near box: the far box's chunk is culled, the near one stays.
+		var loaded: Array[Vector3i] = []
+		var unloaded: Array[Vector3i] = []
+		streamer.area_loaded.connect(func(key: Vector3i, _b: AABB): loaded.append(key))
+		streamer.area_unloaded.connect(func(key: Vector3i, _b: AABB): unloaded.append(key))
+		var camera := Camera3D.new()
+		map.add_child(camera)
+		camera.global_position = Vector3.ZERO
+		streamer.camera_path = streamer.get_path_to(camera)
+		streamer._process(0.0)
+		var near_shown := streamer.visible_count()
+		check(near_shown > 0 and near_shown < streamer.node_count(), "near chunks draw and far ones do not, %d of %d" % [near_shown, streamer.node_count()])
+		check(not loaded.is_empty(), "area_loaded reports the chunks that came into range")
+		check(streamer.is_area_loaded(Vector3.ZERO), "the chunk under the camera reports loaded")
+		check(not streamer.is_area_loaded(Vector3(8256, 0, 0) * scale), "the far box is not loaded yet")
+
+		# Walking over to the far box loads it and drops the one behind.
+		loaded.clear()
+		camera.global_position = Vector3(8256, 0, 0) * scale
+		streamer._process(0.0)
+		check(streamer.is_area_loaded(Vector3(8256, 0, 0) * scale), "the far chunk loads when the camera reaches it")
+		check(not loaded.is_empty() and not unloaded.is_empty(), "moving away fires area_loaded and area_unloaded")
+		# Meshes are all the streamer touches, collision and scripts keep running everywhere.
+		var bodies := collect(map, func(n): return n is CollisionShape3D)
+		check(bodies.all(func(n): return not n.is_queued_for_deletion()), "collision shapes are left alone")
+
+		# A camera that is not moving must not rescan: standing in a busy area costs nothing per frame.
+		loaded.clear()
+		unloaded.clear()
+		var settled := streamer.visible_count()
+		for _i in 30:
+			streamer._process(0.016)
+		check(loaded.is_empty() and unloaded.is_empty(), "a still camera fires no chunk signals")
+		check(streamer.visible_count() == settled, "a still camera changes nothing")
+		# A nudge smaller than the hysteresis margin is still inside the slack and does not rescan either.
+		camera.global_position += Vector3(0.05, 0, 0)
+		streamer._process(0.016)
+		check(loaded.is_empty() and unloaded.is_empty(), "a tiny step stays within the margin")
+	map.free()
+	DirAccess.remove_absolute(path)
+
+	# Splitting a mesh must not lose or move geometry, only share it out between the pieces.
+	var sphere := SphereMesh.new()
+	sphere.radius = 8.0
+	sphere.height = 16.0
+	var source := ArrayMesh.new()
+	source.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, sphere.get_mesh_arrays())
+	var pieces := GodotTrenchStreamer.split_mesh(source, 4.0)
+	var after := 0
+	var merged := AABB()
+	var first := true
+	for key: Vector3i in pieces:
+		var piece: ArrayMesh = pieces[key]
+		after += triangle_count(piece)
+		merged = piece.get_aabb() if first else merged.merge(piece.get_aabb())
+		first = false
+	check(pieces.size() > 1, "a mesh wider than the cell splits into pieces, got %d" % pieces.size())
+	check(after == triangle_count(source), "splitting keeps every triangle, %d of %d" % [after, triangle_count(source)])
+	check(merged.size.distance_to(source.get_aabb().size) < 0.01, "the pieces cover the same bounds, %s vs %s" % [merged.size, source.get_aabb().size])
+
+func triangle_count(mesh: ArrayMesh) -> int:
+	var n := 0
+	for s in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(s)
+		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		n += (indices.size() if indices and not indices.is_empty() else arrays[Mesh.ARRAY_VERTEX].size()) / 3
+	return n
 
 func test_csharp_entities() -> void:
 	print("- C# entity definitions")

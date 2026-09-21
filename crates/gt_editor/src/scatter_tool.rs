@@ -44,6 +44,13 @@ pub fn new_set(state: &mut EditorState, name: Option<&str>) -> NodeId {
         set.collision = gt_doc::scatter::ScatterCollision::None;
     }
 
+    set.chunk_size = s.chunk_size;
+    set.static_props_multimesh = s.static_props_multimesh;
+    // None keeps the range Scatter::new picked from the kind: foliage fades out, props stay visible.
+    if let Some(range) = s.visibility_range {
+        set.visibility_range = range;
+    }
+
     let id = state.doc.edit("New Scatter Set", |m, _| {
         let layer = m.add_layer(&format!("Scatter: {label}"));
         m.insert(layer, NodeKind::Scatter(set))

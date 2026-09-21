@@ -243,9 +243,13 @@ static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D,
 		var face := _FaceData.new()
 		face.plane = plane
 		face.texture = str(f.get("material", ""))
-		var blend_material := str(f.get("props", {}).get("blend_material", ""))
+		var face_props: Dictionary = f.get("props", {})
+		var blend_material := str(face_props.get("blend_material", ""))
 		if blend_material != "":
-			face.texture = GodotTrenchBlend.key(face.texture, blend_material)
+			var detile := float(face_props.get("blend_detile", 0.0))
+			var uv_scale := float(face_props.get("blend_uv_scale", 1.0))
+			var sharpen := float(face_props.get("blend_detile_sharpen", 0.5))
+			face.texture = GodotTrenchBlend.key(face.texture, blend_material, detile, uv_scale, sharpen)
 		for p in godot_points:
 			face.exact_vertices.append(to_id(p) * scale)
 

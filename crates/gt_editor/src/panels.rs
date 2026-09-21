@@ -531,6 +531,25 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
             .on_hover_text("0 shows instances at any distance")
             .changed();
         ui.end_row();
+        ui.label("Chunk size");
+        ui.horizontal(|ui| {
+            let mut chunked = edited.chunk_size > 0.0;
+            if ui.checkbox(&mut chunked, "").changed() {
+                edited.chunk_size = if chunked { gt_doc::scatter::DEFAULT_CHUNK_SIZE } else { 0.0 };
+                changed = true;
+            }
+
+            if edited.chunk_size > 0.0 {
+                changed |= ui.add(egui::DragValue::new(&mut edited.chunk_size).range(64.0..=65536.0).suffix(" u")).changed();
+            }
+        })
+        .response
+        .on_hover_text(format!("{} chunks, each culled on its own in Godot", set.chunks().len()));
+        ui.end_row();
+        ui.label("Props as MultiMesh");
+        changed |=
+            ui.checkbox(&mut edited.static_props_multimesh, "").on_hover_text("Cheaper for many props, but scripts on those prop scenes are dropped").changed();
+        ui.end_row();
     });
     ui.separator();
     ui.label(RichText::new("Palette").strong());
@@ -624,13 +643,25 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
             ui.horizontal(|ui| {
                 changed |= ui.add(egui::TextEdit::singleline(&mut layer.material).desired_width(130.0)).changed();
                 changed |= ui.add(egui::DragValue::new(&mut layer.tile).range(8.0..=16384.0).prefix("tile ")).changed();
+                changed |= ui
+                    .add(egui::DragValue::new(&mut layer.detile).range(0.0..=1.0).speed(0.02).prefix("detile "))
+                    .on_hover_text("Turns and shifts every tile by a fixed random amount and blends the joins, so the repeat stops showing. Good for paths, costs four texture reads per projection")
+                    .changed();
+                if layer.detile > 0.0 {
+                    changed |= ui
+                        .add(egui::DragValue::new(&mut layer.detile_sharpen).range(0.0..=1.0).speed(0.02).prefix("sharpen "))
+                        .on_hover_text("Keeps the de-tiled texture crisp: 0 mixes the tiles evenly and looks soft, 1 mixes only where they join")
+                        .changed();
+                }
             });
             ui.end_row();
         }
     });
     ui.horizontal_wrapped(|ui| {
         if edited.layers.len() < gt_geom::heightfield::MAX_LAYERS && ui.small_button("+ layer (current material)").clicked() {
-            edited.layers.push(gt_geom::TerrainLayer { material: state.current_material.clone(), tile: edited.layers.last().map(|l| l.tile).unwrap_or(256.0) });
+            let last = edited.layers.last();
+            let (tile, detile) = last.map(|l| (l.tile, l.detile)).unwrap_or((256.0, 0.0));
+            edited.layers.push(gt_geom::TerrainLayer { detile, ..gt_geom::TerrainLayer::new(state.current_material.clone(), tile) });
             changed = true;
         }
 

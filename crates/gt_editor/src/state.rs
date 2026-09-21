@@ -76,6 +76,12 @@ pub struct ScatterSettings {
     pub output: ScatterOutput,
     /// Classname used for models placed as entities.
     pub prop_class: String,
+    /// Seeds `Scatter::chunk_size` on new sets: cell in map units each set is split into for culling, 0 for one MultiMesh.
+    pub chunk_size: f64,
+    /// Seeds `Scatter::visibility_range` on new sets, 0 keeps the set visible at any distance.
+    pub visibility_range: Option<f64>,
+    /// Seeds `Scatter::static_props_multimesh` on new sets.
+    pub static_props_multimesh: bool,
 }
 
 impl Default for ScatterSettings {
@@ -92,6 +98,9 @@ impl Default for ScatterSettings {
             avoid_other_sets: true,
             output: ScatterOutput::Set,
             prop_class: "prop_model".into(),
+            chunk_size: gt_doc::scatter::DEFAULT_CHUNK_SIZE,
+            visibility_range: None,
+            static_props_multimesh: false,
         }
     }
 }
@@ -175,6 +184,12 @@ pub struct Prefs {
     pub volume_class: String,
     /// Height of volumes drawn in the 3D view.
     pub volume_height: f64,
+    /// How much more often a blend material repeats across a face, applied by the Blend tool.
+    pub blend_uv_scale: f64,
+    /// De-tiling applied to a blend material by the Blend tool, 0 leaves it repeating as authored.
+    pub blend_detile: f64,
+    /// How crisp the de-tiled blend material stays, 0 softest and 1 crispest.
+    pub blend_detile_sharpen: f64,
     /// Size of the whole interface, 1.0 is 100%.
     pub ui_scale: f32,
     /// Multiply `ui_scale` by the monitor's scaling. When off, `ui_scale` is the exact pixels per point.
@@ -241,6 +256,9 @@ impl Default for Prefs {
             recent_materials: Vec::new(),
             volume_class: "trigger_once".into(),
             volume_height: 128.0,
+            blend_uv_scale: 1.0,
+            blend_detile: 0.6,
+            blend_detile_sharpen: 0.5,
             ui_scale: 1.0,
             follow_display_scaling: true,
             guide_welcome_seen: false,

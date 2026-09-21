@@ -168,6 +168,12 @@ pub enum Action {
     /// Uses the current material as the blend material of the selected faces.
     SetBlendMaterial,
     ClearBlendMaterial,
+    /// Sets how the blend material of the selected faces repeats, for painting paths that do not look tiled.
+    SetBlendTiling {
+        detile: f64,
+        uv_scale: f64,
+        sharpen: f64,
+    },
     MakeDoor {
         kind: crate::entity_wizards::DoorKind,
         trigger: bool,
@@ -1140,6 +1146,10 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::ClearBlendMaterial => {
             let n = crate::blend_tool::set_blend_material(state, None);
             state.set_status(format!("Removed the blend material from {n} faces"));
+        }
+        Action::SetBlendTiling { detile, uv_scale, sharpen } => {
+            let n = crate::blend_tool::set_blend_tiling(state, detile, uv_scale, sharpen);
+            state.set_status(format!("{n} faces now repeat the blend material {uv_scale:.2}x with de-tiling {detile:.2}"));
         }
         Action::MakeDoor { kind, trigger } => {
             let ids: Vec<NodeId> = state.doc.selection.nodes.iter().copied().collect();
