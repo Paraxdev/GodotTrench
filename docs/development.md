@@ -48,6 +48,7 @@ and the Godot addon tests. Every green push to `main` replaces the
 [rolling alpha](https://github.com/Paraxdev/GodotTrench/releases/tag/alpha) with editor builds for Linux, Windows and macOS,
 the addon zip and the demo project.
 
-The same push also uploads the three editor builds to [itch.io](https://paraxdev.itch.io/godottrench) with
-[butler](https://itch.io/docs/butler/) on the `linux`, `windows` and `mac` channels. Add a repository secret named
-`BUTLER_API_KEY` (a butler API key from itch) to enable it; the step skips itself while the secret is absent.
+The same push also uploads to [itch.io](https://paraxdev.itch.io/godottrench) with [butler](https://itch.io/docs/butler/):
+the three editor builds on the `linux`, `windows` and `mac` channels, plus the addon and demo project zips on the `addon`
+and `demo-project` channels. Add a repository secret named `BUTLER_API_KEY` (a butler API key from itch) to enable it; the
+step skips itself while the secret is absent.

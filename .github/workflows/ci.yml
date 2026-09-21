@@ -214,3 +214,6 @@ jobs:
           push dist/godottrench-linux-x86_64.tar.gz linux
           push dist/godottrench-windows-x86_64.zip windows
           push dist/godottrench-macos-arm64.tar.gz mac
+          # The addon and demo project ship as their own zips so their folder layout (addons/func_godot, the project) survives.
+          "$butler" push dist/func_godot-godottrench-addon.zip "paraxdev/godottrench:addon" --userversion "$version"
+          "$butler" push dist/godottrench-demo-project.zip "paraxdev/godottrench:demo-project" --userversion "$version"
