@@ -17,11 +17,21 @@ pub enum MeshUvKind {
     View,
     Unfold,
     Normalize,
+    /// Packs the UV islands into 0..1 with a uniform texel density, stacking identical islands.
+    Pack,
 }
 
 impl MeshUvKind {
-    pub const ALL: [MeshUvKind; 7] =
-        [MeshUvKind::Planar, MeshUvKind::Box, MeshUvKind::Cylinder, MeshUvKind::Sphere, MeshUvKind::View, MeshUvKind::Unfold, MeshUvKind::Normalize];
+    pub const ALL: [MeshUvKind; 8] = [
+        MeshUvKind::Planar,
+        MeshUvKind::Box,
+        MeshUvKind::Cylinder,
+        MeshUvKind::Sphere,
+        MeshUvKind::View,
+        MeshUvKind::Unfold,
+        MeshUvKind::Normalize,
+        MeshUvKind::Pack,
+    ];
 
     pub fn label(&self) -> &'static str {
         match self {
@@ -32,6 +42,7 @@ impl MeshUvKind {
             MeshUvKind::View => "View",
             MeshUvKind::Unfold => "Unfold",
             MeshUvKind::Normalize => "Normalize",
+            MeshUvKind::Pack => "Pack",
         }
     }
 
@@ -54,6 +65,7 @@ pub fn mesh_uv(state: &mut EditorState, faces: &[(NodeId, usize)], kind: MeshUvK
             return n;
         }
         MeshUvKind::Normalize => return normalize_mesh_uvs(state, faces, true),
+        MeshUvKind::Pack => return pack_mesh_uvs(state, faces, true),
         MeshUvKind::Box => UvProjection::Box,
         MeshUvKind::Cylinder => UvProjection::Cylinder { axis: DVec3::Y },
         MeshUvKind::Sphere => UvProjection::Sphere,
@@ -440,6 +452,27 @@ pub fn normalize_mesh_uvs(state: &mut EditorState, faces: &[(NodeId, usize)], ke
             }
         }
     });
+    n
+}
+
+/// Packs the explicit UV islands of the selected mesh faces into 0..1, stacking identical islands.
+pub fn pack_mesh_uvs(state: &mut EditorState, faces: &[(NodeId, usize)], stack: bool) -> usize {
+    let mut per_mesh: std::collections::BTreeMap<NodeId, Vec<usize>> = Default::default();
+    for (id, f) in faces {
+        if state.doc.map.mesh(*id).is_some() {
+            per_mesh.entry(*id).or_default().push(*f);
+        }
+    }
+    let n = per_mesh.values().map(|v| v.len()).sum();
+    if n > 0 {
+        state.doc.edit("Pack UVs", |m, _| {
+            for (id, list) in &per_mesh {
+                if let Some(mesh) = m.mesh_mut(*id) {
+                    mesh.pack_uv_islands(list, stack);
+                }
+            }
+        });
+    }
     n
 }
 

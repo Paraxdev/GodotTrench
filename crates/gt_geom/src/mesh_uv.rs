@@ -169,6 +169,128 @@ impl Mesh {
         }
     }
 
+    /// Groups `faces` into UV islands: faces whose explicit UVs already join along a shared edge (what
+    /// Box and Unfold produce). Faces without matching explicit UVs are dropped.
+    fn uv_islands(&self, faces: &[usize]) -> Vec<Vec<usize>> {
+        let valid: Vec<usize> = faces.iter().copied().filter(|&f| f < self.faces.len() && self.faces[f].uvs.len() == self.faces[f].indices.len()).collect();
+        let mut parent: BTreeMap<usize, usize> = valid.iter().map(|&f| (f, f)).collect();
+        fn find(parent: &mut BTreeMap<usize, usize>, x: usize) -> usize {
+            let mut r = x;
+            while parent[&r] != r {
+                r = parent[&r];
+            }
+            let mut c = x;
+            while parent[&c] != r {
+                let next = parent[&c];
+                parent.insert(c, r);
+                c = next;
+            }
+            r
+        }
+        let in_set: BTreeSet<usize> = valid.iter().copied().collect();
+        let edge_faces = self.edge_faces();
+        for &f in &valid {
+            let idx = self.faces[f].indices.clone();
+            for k in 0..idx.len() {
+                let (a, b) = (idx[k], idx[(k + 1) % idx.len()]);
+                let (uva, uvb) = (self.faces[f].uvs[k], self.faces[f].uvs[(k + 1) % idx.len()]);
+                for &other in edge_faces.get(&edge_key(a, b)).map(|v| v.as_slice()).unwrap_or(&[]) {
+                    if other == f || !in_set.contains(&other) {
+                        continue;
+                    }
+                    // The islands join only where the shared edge carries the same UV on both faces.
+                    let of = &self.faces[other];
+                    let uv_at = |vertex: u32| of.indices.iter().position(|v| *v == vertex).map(|p| of.uvs[p]);
+                    let matches = |want: [f32; 2], got: Option<[f32; 2]>| got.is_some_and(|g| (g[0] - want[0]).abs() < 1e-4 && (g[1] - want[1]).abs() < 1e-4);
+                    if matches(uva, uv_at(a)) && matches(uvb, uv_at(b)) {
+                        let (ra, rb) = (find(&mut parent, f), find(&mut parent, other));
+                        if ra != rb {
+                            parent.insert(ra, rb);
+                        }
+                    }
+                }
+            }
+        }
+        let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for &f in &valid {
+            let r = find(&mut parent, f);
+            groups.entry(r).or_default().push(f);
+        }
+        groups.into_values().collect()
+    }
+
+    /// Packs the explicit-UV islands of `faces` into the 0..1 square with a consistent texel density,
+    /// so an atlas wastes little space. When `stack` is set, islands of the same shape and size are laid
+    /// on top of each other to share one region, which is ideal for repeated trims and tiles.
+    pub fn pack_uv_islands(&mut self, faces: &[usize], stack: bool) {
+        let islands = self.uv_islands(faces);
+        if islands.is_empty() {
+            return;
+        }
+        // Per island: UV min, size, and a shape signature (corner offsets from the min, rounded).
+        struct Island {
+            faces: Vec<usize>,
+            min: DVec2,
+            size: DVec2,
+            sig: Vec<(i32, i32)>,
+        }
+        let mut items: Vec<Island> = islands
+            .into_iter()
+            .map(|fs| {
+                let (lo, hi) = fs
+                    .iter()
+                    .flat_map(|f| self.faces[*f].uvs.iter())
+                    .fold((DVec2::MAX, DVec2::MIN), |(lo, hi), u| (lo.min(DVec2::new(u[0] as f64, u[1] as f64)), hi.max(DVec2::new(u[0] as f64, u[1] as f64))));
+                let min = lo;
+                let size = (hi - lo).max(DVec2::splat(1e-6));
+                let mut sig: Vec<(i32, i32)> = fs
+                    .iter()
+                    .flat_map(|f| self.faces[*f].uvs.iter())
+                    .map(|u| (((u[0] as f64 - min.x) * 1e3).round() as i32, ((u[1] as f64 - min.y) * 1e3).round() as i32))
+                    .collect();
+                sig.sort_unstable();
+                Island { faces: fs, min, size, sig }
+            })
+            .collect();
+        items.sort_by(|a, b| a.faces[0].cmp(&b.faces[0]));
+
+        // Representatives: unique shapes when stacking, every island otherwise. Each gets one cell.
+        let mut reps: Vec<usize> = Vec::new();
+        let mut cell_of: Vec<usize> = vec![0; items.len()];
+        for i in 0..items.len() {
+            let found = stack.then(|| reps.iter().position(|&r| items[r].sig == items[i].sig)).flatten();
+            match found {
+                Some(slot) => cell_of[i] = slot,
+                None => {
+                    cell_of[i] = reps.len();
+                    reps.push(i);
+                }
+            }
+        }
+
+        let cols = (reps.len() as f64).sqrt().ceil().max(1.0) as usize;
+        let cell = 1.0 / cols as f64;
+        let margin = 0.96;
+        // One scale for every island keeps texel density uniform across the atlas.
+        let max_dim = reps.iter().map(|&r| items[r].size.max_element()).fold(1e-6, f64::max);
+        let scale = cell * margin / max_dim;
+
+        for (i, item) in items.iter().enumerate() {
+            let rep = &items[reps[cell_of[i]]];
+            let (col, row) = (cell_of[i] % cols, cell_of[i] / cols);
+            let cell_origin = DVec2::new(col as f64 * cell, row as f64 * cell);
+            // Centre the shape in its cell using the representative's size, so stacked twins line up.
+            let pad = (DVec2::splat(cell) - rep.size * scale) * 0.5;
+            let offset = cell_origin + pad - item.min * scale;
+            for &f in &item.faces {
+                for u in &mut self.faces[f].uvs {
+                    let p = DVec2::new(u[0] as f64, u[1] as f64) * scale + offset;
+                    *u = [p.x as f32, p.y as f32];
+                }
+            }
+        }
+    }
+
     /// Scales and moves the explicit UVs of `faces` together so they span 0..1, keeping their aspect ratio when asked.
     pub fn normalize_uvs(&mut self, faces: &[usize], keep_aspect: bool) {
         let faces: Vec<usize> = faces.iter().copied().filter(|f| *f < self.faces.len() && self.faces[*f].uvs.len() == self.faces[*f].indices.len()).collect();
@@ -235,6 +357,41 @@ mod tests {
         };
         let signs: Vec<bool> = grid.faces.iter().map(|f| signed_area(&f.uvs) > 0.0).collect();
         assert!(signs.iter().all(|s| *s == signs[0]), "{signs:?}");
+    }
+
+    fn quad(mesh: &mut Mesh, at: DVec3) {
+        let base = mesh.vertices.len() as u32;
+        for c in [DVec3::ZERO, DVec3::new(1.0, 0.0, 0.0), DVec3::new(1.0, 1.0, 0.0), DVec3::new(0.0, 1.0, 0.0)] {
+            mesh.vertices.push(at + c);
+        }
+        let mut f = crate::MeshFace::new(vec![base, base + 1, base + 2, base + 3], crate::FaceData::new("m", FaceUv::default()));
+        // A 2x2 texture-space island, identical for every quad so stacking can fold them together.
+        f.uvs = vec![[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]];
+        mesh.faces.push(f);
+    }
+
+    #[test]
+    fn pack_stacks_identical_islands_and_fills_unit_square() {
+        let mut mesh = Mesh::default();
+        quad(&mut mesh, DVec3::ZERO);
+        quad(&mut mesh, DVec3::new(10.0, 0.0, 0.0)); // disconnected, same shape
+
+        let mut stacked = mesh.clone();
+        stacked.pack_uv_islands(&[0, 1], true);
+        assert_eq!(stacked.faces[0].uvs, stacked.faces[1].uvs, "identical islands overlap when stacked");
+        for u in stacked.faces.iter().flat_map(|f| f.uvs.iter()) {
+            assert!((-1e-4..=1.0001).contains(&u[0]) && (-1e-4..=1.0001).contains(&u[1]), "packed into 0..1: {u:?}");
+        }
+
+        let mut apart = mesh.clone();
+        apart.pack_uv_islands(&[0, 1], false);
+        assert_ne!(apart.faces[0].uvs, apart.faces[1].uvs, "without stacking each island gets its own cell");
+        let max0 = apart.faces[0].uvs.iter().map(|u| u[0]).fold(f32::MIN, f32::max);
+        let min1 = apart.faces[1].uvs.iter().map(|u| u[0]).fold(f32::MAX, f32::min);
+        assert!(max0 <= min1 + 1e-4, "cells do not overlap along u");
+        for u in apart.faces.iter().flat_map(|f| f.uvs.iter()) {
+            assert!((-1e-4..=1.0001).contains(&u[0]) && (-1e-4..=1.0001).contains(&u[1]), "packed into 0..1: {u:?}");
+        }
     }
 
     #[test]
