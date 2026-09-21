@@ -550,23 +550,62 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
         changed |=
             ui.checkbox(&mut edited.static_props_multimesh, "").on_hover_text("Cheaper for many props, but scripts on those prop scenes are dropped").changed();
         ui.end_row();
+        ui.label("Material");
+        ui.horizontal(|ui| {
+            let mut material = edited.material.clone().unwrap_or_default();
+            if ui
+                .add(egui::TextEdit::singleline(&mut material).hint_text("model's own").desired_width(120.0))
+                .on_hover_text("Drawn instead of the materials the models ship with. A palette entry's own material wins over it")
+                .changed()
+            {
+                edited.material = (!material.trim().is_empty()).then(|| material.trim().to_string());
+                changed = true;
+            }
+
+            if ui.small_button("use current").on_hover_text(state.current_material.clone()).clicked() {
+                edited.material = Some(state.current_material.clone());
+                changed = true;
+            }
+
+            if edited.material.is_some() && ui.small_button("×").on_hover_text("Back to the models' own materials").clicked() {
+                edited.material = None;
+                changed = true;
+            }
+        });
+        ui.end_row();
     });
     ui.separator();
     ui.label(RichText::new("Palette").strong());
     let counts = set.counts();
     let mut remove = None;
-    egui::Grid::new("scatter_items").num_columns(5).striped(true).show(ui, |ui| {
-        ui.label("model");
-        ui.label("count");
-        ui.label("weight");
-        ui.label("spread");
-        ui.label("");
+    let current_material = state.current_material.clone();
+    egui::Grid::new("scatter_items").num_columns(6).striped(true).show(ui, |ui| {
+        for h in ["model", "count", "weight", "spread", "material", ""] {
+            ui.label(h);
+        }
+
         ui.end_row();
         for (k, item) in edited.items.iter_mut().enumerate() {
             ui.label(item.label()).on_hover_text(&item.source);
             ui.label(counts.get(k).copied().unwrap_or(0).to_string());
             changed |= ui.add(egui::DragValue::new(&mut item.weight).range(0.0..=100.0).speed(0.05)).changed();
             changed |= ui.add(egui::DragValue::new(&mut item.spacing).range(0.0..=4096.0)).changed();
+            ui.horizontal(|ui| {
+                let mut material = item.material.clone().unwrap_or_default();
+                if ui
+                    .add(egui::TextEdit::singleline(&mut material).hint_text("set's").desired_width(90.0))
+                    .on_hover_text("Material for this entry only, empty falls back to the set's material")
+                    .changed()
+                {
+                    item.material = (!material.trim().is_empty()).then(|| material.trim().to_string());
+                    changed = true;
+                }
+
+                if ui.small_button("←").on_hover_text(format!("Use {current_material}")).clicked() {
+                    item.material = Some(current_material.clone());
+                    changed = true;
+                }
+            });
             if ui.small_button("×").on_hover_text("Remove the entry and its instances").clicked() {
                 remove = Some(k);
             }

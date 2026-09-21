@@ -339,6 +339,7 @@ fn instance_hash(set: &gt_doc::Scatter, instances: &[&gt_doc::scatter::ScatterIn
     for i in instances {
         i.item.hash(&mut h);
         set.items.get(i.item as usize).map(|it| it.source.as_str()).unwrap_or("").hash(&mut h);
+        set.item_material(i.item as usize).hash(&mut h);
         for v in [i.position.x, i.position.y, i.position.z, i.angles.x, i.angles.y, i.angles.z, i.scale] {
             v.to_bits().hash(&mut h);
         }
@@ -390,6 +391,7 @@ fn build_scatter(
             match item_models.get(inst.item as usize).and_then(|m| m.as_ref()) {
                 Some(model) => {
                     let normal_m = glam::Mat3::from_mat4(xform);
+                    let override_material = set.item_material(inst.item as usize);
                     for part in &model.parts {
                         let verts: Vec<MeshVertex> = part
                             .vertices
@@ -402,7 +404,7 @@ fn build_scatter(
                             })
                             .collect();
                         out.triangles += part.indices.len() / 3;
-                        batch.add_triangles(&part.material, &verts, &part.indices);
+                        batch.add_triangles(override_material.unwrap_or(&part.material), &verts, &part.indices);
                     }
                 }
                 None => {

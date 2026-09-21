@@ -325,7 +325,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "scatter",
-            "description": "Scatter trees, rocks and foliage into scatter sets that live on their own layers and only cover their target surfaces. ops: palette {items: [model path or {source, weight, scale: [min, max], spacing, align, tilt, sink}], preset: forest|pines|undergrowth|rocks|grass, kind: props|foliage}, install_models (writes the built-in nature models to res://godottrench/nature), new_set {name, targets, collision, cast_shadows, visibility_range}, activate {id}, paint {center [x, y, z] or [x, z] dropped to the ground, radius, density, slope, height, falloff, seed}, stroke {points, ...}, erase {center, radius, amount}, fill {id, targets, density, slope, height, seed} (whole target area), toggle_target {target}, clear, get {id}, to_entities {id}. Settings passed to paint, stroke, erase and fill apply to that call; palette and preset persist.",
+            "description": "Scatter trees, rocks and foliage into scatter sets that live on their own layers and only cover their target surfaces. ops: palette {items: [model path or {source, weight, scale: [min, max], spacing, align, tilt, sink}], preset: forest|pines|undergrowth|rocks|grass, kind: props|foliage}, install_models (writes the built-in nature models to res://godottrench/nature), new_set {name, targets, collision, cast_shadows, visibility_range, chunk_size, material}, activate {id}, paint {center [x, y, z] or [x, z] dropped to the ground, radius, density, slope, height, falloff, seed}, stroke {points, ...}, erase {center, radius, amount}, fill {id, targets, density, slope, height, seed} (whole target area), toggle_target {target} (a scatter set works too, so foliage can be painted onto scattered rocks), material {material, item} (retextures the whole set, or one palette entry when item is given, empty clears it), clear, get {id}, to_entities {id}. Settings passed to paint, stroke, erase and fill apply to that call; palette and preset persist.",
             "inputSchema": { "type": "object", "properties": {
                 "op": { "type": "string" }, "id": { "type": "integer" }, "name": { "type": "string" },
                 "items": { "type": "array" }, "preset": { "type": "string" }, "kind": { "type": "string", "enum": ["props", "foliage"] },
@@ -334,7 +334,8 @@ pub fn tool_definitions() -> Vec<Value> {
                 "radius": { "type": "number" }, "density": { "type": "number" }, "slope": { "type": "array" }, "height": { "type": "array" },
                 "falloff": { "type": "number" }, "amount": { "type": "number" }, "seed": { "type": "integer" }, "only_targets": { "type": "boolean" },
                 "collision": { "type": "string", "enum": ["none", "convex", "trimesh"] }, "cast_shadows": { "type": "boolean" }, "visibility_range": { "type": "number" },
-                "output": { "type": "string", "enum": ["set", "entities"] }, "overwrite": { "type": "boolean" }
+                "output": { "type": "string", "enum": ["set", "entities"] }, "overwrite": { "type": "boolean" },
+                "chunk_size": { "type": "number" }, "material": { "type": "string" }, "item": { "type": "integer" }
             }, "required": ["op"] }
         }),
         json!({

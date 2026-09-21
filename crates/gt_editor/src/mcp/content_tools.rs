@@ -220,9 +220,39 @@ impl App {
                         if let Some(r) = props["visibility_range"].as_f64() {
                             s.visibility_range = r;
                         }
+
+                        if let Some(c) = props["chunk_size"].as_f64() {
+                            s.chunk_size = c;
+                        }
+
+                        if props.get("material").is_some() {
+                            s.material = props["material"].as_str().filter(|m| !m.is_empty()).map(str::to_string);
+                        }
                     }
                 });
                 ok(self.scatter_summary(id))
+            }
+            "material" => {
+                let Some(id) = self.state.active_scatter else { return err("id required, or activate a set first") };
+                let material = args["material"].as_str().filter(|m| !m.is_empty()).map(str::to_string);
+                let item = args["item"].as_u64().map(|i| i as usize);
+                let mut missing = None;
+                self.state.doc.edit("Scatter Material", |m, _| {
+                    if let Some(s) = m.scatter_mut(id) {
+                        match item {
+                            // One palette entry, so a single model of the set is retextured.
+                            Some(k) => match s.items.get_mut(k) {
+                                Some(entry) => entry.material = material.clone(),
+                                None => missing = Some(k),
+                            },
+                            None => s.material = material.clone(),
+                        }
+                    }
+                });
+                match missing {
+                    Some(k) => err(format!("the set has no palette entry {k}")),
+                    None => ok(self.scatter_summary(id)),
+                }
             }
             "activate" => match self.state.active_scatter {
                 Some(id) => ok(self.scatter_summary(id)),

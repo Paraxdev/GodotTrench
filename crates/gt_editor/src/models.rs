@@ -497,10 +497,17 @@ impl ModelLibrary {
         self.entries.clear();
         self.root = game.resolve_res("res://models").filter(|p| p.is_dir());
         if let Some(root) = self.root.clone() {
-            scan_models(&root, &root, &mut self.entries);
+            scan_models(&root, &root, "", &mut self.entries);
+        }
+
+        // The nature models the scatter presets install live outside res://models. They are listed under a
+        // "nature" folder too, so trees and rocks can be placed by hand as props, not only scattered.
+        if let Some(nature) = game.resolve_res(gt_doc::scatter::NATURE_DIR).filter(|p| p.is_dir()) {
+            scan_models(&nature, &nature, "nature", &mut self.entries);
         }
 
         self.entries.sort_by(|a, b| a.name.cmp(&b.name));
+        self.entries.dedup_by(|a, b| a.path == b.path);
     }
 
     pub fn folders(&self) -> Vec<String> {
@@ -511,12 +518,14 @@ impl ModelLibrary {
     }
 }
 
-fn scan_models(root: &Path, dir: &Path, out: &mut Vec<ModelEntry>) {
+/// Collects the models under `dir`. `prefix` is put in front of their names and folders, for roots that are
+/// not the models root itself.
+fn scan_models(root: &Path, dir: &Path, prefix: &str, out: &mut Vec<ModelEntry>) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            scan_models(root, &path, out);
+            scan_models(root, &path, prefix, out);
             continue;
         }
 
@@ -526,8 +535,9 @@ fn scan_models(root: &Path, dir: &Path, out: &mut Vec<ModelEntry>) {
         }
 
         let Ok(rel) = path.strip_prefix(root) else { continue };
-        let name = rel.with_extension("").to_string_lossy().replace('\\', "/");
-        let folder = rel.parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+        let join = |part: String| if prefix.is_empty() || part.is_empty() { format!("{prefix}{part}") } else { format!("{prefix}/{part}") };
+        let name = join(rel.with_extension("").to_string_lossy().replace('\\', "/"));
+        let folder = join(rel.parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default());
         out.push(ModelEntry { name, folder, path: path.clone(), ext });
     }
 }
@@ -549,6 +559,22 @@ mod tests {
             let model = load(&path, 16.0).unwrap_or_else(|e| panic!("{rel}: {e}"));
             assert!(model.parts.iter().any(|p| !p.indices.is_empty()), "{rel} has no geometry");
         }
+    }
+
+    #[test]
+    fn nature_models_are_listed_for_placing_by_hand() {
+        // The demo project ships the nature pack, which lives outside res://models.
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../godot");
+        let game = gt_formats::GameConfig { project_root: Some(root), ..Default::default() };
+        let lib = ModelLibrary::new(&game);
+        let names: Vec<&str> = lib.entries.iter().map(|e| e.name.as_str()).collect();
+        // The pack has loose .bbmodel props at its root and the procedural glTF trees in a subfolder, and
+        // both keep their place under the "nature" prefix.
+        assert!(names.contains(&"nature/pine"), "loose nature props are listed: {names:?}");
+        let tree = lib.entries.iter().find(|e| e.name == "nature/trees/pine").unwrap_or_else(|| panic!("no nature/trees/pine among {names:?}"));
+        assert_eq!(tree.folder, "nature/trees", "subfolders keep their place under the prefix");
+        assert!(tree.path.is_file(), "the entry points at the real file so it can be placed");
+        assert!(lib.folders().contains(&"nature/trees".to_string()));
     }
 
     #[test]

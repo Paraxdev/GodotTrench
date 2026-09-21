@@ -128,6 +128,26 @@ static func _sorted_cells(buckets: Dictionary) -> Array:
 		return a.z < b.z)
 	return cells
 
+## Material a palette entry draws with: its own override, else the set's, else the model's own materials.
+static func _item_material(data: Dictionary, item: Dictionary, settings: FuncGodotMapSettings) -> Material:
+	var name := str(item.get("material", "")) if item.get("material", "") != null else ""
+	if name == "":
+		name = str(data.get("material", "")) if data.get("material", "") != null else ""
+	if name == "":
+		return null
+	var dir: String = settings.base_material_dir if settings.base_material_dir != "" else settings.base_texture_dir
+	var path := dir.path_join(name + "." + settings.material_file_extension)
+	if ResourceLoader.exists(path):
+		return load(path) as Material
+	# No material resource for the name, fall back to its plain texture.
+	var texture := FuncGodotUtil.load_texture(name, [], settings)
+	if not texture:
+		push_warning("[GodotTrench] scatter material %s not found" % name)
+		return null
+	var material := StandardMaterial3D.new()
+	material.albedo_texture = texture
+	return material
+
 ## One MultiMeshInstance3D for the transforms of a single mesh in a single chunk.
 static func _chunk_instance(mi: MeshInstance3D, rel: Transform3D, transforms: Array, name: String, shadows: bool, range_end: float) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
@@ -201,6 +221,7 @@ static func create(data: Dictionary, xform: Transform3D, settings: FuncGodotMapS
 			continue
 		var template := scene.instantiate()
 		var item_name := source.get_file().get_basename().validate_node_name()
+		var override_material := _item_material(data, items[k], settings)
 		var cells := _sorted_cells(buckets)
 		var all: Array[Transform3D] = []
 		for cell: Vector3i in cells:
@@ -211,6 +232,9 @@ static func create(data: Dictionary, xform: Transform3D, settings: FuncGodotMapS
 				inst.name = "%s_%d" % [item_name, node.get_child_count()]
 				if inst is Node3D:
 					(inst as Node3D).transform = t
+				if override_material:
+					for mi in _mesh_instances(inst):
+						mi.material_override = override_material
 				node.add_child(inst)
 			template.free()
 			continue
@@ -220,7 +244,10 @@ static func create(data: Dictionary, xform: Transform3D, settings: FuncGodotMapS
 				var chunk_name := "%s_%s" % [item_name, mi.name]
 				if node.chunk_size > 0.0:
 					chunk_name = "%s_%d_%d_%d" % [chunk_name, cell.x, cell.y, cell.z]
-				node.add_child(_chunk_instance(mi, rel, buckets[cell], chunk_name.validate_node_name(), shadows, range_end))
+				var chunk := _chunk_instance(mi, rel, buckets[cell], chunk_name.validate_node_name(), shadows, range_end)
+				if override_material:
+					chunk.material_override = override_material
+				node.add_child(chunk)
 		if node.collision != "none":
 			var shape := _shape_for(template, node.collision)
 			if shape:

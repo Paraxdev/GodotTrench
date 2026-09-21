@@ -93,7 +93,7 @@ pub fn paint(state: &mut EditorState, center: DVec3, normal: DVec3, rng: &mut Rn
     let Some(mut set) = state.doc.map.scatter(id).cloned() else { return 0 };
     let indices = set.merge_items(&settings.palette);
     let placed = {
-        let caster = SurfaceCaster::new(state, &region);
+        let caster = SurfaceCaster::with_targets(state, &region, &set.targets);
         if settings.rules.only_targets
             && set.targets.is_empty()
             && let Some(hit) = caster.cast(center + normal * settings.radius, -normal)
@@ -154,7 +154,7 @@ pub fn fill(state: &mut EditorState, rng: &mut Rng) -> Result<usize, String> {
     let indices = set.merge_items(&settings.palette);
     let others = other_footprints(state, Some(id), &region.expanded(256.0));
     let placed = {
-        let caster = SurfaceCaster::new(state, &region.expanded(64.0));
+        let caster = SurfaceCaster::with_targets(state, &region.expanded(64.0), &set.targets);
         let rules = ScatterRules { items: Some(indices), only_targets: true, ..settings.rules.clone() };
         set.fill(&region, &rules, rng, &others, |o, d| caster.cast(o, d))
     };
@@ -343,14 +343,27 @@ impl ScatterTool {
         self.hover = pointer.and_then(|p| {
             let ray = cam.ray(rect, p);
             let region = Aabb::from_center_size(ray.origin, DVec3::splat(1.0e6));
-            let caster = SurfaceCaster::new(state, &region);
+            let targets = active_set(state).and_then(|id| state.doc.map.scatter(id)).map(|s| s.targets.clone()).unwrap_or_default();
+            let caster = SurfaceCaster::with_targets(state, &region, &targets);
             caster.cast(ray.origin, ray.dir).map(|h: SurfaceHit| (h.point, h.normal, h.node))
         });
         let modifiers = ui.input(|i| i.modifiers);
         if response.clicked_by(PointerButton::Primary) && modifiers.alt {
-            if let Some((_, _, node)) = self.hover {
+            // Picked rather than cast, so clicking a scattered rock names that set as the target and foliage
+            // can then be painted over it. The caster only knows the sets that are already targets.
+            let picked = response
+                .interact_pointer_pos()
+                .and_then(|p| crate::picking::pick(state, &cam.ray(rect, p)))
+                .map(|h| h.node)
+                .or(self.hover.map(|(_, _, node)| node));
+            if let Some(node) = picked {
                 if active_set(state).is_none() {
                     new_set(state, None);
+                }
+
+                if Some(node) == active_set(state) {
+                    state.set_status("A scatter set cannot be painted onto itself");
+                    return;
                 }
 
                 let added = toggle_target(state, node);
@@ -491,6 +504,35 @@ mod tests {
         state.prefs.scatter.erase_amount = 1.0;
         let removed = erase(&mut state, DVec3::new(300.0, 0.0, 0.0), &mut rng);
         assert!(removed > 0 && state.doc.map.scatter(id).unwrap().instances.len() == before - removed);
+    }
+
+    #[test]
+    fn a_scatter_set_can_be_the_ground_of_another_one() {
+        let mut state = EditorState::new(Default::default());
+        let floor = ground(&mut state, [-512.0, -16.0, -512.0], [512.0, 0.0, 512.0]);
+
+        // Rocks on the floor first.
+        state.prefs.scatter.palette = vec![ScatterItem { spacing: 120.0, ..ScatterItem::new("res://rock.glb") }];
+        state.prefs.scatter.radius = 400.0;
+        state.prefs.scatter.rules.density = 2.0;
+        let mut rng = Rng::new(11);
+        assert!(paint(&mut state, DVec3::ZERO, DVec3::Y, &mut rng) > 0);
+        let rocks = state.active_scatter.unwrap();
+        let top = state.doc.map.scatter(rocks).unwrap().instances.iter().map(|i| i.position.y).fold(f64::MIN, f64::max);
+        assert_eq!(top, 0.0, "the rocks sit on the floor");
+
+        // A grass set that targets the rocks lands on them, above the floor.
+        state.prefs.scatter.palette = vec![ScatterItem { spacing: 12.0, ..ScatterItem::new("res://grass.glb") }];
+        state.prefs.scatter.kind = gt_doc::ScatterKind::Foliage;
+        let grass = new_set(&mut state, Some("grass"));
+        state.active_scatter = Some(grass);
+        assert!(toggle_target(&mut state, rocks), "the rock set becomes a target surface");
+        state.prefs.scatter.rules.density = 8.0;
+        let placed = paint(&mut state, DVec3::ZERO, DVec3::Y, &mut rng);
+        assert!(placed > 0, "grass lands on the rocks, placed {placed}");
+        let blades = &state.doc.map.scatter(grass).unwrap().instances;
+        assert!(blades.iter().all(|i| i.position.y > 0.0), "every blade sits above the floor, on a rock");
+        assert!(state.doc.map.scatter(floor).is_none(), "the floor is a brush, not a set");
     }
 
     #[test]

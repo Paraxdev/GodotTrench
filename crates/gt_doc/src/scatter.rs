@@ -91,11 +91,24 @@ pub struct ScatterItem {
     /// Map units pushed into the surface, so trunks do not float on slopes.
     #[serde(default)]
     pub sink: f64,
+    /// Material drawn instead of the ones the model ships with. Wins over the set's own override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub material: Option<String>,
 }
 
 impl ScatterItem {
     pub fn new(source: impl Into<String>) -> Self {
-        Self { source: source.into(), weight: 1.0, scale: default_scale(), spacing: default_spacing(), align: 0.0, random_yaw: true, tilt: 0.0, sink: 0.0 }
+        Self {
+            source: source.into(),
+            weight: 1.0,
+            scale: default_scale(),
+            spacing: default_spacing(),
+            align: 0.0,
+            random_yaw: true,
+            tilt: 0.0,
+            sink: 0.0,
+            material: None,
+        }
     }
 
     /// File name without extension, for labels.
@@ -183,6 +196,10 @@ pub struct Scatter {
     /// as one node each so their behaviour survives.
     #[serde(default)]
     pub static_props_multimesh: bool,
+    /// Material drawn instead of the ones the models ship with, for the whole set. A palette entry's own
+    /// material wins over it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub material: Option<String>,
     #[serde(default)]
     pub instances: Vec<ScatterInstance>,
 }
@@ -200,8 +217,14 @@ impl Scatter {
             visibility_range: if kind == ScatterKind::Foliage { 2400.0 } else { 0.0 },
             chunk_size: DEFAULT_CHUNK_SIZE,
             static_props_multimesh: false,
+            material: None,
             instances: Vec::new(),
         }
+    }
+
+    /// Material a palette entry draws with: its own override, else the set's, else the model's own materials.
+    pub fn item_material(&self, item: usize) -> Option<&str> {
+        self.items.get(item).and_then(|i| i.material.as_deref()).or(self.material.as_deref())
     }
 
     /// Instance indices grouped by `chunk_size` cell, so each cell becomes its own MultiMesh that Godot can
@@ -599,6 +622,7 @@ pub fn preset(name: &str) -> Option<(ScatterKind, Vec<ScatterItem>)> {
         random_yaw: true,
         tilt,
         sink,
+        material: None,
     };
     // The procedural rock and tree packs ship as glTF in their own subfolders.
     let glb = |file: &str, weight: f64, scale: [f64; 2], spacing: f64, align: f64, tilt: f64, sink: f64| ScatterItem {
@@ -610,6 +634,7 @@ pub fn preset(name: &str) -> Option<(ScatterKind, Vec<ScatterItem>)> {
         random_yaw: true,
         tilt,
         sink,
+        material: None,
     };
     Some(match name {
         // The procedural glTF trees are authored larger than the map scale, so they sit around 0.5 (see the pack readme).
@@ -776,6 +801,26 @@ mod tests {
 
         set.chunk_size = 0.0;
         assert_eq!(set.chunks(), vec![((0, 0, 0), vec![0, 1, 2, 3])], "chunking off keeps one MultiMesh");
+    }
+
+    #[test]
+    fn item_material_falls_back_to_the_set_then_to_the_model() {
+        let mut set = Scatter::new("s", ScatterKind::Props, vec![ScatterItem::new("res://a.glb"), ScatterItem::new("res://b.glb")]);
+        assert_eq!(set.item_material(0), None, "no override means the model's own materials");
+        set.material = Some("moss".into());
+        assert_eq!(set.item_material(0), Some("moss"));
+        assert_eq!(set.item_material(1), Some("moss"));
+        set.items[1].material = Some("snow".into());
+        assert_eq!(set.item_material(1), Some("snow"), "the entry wins over the set");
+        assert_eq!(set.item_material(0), Some("moss"), "the other entry still follows the set");
+        assert_eq!(set.item_material(9), Some("moss"), "a missing entry falls back to the set");
+
+        // Overrides survive a save and stay out of the file when unset.
+        let text = serde_json::to_string(&set).unwrap();
+        assert!(!serde_json::to_string(&Scatter::new("s", ScatterKind::Props, vec![ScatterItem::new("res://a.glb")])).unwrap().contains("material"));
+        let back: Scatter = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.material.as_deref(), Some("moss"));
+        assert_eq!(back.items[1].material.as_deref(), Some("snow"));
     }
 
     #[test]

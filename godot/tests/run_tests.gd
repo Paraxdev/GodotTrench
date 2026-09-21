@@ -613,6 +613,22 @@ func test_scatter_and_blend() -> void:
 	var t := GodotTrenchScatter.instance_transform(data["instances"][0], Transform3D.IDENTITY, settings.scale_factor)
 	check(near(t.origin, Vector3(10, 0, 0)) and near(t.basis.get_scale(), Vector3(2, 2, 2), 0.001), "instance position in meters and scale, got %s" % t)
 	check(near(t.basis * Vector3.FORWARD, Vector3.LEFT * 2.0, 0.001), "instance yaw 90 degrees")
+	check((multimeshes[0] as MultiMeshInstance3D).material_override == null, "without an override the models keep their own materials")
+
+	# A material on the set retextures every model, one on a palette entry wins for that entry.
+	var retextured: Dictionary = data.duplicate(true)
+	retextured["material"] = "showcase/grass"
+	var set_wide := GodotTrenchScatter.create(retextured, Transform3D.IDENTITY, settings)
+	var set_meshes := collect(set_wide, func(n): return n is MultiMeshInstance3D)
+	check(set_meshes.size() == 1 and (set_meshes[0] as MultiMeshInstance3D).material_override != null, "the set's material is applied to its multimesh")
+	retextured["items"][0]["material"] = "showcase/cobble"
+	var per_item := GodotTrenchScatter.create(retextured, Transform3D.IDENTITY, settings)
+	var item_meshes := collect(per_item, func(n): return n is MultiMeshInstance3D)
+	var set_albedo = (set_meshes[0] as MultiMeshInstance3D).material_override.albedo_texture
+	var item_albedo = (item_meshes[0] as MultiMeshInstance3D).material_override.albedo_texture
+	check(item_albedo != null and item_albedo != set_albedo, "the palette entry's own material wins over the set's")
+	set_wide.free()
+	per_item.free()
 	if multimeshes.size() == 1:
 		var mmi := multimeshes[0] as MultiMeshInstance3D
 		check(near(mmi.visibility_range_end, 100.0), "visibility range in meters")
