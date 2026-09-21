@@ -1008,6 +1008,96 @@ pub fn compute_lighting(map: &Map, game: &GameConfig) -> Lighting {
     lighting
 }
 
+/// Read-only context shared by the per-bucket builders, so buckets can build across threads.
+struct BucketCtx<'a> {
+    map: &'a Map,
+    game: &'a GameConfig,
+    renderer: &'a Renderer,
+    selected_brush_like: &'a BTreeSet<NodeId>,
+    selection: &'a Selection,
+    selected_faces: &'a BTreeSet<(NodeId, usize)>,
+    pieces: &'a HashMap<NodeId, FacePieces>,
+    entity_models: &'a HashMap<NodeId, std::sync::Arc<crate::models::Model>>,
+    drag_nodes: &'a BTreeSet<NodeId>,
+}
+
+/// Builds the batches for one bucket's brush, mesh, entity and terrain nodes. Prefab instances are left to
+/// the caller because they need the mutable prefab and model caches.
+fn build_bucket<'a>(ctx: &BucketCtx<'a>, ids: &[NodeId]) -> Builder<'a> {
+    let map = ctx.map;
+    let mut builder = Builder {
+        renderer: ctx.renderer,
+        game: ctx.game,
+        fallback: ctx.game.textures.fallback_size as f64,
+        opaque: MeshBatch::default(),
+        double: MeshBatch::default(),
+        transparent: MeshBatch::default(),
+        volumes: MeshBatch::default(),
+        volume: false,
+        face_overlay: MeshBatch::default(),
+        edges: Vec::new(),
+        edges_2d: Vec::new(),
+        sel_edges: Vec::new(),
+        stats: SceneStats::default(),
+        instance_bounds: HashMap::new(),
+        model_bounds: HashMap::new(),
+    };
+    let is_selected = |id: NodeId| ctx.selection.nodes.contains(&id) || map.ancestors(id).iter().any(|a| ctx.selection.nodes.contains(a));
+    for &id in ids {
+        let Some(node) = map.get(id) else { continue };
+        if ctx.drag_nodes.contains(&id) {
+            continue;
+        }
+        if map.is_hidden(id) || (!matches!(node.kind, NodeKind::Layer(_) | NodeKind::Group(_)) && !map.in_cordon(id)) {
+            continue;
+        }
+        let entity = map.owning_entity(id).and_then(|e| map.entity(e));
+        let entity_def = entity.and_then(|e| ctx.game.entity(&e.classname));
+        let selected = ctx.selected_brush_like.contains(&id);
+        let tint = if selected {
+            SELECTED_TINT
+        } else if map.is_locked(id) {
+            LOCKED_TINT
+        } else if let Some(def) = entity_def {
+            let c = def.color;
+            [0.75 + 0.25 * c.r, 0.75 + 0.25 * c.g, 0.75 + 0.25 * c.b, 1.0]
+        } else {
+            [1.0; 4]
+        };
+        let edge_2d = entity_def.map(|d| [d.color.r, d.color.g, d.color.b, 0.9]).unwrap_or(EDGE_COLOR_2D);
+        let is_trigger = entity.is_some_and(|e| e.classname.starts_with("trigger")) || entity_def.is_some_and(|d| d.node_class == "Area3D");
+        builder.volume = is_trigger;
+        match &node.kind {
+            NodeKind::Brush(brush) => builder.brush(brush, tint, selected, |fi| ctx.selected_faces.contains(&(id, fi)), edge_2d, is_trigger, EDGE_COLOR, ctx.pieces.get(&id)),
+            NodeKind::Mesh(mesh) => builder.mesh(mesh, tint, selected, |fi| ctx.selected_faces.contains(&(id, fi)), edge_2d, is_trigger, ctx.pieces.get(&id)),
+            NodeKind::Terrain(_) => builder.stats.terrains += 1,
+            NodeKind::Entity(e) if node.children.is_empty() => {
+                builder.point_entity(Some(id), e, is_selected(id), None, ctx.entity_models.get(&id).map(|m| m.as_ref()));
+            }
+            _ => {}
+        }
+    }
+    builder
+}
+
+fn upload_bucket(renderer: &Renderer, builder: Builder) -> Bucket {
+    let xray: Vec<LineVertex> = builder.sel_edges.iter().map(|v| LineVertex { color: SELECTED_XRAY, ..*v }).collect();
+    Bucket {
+        opaque: renderer.upload_mesh(&builder.opaque),
+        double: renderer.upload_mesh(&builder.double),
+        transparent: renderer.upload_mesh(&builder.transparent),
+        volumes: renderer.upload_mesh(&builder.volumes),
+        overlay: renderer.upload_mesh(&builder.face_overlay),
+        edges: renderer.upload_lines(&builder.edges),
+        edges_2d: renderer.upload_lines(&builder.edges_2d),
+        sel_edges: renderer.upload_lines(&builder.sel_edges),
+        xray: renderer.upload_lines(&xray),
+        stats: builder.stats,
+        instance_bounds: builder.instance_bounds,
+        model_bounds: builder.model_bounds,
+    }
+}
+
 impl SceneCache {
     pub fn invalidate(&mut self) {
         self.prev_map = None;
@@ -1261,67 +1351,80 @@ impl SceneCache {
                 }
             }
             let selected_faces = selection.faces.clone();
-            let mut cx = BuildCx { prefabs: &mut state.prefabs, models: &mut state.models };
-            for b in dirty_buckets {
-                let mut builder = Builder {
-                    renderer,
+
+            // Point-entity models load on demand from the main-thread cache, so resolve them here and hand
+            // the builders a read-only snapshot rather than the mutable cache.
+            let mut entity_models: HashMap<NodeId, std::sync::Arc<crate::models::Model>> = HashMap::new();
+            for ids in per_bucket.values() {
+                for &id in ids {
+                    if let Some(node) = map.get(id)
+                        && node.children.is_empty()
+                        && let Some(e) = node.entity()
+                        && let Some(p) = crate::models::entity_model_path(&game, e)
+                        && let Some(m) = state.models.get(&p, game.units_per_meter)
+                    {
+                        entity_models.insert(id, m);
+                    }
+                }
+            }
+
+            let per_bucket_ref = &per_bucket;
+            let results: Vec<(usize, Bucket)> = {
+                let ctx = BucketCtx {
+                    map: &map,
                     game: &game,
-                    fallback: game.textures.fallback_size as f64,
-                    opaque: MeshBatch::default(),
-                    double: MeshBatch::default(),
-                    transparent: MeshBatch::default(),
-                    volumes: MeshBatch::default(),
-                    volume: false,
-                    face_overlay: MeshBatch::default(),
-                    edges: Vec::new(),
-                    edges_2d: Vec::new(),
-                    sel_edges: Vec::new(),
-                    stats: SceneStats::default(),
-                    instance_bounds: HashMap::new(),
-                    model_bounds: HashMap::new(),
+                    renderer,
+                    selected_brush_like: &selected_brush_like,
+                    selection: &selection,
+                    selected_faces: &selected_faces,
+                    pieces: &self.face_cull.pieces,
+                    entity_models: &entity_models,
+                    drag_nodes: &drag_nodes,
                 };
-                for id in per_bucket.get(&b).map(|v| v.as_slice()).unwrap_or(&[]) {
-                    let id = *id;
-                    let Some(node) = map.get(id) else { continue };
-                    // Dragged geometry lives in the drag layer while the move is in progress.
-                    if drag_nodes.contains(&id) {
-                        continue;
-                    }
-                    if map.is_hidden(id) || (!matches!(node.kind, NodeKind::Layer(_) | NodeKind::Group(_)) && !map.in_cordon(id)) {
-                        continue;
-                    }
-                    let entity = map.owning_entity(id).and_then(|e| map.entity(e));
-                    let entity_def = entity.and_then(|e| game.entity(&e.classname));
-                    let selected = selected_brush_like.contains(&id);
-                    let tint = if selected {
-                        SELECTED_TINT
-                    } else if map.is_locked(id) {
-                        LOCKED_TINT
-                    } else if let Some(def) = entity_def {
-                        let c = def.color;
-                        [0.75 + 0.25 * c.r, 0.75 + 0.25 * c.g, 0.75 + 0.25 * c.b, 1.0]
-                    } else {
-                        [1.0; 4]
-                    };
-                    let edge_2d = entity_def.map(|d| [d.color.r, d.color.g, d.color.b, 0.9]).unwrap_or(EDGE_COLOR_2D);
-                    let is_trigger = entity.is_some_and(|e| e.classname.starts_with("trigger")) || entity_def.is_some_and(|d| d.node_class == "Area3D");
-                    builder.volume = is_trigger;
-                    match &node.kind {
-                        NodeKind::Brush(brush) => {
-                            let culled = self.face_cull.pieces.get(&id);
-                            builder.brush(brush, tint, selected, |fi| selected_faces.contains(&(id, fi)), edge_2d, is_trigger, EDGE_COLOR, culled);
-                        }
-                        NodeKind::Mesh(mesh) => {
-                            let culled = self.face_cull.pieces.get(&id);
-                            builder.mesh(mesh, tint, selected, |fi| selected_faces.contains(&(id, fi)), edge_2d, is_trigger, culled);
-                        }
-                        NodeKind::Terrain(_) => builder.stats.terrains += 1,
-                        NodeKind::Entity(e) if node.children.is_empty() => {
-                            let model = crate::models::entity_model_path(&game, e).and_then(|p| cx.models.get(&p, game.units_per_meter));
-                            builder.point_entity(Some(id), e, is_selected(id), None, model.as_deref());
-                        }
-                        NodeKind::Instance(inst) => {
-                            let selected = is_selected(id);
+                let has_instance =
+                    |b: usize| per_bucket_ref.get(&b).is_some_and(|ids| ids.iter().any(|id| matches!(map.get(*id).map(|n| &n.kind), Some(NodeKind::Instance(_)))));
+                let parallel: Vec<usize> = dirty_buckets.iter().copied().filter(|b| !has_instance(*b)).collect();
+                let serial: Vec<usize> = dirty_buckets.iter().copied().filter(|b| has_instance(*b)).collect();
+
+                // Buckets without prefab instances build across threads; each face's tessellation is independent.
+                let ctx_ref = &ctx;
+                let threads = std::thread::available_parallelism().map(|t| t.get()).unwrap_or(1);
+                let mut results: Vec<(usize, Bucket)> = if threads <= 1 || parallel.len() <= 1 {
+                    parallel
+                        .iter()
+                        .map(|&b| (b, upload_bucket(ctx.renderer, build_bucket(&ctx, per_bucket_ref.get(&b).map(|v| v.as_slice()).unwrap_or(&[])))))
+                        .collect()
+                } else {
+                    let chunk = parallel.len().div_ceil(threads);
+                    std::thread::scope(|s| {
+                        parallel
+                            .chunks(chunk)
+                            .map(|c| {
+                                s.spawn(move || {
+                                    c.iter()
+                                        .map(|&b| {
+                                            let ids = per_bucket_ref.get(&b).map(|v| v.as_slice()).unwrap_or(&[]);
+                                            (b, upload_bucket(ctx_ref.renderer, build_bucket(ctx_ref, ids)))
+                                        })
+                                        .collect::<Vec<_>>()
+                                })
+                            })
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .flat_map(|h| h.join().unwrap())
+                            .collect()
+                    })
+                };
+
+                // Prefab instances need the mutable caches, so their buckets build on this thread.
+                if !serial.is_empty() {
+                    let mut cx = BuildCx { prefabs: &mut state.prefabs, models: &mut state.models };
+                    for b in serial {
+                        let ids = per_bucket_ref.get(&b).map(|v| v.as_slice()).unwrap_or(&[]);
+                        let mut builder = build_bucket(&ctx, ids);
+                        for &id in ids {
+                            let Some(NodeKind::Instance(inst)) = map.get(id).map(|n| &n.kind) else { continue };
+                            let selected = ctx.selection.nodes.contains(&id) || map.ancestors(id).iter().any(|a| ctx.selection.nodes.contains(a));
                             let path = prefabs::resolve(&inst.path, state.doc.path.as_deref(), game.project_root.as_deref());
                             let bounds = match &path {
                                 Some(p) => builder.prefab(&mut cx, p, &prefabs::instance_transform(inst), selected, 0),
@@ -1335,25 +1438,13 @@ impl SceneCache {
                             }
                             builder.instance_bounds.insert(id, bounds);
                         }
-                        _ => {}
+                        results.push((b, upload_bucket(ctx.renderer, builder)));
                     }
                 }
-                let xray: Vec<LineVertex> = builder.sel_edges.iter().map(|v| LineVertex { color: SELECTED_XRAY, ..*v }).collect();
-                let r = builder.renderer;
-                self.buckets[b] = Bucket {
-                    opaque: r.upload_mesh(&builder.opaque),
-                    double: r.upload_mesh(&builder.double),
-                    transparent: r.upload_mesh(&builder.transparent),
-                    volumes: r.upload_mesh(&builder.volumes),
-                    overlay: r.upload_mesh(&builder.face_overlay),
-                    edges: r.upload_lines(&builder.edges),
-                    edges_2d: r.upload_lines(&builder.edges_2d),
-                    sel_edges: r.upload_lines(&builder.sel_edges),
-                    xray: r.upload_lines(&xray),
-                    stats: builder.stats,
-                    instance_bounds: builder.instance_bounds,
-                    model_bounds: builder.model_bounds,
-                };
+                results
+            };
+            for (b, bucket) in results {
+                self.buckets[b] = bucket;
             }
         }
 
