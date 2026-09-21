@@ -45,6 +45,7 @@ impl<'a> Reader<'a> {
     fn u16(&self, at: usize) -> Result<u16, String> {
         Ok(u16::from_le_bytes(self.slice(at, 2)?.try_into().unwrap()))
     }
+
     /// A fixed-length, nul-terminated name.
     fn name(&self, at: usize, len: usize) -> Result<String, String> {
         let raw = self.slice(at, len)?;
@@ -68,9 +69,11 @@ pub fn parse_md2(data: &[u8]) -> Result<IdModel, String> {
     if r.u32(0)? != MD2_MAGIC {
         return Err("not an md2 file (bad magic)".into());
     }
+
     if r.i32(4)? != 8 {
         return Err("unsupported md2 version".into());
     }
+
     let skinwidth = r.i32(8)?.max(1) as f32;
     let skinheight = r.i32(12)?.max(1) as f32;
     let num_skins = count(r.i32(24)?, "skin")?;
@@ -106,6 +109,7 @@ pub fn parse_md2(data: &[u8]) -> Result<IdModel, String> {
         let b = r.slice(o, 3)?;
         positions.push([b[0] as f32 * scale[0] + translate[0], b[1] as f32 * scale[1] + translate[1], b[2] as f32 * scale[2] + translate[2]]);
     }
+
     let _ = framesize;
 
     let mut vertices = Vec::with_capacity(num_tris * 3);
@@ -121,6 +125,7 @@ pub fn parse_md2(data: &[u8]) -> Result<IdModel, String> {
             vertices.push(IdVertex { pos: p[k], normal: n, uv: *st.get(sti[k]).unwrap_or(&[0.0, 0.0]) });
         }
     }
+
     Ok(IdModel { surfaces: vec![IdSurface { skin, vertices, indices }] })
 }
 
@@ -134,9 +139,11 @@ pub fn parse_md3(data: &[u8]) -> Result<IdModel, String> {
     if r.u32(0)? != MD3_MAGIC {
         return Err("not an md3 file (bad magic)".into());
     }
+
     if r.i32(4)? != 15 {
         return Err("unsupported md3 version".into());
     }
+
     let num_surfaces = count(r.i32(84)?, "surface")?;
     let mut ofs = r.i32(96)? as usize; // ofs_surfaces
     let mut surfaces = Vec::with_capacity(num_surfaces);
@@ -145,6 +152,7 @@ pub fn parse_md3(data: &[u8]) -> Result<IdModel, String> {
         if s.u32(ofs)? != MD3_MAGIC {
             return Err("bad md3 surface magic".into());
         }
+
         let num_frames = count(s.i32(ofs + 72)?, "surface frame")?;
         let num_shaders = count(s.i32(ofs + 76)?, "shader")?;
         let num_verts = count(s.i32(ofs + 80)?, "surface vertex")?;
@@ -169,17 +177,21 @@ pub fn parse_md3(data: &[u8]) -> Result<IdModel, String> {
             let normal = decode_md3_normal(s.u16(xyz_o + 6)?);
             vertices.push(IdVertex { pos, normal, uv });
         }
+
         let mut indices = Vec::with_capacity(num_tris * 3);
         for i in 0..num_tris {
             let o = ofs_tris + i * 12;
             indices.extend([s.u32(o)?, s.u32(o + 4)?, s.u32(o + 8)?]);
         }
+
         surfaces.push(IdSurface { skin, vertices, indices });
         if ofs_end == 0 {
             break;
         }
+
         ofs += ofs_end;
     }
+
     Ok(IdModel { surfaces })
 }
 
@@ -229,16 +241,19 @@ mod tests {
             d.extend(s.to_le_bytes());
             d.extend(t.to_le_bytes());
         }
+
         let ofs_tris = d.len();
         put_i32(&mut d, 56, ofs_tris as i32);
         for idx in [0u16, 1, 2, 0, 1, 2] {
             d.extend(idx.to_le_bytes());
         }
+
         let ofs_frames = d.len();
         put_i32(&mut d, 60, ofs_frames as i32);
         for f in [1.0f32, 1.0, 1.0, 0.0, 0.0, 0.0] {
             d.extend(f.to_le_bytes());
         }
+
         d.extend([0u8; 16]); // frame name
         d.extend([0, 0, 0, 0]); // vertex 0 (x,y,z,normal index)
         d.extend([10, 0, 0, 0]); // vertex 1
@@ -291,14 +306,17 @@ mod tests {
         for idx in [0i32, 1, 2] {
             d.extend(idx.to_le_bytes());
         }
+
         for uv in [[0.0f32, 0.0], [1.0, 0.0], [0.0, 1.0]] {
             d.extend(uv[0].to_le_bytes());
             d.extend(uv[1].to_le_bytes());
         }
+
         for xyz in [[0i16, 0, 0], [64, 0, 0], [0, 64, 0]] {
             for c in xyz {
                 d.extend(c.to_le_bytes());
             }
+
             d.extend(0u16.to_le_bytes()); // normal
         }
 

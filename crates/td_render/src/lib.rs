@@ -188,6 +188,7 @@ impl MeshBatch {
         if verts.len() < 3 {
             return;
         }
+
         let base = self.vertices.len() as u32;
         self.vertices.extend_from_slice(verts);
         let idx = self.by_material.entry(material.to_string()).or_default();
@@ -232,6 +233,7 @@ impl MeshBatch {
         for v in &mut out.vertices {
             v.pos = [v.pos[0] + offset[0], v.pos[1] + offset[1], v.pos[2] + offset[2]];
         }
+
         out
     }
 }
@@ -743,6 +745,7 @@ impl Renderer {
                 level = image::imageops::resize(&level, (lw / 2).max(1), (lh / 2).max(1), image::imageops::FilterType::Triangle);
             }
         }
+
         texture.create_view(&Default::default())
     }
 
@@ -753,6 +756,7 @@ impl Renderer {
         if self.materials.contains_key(&key) {
             return key;
         }
+
         let (Some(a), Some(b)) = (self.materials.get(base), self.materials.get(blend)) else { return base.to_string() };
         let mut uniform = a.uniform;
         uniform.emission = [0.0; 4];
@@ -832,10 +836,12 @@ impl Renderer {
             names.push(names.first().cloned().unwrap_or_else(|| MISSING_MATERIAL.to_string()));
             tiles.push(tiles.first().copied().unwrap_or(256.0));
         }
+
         let key = format!("{}|{}|{}|{}|{}", names[0], names[1], names[2], names[3], tiles.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(","));
         if self.terrain_materials.contains_key(&key) {
             return key;
         }
+
         let view = |n: &str| &self.materials.get(n).or_else(|| self.materials.get(MISSING_MATERIAL)).expect("missing material exists").view;
         let tiles_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("terrain tiles"),
@@ -879,6 +885,7 @@ impl Renderer {
                 None => [0.0, -1.0, 0.0, -2.0],
             };
         }
+
         self.lights = u;
         self.queue.write_buffer(&self.lights_buffer, 0, bytemuck::bytes_of(&u));
     }
@@ -921,6 +928,7 @@ impl Renderer {
                 }
             }
         }
+
         self.queue.submit([encoder.finish()]);
     }
 
@@ -928,6 +936,7 @@ impl Renderer {
         if batch.vertices.is_empty() {
             return None;
         }
+
         let mut indices = Vec::with_capacity(batch.by_material.values().map(|v| v.len()).sum());
         let mut draws = Vec::new();
         let mut keys: Vec<&String> = batch.by_material.keys().collect();
@@ -937,13 +946,16 @@ impl Renderer {
             if idx.is_empty() {
                 continue;
             }
+
             let start = indices.len() as u32;
             indices.extend_from_slice(idx);
             draws.push((k.clone(), start..indices.len() as u32));
         }
+
         if indices.is_empty() {
             return None;
         }
+
         let vertex = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("mesh vertices"),
             contents: bytemuck::cast_slice(&batch.vertices),
@@ -961,6 +973,7 @@ impl Renderer {
         if lines.len() < 2 {
             return None;
         }
+
         let vertex = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("lines"),
             contents: bytemuck::cast_slice(lines),
@@ -975,6 +988,7 @@ impl Renderer {
         if target.as_ref().is_some_and(|t| t.size == size) {
             return false;
         }
+
         let extent = wgpu::Extent3d { width: size[0], height: size[1], depth_or_array_layers: 1 };
         let tex = |label: &str, format, samples, usage, view_formats: &[wgpu::TextureFormat]| {
             self.device.create_texture(&wgpu::TextureDescriptor {
@@ -1063,6 +1077,7 @@ impl Renderer {
             let start = (row * padded) as usize;
             out.extend_from_slice(&data[start..start + (w * 4) as usize]);
         }
+
         drop(data);
         buffer.unmap();
         image::RgbaImage::from_raw(w, h, out)
@@ -1118,6 +1133,7 @@ impl Renderer {
                 if meshes.is_empty() {
                     return;
                 }
+
                 pass.set_pipeline(pipeline);
                 for mesh in meshes {
                     pass.set_vertex_buffer(0, mesh.vertex.slice(..));
@@ -1133,6 +1149,7 @@ impl Renderer {
                 if lines.is_empty() {
                     return;
                 }
+
                 pass.set_pipeline(pipeline);
                 for l in lines {
                     pass.set_vertex_buffer(0, l.vertex.slice(..));
@@ -1144,6 +1161,7 @@ impl Renderer {
                 pass.set_pipeline(&self.sky_pipeline);
                 pass.draw(0..3, 0..1);
             }
+
             if params.shade == ShadeMode::Wireframe {
                 draw_lines(&mut pass, &self.line_depth, &frame.wire_lines);
                 draw_lines(&mut pass, &self.line_depth, &frame.lines);
@@ -1153,6 +1171,7 @@ impl Renderer {
                 self.queue.submit([encoder.finish()]);
                 return;
             }
+
             draw_meshes(&mut pass, &self.mesh_opaque, &frame.opaque);
             draw_meshes(&mut pass, &self.mesh_double, &frame.double_sided);
             if !frame.terrain.is_empty() {
@@ -1168,11 +1187,13 @@ impl Renderer {
                     }
                 }
             }
+
             draw_lines(&mut pass, &self.line_depth, &frame.lines);
             draw_meshes(&mut pass, &self.mesh_transparent, &frame.transparent);
             draw_meshes(&mut pass, &self.mesh_overlay, &frame.overlay_meshes);
             draw_lines(&mut pass, &self.line_overlay, &frame.overlay_lines);
         }
+
         self.queue.submit([encoder.finish()]);
     }
 }
@@ -1192,6 +1213,7 @@ mod tests {
         for (label, body) in [("mesh", include_str!("mesh.wgsl")), ("terrain", include_str!("terrain.wgsl")), ("sky", include_str!("sky.wgsl"))] {
             validate(label, &format!("{common}\n{body}"));
         }
+
         validate("line", include_str!("line.wgsl"));
         validate("shadow", include_str!("shadow.wgsl"));
     }

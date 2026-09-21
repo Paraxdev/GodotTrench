@@ -88,12 +88,14 @@ fn targets(state: &EditorState) -> Vec<Target> {
         if out.len() >= MAX_GIZMO_ENTITIES {
             break;
         }
+
         let Some(entity) = map.entity(id) else { continue };
         let Some(def) = state.game.entity(&entity.classname) else { continue };
         let gizmos = def.gizmos(state.game.units_per_meter);
         if gizmos.is_empty() {
             continue;
         }
+
         let (center, bounds) = if map.is_point_entity(id) {
             let b = state.model_bounds.get(&id).copied().unwrap_or_else(|| crate::scene::entity_box(&state.game, entity));
             (entity.origin, b)
@@ -102,10 +104,12 @@ fn targets(state: &EditorState) -> Vec<Target> {
             if b.is_empty() {
                 continue;
             }
+
             (b.center(), b)
         };
         out.push(Target { id, entity: entity.clone(), center, bounds, gizmos });
     }
+
     out
 }
 
@@ -197,6 +201,7 @@ pub fn handles(state: &EditorState) -> Vec<(GizmoHandle, DVec3, String)> {
             }
         }
     }
+
     out
 }
 
@@ -219,6 +224,7 @@ pub fn lines(state: &EditorState, out: &mut Vec<LineVertex>) {
                     for w in pts.windows(2) {
                         line(out, w[0], w[1], [HINGE[0], HINGE[1], HINGE[2], 0.6]);
                     }
+
                     line(out, hinge, far, [HINGE[0], HINGE[1], HINGE[2], 0.5]);
                     line(out, hinge, *pts.last().unwrap_or(&far), HINGE);
                     box_lines(out, &rotated_bounds(&t.bounds, hinge, DQuat::from_axis_angle(axis, open.to_radians())), GHOST);
@@ -228,6 +234,7 @@ pub fn lines(state: &EditorState, out: &mut Vec<LineVertex>) {
                     if v.length() < 1e-6 {
                         continue;
                     }
+
                     let end = t.center + v;
                     line(out, t.center, end, GHOST);
                     let dir = v.normalize();
@@ -243,6 +250,7 @@ pub fn lines(state: &EditorState, out: &mut Vec<LineVertex>) {
                     if r <= 0.0 {
                         continue;
                     }
+
                     circle(out, t.center, DVec3::X, DVec3::Z, r, RANGE);
                     circle(out, t.center, DVec3::X, DVec3::Y, r, [RANGE[0], RANGE[1], RANGE[2], 0.25]);
                     circle(out, t.center, DVec3::Z, DVec3::Y, r, [RANGE[0], RANGE[1], RANGE[2], 0.25]);
@@ -383,6 +391,7 @@ pub fn paint_overlay(ui: &Ui, cam: &Camera, rect: Rect, state: &EditorState, act
             painter.text(sp + Vec2::new(8.0, -4.0), Align2::LEFT_BOTTOM, label, FontId::proportional(11.0), Color32::from_rgb(255, 225, 170));
         }
     }
+
     io_labels(&painter, cam, rect, state);
 }
 
@@ -401,6 +410,7 @@ fn io_labels(painter: &egui::Painter, cam: &Camera, rect: Rect, state: &EditorSt
             if shown > 40 {
                 return;
             }
+
             let delay = if o.delay > 0.0 { format!(" +{}s", fmt_num(o.delay)) } else { String::new() };
             let param = if o.parameter.is_empty() { String::new() } else { format!("({})", o.parameter) };
             let text = format!("{} > {}.{}{param}{delay}", o.output, o.target, o.input);

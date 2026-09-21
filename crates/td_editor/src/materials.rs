@@ -143,6 +143,7 @@ impl MaterialLibrary {
         if let Some(root) = self.root.clone() {
             scan_dir(&root, &root, &self.image_exts, &mut found);
         }
+
         // Material resources without an image of the same name still show up, previewed with their albedo texture.
         if let Some(mat_root) = self.material_root.clone() {
             let mut files = Vec::new();
@@ -173,6 +174,7 @@ impl MaterialLibrary {
                 }
             }
         }
+
         pair_pbr_maps(&mut found);
         found.sort_by(|a, b| a.name.cmp(&b.name));
         // Project textures win over built-in placeholders with the same name.
@@ -189,6 +191,7 @@ impl MaterialLibrary {
                 });
             }
         }
+
         self.entries.extend(found);
     }
 
@@ -212,9 +215,11 @@ impl MaterialLibrary {
         if let Some(rel) = name.strip_prefix("res://") {
             return image::open(self.project_root.as_ref()?.join(rel)).ok().map(|img| img.to_rgba8());
         }
+
         if let Some(path) = self.find(name).and_then(|e| e.path.as_ref()) {
             return image::open(path).ok().map(|img| img.to_rgba8());
         }
+
         dev_textures().into_iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).map(|(_, make)| make())
     }
 
@@ -223,6 +228,7 @@ impl MaterialLibrary {
         if let Some(i) = self.infos.get(name) {
             return i.clone();
         }
+
         let info = self.read_info(name);
         self.infos.insert(name.to_string(), info.clone());
         info
@@ -267,6 +273,7 @@ impl MaterialLibrary {
             let (normal, emission) = (res(&info.normal_texture), res(&info.emission_texture));
             return Some(LoadedMaterial { albedo, normal, emission, info });
         }
+
         let albedo = self.load_image(name)?;
         let normal = self.normal_companion(name).and_then(|p| open(&p));
         let emission = self.companion(name, "_emission").and_then(|p| open(&p));
@@ -287,9 +294,11 @@ impl MaterialLibrary {
         if let Some(t) = self.thumbnails.get(name) {
             return t.clone();
         }
+
         if *budget == 0 {
             return None;
         }
+
         *budget -= 1;
         let handle = self.load_image(name).map(|img| {
             self.sizes.insert(name.to_string(), [img.width(), img.height()]);
@@ -307,6 +316,7 @@ impl MaterialLibrary {
         if let Some(t) = self.thumbnails.get(&key) {
             return t.clone();
         }
+
         let handle = self.load_image(name).map(|img| {
             self.sizes.insert(name.to_string(), [img.width(), img.height()]);
             let color = egui::ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.as_raw());
@@ -332,8 +342,10 @@ fn pair_pbr_maps(entries: &mut Vec<MaterialEntry>) {
         if companion_base(&lower).is_some() {
             continue;
         }
+
         anchor.entry(set_base(&lower)).or_insert(i);
     }
+
     let mut remove: Vec<usize> = Vec::new();
     for i in 0..entries.len() {
         let lower = entries[i].name.to_ascii_lowercase();
@@ -344,12 +356,14 @@ fn pair_pbr_maps(entries: &mut Vec<MaterialEntry>) {
                 if normal_suffix(&lower).is_some() {
                     entries[ai].has_normal = true;
                 }
+
                 remove.push(i);
             }
             None if normal_suffix(&lower).is_some() => entries[i].missing_albedo = true,
             None => {}
         }
     }
+
     for i in remove.into_iter().rev() {
         entries.remove(i);
     }
@@ -363,10 +377,12 @@ fn scan_dir(root: &Path, dir: &Path, exts: &[String], out: &mut Vec<MaterialEntr
             scan_dir(root, &path, exts, out);
             continue;
         }
+
         let Some(ext) = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()) else { continue };
         if !exts.contains(&ext) {
             continue;
         }
+
         let Ok(rel) = path.strip_prefix(root) else { continue };
         let name = rel.with_extension("").to_string_lossy().replace('\\', "/");
         let folder = rel.parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
@@ -459,6 +475,7 @@ mod tests {
         {
             px(c).save(tex.join(file)).unwrap();
         }
+
         // Convention B: the colour map is named _d, companions share the base without it.
         px([10, 120, 30, 255]).save(tex.join("moss_d.png")).unwrap();
         px([128, 128, 255, 255]).save(tex.join("moss_n.png")).unwrap();

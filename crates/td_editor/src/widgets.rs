@@ -31,12 +31,14 @@ pub fn row<R>(ui: &mut Ui, index: usize, label: impl Into<WidgetText>, hover: &s
         if !hover.is_empty() {
             label.on_hover_text(hover);
         }
+
         add(ui)
     });
     if index % 2 == 1 {
         let rect = egui::Rect::from_x_y_ranges(ui.max_rect().x_range(), inner.response.rect.y_range()).expand2(Vec2::new(2.0, 1.0));
         ui.painter().set(stripe, egui::Shape::rect_filled(rect, 2.0, ui.visuals().faint_bg_color));
     }
+
     inner.inner
 }
 
@@ -73,6 +75,7 @@ pub fn vector_input(ui: &mut Ui, values: &mut [f64], width: f32, speed: f64) -> 
             if i > 0 {
                 ui.add_space(AXIS_GAP - 2.0);
             }
+
             let (letter, color) = match i {
                 0 => ("X", theme::AXIS[0]),
                 1 => ("Y", theme::AXIS[1]),
@@ -113,6 +116,7 @@ pub fn color_input(ui: &mut Ui, value: &mut String, width: f32) -> bool {
     if picked {
         *value = format_color(rgb, unit);
     }
+
     picked | text_field(ui, value, width - swatch_w - ui.spacing().item_spacing.x)
 }
 
@@ -156,6 +160,7 @@ pub fn effective_type(defined: Option<PropertyType>, name: &str, value: &str) ->
     if color_name && (value.trim().is_empty() || matches!(numbers.len(), 3 | 4)) {
         return PropertyType::Color;
     }
+
     match defined {
         Some(ty) => ty,
         None => match numbers.len() {

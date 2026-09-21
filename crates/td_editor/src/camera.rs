@@ -1,6 +1,6 @@
 use egui::{Pos2, Rect, Vec2};
-use td_core::{Aabb, DMat4, DVec3, Ray};
 use serde::{Deserialize, Serialize};
+use td_core::{Aabb, DMat4, DVec3, Ray};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ViewKind {
@@ -154,6 +154,7 @@ impl Camera {
         if clip.w <= 1e-6 {
             return None;
         }
+
         let ndc = clip.truncate() / clip.w;
         Some(Pos2::new(rect.min.x + ((ndc.x + 1.0) * 0.5) as f32 * rect.width(), rect.min.y + ((1.0 - ndc.y) * 0.5) as f32 * rect.height()))
     }
@@ -202,6 +203,7 @@ impl Camera {
         if bounds.is_empty() {
             return;
         }
+
         let c = bounds.center();
         let radius = bounds.size().length().max(32.0) * 0.5;
         match self.kind {

@@ -17,6 +17,7 @@ fn write_value(out: &mut String, value: &Value, indent: usize, force_inline: boo
         out.push_str(&compact);
         return;
     }
+
     let pad = "  ".repeat(indent + 1);
     match value {
         Value::Array(items) => {
@@ -27,8 +28,10 @@ fn write_value(out: &mut String, value: &Value, indent: usize, force_inline: boo
                 if i + 1 < items.len() {
                     out.push(',');
                 }
+
                 out.push('\n');
             }
+
             out.push_str(&"  ".repeat(indent));
             out.push(']');
         }
@@ -44,11 +47,14 @@ fn write_value(out: &mut String, value: &Value, indent: usize, force_inline: boo
                 } else {
                     write_value(out, v, indent + 1, k == "vertices" && compact_vertices(v));
                 }
+
                 if i + 1 < len {
                     out.push(',');
                 }
+
                 out.push('\n');
             }
+
             out.push_str(&"  ".repeat(indent));
             out.push('}');
         }
@@ -69,8 +75,10 @@ fn write_faces(out: &mut String, value: &Value, indent: usize) {
         if i + 1 < items.len() {
             out.push(',');
         }
+
         out.push('\n');
     }
+
     out.push_str(&"  ".repeat(indent));
     out.push(']');
 }

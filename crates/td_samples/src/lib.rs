@@ -21,17 +21,20 @@ pub fn write_all(godot: &Path) -> std::io::Result<Vec<String>> {
             written.push(normal.display().to_string());
         }
     }
+
     for (name, text) in textures::material_overrides() {
         let path = textures.join(format!("{name}.tres"));
         std::fs::write(&path, text)?;
         written.push(path.display().to_string());
     }
+
     let models = godot.join("demo/models");
     std::fs::create_dir_all(&models)?;
     for (file, text) in models::all() {
         std::fs::write(models.join(file), text)?;
         written.push(models.join(file).display().to_string());
     }
+
     Ok(written)
 }
 

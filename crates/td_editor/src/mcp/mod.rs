@@ -44,9 +44,11 @@ impl ToolExecutor for Bridge {
         if self.tx.send(ToolCall { name: name.to_string(), args, reply }).is_err() {
             return ToolResult::Error("editor is shutting down".into());
         }
+
         if let Some(ctx) = self.ctx.lock().ok().and_then(|c| c.clone()) {
             ctx.request_repaint();
         }
+
         rx.recv_timeout(Duration::from_secs(120)).unwrap_or_else(|_| ToolResult::Error("timed out waiting for the editor".into()))
     }
 }

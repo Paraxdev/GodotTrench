@@ -62,12 +62,14 @@ impl Selection {
             if map.brush(*id).is_some() {
                 out.insert(*id);
             }
+
             for d in map.descendants(*id) {
                 if map.brush(d).is_some() {
                     out.insert(d);
                 }
             }
         }
+
         out.into_iter().collect()
     }
 
@@ -87,6 +89,7 @@ impl Selection {
                 }
             }
         }
+
         out.into_iter().collect()
     }
 
@@ -113,6 +116,7 @@ impl Selection {
                 }
             }
         }
+
         out.into_iter().collect()
     }
 }

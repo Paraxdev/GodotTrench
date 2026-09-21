@@ -39,17 +39,20 @@ impl Ray {
         if det.abs() < 1e-12 {
             return None;
         }
+
         let inv = 1.0 / det;
         let s = self.origin - a;
         let u = s.dot(p) * inv;
         if !(0.0..=1.0).contains(&u) {
             return None;
         }
+
         let q = s.cross(e1);
         let v = self.dir.dot(q) * inv;
         if v < 0.0 || u + v > 1.0 {
             return None;
         }
+
         let t = e2.dot(q) * inv;
         (t >= 0.0).then_some(t)
     }
@@ -72,6 +75,7 @@ impl Ray {
             let (d, t) = self.distance_to_point(a);
             return (d, t, 0.0);
         }
+
         let c = d1.dot(r);
         let bb = d1.dot(d2);
         let denom = aa * e - bb * bb;
@@ -84,6 +88,7 @@ impl Ray {
             u = 1.0;
             s = ((bb - c) / aa).max(0.0);
         }
+
         let p1 = self.origin + d1 * s;
         let p2 = a + d2 * u;
         ((p1 - p2).length(), s, u)

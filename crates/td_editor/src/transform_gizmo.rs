@@ -71,6 +71,7 @@ fn target(state: &EditorState, cam: &Camera) -> Option<Aabb> {
     if cam.kind != ViewKind::Perspective || state.tool != ToolKind::Select || !state.prefs.transform_gizmo || sel.has_faces() || sel.nodes.is_empty() {
         return None;
     }
+
     let bounds = state.doc.map.bounds_of(sel.nodes.iter().copied());
     (!bounds.is_empty()).then_some(bounds)
 }
@@ -155,19 +156,23 @@ fn part_at(cam: &Camera, rect: Rect, bounds: &Aabb, pos: Pos2) -> Option<Part> {
     if screen(l.center).is_some_and(|c| c.distance(pos) < GRAB) {
         return Some(Part::Free);
     }
+
     let closest =
         |candidates: Vec<(f32, Part)>, limit: f32| candidates.into_iter().filter(|(d, _)| *d < limit).min_by(|a, b| a.0.total_cmp(&b.0)).map(|(_, p)| p);
     let scale = (0..3).filter_map(|i| screen(l.along(i, SCALE_AT)).map(|s| (s.distance(pos), Part::Scale(i)))).collect();
     if let Some(part) = closest(scale, GRAB) {
         return Some(part);
     }
+
     let arrows = (0..3).filter_map(|i| Some((segment_distance(screen(l.along(i, SHAFT_START))?, screen(l.along(i, 1.0))?, pos), Part::Move(i)))).collect();
     if let Some(part) = closest(arrows, GRAB) {
         return Some(part);
     }
+
     if let Some(i) = (0..3).find(|i| project_all(cam, rect, &l.plane_quad(*i)).is_some_and(|q| inside_convex(&q, pos))) {
         return Some(Part::Plane(i));
     }
+
     let rings = (0..3)
         .filter_map(|i| {
             let points = project_all(cam, rect, &l.ring(i))?;
@@ -226,8 +231,10 @@ pub fn drag(state: &mut EditorState, drag: &GizmoDrag, cam: &Camera, rect: Rect,
         if delta != DVec3::ZERO {
             state.doc.edit("Move", |m, s| ops::translate_selection(m, s, delta, opts));
         }
+
         return Some(format!("Move {} {} {}", delta.x, delta.y, delta.z));
     }
+
     match drag.part {
         Part::Move(_) | Part::Plane(_) | Part::Free => None,
         Part::Rotate(i) => {
@@ -239,6 +246,7 @@ pub fn drag(state: &mut EditorState, drag: &GizmoDrag, cam: &Camera, rect: Rect,
                 let m = ops::rotation_about(drag.center, axis(i), angle);
                 state.doc.edit("Rotate", |map, s| ops::transform_selection(map, s, &m, opts));
             }
+
             Some(format!("Rotate {} {angle}°", axis_name(i)))
         }
         Part::Scale(i) => {
@@ -247,6 +255,7 @@ pub fn drag(state: &mut EditorState, drag: &GizmoDrag, cam: &Camera, rect: Rect,
             if reach.abs() < 1e-6 || size < 1e-6 {
                 return None;
             }
+
             let grow = (size * (point - drag.center)[i] / reach - size) * 0.5;
             let mut scaled = drag.base;
             scaled.min[i] = state.snap_scalar(drag.base.min[i] - grow);
@@ -255,10 +264,12 @@ pub fn drag(state: &mut EditorState, drag: &GizmoDrag, cam: &Camera, rect: Rect,
             if new_size < 1e-3 {
                 return None;
             }
+
             if scaled != drag.base {
                 let m = ops::scale_bounds(&drag.base, &scaled);
                 state.doc.edit("Scale", |map, s| ops::transform_selection(map, s, &m, opts));
             }
+
             Some(format!("Scale {} to {new_size}", axis_name(i)))
         }
     }
@@ -270,6 +281,7 @@ pub fn paint(ui: &Ui, cam: &Camera, rect: Rect, state: &EditorState, active: Opt
     if hovered.is_some() {
         ui.ctx().set_cursor_icon(if active.is_some() { CursorIcon::Grabbing } else { CursorIcon::Grab });
     }
+
     let l = Layout::new(cam, rect, &bounds);
     let painter = ui.painter_at(rect);
     let color = |part: Part, base: Color32| if hovered == Some(part) { HOT } else { base };
@@ -280,12 +292,14 @@ pub fn paint(ui: &Ui, cam: &Camera, rect: Rect, state: &EditorState, active: Opt
             painter.add(Shape::line(points, Stroke::new(if hot { 3.0 } else { 1.5 }, color(Part::Rotate(i), axis_color.gamma_multiply(0.8)))));
         }
     }
+
     for (i, axis_color) in AXIS_COLORS.into_iter().enumerate() {
         if let Some(quad) = project_all(cam, rect, &l.plane_quad(i)) {
             let c = color(Part::Plane(i), axis_color);
             painter.add(Shape::convex_polygon(quad, c.gamma_multiply(if hovered == Some(Part::Plane(i)) { 0.55 } else { 0.3 }), Stroke::new(1.0, c)));
         }
     }
+
     for (i, axis_color) in AXIS_COLORS.into_iter().enumerate() {
         let c = color(Part::Move(i), axis_color);
         let (Some(from), Some(head), Some(tip)) =
@@ -299,10 +313,12 @@ pub fn paint(ui: &Ui, cam: &Camera, rect: Rect, state: &EditorState, active: Opt
             let side = Vec2::new(-dir.y, dir.x).normalized() * 6.0;
             painter.add(Shape::convex_polygon(vec![tip, head + side, head - side], c, Stroke::NONE));
         }
+
         if let Some(handle) = cam.project(rect, l.along(i, SCALE_AT)) {
             painter.rect_filled(Rect::from_center_size(handle, Vec2::splat(9.0)), 1.0, color(Part::Scale(i), axis_color));
         }
     }
+
     if let Some(center) = cam.project(rect, l.center) {
         let hot = hovered == Some(Part::Free);
         painter.circle(
@@ -350,6 +366,7 @@ mod tests {
             assert_eq!(hit(&state, &cam, rect, screen(&cam, rect, &state, i, 0.55)), Some(Part::Move(i)), "arrow {i}");
             assert_eq!(hit(&state, &cam, rect, screen(&cam, rect, &state, i, SCALE_AT)), Some(Part::Scale(i)), "scale box {i}");
         }
+
         let mut hidden = state;
         hidden.tool = ToolKind::Clip;
         assert_eq!(hit(&hidden, &cam, rect, center), None, "only the select tool shows the gizmo");

@@ -51,16 +51,19 @@ impl FaceCull {
         if map.is_hidden(id) || !map.in_cordon(id) {
             return Vec::new();
         }
+
         let entity = map.owning_entity(id).and_then(|e| map.entity(e));
         let volume = entity.is_some_and(|e| e.classname.starts_with("trigger") || game.entity(&e.classname).is_some_and(|d| d.node_class == "Area3D"));
         if volume {
             return Vec::new();
         }
+
         let usable = |material: &str| !game.is_tool_texture(material) && opaque(material);
         let make = |face: usize, normal: DVec3, polygon: Vec<DVec3>, closed: bool, is_mesh: bool| -> Option<CullFace> {
             if polygon.len() < 3 || normal == DVec3::ZERO {
                 return None;
             }
+
             let dist = normal.dot(polygon::centroid(&polygon));
             let bounds = Aabb::from_points(polygon.iter().copied());
             Some(CullFace { face, key: plane_key(normal, dist), normal, dist, bounds, polygon, closed, is_mesh })
@@ -118,6 +121,7 @@ impl FaceCull {
                 changed.insert(*id);
             }
         }
+
         changed
     }
 
@@ -137,18 +141,22 @@ impl FaceCull {
                     if let Some(members) = self.planes.get_mut(&f.key) {
                         members.remove(&(*id, f.face));
                     }
+
                     touched.entry(f.key).or_default().push(f.bounds);
                 }
             }
+
             let new = Self::node_faces(map, game, opaque, *id);
             for f in &new {
                 self.planes.entry(f.key).or_default().insert((*id, f.face));
                 touched.entry(f.key).or_default().push(f.bounds);
             }
+
             if !new.is_empty() {
                 self.faces.insert(*id, new);
             }
         }
+
         self.planes.retain(|_, members| !members.is_empty());
 
         let mut changed = BTreeSet::new();
@@ -157,6 +165,7 @@ impl FaceCull {
                 changed.insert(*id);
             }
         }
+
         // Direct lookup from (node, face) to its CullFace. Without it, resolving a plane's members
         // scans the whole node face list per member, which is O(faces^2) on a dense model. Only the
         // nodes that share a touched plane are indexed, so ordinary small edits stay cheap.
@@ -169,6 +178,7 @@ impl FaceCull {
                 }
             }
         }
+
         // Each touched plane's visible pieces are computed independently from immutable data, so they fan
         // out across threads; only the final apply into `self.pieces` runs on the calling thread.
         let touched: Vec<(PlaneKey, Vec<Aabb>)> = touched.into_iter().collect();
@@ -189,6 +199,7 @@ impl FaceCull {
                         Cover::None => {}
                     }
                 }
+
                 // Back to back faces are only dropped when fully covered, cutting holes into a floor under every wall adds
                 // triangles and T-junction cracks without hiding anything visible.
                 let hidden = !backing.is_empty() && polygon::visible_pieces(&face.polygon, face.normal, &backing).is_some_and(|p| p.is_empty());
@@ -201,6 +212,7 @@ impl FaceCull {
                 };
                 results.push((*id, face.face, pieces));
             }
+
             results
         };
         let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
@@ -229,13 +241,16 @@ impl FaceCull {
                     entry.remove(&fi);
                 }
             }
+
             if entry.get(&fi) != before.as_ref() {
                 changed.insert(id);
             }
+
             if entry.is_empty() {
                 self.pieces.remove(&id);
             }
         }
+
         changed
     }
 }
@@ -263,6 +278,7 @@ fn covers(other: &CullFace, other_id: NodeId, face: &CullFace, id: NodeId) -> Co
     if other_id == id || !other.bounds.expanded(COPLANAR_DIST).intersects(&face.bounds) {
         return Cover::None;
     }
+
     let dot = other.normal.dot(face.normal);
     if dot > SAME_NORMAL && (other.dist - face.dist).abs() < COPLANAR_DIST && priority(other, other_id) < priority(face, id) {
         Cover::Overlap

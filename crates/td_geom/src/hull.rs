@@ -16,6 +16,7 @@ pub fn convex_hull_planes(input: &[DVec3]) -> Option<Vec<Plane>> {
             pts.push(*p);
         }
     }
+
     if pts.len() < 4 {
         return None;
     }
@@ -31,6 +32,7 @@ pub fn convex_hull_planes(input: &[DVec3]) -> Option<Vec<Plane>> {
     if dist_line(pts[i2]) < 1e-10 {
         return None;
     }
+
     let base = Plane::from_points(pts[i0], pts[i1], pts[i2])?;
     let i3 = (0..pts.len()).max_by(|a, b| base.distance(pts[*a]).abs().total_cmp(&base.distance(pts[*b]).abs()))?;
     if base.distance(pts[i3]).abs() < 1e-6 {
@@ -46,6 +48,7 @@ pub fn convex_hull_planes(input: &[DVec3]) -> Option<Vec<Plane>> {
             v.swap(1, 2);
             plane = plane.flipped();
         }
+
         Some(Tri { v, plane, alive: true })
     };
     for (a, b, c) in [(i0, i1, i2), (i0, i1, i3), (i0, i2, i3), (i1, i2, i3)] {
@@ -56,10 +59,12 @@ pub fn convex_hull_planes(input: &[DVec3]) -> Option<Vec<Plane>> {
         if [i0, i1, i2, i3].contains(&pi) {
             continue;
         }
+
         let visible: Vec<usize> = (0..tris.len()).filter(|t| tris[*t].alive && tris[*t].plane.distance(*p) > HULL_EPSILON).collect();
         if visible.is_empty() {
             continue;
         }
+
         let mut edges: Vec<(usize, usize)> = Vec::new();
         for t in &visible {
             let v = tris[*t].v;
@@ -67,10 +72,12 @@ pub fn convex_hull_planes(input: &[DVec3]) -> Option<Vec<Plane>> {
                 edges.push((v[k], v[(k + 1) % 3]));
             }
         }
+
         let horizon: Vec<(usize, usize)> = edges.iter().copied().filter(|(a, b)| !edges.contains(&(*b, *a))).collect();
         for t in visible {
             tris[t].alive = false;
         }
+
         for (a, b) in horizon {
             if let Some(plane) = Plane::from_points(pts[a], pts[b], *p) {
                 tris.push(Tri { v: [a, b, pi], plane, alive: true });
@@ -84,6 +91,7 @@ pub fn convex_hull_planes(input: &[DVec3]) -> Option<Vec<Plane>> {
             planes.push(t.plane);
         }
     }
+
     (planes.len() >= 4).then_some(planes)
 }
 
@@ -101,6 +109,7 @@ mod tests {
                 }
             }
         }
+
         pts.push(DVec3::ZERO);
         pts.push(DVec3::new(16.0, 0.0, 0.0));
         assert_eq!(convex_hull_planes(&pts).unwrap().len(), 6);

@@ -80,6 +80,7 @@ pub fn parse(text: &str) -> Option<GodotMaterial> {
         if line.is_empty() || line.starts_with(';') {
             continue;
         }
+
         if line.starts_with('[') {
             section = line.trim_matches(|c| c == '[' || c == ']').split_whitespace().next().unwrap_or_default().to_string();
             match section.as_str() {
@@ -96,17 +97,21 @@ pub fn parse(text: &str) -> Option<GodotMaterial> {
                 }
                 _ => {}
             }
+
             continue;
         }
+
         if section == "resource"
             && let Some((k, v)) = line.split_once('=')
         {
             values.insert(k.trim().to_string(), v.trim().to_string());
         }
     }
+
     if !is_material {
         return None;
     }
+
     let texture = |key: &str| -> Option<String> {
         let v = values.get(key)?;
         let inner = v.strip_prefix("ExtResource(")?.trim_end_matches(')').trim().trim_matches('"');
@@ -118,9 +123,11 @@ pub fn parse(text: &str) -> Option<GodotMaterial> {
     if let Some(c) = values.get("albedo_color").map(|v| numbers(v)).filter(|c| c.len() >= 3) {
         m.albedo_color = [c[0], c[1], c[2], c.get(3).copied().unwrap_or(1.0)];
     }
+
     if flag("normal_enabled") != Some(false) {
         m.normal_texture = texture("normal_texture");
     }
+
     m.normal_scale = float("normal_scale").unwrap_or(1.0);
     if flag("emission_enabled") == Some(true) {
         let c = values.get("emission").map(|v| numbers(v)).filter(|c| c.len() >= 3).unwrap_or(vec![0.0, 0.0, 0.0]);
@@ -128,6 +135,7 @@ pub fn parse(text: &str) -> Option<GodotMaterial> {
         m.emission_energy = float("emission_energy_multiplier").or(float("emission_energy")).unwrap_or(1.0);
         m.emission_texture = texture("emission_texture");
     }
+
     m.transparency = match values.get("transparency").map(String::as_str) {
         Some("1") | Some("4") => Transparency::Alpha,
         Some("2") | Some("3") => Transparency::Scissor(float("alpha_scissor_threshold").unwrap_or(0.5)),
@@ -141,6 +149,7 @@ pub fn parse(text: &str) -> Option<GodotMaterial> {
     if let Some(s) = values.get("uv1_scale").map(|v| numbers(v)).filter(|s| s.len() >= 2) {
         m.uv_scale = [s[0], s[1]];
     }
+
     Some(m)
 }
 

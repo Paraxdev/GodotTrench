@@ -101,6 +101,7 @@ fn bricks(base: [f32; 3], mortar: [f32; 3], w: u32, h: u32, seed: u32) -> RgbaIm
         if y % h == 0 || (x + shift) % w == 0 {
             return rgb(mortar, 0.9 + hash(x as i64, y as i64, seed) * 0.2);
         }
+
         let tone = 0.8 + hash(col as i64, row as i64, seed) * 0.35;
         rgb(base, tone * (0.9 + hash(x as i64, y as i64, seed + 5) * 0.2))
     })
@@ -139,9 +140,11 @@ fn cobble(base: [f32; 3], seed: u32) -> RgbaImage {
                 d2 = d;
             }
         }
+
         if d2.sqrt() - d1.sqrt() < 1.2 {
             return rgb(base, 0.45);
         }
+
         rgb(base, 0.8 + hash(id as i64, 3, seed) * 0.35 - d1.sqrt() * 0.02)
     })
 }
@@ -152,6 +155,7 @@ fn with_alpha(mut img: RgbaImage, keep: impl Fn(u32, u32) -> bool) -> RgbaImage 
             p.0[3] = 0;
         }
     }
+
     img
 }
 
@@ -161,6 +165,7 @@ fn stained_glass(seed: u32) -> RgbaImage {
         if x % 16 == 0 || y % 12 == 0 || (x + y) % 23 == 0 {
             return rgb([40.0, 40.0, 45.0], 1.0);
         }
+
         let c = colors[(hash((x / 16) as i64, (y / 12 + (x + y) / 23) as i64, seed) * colors.len() as f32) as usize % colors.len()];
         rgb(c, 0.85 + value_noise(x, y, 8, seed) * 0.3)
     })

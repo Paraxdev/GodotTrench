@@ -67,6 +67,7 @@ impl CliArgs {
                 _ => {}
             }
         }
+
         out
     }
 }

@@ -35,6 +35,7 @@ pub fn install(dir: &std::path::Path, overwrite: bool) -> std::io::Result<Vec<st
             out.push(path);
         }
     }
+
     Ok(out)
 }
 
@@ -80,6 +81,7 @@ fn tree_atlas(bark: [f32; 3], leaf: [f32; 3], striped: bool, seed: u32) -> RgbaI
             let k = 0.8 + ((x % 4 == 0) as u8 as f32) * -0.25 + hash(x as i64, y as i64, seed) * 0.2;
             return if stripe { shade([40.0, 36.0, 34.0], 1.0, 255) } else { shade(bark, k, 255) };
         }
+
         let n = value_noise(x * 2, y * 2, 8, seed + 1);
         let k = 0.7 + n * 0.5 + if hash(x as i64, y as i64, seed + 2) > 0.85 { 0.2 } else { 0.0 };
         let hole = hash(x as i64 * 3, y as i64 * 5, seed + 3) < 0.08;
@@ -93,6 +95,7 @@ fn stone_atlas(base: [f32; 3], moss: bool, seed: u32) -> RgbaImage {
         if moss && y < 9 && value_noise(x, y, 4, seed + 5) > 0.45 {
             return shade([78.0, 112.0, 58.0], k, 255);
         }
+
         shade(base, k, 255)
     })
 }
@@ -182,6 +185,7 @@ pub fn pine() -> String {
         let yaw = if i % 2 == 0 { 0.0 } else { 45.0 };
         m.cube(&format!("tier{i}"), [-half, *bottom, -half], [*half, *top - 8.0, *half], [0.0, yaw, 0.0], FOLIAGE);
     }
+
     m.cube("tip", [-5.0, 150.0, -5.0], [5.0, 176.0, 5.0], [0.0, 22.5, 0.0], FOLIAGE);
     m.finish("pine", &tree_atlas([98.0, 68.0, 44.0], [46.0, 96.0, 54.0], false, 40))
 }
@@ -201,6 +205,7 @@ pub fn oak() -> String {
     for (i, (from, to, yaw)) in blobs.iter().enumerate() {
         m.cube(&format!("crown{i}"), *from, *to, [0.0, *yaw, 0.0], FOLIAGE);
     }
+
     m.finish("oak", &tree_atlas([98.0, 68.0, 44.0], [70.0, 128.0, 52.0], false, 41))
 }
 
@@ -214,6 +219,7 @@ pub fn birch() -> String {
     for (i, (from, to, yaw)) in blobs.iter().enumerate() {
         m.cube(&format!("crown{i}"), *from, *to, [0.0, *yaw, 0.0], FOLIAGE);
     }
+
     m.finish("birch", &tree_atlas([226.0, 222.0, 208.0], [132.0, 168.0, 70.0], true, 44))
 }
 
@@ -233,6 +239,7 @@ pub fn fern() -> String {
         let (w, reach) = (5.0, 3.0);
         m.card(&format!("frond{k}"), [-s * w + c * reach, c * w + s * reach], [s * w + c * reach, -c * w + s * reach], 16.0, 9.0, FULL);
     }
+
     let atlas = card_atlas([70.0, 132.0, 60.0], 50, |x, y| {
         let spine = 16.0;
         let t = y as f32 / 31.0;
@@ -267,6 +274,7 @@ pub fn grass() -> String {
         let (c, s) = (a.cos() * 9.0, a.sin() * 9.0);
         m.card(&format!("tuft{k}"), [-c, -s], [c, s], 12.0, 0.0, FULL);
     }
+
     let atlas = card_atlas([92.0, 150.0, 64.0], 51, |x, y| {
         let blade = hash(x as i64 / 2, 0, 52);
         let top = 31.0 - blade * 26.0;
@@ -283,6 +291,7 @@ pub fn flowers() -> String {
         let (c, s) = (a.cos() * 7.0, a.sin() * 7.0);
         m.card(&format!("stems{k}"), [-c, -s], [c, s], 11.0, 0.0, FULL);
     }
+
     let petals = [[236.0, 214.0, 70.0], [230.0, 110.0, 160.0], [240.0, 240.0, 235.0]];
     let img = RgbaImage::from_fn(32, 32, |x, y| {
         let stem_x = (x / 8) * 8 + 4;
@@ -292,9 +301,11 @@ pub fn flowers() -> String {
         if dx * dx + dy * dy <= 5 {
             return shade(color, 0.9 + hash(x as i64, y as i64, 56) * 0.2, 255);
         }
+
         if x == stem_x && y > head_y {
             return shade([70.0, 128.0, 58.0], 1.0, 255);
         }
+
         Rgba([0, 0, 0, 0])
     });
     m.finish("flowers", &img)

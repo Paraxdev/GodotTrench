@@ -38,6 +38,7 @@ fn texel_to_world(info: &FaceInfo, texel: DVec2) -> Option<DVec3> {
     if rows.determinant().abs() < 1e-9 {
         return None;
     }
+
     let rhs = DVec3::new((texel.x - uv.offset.x) * uv.scale.x, (texel.y - uv.offset.y) * uv.scale.y, info.plane.dist);
     Some(rows.inverse() * rhs)
 }
@@ -57,6 +58,7 @@ impl TextureTool {
         if faces.is_empty() {
             return false;
         }
+
         let step = if ctx.input(|i| i.modifiers.shift) { 1.0 } else { state.grid.max(1.0) };
         let mut delta = DVec2::ZERO;
         for (key, d) in [
@@ -69,10 +71,12 @@ impl TextureTool {
                 delta += d;
             }
         }
+
         if delta != DVec2::ZERO {
             texture_ops::shift(state, &faces, delta);
             return true;
         }
+
         false
     }
 
@@ -134,6 +138,7 @@ impl TextureTool {
                 self.drag = Some(SlideDrag { plane: info.plane, start: ray.at(t), uv: info.uv, applied: DVec2::ZERO });
             }
         }
+
         if let Some(drag) = &mut self.drag {
             if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
                 let ray = cam.ray(rect, pos);
@@ -143,6 +148,7 @@ impl TextureTool {
                     if state.snap {
                         want = want.round();
                     }
+
                     let step = want - drag.applied;
                     if step != DVec2::ZERO {
                         let faces: Vec<(NodeId, usize)> = state.doc.selection.faces.iter().copied().collect();
@@ -151,6 +157,7 @@ impl TextureTool {
                     }
                 }
             }
+
             if !ui.input(|i| i.pointer.primary_down()) {
                 self.drag = None;
             }
@@ -172,6 +179,7 @@ impl TextureTool {
                 if faces.is_empty() {
                     break;
                 }
+
                 let dir = dy.signum() as f64;
                 if m.command {
                     let f = if m.shift { 1.1f64 } else { 2.0 };
@@ -194,6 +202,7 @@ impl TextureTool {
                 line(&mut out, info.points[k] + n, info.points[(k + 1) % info.points.len()] + n, [1.0, 0.9, 0.3, 0.9]);
             }
         }
+
         for (id, f) in state.doc.selection.faces.iter().take(64) {
             let Some(info) = texture_ops::face_info(map, *id, *f) else { continue };
             let lift = info.plane.normal * 0.3;
@@ -205,6 +214,7 @@ impl TextureTool {
             if info.explicit.is_some() {
                 continue;
             }
+
             // Outline of the texture tile under the face center.
             let tex = texture_ops::tex_size(state, &info.material);
             let t = info.uv.texel(info.center());
@@ -220,6 +230,7 @@ impl TextureTool {
                 }
             }
         }
+
         out
     }
 

@@ -7,6 +7,7 @@ pub fn subtract(minuend: &Brush, subtrahend: &Brush) -> Vec<Brush> {
     if !minuend.intersects(subtrahend) {
         return vec![minuend.clone()];
     }
+
     let mut out = Vec::new();
     let mut remaining = minuend.clone();
     // Cutting with the planes that remove the most volume first leaves fewer, larger pieces.
@@ -20,11 +21,13 @@ pub fn subtract(minuend: &Brush, subtrahend: &Brush) -> Vec<Brush> {
         if let Some(f) = front {
             out.push(f);
         }
+
         match back {
             Some(b) => remaining = b,
             None => break,
         }
     }
+
     merge_pieces(out)
 }
 
@@ -38,6 +41,7 @@ pub fn merge_pieces(mut pieces: Vec<Brush>) -> Vec<Brush> {
                 if !pieces[i].bounds().intersects(&pieces[j].bounds().expanded(1e-3)) {
                     continue;
                 }
+
                 let Ok(hull) = convex_merge(&[&pieces[i], &pieces[j]], "") else { continue };
                 let sum = pieces[i].volume() + pieces[j].volume();
                 if (hull.volume() - sum).abs() <= 1e-4 * sum.max(1.0) {
@@ -46,6 +50,7 @@ pub fn merge_pieces(mut pieces: Vec<Brush>) -> Vec<Brush> {
                 }
             }
         }
+
         match merged {
             Some((i, j, hull)) => {
                 pieces.remove(j);
