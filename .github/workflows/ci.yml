@@ -131,7 +131,7 @@ jobs:
           dir="godottrench-${{ matrix.name }}"
           mkdir -p "dist/$dir"
           cp "target/release/${{ matrix.exe }}" "dist/$dir/"
-          cp README.md LICENSE.md LICENSES.md "dist/$dir/"
+          cp README.md LICENSE LICENSES.md "dist/$dir/"
           cd dist
           if [ "$RUNNER_OS" = "Windows" ]; then 7z a -bd "$dir.zip" "$dir" > /dev/null; else tar czf "$dir.tar.gz" "$dir"; fi
           rm -rf "$dir"
