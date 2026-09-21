@@ -32,12 +32,22 @@ pub struct ClipTool {
 pub struct VertexTool {
     pub selected: Vec<DVec3>,
     drag: Option<VertexDrag>,
+    /// Vertex (or edge/face point) that has a precise-move gizmo, set by double clicking it.
+    gizmo: Option<DVec3>,
+    gizmo_drag: Option<VGizmoDrag>,
 }
 
 struct VertexDrag {
     start: DVec3,
     plane: Plane,
     base: Vec<DVec3>,
+}
+
+struct VGizmoDrag {
+    axis: usize,
+    start: DVec3,
+    plane: Plane,
+    base: DVec3,
 }
 
 #[derive(Default)]
@@ -106,6 +116,8 @@ impl ToolSet {
         if self.active != Some(state.tool) {
             self.clip = ClipTool::default();
             self.vertex.drag = None;
+            self.vertex.gizmo = None;
+            self.vertex.gizmo_drag = None;
             self.rotate.drag = None;
             self.scale.drag = None;
             if self.rotate.snap_degrees == 0.0 {
@@ -415,12 +427,39 @@ impl ToolSet {
                         });
                     }
                     self.vertex.selected.clear();
+                    self.vertex.gizmo = None;
                 }
+            }
+        }
+
+        // Double clicking a vertex (or an edge/face point, which creates a vertex) puts a precise-move
+        // gizmo on it. Double clicking elsewhere clears it.
+        if response.double_clicked() {
+            let hit = response.interact_pointer_pos().and_then(|pos| nearest(pos, &verts).or_else(|| nearest(pos, &extra)));
+            match hit {
+                Some(v) => {
+                    self.vertex.selected = vec![v];
+                    self.vertex.gizmo = Some(v);
+                }
+                None => self.vertex.gizmo = None,
             }
         }
 
         if response.drag_started_by(PointerButton::Primary) {
             let Some(origin) = ui.input(|i| i.pointer.press_origin()) else { return };
+            // A drag that starts on a gizmo arrow moves the vertex along just that axis.
+            if let Some(g) = self.vertex.gizmo.filter(|_| cam.kind == ViewKind::Perspective)
+                && let Some(i) = vgizmo_axis_at(cam, rect, g, origin)
+            {
+                let plane = axis_drag_plane(cam, i, g);
+                let ray = cam.ray(rect, origin);
+                if let Some(t) = ray.intersect_plane(&plane) {
+                    self.vertex.selected = vec![g];
+                    state.doc.begin("Move Vertex");
+                    self.vertex.gizmo_drag = Some(VGizmoDrag { axis: i, start: ray.at(t), plane, base: g });
+                }
+                return;
+            }
             let grabbed = nearest(origin, &verts).map(|v| (v, false)).or_else(|| nearest(origin, &extra).map(|v| (v, true)));
             if let Some((v, is_new)) = grabbed {
                 // Grabbing an unselected handle (or an edge/face point) drags just that one.
@@ -465,9 +504,35 @@ impl ToolSet {
                 state.doc.commit();
             }
         }
+
+        if let Some(gd) = &self.vertex.gizmo_drag {
+            let (axis, start, plane, base) = (gd.axis, gd.start, gd.plane, gd.base);
+            if response.dragged_by(PointerButton::Primary)
+                && let Some(pos) = ui.input(|i| i.pointer.interact_pos())
+            {
+                let ray = cam.ray(rect, pos);
+                if let Some(t) = ray.intersect_plane(&plane) {
+                    let offset = ray.at(t) - start;
+                    let delta = unit_axis(axis) * offset[axis];
+                    let target = state.snap(base + delta);
+                    let delta = target - base;
+                    state.doc.reset_transaction();
+                    if move_vertices(state, &[base], delta) {
+                        self.vertex.selected = vec![base + delta];
+                        self.vertex.gizmo = Some(base + delta);
+                        state.set_status(format!("Vertex {:.3} {:.3} {:.3}", (base + delta).x, (base + delta).y, (base + delta).z));
+                    }
+                }
+            }
+            if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
+                self.vertex.gizmo_drag = None;
+                state.doc.commit();
+            }
+        }
     }
 
     fn delete_vertices(&mut self, state: &mut EditorState) {
+        self.vertex.gizmo = None;
         let selected = std::mem::take(&mut self.vertex.selected);
         let brushes = state.doc.selection.brushes(&state.doc.map);
         state.doc.edit("Remove Vertices", |m, _| {
@@ -793,10 +858,32 @@ impl ToolSet {
                         handle(sp, if selected { Color32::from_rgb(255, 60, 40) } else { Color32::from_rgb(255, 220, 80) }, hot);
                     }
                 }
+                if let Some(g) = self.vertex.gizmo.filter(|_| cam.kind == ViewKind::Perspective) {
+                    let len = vgizmo_len(cam, rect, g);
+                    let hot_axis = self.vertex.gizmo_drag.as_ref().map(|d| d.axis).or_else(|| hover.and_then(|p| vgizmo_axis_at(cam, rect, g, p)));
+                    for i in 0..3 {
+                        let a = unit_axis(i);
+                        let (Some(from), Some(head), Some(tip)) =
+                            (cam.project(rect, g + a * len * 0.15), cam.project(rect, g + a * len * 0.78), cam.project(rect, g + a * len))
+                        else {
+                            continue;
+                        };
+                        let c = if hot_axis == Some(i) { crate::theme::YELLOW } else { crate::theme::AXIS[i] };
+                        painter.line_segment([from, head], Stroke::new(if hot_axis == Some(i) { 3.5 } else { 2.5 }, c));
+                        let dir = tip - head;
+                        if dir.length() > 1.0 {
+                            let side = Vec2::new(-dir.y, dir.x).normalized() * 6.0;
+                            painter.add(egui::Shape::convex_polygon(vec![tip, head + side, head - side], c, Stroke::NONE));
+                        }
+                    }
+                    if let Some(sp) = cam.project(rect, g) {
+                        painter.circle_filled(sp, 3.0, Color32::WHITE);
+                    }
+                }
                 painter.text(
                     rect.left_bottom() + Vec2::new(8.0, -8.0),
                     Align2::LEFT_BOTTOM,
-                    "Vertex: drag handles, Ctrl+click multi select, edge/face dots add vertices, Del removes",
+                    "Vertex: drag handles, double click a vertex for a precise gizmo, edge/face dots add vertices, Del removes",
                     FontId::proportional(12.0),
                     Color32::from_rgb(255, 220, 120),
                 );
@@ -874,6 +961,51 @@ impl ToolSet {
 
 /// Applies a vertex move to every selected brush containing one of the base positions.
 /// Brushes where the move would swallow a moved vertex are left unchanged. Returns true if anything moved.
+fn unit_axis(i: usize) -> DVec3 {
+    let mut a = DVec3::ZERO;
+    a[i] = 1.0;
+    a
+}
+
+fn seg_dist(a: Pos2, b: Pos2, p: Pos2) -> f32 {
+    let ab = b - a;
+    let t = ((p - a).dot(ab) / ab.length_sq().max(1e-6)).clamp(0.0, 1.0);
+    (a + ab * t).distance(p)
+}
+
+/// World length at `center` that spans about 64 screen pixels, so the vertex gizmo keeps its size.
+fn vgizmo_len(cam: &Camera, rect: Rect, center: DVec3) -> f64 {
+    let fallback = (cam.eye() - center).length().max(1.0) * 0.15;
+    let (Some(c), Some(p)) = (cam.project(rect, center), cam.project(rect, center + cam.right())) else {
+        return fallback;
+    };
+    let per = (p - c).length() as f64;
+    if per > 1e-6 { 64.0 / per } else { fallback }
+}
+
+/// The gizmo arrow under the pointer, if any.
+fn vgizmo_axis_at(cam: &Camera, rect: Rect, center: DVec3, pos: Pos2) -> Option<usize> {
+    let len = vgizmo_len(cam, rect, center);
+    (0..3)
+        .filter_map(|i| {
+            let a = unit_axis(i);
+            let from = cam.project(rect, center + a * len * 0.15)?;
+            let to = cam.project(rect, center + a * len)?;
+            Some((seg_dist(from, to, pos), i))
+        })
+        .filter(|(d, _)| *d < 8.0)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, i)| i)
+}
+
+/// Plane holding the gizmo axis and facing the camera, so pointer motion maps cleanly to the axis.
+fn axis_drag_plane(cam: &Camera, i: usize, center: DVec3) -> Plane {
+    let f = cam.forward();
+    let a = unit_axis(i);
+    let n = a.cross(f).cross(a);
+    Plane::from_point_normal(center, if n.length_squared() < 1e-9 { f } else { n.normalize() })
+}
+
 fn move_vertices(state: &mut EditorState, base: &[DVec3], delta: DVec3) -> bool {
     let brushes: Vec<NodeId> = state.doc.selection.brushes(&state.doc.map);
     let mut any = false;
