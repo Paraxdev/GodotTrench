@@ -169,6 +169,10 @@ func _build(text: String) -> void:
 	# TrenchDot: sky, fog and sun from worldspawn keys, the same values the editor's lit preview uses.
 	if is_tdm:
 		TrenchDotEnvironment.build(self, entities[0].properties)
+	# TrenchDot: the chunk streamer goes in last, it groups everything built above.
+	var streamer := TrenchDotStreamer.build(self, entities[0].properties, map_settings)
+	if streamer:
+		streamer.rebuild()
 
 	time_elapsed = Time.get_ticks_msec() - time_elapsed
 

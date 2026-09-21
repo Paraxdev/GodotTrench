@@ -63,6 +63,10 @@ fn default_spacing() -> f64 {
     48.0
 }
 
+/// Cell new sets are chunked into: 64 m at the default 32 units per meter, small enough that the camera
+/// usually sees a handful of cells and large enough that the draw call count stays low.
+pub const DEFAULT_CHUNK_SIZE: f64 = 2048.0;
+
 /// One entry of a scatter palette.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ScatterItem {
@@ -171,6 +175,14 @@ pub struct Scatter {
     /// Map units beyond which instances are hidden in Godot, 0 shows them at any distance.
     #[serde(default)]
     pub visibility_range: f64,
+    /// Grid cell in map units the instances are split into, so Godot frustum culls each cell on its own.
+    /// 0 keeps one MultiMesh for the whole set.
+    #[serde(default)]
+    pub chunk_size: f64,
+    /// Render prop scenes that carry scripts as MultiMesh visuals too, dropping their scripts. Off keeps them
+    /// as one node each so their behaviour survives.
+    #[serde(default)]
+    pub static_props_multimesh: bool,
     #[serde(default)]
     pub instances: Vec<ScatterInstance>,
 }
@@ -186,8 +198,31 @@ impl Scatter {
             collision,
             cast_shadows: kind == ScatterKind::Props,
             visibility_range: if kind == ScatterKind::Foliage { 2400.0 } else { 0.0 },
+            chunk_size: DEFAULT_CHUNK_SIZE,
+            static_props_multimesh: false,
             instances: Vec::new(),
         }
+    }
+
+    /// Instance indices grouped by `chunk_size` cell, so each cell becomes its own MultiMesh that Godot can
+    /// frustum cull. One group holding everything when chunking is off. Groups are ordered so a set always
+    /// builds the same way.
+    pub fn chunks(&self) -> Vec<((i64, i64, i64), Vec<usize>)> {
+        if self.chunk_size <= 0.0 || self.instances.is_empty() {
+            return vec![((0, 0, 0), (0..self.instances.len()).collect())];
+        }
+
+        let cell = self.chunk_size;
+        let mut groups: HashMap<(i64, i64, i64), Vec<usize>> = HashMap::new();
+        for (k, i) in self.instances.iter().enumerate() {
+            let p = i.position;
+            let key = ((p.x / cell).floor() as i64, (p.y / cell).floor() as i64, (p.z / cell).floor() as i64);
+            groups.entry(key).or_default().push(k);
+        }
+
+        let mut out: Vec<((i64, i64, i64), Vec<usize>)> = groups.into_iter().collect();
+        out.sort_by_key(|(key, _)| *key);
+        out
     }
 
     pub fn bounds(&self) -> Aabb {
@@ -716,6 +751,31 @@ mod tests {
             let lateral = (i.position - center).reject_from(DVec3::Y).length();
             assert!(lateral <= radius * 1.5 + 1e-6, "instance flung to {:?}", i.position);
         }
+    }
+
+    #[test]
+    fn chunks_partition_every_instance_by_cell() {
+        let mut set = Scatter::new("s", ScatterKind::Props, vec![ScatterItem::new("res://a.glb")]);
+        set.chunk_size = 100.0;
+        for p in [DVec3::ZERO, DVec3::new(10.0, 0.0, 10.0), DVec3::new(150.0, 0.0, 0.0), DVec3::new(0.0, 0.0, -250.0)] {
+            set.instances.push(ScatterInstance { item: 0, position: p, angles: DVec3::ZERO, scale: 1.0 });
+        }
+
+        let chunks = set.chunks();
+        assert_eq!(chunks.len(), 3, "the two instances in the same cell share a chunk: {chunks:?}");
+        let mut seen: Vec<usize> = chunks.iter().flat_map(|(_, list)| list.iter().copied()).collect();
+        seen.sort();
+        assert_eq!(seen, vec![0, 1, 2, 3], "every instance lands in exactly one chunk");
+        // Instances of a chunk really sit inside its cell.
+        for (key, list) in &chunks {
+            for k in list {
+                let p = set.instances[*k].position;
+                assert_eq!(((p.x / 100.0).floor() as i64, (p.y / 100.0).floor() as i64, (p.z / 100.0).floor() as i64), *key);
+            }
+        }
+
+        set.chunk_size = 0.0;
+        assert_eq!(set.chunks(), vec![((0, 0, 0), vec![0, 1, 2, 3])], "chunking off keeps one MultiMesh");
     }
 
     #[test]

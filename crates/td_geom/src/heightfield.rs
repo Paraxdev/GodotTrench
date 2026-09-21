@@ -19,6 +19,26 @@ pub struct TerrainLayer {
     /// World units covered by one texture repeat.
     #[serde(default = "default_tile")]
     pub tile: f64,
+    /// Breaks up the repeat: every tile is turned and shifted by a fixed random amount and the joins are
+    /// blended, so a tileable texture stops showing a grid. 0 leaves it repeating as authored, 1 is the
+    /// strongest. Costs four texture reads per projection, so it is off unless asked for.
+    #[serde(default)]
+    pub detile: f64,
+    /// How crisp the de-tiled result stays: 0 mixes the four cells evenly, which hides the joins best but
+    /// softens the texture, 1 mixes only in a narrow band around the joins and keeps the detail. Ignored
+    /// while `detile` is 0.
+    #[serde(default = "default_sharpen")]
+    pub detile_sharpen: f64,
+}
+
+fn default_sharpen() -> f64 {
+    0.5
+}
+
+impl TerrainLayer {
+    pub fn new(material: impl Into<String>, tile: f64) -> Self {
+        Self { material: material.into(), tile, detile: 0.0, detile_sharpen: default_sharpen() }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -165,7 +185,7 @@ impl Terrain {
             resolution: res,
             cell_size: cell_size.max(1e-3),
             heights: vec![0.0; (res[0] * res[1]) as usize],
-            layers: vec![TerrainLayer { material: material.into(), tile: default_tile() }],
+            layers: vec![TerrainLayer::new(material, default_tile())],
             splat: Vec::new(),
             holes: Vec::new(),
             chunk_cells: default_chunk(),
@@ -851,7 +871,7 @@ mod tests {
     #[test]
     fn paint_layers_and_holes() {
         let mut t = flat();
-        t.layers.push(TerrainLayer { material: "rock".into(), tile: 128.0 });
+        t.layers.push(TerrainLayer::new("rock", 128.0));
         assert!(t.paint_layer(DVec3::ZERO, 50.0, 1, 1.0));
         let w = t.weights(16, 16);
         assert!(w[1] > 0.99, "{w:?}");

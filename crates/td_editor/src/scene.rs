@@ -879,7 +879,11 @@ fn build_terrain(
     previous: Option<TerrainGpu>,
     wireframe: bool,
 ) -> TerrainGpu {
-    let layers: Vec<(String, f32)> = t.layers.iter().map(|l| (l.material.clone(), l.tile.max(1.0) as f32)).collect();
+    let layers: Vec<(String, f32, f32, f32)> = t
+        .layers
+        .iter()
+        .map(|l| (l.material.clone(), l.tile.max(1.0) as f32, l.detile.clamp(0.0, 1.0) as f32, l.detile_sharpen.clamp(0.0, 1.0) as f32))
+        .collect();
     let key = renderer.prepare_terrain_material(&layers);
     let chunk_list = t.chunks();
     let mut out = previous.filter(|p| p.chunks.len() == chunk_list.len()).unwrap_or(TerrainGpu {

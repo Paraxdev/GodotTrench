@@ -56,25 +56,36 @@ pub fn dab(state: &mut EditorState, center: DVec3, brush: &blend::BlendBrush) ->
     })
 }
 
+/// The selected faces, or every face of the selected geometry when no face is picked.
+fn blend_target_faces(state: &EditorState) -> Vec<(NodeId, usize)> {
+    let map = &state.doc.map;
+    if state.doc.selection.has_faces() {
+        return state.doc.selection.faces.iter().copied().collect();
+    }
+
+    state
+        .doc
+        .selection
+        .geometry(map)
+        .into_iter()
+        .flat_map(|id| {
+            let n = map.brush(id).map(|b| b.faces.len()).or_else(|| map.mesh(id).map(|m| m.faces.len())).unwrap_or(0);
+            (0..n).map(move |f| (id, f))
+        })
+        .collect()
+}
+
 /// Sets the blend material on the selected faces, or on every face of the selected brushes and meshes.
 pub fn set_blend_material(state: &mut EditorState, material: Option<&str>) -> usize {
-    let map = &state.doc.map;
-    let faces: Vec<(NodeId, usize)> = if state.doc.selection.has_faces() {
-        state.doc.selection.faces.iter().copied().collect()
-    } else {
-        state
-            .doc
-            .selection
-            .geometry(map)
-            .into_iter()
-            .flat_map(|id| {
-                let n = map.brush(id).map(|b| b.faces.len()).or_else(|| map.mesh(id).map(|m| m.faces.len())).unwrap_or(0);
-                (0..n).map(move |f| (id, f))
-            })
-            .collect()
-    };
+    let faces = blend_target_faces(state);
     let material = material.map(str::to_string);
     state.doc.edit("Blend Material", |m, _| blend::set_blend_material(m, &faces, material.as_deref()))
+}
+
+/// Sets the blend material's repeat and de-tiling on the same faces `set_blend_material` would touch.
+pub fn set_blend_tiling(state: &mut EditorState, detile: f64, uv_scale: f64, sharpen: f64) -> usize {
+    let faces = blend_target_faces(state);
+    state.doc.edit("Blend Tiling", |m, _| blend::set_blend_options(m, &faces, detile, uv_scale, sharpen))
 }
 
 #[derive(Default)]

@@ -189,6 +189,34 @@ impl Mesh {
         self.bounds().center()
     }
 
+    /// True when `p` lies inside the mesh. Only meaningful for closed meshes: a ray leaving a point inside a
+    /// closed surface crosses it an odd number of times.
+    pub fn contains_point(&self, p: DVec3) -> bool {
+        if !self.bounds().contains_point(p) {
+            return false;
+        }
+
+        // An irregular direction, so the ray is unlikely to graze an edge or a vertex where a crossing would
+        // be counted twice or missed.
+        let ray = Ray::new(p, DVec3::new(0.5773, 0.5574, 0.5964).normalize());
+        let mut hits: Vec<f64> = Vec::new();
+        for fi in 0..self.faces.len() {
+            for tri in self.triangulate_face(fi) {
+                let [a, b, c] = tri.map(|i| self.vertices.get(i as usize).copied());
+                if let (Some(a), Some(b), Some(c)) = (a, b, c)
+                    && let Some(t) = ray.intersect_triangle(a, b, c)
+                {
+                    hits.push(t);
+                }
+            }
+        }
+
+        // Two triangles sharing an edge report the same distance, count that crossing once.
+        hits.sort_by(f64::total_cmp);
+        hits.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+        hits.len() % 2 == 1
+    }
+
     pub fn face_points(&self, fi: usize) -> Vec<DVec3> {
         self.faces[fi].indices.iter().map(|i| self.vertices[*i as usize]).collect()
     }
@@ -1631,6 +1659,24 @@ mod tests {
         assert!(normals.iter().flatten().all(|n| (n.abs().x - n.abs().y).abs() < 1e-9));
         m.smooth_angle = 0.0;
         assert!(m.corner_normals().iter().flatten().all(|n| n.abs().max_element() > 0.999));
+    }
+
+    #[test]
+    fn contains_point_separates_inside_from_outside() {
+        let c = cube();
+        assert!(c.contains_point(DVec3::ZERO));
+        assert!(c.contains_point(DVec3::splat(15.0)));
+        assert!(!c.contains_point(DVec3::splat(17.0)), "just outside a corner");
+        assert!(!c.contains_point(DVec3::new(0.0, 100.0, 0.0)), "far above");
+        // A concave shape: the notch of an L is outside even though it is inside the bounding box.
+        let l = crate::mesh_shapes::prism(
+            &[DVec2::new(0.0, 0.0), DVec2::new(32.0, 0.0), DVec2::new(32.0, 8.0), DVec2::new(8.0, 8.0), DVec2::new(8.0, 32.0), DVec2::new(0.0, 32.0)],
+            0.0,
+            16.0,
+            "m",
+        );
+        assert!(l.contains_point(DVec3::new(4.0, 8.0, 4.0)), "inside the arm");
+        assert!(!l.contains_point(DVec3::new(24.0, 8.0, 24.0)), "the notch is outside");
     }
 
     #[test]
