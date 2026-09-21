@@ -1175,6 +1175,7 @@ dependencies = [
  "ron",
  "serde",
  "serde_json",
+ "tobj",
  "windows-sys 0.61.2",
 ]
 
@@ -3014,6 +3015,15 @@ dependencies = [
  "arrayref",
  "bytemuck",
  "strict-num",
+]
+
+[[package]]
+name = "tobj"
+version = "4.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6eb8e04167c1c0c76b5de63226fd733485ad63ef71e40de31e16272f47b099e2"
+dependencies = [
+ "ahash",
 ]
 
 [[package]]

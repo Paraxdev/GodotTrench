@@ -1,4 +1,6 @@
-//! Models shown for point entities: glTF (.glb, .gltf) and Blockbench (.bbmodel).
+//! Loading and placing of model files: glTF (.glb, .gltf), Wavefront (.obj), Blockbench (.bbmodel),
+//! STL (.stl) and id Software models (.md2, .md3). Used both for point-entity previews and for the
+//! Models panel, which drops any of these into the scene as an editable mesh.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -39,12 +41,12 @@ pub struct ModelCache {
 
 pub fn is_model_path(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
-    lower.ends_with(".glb") || lower.ends_with(".gltf") || lower.ends_with(".bbmodel") || lower.ends_with(".obj")
+    MODEL_EXTS.iter().any(|e| lower.ends_with(&format!(".{e}")))
 }
 
 /// Model file extensions the editor can load and place. FBX is intentionally excluded: it cannot be
 /// loaded in pure Rust, so it would never preview here.
-pub const MODEL_EXTS: [&str; 4] = ["glb", "gltf", "obj", "bbmodel"];
+pub const MODEL_EXTS: [&str; 7] = ["glb", "gltf", "obj", "bbmodel", "stl", "md2", "md3"];
 
 impl ModelCache {
     pub fn get(&mut self, path: &Path, units_per_meter: f64) -> Option<Arc<Model>> {
@@ -76,8 +78,117 @@ fn load(path: &Path, units_per_meter: f64) -> Result<Model, String> {
         "bbmodel" => load_bbmodel(path, units_per_meter),
         "glb" | "gltf" => load_gltf(path, units_per_meter),
         "obj" => load_obj(path, units_per_meter),
+        "stl" => load_stl(path, units_per_meter),
+        "md2" => {
+            let data = std::fs::read(path).map_err(|e| e.to_string())?;
+            let mesh = gt_formats::idmodel::parse_md2(&data).map_err(|e| e.to_string())?;
+            Ok(id_model_to_model(path, mesh, units_per_meter))
+        }
+        "md3" => {
+            let data = std::fs::read(path).map_err(|e| e.to_string())?;
+            let mesh = gt_formats::idmodel::parse_md3(&data).map_err(|e| e.to_string())?;
+            Ok(id_model_to_model(path, mesh, units_per_meter))
+        }
         _ => Err(format!("unsupported model format {ext}")),
     }
+}
+
+/// STL stores raw triangles with no UVs or materials, so the whole model is one untextured part with
+/// per-face normals. STL is unitless, its numbers are read as metres to match OBJ and glTF.
+fn load_stl(path: &Path, units_per_meter: f64) -> Result<Model, String> {
+    let data = std::fs::read(path).map_err(|e| e.to_string())?;
+    let scale = units_per_meter as f32;
+    let tris = parse_stl(&data)?;
+    if tris.is_empty() {
+        return Err("stl has no triangles".into());
+    }
+    let mut vertices = Vec::with_capacity(tris.len() * 3);
+    let mut indices = Vec::with_capacity(tris.len() * 3);
+    let mut bounds = Aabb::EMPTY;
+    for tri in tris {
+        let ps = [Vec3::from(tri[0]) * scale, Vec3::from(tri[1]) * scale, Vec3::from(tri[2]) * scale];
+        let n = (ps[1] - ps[0]).cross(ps[2] - ps[0]).normalize_or(Vec3::Y);
+        for p in ps {
+            bounds.include_point(p.as_dvec3());
+            indices.push(vertices.len() as u32);
+            vertices.push(ModelVertex { pos: p, normal: n, uv: [0.0, 0.0] });
+        }
+    }
+    let part = ModelPart { material: gt_render::WHITE_MATERIAL.to_string(), vertices, indices };
+    Ok(Model { parts: vec![part], textures: Vec::new(), bounds })
+}
+
+/// Triangles of an STL file, ascii or binary. Binary is detected by the exact size the triangle
+/// count in the header implies, since binary files can also start with the ascii keyword "solid".
+fn parse_stl(data: &[u8]) -> Result<Vec<[[f32; 3]; 3]>, String> {
+    if data.len() >= 84 {
+        let count = u32::from_le_bytes([data[80], data[81], data[82], data[83]]) as usize;
+        if data.len() == 84 + count * 50 {
+            let mut tris = Vec::with_capacity(count);
+            let f = |b: &[u8]| f32::from_le_bytes([b[0], b[1], b[2], b[3]]);
+            for i in 0..count {
+                let o = 84 + i * 50 + 12; // skip the per-facet normal, it is recomputed
+                let v = |k: usize| [f(&data[o + k * 12..]), f(&data[o + k * 12 + 4..]), f(&data[o + k * 12 + 8..])];
+                tris.push([v(0), v(1), v(2)]);
+            }
+            return Ok(tris);
+        }
+    }
+    let text = std::str::from_utf8(data).map_err(|_| "stl is neither valid binary nor ascii".to_string())?;
+    let mut tris = Vec::new();
+    let mut verts: Vec<[f32; 3]> = Vec::new();
+    for token in text.split_whitespace().collect::<Vec<_>>().windows(4) {
+        if token[0] == "vertex" {
+            let p = [token[1].parse().unwrap_or(0.0), token[2].parse().unwrap_or(0.0), token[3].parse().unwrap_or(0.0)];
+            verts.push(p);
+            if verts.len() == 3 {
+                tris.push([verts[0], verts[1], verts[2]]);
+                verts.clear();
+            }
+        }
+    }
+    Ok(tris)
+}
+
+/// Converts a parsed id Software model (md2/md3) into a placeable model, saving the skin as a texture
+/// when the file names one that sits next to it.
+fn id_model_to_model(path: &Path, mesh: gt_formats::idmodel::IdModel, units_per_meter: f64) -> Model {
+    let base = format!("model:{}", path.display());
+    let scale = units_per_meter as f32;
+    let mut textures = Vec::new();
+    let mut parts = Vec::new();
+    let mut bounds = Aabb::EMPTY;
+    for (si, surf) in mesh.surfaces.iter().enumerate() {
+        let material = surf
+            .skin
+            .as_deref()
+            .and_then(|skin| skin_image(path, skin))
+            .map(|img| {
+                let key = format!("{base}#skin{si}");
+                textures.push((key.clone(), img, false));
+                key
+            })
+            .unwrap_or_else(|| gt_render::WHITE_MATERIAL.to_string());
+        let mut vertices = Vec::with_capacity(surf.vertices.len());
+        for v in &surf.vertices {
+            let pos = Vec3::from(v.pos) * scale;
+            bounds.include_point(pos.as_dvec3());
+            vertices.push(ModelVertex { pos, normal: Vec3::from(v.normal).normalize_or(Vec3::Y), uv: v.uv });
+        }
+        parts.push(ModelPart { material, vertices, indices: surf.indices.clone() });
+    }
+    Model { parts, textures, bounds }
+}
+
+/// Loads an md2/md3 skin: the path the model names, tried as given and relative to the model's folder.
+fn skin_image(model: &Path, skin: &str) -> Option<image::RgbaImage> {
+    let skin = skin.trim_matches(char::from(0));
+    if skin.is_empty() {
+        return None;
+    }
+    let candidates = [PathBuf::from(skin), model.parent().map(|d| d.join(skin)).unwrap_or_default()];
+    let try_exts = |p: &Path| image::open(p).ok().or_else(|| ["png", "tga", "jpg", "jpeg", "bmp"].iter().find_map(|e| image::open(p.with_extension(e)).ok()));
+    candidates.iter().filter(|p| !p.as_os_str().is_empty()).find_map(|p| try_exts(p)).map(|i| i.to_rgba8())
 }
 
 /// Blockbench uses 16 units per block, which the Godot importer maps to one meter.
