@@ -6,17 +6,65 @@ use gt_formats::godot_material::{self, GodotMaterial};
 
 pub const DEV_PREFIX: &str = "dev/";
 
-/// Suffixes of non-normal PBR companion maps next to an albedo texture (FuncGodot's map patterns).
-/// These are never shown as their own material.
-const COMPANIONS: [&str; 6] = ["_roughness", "_metallic", "_ao", "_emission", "_height", "_orm"];
-
 /// Filename suffixes that mark a texture as a normal map, longest first so stripping matches the
-/// most specific one. Compared case-insensitively.
-pub const NORMAL_SUFFIXES: [&str; 6] = ["_normalmap", "_normal", "_nmap", "_norm", "_nrm", "_n"];
+/// most specific one. Compared case-insensitively. Single-letter suffixes like `_n` are common in
+/// texture packs, so they are matched too.
+pub const NORMAL_SUFFIXES: [&str; 7] = ["_normalmap", "_normal", "_nrm", "_nmap", "_norm", "_nm", "_n"];
+
+/// Suffixes marking the albedo/diffuse map of a PBR set, for packs that name the colour map `x_d`
+/// rather than a plain `x`. Longest first.
+pub const DIFFUSE_SUFFIXES: [&str; 6] = ["_basecolor", "_diffuse", "_albedo", "_color", "_col", "_d"];
+
+/// Every non-diffuse PBR companion suffix (normal, specular, roughness, metallic, ao, height,
+/// emission, packed orm), longest first so `_normal` wins over `_n` and `_specular` over `_s`.
+/// A texture ending in one of these is a companion map, hidden when its set's albedo is present.
+const COMPANION_SUFFIXES: [&str; 24] = [
+    "_normalmap",
+    "_specular",
+    "_roughness",
+    "_metallic",
+    "_emissive",
+    "_emission",
+    "_normal",
+    "_height",
+    "_occlusion",
+    "_metal",
+    "_rough",
+    "_disp",
+    "_glow",
+    "_nrm",
+    "_nmap",
+    "_norm",
+    "_spec",
+    "_orm",
+    "_ao",
+    "_nm",
+    "_n",
+    "_s",
+    "_h",
+    "_e",
+];
 
 /// The normal-map suffix a lowercased texture name ends with, if any.
 pub fn normal_suffix(name_lower: &str) -> Option<&'static str> {
     NORMAL_SUFFIXES.iter().copied().find(|s| name_lower.ends_with(s) && name_lower.len() > s.len())
+}
+
+/// The diffuse-map suffix a lowercased texture name ends with, if any.
+pub fn diffuse_suffix(name_lower: &str) -> Option<&'static str> {
+    DIFFUSE_SUFFIXES.iter().copied().find(|s| name_lower.ends_with(s) && name_lower.len() > s.len())
+}
+
+/// The base name of a PBR companion map (its name without a normal/spec/rough/etc. suffix), if it is
+/// one. Diffuse maps are not companions, they anchor a set.
+fn companion_base(name_lower: &str) -> Option<String> {
+    COMPANION_SUFFIXES.iter().find(|s| name_lower.ends_with(**s) && name_lower.len() > s.len()).map(|s| name_lower[..name_lower.len() - s.len()].to_string())
+}
+
+/// The PBR set base a lowercased albedo name belongs to: its name minus a diffuse suffix, else the
+/// name itself. Companion maps share this base, so it locates their siblings on disk.
+fn set_base(name_lower: &str) -> String {
+    diffuse_suffix(name_lower).map(|s| name_lower[..name_lower.len() - s.len()].to_string()).unwrap_or_else(|| name_lower.to_string())
 }
 
 /// The albedo/diffuse name a normal-map texture belongs to (its name without the normal suffix).
@@ -38,6 +86,9 @@ pub struct MaterialEntry {
     pub has_normal: bool,
     /// This entry is itself a normal map with no matching albedo/diffuse texture of the same name.
     pub missing_albedo: bool,
+    /// Companion PBR maps (normal, spec, roughness, height, ao, emission) were found for this
+    /// texture, so it forms a full material set. Shown with a PBR badge, its companions are hidden.
+    pub is_pbr: bool,
 }
 
 /// Images and settings of one material, ready for the renderer.
@@ -115,13 +166,14 @@ impl MaterialLibrary {
                                 material_file: file,
                                 has_normal: false,
                                 missing_albedo: false,
+                                is_pbr: false,
                             });
                         }
                     }
                 }
             }
         }
-        pair_normal_maps(&mut found);
+        pair_pbr_maps(&mut found);
         found.sort_by(|a, b| a.name.cmp(&b.name));
         // Project textures win over built-in placeholders with the same name.
         for (name, _) in dev_textures() {
@@ -133,6 +185,7 @@ impl MaterialLibrary {
                     material_file: None,
                     has_normal: false,
                     missing_albedo: false,
+                    is_pbr: false,
                 });
             }
         }
@@ -186,12 +239,17 @@ impl MaterialLibrary {
         godot_material::parse(&std::fs::read_to_string(file).ok()?)
     }
 
-    /// Companion map such as `wall_normal.png` next to the albedo image.
+    /// Companion map such as `wall_normal.png` next to the albedo image. When the albedo is itself a
+    /// diffuse-suffixed file (`wall_d.png`), the companions share the base `wall`, not `wall_d`.
     fn companion(&self, name: &str, suffix: &str) -> Option<PathBuf> {
         let albedo = self.find(name)?.path.clone()?;
         let stem = albedo.file_stem()?.to_string_lossy().into_owned();
+        let base = match diffuse_suffix(&stem.to_ascii_lowercase()) {
+            Some(s) => stem[..stem.len() - s.len()].to_string(),
+            None => stem,
+        };
         let dir = albedo.parent()?;
-        self.image_exts.iter().map(|ext| dir.join(format!("{stem}{suffix}.{ext}"))).find(|p| p.is_file())
+        self.image_exts.iter().map(|ext| dir.join(format!("{base}{suffix}.{ext}"))).find(|p| p.is_file())
     }
 
     /// The first normal-map companion next to the albedo, trying every supported suffix.
@@ -259,30 +317,41 @@ impl MaterialLibrary {
     }
 }
 
-/// Removes normal-map textures that belong to an albedo of the same name, flagging that albedo as
-/// having valid normals, and marks lone normal maps (no matching albedo) as missing their diffuse.
-fn pair_normal_maps(entries: &mut Vec<MaterialEntry>) {
-    use std::collections::HashSet;
-    let albedos: HashSet<String> =
-        entries.iter().filter(|e| normal_suffix(&e.name.to_ascii_lowercase()).is_none()).map(|e| e.name.to_ascii_lowercase()).collect();
-    let mut with_normal: HashSet<String> = HashSet::new();
-    let mut i = 0;
-    while i < entries.len() {
-        if let Some(base) = albedo_of_normal(&entries[i].name) {
-            let base_lower = base.to_ascii_lowercase();
-            if albedos.contains(&base_lower) {
-                with_normal.insert(base_lower);
-                entries.remove(i);
-                continue;
-            }
-            entries[i].missing_albedo = true;
+/// Groups textures into PBR sets: an albedo (a plain `wall` or a diffuse-suffixed `wall_d`) plus its
+/// companion maps (`wall_normal`, `wall_s`, `wall_h`, `wall_ao`, …). Companion maps that belong to a
+/// present albedo are removed and the albedo is flagged (`is_pbr`, and `has_normal` when a normal was
+/// among them). Companion maps with no matching albedo stay visible; lone normals are flagged as
+/// missing their diffuse. The albedo keeps its own name so face material references never change.
+fn pair_pbr_maps(entries: &mut Vec<MaterialEntry>) {
+    use std::collections::HashMap;
+    // Anchors are the albedos: every texture that is not itself a companion map. Keyed by set base
+    // (a diffuse-suffixed name maps to the base its companions share), first anchor of a base wins.
+    let mut anchor: HashMap<String, usize> = HashMap::new();
+    for (i, e) in entries.iter().enumerate() {
+        let lower = e.name.to_ascii_lowercase();
+        if companion_base(&lower).is_some() {
+            continue;
         }
-        i += 1;
+        anchor.entry(set_base(&lower)).or_insert(i);
     }
-    for e in entries.iter_mut() {
-        if with_normal.contains(&e.name.to_ascii_lowercase()) {
-            e.has_normal = true;
+    let mut remove: Vec<usize> = Vec::new();
+    for i in 0..entries.len() {
+        let lower = entries[i].name.to_ascii_lowercase();
+        let Some(base) = companion_base(&lower) else { continue };
+        match anchor.get(&base) {
+            Some(&ai) => {
+                entries[ai].is_pbr = true;
+                if normal_suffix(&lower).is_some() {
+                    entries[ai].has_normal = true;
+                }
+                remove.push(i);
+            }
+            None if normal_suffix(&lower).is_some() => entries[i].missing_albedo = true,
+            None => {}
         }
+    }
+    for i in remove.into_iter().rev() {
+        entries.remove(i);
     }
 }
 
@@ -300,12 +369,8 @@ fn scan_dir(root: &Path, dir: &Path, exts: &[String], out: &mut Vec<MaterialEntr
         }
         let Ok(rel) = path.strip_prefix(root) else { continue };
         let name = rel.with_extension("").to_string_lossy().replace('\\', "/");
-        let lower = name.to_ascii_lowercase();
-        if COMPANIONS.iter().any(|s| lower.ends_with(s)) {
-            continue;
-        }
         let folder = rel.parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
-        out.push(MaterialEntry { name, folder, path: Some(path), material_file: None, has_normal: false, missing_albedo: false });
+        out.push(MaterialEntry { name, folder, path: Some(path), material_file: None, has_normal: false, missing_albedo: false, is_pbr: false });
     }
 }
 
@@ -378,6 +443,46 @@ mod tests {
         assert!(glass.info.is_transparent());
         assert_eq!(glass.info.nearest, Some(true));
         assert_eq!(glass.albedo.dimensions(), (2, 2));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pbr_sets_hide_companions_and_flag_the_albedo() {
+        let dir = std::env::temp_dir().join(format!("gt_pbr_{}", std::process::id()));
+        let tex = dir.join("textures");
+        std::fs::create_dir_all(&tex).unwrap();
+        std::fs::write(dir.join("project.godot"), "").unwrap();
+        let px = |c: [u8; 4]| image::RgbaImage::from_pixel(4, 4, image::Rgba(c));
+        // Convention A: a plain base with normal, spec and height maps.
+        for (file, c) in
+            [("201.png", [200, 0, 0, 255]), ("201_norm.png", [128, 128, 255, 255]), ("201_s.png", [80, 80, 80, 255]), ("201_h.png", [40, 40, 40, 255])]
+        {
+            px(c).save(tex.join(file)).unwrap();
+        }
+        // Convention B: the colour map is named _d, companions share the base without it.
+        px([10, 120, 30, 255]).save(tex.join("moss_d.png")).unwrap();
+        px([128, 128, 255, 255]).save(tex.join("moss_n.png")).unwrap();
+        px([60, 60, 60, 255]).save(tex.join("moss_ao.png")).unwrap();
+        // A lone normal map with no albedo stays, flagged.
+        px([128, 128, 255, 255]).save(tex.join("orphan_normal.png")).unwrap();
+
+        let mut game = GameConfig::builtin();
+        game.project_root = Some(dir.clone());
+        game.textures.base_dir = "res://textures".into();
+        let lib = MaterialLibrary::new(&game);
+
+        let names: Vec<&str> = lib.entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"201"), "plain albedo shows");
+        assert!(!names.contains(&"201_norm") && !names.contains(&"201_s") && !names.contains(&"201_h"), "companions hidden: {names:?}");
+        assert!(names.contains(&"moss_d"), "diffuse-suffixed albedo shows under its own name");
+        assert!(!names.contains(&"moss_n") && !names.contains(&"moss_ao"), "diffuse-set companions hidden: {names:?}");
+        assert!(names.contains(&"orphan_normal"), "lone normal stays visible");
+
+        let a = lib.find("201").unwrap();
+        assert!(a.is_pbr && a.has_normal);
+        let b = lib.find("moss_d").unwrap();
+        assert!(b.is_pbr && b.has_normal, "diffuse-suffixed albedo is flagged from its base-named companions");
+        assert!(lib.find("orphan_normal").unwrap().missing_albedo);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
