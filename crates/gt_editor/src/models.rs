@@ -409,7 +409,7 @@ pub fn model_to_mesh(model: &Model, offset: DVec3, scale: f64, material_of: impl
     let mut lookup: HashMap<(i64, i64, i64), u32> = HashMap::new();
     for part in &model.parts {
         let material = material_of(&part.material);
-        for tri in part.indices.chunks_exact(3) {
+        for tri in part.indices.as_chunks::<3>().0 {
             let corners = [tri[0] as usize, tri[1] as usize, tri[2] as usize];
             if corners.iter().any(|&c| c >= part.vertices.len()) {
                 continue;
