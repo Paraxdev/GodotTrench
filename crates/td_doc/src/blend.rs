@@ -12,6 +12,12 @@ use crate::map::Map;
 
 /// Face property naming the second material that vertex color alpha blends towards.
 pub const BLEND_MATERIAL: &str = "blend_material";
+/// Face property breaking up the repeat of the blend material, 0 to 1. See `TerrainLayer::detile`.
+pub const BLEND_DETILE: &str = "blend_detile";
+/// Face property multiplying how often the blend material repeats across the face.
+pub const BLEND_UV_SCALE: &str = "blend_uv_scale";
+/// Face property setting how crisp the de-tiled blend material stays. See `TerrainLayer::detile_sharpen`.
+pub const BLEND_DETILE_SHARPEN: &str = "blend_detile_sharpen";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -446,6 +452,34 @@ pub fn set_blend_material(map: &mut Map, faces: &[(NodeId, usize)], material: Op
     n
 }
 
+/// Sets how the blend material of `faces` repeats: `detile` breaks up the tiling, `uv_scale` multiplies how
+/// often it repeats and `sharpen` keeps the de-tiled result crisp. Defaults drop the property again so plain
+/// faces stay plain in the file.
+pub fn set_blend_options(map: &mut Map, faces: &[(NodeId, usize)], detile: f64, uv_scale: f64, sharpen: f64) -> usize {
+    let mut n = 0;
+    for (id, face) in faces {
+        let data = if let Some(b) = map.brush_mut(*id) {
+            b.faces.get_mut(*face).map(|f| &mut f.data)
+        } else {
+            map.mesh_mut(*id).and_then(|m| m.faces.get_mut(*face)).map(|f| &mut f.data)
+        };
+        let Some(data) = data else { continue };
+        for (key, value, default) in
+            [(BLEND_DETILE, detile.clamp(0.0, 1.0), 0.0), (BLEND_UV_SCALE, uv_scale.max(0.001), 1.0), (BLEND_DETILE_SHARPEN, sharpen.clamp(0.0, 1.0), 0.5)]
+        {
+            if (value - default).abs() < 1e-6 {
+                data.props.remove(key);
+            } else {
+                data.props.insert(key.into(), format!("{value:.3}"));
+            }
+        }
+
+        n += 1;
+    }
+
+    n
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -455,8 +489,8 @@ mod tests {
 
     fn terrain() -> Terrain {
         let mut t = Terrain::new(DVec3::ZERO, [33, 33], 16.0, "grass");
-        t.layers.push(TerrainLayer { material: "rock".into(), tile: 128.0 });
-        t.layers.push(TerrainLayer { material: "dirt".into(), tile: 128.0 });
+        t.layers.push(TerrainLayer::new("rock", 128.0));
+        t.layers.push(TerrainLayer::new("dirt", 128.0));
         t
     }
 
@@ -523,5 +557,23 @@ mod tests {
         let colors = &m.brush(id).unwrap().faces[top].data.colors;
         assert_eq!(colors.iter().filter(|c| c[3] > 0.99).count(), 1, "only the corner under the brush");
         assert!(colors.iter().all(|c| c[0] == 1.0), "tint stays white");
+    }
+
+    #[test]
+    fn blend_tiling_options_are_written_and_cleared() {
+        let mut m = Map::new();
+        let l = m.default_layer();
+        let id = m.insert(l, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "bricks").unwrap()));
+        let top = m.brush(id).unwrap().faces.iter().position(|f| f.plane.normal.y > 0.5).unwrap();
+        let props = |m: &Map| m.brush(id).unwrap().faces[top].data.props.clone();
+        assert_eq!(set_blend_options(&mut m, &[(id, top)], 0.75, 4.0, 0.9), 1);
+        assert_eq!(props(&m).get(BLEND_DETILE).map(String::as_str), Some("0.750"));
+        assert_eq!(props(&m).get(BLEND_UV_SCALE).map(String::as_str), Some("4.000"));
+        assert_eq!(props(&m).get(BLEND_DETILE_SHARPEN).map(String::as_str), Some("0.900"));
+
+        // Back to the defaults drops the properties again, so plain faces stay plain in the saved file.
+        set_blend_options(&mut m, &[(id, top)], 0.0, 1.0, 0.5);
+        assert!(!props(&m).contains_key(BLEND_DETILE) && !props(&m).contains_key(BLEND_UV_SCALE));
+        assert!(!props(&m).contains_key(BLEND_DETILE_SHARPEN), "the default crispness is not written either");
     }
 }

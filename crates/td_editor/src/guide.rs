@@ -659,6 +659,11 @@ pub fn chapters() -> Vec<Chapter> {
                 .keys([("Lit preview", Action::SetShade(Shade::Lit))]),
                 step(
                     Anchor::Screen,
+                    "Keep a big map fast",
+                    "Set chunk_streaming to 1 on worldspawn (Map Properties) and the build splits the map into chunks and only draws the ones near the camera. chunk_size sets the cell and load_radius how far chunks stay drawn, both in map units.\n\nIt follows whatever camera is current, so your own player works with no setup, and falls back to info_player_start until a camera exists. Only meshes stop drawing, collision and scripts keep running everywhere.\n\nThe streamer node emits area_loaded(key, bounds) and area_unloaded(key, bounds), and has is_area_loaded(point), so GDScript and C# can follow the player without tracking distances themselves.\n\nScatter sets have their own chunk size in the Scatter Palette, and overlapping solids drop the faces buried inside each other automatically.",
+                ),
+                step(
+                    Anchor::Screen,
                     "Where to go next",
                     "• Help > Guide keeps every chapter as a searchable page, with tips at the end.\n• docs/tools.md, docs/gameplay.md and docs/mcp.md in the repository go deeper.\n• Hover buttons and panel tabs for tooltips.\n\nHappy mapping!",
                 ),
