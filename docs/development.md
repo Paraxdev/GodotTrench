@@ -9,6 +9,12 @@ cargo run -p gt_editor --release -- map.gtm # open a map
 
 Requires a GPU with Vulkan, DX12 or Metal support. On Linux the window needs X11 or Wayland.
 
+## Formatting
+
+All Rust is formatted with the settings in [rustfmt.toml](../rustfmt.toml), so hand written and AI written commits share one
+style. Run `tools/fmt --install` once per clone to enable the pre-commit hook in [.githooks](../.githooks); it formats staged
+Rust before each commit. `tools/fmt` formats the workspace on demand and `tools/fmt --check` verifies it, which is what CI runs.
+
 ## Tests
 
 ```sh
@@ -39,3 +45,7 @@ GitHub Actions runs fmt, clippy and the Rust tests on Linux and Windows, the end
 and the Godot addon tests. Every green push to `main` replaces the
 [rolling alpha](https://github.com/Paraxdev/GodotTrench/releases/tag/alpha) with editor builds for Linux, Windows and macOS,
 the addon zip and the demo project.
+
+The same push also uploads the three editor builds to [itch.io](https://paraxdev.itch.io/godottrench) with
+[butler](https://itch.io/docs/butler/) on the `linux`, `windows` and `mac` channels. Add a repository secret named
+`BUTLER_API_KEY` (a butler API key from itch) to enable it; the step skips itself while the secret is absent.

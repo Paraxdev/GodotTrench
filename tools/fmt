@@ -1,0 +1,15 @@
+#!/bin/sh
+# Applies the repo's unified Rust formatting (rustfmt.toml) across the whole workspace, so hand written and
+# AI written code land in one consistent style.
+#
+#   tools/fmt            format every crate in place
+#   tools/fmt --check    verify formatting, exit 1 when anything would change (this is what CI runs)
+#   tools/fmt --install  point git at .githooks so the pre-commit formatter runs on this clone
+set -eu
+cd "$(dirname "$0")/.."
+case "${1:-}" in
+  --check) exec cargo fmt --all --check ;;
+  --install) git config core.hooksPath .githooks && echo "pre-commit formatter installed (core.hooksPath=.githooks)" ;;
+  "") exec cargo fmt --all ;;
+  *) echo "usage: tools/fmt [--check|--install]" >&2; exit 2 ;;
+esac
