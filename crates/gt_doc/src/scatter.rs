@@ -589,7 +589,7 @@ pub fn preset(name: &str) -> Option<(ScatterKind, Vec<ScatterItem>)> {
         ),
         "pines" => (ScatterKind::Props, vec![glb("trees/pine", 1.0, [0.4, 0.75], 110.0, 0.0, 3.0, 6.0)]),
         // The original Blockbench trees, kept as a low poly option.
-        "low-poly" => (
+        "low-poly trees" => (
             ScatterKind::Props,
             vec![
                 item("pine", 3.0, [0.8, 1.35], 120.0, 0.0, 3.0, 6.0),
@@ -598,16 +598,9 @@ pub fn preset(name: &str) -> Option<(ScatterKind, Vec<ScatterItem>)> {
             ],
         ),
         "undergrowth" => (ScatterKind::Props, vec![item("bush", 3.0, [0.7, 1.4], 60.0, 0.4, 0.0, 2.0), item("fern", 2.0, [0.8, 1.3], 40.0, 0.7, 6.0, 1.0)]),
-        "rocks" => (ScatterKind::Props, vec![item("rock", 3.0, [0.8, 2.4], 90.0, 0.8, 12.0, 6.0), item("boulder", 1.0, [0.9, 1.6], 160.0, 0.6, 8.0, 10.0)]),
-        "boulders" => (
-            ScatterKind::Props,
-            vec![
-                glb("rocks/rock_small_01", 4.0, [0.8, 1.4], 28.0, 0.4, 8.0, 1.0),
-                glb("rocks/rock_medium_01", 3.0, [0.8, 1.3], 80.0, 0.35, 6.0, 2.0),
-                glb("rocks/rock_large_01", 1.5, [0.8, 1.2], 170.0, 0.3, 5.0, 3.0),
-                glb("rocks/rock_gigantic_01", 0.5, [0.8, 1.1], 380.0, 0.25, 4.0, 4.0),
-            ],
-        ),
+        // The two Blockbench stones (the boulder is mossy) split into a small and a large size set.
+        "rocks" => (ScatterKind::Props, vec![item("rock", 3.0, [0.8, 1.8], 80.0, 0.8, 12.0, 5.0), item("boulder", 1.0, [0.8, 1.3], 130.0, 0.6, 8.0, 8.0)]),
+        "boulders" => (ScatterKind::Props, vec![item("boulder", 3.0, [1.6, 2.8], 240.0, 0.5, 8.0, 14.0), item("rock", 1.0, [1.4, 2.2], 150.0, 0.7, 10.0, 8.0)]),
         "grass" => (
             ScatterKind::Foliage,
             vec![
@@ -621,7 +614,7 @@ pub fn preset(name: &str) -> Option<(ScatterKind, Vec<ScatterItem>)> {
 }
 
 pub const NATURE_DIR: &str = "res://godottrench/nature";
-pub const PRESETS: [&str; 7] = ["forest", "pines", "low-poly", "undergrowth", "rocks", "boulders", "grass"];
+pub const PRESETS: [&str; 7] = ["forest", "pines", "low-poly trees", "undergrowth", "rocks", "boulders", "grass"];
 
 #[cfg(test)]
 mod tests {
@@ -689,17 +682,18 @@ mod tests {
             assert!(items.iter().all(|i| i.source.ends_with(".glb") && i.source.contains("/trees/")), "{name}: {items:?}");
         }
 
-        let (_, low) = preset("low-poly").unwrap();
+        let (_, low) = preset("low-poly trees").unwrap();
         assert!(low.iter().all(|i| i.source.ends_with(".bbmodel")), "{low:?}");
+        assert!(PRESETS.contains(&"low-poly trees"));
     }
 
     #[test]
-    fn boulders_preset_uses_the_glb_rock_sizes() {
-        let (kind, items) = preset("boulders").unwrap();
-        assert_eq!(kind, ScatterKind::Props);
-        assert_eq!(items.len(), 4);
-        assert!(items.iter().all(|i| i.source.ends_with(".glb") && i.source.contains("/rocks/")), "{items:?}");
-        assert!(PRESETS.contains(&"boulders"));
+    fn rocks_and_boulders_split_the_bbmodel_stones_by_size() {
+        let (_, rocks) = preset("rocks").unwrap();
+        let (_, boulders) = preset("boulders").unwrap();
+        assert!(rocks.iter().chain(&boulders).all(|i| i.source.ends_with(".bbmodel")), "stones stay Blockbench");
+        let biggest = |v: &[ScatterItem]| v.iter().map(|i| i.scale[1]).fold(0.0f64, f64::max);
+        assert!(biggest(&boulders) > biggest(&rocks), "boulders are the larger size set");
     }
 
     #[test]

@@ -544,7 +544,7 @@ mod tests {
     fn shipped_nature_gltf_assets_load() {
         // The scatter presets reference these, so a broken export must fail here, not silently scatter nothing.
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../godot/godottrench/nature");
-        for rel in ["trees/pine.glb", "trees/oak.glb", "trees/birch.glb", "trees/beech.glb", "rocks/rock_small_01.glb", "rocks/rock_gigantic_01.glb"] {
+        for rel in ["trees/pine.glb", "trees/oak.glb", "trees/birch.glb", "trees/beech.glb", "trees/willow.glb"] {
             let path = root.join(rel);
             let model = load(&path, 16.0).unwrap_or_else(|e| panic!("{rel}: {e}"));
             assert!(model.parts.iter().any(|p| !p.indices.is_empty()), "{rel} has no geometry");

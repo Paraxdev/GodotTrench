@@ -15,11 +15,13 @@ it uses, with their licenses. Everything below keeps its own license.
 | Ubuntu Light font | embedded in the editor through `epaint_default_fonts` | Ubuntu Font Licence 1.0 | Canonical Ltd. |
 | Noto Emoji font | embedded in the editor through `epaint_default_fonts` | SIL Open Font License 1.1 | Google Inc. |
 | emoji-icon-font | embedded in the editor through `epaint_default_fonts` | MIT | 2014 John Slegers |
+| [PS1/PSX Game Asset Pack](https://halfhuman.itch.io/ps1psx-game-asset-pack) | bark and leaf textures baked into the tree models in `godot/godottrench/nature/trees/*.glb` | see the [pack's itch.io page](https://halfhuman.itch.io/ps1psx-game-asset-pack) | halfhuman |
 
 The font license texts ship with the [epaint_default_fonts](https://crates.io/crates/epaint_default_fonts) crate.
 
 The showcase textures, the Blockbench nature and demo models, the demo maps and the example scripts were made for this
-project and fall under its MIT license.
+project and fall under its MIT license. The procedural tree meshes in `godot/godottrench/nature/trees` were generated for
+this project (MIT), but the textures baked into them come from the PS1/PSX Game Asset Pack listed above and keep its license.
 
 ## Rust crates
 
