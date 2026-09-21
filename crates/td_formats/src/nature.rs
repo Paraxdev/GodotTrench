@@ -77,15 +77,28 @@ const FULL: [f64; 4] = [0.0, 0.0, 32.0, 32.0];
 fn tree_atlas(bark: [f32; 3], leaf: [f32; 3], striped: bool, seed: u32) -> RgbaImage {
     RgbaImage::from_fn(32, 32, |x, y| {
         if x < 8 {
-            let stripe = striped && hash(0, y as i64 / 3, seed) > 0.72 && x % 7 != 0;
-            let k = 0.8 + ((x % 4 == 0) as u8 as f32) * -0.25 + hash(x as i64, y as i64, seed) * 0.2;
-            return if stripe { shade([40.0, 36.0, 34.0], 1.0, 255) } else { shade(bark, k, 255) };
+            // Birch keeps its dark stripes across pale bark.
+            if striped && hash(0, y as i64 / 3, seed) > 0.72 && x % 7 != 0 {
+                return shade([40.0, 36.0, 34.0], 1.0, 255);
+            }
+
+            // Vertical furrows and column ridges read as bark grain, darkened by the odd knot.
+            let furrow = value_noise(x * 3, y, 5, seed);
+            let ridge = ((x as f32 * 1.7).sin() * 0.5 + 0.5) * 0.12;
+            let knot = if value_noise(x, y, 7, seed + 9) > 0.9 { 0.6 } else { 1.0 };
+            let k = (0.6 + furrow * 0.5 + ridge + hash(x as i64, y as i64, seed) * 0.12) * knot;
+            return shade(bark, k.clamp(0.35, 1.3), 255);
         }
 
-        let n = value_noise(x * 2, y * 2, 8, seed + 1);
-        let k = 0.7 + n * 0.5 + if hash(x as i64, y as i64, seed + 2) > 0.85 { 0.2 } else { 0.0 };
-        let hole = hash(x as i64 * 3, y as i64 * 5, seed + 3) < 0.08;
-        shade(leaf, k, if hole { 0 } else { 255 })
+        // Foliage: broad leaf clumps lit brighter up top, a fine speckle over them, and a ragged rim of holes.
+        let clump = value_noise(x, y, 5, seed + 1);
+        let detail = value_noise(x * 3, y * 3, 12, seed + 4);
+        let light = 1.0 - (y as f32 / 32.0) * 0.25;
+        let highlight = if hash(x as i64, y as i64, seed + 2) > 0.9 { 0.18 } else { 0.0 };
+        let k = (0.55 + clump * 0.55 + detail * 0.2 + highlight) * light;
+        let edge = ((x as f32 - 20.0).abs() / 12.0).min(1.0);
+        let hole = hash(x as i64 * 3, y as i64 * 5, seed + 3) < 0.05 + edge * 0.12;
+        shade(leaf, k.clamp(0.3, 1.4), if hole { 0 } else { 255 })
     })
 }
 
