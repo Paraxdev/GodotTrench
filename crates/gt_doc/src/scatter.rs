@@ -565,8 +565,31 @@ pub fn preset(name: &str) -> Option<(ScatterKind, Vec<ScatterItem>)> {
         tilt,
         sink,
     };
+    // The procedural rock and tree packs ship as glTF in their own subfolders.
+    let glb = |file: &str, weight: f64, scale: [f64; 2], spacing: f64, align: f64, tilt: f64, sink: f64| ScatterItem {
+        source: format!("{NATURE_DIR}/{file}.glb"),
+        weight,
+        scale,
+        spacing,
+        align,
+        random_yaw: true,
+        tilt,
+        sink,
+    };
     Some(match name {
+        // The procedural glTF trees are authored larger than the map scale, so they sit around 0.5 (see the pack readme).
         "forest" => (
+            ScatterKind::Props,
+            vec![
+                glb("trees/pine", 3.0, [0.45, 0.7], 120.0, 0.0, 3.0, 6.0),
+                glb("trees/oak", 2.0, [0.5, 0.7], 150.0, 0.0, 2.0, 4.0),
+                glb("trees/birch", 1.0, [0.45, 0.65], 100.0, 0.0, 4.0, 4.0),
+                glb("trees/beech", 1.0, [0.45, 0.7], 130.0, 0.0, 2.0, 4.0),
+            ],
+        ),
+        "pines" => (ScatterKind::Props, vec![glb("trees/pine", 1.0, [0.4, 0.75], 110.0, 0.0, 3.0, 6.0)]),
+        // The original Blockbench trees, kept as a low poly option.
+        "low-poly" => (
             ScatterKind::Props,
             vec![
                 item("pine", 3.0, [0.8, 1.35], 120.0, 0.0, 3.0, 6.0),
@@ -574,9 +597,17 @@ pub fn preset(name: &str) -> Option<(ScatterKind, Vec<ScatterItem>)> {
                 item("birch", 1.0, [0.8, 1.2], 100.0, 0.0, 4.0, 4.0),
             ],
         ),
-        "pines" => (ScatterKind::Props, vec![item("pine", 1.0, [0.75, 1.4], 110.0, 0.0, 3.0, 6.0)]),
         "undergrowth" => (ScatterKind::Props, vec![item("bush", 3.0, [0.7, 1.4], 60.0, 0.4, 0.0, 2.0), item("fern", 2.0, [0.8, 1.3], 40.0, 0.7, 6.0, 1.0)]),
         "rocks" => (ScatterKind::Props, vec![item("rock", 3.0, [0.8, 2.4], 90.0, 0.8, 12.0, 6.0), item("boulder", 1.0, [0.9, 1.6], 160.0, 0.6, 8.0, 10.0)]),
+        "boulders" => (
+            ScatterKind::Props,
+            vec![
+                glb("rocks/rock_small_01", 4.0, [0.8, 1.4], 28.0, 0.4, 8.0, 1.0),
+                glb("rocks/rock_medium_01", 3.0, [0.8, 1.3], 80.0, 0.35, 6.0, 2.0),
+                glb("rocks/rock_large_01", 1.5, [0.8, 1.2], 170.0, 0.3, 5.0, 3.0),
+                glb("rocks/rock_gigantic_01", 0.5, [0.8, 1.1], 380.0, 0.25, 4.0, 4.0),
+            ],
+        ),
         "grass" => (
             ScatterKind::Foliage,
             vec![
@@ -590,7 +621,7 @@ pub fn preset(name: &str) -> Option<(ScatterKind, Vec<ScatterItem>)> {
 }
 
 pub const NATURE_DIR: &str = "res://godottrench/nature";
-pub const PRESETS: [&str; 5] = ["forest", "pines", "undergrowth", "rocks", "grass"];
+pub const PRESETS: [&str; 7] = ["forest", "pines", "low-poly", "undergrowth", "rocks", "boulders", "grass"];
 
 #[cfg(test)]
 mod tests {
@@ -649,6 +680,26 @@ mod tests {
         let back: Scatter = serde_json::from_str(&text).unwrap();
         assert_eq!(back.instances.len(), set.instances.len());
         assert!((back.instances[0].position - set.instances[0].position).length() < 0.01);
+    }
+
+    #[test]
+    fn default_tree_presets_are_procedural_glb() {
+        for name in ["forest", "pines"] {
+            let (_, items) = preset(name).unwrap();
+            assert!(items.iter().all(|i| i.source.ends_with(".glb") && i.source.contains("/trees/")), "{name}: {items:?}");
+        }
+
+        let (_, low) = preset("low-poly").unwrap();
+        assert!(low.iter().all(|i| i.source.ends_with(".bbmodel")), "{low:?}");
+    }
+
+    #[test]
+    fn boulders_preset_uses_the_glb_rock_sizes() {
+        let (kind, items) = preset("boulders").unwrap();
+        assert_eq!(kind, ScatterKind::Props);
+        assert_eq!(items.len(), 4);
+        assert!(items.iter().all(|i| i.source.ends_with(".glb") && i.source.contains("/rocks/")), "{items:?}");
+        assert!(PRESETS.contains(&"boulders"));
     }
 
     #[test]

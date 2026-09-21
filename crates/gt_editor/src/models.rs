@@ -541,6 +541,17 @@ mod tests {
     }
 
     #[test]
+    fn shipped_nature_gltf_assets_load() {
+        // The scatter presets reference these, so a broken export must fail here, not silently scatter nothing.
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../godot/godottrench/nature");
+        for rel in ["trees/pine.glb", "trees/oak.glb", "trees/birch.glb", "trees/beech.glb", "rocks/rock_small_01.glb", "rocks/rock_gigantic_01.glb"] {
+            let path = root.join(rel);
+            let model = load(&path, 16.0).unwrap_or_else(|e| panic!("{rel}: {e}"));
+            assert!(model.parts.iter().any(|p| !p.indices.is_empty()), "{rel} has no geometry");
+        }
+    }
+
+    #[test]
     fn autofit_grows_tiny_metric_models() {
         // A 2.4u toy car at 32 units/metre fits to the 2m (64u) target.
         let s = placement_scale(&aabb(2.4), 32.0, true, 1.0);
