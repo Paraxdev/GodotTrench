@@ -75,4 +75,4 @@ the toolbar, menu and outliner icons are from [Lucide](https://lucide.dev).
 
 # License
 
-GodotTrench is MIT licensed, see [LICENSE.md](LICENSE.md). third party code and assets are listed with their licenses in [LICENSES.md](LICENSES.md).
+GodotTrench is AGPLv3 licensed, see [LICENSE.md](LICENSE.md). third party code and assets are listed with their licenses in [LICENSES.md](LICENSES.md).
