@@ -224,6 +224,16 @@ impl MeshBatch {
     pub fn materials(&self) -> impl Iterator<Item = &String> {
         self.by_material.keys()
     }
+
+    /// Copy with every vertex position shifted by `offset`. Used to move a cached drag preview without
+    /// rebuilding it. A translation leaves normals unchanged.
+    pub fn translated(&self, offset: [f32; 3]) -> MeshBatch {
+        let mut out = MeshBatch { vertices: self.vertices.clone(), indices: self.indices.clone(), by_material: self.by_material.clone() };
+        for v in &mut out.vertices {
+            v.pos = [v.pos[0] + offset[0], v.pos[1] + offset[1], v.pos[2] + offset[2]];
+        }
+        out
+    }
 }
 
 pub struct GpuMesh {

@@ -358,6 +358,7 @@ impl Viewport {
                     cx.state.last_bounds = b;
                 }
             }
+            cx.state.drag_preview = None;
             cx.state.doc.commit();
         }
 
@@ -482,12 +483,20 @@ impl Viewport {
                 }
                 let delta = state.snap(delta);
                 state.doc.reset_transaction();
-                if delta == DVec3::ZERO && !duplicate {
-                    return;
-                }
                 if *duplicate {
+                    state.drag_preview = None;
+                    if delta == DVec3::ZERO {
+                        return;
+                    }
                     state.doc.edit("Duplicate", |m, s| ops::duplicate_selection(m, s, delta, opts));
                 } else {
+                    // Render the moved geometry from its pre-drag shape translated on the GPU, so heavy
+                    // meshes are not re-tessellated every frame.
+                    let nodes = state.doc.selection.geometry(&state.doc.map).into_iter().collect();
+                    state.drag_preview = Some(crate::state::DragPreview { nodes, offset: delta });
+                    if delta == DVec3::ZERO {
+                        return;
+                    }
                     state.doc.edit("Move", |m, s| ops::translate_selection(m, s, delta, opts));
                 }
                 state.set_status(format!("Move {:.3} {:.3} {:.3}", delta.x, delta.y, delta.z));

@@ -87,6 +87,19 @@ impl FaceCull {
         out
     }
 
+    /// Drops the cached visible pieces of `ids` so they draw whole, returning those that had any.
+    /// Used to defer culling of geometry that is being dragged: the culled result is invisible mid-drag
+    /// and recomputing it every frame is the dominant cost on dense meshes.
+    pub fn clear_pieces(&mut self, ids: &BTreeSet<NodeId>) -> BTreeSet<NodeId> {
+        let mut changed = BTreeSet::new();
+        for id in ids {
+            if self.pieces.remove(id).is_some() {
+                changed.insert(*id);
+            }
+        }
+        changed
+    }
+
     /// Refreshes the faces of `dirty` nodes and everything sharing a plane with them. Returns the nodes whose visible pieces changed.
     pub fn update(&mut self, map: &Map, game: &GameConfig, opaque: &dyn Fn(&str) -> bool, dirty: &BTreeSet<NodeId>, full: bool) -> BTreeSet<NodeId> {
         let nodes: Vec<NodeId> = if full {
@@ -123,10 +136,23 @@ impl FaceCull {
                 changed.insert(*id);
             }
         }
+        // Direct lookup from (node, face) to its CullFace. Without it, resolving a plane's members
+        // scans the whole node face list per member, which is O(faces^2) on a dense model. Only the
+        // nodes that share a touched plane are indexed, so ordinary small edits stay cheap.
+        let member_ids: BTreeSet<NodeId> =
+            touched.keys().filter_map(|k| self.planes.get(k)).flat_map(|m| m.iter().map(|(id, _)| *id)).collect();
+        let mut index: HashMap<(NodeId, usize), &CullFace> = HashMap::new();
+        for id in &member_ids {
+            if let Some(faces) = self.faces.get(id) {
+                for f in faces {
+                    index.insert((*id, f.face), f);
+                }
+            }
+        }
         for (key, areas) in touched {
             let Some(members) = self.planes.get(&key) else { continue };
             let members: Vec<(NodeId, &CullFace)> =
-                members.iter().filter_map(|(id, fi)| self.faces.get(id).and_then(|faces| faces.iter().find(|f| f.face == *fi)).map(|f| (*id, f))).collect();
+                members.iter().filter_map(|(id, fi)| index.get(&(*id, *fi)).map(|f| (*id, *f))).collect();
             let near = |b: &Aabb| areas.iter().any(|a| a.expanded(COPLANAR_DIST).intersects(b));
             let mut results: Vec<(NodeId, usize, Option<Pieces>)> = Vec::new();
             for (id, face) in members.iter().filter(|(_, f)| near(&f.bounds)) {
