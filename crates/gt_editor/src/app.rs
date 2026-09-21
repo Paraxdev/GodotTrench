@@ -67,6 +67,8 @@ pub struct App {
     ui_scale_draft: Option<f32>,
     /// The product logo drawn at the left of the menu bar.
     logo: egui::TextureHandle,
+    /// Last single scatter set the selection settled on, so selecting one activates it for painting only on change.
+    last_selected_scatter: Option<gt_core::NodeId>,
 }
 
 const PREFS_LABEL_WIDTH: f32 = 180.0;
@@ -475,6 +477,23 @@ impl App {
             tool_options_height: 0.0,
             ui_scale_draft: None,
             logo: crate::brand::texture(&cc.egui_ctx),
+            last_selected_scatter: None,
+        }
+    }
+
+    /// Selecting a single scatter set makes it the active paint target. Tracked on change so it does not fight a
+    /// "new set on a new layer" that clears the active set while a set stays selected.
+    fn sync_active_scatter(&mut self) {
+        let mut it = self.state.doc.selection.nodes.iter().copied();
+        let selected = match (it.next(), it.next()) {
+            (Some(id), None) => self.state.doc.map.scatter(id).is_some().then_some(id),
+            _ => None,
+        };
+        if selected != self.last_selected_scatter {
+            self.last_selected_scatter = selected;
+            if let Some(id) = selected {
+                self.state.active_scatter = Some(id);
+            }
         }
     }
 
@@ -1839,6 +1858,8 @@ impl eframe::App for App {
                 self.project_generation += 1;
             }
         }
+
+        self.sync_active_scatter();
 
         if let Some(bounds) = self.state.focus_request.take() {
             for v in &mut self.viewports {
