@@ -594,3 +594,36 @@ fn vertex_gizmo_moves_a_vertex_along_one_axis() {
     assert!((after[0] - 64.0).abs() < 2.0, "x corner should move +32 to 64 via the gizmo, before {before:?} after {after:?}");
     assert!((after[1] - before[1]).abs() < 1e-3 && (after[2] - before[2]).abs() < 1e-3, "only x should change, after {after:?}");
 }
+
+#[test]
+#[ignore]
+fn scatter_materials_and_scattering_onto_a_scatter() {
+    let ed = Editor::launch("scatter_materials");
+    ed.box_brush([-512.0, -32.0, -512.0], [512.0, 0.0, 512.0]);
+    let rocks = ed.call("scatter", json!({ "op": "paint", "preset": "rocks", "center": [0, 0], "radius": 420, "density": 3, "seed": 4 }));
+    let rocks_id = rocks["set"]["id"].as_u64().unwrap();
+    assert!(rocks["placed"].as_u64().unwrap() > 0, "rocks were painted");
+
+    // A material on the set retextures every model in it.
+    ed.call("scatter", json!({ "op": "material", "id": rocks_id, "material": "showcase/snow" }));
+    let node = ed.call("get_node", json!({ "id": rocks_id }));
+    assert_eq!(node["material"], "showcase/snow");
+    assert!(node["items"][0].get("material").is_none(), "no entry override yet");
+
+    // A material on one palette entry wins for that entry only.
+    ed.call("scatter", json!({ "op": "material", "id": rocks_id, "item": 0, "material": "showcase/gold" }));
+    let node = ed.call("get_node", json!({ "id": rocks_id }));
+    assert_eq!(node["items"][0]["material"], "showcase/gold", "entry 0 is retextured");
+    assert!(node["items"][1].get("material").is_none(), "entry 1 still follows the set");
+    assert_eq!(node["material"], "showcase/snow", "the set keeps its own material");
+    assert_eq!(ed.call_err("scatter", json!({ "op": "material", "id": rocks_id, "item": 9 })), "the set has no palette entry 9");
+
+    // Grass that targets the rock set lands on the rocks, above the floor they stand on.
+    let grass = ed.call("scatter", json!({ "op": "new_set", "preset": "grass", "name": "on_rocks", "targets": [rocks_id] }));
+    let grass_id = grass["id"].as_u64().unwrap();
+    let painted = ed.call("scatter", json!({ "op": "paint", "id": grass_id, "center": [0, 0], "radius": 420, "density": 12, "seed": 7 }));
+    assert!(painted["placed"].as_u64().unwrap() > 0, "grass landed on the rocks");
+    let blades = ed.call("get_node", json!({ "id": grass_id }));
+    let above = blades["instances"].as_array().unwrap().iter().filter(|i| i[2].as_f64().unwrap() > 0.0).count();
+    assert_eq!(above, blades["instances"].as_array().unwrap().len(), "every blade sits on a rock, not on the floor");
+}

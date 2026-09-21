@@ -855,8 +855,8 @@ impl ScatterPaletteWindow {
             ui.separator();
             let mut remove = None;
             egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
-                egui::Grid::new("palette_items").num_columns(9).striped(true).spacing([12.0, 6.0]).show(ui, |ui| {
-                    for h in ["model", "weight", "scale", "", "spread", "align", "tilt", "sink", ""] {
+                egui::Grid::new("palette_items").num_columns(10).striped(true).spacing([12.0, 6.0]).show(ui, |ui| {
+                    for h in ["model", "weight", "scale", "", "spread", "align", "tilt", "sink", "material", ""] {
                         ui.label(RichText::new(h).strong());
                     }
 
@@ -878,6 +878,15 @@ impl ScatterPaletteWindow {
                         ui.add(egui::Slider::new(&mut item.align, 0.0..=1.0).show_value(false)).on_hover_text("Upright to aligned with the surface");
                         ui.add(egui::DragValue::new(&mut item.tilt).range(0.0..=90.0).suffix("°"));
                         ui.add(egui::DragValue::new(&mut item.sink).range(-256.0..=256.0));
+                        let mut material = item.material.clone().unwrap_or_default();
+                        if ui
+                            .add(egui::TextEdit::singleline(&mut material).hint_text("model's").desired_width(90.0))
+                            .on_hover_text("Material drawn instead of the model's own, empty keeps it")
+                            .changed()
+                        {
+                            item.material = (!material.trim().is_empty()).then(|| material.trim().to_string());
+                        }
+
                         if ui.small_button("×").clicked() {
                             remove = Some(k);
                         }
