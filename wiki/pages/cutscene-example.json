@@ -1,0 +1,82 @@
+{
+  "title": "Example: scripted cutscene",
+  "cards": [
+    {
+      "id": "c1",
+      "type": "text",
+      "x": 48,
+      "y": 40,
+      "w": 780,
+      "h": 362,
+      "z": 0,
+      "format": "markdown",
+      "md": "# Example: a scripted cutscene\n\nA whole Half-Life style scripted scene, built entirely from I/O. The player walks into a `trigger_once` (`start_zone`) which `start`s a `logic_sequence` (`cutscene`). The sequence fires five steps 1.5s apart:\n\n1. `step_1 -> hint.show` — a world `game_text` \"Follow the guide\" appears.\n2. `step_2 -> guide.start` — the `npc_walker` walks its `path_corner` chain.\n3. `step_3 -> barrel.ignite` — the explosive `prop_physics` barrel burns its fuse, then breaks and blasts.\n4. `step_4 -> lamp.turn_on` — the `light` switches on.\n5. `step_5 -> exit_door.open` — the sliding `func_door` opens.\n\nSeparately, the barrel's `broken` output runs a `logic_script` that reads the player's health via `!player` and updates the HUD. The explosion hurts the player, so the readout shows the reduced HP.\n"
+    },
+    {
+      "id": "c2",
+      "type": "text",
+      "x": 48,
+      "y": 424,
+      "w": 780,
+      "h": 132,
+      "z": 1,
+      "format": "markdown",
+      "md": "## The scene script\n\nThe wiring lives in the `.gtm` map as entity I/O, not in GDScript. The scene script just builds the map and spawns the player:\n"
+    },
+    {
+      "id": "c3",
+      "type": "code",
+      "x": 48,
+      "y": 578,
+      "w": 780,
+      "h": 377,
+      "z": 2,
+      "lang": "gdscript",
+      "code": "extends Node3D\nconst PLAYER := preload(\"res://demo/player.tscn\")\nconst MAP := \"res://demo/maps/scripted_scene.gtm\"\nconst SETTINGS := \"res://demo/demo_map_settings.tres\"\n\nfunc _ready() -> void:\n    add_child(GodotTrenchDebugOverlay.new())      # F3 I/O overlay\n    var map := FuncGodotMap.new()\n    map.map_settings = load(SETTINGS)\n    map.local_map_file = MAP\n    add_child(map)\n    map.build()                                    # brushes + entities + I/O\n    var player := PLAYER.instantiate()\n    add_child(player)\n    var spawn := find_spawn(map)\n    if spawn:\n        player.global_transform = Transform3D(\n            Basis(Vector3.UP, spawn.global_rotation.y),\n            spawn.global_position + Vector3.UP * 0.1)"
+    },
+    {
+      "id": "c4",
+      "type": "text",
+      "x": 48,
+      "y": 977,
+      "w": 780,
+      "h": 109,
+      "z": 3,
+      "format": "markdown",
+      "md": "## The sequence wiring\n\nThe load bearing part, from the readable build script for the map. This is what scripts the cutscene:\n"
+    },
+    {
+      "id": "c5",
+      "type": "code",
+      "x": 48,
+      "y": 1108,
+      "w": 780,
+      "h": 314,
+      "z": 4,
+      "lang": "json",
+      "code": "{ \"classname\": \"logic_sequence\",\n  \"properties\": { \"targetname\": \"cutscene\", \"steps\": \"5\", \"interval\": \"1.5\" },\n  \"outputs\": [\n    { \"output\": \"step_1\", \"target\": \"hint\",      \"input\": \"show\" },\n    { \"output\": \"step_2\", \"target\": \"guide\",     \"input\": \"start\" },\n    { \"output\": \"step_3\", \"target\": \"barrel\",    \"input\": \"ignite\" },\n    { \"output\": \"step_4\", \"target\": \"lamp\",      \"input\": \"turn_on\" },\n    { \"output\": \"step_5\", \"target\": \"exit_door\", \"input\": \"open\" } ] }\n\n{ \"classname\": \"trigger_once\",\n  \"properties\": { \"targetname\": \"start_zone\", \"filter_group\": \"player\" },\n  \"outputs\": [ { \"output\": \"triggered\", \"target\": \"cutscene\", \"input\": \"start\" } ] }\n\n{ \"classname\": \"prop_physics\",\n  \"properties\": { \"targetname\": \"barrel\", \"explosive\": \"1\", \"health\": \"5\" },\n  \"outputs\": [ { \"output\": \"broken\", \"target\": \"hp_readout\", \"input\": \"run\" } ] }"
+    },
+    {
+      "id": "c6",
+      "type": "text",
+      "x": 48,
+      "y": 1444,
+      "w": 780,
+      "h": 109,
+      "z": 5,
+      "format": "markdown",
+      "md": "## Reading player HP after the blast\n\nThe inline `logic_script` (`hp_readout`) reads the player through `!player` and writes the HUD text:\n"
+    },
+    {
+      "id": "c7",
+      "type": "code",
+      "x": 48,
+      "y": 1575,
+      "w": 780,
+      "h": 152,
+      "z": 6,
+      "lang": "gdscript",
+      "code": "var players = io.find_targets(this, \"!player\", null)\nif players.is_empty(): return\nvar hp = int(players[0].health)\nfor label in io.find_targets(this, \"hpmsg\", null):\n    label.set_text(\"HP \" + str(hp))\n    label.show()"
+    }
+  ]
+}

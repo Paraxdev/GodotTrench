@@ -1,0 +1,49 @@
+{
+  "title": "Getting started",
+  "cards": [
+    {
+      "id": "c1",
+      "type": "text",
+      "x": 48,
+      "y": 40,
+      "w": 780,
+      "h": 236,
+      "z": 0,
+      "format": "markdown",
+      "md": "# Getting started\n\n**GodotTrench** is a brush based level editor for Godot, written in Rust and inspired by TrenchBroom and Hammer++. You build maps from brushes, meshes, terrains and entities, save them as `.gtm` files inside your Godot project, and the **FuncGodot (GodotTrench)** addon turns them into scenes: add a `FuncGodotMap` node, point it at a `.gtm` file, and press **Build Map**. Brushes become meshes with collision, entities become nodes with their scripts and connected outputs.\n\nThis wiki reproduces the in editor help and reference so it is searchable and always at hand.\n"
+    },
+    {
+      "id": "c2",
+      "type": "text",
+      "x": 48,
+      "y": 298,
+      "w": 780,
+      "h": 270,
+      "z": 1,
+      "format": "markdown",
+      "md": "## Set up a Godot project\n\n- You need **Godot 4.7+** (the .NET build if you want C# entities).\n- Enable **FuncGodot (GodotTrench)** in *Project Settings > Plugins*.\n- Put textures in `res://textures`.\n- The plugin writes `godottrench_game.json`, or run *Project > Tools > GodotTrench: Export Game Config*. The editor reads it when you open the project folder.\n- GodotTrench finds Godot via the `GODOT` env var, your PATH, or the usual install folders, otherwise set it in *File > Preferences*.\n- The status bar shows **\"Loaded game config\"** when the editor is connected to your project.\n"
+    },
+    {
+      "id": "c3",
+      "type": "text",
+      "x": 48,
+      "y": 590,
+      "w": 780,
+      "h": 247,
+      "z": 2,
+      "format": "markdown",
+      "md": "## A first room, in short\n\n1. With the **Select** tool, left drag in a 2D view to draw a box brush.\n2. Drag to move it (hold **Alt** to move vertically in 3D, **Ctrl** to drag out a copy).\n3. Shift drag a face to resize it, **Ctrl+Shift** drag to extrude.\n4. **Hollow** a brush to turn it into a room with walls.\n5. Apply a material from the **Materials** panel.\n6. **Save** the `.gtm` inside your Godot project. If the Godot editor is open it rebuilds the map automatically.\n"
+    },
+    {
+      "id": "c4",
+      "type": "text",
+      "x": 48,
+      "y": 859,
+      "w": 780,
+      "h": 270,
+      "z": 3,
+      "format": "markdown",
+      "md": "## Handy tips\n\n- The **command palette** (`Ctrl+Shift+P` or `F1`) runs any command by typing part of its name.\n- `[` and `]` change the grid size. **F** frames the selection in every view.\n- **Ctrl+click** adds or removes objects from the selection. **Shift+click** picks a single face.\n- **Duplicate Linked** (`Ctrl+Shift+D`) keeps copies identical, great for repeated windows, pillars or lamps.\n- **Ctrl+H** hides the selection, **Ctrl+J** isolates it, *Show All* brings everything back.\n- The **Issues** panel catches broken brushes and outputs without a target before Godot does.\n- 32 map units = 1 meter by default, so a 128 unit tall room is 4 meters high.\n"
+    }
+  ]
+}

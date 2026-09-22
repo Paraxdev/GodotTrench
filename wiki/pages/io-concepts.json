@@ -1,0 +1,82 @@
+{
+  "title": "How entity I/O works",
+  "cards": [
+    {
+      "id": "c1",
+      "type": "text",
+      "x": 48,
+      "y": 40,
+      "w": 780,
+      "h": 259,
+      "z": 0,
+      "format": "markdown",
+      "md": "# How entity I/O works\n\nEntities are wired together the Hammer / Source way: when something happens on one entity (an **output**), it calls an **input** on another, for example a button opening a door. The runtime lives in `godottrench_io.gd` and `godottrench_output.gd`.\n\n**An output fires in three steps: output -> find_targets -> invoke.** Each configured output on an entity becomes a child `GodotTrenchOutput` node that connects to its parent's `output` signal. When the signal emits, the output node honors its `delay` and `times` settings, picks the first `Node` argument as the **activator**, resolves its targets, and calls the named input on each.\n"
+    },
+    {
+      "id": "c2",
+      "type": "text",
+      "x": 48,
+      "y": 321,
+      "w": 780,
+      "h": 362,
+      "z": 1,
+      "format": "markdown",
+      "md": "## Target selectors\n\nAn output's target can be:\n\n| Selector | Resolves to |\n| --- | --- |\n| `a_targetname` | every entity with that targetname (`*` suffix = prefix match) |\n| `@group` | every node in that group |\n| `/root/Game` | an absolute node path (autoloads, singletons) |\n| `!player` | the first node in the `player` group |\n| `!activator` / `!caller` | the node that started this chain |\n| `!self` | the emitting entity itself |\n\nNamed lookups are cached per map. After spawning or renaming named entities at runtime, call `GodotTrenchIO.invalidate(from)` to clear the cache.\n"
+    },
+    {
+      "id": "c3",
+      "type": "code",
+      "x": 48,
+      "y": 705,
+      "w": 780,
+      "h": 386,
+      "z": 2,
+      "lang": "gdscript",
+      "code": "static func find_targets(from: Node, target: String, activator: Node) -> Array[Node]:\n    match target:\n        \"!self\":\n            return [from.get_parent() if from is GodotTrenchOutput else from]\n        \"!activator\", \"!caller\":\n            return [activator] if activator else []\n        \"!player\":\n            var player := from.get_tree().get_first_node_in_group(&\"player\")\n            return [player] if player else []\n    if target.begins_with(\"@\"):\n        return from.get_tree().get_nodes_in_group(StringName(target.substr(1)))\n    if target.begins_with(\"/\"):\n        var node := from.get_node_or_null(NodePath(target))\n        return [node] if node else []\n    var named := _named_nodes(lookup_root(from))   # targetname cache\n    if target.ends_with(\"*\"):\n        var prefix := target.trim_suffix(\"*\")\n        # ... collect every named[key] whose key begins_with(prefix)\n    return named.get(target, [])"
+    },
+    {
+      "id": "c4",
+      "type": "text",
+      "x": 48,
+      "y": 1113,
+      "w": 780,
+      "h": 316,
+      "z": 3,
+      "format": "markdown",
+      "md": "## Passing values to inputs\n\n`invoke` first resolves the method name, trying the exact name then PascalCase then camelCase, so a C# `AddScore` matches the map input `add_score`. The output's **parameter** string becomes the arguments:\n\n- A JSON array like `[10, \"$activator\"]` spreads into several arguments.\n- Placeholders `$activator`, `$self` / `$caller`, `$position`, `$caller_name` are substituted.\n- Scalars are parsed (int, float, bool, `Vector3`) and coerced to each declared parameter type.\n- With no parameter, the activator node is passed into the first object argument.\n\nIf the input name is not a method but matches a property, it sets the property. Built in fallbacks always exist: `kill` (`queue_free`), `show` / `enable`, `hide` / `disable`, `toggle`.\n"
+    },
+    {
+      "id": "c5",
+      "type": "text",
+      "x": 48,
+      "y": 1451,
+      "w": 780,
+      "h": 132,
+      "z": 4,
+      "format": "markdown",
+      "md": "## Declaring an output on an entity\n\nAn entity just declares a `signal` and emits it. The runtime turns each wired connection into a `GodotTrenchOutput` that listens for it. This is the whole of `logic_relay`'s trigger path:\n"
+    },
+    {
+      "id": "c6",
+      "type": "code",
+      "x": 48,
+      "y": 1605,
+      "w": 780,
+      "h": 161,
+      "z": 5,
+      "lang": "gdscript",
+      "code": "@tool\nclass_name GTRelay extends Node3D\nsignal triggered(activator: Node)            # the \"triggered\" output\n\nfunc trigger(activator: Node = null) -> void:  # the \"trigger\" input\n    if enabled:\n        triggered.emit(activator)            # fires every wired output"
+    },
+    {
+      "id": "c7",
+      "type": "text",
+      "x": 48,
+      "y": 1788,
+      "w": 780,
+      "h": 201,
+      "z": 6,
+      "format": "markdown",
+      "md": "## Debugging\n\n- `GodotTrenchIO.events()` reports every fired output.\n- The in game `GodotTrenchDebugOverlay` shows fired outputs and trigger volumes (**F3**).\n- The editor's **Logic** panel previews wiring without launching Godot: pick a named entity and output, press **Fire**, and it lists each `output > target.input` step and flags targets that resolve to nothing. Runtime targets like `!player` and `@group` are shown but not resolved.\n"
+    }
+  ]
+}

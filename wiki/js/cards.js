@@ -261,9 +261,25 @@ function renderCode(card) {
 function renderImage(card) {
   const wrap = document.createElement("div");
   wrap.className = "card-media";
+
+  // Inline SVG markup takes precedence over a src. It is sanitized before it touches the DOM.
+  const svg = (card.svg || "").trim();
+  if (svg) {
+    if (window.DOMPurify) {
+      const clean = window.DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } });
+      const holder = document.createElement("div");
+      holder.className = "card-svg";
+      holder.innerHTML = clean;
+      wrap.appendChild(holder);
+    } else {
+      wrap.appendChild(placeholder("SVG needs the sanitizer to render."));
+    }
+    return wrap;
+  }
+
   const src = (card.src || "").trim();
   if (!src) {
-    wrap.appendChild(placeholder("No image yet. Select the card and set a src or upload one."));
+    wrap.appendChild(placeholder("No image yet. Paste an image or SVG, set a src, or upload one."));
     return wrap;
   }
   const img = document.createElement("img");

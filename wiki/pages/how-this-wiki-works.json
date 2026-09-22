@@ -1,0 +1,82 @@
+{
+  "title": "How this wiki works",
+  "cards": [
+    {
+      "id": "c1",
+      "type": "text",
+      "x": 48,
+      "y": 40,
+      "w": 780,
+      "h": 236,
+      "z": 0,
+      "format": "markdown",
+      "md": "# How this wiki works\n\nThis wiki is a small static site that lives in the repo under `wiki/` and is published by GitHub Pages. There is no build step and no framework: it is plain HTML, CSS and ES module JavaScript, with three libraries (marked, DOMPurify, highlight.js) loaded from a CDN with a vendored fallback.\n\nEvery page is a **board**: a free canvas of cards you position yourself. You edit the board on the live site and **Save** commits the JSON straight back to the repo through the GitHub API, so the published site updates on the next Pages build.\n"
+    },
+    {
+      "id": "c2",
+      "type": "text",
+      "x": 48,
+      "y": 298,
+      "w": 780,
+      "h": 316,
+      "z": 1,
+      "format": "markdown",
+      "md": "## Files\n\n- `index.html` — the shell: sidebar, toolbar, board and inspector.\n- `css/style.css` — the whole theme, one set of tokens on `:root`.\n- `js/app.js` — wires everything together (state, sidebar, save flow, paste, menus).\n- `js/board.js` — the canvas: renders cards, drag, resize, z order, freehand draw.\n- `js/cards.js` — the card model and per type renderers (text/code/image/video/table/shape/draw).\n- `js/inspector.js` — the per card editor on the right.\n- `js/github.js` — the only code that writes to the network, via the GitHub Contents API.\n- `js/icons.js` — inline Lucide icons.\n- `pages/index.json` — the page list with categories. `pages/<slug>.json` — one board each.\n- `assets/` — uploaded images and video, committed through the API.\n"
+    },
+    {
+      "id": "c3",
+      "type": "text",
+      "x": 48,
+      "y": 636,
+      "w": 780,
+      "h": 132,
+      "z": 2,
+      "format": "markdown",
+      "md": "## The card model\n\nA board is `{ title, cards: [...] }`. A card is an absolutely positioned box with a type and its own data:\n"
+    },
+    {
+      "id": "c4",
+      "type": "code",
+      "x": 48,
+      "y": 790,
+      "w": 780,
+      "h": 179,
+      "z": 3,
+      "lang": "javascript",
+      "code": "// A text card\n{ id: \"c_abc\", type: \"text\", x: 48, y: 40, w: 780, h: 200, z: 0,\n  format: \"markdown\",          // or \"bbcode\" | \"html\"\n  md: \"## Hello\\n\\nSome **markdown**.\" }\n\n// A code card\n{ id: \"c_def\", type: \"code\", x: 48, y: 280, w: 780, h: 160, z: 1,\n  lang: \"gdscript\", code: \"func _ready():\\n\\tprint(\\\"hi\\\")\" }"
+    },
+    {
+      "id": "c5",
+      "type": "text",
+      "x": 48,
+      "y": 991,
+      "w": 780,
+      "h": 178,
+      "z": 4,
+      "format": "markdown",
+      "md": "## Saving back to the repo\n\n**Save** asks once for a fine grained GitHub token with Contents read and write on this repo. The token is stored only in your browser `localStorage` and is only ever sent to `api.github.com`. A save reads the file's current SHA, then PUTs the new content; a page delete DELETEs the file. This is the whole write path:\n"
+    },
+    {
+      "id": "c6",
+      "type": "code",
+      "x": 48,
+      "y": 1191,
+      "w": 780,
+      "h": 278,
+      "z": 5,
+      "lang": "javascript",
+      "code": "// github.js, trimmed\nexport async function putFile(relPath, contentBase64, message, token) {\n  const sha = await getFileSha(relPath, token);        // null when new\n  const payload = { message, content: contentBase64, branch: GH.branch };\n  if (sha) payload.sha = sha;                           // update vs create\n  const res = await fetch(contentsUrl(relPath), {\n    method: \"PUT\",\n    headers: headers(token),\n    body: JSON.stringify(payload),\n  });\n  if (!res.ok) throw new Error(await describeError(res));\n  return res.json();\n}"
+    },
+    {
+      "id": "c7",
+      "type": "text",
+      "x": 48,
+      "y": 1491,
+      "w": 780,
+      "h": 247,
+      "z": 6,
+      "format": "markdown",
+      "md": "## Interactions\n\n- **Right click the board** or press **Shift+A** to add a card where you point.\n- **Drag** a card by its header, **resize** from any edge or corner.\n- **Right click a card** to collapse it, hide it from the published page, restack it, or delete it. Select and press **Delete** to remove it.\n- **Paste** an image, gif or SVG straight onto the board in edit mode.\n- **Right click a page** in the sidebar to rename it, set its category, or delete it.\n- Text cards render **Markdown, BBCode or HTML**, all sanitized before display.\n"
+    }
+  ]
+}

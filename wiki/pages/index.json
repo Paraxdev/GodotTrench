@@ -1,6 +1,62 @@
 [
-  { "slug": "home", "title": "Home" },
-  { "slug": "godottrench", "title": "GodotTrench" },
-  { "slug": "io-cheatsheet", "title": "IO Cheatsheet" },
-  { "slug": "using-this-wiki", "title": "Using this wiki" }
+  {
+    "slug": "home",
+    "title": "Home",
+    "category": "Start"
+  },
+  {
+    "slug": "getting-started",
+    "title": "Getting started",
+    "category": "Start"
+  },
+  {
+    "slug": "using-this-wiki",
+    "title": "Using this wiki",
+    "category": "Start"
+  },
+  {
+    "slug": "godottrench",
+    "title": "GodotTrench",
+    "category": "GodotTrench"
+  },
+  {
+    "slug": "editor-guide",
+    "title": "Editor guide",
+    "category": "GodotTrench"
+  },
+  {
+    "slug": "io-concepts",
+    "title": "How entity I/O works",
+    "category": "Entity I/O"
+  },
+  {
+    "slug": "entity-reference",
+    "title": "Entity reference",
+    "category": "Entity I/O"
+  },
+  {
+    "slug": "io-cheatsheet",
+    "title": "IO Cheatsheet",
+    "category": "Entity I/O"
+  },
+  {
+    "slug": "cutscene-example",
+    "title": "Example: scripted cutscene",
+    "category": "Entity I/O"
+  },
+  {
+    "slug": "button-door-example",
+    "title": "Example: button opens a door",
+    "category": "Entity I/O"
+  },
+  {
+    "slug": "csharp-entities",
+    "title": "C# entities",
+    "category": "Entity I/O"
+  },
+  {
+    "slug": "how-this-wiki-works",
+    "title": "How this wiki works",
+    "category": "Meta"
+  }
 ]

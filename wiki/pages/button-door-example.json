@@ -1,0 +1,38 @@
+{
+  "title": "Example: button opens a door",
+  "cards": [
+    {
+      "id": "c1",
+      "type": "text",
+      "x": 48,
+      "y": 40,
+      "w": 780,
+      "h": 270,
+      "z": 0,
+      "format": "markdown",
+      "md": "# Example: a button opens a door\n\nThe smallest useful wiring.\n\n1. Give the door a **targetname**, e.g. `main_door`.\n2. Select the `func_button`. In the Inspector's **Outputs**, add one: when `pressed` fires, target `main_door`, call input `open`.\n\nThat is written `pressed -> main_door.open`. You can also use *Gameplay > Link...* to connect the button's `pressed` output to the door's `open` input. At runtime the button's `pressed` signal becomes a `GodotTrenchOutput` that resolves the targetname `main_door` and calls `open()` on the door.\n"
+    },
+    {
+      "id": "c2",
+      "type": "text",
+      "x": 48,
+      "y": 332,
+      "w": 780,
+      "h": 109,
+      "z": 1,
+      "format": "markdown",
+      "md": "## The equivalent in GDScript\n\nThe runtime makes this connection for you. Hand wired, it is just:\n"
+    },
+    {
+      "id": "c3",
+      "type": "code",
+      "x": 48,
+      "y": 463,
+      "w": 780,
+      "h": 179,
+      "z": 2,
+      "lang": "gdscript",
+      "code": "# button.pressed(activator) -> door.open()\nvar door := GodotTrenchIO.find_targets(self, \"main_door\", null)[0]\nbutton.pressed.connect(func(_activator): door.open())\n\n# or via the I/O helper, matching how the map fires it:\nbutton.pressed.connect(func(activator):\n    for d in GodotTrenchIO.find_targets(button, \"main_door\", activator):\n        GodotTrenchIO.invoke(d, &\"open\", \"\", activator))"
+    }
+  ]
+}

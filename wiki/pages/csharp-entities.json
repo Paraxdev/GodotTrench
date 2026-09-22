@@ -1,0 +1,60 @@
+{
+  "title": "C# entities",
+  "cards": [
+    {
+      "id": "c1",
+      "type": "text",
+      "x": 48,
+      "y": 40,
+      "w": 780,
+      "h": 236,
+      "z": 0,
+      "format": "markdown",
+      "md": "# C# entities\n\nC# classes become entities without any `.tres` file. Mark them `[GodotTrenchEntity(...)]`; the addon parses the source: `[Signal] ... EventHandler` become outputs, `[Export]` members become properties (snake_case), and `[GodotTrenchInput]` (or any `public void Pascal()`) become inputs. The runtime resolves PascalCase C# names from snake_case map names, so the map input `add_score` finds `AddScore`.\n\nList your source folders in `GodotTrenchGameConfig.csharp_source_dirs` (project setting `godottrench/csharp_entity_dirs`).\n"
+    },
+    {
+      "id": "c2",
+      "type": "code",
+      "x": 48,
+      "y": 298,
+      "w": 780,
+      "h": 260,
+      "z": 1,
+      "lang": "csharp",
+      "code": "[GlobalClass]\n[GodotTrenchEntity(\"npc_guard\", Description = \"Patrolling guard\",\n    Color = \"#ff4040ff\", Size = \"-16 0 -16 16 64 16\")]\npublic partial class NpcGuard : CharacterBody3D\n{\n    [Signal] public delegate void AlertedEventHandler(Node activator, int level); // output \"alerted\"\n    [Export] public float WalkSpeed { get; set; } = 3.5f;                          // property \"walk_speed\"\n    [GodotTrenchInput] public void Alert(Node activator) { }                        // input \"alert\"\n}"
+    },
+    {
+      "id": "c3",
+      "type": "text",
+      "x": 48,
+      "y": 580,
+      "w": 780,
+      "h": 109,
+      "z": 2,
+      "format": "markdown",
+      "md": "## Firing inputs and reacting to outputs from C#\n\nUse the `GodotTrench` helper, which mirrors the GDScript runtime:\n"
+    },
+    {
+      "id": "c4",
+      "type": "code",
+      "x": 48,
+      "y": 711,
+      "w": 780,
+      "h": 134,
+      "z": 3,
+      "lang": "csharp",
+      "code": "// React to the guide finishing its path, then ignite a barrel:\nvar guide = GodotTrench.FindTargets(this, \"guide\")[0];\nguide.Connect(\"finished\", Callable.From(() => GD.Print(\"cutscene over\")));\nforeach (Node barrel in GodotTrench.FindTargets(this, \"barrel\"))\n    GodotTrench.Invoke(barrel, \"ignite\", \"\", this);   // calls the C#/GDScript input"
+    },
+    {
+      "id": "c5",
+      "type": "text",
+      "x": 48,
+      "y": 867,
+      "w": 780,
+      "h": 98,
+      "z": 4,
+      "format": "markdown",
+      "md": "The **Reference** tab in the editor (and the `code_reference` MCP tool) generates exact GDScript and C# usage for any selected entity, including the attributes to paste.\n"
+    }
+  ]
+}
