@@ -57,7 +57,6 @@
   --radius-sm: 8px;
 
   --sidebar-w: 236px;
-  --inspector-w: 306px;
   --toolbar-h: 58px;
 
   --font-ui: "Ubuntu", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -72,7 +71,6 @@
 @supports (corner-shape: superellipse(2)) {
   .sidebar,
   .toolbar,
-  .inspector,
   .card-menu,
   .status,
   .modal-card,
@@ -80,9 +78,6 @@
   .btn,
   .page-item,
   .menu-item,
-  .field input,
-  .field select,
-  .inspector-textarea,
   .modal-input {
     corner-shape: superellipse(2);
   }
@@ -134,7 +129,6 @@ body::before {
 /* Shared frosted glass material. */
 .sidebar,
 .toolbar,
-.inspector,
 .card-menu,
 .status,
 .modal-card,
@@ -149,7 +143,6 @@ body::before {
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .sidebar,
   .toolbar,
-  .inspector,
   .card-menu,
   .status,
   .modal-card,
@@ -532,31 +525,42 @@ body.mode-edit .toolbar .edit-only {
 
 .workspace {
   flex: 1;
+  position: relative;
   display: flex;
   gap: 12px;
   min-height: 0;
 }
 
+/* The viewport clips the infinite canvas. It owns all pan/zoom gestures. */
 .board-viewport {
   flex: 1;
   position: relative;
-  overflow: auto;
+  overflow: hidden;
   background: transparent;
   border-radius: var(--radius-panel);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  touch-action: none;
 }
 
-.board-surface {
-  position: relative;
-  width: 2400px;
-  height: 1600px;
-}
-
-/* A faint dot grid layered over the background, only in edit mode. */
-.board-surface.is-edit {
+/* Infinite dot grid, edit mode only. background-size and background-position are set by
+   board.js from the view, so the grid pans and scales with the canvas. */
+.board-viewport.is-edit {
   background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1.4px);
-  background-size: 16px 16px;
-  background-position: 0 0;
+}
+
+.board-viewport.panning {
+  cursor: grabbing;
+}
+
+/* The transformed layer. translate + scale are set by board.js. */
+.board-surface {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 0 0;
+  will-change: transform;
 }
 
 .board-empty {
@@ -569,24 +573,9 @@ body.mode-edit .toolbar .edit-only {
   font-size: 15px;
   pointer-events: none;
   user-select: none;
-  text-shadow: var(--text-shadow);
 }
 
-.inspector {
-  width: var(--inspector-w);
-  flex-shrink: 0;
-  border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-glass), var(--edge-hi);
-  overflow-y: auto;
-  display: none;
-  padding: 14px;
-}
-
-body.mode-edit .inspector {
-  display: block;
-}
-
-/* ----- Cards as floating glass squircles ----- */
+/* ----- Cards as free floating squircles ----- */
 
 .card {
   position: absolute;
@@ -596,23 +585,29 @@ body.mode-edit .inspector {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: transform 0.16s ease, box-shadow 0.2s ease, background 0.2s ease;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
 }
 
-/* Cards lift on hover in both modes, reading as free floating note containers. The pointer
-   tilt in view mode is applied inline by board.js. */
 .card:hover {
   box-shadow: var(--shadow-hover), var(--edge-hi);
 }
 
-.board-surface.is-edit .card {
+/* In edit mode the card body is the drag surface; the caret only appears while editing. */
+.board-viewport.is-edit .card {
   cursor: default;
+}
+
+.board-viewport.is-edit .card:not(.editing) .card-body {
+  user-select: none;
 }
 
 .card.selected {
   background: var(--glass-bg-strong);
   box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.85), var(--shadow-card), var(--edge-hi);
-  transform: translateY(-1px);
+}
+
+.card.editing {
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.85), var(--shadow-hover), var(--edge-hi);
 }
 
 .card.dragging,
@@ -622,7 +617,6 @@ body.mode-edit .inspector {
     var(--edge-hi);
 }
 
-/* Hidden cards only appear in edit mode, shown faintly so they can be brought back. */
 .card.is-hidden {
   opacity: 0.42;
 }
@@ -632,99 +626,97 @@ body.mode-edit .inspector {
   opacity: 0.78;
 }
 
-/* A collapsed card is just its header. */
+/* A collapsed card shrinks to a slim strip. */
 .card.collapsed {
-  height: auto;
+  height: 34px !important;
 }
 
-.card.collapsed .card-header {
-  border-bottom: 0;
+.card.collapsed .card-body {
+  display: none;
 }
 
-/* The header is the move anchor. It stays quiet until the card is hovered or selected, so
-   an idle board reads as clean floating notes, OneNote style. */
-.card-header {
-  height: 30px;
-  flex-shrink: 0;
+.card-collapsed-label {
+  flex: 1;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 6px 0 12px;
-  background: transparent;
-  border-bottom: 1px solid transparent;
-  cursor: grab;
-  user-select: none;
-  touch-action: none;
-  transition: background 0.14s ease, border-color 0.14s ease;
-}
-
-.card:hover .card-header,
-.card.selected .card-header {
-  background: rgba(255, 255, 255, 0.05);
-  border-bottom-color: var(--glass-divider);
-}
-
-.card-header:active {
-  cursor: grabbing;
-}
-
-.card-tag {
-  font-size: 10.5px;
+  padding: 0 12px;
+  font-size: 11px;
   letter-spacing: 0.6px;
   text-transform: uppercase;
   color: var(--text-faint);
   font-weight: 600;
-  opacity: 0;
-  transition: opacity 0.14s ease;
+  user-select: none;
 }
 
-.card:hover .card-tag,
-.card.selected .card-tag {
-  opacity: 1;
-}
+/* ----- Floating action bar (move, layer, hide, delete), shown on hover/selected ----- */
 
-.card-controls {
+.card-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 8;
   display: flex;
   align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  position: relative;
-  z-index: 6;
+  gap: 1px;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-card);
   opacity: 0;
-  transition: opacity 0.14s ease;
+  transform: translateY(-2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  pointer-events: none;
 }
 
-.card:hover .card-controls,
-.card.selected .card-controls {
+.card:hover .card-actions,
+.card.selected .card-actions,
+.card.editing .card-actions {
   opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
-.card-ctrl {
-  width: 22px;
-  height: 20px;
+.card-grip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 22px;
+  color: var(--text-faint);
+  cursor: grab;
+  touch-action: none;
+}
+
+.card-grip:active {
+  cursor: grabbing;
+}
+
+.card-act {
+  width: 24px;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
-  color: var(--text-faint);
-  font-size: 13px;
-  line-height: 1;
+  color: var(--text-dim);
   cursor: pointer;
   padding: 0;
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
-.card-ctrl:hover {
+.card-act:hover {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text);
   border-color: var(--glass-border);
 }
 
-.card-ctrl.danger:hover {
+.card-act.danger:hover {
   color: var(--danger);
-  border-color: rgba(247, 134, 154, 0.5);
+  border-color: rgba(236, 123, 60, 0.5);
 }
 
 .card-body {
@@ -1015,62 +1007,263 @@ body.mode-edit .inspector {
   font-weight: 600;
 }
 
-/* ----- Inspector ----- */
+/* ----- Canvas zoom controls ----- */
 
-.inspector-empty {
-  color: var(--text-faint);
-  font-size: 13px;
-  padding: 6px 2px;
-}
-
-.inspector-head {
+.canvas-controls {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 12;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-bottom: 10px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--glass-divider);
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass), var(--edge-hi);
 }
 
-.inspector-title {
-  font-weight: 650;
-  font-size: 14px;
-  text-shadow: var(--text-shadow);
+.canvas-btn {
+  width: 30px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
-.inspector-actions {
+.canvas-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.zoom-label {
+  min-width: 42px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+/* ----- WYSIWYG bubble toolbar ----- */
+
+.bubble-toolbar {
+  position: fixed;
+  z-index: 1400;
   display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  backdrop-filter: blur(12px) saturate(160%);
+  border: 1px solid var(--glass-border-strong);
+  box-shadow: var(--shadow-glass), var(--edge-hi);
+}
+
+.bubble-toolbar[hidden] {
+  display: none;
+}
+
+.bubble-btn {
+  width: 28px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.bubble-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ----- Inline text editing ----- */
+
+.md.editing-md {
+  outline: none;
+  cursor: text;
+  min-height: 1.4em;
+}
+
+/* ----- Inline code editing ----- */
+
+.code-edit-wrap {
+  position: relative;
+  height: 100%;
+}
+
+.code-edit {
+  width: 100%;
+  height: 100%;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: var(--glass-inner-strong);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 10px 12px;
+  border-radius: var(--radius-input);
+}
+
+.code-lang,
+.code-lang-input {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  border-radius: 7px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+
+.code-lang-input {
+  width: 110px;
+  cursor: text;
+  outline: none;
+}
+
+/* ----- Inline table editing ----- */
+
+.card-table th[contenteditable],
+.card-table td[contenteditable] {
+  outline: none;
+  cursor: text;
+}
+
+.card-table th[contenteditable]:focus,
+.card-table td[contenteditable]:focus {
+  box-shadow: inset 0 0 0 2px rgba(var(--accent-rgb), 0.6);
+}
+
+.tbl-adders {
+  display: flex;
+  gap: 4px;
+  padding: 6px 0 2px;
+}
+
+.tbl-add {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--glass-bg-soft);
+  border: 1px solid var(--glass-border);
+  border-radius: 7px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.tbl-add:hover {
+  color: var(--text);
+  border-color: var(--glass-border-strong);
+}
+
+/* ----- Baked-in controls for image / video / shape / draw ----- */
+
+.inline-controls {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 7;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 6px;
+  border-radius: var(--radius-input);
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-card);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+.card:hover .inline-controls,
+.card.selected .inline-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.inline-controls input[type="text"] {
+  flex: 1;
+  min-width: 90px;
+  background: var(--field-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.inline-btn {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--glass-bg-soft);
+  border: 1px solid var(--glass-border);
+  border-radius: 7px;
+  padding: 4px 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
   gap: 4px;
 }
 
-.inspector-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.inline-btn:hover {
+  color: var(--text);
+  border-color: var(--glass-border-strong);
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
+.inline-btn.icon-btn {
+  padding: 4px 6px;
 }
 
-.field.row {
-  flex-direction: row;
-  flex-wrap: wrap;
+.inline-btn.active {
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.6);
+  background: var(--accent-soft);
 }
 
-.field-label {
-  font-size: 12px;
-  color: var(--text-dim);
+.inline-color {
+  width: 30px;
+  height: 26px;
+  padding: 2px;
+  background: var(--field-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 7px;
+  cursor: pointer;
 }
 
-.field input[type="text"],
-.field input[type="number"],
-.field select,
-.cell-input,
-.inspector-textarea,
 .modal-input {
   width: 100%;
   background: var(--field-bg);
@@ -1082,76 +1275,11 @@ body.mode-edit .inspector {
   transition: border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
 }
 
-.field input[type="text"]:focus,
-.field input[type="number"]:focus,
-.field select:focus,
-.cell-input:focus,
-.inspector-textarea:focus,
 .modal-input:focus {
   outline: none;
   border-color: rgba(var(--accent-rgb), 0.6);
   box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18);
   background: rgba(255, 255, 255, 0.09);
-}
-
-.field input[type="color"] {
-  width: 48px;
-  height: 32px;
-  padding: 2px;
-  background: var(--field-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-input);
-}
-
-.inspector-textarea {
-  resize: vertical;
-}
-
-.inspector-textarea.mono {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-}
-
-.inspector-note {
-  color: var(--text-dim);
-  font-size: 13px;
-  margin: 0 0 4px;
-}
-
-.cell-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.cell-row {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-}
-
-.cell-input {
-  padding: 6px 8px;
-  font-size: 13px;
-  border-radius: 9px;
-}
-
-.geo-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.geo-field {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.geo-field input {
-  width: 100%;
 }
 
 /* ----- Status ----- */
@@ -1298,13 +1426,6 @@ body.mode-edit .inspector {
     height: calc(100% - 16px);
     transform: translateX(-110%);
     transition: transform 0.2s ease;
-  }
-  .inspector {
-    position: fixed;
-    right: 8px;
-    top: calc(var(--toolbar-h) + 16px);
-    bottom: 8px;
-    z-index: 15;
   }
   .page-title {
     max-width: 40vw;

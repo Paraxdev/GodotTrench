@@ -62,6 +62,28 @@ export function clearIndexDraft() {
   }
 }
 
+// Per-viewer pan/zoom for a page. Kept separate from the page JSON so it never affects
+// published content and never reaches other viewers.
+export function saveView(slug, view) {
+  try {
+    localStorage.setItem("wiki_view_" + slug, JSON.stringify(view));
+  } catch (err) {
+    // Ignore.
+  }
+}
+
+export function loadView(slug) {
+  try {
+    const raw = localStorage.getItem("wiki_view_" + slug);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    if (v && typeof v.scale === "number") return v;
+    return null;
+  } catch (err) {
+    return null;
+  }
+}
+
 // Remove every local draft (all page boards and the index), so the next load comes entirely
 // from the repo. Used by the sidebar Refresh action.
 export function clearAllDrafts() {

@@ -1,14 +1,25 @@
-// The board canvas. Renders cards at absolute positions and, in edit mode, wires up
-// dragging, resizing, selection, z stacking, and freehand drawing with pointer events.
+// The board canvas. An infinite pan/zoom surface of absolutely positioned cards. In edit mode
+// it wires up dragging, edge resizing, selection, z stacking, freehand drawing, and inline
+// on-card editing (see edit.js). Pan and zoom work in both view and edit modes.
 
 import { renderContent } from "./cards.js";
 import { icon } from "./icons.js";
+import {
+  mountTextEditor,
+  mountCodeEditor,
+  mountTableEditor,
+  mountSelectionControls,
+} from "./edit.js";
 
 const MIN_W = 90;
 const MIN_H = 70;
+const MIN_SCALE = 0.15;
+const MAX_SCALE = 4;
+const DRAG_THRESHOLD = 4;
 
-// The eight resize directions, with their cursors. Corners are listed after edges so they
-// paint on top and take priority where they overlap.
+// Types that enter a full inline edit on double click. The rest use on-card controls.
+const EDITABLE_TYPES = { text: 1, code: 1, table: 1 };
+
 const RESIZE_DIRS = [
   { dir: "n", cursor: "ns-resize" },
   { dir: "e", cursor: "ew-resize" },
@@ -20,71 +31,259 @@ const RESIZE_DIRS = [
   { dir: "sw", cursor: "nesw-resize" },
 ];
 
+function clamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v));
+}
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+function mid(a, b) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
 export class BoardView {
-  // opts: { getMode, getBoard, getSelectedId, onSelect, onMutate, grid }
+  // opts: { getMode, getBoard, getSelectedId, onSelect, onMutate, onBringToFront, onSendToBack,
+  //         onDelete, onToggleCollapse, onSetHidden, onCardMenu, onEditingChange, uploadAsset,
+  //         onViewChange, onZoomChange, grid }
   constructor(viewport, opts) {
     this.viewport = viewport;
     this.opts = opts;
     this.grid = opts.grid || 8;
+    this.view = { panX: 0, panY: 0, scale: 1 };
+    this.editingId = null;
+    this._editor = null;
+    this._pointers = new Map();
+    this._pan = null;
+    this._pinch = null;
+
     this.surface = document.createElement("div");
     this.surface.className = "board-surface";
     this.viewport.innerHTML = "";
     this.viewport.appendChild(this.surface);
 
-    // Clicking empty board space clears the selection in edit mode.
-    this.surface.addEventListener("pointerdown", (e) => {
-      if (e.target === this.surface && this.opts.getMode() === "edit") {
+    this._wireNavigation();
+    this.applyTransform();
+  }
+
+  // ----- Pan / zoom -----
+
+  applyTransform() {
+    const { panX, panY, scale } = this.view;
+    this.surface.style.transform = "translate(" + panX + "px, " + panY + "px) scale(" + scale + ")";
+    const gs = 16 * scale;
+    this.viewport.style.backgroundSize = gs + "px " + gs + "px";
+    this.viewport.style.backgroundPosition = panX + "px " + panY + "px";
+    if (this.opts.onZoomChange) this.opts.onZoomChange(scale);
+  }
+
+  getView() {
+    return { panX: this.view.panX, panY: this.view.panY, scale: this.view.scale };
+  }
+
+  setView(v) {
+    if (!v) return;
+    this.view.panX = Number(v.panX) || 0;
+    this.view.panY = Number(v.panY) || 0;
+    this.view.scale = clamp(Number(v.scale) || 1, MIN_SCALE, MAX_SCALE);
+    this.applyTransform();
+  }
+
+  panBy(dx, dy) {
+    this.view.panX += dx;
+    this.view.panY += dy;
+    this.applyTransform();
+  }
+
+  // Zoom by factor, keeping the board point under (clientX, clientY) fixed on screen.
+  zoomAt(clientX, clientY, factor) {
+    const r = this.viewport.getBoundingClientRect();
+    const cx = clientX - r.left;
+    const cy = clientY - r.top;
+    const s2 = clamp(this.view.scale * factor, MIN_SCALE, MAX_SCALE);
+    if (s2 === this.view.scale) return;
+    this.view.panX = cx - (cx - this.view.panX) * (s2 / this.view.scale);
+    this.view.panY = cy - (cy - this.view.panY) * (s2 / this.view.scale);
+    this.view.scale = s2;
+    this.applyTransform();
+  }
+
+  zoomInAt() {
+    const r = this.viewport.getBoundingClientRect();
+    this.zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1.2);
+    this._persist();
+  }
+  zoomOutAt() {
+    const r = this.viewport.getBoundingClientRect();
+    this.zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1 / 1.2);
+    this._persist();
+  }
+
+  resetView() {
+    this.view = { panX: 0, panY: 0, scale: 1 };
+    this.applyTransform();
+    this._persist();
+  }
+
+  // Frame all visible cards.
+  fit() {
+    const board = this.opts.getBoard();
+    const mode = this.opts.getMode();
+    let cards = board.cards;
+    if (mode !== "edit") cards = cards.filter((c) => !c.hidden);
+    if (!cards.length) {
+      this.resetView();
+      return;
+    }
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const c of cards) {
+      const h = c.collapsed ? 40 : c.h || 0;
+      minX = Math.min(minX, c.x || 0);
+      minY = Math.min(minY, c.y || 0);
+      maxX = Math.max(maxX, (c.x || 0) + (c.w || 0));
+      maxY = Math.max(maxY, (c.y || 0) + h);
+    }
+    const pad = 60;
+    const r = this.viewport.getBoundingClientRect();
+    const bw = maxX - minX + pad * 2;
+    const bh = maxY - minY + pad * 2;
+    const scale = clamp(Math.min(r.width / bw, r.height / bh), MIN_SCALE, 1.2);
+    this.view.scale = scale;
+    this.view.panX = (r.width - (maxX - minX) * scale) / 2 - minX * scale;
+    this.view.panY = (r.height - (maxY - minY) * scale) / 2 - minY * scale;
+    this.applyTransform();
+    this._persist();
+  }
+
+  _persist() {
+    if (this.opts.onViewChange) this.opts.onViewChange(this.getView());
+  }
+
+  _wireNavigation() {
+    this.viewport.addEventListener(
+      "wheel",
+      (e) => {
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) {
+          const factor = Math.exp(-e.deltaY * 0.0015);
+          this.zoomAt(e.clientX, e.clientY, factor);
+        } else {
+          this.panBy(-e.deltaX, -e.deltaY);
+        }
+        this._persist();
+      },
+      { passive: false }
+    );
+
+    this.viewport.addEventListener("pointerdown", (e) => this._onViewportPointerDown(e));
+    this.viewport.addEventListener("pointermove", (e) => this._onViewportPointerMove(e));
+    this.viewport.addEventListener("pointerup", (e) => this._onViewportPointerUp(e));
+    this.viewport.addEventListener("pointercancel", (e) => this._onViewportPointerUp(e));
+  }
+
+  _onViewportPointerDown(e) {
+    this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this._pointers.size === 2) {
+      const pts = Array.from(this._pointers.values());
+      this._pinch = { dist: dist(pts[0], pts[1]), mid: mid(pts[0], pts[1]) };
+      this._pan = null;
+      return;
+    }
+    if (e.button !== 0) return;
+    const onCard = e.target.closest && e.target.closest(".card");
+    const onCtrl = e.target.closest && e.target.closest(".canvas-controls, .bubble-toolbar");
+    if (onCard || onCtrl) return;
+    this._pan = { id: e.pointerId, sx: e.clientX, sy: e.clientY, px: this.view.panX, py: this.view.panY, moved: false };
+    try {
+      this.viewport.setPointerCapture(e.pointerId);
+    } catch (err) {
+      // Ignore.
+    }
+    this.viewport.classList.add("panning");
+  }
+
+  _onViewportPointerMove(e) {
+    if (this._pointers.has(e.pointerId)) this._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this._pinch) {
+      const pts = Array.from(this._pointers.values());
+      if (pts.length < 2) return;
+      const d = dist(pts[0], pts[1]);
+      const m = mid(pts[0], pts[1]);
+      if (this._pinch.dist > 0) this.zoomAt(m.x, m.y, d / this._pinch.dist);
+      this.view.panX += m.x - this._pinch.mid.x;
+      this.view.panY += m.y - this._pinch.mid.y;
+      this.applyTransform();
+      this._pinch = { dist: d, mid: m };
+      return;
+    }
+    if (this._pan && this._pan.id === e.pointerId) {
+      const dx = e.clientX - this._pan.sx;
+      const dy = e.clientY - this._pan.sy;
+      if (Math.abs(dx) + Math.abs(dy) > DRAG_THRESHOLD) this._pan.moved = true;
+      this.view.panX = this._pan.px + dx;
+      this.view.panY = this._pan.py + dy;
+      this.applyTransform();
+    }
+  }
+
+  _onViewportPointerUp(e) {
+    this._pointers.delete(e.pointerId);
+    if (this._pinch && this._pointers.size < 2) {
+      this._pinch = null;
+      this._persist();
+    }
+    if (this._pan && this._pan.id === e.pointerId) {
+      const moved = this._pan.moved;
+      this._pan = null;
+      this.viewport.classList.remove("panning");
+      try {
+        this.viewport.releasePointerCapture(e.pointerId);
+      } catch (err) {
+        // Ignore.
+      }
+      // A click on empty canvas commits any open editor and clears the selection.
+      if (!moved && this.opts.getMode() === "edit") {
+        this.commitEdit();
         this.opts.onSelect(null);
       }
-    });
+      this._persist();
+    }
   }
 
-  // A point near the top left of the current viewport, for placing new cards.
-  spawnPoint() {
-    return {
-      x: Math.round(this.viewport.scrollLeft + 48),
-      y: Math.round(this.viewport.scrollTop + 48),
-    };
-  }
+  // ----- Coordinates -----
 
-  // Convert a client (viewport) point to a board surface coordinate, accounting for scroll.
   clientToBoard(clientX, clientY) {
-    const rect = this.surface.getBoundingClientRect();
+    const r = this.viewport.getBoundingClientRect();
     return {
-      x: Math.max(0, Math.round(clientX - rect.left)),
-      y: Math.max(0, Math.round(clientY - rect.top)),
+      x: Math.round((clientX - r.left - this.view.panX) / this.view.scale),
+      y: Math.round((clientY - r.top - this.view.panY) / this.view.scale),
     };
+  }
+
+  // The center of the current view, in board coordinates, for placing new cards.
+  spawnPoint() {
+    const r = this.viewport.getBoundingClientRect();
+    return this.clientToBoard(r.left + r.width / 2, r.top + r.height / 2);
   }
 
   snap(value) {
     return Math.round(value / this.grid) * this.grid;
   }
 
-  // Grow the surface so tall or wide pages scroll fully, keeping a comfortable default size
-  // and some room to drag cards past the current content.
-  _sizeSurface(cards) {
-    let right = 2000;
-    let bottom = 1200;
-    for (const c of cards) {
-      if (c.hidden && this.opts.getMode() !== "edit") continue;
-      right = Math.max(right, (c.x || 0) + (c.w || 0));
-      bottom = Math.max(bottom, (c.y || 0) + (c.h || 0));
-    }
-    this.surface.style.width = right + 400 + "px";
-    this.surface.style.height = bottom + 400 + "px";
-  }
+  // ----- Rendering -----
 
-  // Full render from the current board state.
   render() {
     const board = this.opts.getBoard();
     const mode = this.opts.getMode();
     const selId = this.opts.getSelectedId();
+    this.editingId = null;
+    this._editor = null;
+    this.viewport.classList.toggle("is-edit", mode === "edit");
     this.surface.classList.toggle("is-edit", mode === "edit");
     this.surface.innerHTML = "";
-    this._sizeSurface(board.cards);
     let cards = board.cards.slice().sort((a, b) => (a.z || 0) - (b.z || 0));
-    // Hidden cards are dropped entirely in view mode, and shown faintly in edit mode so they
-    // can be brought back with the right click menu.
     if (mode !== "edit") cards = cards.filter((c) => !c.hidden);
     if (!cards.length) {
       const hint = document.createElement("div");
@@ -99,7 +298,6 @@ export class BoardView {
     }
   }
 
-  // Toggle the selected outline without a full rebuild, so drags are not interrupted.
   updateSelection() {
     const selId = this.opts.getSelectedId();
     const mode = this.opts.getMode();
@@ -108,9 +306,7 @@ export class BoardView {
     });
   }
 
-  // Re-render just one card, used when the inspector edits its content or geometry.
   refreshCard(card) {
-    // Collapsed or hidden cards change their whole structure, so rebuild rather than patch.
     if (card.collapsed || card.hidden) {
       this.render();
       return;
@@ -129,9 +325,7 @@ export class BoardView {
     if (body) {
       body.innerHTML = "";
       body.appendChild(renderContent(card));
-      if (card.type === "draw" && this.opts.getMode() === "edit") {
-        this._attachDraw(body, card);
-      }
+      if (card.type === "draw" && this.opts.getMode() === "edit") this._attachDraw(body, card);
     }
   }
 
@@ -146,65 +340,124 @@ export class BoardView {
     el.style.left = card.x + "px";
     el.style.top = card.y + "px";
     el.style.width = card.w + "px";
-    // A collapsed card shrinks to just its header, so its height is left to the layout.
     if (!collapsed) el.style.height = card.h + "px";
     el.style.zIndex = String(card.z || 0);
     if (mode === "edit" && card.id === selId) el.classList.add("selected");
 
+    if (collapsed) {
+      const label = document.createElement("div");
+      label.className = "card-collapsed-label";
+      label.textContent = card.type + (card.hidden ? " · hidden" : "");
+      el.appendChild(label);
+    }
+
+    const body = document.createElement("div");
+    body.className = "card-body";
+    if (!collapsed) body.appendChild(renderContent(card));
+    el.appendChild(body);
+
     if (mode === "edit") {
-      const header = document.createElement("div");
-      header.className = "card-header";
-      const tag = document.createElement("span");
-      tag.className = "card-tag";
-      tag.textContent = card.type + (card.hidden ? " · hidden" : "");
-      header.appendChild(tag);
+      el.appendChild(this._actionsBar(card));
 
-      const controls = document.createElement("div");
-      controls.className = "card-controls";
-      controls.appendChild(
-        this._ctrlButton(collapsed ? "chevrons-up-down" : "chevrons-down-up", collapsed ? "Expand" : "Collapse", () =>
-          this.opts.onToggleCollapse(card.id)
-        )
+      // Select on any pointerdown within the card (capture phase, before children stop it).
+      el.addEventListener(
+        "pointerdown",
+        (e) => {
+          if (e.button !== 0) return;
+          if (this.editingId && this.editingId !== card.id) this.commitEdit();
+          if (this.editingId !== card.id) this.opts.onSelect(card.id);
+        },
+        true
       );
-      controls.appendChild(
-        this._ctrlButton("bring-to-front", "Bring to front", () => this.opts.onBringToFront(card.id))
-      );
-      controls.appendChild(
-        this._ctrlButton("send-to-back", "Send to back", () => this.opts.onSendToBack(card.id))
-      );
-      const del = this._ctrlButton("x", "Delete card", () => this.opts.onDelete(card.id));
-      del.classList.add("danger");
-      controls.appendChild(del);
-      header.appendChild(controls);
 
-      el.appendChild(header);
-      this._attachDrag(header, el, card);
+      // Double click enters inline editing for text-like cards.
+      el.addEventListener("dblclick", (e) => {
+        if (!EDITABLE_TYPES[card.type]) return;
+        if (e.target.closest(".card-actions, .inline-controls, .card-handle")) return;
+        e.preventDefault();
+        this.beginEdit(card);
+      });
 
-      // Selecting on pointerdown makes the inspector and z buttons target this card.
-      el.addEventListener("pointerdown", () => this.opts.onSelect(card.id));
-
-      // Right click on a card opens its own menu (hide, collapse, layering, delete).
       el.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        this.commitEdit();
         this.opts.onSelect(card.id);
         if (this.opts.onCardMenu) this.opts.onCardMenu(card.id, e.clientX, e.clientY);
       });
-    }
 
-    if (!collapsed) {
-      const body = document.createElement("div");
-      body.className = "card-body";
-      body.appendChild(renderContent(card));
-      el.appendChild(body);
-
-      if (mode === "edit") {
+      if (!collapsed) {
         this._addResizeHandles(el, card);
+        // The whole body is the drag surface, except draw cards where the body draws.
         if (card.type === "draw") this._attachDraw(body, card);
+        else this._attachDrag(body, el, card, true);
+        mountSelectionControls(el, body, card, this._ctx(card, el, body));
       }
     }
 
     return el;
+  }
+
+  _ctx(card, el, body) {
+    return {
+      markDirty: () => this.opts.onMutate(),
+      rerenderContent: () => {
+        body.innerHTML = "";
+        body.appendChild(renderContent(card));
+        if (card.type === "draw") this._attachDraw(body, card);
+      },
+      uploadAsset: (f) => this.opts.uploadAsset(f),
+      requestCommit: () => this.commitEdit(),
+    };
+  }
+
+  // The floating action bar: move grip, collapse, layer, hide, delete. Shown on hover/selected.
+  _actionsBar(card) {
+    const bar = document.createElement("div");
+    bar.className = "card-actions";
+
+    const grip = document.createElement("div");
+    grip.className = "card-grip";
+    grip.title = "Drag to move";
+    grip.appendChild(icon("grip-vertical", { size: 15 }));
+    bar.appendChild(grip);
+
+    const mkBtn = (name, title, fn, danger) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "card-act" + (danger ? " danger" : "");
+      b.title = title;
+      b.setAttribute("aria-label", title);
+      b.appendChild(icon(name, { size: 15 }));
+      b.addEventListener("pointerdown", (e) => e.stopPropagation());
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.commitEdit();
+        fn();
+      });
+      return b;
+    };
+
+    bar.appendChild(
+      mkBtn(card.collapsed ? "chevrons-up-down" : "chevrons-down-up", card.collapsed ? "Expand" : "Collapse", () =>
+        this.opts.onToggleCollapse(card.id)
+      )
+    );
+    bar.appendChild(mkBtn("bring-to-front", "Bring to front", () => this.opts.onBringToFront(card.id)));
+    bar.appendChild(mkBtn("send-to-back", "Send to back", () => this.opts.onSendToBack(card.id)));
+    bar.appendChild(
+      mkBtn(card.hidden ? "eye" : "eye-off", card.hidden ? "Show" : "Hide", () =>
+        this.opts.onSetHidden(card.id, !card.hidden)
+      )
+    );
+    bar.appendChild(mkBtn("x", "Delete card", () => this.opts.onDelete(card.id), true));
+
+    // Wire the grip as a drag handle after the card element exists.
+    setTimeout(() => {
+      const el = bar.closest(".card");
+      if (el) this._attachDrag(grip, el, card, false);
+    }, 0);
+    return bar;
   }
 
   _addResizeHandles(el, card) {
@@ -217,71 +470,132 @@ export class BoardView {
     });
   }
 
-  // A small header control button with an inline icon. Its pointerdown is stopped so it does
-  // not start a drag.
-  _ctrlButton(iconName, title, onClick) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "card-ctrl";
-    btn.title = title;
-    btn.setAttribute("aria-label", title);
-    btn.appendChild(icon(iconName, { size: 15 }));
-    btn.addEventListener("pointerdown", (e) => e.stopPropagation());
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      onClick();
-    });
-    return btn;
+  // ----- Inline editing -----
+
+  beginEdit(card) {
+    if (this.editingId === card.id) return;
+    this.commitEdit();
+    const el = this.surface.querySelector('.card[data-id="' + cssEscape(card.id) + '"]');
+    if (!el) return;
+    const body = el.querySelector(".card-body");
+    if (!body) return;
+    this.editingId = card.id;
+    el.classList.add("editing");
+    const ctx = this._ctx(card, el, body);
+    if (card.type === "code") this._editor = mountCodeEditor(el, body, card, ctx);
+    else if (card.type === "table") this._editor = mountTableEditor(el, body, card, ctx);
+    else this._editor = mountTextEditor(el, body, card, ctx);
+    if (this.opts.onEditingChange) this.opts.onEditingChange(card.id);
   }
 
-  _attachDrag(header, el, card) {
+  commitEdit() {
+    if (!this.editingId) return;
+    const id = this.editingId;
+    const card = this.opts.getBoard().cards.find((c) => c.id === id);
+    if (this._editor) {
+      try {
+        this._editor.commit();
+      } catch (err) {
+        // Ignore.
+      }
+      this._editor = null;
+    }
+    this.editingId = null;
+    const el = this.surface.querySelector('.card[data-id="' + cssEscape(id) + '"]');
+    if (el) el.classList.remove("editing");
+    if (card) this.refreshCard(card);
+    if (this.opts.onEditingChange) this.opts.onEditingChange(null);
+  }
+
+  cancelEdit() {
+    if (!this.editingId) return;
+    const id = this.editingId;
+    const card = this.opts.getBoard().cards.find((c) => c.id === id);
+    if (this._editor) {
+      try {
+        this._editor.cancel();
+      } catch (err) {
+        // Ignore.
+      }
+      this._editor = null;
+    }
+    this.editingId = null;
+    const el = this.surface.querySelector('.card[data-id="' + cssEscape(id) + '"]');
+    if (el) el.classList.remove("editing");
+    if (card) this.refreshCard(card);
+    if (this.opts.onEditingChange) this.opts.onEditingChange(null);
+  }
+
+  // ----- Drag / resize / draw (all scale aware) -----
+
+  _attachDrag(handle, el, card, threshold) {
     let startX = 0;
     let startY = 0;
     let originX = 0;
     let originY = 0;
+    let active = false;
     let dragging = false;
 
-    header.addEventListener("pointerdown", (e) => {
+    handle.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
-      // Selecting here as well, because this handler stops propagation to the card.
-      this.opts.onSelect(card.id);
-      dragging = true;
-      header.setPointerCapture(e.pointerId);
+      if (this.editingId === card.id) return;
+      if (e.target.closest(".card-handle, .inline-controls, .card-act")) return;
+      active = true;
+      dragging = !threshold;
       startX = e.clientX;
       startY = e.clientY;
       originX = card.x;
       originY = card.y;
-      el.classList.add("dragging");
-      e.preventDefault();
+      if (!threshold) {
+        try {
+          handle.setPointerCapture(e.pointerId);
+        } catch (err) {
+          // Ignore.
+        }
+        el.classList.add("dragging");
+        this.opts.onSelect(card.id);
+      }
       e.stopPropagation();
     });
-    header.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-      const nx = Math.max(0, this.snap(originX + (e.clientX - startX)));
-      const ny = Math.max(0, this.snap(originY + (e.clientY - startY)));
+    handle.addEventListener("pointermove", (e) => {
+      if (!active) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!dragging) {
+        if (Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return;
+        dragging = true;
+        try {
+          handle.setPointerCapture(e.pointerId);
+        } catch (err) {
+          // Ignore.
+        }
+        el.classList.add("dragging");
+        this.opts.onSelect(card.id);
+      }
+      const nx = this.snap(originX + dx / this.view.scale);
+      const ny = this.snap(originY + dy / this.view.scale);
       card.x = nx;
       card.y = ny;
       el.style.left = nx + "px";
       el.style.top = ny + "px";
     });
     const end = (e) => {
-      if (!dragging) return;
+      if (!active) return;
+      const wasDragging = dragging;
+      active = false;
       dragging = false;
       try {
-        header.releasePointerCapture(e.pointerId);
+        handle.releasePointerCapture(e.pointerId);
       } catch (err) {
         // Ignore.
       }
       el.classList.remove("dragging");
-      this.opts.onMutate();
+      if (wasDragging) this.opts.onMutate();
     };
-    header.addEventListener("pointerup", end);
-    header.addEventListener("pointercancel", end);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
   }
 
-  // Resize from any of the eight zones. Handles on the top or left move the card origin
-  // (x/y) while changing w/h, keeping the opposite edge anchored. Snaps to the grid and
-  // enforces the minimum size.
   _attachResize(handle, el, card, dir) {
     let startX = 0;
     let startY = 0;
@@ -308,8 +622,8 @@ export class BoardView {
     });
     handle.addEventListener("pointermove", (e) => {
       if (!resizing) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
+      const dx = (e.clientX - startX) / this.view.scale;
+      const dy = (e.clientY - startY) / this.view.scale;
       const rightEdge = originX + originW;
       const bottomEdge = originY + originH;
       let x = originX;
@@ -317,23 +631,15 @@ export class BoardView {
       let w = originW;
       let h = originH;
 
-      if (dir.indexOf("e") !== -1) {
-        const right = this.snap(rightEdge + dx);
-        w = Math.max(MIN_W, right - originX);
-      }
-      if (dir.indexOf("s") !== -1) {
-        const bottom = this.snap(bottomEdge + dy);
-        h = Math.max(MIN_H, bottom - originY);
-      }
+      if (dir.indexOf("e") !== -1) w = Math.max(MIN_W, this.snap(rightEdge + dx) - originX);
+      if (dir.indexOf("s") !== -1) h = Math.max(MIN_H, this.snap(bottomEdge + dy) - originY);
       if (dir.indexOf("w") !== -1) {
-        let left = Math.max(0, this.snap(originX + dx));
-        left = Math.min(left, rightEdge - MIN_W);
+        let left = Math.min(this.snap(originX + dx), rightEdge - MIN_W);
         x = left;
         w = rightEdge - left;
       }
       if (dir.indexOf("n") !== -1) {
-        let top = Math.max(0, this.snap(originY + dy));
-        top = Math.min(top, bottomEdge - MIN_H);
+        let top = Math.min(this.snap(originY + dy), bottomEdge - MIN_H);
         y = top;
         h = bottomEdge - top;
       }
@@ -371,8 +677,8 @@ export class BoardView {
     const toLocal = (e) => {
       const rect = body.getBoundingClientRect();
       return {
-        x: Math.round((e.clientX - rect.left) * 10) / 10,
-        y: Math.round((e.clientY - rect.top) * 10) / 10,
+        x: Math.round(((e.clientX - rect.left) / this.view.scale) * 10) / 10,
+        y: Math.round(((e.clientY - rect.top) / this.view.scale) * 10) / 10,
       };
     };
     body.addEventListener("pointerdown", (e) => {
@@ -407,7 +713,6 @@ export class BoardView {
   }
 }
 
-// Minimal CSS attribute selector escaping for card ids (ids are alphanumeric plus underscore).
 function cssEscape(value) {
   if (window.CSS && window.CSS.escape) return window.CSS.escape(value);
   return String(value).replace(/["\\]/g, "\\$&");

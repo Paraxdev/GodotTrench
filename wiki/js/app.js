@@ -10,6 +10,8 @@ import {
   saveIndexDraft,
   clearIndexDraft,
   clearAllDrafts,
+  loadView,
+  saveView,
   fetchJSON,
 } from "./storage.js";
 import {
@@ -30,7 +32,6 @@ import {
   sendToBack,
 } from "./cards.js";
 import { BoardView } from "./board.js";
-import { renderInspector } from "./inspector.js";
 import { registerGdscript } from "./highlight-gdscript.js";
 import { icon, TYPE_ICON } from "./icons.js";
 
@@ -40,6 +41,7 @@ const state = {
   board: { title: "", cards: [] },
   mode: "view",
   selectedId: null,
+  editingId: null,
   // Slugs whose page files should be removed from the repo on the next Save.
   deletedPages: [],
 };
@@ -56,11 +58,11 @@ async function init() {
 
   el.pageList = $("page-list");
   el.pageTitle = $("page-title");
-  el.inspector = $("inspector");
   el.status = $("status");
   el.modeToggle = $("mode-toggle");
   el.saveBtn = $("save-btn");
   el.board = $("board");
+  el.zoomLabel = $("zoom-label");
 
   boardView = new BoardView(el.board, {
     getMode: () => state.mode,
@@ -72,13 +74,25 @@ async function init() {
     onSendToBack: (id) => doSendToBack(id),
     onDelete: (id) => doDeleteCard(id),
     onToggleCollapse: (id) => doToggleCollapse(id),
+    onSetHidden: (id, hidden) => doSetHidden(id, hidden),
     onCardMenu: (id, x, y) => openCardContextMenu(id, x, y),
+    onEditingChange: (id) => {
+      state.editingId = id;
+    },
+    uploadAsset: (file) => uploadAsset(file),
+    onViewChange: (view) => {
+      if (state.slug) saveView(state.slug, view);
+    },
+    onZoomChange: (scale) => {
+      if (el.zoomLabel) el.zoomLabel.textContent = Math.round(scale * 100) + "%";
+    },
     grid: 8,
   });
 
   setupToolbarIcons();
   setupCardMenu();
   setupCardContextMenu();
+  setupCanvasControls();
   wireToolbar();
   wireKeyboard();
   wirePaste();
@@ -252,7 +266,10 @@ async function openPage(slug) {
   renderSidebar();
   renderBoardChrome();
   boardView.render();
-  refreshInspector();
+  // Restore the per-viewer pan/zoom for this page, otherwise frame the content.
+  const savedView = loadView(slug);
+  if (savedView) boardView.setView(savedView);
+  else boardView.fit();
 }
 
 function normalizeBoard(board, fallbackTitle) {
@@ -284,7 +301,6 @@ function applyMode() {
   el.modeToggle.classList.toggle("is-active", editing);
   if (!editing) closeMenus();
   boardView.render();
-  refreshInspector();
 }
 
 function setMode(mode) {
@@ -528,6 +544,19 @@ function closePageMenu() {
   if (pageMenuEl) pageMenuEl.hidden = true;
 }
 
+// ----- Canvas zoom controls -----
+
+function setupCanvasControls() {
+  setButton($("zoom-out"), "minus", "", "Zoom out");
+  setButton($("zoom-in"), "plus", "", "Zoom in");
+  setButton($("zoom-fit"), "maximize", "", "Fit to content");
+  setButton($("zoom-reset"), "rotate-ccw", "", "Reset zoom");
+  $("zoom-out").addEventListener("click", () => boardView.zoomOutAt());
+  $("zoom-in").addEventListener("click", () => boardView.zoomInAt());
+  $("zoom-fit").addEventListener("click", () => boardView.fit());
+  $("zoom-reset").addEventListener("click", () => boardView.resetView());
+}
+
 function wireToolbar() {
   el.modeToggle.addEventListener("click", () => setMode(state.mode === "edit" ? "view" : "edit"));
   el.saveBtn.addEventListener("click", () => save());
@@ -557,9 +586,17 @@ function refreshFromRepo() {
 
 function wireKeyboard() {
   document.addEventListener("keydown", (e) => {
-    if (state.mode !== "edit" || !state.selectedId) return;
-    const tag = (document.activeElement && document.activeElement.tagName) || "";
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (state.mode !== "edit") return;
+    // Escape commits an open inline editor.
+    if (e.key === "Escape") {
+      boardView.commitEdit();
+      return;
+    }
+    if (!state.selectedId) return;
+    const ae = document.activeElement;
+    const tag = (ae && ae.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (ae && ae.isContentEditable)) return;
+    if (state.editingId) return;
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       removeSelected();
@@ -637,9 +674,10 @@ function addImageFromFile(file, index) {
 function wirePaste() {
   document.addEventListener("paste", (e) => {
     if (state.mode !== "edit") return;
-    // Let a focused field handle its own paste (for example the inspector SVG box).
-    const tag = (document.activeElement && document.activeElement.tagName) || "";
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    // Let a focused field or an open inline editor handle its own paste.
+    const ae = document.activeElement;
+    const tag = (ae && ae.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (ae && ae.isContentEditable)) return;
     const dt = e.clipboardData;
     if (!dt) return;
 
@@ -676,10 +714,9 @@ function addCard(type) {
 function selectCard(id) {
   state.selectedId = id;
   boardView.updateSelection();
-  refreshInspector();
 }
 
-// Shared card actions, used by both the inspector and the card header controls.
+// Shared card actions, used by the card action bar and the right click menu.
 
 function doDeleteCard(id) {
   if (!id) return;
@@ -687,7 +724,6 @@ function doDeleteCard(id) {
   if (state.selectedId === id) state.selectedId = null;
   markDirty();
   boardView.render();
-  refreshInspector();
 }
 
 function doBringToFront(id) {
@@ -697,7 +733,6 @@ function doBringToFront(id) {
   markDirty();
   boardView.render();
   boardView.updateSelection();
-  refreshInspector();
 }
 
 function doSendToBack(id) {
@@ -707,7 +742,6 @@ function doSendToBack(id) {
   markDirty();
   boardView.render();
   boardView.updateSelection();
-  refreshInspector();
 }
 
 function doToggleCollapse(id) {
@@ -717,7 +751,6 @@ function doToggleCollapse(id) {
   markDirty();
   boardView.render();
   boardView.updateSelection();
-  refreshInspector();
 }
 
 function doSetHidden(id, hidden) {
@@ -727,33 +760,10 @@ function doSetHidden(id, hidden) {
   markDirty();
   boardView.render();
   boardView.updateSelection();
-  refreshInspector();
 }
 
 function removeSelected() {
   doDeleteCard(state.selectedId);
-}
-
-function refreshInspector() {
-  if (state.mode !== "edit") {
-    el.inspector.innerHTML = "";
-    return;
-  }
-  const card = state.board.cards.find((c) => c.id === state.selectedId) || null;
-  renderInspector(el.inspector, {
-    card,
-    update: () => {
-      if (card) boardView.refreshCard(card);
-      markDirty();
-    },
-    rerender: () => {
-      if (card) boardView.refreshCard(card);
-    },
-    bringToFront: () => card && doBringToFront(card.id),
-    sendToBack: () => card && doSendToBack(card.id),
-    remove: () => card && doDeleteCard(card.id),
-    uploadAsset: (file) => uploadAsset(file),
-  });
 }
 
 // ----- Autosave -----
@@ -863,7 +873,6 @@ function deletePageSlug(slug) {
       state.board = { title: "", cards: [] };
       renderBoardChrome();
       boardView.render();
-      refreshInspector();
     }
   }
   setStatus('Deleted "' + label + '". Save to publish the removal.', "info");
@@ -882,6 +891,7 @@ async function save() {
     setStatus("There is no page to save. Add a page first.", "error");
     return;
   }
+  boardView.commitEdit();
   const token = await ensureToken();
   if (!token) {
     setStatus("Save cancelled, no token provided.", "info");
@@ -997,9 +1007,11 @@ window.__wiki = {
     slug: state.slug,
     mode: state.mode,
     selectedId: state.selectedId,
+    editingId: state.editingId,
     cardCount: state.board.cards.length,
     pageCount: state.pages.length,
     deletedPages: state.deletedPages.slice(),
+    view: boardView ? boardView.getView() : null,
     cards: state.board.cards.map((c) => ({
       id: c.id,
       type: c.type,
@@ -1011,6 +1023,15 @@ window.__wiki = {
       collapsed: !!c.collapsed,
       hidden: !!c.hidden,
       format: c.format,
+      md: c.md,
+      html: c.html,
+      code: c.code,
+      lang: c.lang,
+      rows: c.rows,
+      src: c.src,
+      svg: c.svg,
+      shape: c.shape,
+      stroke: c.stroke,
     })),
   }),
   setMode,
@@ -1022,6 +1043,23 @@ window.__wiki = {
   pasteText: handlePastedText,
   placeImageSrc: (src, name) => placeImageCard(src, name || ""),
   categories: () => Array.from(new Set(state.pages.map((p) => pageCategory(p)))),
+  // Canvas + inline-edit hooks for headless verification.
+  getView: () => boardView.getView(),
+  setView: (v) => boardView.setView(v),
+  fit: () => boardView.fit(),
+  clientToBoard: (x, y) => boardView.clientToBoard(x, y),
+  beginEdit: (id) => {
+    const card = state.board.cards.find((c) => c.id === id);
+    if (card) boardView.beginEdit(card);
+  },
+  commitEdit: () => boardView.commitEdit(),
+  setContent: (id, patch) => {
+    const card = state.board.cards.find((c) => c.id === id);
+    if (!card) return;
+    Object.assign(card, patch);
+    boardView.refreshCard(card);
+    markDirty();
+  },
 };
 
 init();
