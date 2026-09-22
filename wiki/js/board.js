@@ -60,6 +60,20 @@ export class BoardView {
     return Math.round(value / this.grid) * this.grid;
   }
 
+  // Grow the surface so tall or wide pages scroll fully, keeping a comfortable default size
+  // and some room to drag cards past the current content.
+  _sizeSurface(cards) {
+    let right = 2000;
+    let bottom = 1200;
+    for (const c of cards) {
+      if (c.hidden && this.opts.getMode() !== "edit") continue;
+      right = Math.max(right, (c.x || 0) + (c.w || 0));
+      bottom = Math.max(bottom, (c.y || 0) + (c.h || 0));
+    }
+    this.surface.style.width = right + 400 + "px";
+    this.surface.style.height = bottom + 400 + "px";
+  }
+
   // Full render from the current board state.
   render() {
     const board = this.opts.getBoard();
@@ -67,6 +81,7 @@ export class BoardView {
     const selId = this.opts.getSelectedId();
     this.surface.classList.toggle("is-edit", mode === "edit");
     this.surface.innerHTML = "";
+    this._sizeSurface(board.cards);
     let cards = board.cards.slice().sort((a, b) => (a.z || 0) - (b.z || 0));
     // Hidden cards are dropped entirely in view mode, and shown faintly in edit mode so they
     // can be brought back with the right click menu.
@@ -186,17 +201,8 @@ export class BoardView {
       if (mode === "edit") {
         this._addResizeHandles(el, card);
         if (card.type === "draw") this._attachDraw(body, card);
-      } else {
-        // A gentle pointer tracking tilt, view mode only.
-        this._attachTilt(el);
       }
     }
-
-    // The specular sheen overlay tracks the pointer. It never blocks clicks.
-    const sheen = document.createElement("div");
-    sheen.className = "card-sheen";
-    el.appendChild(sheen);
-    this._attachSheen(el);
 
     return el;
   }
@@ -209,41 +215,6 @@ export class BoardView {
       el.appendChild(handle);
       this._attachResize(handle, el, card, spec.dir);
     });
-  }
-
-  _prefersReducedMotion() {
-    try {
-      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    } catch (err) {
-      return false;
-    }
-  }
-
-  // A subtle 3D tilt that follows the pointer over a card in view mode. It only sets the
-  // element transform, so it never interferes with selection, drag, resize or the inspector,
-  // none of which run in view mode.
-  _attachTilt(el) {
-    if (this._prefersReducedMotion()) return;
-    const maxDeg = 5;
-    const onMove = (e) => {
-      const r = el.getBoundingClientRect();
-      if (!r.width || !r.height) return;
-      const px = (e.clientX - r.left) / r.width;
-      const py = (e.clientY - r.top) / r.height;
-      const ry = (px - 0.5) * 2 * maxDeg;
-      const rx = -(py - 0.5) * 2 * maxDeg;
-      el.style.transform =
-        "perspective(900px) rotateX(" + rx.toFixed(2) + "deg) rotateY(" + ry.toFixed(2) + "deg) translate3d(0, -4px, 0)";
-    };
-    const onLeave = () => {
-      el.style.transform = "";
-    };
-    el.addEventListener("pointerenter", () => {
-      el.style.willChange = "transform";
-    });
-    el.addEventListener("pointermove", onMove);
-    el.addEventListener("pointerleave", onLeave);
-    el.addEventListener("pointercancel", onLeave);
   }
 
   // A small header control button with an inline icon. Its pointerdown is stopped so it does
@@ -261,22 +232,6 @@ export class BoardView {
       onClick();
     });
     return btn;
-  }
-
-  // Cursor tracking specular highlight. Only sets CSS custom properties, so it never
-  // interferes with selection, drag, resize or the inspector. Disabled under reduced motion.
-  _attachSheen(el) {
-    if (this._prefersReducedMotion()) return;
-    const sheen = el.querySelector(".card-sheen");
-    if (!sheen) return;
-    el.addEventListener("pointermove", (e) => {
-      const r = el.getBoundingClientRect();
-      if (!r.width || !r.height) return;
-      const mx = ((e.clientX - r.left) / r.width) * 100;
-      const my = ((e.clientY - r.top) / r.height) * 100;
-      el.style.setProperty("--mx", mx.toFixed(1) + "%");
-      el.style.setProperty("--my", my.toFixed(1) + "%");
-    });
   }
 
   _attachDrag(header, el, card) {

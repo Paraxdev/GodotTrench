@@ -243,6 +243,20 @@ function imageInspector(body, ctx) {
   row.appendChild(uploadBtn);
   row.appendChild(fileInput);
   body.appendChild(row);
+
+  // Inline SVG markup. When present it overrides the source above.
+  const svgTa = document.createElement("textarea");
+  svgTa.className = "inspector-textarea mono";
+  svgTa.rows = 5;
+  svgTa.spellcheck = false;
+  svgTa.value = ctx.card.svg || "";
+  svgTa.setAttribute("placeholder", "<svg ...>...</svg>  (overrides the source when set)");
+  svgTa.addEventListener("input", () => {
+    ctx.card.svg = svgTa.value;
+    ctx.update();
+    ctx.rerender();
+  });
+  body.appendChild(field("SVG markup (paste)", svgTa));
 }
 
 function videoInspector(body, ctx) {

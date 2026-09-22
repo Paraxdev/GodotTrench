@@ -1,0 +1,49 @@
+{
+  "title": "Entity reference",
+  "cards": [
+    {
+      "id": "c1",
+      "type": "text",
+      "x": 48,
+      "y": 40,
+      "w": 780,
+      "h": 155,
+      "z": 0,
+      "format": "markdown",
+      "md": "# Entity reference\n\nThe shipped entity library. Each entry lists its **classname**, its **inputs** (methods you can call), its **outputs** (signals it fires) and its main **properties**. Names are real, taken from `builtin_entities.json` and the entity scripts.\n"
+    },
+    {
+      "id": "c2",
+      "type": "text",
+      "x": 48,
+      "y": 217,
+      "w": 780,
+      "h": 500,
+      "z": 1,
+      "format": "markdown",
+      "md": "## Logic\n\n**logic_relay** — forwards a trigger to its outputs; can be disabled.\nInputs: `trigger(activator)`, `enable`, `disable`, `toggle`. Outputs: `triggered(activator)`. Props: `start_disabled`.\n\n**logic_branch** — stores a boolean; on `test` fires one of two outputs.\nInputs: `set_true`, `set_false`, `toggle`, `test`, `set_and_test(value)`. Outputs: `on_true`, `on_false`. Props: `start_value`.\n\n**logic_counter** — counts inputs and fires at its limits.\nInputs: `add(amount)`, `subtract(amount)`, `set_value(value)`, `reset`. Outputs: `hit_max`, `hit_min`, `changed(value)`. Props: `min` (0), `max` (3), `start_value`.\n\n**logic_timer** — fires `timer` every interval, optionally randomized.\nInputs: `start`, `stop`, `toggle`, `fire`. Outputs: `timer`. Props: `interval` (1.0), `random_min`/`random_max`, `start_on`, `once`.\n\n**logic_script** — runs an inline GDScript snippet when fired, for logic the built in inputs cannot express (e.g. reading a player's health).\nInputs: `run(activator)`, `run_with(parameter)`. Outputs: `ran(result)`. Props: `source` (scope: `this`, `activator`, `parameter`, `io`, `tree`), `expression` (used when `source` is empty).\n"
+    },
+    {
+      "id": "c3",
+      "type": "text",
+      "x": 48,
+      "y": 739,
+      "w": 780,
+      "h": 569,
+      "z": 2,
+      "format": "markdown",
+      "md": "## Doors, buttons and triggers\n\n**func_button** (solid) — pressable button; moves by `travel` while pressed and fires `pressed`.\nInputs: `press(activator)`, `release`, `lock`, `unlock`, `use(activator)`. Outputs: `pressed(activator)`, `released`, `locked_use(activator)`. Props: `travel` (`0 -2 0`), `wait` (1.0, -1 stays pressed), `locked`, `interact`.\n\n**func_door** (solid) — sliding door; moves by `travel` when opened.\nInputs: `open`, `close`, `toggle`, `lock`, `unlock`, `use(activator)`. Outputs: `opened`, `closed`, `started_opening`, `started_closing`, `locked_use`. Props: `travel` (`0 64 0`), `speed` (2.0), `wait`, `locked`, `start_open`, `interact`.\n\n**func_door_rotating** (also **func_gate**) — swings around a hinge; drag the hinge handle in the viewport.\nInputs: `open(activator)`, `close`, `toggle`, `lock`, `unlock`, `use`. Outputs: same family as func_door. Props: `hinge`, `axis` (y/x/z), `open_angle` (95), `speed` (120 deg/s), `open_away`, `start_open`.\n\n**trigger_once** / **trigger_multiple** (solid area) — fire on body entry, filtered by group. `trigger_once` disables itself after firing; `trigger_multiple` refires with a cooldown.\nInputs: `enable`, `disable`, `toggle`. Outputs: `triggered(activator)`, `entered(activator)`, `exited(activator)`. Props: `filter_group` (\"player\"), `start_disabled`, and `once` / `cooldown`.\n\n**trigger_hurt** (solid area) — damages bodies inside by calling their damage method.\nInputs: `enable`, `disable`, `toggle`. Outputs: `hurt(activator)`. Props: `damage` (10/s), `damage_method` (\"take_damage\"), `interval` (0.5), `filter_group`.\n"
+    },
+    {
+      "id": "c4",
+      "type": "text",
+      "x": 48,
+      "y": 1330,
+      "w": 780,
+      "h": 868,
+      "z": 3,
+      "format": "markdown",
+      "md": "## World, FX and actors\n\n**npc_walker** (point) — scripted actor that walks a chain of `path_corner` entities playing animations, for in game cutscenes.\nInputs: `start`, `stop`, `walk_to(corner)`, `play_anim(name)`, `face(target)`. Outputs: `arrived(corner)`, `reached_goal`, `finished`. Props: `model`, `target` (first corner), `speed` (2.0), `loop`, `walk_anim`, `idle_anim`.\n\n**path_corner** (point) — one stop of a path; `target` names the next corner.\nOutputs: `reached(train)`. Props: `target`, `wait`, `speed`.\n\n**game_text** (point) — shows a line in the world (`Label3D`) and/or on the HUD.\nInputs: `show`, `hide`, `set_text(text)`, `flash(seconds)`. Outputs: `shown`, `hidden`. Props: `text`, `place` (world/hud/both), `duration`, `text_color`.\n\n**prop_physics** (point) — throwable / breakable physics prop (crate, barrel). Damage, hard impact or smash breaks it; explosive props blast when broken.\nInputs: `smash`, `ignite(activator)`, `push(direction)`, `take_damage(amount)`. Outputs: `damaged(hp)`, `broken`. Props: `model`, `mass`, `health` (30), `explosive`, `explosion_radius`, `fuse`, `impact_speed`.\n\n**env_explosion** (point) — on `explode` pushes rigid bodies away and calls `take_damage` on nodes in `radius`, then spawns an effect.\nInputs: `explode(activator)`. Outputs: `exploded`. Props: `radius` (256), `damage` (50), `force` (8), `effect_scene`.\n\n**light** / **light_spot** (point) — switchable omni / spot light.\nInputs: `turn_on`, `turn_off`, `toggle`. Outputs: `switched(on)`. Props: `light_energy`, `light_color`, range, `start_on`.\n\n**env_sound** (point) — positional sound played through I/O.\nInputs: `play`, `stop`, `toggle`. Outputs: `finished`. Props: `sound`, `volume_db`, `max_distance`, `loop_sound`.\n\n**env_particles** (point) — particle effect (smoke, fire, sparks, dust).\nInputs: `start`, `stop`, `toggle`, `burst`. Props: `amount`, `lifetime`, `one_shot`, `start_emitting`.\n\n**info_spawner** (point) — spawns scenes (enemies, pickups) on input or a timer.\nInputs: `spawn`, `start`, `stop`, `toggle`, `kill_all`. Outputs: `spawned(node)`, `all_dead`, `exhausted`. Props: `scene`, `count`, `max_alive`, `interval`, `radius`, `spawn_group`.\n"
+    }
+  ]
+}

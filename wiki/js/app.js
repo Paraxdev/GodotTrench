@@ -80,6 +80,7 @@ async function init() {
   setupCardContextMenu();
   wireToolbar();
   wireKeyboard();
+  wirePaste();
 
   await loadIndex();
   renderSidebar();
@@ -117,24 +118,94 @@ async function loadIndex() {
 
 // ----- Sidebar -----
 
+const DEFAULT_CATEGORY = "General";
+
+function pageCategory(page) {
+  return (page.category && String(page.category).trim()) || DEFAULT_CATEGORY;
+}
+
+// Categories the user has collapsed in the sidebar, remembered per browser.
+function loadCollapsedCats() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem("wiki_collapsed_cats") || "[]"));
+  } catch (err) {
+    return new Set();
+  }
+}
+function saveCollapsedCats(set) {
+  try {
+    localStorage.setItem("wiki_collapsed_cats", JSON.stringify(Array.from(set)));
+  } catch (err) {
+    // Ignore.
+  }
+}
+const collapsedCats = loadCollapsedCats();
+
 function renderSidebar() {
   el.pageList.innerHTML = "";
-  state.pages.forEach((page) => {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "page-item";
-    if (page.slug === state.slug) item.classList.add("active");
-    item.textContent = page.title || page.slug;
-    item.title = page.slug;
-    item.addEventListener("click", () => openPage(page.slug));
-    el.pageList.appendChild(item);
-  });
   if (!state.pages.length) {
     const empty = document.createElement("div");
     empty.className = "page-empty";
     empty.textContent = "No pages yet. Add one to begin.";
     el.pageList.appendChild(empty);
+    return;
   }
+
+  // Group pages by category, preserving first-seen order for both categories and pages.
+  const order = [];
+  const groups = new Map();
+  state.pages.forEach((page) => {
+    const cat = pageCategory(page);
+    if (!groups.has(cat)) {
+      groups.set(cat, []);
+      order.push(cat);
+    }
+    groups.get(cat).push(page);
+  });
+
+  order.forEach((cat) => {
+    const group = document.createElement("div");
+    group.className = "page-group";
+    const isCollapsed = collapsedCats.has(cat);
+
+    const header = document.createElement("button");
+    header.type = "button";
+    header.className = "page-cat" + (isCollapsed ? " collapsed" : "");
+    header.appendChild(icon(isCollapsed ? "chevron-right" : "chevron-down", { size: 14 }));
+    const label = document.createElement("span");
+    label.className = "page-cat-label";
+    label.textContent = cat;
+    header.appendChild(label);
+    const count = document.createElement("span");
+    count.className = "page-cat-count";
+    count.textContent = String(groups.get(cat).length);
+    header.appendChild(count);
+    header.addEventListener("click", () => {
+      if (collapsedCats.has(cat)) collapsedCats.delete(cat);
+      else collapsedCats.add(cat);
+      saveCollapsedCats(collapsedCats);
+      renderSidebar();
+    });
+    group.appendChild(header);
+
+    if (!isCollapsed) {
+      groups.get(cat).forEach((page) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "page-item";
+        if (page.slug === state.slug) item.classList.add("active");
+        item.textContent = page.title || page.slug;
+        item.title = page.slug;
+        item.addEventListener("click", () => openPage(page.slug));
+        item.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          openPageMenu(page.slug, e.clientX, e.clientY);
+        });
+        group.appendChild(item);
+      });
+    }
+    el.pageList.appendChild(group);
+  });
 }
 
 // ----- Page loading -----
@@ -281,9 +352,10 @@ function setupCardMenu() {
   document.addEventListener("pointerdown", (e) => {
     if (!menuEl.hidden && !menuEl.contains(e.target)) closeCardMenu();
     if (cardCtxEl && !cardCtxEl.hidden && !cardCtxEl.contains(e.target)) closeCardContextMenu();
+    if (pageMenuEl && !pageMenuEl.hidden && !pageMenuEl.contains(e.target)) closePageMenu();
   });
   document.addEventListener("keydown", (e) => {
-    const ctxOpen = cardCtxEl && !cardCtxEl.hidden;
+    const ctxOpen = (cardCtxEl && !cardCtxEl.hidden) || (pageMenuEl && !pageMenuEl.hidden);
     if ((!menuEl.hidden || ctxOpen) && e.key === "Escape") {
       e.preventDefault();
       closeMenus();
@@ -396,6 +468,45 @@ function closeCardContextMenu() {
 function closeMenus() {
   closeCardMenu();
   closeCardContextMenu();
+  closePageMenu();
+}
+
+// ----- Page (sidebar) context menu: rename, category, delete -----
+
+let pageMenuEl = null;
+
+function ensurePageMenu() {
+  if (pageMenuEl) return;
+  pageMenuEl = document.createElement("div");
+  pageMenuEl.className = "card-menu page-ctx-menu";
+  pageMenuEl.setAttribute("role", "menu");
+  pageMenuEl.setAttribute("aria-label", "Page actions");
+  pageMenuEl.hidden = true;
+  document.body.appendChild(pageMenuEl);
+}
+
+function openPageMenu(slug, clientX, clientY) {
+  ensurePageMenu();
+  closeCardMenu();
+  closeCardContextMenu();
+  pageMenuEl.innerHTML = "";
+  pageMenuEl.appendChild(ctxItem("pencil-line", "Rename", () => renamePageSlug(slug)));
+  pageMenuEl.appendChild(ctxItem("folder-input", "Set category", () => setCategorySlug(slug)));
+  pageMenuEl.appendChild(ctxItem("trash-2", "Delete page", () => deletePageSlug(slug), true));
+
+  pageMenuEl.hidden = false;
+  const mw = pageMenuEl.offsetWidth || 190;
+  const mh = pageMenuEl.offsetHeight || 140;
+  let left = clientX;
+  let top = clientY;
+  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+  if (top + mh > window.innerHeight - 8) top = window.innerHeight - mh - 8;
+  pageMenuEl.style.left = Math.max(8, left) + "px";
+  pageMenuEl.style.top = Math.max(8, top) + "px";
+}
+
+function closePageMenu() {
+  if (pageMenuEl) pageMenuEl.hidden = true;
 }
 
 function wireToolbar() {
@@ -422,6 +533,94 @@ function wireKeyboard() {
       e.preventDefault();
       removeSelected();
     }
+  });
+}
+
+// ----- Paste images, gifs and SVG onto the board -----
+
+// The point where a pasted or newly placed item should land.
+function pastePoint() {
+  if (lastPointer.overBoard) return boardView.clientToBoard(lastPointer.x, lastPointer.y);
+  return boardView.spawnPoint();
+}
+
+function isImageUrl(text) {
+  if (/^data:image\//i.test(text)) return true;
+  if (!/^https?:\/\//i.test(text)) return false;
+  return /\.(png|jpe?g|gif|webp|svg|avif|bmp)(\?.*)?$/i.test(text);
+}
+
+// Place an image card from a resolved src (data URL or link).
+function placeImageCard(src, name, offset) {
+  const at = pastePoint();
+  const n = offset || 0;
+  at.x += n * 24;
+  at.y += n * 24;
+  const card = addCardAt("image", at);
+  card.src = src;
+  card.svg = "";
+  if (name) card.alt = name;
+  markDirty();
+  boardView.refreshCard(card);
+  return card;
+}
+
+// Place an SVG card from inline markup.
+function placeSvgCard(svg) {
+  const at = pastePoint();
+  const card = addCardAt("image", at);
+  card.svg = svg;
+  card.src = "";
+  markDirty();
+  boardView.refreshCard(card);
+  return card;
+}
+
+// Handle pasted text: inline SVG, or a link to an image. Returns true when it was handled.
+function handlePastedText(text) {
+  const t = (text || "").trim();
+  if (!t) return false;
+  if (/^<svg[\s>]/i.test(t) && /<\/svg>/i.test(t)) {
+    placeSvgCard(t);
+    setStatus("Pasted SVG.", "success");
+    return true;
+  }
+  if (isImageUrl(t)) {
+    placeImageCard(t, "");
+    setStatus("Pasted image link.", "success");
+    return true;
+  }
+  return false;
+}
+
+function addImageFromFile(file, index) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    placeImageCard(String(reader.result), file.name || "", index);
+    setStatus("Pasted " + (file.name || "image") + ".", "success");
+  };
+  reader.onerror = () => setStatus("Could not read the pasted image.", "error");
+  reader.readAsDataURL(file);
+}
+
+function wirePaste() {
+  document.addEventListener("paste", (e) => {
+    if (state.mode !== "edit") return;
+    // Let a focused field handle its own paste (for example the inspector SVG box).
+    const tag = (document.activeElement && document.activeElement.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    const dt = e.clipboardData;
+    if (!dt) return;
+
+    const files = Array.from(dt.files || []).filter((f) => f.type.startsWith("image/"));
+    if (files.length) {
+      e.preventDefault();
+      files.forEach((file, i) => addImageFromFile(file, i));
+      return;
+    }
+
+    const text = dt.getData("text/plain") || "";
+    if (handlePastedText(text)) e.preventDefault();
   });
 }
 
@@ -550,61 +749,89 @@ function deriveSlug(title) {
   return unique;
 }
 
+let lastCategory = "";
+
 function addPage() {
   const title = window.prompt("New page title");
   if (title == null) return;
   const clean = title.trim();
   if (!clean) return;
+  const cat = window.prompt("Category (blank for General)", lastCategory);
+  if (cat == null) return;
+  const category = cat.trim() || DEFAULT_CATEGORY;
+  lastCategory = category === DEFAULT_CATEGORY ? "" : category;
   const slug = deriveSlug(clean);
   // If this reuses a slug queued for deletion, keep its file.
   state.deletedPages = state.deletedPages.filter((s) => s !== slug);
-  state.pages.push({ slug, title: clean });
+  state.pages.push({ slug, title: clean, category });
   saveIndexDraft(state.pages);
   state.board = { title: clean, cards: [] };
   saveDraft(slug, state.board);
   renderSidebar();
   openPage(slug);
-  setStatus('Page "' + clean + '" added. Save to publish it.', "info");
+  setStatus('Page "' + clean + '" added to ' + category + ". Save to publish it.", "info");
 }
 
 function renamePage() {
-  if (!state.slug) return;
-  const entry = state.pages.find((p) => p.slug === state.slug);
-  const current = entry ? entry.title : state.slug;
-  const title = window.prompt("Rename page", current);
-  if (title == null) return;
-  const clean = title.trim();
-  if (!clean) return;
-  if (entry) entry.title = clean;
-  state.board.title = clean;
-  markDirty();
-  renderSidebar();
-  renderBoardChrome();
-  setStatus("Renamed. Save to publish the change.", "info");
+  if (state.slug) renamePageSlug(state.slug);
 }
 
 function deletePage() {
-  if (!state.slug) return;
-  const entry = state.pages.find((p) => p.slug === state.slug);
-  const label = entry ? entry.title : state.slug;
+  if (state.slug) deletePageSlug(state.slug);
+}
+
+function renamePageSlug(slug) {
+  const entry = state.pages.find((p) => p.slug === slug);
+  if (!entry) return;
+  const title = window.prompt("Rename page", entry.title || slug);
+  if (title == null) return;
+  const clean = title.trim();
+  if (!clean) return;
+  entry.title = clean;
+  if (slug === state.slug) {
+    state.board.title = clean;
+    renderBoardChrome();
+  }
+  markDirty();
+  renderSidebar();
+  setStatus("Renamed. Save to publish the change.", "info");
+}
+
+function setCategorySlug(slug) {
+  const entry = state.pages.find((p) => p.slug === slug);
+  if (!entry) return;
+  const cat = window.prompt("Category for this page (blank for General)", entry.category || "");
+  if (cat == null) return;
+  entry.category = cat.trim() || DEFAULT_CATEGORY;
+  lastCategory = entry.category === DEFAULT_CATEGORY ? "" : entry.category;
+  markDirty();
+  renderSidebar();
+  setStatus('Moved to ' + entry.category + ". Save to publish the change.", "info");
+}
+
+function deletePageSlug(slug) {
+  const entry = state.pages.find((p) => p.slug === slug);
+  if (!entry) return;
+  const label = entry.title || slug;
   const ok = window.confirm('Delete page "' + label + '"? Save removes it from the site and the repo.');
   if (!ok) return;
-  const removed = state.slug;
-  state.pages = state.pages.filter((p) => p.slug !== removed);
-  clearDraft(removed);
+  state.pages = state.pages.filter((p) => p.slug !== slug);
+  clearDraft(slug);
   saveIndexDraft(state.pages);
   // Queue the repo file for deletion on the next Save.
-  if (!state.deletedPages.includes(removed)) state.deletedPages.push(removed);
-  const nextSlug = state.pages.length ? state.pages[0].slug : null;
+  if (!state.deletedPages.includes(slug)) state.deletedPages.push(slug);
   renderSidebar();
-  if (nextSlug) {
-    openPage(nextSlug);
-  } else {
-    state.slug = null;
-    state.board = { title: "", cards: [] };
-    renderBoardChrome();
-    boardView.render();
-    refreshInspector();
+  if (slug === state.slug) {
+    const nextSlug = state.pages.length ? state.pages[0].slug : null;
+    if (nextSlug) {
+      openPage(nextSlug);
+    } else {
+      state.slug = null;
+      state.board = { title: "", cards: [] };
+      renderBoardChrome();
+      boardView.render();
+      refreshInspector();
+    }
   }
   setStatus('Deleted "' + label + '". Save to publish the removal.', "info");
 }
@@ -759,6 +986,9 @@ window.__wiki = {
   selectCard,
   toggleCollapse: doToggleCollapse,
   setHidden: doSetHidden,
+  pasteText: handlePastedText,
+  placeImageSrc: (src, name) => placeImageCard(src, name || ""),
+  categories: () => Array.from(new Set(state.pages.map((p) => pageCategory(p)))),
 };
 
 init();
