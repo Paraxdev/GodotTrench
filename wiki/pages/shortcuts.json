@@ -33,6 +33,12 @@
       "md": "## Brushes, meshes and textures\n\n| Key | Action |\n| --- | --- |\n| Ctrl+K | CSG subtract |\n| Ctrl+M | CSG convex merge |\n| Ctrl+L | CSG intersect |\n| Ctrl+Shift+K | Hollow |\n| Ctrl+Shift+B | Shape generator |\n| Ctrl+Shift+E | Convert brushes to mesh |\n| Ctrl+Shift+J | Join meshes |\n| Ctrl+Shift+W | Move brushes to world |\n| Ctrl+Shift+U | Toggle UV lock |\n| Alt+H | Hotspot fit |"
     },
     {
+      "id": "b8",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Mesh edit and the UV Editor\n\n| Input | Result |\n| --- | --- |\n| Double click a vertex, edge or face (Mesh tool) | Select it and show the transform gizmo on it, in every view |\n| Esc (Mesh tool, gizmo shown) | Hide the gizmo, the selection stays |\n| Click a UV corner | Select it with the corners stitched to it |\n| Shift+click, Ctrl+click a UV corner | Add it, remove it |\n| Alt+click a UV corner | Select only that face's corner, to split a stitch |\n| Shift+drag, Ctrl+drag on empty UV space | Box select adding, box select removing |\n| Drag a UV corner | Move the whole selection, pixel snap applies while dragging |\n| Drag empty UV space | Move the texture of every shown face |\n| Wheel, right drag | Scale, rotate the selected corners, or the whole faces when none are selected |\n| Double click a UV corner | Move gizmo, its arrows move along U or V only |\n| Esc (pointer over the UV Editor) | Hide the UV gizmo |\n| Middle drag, Ctrl+wheel | Pan, zoom the UV canvas |"
+    },
+    {
       "id": "b6",
       "type": "text",
       "format": "markdown",

@@ -6,7 +6,7 @@
 
 import { el } from "./dom.js";
 import { icon } from "./icons.js";
-import { renderMarkdownInto, renderHtmlInto } from "./markdown.js";
+import { renderMarkdownInto, renderHtmlInto, richify } from "./markdown.js";
 
 export const CARD_TYPES = ["text", "code", "image", "video", "table", "shape", "draw"];
 
@@ -108,10 +108,11 @@ function typeDefaults(type) {
 
 // ----- Renderers. Each returns an HTMLElement for the card body. -----
 
-export function renderContent(card) {
+// opts.rich adds the reading-only presentation (see richify), never for a card being edited.
+export function renderContent(card, opts) {
   switch (card.type) {
     case "text":
-      return renderText(card);
+      return renderText(card, opts && opts.rich);
     case "code":
       return renderCode(card);
     case "image":
@@ -136,7 +137,7 @@ function placeholder(text) {
 // Text cards render Markdown, BBCode, or raw HTML. Whatever the format, the final HTML
 // is always run through DOMPurify before it touches the DOM, so authored content, even raw
 // HTML, cannot inject script or event handlers on this public site.
-function renderText(card) {
+function renderText(card, rich) {
   const div = el("div", { class: "md" });
   const source = card.md || "";
   const format = card.format || "markdown";
@@ -156,6 +157,8 @@ function renderText(card) {
     // No sanitizer available (offline without the vendored copy). Show the raw source safely
     // as plain text rather than risk injecting unsanitized markup.
     div.appendChild(el("pre", { text: source }));
+  } else if (rich) {
+    richify(div);
   }
   return div;
 }

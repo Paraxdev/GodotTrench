@@ -21,6 +21,24 @@
       "code": "var map := FuncGodotMap.new()\nmap.map_settings = load(\"res://demo/demo_map_settings.tres\")\nmap.local_map_file = \"res://demo/maps/scripted_scene.gtm\"\nadd_child(map)\nmap.build()"
     },
     {
+      "id": "b13",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Materials and how big a texture looks\n\nA face's material is a path under the texture folder without its extension, such as `showcase/planks`. When a material file with that name sits next to the image, `showcase/planks.tres` here, the build uses it as it is, and the editor previews the same file, so transparency, emission and normal maps look alike on both sides. Without one the addon makes a plain material from the image.\n\nUVs count texels, and a texel is normally one pixel of the image, which means a 64 pixel texture repeats every 64 map units, two meters at the default scale. That is right for pixel art and wrong for photos, where a 1024 pixel scan of a two meter wall would stretch across thirty meters. A material can state how much of the world one repeat covers with its `texture_size` metadata, in map units, and from then on the editor and the build divide by that instead of the pixel count. Faces, displacements, decals, the Texture tool and UV editor, fit and justify all follow it, and swapping an image for a sharper one no longer changes the map."
+    },
+    {
+      "id": "b14",
+      "type": "code",
+      "lang": "plaintext",
+      "code": "[resource]\nalbedo_texture = ExtResource(\"1_albedo\")\nmetadata/texture_size = Vector2(64, 64)"
+    },
+    {
+      "id": "b15",
+      "type": "text",
+      "format": "markdown",
+      "md": "You can add the metadata in Godot's inspector as well, under *Metadata*, as a `Vector2` or a single number for a square repeat. Terrain layers keep their own `tile` setting, which already measures the repeat in map units. The demo project's textures are CC0 photo scans from Poly Haven and ambientCG, each material set to the real size of its scan, and `tools/fetch_demo_textures.py` in the repository rebuilds them along with a list of their sources.\n\nA material glows when its file sets `emission_enabled`. Godot adds the emission texture to the emission color and multiplies the sum by `emission_energy_multiplier`, or multiplies color and texture when `emission_operator` is 1, so with the default black color a texture glows exactly as painted. Without a material file, an image named like the albedo with `_emission` added becomes the glow map of the generated material. Emissive materials carry a glow badge in the Materials panel, and the lit view adds their light before tone mapping, which keeps a neon sign bright on a dark street. Decals and blends keep the glow of the materials they are made from.\n\nNight maps set the sky from worldspawn: a dim, pale blue sun stands in for the moon, `ambient_energy` and `sky_energy` darken the ambient light and the sky, and `glow_intensity` makes lamps and emissive surfaces bloom in Godot. Lights take a `shadows` key, and a lamp's glowing fixture can follow its light by connecting the light's `switched` output to the fixture's `set_visible` input. The night district in `examples/mcp/night_district.json` shows all of it, from lit windows to a flickering alley lamp."
+    },
+    {
       "id": "b4",
       "type": "text",
       "format": "markdown",

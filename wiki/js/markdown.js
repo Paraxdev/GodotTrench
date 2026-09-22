@@ -4,6 +4,8 @@
 // Extensions on top of GitHub flavored Markdown:
 //   [[slug]] or [[Page title|label]]   wikilinks between pages, Obsidian style
 //   > [!NOTE] optional title           callouts (NOTE, TIP, WARNING, DANGER, EXAMPLE)
+//   Term                               definition lists: a term line directly followed by a
+//   : definition                       ": " line, as in PHP Markdown Extra and Pandoc
 
 import { el } from "./dom.js";
 import { icon } from "./icons.js";
@@ -45,6 +47,11 @@ export function slugify(text) {
 
 let configured = false;
 
+// A term is any line that does not already open another block, directly followed by ": ".
+const TERM = /(?![#>|]|[-*+] |\d+[.)] |```|~~~)\S[^\n]*\n: [^\n]*/.source;
+const DEFLIST = new RegExp("^(?:" + TERM + "(?:\\n|$))+");
+const DEFLIST_START = new RegExp("(^|\\n)" + TERM);
+
 function configure() {
   if (configured || !window.marked) return;
   configured = true;
@@ -52,6 +59,32 @@ function configure() {
     gfm: true,
     breaks: true,
     extensions: [
+      {
+        name: "deflist",
+        level: "block",
+        start(src) {
+          const m = DEFLIST_START.exec(src);
+          return m ? m.index + m[1].length : undefined;
+        },
+        tokenizer(src) {
+          const m = DEFLIST.exec(src);
+          if (!m) return undefined;
+          const lines = m[0].replace(/\n$/, "").split("\n");
+          const items = [];
+          for (let i = 0; i + 1 < lines.length; i += 2) {
+            const term = [];
+            const def = [];
+            this.lexer.inline(lines[i].trim(), term);
+            this.lexer.inline(lines[i + 1].replace(/^: ?/, ""), def);
+            items.push({ term, def });
+          }
+          return { type: "deflist", raw: m[0], items };
+        },
+        renderer(tok) {
+          const rows = tok.items.map((it) => "<dt>" + this.parser.parseInline(it.term) + "</dt><dd>" + this.parser.parseInline(it.def) + "</dd>");
+          return "<dl>" + rows.join("") + "</dl>\n";
+        },
+      },
       {
         name: "wikilink",
         level: "inline",
@@ -142,6 +175,17 @@ export function enhance(root) {
   });
 }
 
+// Reading-only presentation, applied when the text is not being edited: a table gets a scroll
+// wrapper, so a wide one scrolls inside its paper instead of widening the page.
+export function richify(root) {
+  root.querySelectorAll("table").forEach((t) => {
+    if (t.parentElement && t.parentElement.classList.contains("table-scroll")) return;
+    const wrap = el("div", { class: "table-scroll" });
+    t.replaceWith(wrap);
+    wrap.appendChild(t);
+  });
+}
+
 // A blockquote whose first line is [!TYPE] becomes a callout box.
 function upgradeCallout(bq) {
   const first = bq.firstElementChild;
@@ -206,7 +250,7 @@ export function markdownToText(md) {
 // ----- HTML back to Markdown -----
 
 const BLOCK_TAGS = new Set([
-  "P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "UL", "OL", "LI", "BLOCKQUOTE", "PRE", "HR", "TABLE",
+  "P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "UL", "OL", "LI", "BLOCKQUOTE", "PRE", "HR", "TABLE", "DL", "DT", "DD",
   "SECTION", "ARTICLE", "HEADER", "FOOTER", "FIGURE",
 ]);
 
@@ -278,6 +322,7 @@ function block(node) {
   if (tag === "PRE") return fencedCode(node);
   if (tag === "UL" || tag === "OL") return list(node);
   if (tag === "TABLE") return table(node);
+  if (tag === "DL") return deflist(node);
   if (tag === "BLOCKQUOTE") return quote(blocks(node).join("\n\n"));
   if (tag === "DIV" && node.classList.contains("callout")) return callout(node);
   if (tag === "LI") return list({ tagName: "UL", children: [node], getAttribute: () => null });
@@ -343,6 +388,22 @@ function indent(text, n) {
     .split("\n")
     .map((line) => (line ? pad + line : line))
     .join("\n");
+}
+
+function deflist(node) {
+  const out = [];
+  let term = null;
+  const line = (n) => inline(n.childNodes).replace(/\n+/g, " ").trim();
+  Array.from(node.children).forEach((child) => {
+    if (child.tagName === "DT") term = line(child);
+    else if (child.tagName === "DD") {
+      const def = line(child);
+      if (term || def) out.push(escapeLineStart(term || "") + "\n: " + def);
+      term = null;
+    }
+  });
+  if (term) out.push(escapeLineStart(term) + "\n: ");
+  return out.join("\n");
 }
 
 function table(node) {
@@ -469,5 +530,5 @@ function escapeText(s) {
 
 // Text that would otherwise start a heading, quote, list, rule, fence or table.
 function escapeLineStart(line) {
-  return line.replace(/^(#{1,6}(?=\s|$)|>|[-+](?=\s|$)|={3,}|-{3,}|\|)/, "\\$1").replace(/^(\d+)([.)])(?=\s|$)/, "$1\\$2");
+  return line.replace(/^(#{1,6}(?=\s|$)|>|[-+](?=\s|$)|={3,}|-{3,}|\||:(?=\s|$))/, "\\$1").replace(/^(\d+)([.)])(?=\s|$)/, "$1\\$2");
 }

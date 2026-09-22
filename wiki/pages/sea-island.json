@@ -1,0 +1,210 @@
+{
+  "title": "Building a sea island",
+  "layout": "doc",
+  "cards": [
+    {
+      "id": "b1",
+      "type": "text",
+      "format": "markdown",
+      "md": "# Building a sea island\n\nThis tutorial builds a large island in an open sea: a grassy hill with a lower one beside it, a wall of cliffs on the north east coast, a sandy beach on the south shore and dirt paths winding from the beach up to the hilltops. It uses one terrain, one water brush and the Sculpt and Blend tools, nothing else. The island is about 380 m across, big enough to walk around for a while, and the whole thing takes an evening."
+    },
+    {
+      "id": "b2",
+      "type": "image",
+      "src": "assets/sea-island/island-painted.jpg",
+      "alt": "The finished island seen from the south, with the beach, the paths up both hills and the cliffs behind"
+    },
+    {
+      "id": "b3",
+      "type": "text",
+      "format": "markdown",
+      "md": "The numbers below are the ones used for the pictures, in the demo project's units (32 per meter). They are a starting point, not a recipe; the terrain generator gives every seed a different coastline. If you have not read it yet, [[terrain-painting]] explains what the brushes do underneath, which makes the choices here easier to follow."
+    },
+    {
+      "id": "b4",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Choose the four layers\n\nA terrain can blend four textures, so decide first which four the island needs. This one uses the demo textures in `showcase/`:\n\n| Layer | Material | Used for |\n|---|---|---|\n| 0 | `showcase/grass` | everything that is not something else |\n| 1 | `showcase/cliff` | steep ground and cliff faces |\n| 2 | `showcase/dirt` | the paths |\n| 3 | `showcase/sand` | the shore and the beach |\n\nGrass goes in layer 0 because it is the default ground: a fresh terrain is all layer 0, and erasing paints it back. The order of the others does not matter, but the Create Terrain dialog names its four slots after what *Auto Paint* would put there (base, slope, peak, low), so following that order keeps the dialog honest."
+    },
+    {
+      "id": "b5",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Create the terrain\n\n1. Open *Terrain > Create Terrain...*.\n2. Set **Resolution** to 257 x 257 and leave **Cell size** at 64. The dialog shows the size, 16384 units or 512 m on a side.\n3. Pick the **Island** shape, set **Height** to 1600 and **Feature size** to 3000. Larger features give a calmer coastline with fewer tiny bays. Keep the default octaves, roughness and erosion.\n4. Type the four materials into the layer rows: `showcase/grass`, `showcase/cliff`, `showcase/dirt` and `showcase/sand`, with a tile of 256 for the first two and 192 for the others.\n5. Untick **Paint layers from slope and height** and press **Create**."
+    },
+    {
+      "id": "b6",
+      "type": "image",
+      "src": "assets/sea-island/create-terrain-dialog.png",
+      "alt": "The Create Terrain dialog with the island settings"
+    },
+    {
+      "id": "b7",
+      "type": "text",
+      "format": "markdown",
+      "md": "Auto paint is off on purpose. It measures its bands from the lowest point of the terrain to the highest, and on an island a large part of that range is sea floor. The peak band would cover most of the island in dirt and the low band would sit under water. Painting by hand with masks takes a few minutes and gives far better control.\n\nThe island shape rises from the edges to the middle, and the generator puts the terrain's origin at the height of the 3D cursor. The sea will be at height 0, so the terrain has to sink until only its middle stays dry. Select it and, in the Inspector, set **Origin** to `-8192 -576 -8192`. That centres the terrain on the world origin and drops it 576 units, which leaves a wide ring of shallow sea floor around the coast."
+    },
+    {
+      "id": "b8",
+      "type": "image",
+      "src": "assets/sea-island/inspector-origin.png",
+      "alt": "The terrain in the Inspector after moving its origin"
+    },
+    {
+      "id": "b9",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Add the sea\n\nThe sea is a single flat brush. Draw a box in the Top view that reaches far past the terrain on every side, then use the Front view to make it 32 units thick with its top face at height 0. Give it `showcase/water` from the Materials panel and set the scale in the Inspector's *Alignment* section to 8 by 8 so the ripples are not tiny. Finally right click it and choose *Create Brush Entity > func_illusionary*: an illusionary brush is drawn but has no collision, so the player can wade in instead of walking on the water.\n\nMake the box generous, several times the size of the terrain. Its far edge is otherwise visible on the horizon from the hilltops."
+    },
+    {
+      "id": "b10",
+      "type": "image",
+      "src": "assets/sea-island/fresh-island.jpg",
+      "alt": "The generated island sitting in the sea, before any sculpting"
+    },
+    {
+      "id": "b11",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Raise the hills\n\nThe generated island is fairly flat, so the next step is to give it a shape you can recognise from the beach. Press **G** for the Sculpt tool and set the mode to **Raise**. Nothing needs to be selected: with an empty selection the tool works on every terrain in the map.\n\n1. Set the **radius** to 2800 and keep the strength around 4. Hold the button over a spot a little west of the centre until the hill stands about 1500 units, 47 m, above the sea. The ring shows the brush, and the status bar shows the position under the cursor, height included.\n2. Drop the radius to about 1300 and press a few times on the same spot to give the hill a steeper top.\n3. Raise a second, lower hill to the south east with a radius of about 1900."
+    },
+    {
+      "id": "b12",
+      "type": "image",
+      "src": "assets/sea-island/sculpt-hills.jpg",
+      "alt": "The Sculpt tool in Raise mode with a 2800 unit brush over the main hill"
+    },
+    {
+      "id": "b13",
+      "type": "text",
+      "format": "markdown",
+      "md": "A huge brush and a low strength is the way to work at this scale. Small brushes make lumps, and lumps are what give a terrain away as hand made. If something goes too far, hold **Ctrl** while dragging to smooth it back."
+    },
+    {
+      "id": "b14",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Build the cliffs\n\nCliffs need a lot of height over a short distance, more than a smooth brush will ever make. Three passes get there:\n\n1. With **Raise** and a radius of about 1800, drag along the north east coast, a little inland, to lift a broad headland that leans against the main hill. Then give the whole island one pass of **Smooth** with a very large brush, so the headland and the hills blend into each other.\n2. Switch to **Lower** with a radius of about 1000 and drag along the sea just in front of that coast. Deeper water right at the foot of the headland makes the drop steeper.\n3. Switch to **Terrace**, set **step** to 300 and the radius to 1000, and drag along the coastline. Terrace pulls heights towards whole multiples of the step, so the slope breaks into flat shelves and steep faces. A step of 300 units, about 9 m, gives two or three tiers on this headland. Finish with a light **Smooth** along the same line to take the sharpest edges off."
+    },
+    {
+      "id": "b15",
+      "type": "image",
+      "src": "assets/sea-island/terrace-cliffs.jpg",
+      "alt": "The Sculpt tool in Terrace mode with a 300 unit step along the north east coast"
+    },
+    {
+      "id": "b16",
+      "type": "text",
+      "format": "markdown",
+      "md": "The faces are still grass at this point. They turn into rock once the painting starts, which is the reason to sculpt everything first: paint stays where it was put, and a cliff raised after painting keeps the grass it had."
+    },
+    {
+      "id": "b17",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Shape the beach\n\nA beach is a flat strip just above the water. Switch the Sculpt tool to **Flatten**, which pulls the ground towards the height where the stroke started. Set a radius of about 900, start the stroke right at the waterline on the south shore and drag along the coast. Everything under the brush settles to that height, a few units above the sea. Finish with **Smooth** and a slightly larger brush so the beach runs into the land behind it without a step."
+    },
+    {
+      "id": "b18",
+      "type": "image",
+      "src": "assets/sea-island/beach-flatten.jpg",
+      "alt": "The Sculpt tool in Flatten mode on the south shore"
+    },
+    {
+      "id": "b19",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Paint the sand\n\nNow switch to the Blend tool with **Shift+G**. The shore is the first thing to paint, and the height mask does it for the whole island at once.\n\n1. Set the mode to **height**, the falloff to **constant**, the layer to **3** and the strength to 1.\n2. Set the height range from `-3000` to `40`. Everything below 40 units, a little over a meter above the sea, is shore.\n3. Set the radius to 12000, big enough to cover the whole island, and click once in the middle."
+    },
+    {
+      "id": "b20",
+      "type": "image",
+      "src": "assets/sea-island/sand-height.jpg",
+      "alt": "The Blend tool in height mode: one click paints sand on everything below 40 units"
+    },
+    {
+      "id": "b21",
+      "type": "text",
+      "format": "markdown",
+      "md": "Every coast now has a band of sand that fades into the grass over a couple of meters, and the flattened beach in the south is almost all sand. To widen the beach further, switch to **paint** with a smooth falloff, radius 700 and a strength around 0.7, and drag along the south shore once."
+    },
+    {
+      "id": "b22",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Paint the rock\n\nRock goes on the cliffs the same way, with the slope mask instead of the height mask.\n\n1. Set the mode to **slope**, keep the falloff **constant**, set the layer to **1** and the range to `32` to `90` degrees.\n2. With the same huge radius, click once over the island."
+    },
+    {
+      "id": "b23",
+      "type": "image",
+      "src": "assets/sea-island/rock-slope.jpg",
+      "alt": "The Blend tool in slope mode: everything steeper than 32 degrees turns to rock"
+    },
+    {
+      "id": "b24",
+      "type": "text",
+      "format": "markdown",
+      "md": "The terraced faces of the cliffs turn to rock and their shelves stay green, which is exactly what makes them read as cliffs. Steep patches on the hills and the bank behind the beach get small outcrops of rock as well. If one of them sits where you do not want it, paint over it with layer 0 or use **erase**."
+    },
+    {
+      "id": "b25",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Paint the paths\n\nPaths are the part that follows no rule, so they are painted by hand with the plain **paint** mode.\n\n1. Set the mode to **paint**, the falloff to **smooth**, the layer to **2**, the radius to 140 and the strength to 0.8.\n2. Start at the top of the beach and drag up towards the main hill in long, gentle curves. On the steep upper slope, zigzag instead of going straight up; that is how a real path climbs and it reads that way from a distance.\n3. Paint a second path from the top of the main hill along the ridge to the cliff top, and a third from the east end of the beach to the second hill."
+    },
+    {
+      "id": "b26",
+      "type": "image",
+      "src": "assets/sea-island/paths.jpg",
+      "alt": "The Blend tool in paint mode with a 140 unit brush on the path up the main hill"
+    },
+    {
+      "id": "b27",
+      "type": "text",
+      "format": "markdown",
+      "md": "The radius matters more than it seems. The paint is stored on the terrain's vertices, 64 units apart here, and a brush narrower than about two cells comes out ragged or broken up. A radius of 140 gives a path about 7 m wide with clean edges. For a narrow footpath, lay a mesh or a decal on top instead. [[terrain-painting]] shows what different widths look like.\n\nStrokes can be repainted as often as you like. Dragging over the edge of a path with **smooth** softens it, and a few dabs of grass (layer 0) with a spray falloff make the border look trodden rather than drawn."
+    },
+    {
+      "id": "b28",
+      "type": "image",
+      "src": "assets/sea-island/path-close.jpg",
+      "alt": "The path climbing the main hill, seen from the slope below"
+    },
+    {
+      "id": "b29",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Break up the repeat\n\nFrom high up, the rock shows a regular pattern where the same texture repeats every 256 units. The layers' **detile** setting hides it. Select the terrain and, in the Inspector, set detile to 0.5 on grass and dirt, 0.4 on sand and 0.7 with a sharpen of 0.4 on the cliff layer. The difference is easiest to see on the cliffs, compared in [[terrain-painting]]."
+    },
+    {
+      "id": "b30",
+      "type": "image",
+      "src": "assets/terrain-painting/layers-inspector.png",
+      "alt": "The terrain's layers in the Inspector with detile set on every layer"
+    },
+    {
+      "id": "b31",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Trees, bushes and grass\n\n> [!NOTE] Coming next\n> The island is ready for planting: forests on the hills, bushes along the paths and grass in the meadows, with a small jetty and a few props on the beach. That part of the tutorial is still being written."
+    },
+    {
+      "id": "b32",
+      "type": "text",
+      "format": "markdown",
+      "md": "## See it in Godot\n\nSave the map inside your Godot project and build it with a `FuncGodotMap` node, as described in [[building-in-godot]]. The terrain arrives as a `GodotTrenchTerrain` with its chunks, collision and the same four layer blend, and the sea brush as an illusionary mesh at height 0."
+    },
+    {
+      "id": "b33",
+      "type": "image",
+      "src": "assets/sea-island/godot-overview.jpg",
+      "alt": "The same island built and rendered in Godot"
+    },
+    {
+      "id": "b34",
+      "type": "text",
+      "format": "markdown",
+      "md": "The island is also recorded as an MCP script, `examples/mcp/sea_island.json` in the repository. Replaying it in a running editor rebuilds this exact terrain, step for step, which makes it a handy reference for the numbers used above."
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "title": "How terrain painting works",
+  "layout": "doc",
+  "cards": [
+    {
+      "id": "b1",
+      "type": "text",
+      "format": "markdown",
+      "md": "# How terrain painting works\n\nA terrain in GodotTrench is one object: a grid of heights with up to four texture layers painted over it. You shape it with the **Sculpt** tool and colour it with the **Blend** tool, and the Godot addon turns it into chunked meshes with collision that look the same as in the editor. This page explains what is stored, what the brushes actually do to it, and how to get good looking ground without fighting the tools. For a complete build from start to finish, follow [[sea-island]]."
+    },
+    {
+      "id": "b2",
+      "type": "text",
+      "format": "markdown",
+      "md": "## What a terrain is\n\n*Terrain > Create Terrain...* asks for a **resolution**, the number of vertices along each side (33 up to 1025), and a **cell size**, the distance between two vertices in map units. The dialog shows the resulting size in units and in meters. At the demo project's 32 units per meter, 257 vertices with 64 unit cells give a square of 16384 units, 512 m across.\n\nEvery vertex stores a height and four blend weights, one per layer. Nothing is stored between vertices, so the cell size is the finest detail the terrain can hold, for its shape as much as for its paint. A mountain range wants big cells and a garden wants small ones. If you picked wrong, the Inspector's **resample** buttons rebuild the grid at 65, 129, 257 or 513 vertices and carry the heights, weights and holes over.\n\nThe terrain is cut into chunks of 32 by 32 cells for drawing and collision. The Inspector shows the count and lets you change **Chunk cells**. Smaller chunks rebuild faster while you sculpt and cull better in Godot, larger ones mean fewer nodes."
+    },
+    {
+      "id": "b3",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Shaping: the Sculpt tool\n\nPress **G** (or use the Inspector's *Sculpt* button) and drag over the terrain. The tool options bar above the views holds the mode, the **radius** in map units and the **strength**. Ctrl+wheel over a view resizes the brush, Shift turns raise into lower and back, and Ctrl held during a stroke smooths whatever mode is chosen.\n\n* **Raise** and **Lower** add or remove height under the brush, strongest in the middle and fading to nothing at the rim. They keep working while you hold the button, so the strength is a rate: at the centre of the brush a strength of 4 moves the ground about 32 units per second.\n* **Smooth** relaxes each vertex towards its neighbours. Use it after every rough pass, it is what turns lumps into landforms.\n* **Flatten** pulls the ground towards the height where the stroke started. Start on a spot at the height you want and drag outwards to make a shelf, a beach or a building plot.\n* **Noise** roughens the surface with small random bumps, good for breaking up a slope that looks too clean. It adds the same pattern on every pass, so holding it in one place keeps growing the same bumps into spikes. Use it briefly and at a low strength.\n* **Terrace** snaps heights to steps of the given size, which gives stepped cliffs and rice paddies.\n* **Hole** and **Unhole** cut whole cells out of the terrain and fill them again, for cave mouths and tunnels you build from brushes. A hole is gone from the mesh and from the collision.\n\nThe dialog can also start you off: its shapes (hills, mountain, island, valley, ridges) are noise based and can be eroded, or it can read a grayscale heightmap PNG. Generating replaces the heights, so do it first and sculpt afterwards."
+    },
+    {
+      "id": "b4",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Layers\n\nA terrain has between one and four layers. Each layer is a material name, a **tile** size and two optional de-tiling settings, and you edit them in the Inspector with the terrain selected. *+ layer (current material)* adds the material selected in the Materials panel, *- last layer* removes the last one. With the Blend tool active you can also drag a material from the Materials panel onto the terrain, and it goes into the layer the tool is set to paint.\n\nLayer 0 is special in one way: it is the ground that everything else is painted on top of. A new terrain is entirely layer 0, erasing paints layer 0 back, and a vertex whose weights are all zero shows layer 0. Put your most common ground there, usually grass."
+    },
+    {
+      "id": "b5",
+      "type": "image",
+      "src": "assets/terrain-painting/layers-inspector.png",
+      "alt": "The four layers of the sea island in the Inspector, with their tile, detile and sharpen settings"
+    },
+    {
+      "id": "b6",
+      "type": "text",
+      "format": "markdown",
+      "md": "The **tile** is the size in map units that one repeat of the texture covers on the ground. It has nothing to do with the texture's pixel size or the `texture_size` metadata of its material, which only apply to brush and mesh faces. A small tile looks sharp up close and shows its repeat from far away, a large tile hides the repeat and turns blurry at your feet. For walkable ground in the demo project, somewhere between 128 and 384 units (4 to 12 m) works well.\n\n**detile** hides the repeat without making the tile bigger. Every repeat is turned and shifted by its own fixed random amount and the joins are blended, so a grid of identical patches stops being visible. **sharpen** decides how much of each repeat stays untouched: at 0 the neighbouring repeats are mixed evenly, which hides seams best but softens the texture, at 1 they only mix in a narrow band. De-tiling reads the texture four times per projection, so leave it at 0 on layers where the repeat does not show."
+    },
+    {
+      "id": "b7",
+      "type": "image",
+      "src": "assets/terrain-painting/detile-compare.jpg",
+      "alt": "The same cliff rock with a 256 unit tile, detile 0 on the left and 0.7 on the right"
+    },
+    {
+      "id": "b8",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Painting: the Blend tool"
+    },
+    {
+      "id": "b9",
+      "type": "image",
+      "src": "assets/terrain-painting/blend-toolbar.png",
+      "alt": "The Blend tool's options in slope mode"
+    },
+    {
+      "id": "b10",
+      "type": "text",
+      "format": "markdown",
+      "md": "Press **Shift+G** for the Blend tool. Its options are a mode, a falloff, the **layer** to paint (0 to 3), the radius and a strength from 0 to 1. Every dab moves the weights under the brush towards the chosen layer by the brush's influence at that vertex, so the four weights of a vertex always add up to one: painting sand onto grass takes weight away from grass, never adds light or darkness. Strokes lay dabs at a fifth of the radius apart, so the strength is how quickly a slow stroke covers the ground, and several passes at a low strength give softer edges than one pass at full strength.\n\n* **paint** pushes towards the layer. **erase** pushes back towards layer 0.\n* **smooth** averages the weights with their neighbours and softens hard borders. **sharpen** does the opposite and lets the strongest layer win.\n* **noise** paints the layer only in cloud shaped patches of the given **size**, for patchy moss, dry grass or gravel.\n* **slope** paints only where the ground is between two angles, in degrees from flat. `30` to `90` covers anything steeper than 30 degrees, which is how rock ends up on cliffs and nowhere else.\n* **height** paints only between two world heights, for sand along a waterline or snow above a tree line.\n\nThe masks make big brushes safe. With slope from 35 to 90 degrees you can sweep a brush the size of a hill across the whole coast, and only the cliffs turn to rock. The edges of both masks fade out, over a few degrees for slope and up to 64 units for height, so they blend instead of cutting.\n\nThe falloff shapes the brush: **smooth** fades out gently, **linear** fades evenly, **constant** paints the whole disc at the same strength, and **spray** scatters random speckles that thin out towards the rim, good for pebbles and flowers. Shift turns paint, noise, slope and height into erase, and Ctrl smooths.\n\n*Terrain > Blend > Auto Paint Layers* (also in the Inspector) paints the whole terrain in one go from its shape: layer 1 on slopes steeper than about 50 degrees, layer 2 above 80 percent of the height range and layer 3 below 8 percent of it. The range runs from the lowest point to the highest, sea floor included. It replaces all existing paint, so run it before any hand painting, never after. The Sculpt tool has a *PaintLayer* mode as well, which paints a layer without any masks; the Blend tool does everything it does and more."
+    },
+    {
+      "id": "b11",
+      "type": "text",
+      "format": "markdown",
+      "md": "## How fine you can paint\n\nThe weights live on the vertices, and between them they are interpolated across each triangle. The brush radius therefore only means something compared to the cell size. The picture below shows three strokes on a terrain with 64 unit cells, drawn at an angle to the grid, with radius 40, 96 and 160, and the same spot as a wireframe."
+    },
+    {
+      "id": "b12",
+      "type": "image",
+      "src": "assets/terrain-painting/brush-width.jpg",
+      "alt": "Three dirt strokes on 64 unit cells, brush radius 40, 96 and 160 from left to right"
+    },
+    {
+      "id": "b13",
+      "type": "image",
+      "src": "assets/terrain-painting/brush-width-grid.jpg",
+      "alt": "The same strokes next to the grid of vertices that holds the paint"
+    },
+    {
+      "id": "b14",
+      "type": "text",
+      "format": "markdown",
+      "md": "A radius below one cell only catches the vertices it happens to pass over and comes out as a staircase. At one and a half cells the stroke is continuous but its edges are ragged, and from about two cells on it is a clean band. For 64 unit cells that means a radius of 128 or more, a band about 7 m wide, for a path that holds up close.\n\nIf you need a narrow track, give the terrain smaller cells (and accept a smaller terrain or more vertices), or lay the track as a separate mesh or decal on top. The terrain's paint is for ground cover: sand, grass, rock, dirt, the big shapes a player reads from far away."
+    },
+    {
+      "id": "b15",
+      "type": "text",
+      "format": "markdown",
+      "md": "## How it looks, in the editor and in Godot\n\nEach layer is projected three ways, from above and from the two sides, and the three are blended by how much the surface faces each direction. That is triplanar mapping, and it is why a vertical cliff shows rock rather than one long smear. The projection is anchored to the world, so the texture runs on seamlessly across chunk borders and lines up with the editor exactly.\n\nOnly the colour texture of each layer's material is used. The normal and roughness maps of the material do not reach the terrain, which is lit with a fixed roughness. Detail comes from the shape and from the colour photo itself, so pick scans with some light and shadow baked in.\n\nIn Godot the addon builds every terrain as a `GodotTrenchTerrain` node, a `StaticBody3D` with one `MeshInstance3D` per chunk using `gt_terrain.gdshader`, the same blend and projection as the editor's preview. Each chunk collides as a `ConcavePolygonShape3D` made from the very triangles it draws, so holes are open for the player too and a character never floats above or sinks into the surface. For gameplay code, `height_at(x, z)` on the node returns the ground height at a local position along the same triangles."
+    },
+    {
+      "id": "b16",
+      "type": "image",
+      "src": "assets/terrain-painting/godot-cliffs.jpg",
+      "alt": "The painted cliffs of the sea island, built and rendered in Godot"
+    },
+    {
+      "id": "b17",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Habits that work\n\n1. Sculpt first and paint afterwards. The paint does not move with the ground, so a cliff you raise after painting keeps the grass it had.\n2. Start with the biggest brush that makes sense and a low strength, and work down. The first minutes of painting should cover the whole map, not one corner of it.\n3. Use Auto Paint or a huge slope brush for rock, a height brush for the shoreline, and keep the plain paint mode for things that follow no rule, like paths and clearings.\n4. Finish borders with a light smooth pass, then break them up again with the noise mode or a spray falloff so they are not perfect circles.\n5. Keep layer 0 for the most common ground and one slot for ground that follows no rule, such as paths. There are only four, so decide early which four you need."
+    }
+  ]
+}

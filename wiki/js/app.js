@@ -22,10 +22,10 @@ import {
   fetchJSON,
 } from "./storage.js";
 import { getToken, setToken, clearToken, hasToken, commitFiles, uploadAsset as ghUploadAsset } from "./github.js";
-import { CARD_TYPES, TYPE_LABELS, newCard, normalizeZ, bringToFront, sendToBack } from "./cards.js";
+import { newCard, normalizeZ, bringToFront, sendToBack } from "./cards.js";
 import { BoardView } from "./board.js";
 import { DocView } from "./doc.js";
-import { closeSuggest } from "./edit.js";
+import { closeSuggest, blockById, STARTERS } from "./edit.js";
 import { setPageResolver, slugify } from "./markdown.js";
 import { SearchIndex, openSearchDialog } from "./search.js";
 import { registerGdscript } from "./highlight-gdscript.js";
@@ -88,11 +88,20 @@ async function init() {
     getMode: () => state.mode,
     getBoard: () => state.board,
     getSelectedId: () => state.selectedId,
-    onSelect: (id) => selectCard(id),
+    onSelect: (id) => {
+      state.selectedId = id;
+    },
     onMutate: () => markDirty(),
     onBringToFront: (id) => doBringToFront(id),
     onSendToBack: (id) => doSendToBack(id),
     onDelete: (id) => doDeleteCard(id),
+    onDeleteMany: (ids, edgeIds) => doDeleteMany(ids, edgeIds),
+    onEnsureEdit: () => setMode("edit"),
+    onCreate: (variant, at, size) => addCardAt("text", at, Object.assign({ variant }, size)),
+    onAddMenu: (x, y) => {
+      if (state.mode !== "edit") setMode("edit");
+      openCardMenu(x, y);
+    },
     onToggleCollapse: (id) => doToggleCollapse(id),
     onSetHidden: (id, hidden) => doSetHidden(id, hidden),
     onCardMenu: (id, x, y) => openCardContextMenu(id, x, y),
@@ -108,7 +117,7 @@ async function init() {
     },
     pages: () => state.pages,
     pasteFiles: (files, afterId) => pasteFiles(files, afterId),
-    onInsertBelow: (card, type) => insertBelowOnCanvas(card, type),
+    onInsertBelow: (card, type, block) => insertBelowOnCanvas(card, type, block),
     grid: 8,
   });
 
@@ -345,7 +354,11 @@ function normalizeBoard(board, fallbackTitle, fallbackLayout) {
       c.z = Number.isFinite(c.z) ? c.z : i;
     }
   });
-  return { title: (board && board.title) || fallbackTitle, layout: lay, cards };
+  const ids = new Set(cards.map((c) => c.id));
+  const edges = (Array.isArray(board && board.edges) ? board.edges : [])
+    .filter((e) => e && ids.has(e.from) && ids.has(e.to))
+    .map((e, i) => (e.id ? e : Object.assign({ id: "edge_" + i }, e)));
+  return { title: (board && board.title) || fallbackTitle, layout: lay, cards, edges };
 }
 
 // The on-disk form of a board. Documents carry no positions, only a height for the few
@@ -364,7 +377,18 @@ function serializeBoard(board) {
     });
     return out;
   });
-  return { title: board.title, layout: lay, cards };
+  const out = { title: board.title, layout: lay, cards };
+  // Connectors are an optional list next to the cards, bound to card ids, so older pages and
+  // readers that do not know them keep working.
+  const edges = lay === "canvas" && Array.isArray(board.edges) ? board.edges.map(serializeEdge) : [];
+  if (edges.length) out.edges = edges;
+  return out;
+}
+
+function serializeEdge(e) {
+  const out = { id: e.id, from: e.from, to: e.to };
+  if (e.label) out.label = e.label;
+  return out;
 }
 
 function boardHash(board) {
@@ -430,7 +454,9 @@ async function openPage(slug, focusCardId) {
     }
   }
   if (!res.ok && !draft) setStatus("Could not load page " + slug + ".", "error");
-  state.baseHash = serverHash;
+  // A draft in conflict keeps its own base until "Keep my draft" is chosen, so Save still asks
+  // before overwriting the newer repo version.
+  state.baseHash = state.conflict ? draft.base || null : serverHash;
   resetHistory();
   searchIndex.update(slug, state.board);
 
@@ -439,7 +465,7 @@ async function openPage(slug, focusCardId) {
   if (layout() === "canvas") {
     const savedView = loadView(slug);
     if (savedView) boardView.setView(savedView);
-    else boardView.fit();
+    else boardView.fit(true);
   } else {
     el.doc.querySelector(".doc-scroll").scrollTop = 0;
   }
@@ -632,27 +658,52 @@ let menuEl = null;
 let menuBoardPoint = { x: 0, y: 0 };
 const lastPointer = { x: 0, y: 0, overBoard: false };
 
+// What the canvas add menu offers. Tables and definition lists are text cards with starter
+// Markdown, the same elements the text editor inserts, so they look and edit the same everywhere.
+const CANVAS_ADD = [
+  { id: "text", label: "Text card", icon: "type", type: "text" },
+  { id: "note", label: "Note", icon: "sticky-note", type: "text", extra: { variant: "note", w: 224, h: 160 }, desc: "A warm tinted card, also the N tool" },
+  { id: "plain", label: "Plain text", icon: "text", type: "text", extra: { variant: "plain", w: 280, h: 44 }, desc: "Words on the board without a panel, also the T tool" },
+  { id: "entry", label: "Entry panel", icon: "square", type: "text", extra: { variant: "entry" }, block: "entry" },
+  { id: "table", label: "Table", icon: "table", type: "text", extra: { md: STARTERS.table, w: 360 }, block: "table" },
+  { id: "deflist", label: "Definition list", icon: "table-properties", type: "text", extra: { md: STARTERS.deflist, w: 360 }, block: "deflist" },
+  { id: "code", label: "Code", icon: TYPE_ICON.code, type: "code" },
+  { id: "image", label: "Image", icon: TYPE_ICON.image, type: "image", block: "image" },
+  { id: "video", label: "Video", icon: TYPE_ICON.video, type: "video" },
+  { id: "shape", label: "Shape", icon: TYPE_ICON.shape, type: "shape" },
+  { id: "draw", label: "Draw", icon: TYPE_ICON.draw, type: "draw" },
+];
+
+function addFromMenu(entry, at) {
+  const card = addCardAt(entry.type, at, entry.extra ? Object.assign({}, entry.extra) : null);
+  const block = entry.block && blockById(entry.block);
+  if (block && block.then) boardView.applyBlock(blockById(block.then));
+  return card;
+}
+
 function setupCardMenu() {
   menuEl = h("div", { class: "card-menu", role: "menu", "aria-label": "Add a card", hidden: true });
   menuEl.appendChild(h("div", { class: "suggest-title", text: "Add card" }));
-  CARD_TYPES.forEach((type) => {
+  CANVAS_ADD.forEach((entry) => {
+    const block = entry.block && blockById(entry.block);
     menuEl.appendChild(
       h(
         "button",
         {
           type: "button",
           class: "menu-item",
-          dataset: { type },
+          dataset: { type: entry.id },
           role: "menuitem",
+          title: entry.desc || (block && block.desc) || null,
           on: {
             click: () => {
               const at = menuBoardPoint;
               closeCardMenu();
-              addCardAt(type, at);
+              addFromMenu(entry, at);
             },
           },
         },
-        [icon(TYPE_ICON[type]), h("span", { text: TYPE_LABELS[type] })]
+        [icon(entry.icon), h("span", { text: entry.label })]
       )
     );
   });
@@ -733,7 +784,19 @@ function openCardContextMenu(cardId, clientX, clientY) {
   if (!card || !cardCtxEl) return;
   closeCardMenu();
   cardCtxEl.innerHTML = "";
-  if (card.type === "text") cardCtxEl.appendChild(ctxItem("hash", "Edit source", () => boardView.beginEdit(card, true)));
+  if (card.type === "text") {
+    cardCtxEl.appendChild(ctxItem("hash", "Edit source", () => boardView.beginEdit(card, true)));
+    const styles = [
+      ["", "square", "Card"],
+      ["note", "sticky-note", "Note"],
+      ["plain", "type", "Plain text"],
+      ["entry", "square", "Entry panel"],
+    ];
+    styles.forEach(([variant, iconName, label]) => {
+      if ((card.variant || "") === variant) return;
+      cardCtxEl.appendChild(ctxItem(iconName, "Style: " + label, () => doSetVariant(cardId, variant)));
+    });
+  }
   cardCtxEl.appendChild(ctxItem("copy", "Duplicate", () => cardAction("duplicate", cardId)));
   cardCtxEl.appendChild(
     card.collapsed
@@ -787,7 +850,10 @@ function setupCanvasControls() {
   setButton($("zoom-out"), "minus", "", "Zoom out");
   setButton($("zoom-in"), "plus", "", "Zoom in");
   setButton($("zoom-fit"), "maximize", "", "Fit to content");
-  setButton($("zoom-reset"), "rotate-ccw", "", "Reset zoom");
+  setButton($("zoom-reset"), "rotate-ccw", "", "Zoom to 100% (Shift 0)");
+  $("zoom-fit").setAttribute("title", "Fit to content (Shift 1)");
+  $("zoom-label").setAttribute("title", "Zoom to 100%");
+  $("zoom-label").addEventListener("click", () => boardView.resetView());
   $("zoom-out").addEventListener("click", () => boardView.zoomOutAt());
   $("zoom-in").addEventListener("click", () => boardView.zoomInAt());
   $("zoom-fit").addEventListener("click", () => boardView.fit());
@@ -843,7 +909,7 @@ function wireKeyboard() {
         closeMenus();
         return;
       }
-      if (state.mode === "edit" && layout() === "canvas") boardView.commitEdit();
+      if (layout() === "canvas" && !e.defaultPrevented && !isTyping() && boardView.escape()) e.preventDefault();
       return;
     }
     if (isTyping()) return;
@@ -868,6 +934,7 @@ function wireKeyboard() {
       setMode(state.mode === "edit" ? "view" : "edit");
       return;
     }
+    if (layout() === "canvas" && boardView.handleKey(e)) return;
     if (state.mode !== "edit") return;
     if (layout() === "canvas" && e.shiftKey && key === "a") {
       e.preventDefault();
@@ -1009,9 +1076,9 @@ function wirePaste() {
 
 // ----- Card actions -----
 
-function addCardAt(type, at) {
+function addCardAt(type, at, extra) {
   if (state.mode !== "edit") setMode("edit");
-  const card = newCard(type, at, state.board.cards);
+  const card = Object.assign(newCard(type, at, state.board.cards), extra || {});
   state.board.cards.push(card);
   markDirty();
   boardView.render();
@@ -1020,15 +1087,16 @@ function addCardAt(type, at) {
   return card;
 }
 
-function insertBelowOnCanvas(card, type) {
+function insertBelowOnCanvas(card, type, block) {
   const node = el.board.querySelector('.card[data-id="' + CSS.escape(card.id) + '"]');
   const height = node ? node.offsetHeight : card.h;
-  addCardAt(type, { x: card.x, y: card.y + height + 24 });
+  addCardAt(type, { x: card.x, y: card.y + height + 24 }, block && block.variant ? { variant: block.variant } : null);
+  if (block && block.then) boardView.applyBlock(blockById(block.then));
 }
 
 function selectCard(id) {
   state.selectedId = id;
-  if (layout() === "canvas") boardView.updateSelection();
+  if (layout() === "canvas") boardView.setSelection(id ? [id] : []);
 }
 
 function cardAction(action, id) {
@@ -1048,12 +1116,24 @@ function rerender() {
 
 function doDeleteCard(id) {
   if (!id) return;
+  doDeleteMany([id], []);
+}
+
+// Removing a card also removes the connectors attached to it.
+function doDeleteMany(ids, edgeIds) {
+  const gone = new Set(ids || []);
+  const goneEdges = new Set(edgeIds || []);
+  if (!gone.size && !goneEdges.size) return;
   commitEditors();
-  state.board.cards = state.board.cards.filter((c) => c.id !== id);
-  if (state.selectedId === id) state.selectedId = null;
+  state.board.cards = state.board.cards.filter((c) => !gone.has(c.id));
+  if (Array.isArray(state.board.edges)) {
+    state.board.edges = state.board.edges.filter((e) => !goneEdges.has(e.id) && !gone.has(e.from) && !gone.has(e.to));
+  }
+  if (gone.has(state.selectedId)) state.selectedId = null;
   markDirty();
   rerender();
-  setStatus("Block deleted. Ctrl+Z brings it back.", "info");
+  const what = gone.size > 1 ? gone.size + " cards deleted." : gone.size ? "Block deleted." : "Connector deleted.";
+  setStatus(what + " Ctrl+Z brings it back.", "info");
 }
 
 function doDuplicate(id) {
@@ -1092,6 +1172,16 @@ function doToggleCollapse(id) {
   card.collapsed = !card.collapsed;
   markDirty();
   rerender();
+}
+
+function doSetVariant(id, variant) {
+  const card = state.board.cards.find((c) => c.id === id);
+  if (!card) return;
+  commitEditors();
+  if (variant) card.variant = variant;
+  else delete card.variant;
+  markDirty();
+  boardView.refreshCard(card);
 }
 
 function doSetHidden(id, hidden) {
@@ -1585,6 +1675,9 @@ window.__wiki = {
     unsaved: hasUnsaved(),
     view: layout() === "canvas" ? boardView.getView() : null,
     cards: state.board.cards.map((c) => Object.assign({}, c)),
+    edges: (state.board.edges || []).map((e) => Object.assign({}, e)),
+    selection: layout() === "canvas" ? boardView.getSelection() : null,
+    tool: boardView.tool,
   }),
   serialize: () => serializeBoard(state.board),
   setMode,
@@ -1598,6 +1691,9 @@ window.__wiki = {
   pasteText: handlePastedText,
   categories: () => Array.from(new Set(state.pages.map((p) => pageCategory(p)))),
   getView: () => boardView.getView(),
+  addEdge: (from, to) => boardView.addEdge(from, to),
+  setTool: (t) => boardView.setTool(t),
+  save: () => save(),
   setView: (v) => boardView.setView(v),
   fit: () => boardView.fit(),
   clientToBoard: (x, y) => boardView.clientToBoard(x, y),
