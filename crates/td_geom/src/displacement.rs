@@ -29,6 +29,23 @@ pub struct DisplacementGrid {
 }
 
 impl Displacement {
+    pub fn check_data(&self) -> Result<(), String> {
+        if !(1..=4).contains(&self.power) {
+            return Err(format!("displacement power {} is outside 1 to 4", self.power));
+        }
+
+        let n = Self::side(self.power);
+        if self.heights.len() != n * n {
+            return Err(format!("displacement of power {} needs {} heights, has {}", self.power, n * n, self.heights.len()));
+        }
+
+        if !self.alphas.is_empty() && self.alphas.len() != n * n {
+            return Err(format!("displacement of power {} needs {} alphas, has {}", self.power, n * n, self.alphas.len()));
+        }
+
+        Ok(())
+    }
+
     pub fn new(power: u8) -> Self {
         let power = power.clamp(1, 4);
         let n = Self::side(power);

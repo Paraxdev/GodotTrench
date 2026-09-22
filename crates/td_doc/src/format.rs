@@ -25,11 +25,14 @@ pub enum FormatError {
     WrongFormat(String),
     #[error("map version {0} is newer than this editor supports ({FORMAT_VERSION})")]
     TooNew(u32),
+    #[error("node {id}: {reason}")]
+    Invalid { id: u64, reason: String },
 }
 
 #[derive(Serialize, Deserialize)]
 struct FileMap {
     format: String,
+    #[serde(default)]
     version: u32,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     properties: BTreeMap<String, String>,
@@ -130,6 +133,7 @@ pub fn paste_nodes(map: &mut Map, parent: NodeId, text: &str) -> Result<Vec<Node
         return Err(FormatError::WrongFormat(clip.format));
     }
 
+    clip.nodes.iter().try_for_each(validate)?;
     let mut out = Vec::new();
     for node in clip.nodes {
         if matches!(node.kind, FileKind::Layer(_)) {
@@ -142,6 +146,18 @@ pub fn paste_nodes(map: &mut Map, parent: NodeId, text: &str) -> Result<Vec<Node
     }
 
     Ok(out)
+}
+
+/// Rejects geometry the editor would otherwise index out of bounds, which only a hand edited file can contain.
+fn validate(node: &FileNode) -> Result<(), FormatError> {
+    let checked = match &node.kind {
+        FileKind::Brush(b) => b.check_data(),
+        FileKind::Mesh(m) => m.check_data(),
+        FileKind::Terrain(t) => t.check_data(),
+        _ => Ok(()),
+    };
+    checked.map_err(|reason| FormatError::Invalid { id: node.id, reason })?;
+    node.children.iter().try_for_each(validate)
 }
 
 fn file_kind_to_node(kind: FileKind) -> NodeKind {
@@ -214,6 +230,7 @@ pub fn from_str(text: &str) -> Result<Map, FormatError> {
 
     migrate(&mut value, version);
     let file: FileMap = serde_json::from_value(value)?;
+    file.layers.iter().try_for_each(validate)?;
 
     let mut map = Map { nodes: imbl::OrdMap::new(), layers: Vec::new(), properties: file.properties, next_id: 1, editor: file.editor };
     for layer in file.layers {
@@ -287,6 +304,22 @@ mod tests {
         }
 
         assert_eq!(to_string(&back), text);
+    }
+
+    #[test]
+    fn broken_geometry_is_an_error_not_a_panic() {
+        let mut v = to_value(&sample());
+        v["layers"][0]["children"][0]["faces"][0]["indices"][0] = serde_json::json!(99);
+        let err = from_str(&v.to_string()).unwrap_err().to_string();
+        assert!(err.contains("face 0 uses vertex 99"), "{err}");
+
+        let mut v = to_value(&sample());
+        v["layers"][0]["children"][0]["faces"][1]["indices"] = serde_json::json!([0, 1]);
+        assert!(matches!(from_str(&v.to_string()), Err(FormatError::Invalid { .. })));
+
+        let mut v = to_value(&sample());
+        v.as_object_mut().unwrap().remove("version");
+        assert!(from_str(&v.to_string()).is_ok(), "a missing version reads as the oldest format");
     }
 
     #[test]

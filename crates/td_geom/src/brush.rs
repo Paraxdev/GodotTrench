@@ -81,6 +81,21 @@ impl From<RawBrush> for Brush {
     }
 }
 
+/// Every face needs at least three corners, all of them existing vertices.
+pub(crate) fn check_faces<'a>(vertex_count: usize, faces: impl Iterator<Item = &'a Vec<u32>>) -> Result<(), String> {
+    for (i, indices) in faces.enumerate() {
+        if indices.len() < 3 {
+            return Err(format!("face {i} has {} corners, a face needs at least 3", indices.len()));
+        }
+
+        if let Some(bad) = indices.iter().find(|v| **v as usize >= vertex_count) {
+            return Err(format!("face {i} uses vertex {bad}, but there are only {vertex_count} vertices"));
+        }
+    }
+
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct RayHit {
     pub distance: f64,
@@ -96,6 +111,18 @@ pub struct Triangle {
 }
 
 impl Brush {
+    /// Checks what a hand edited file could get wrong and the rest of the editor indexes without checking.
+    pub fn check_data(&self) -> Result<(), String> {
+        check_faces(self.vertices.len(), self.faces.iter().map(|f| &f.indices))?;
+        for (i, f) in self.faces.iter().enumerate() {
+            if let Some(d) = &f.data.disp {
+                d.check_data().map_err(|e| format!("face {i}: {e}"))?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Intersection of half-spaces. Each plane's normal points out of the brush.
     pub fn from_planes(planes: Vec<(Plane, FaceData)>) -> Result<Brush, BrushError> {
         let mut unique: Vec<(Plane, FaceData)> = Vec::with_capacity(planes.len());
@@ -183,7 +210,8 @@ impl Brush {
 
     pub fn update_planes(&mut self) {
         for face in &mut self.faces {
-            let pts: Vec<DVec3> = face.indices.iter().map(|i| self.vertices[*i as usize]).collect();
+            // Deserialization calls this before a map is validated, so a bad index must not panic here.
+            let pts: Vec<DVec3> = face.indices.iter().filter_map(|i| self.vertices.get(*i as usize).copied()).collect();
             if let Some(p) = Plane::from_polygon(&pts) {
                 face.plane = p;
             }

@@ -1852,8 +1852,13 @@ impl eframe::App for App {
         let focus = cam.position + cam.forward() * 1200.0;
         self.scene.update_shadows(&mut self.renderer, focus, self.state.prefs.shade == Shade::Lit);
 
-        // The viewports read this to know a ctrl+click should grab all of a brush's faces for UV work.
-        self.state.uv_panel_open = self.dock.find_tab(&Tab::Uv).is_some();
+        // The viewports read this to know a ctrl+click should grab all of a brush's faces for UV work. The UV
+        // Editor is docked by default, so only its being the visible tab counts, else ctrl+click could never
+        // add objects to the selection.
+        self.state.uv_panel_open = self
+            .dock
+            .find_tab(&Tab::Uv)
+            .is_some_and(|p| self.dock.leaf(egui_dock::NodePath { surface: p.surface, node: p.node }).is_ok_and(|leaf| leaf.active == p.tab));
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
             let mut tabs = Tabs {
                 state: &mut self.state,
