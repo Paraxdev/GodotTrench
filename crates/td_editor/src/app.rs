@@ -28,6 +28,7 @@ enum Tab {
     Entities,
     History,
     Issues,
+    Logic,
     Uv,
     Reference,
 }
@@ -74,7 +75,8 @@ pub struct App {
 const PREFS_LABEL_WIDTH: f32 = 180.0;
 const UI_SCALE_PRESETS: [f32; 6] = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
-const PANEL_TABS: [Tab; 9] = [Tab::Outliner, Tab::Inspector, Tab::Materials, Tab::Models, Tab::Entities, Tab::History, Tab::Issues, Tab::Uv, Tab::Reference];
+const PANEL_TABS: [Tab; 10] =
+    [Tab::Outliner, Tab::Inspector, Tab::Materials, Tab::Models, Tab::Entities, Tab::History, Tab::Issues, Tab::Logic, Tab::Uv, Tab::Reference];
 
 fn tab_title(tab: Tab) -> &'static str {
     match tab {
@@ -86,6 +88,7 @@ fn tab_title(tab: Tab) -> &'static str {
         Tab::Entities => "Entities",
         Tab::History => "History",
         Tab::Issues => "Issues",
+        Tab::Logic => "Logic",
         Tab::Uv => "UV Editor",
         Tab::Reference => "Reference",
     }
@@ -1756,6 +1759,7 @@ impl TabViewer for Tabs<'_> {
             Tab::Entities => panels::entity_browser(ui, self.state, self.panels, self.actions),
             Tab::History => panels::history(ui, self.state),
             Tab::Issues => panels::issues(ui, self.state, self.panels, self.actions),
+            Tab::Logic => panels::logic_panel(ui, self.state, self.panels),
             Tab::Uv => panels::uv_editor(ui, self.state, self.panels, self.actions),
             Tab::Reference => panels::reference(ui, self.state, self.panels, self.actions),
         }

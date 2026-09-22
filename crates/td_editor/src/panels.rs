@@ -44,6 +44,9 @@ pub struct PanelState {
     reference_filter: String,
     reference_kind: usize,
     reference_list_width: Option<f32>,
+    logic_start: Option<NodeId>,
+    logic_output: String,
+    logic_result: Option<crate::logic_sim::SimResult>,
 }
 
 impl Default for PanelState {
@@ -72,6 +75,9 @@ impl Default for PanelState {
             reference_filter: String::new(),
             reference_kind: 0,
             reference_list_width: None,
+            logic_start: None,
+            logic_output: String::new(),
+            logic_result: None,
         }
     }
 }
@@ -2509,4 +2515,127 @@ pub fn history(ui: &mut Ui, state: &mut EditorState) {
     for _ in 0..redo_steps {
         state.doc.redo();
     }
+}
+
+// ------------------------------------------------------------------ logic preview
+
+/// Fires an entity output and shows how the I/O cascades through the map, so a scene's logic can be checked in the
+/// editor without launching Godot. See [crate::logic_sim].
+pub fn logic_panel(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState) {
+    use crate::logic_sim;
+
+    let mut named: Vec<(NodeId, String, String)> = Vec::new();
+    for (id, e) in state.doc.map.entities() {
+        if let Some(name) = e.targetname() {
+            named.push((id, name.to_string(), e.classname.clone()));
+        }
+    }
+
+    named.sort_by(|a, b| a.1.cmp(&b.1));
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new("Logic preview").strong());
+        ui.label(RichText::new("fire an output and watch the wiring cascade").weak());
+    });
+    ui.separator();
+    if named.is_empty() {
+        ui.label(RichText::new("No named entities yet. Give an entity a targetname and wire some outputs.").weak());
+        return;
+    }
+
+    if !named.iter().any(|(id, ..)| Some(*id) == ps.logic_start) {
+        ps.logic_start = Some(named[0].0);
+        ps.logic_output.clear();
+        ps.logic_result = None;
+    }
+
+    let start_id = ps.logic_start.expect("selection kept valid above");
+    let start_label = named.iter().find(|(id, ..)| *id == start_id).map(|(_, n, c)| format!("{n} ({c})")).unwrap_or_default();
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Entity");
+        egui::ComboBox::from_id_salt("logic_entity").selected_text(start_label).show_ui(ui, |ui| {
+            for (id, name, classname) in &named {
+                if ui.selectable_label(Some(*id) == ps.logic_start, format!("{name} ({classname})")).clicked() {
+                    ps.logic_start = Some(*id);
+                    ps.logic_output.clear();
+                    ps.logic_result = None;
+                }
+            }
+        });
+    });
+
+    let outputs = state.doc.map.entity(start_id).map(|e| logic_sim::start_outputs(state.game.entity(&e.classname), e)).unwrap_or_default();
+    if ps.logic_output.is_empty()
+        && let Some(first) = outputs.first()
+    {
+        ps.logic_output = first.clone();
+    }
+
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Output");
+        egui::ComboBox::from_id_salt("logic_output").selected_text(ps.logic_output.clone()).show_ui(ui, |ui| {
+            for o in &outputs {
+                if ui.selectable_label(&ps.logic_output == o, o).clicked() {
+                    ps.logic_output = o.clone();
+                    ps.logic_result = None;
+                }
+            }
+        });
+        if ui.add_enabled(!ps.logic_output.is_empty(), egui::Button::new("Fire")).clicked() {
+            ps.logic_result = Some(logic_sim::simulate(&state.doc.map, start_id, &ps.logic_output));
+        }
+
+        if ps.logic_result.is_some() && ui.button("Clear").clicked() {
+            ps.logic_result = None;
+        }
+    });
+
+    ui.separator();
+    let Some(result) = &ps.logic_result else {
+        ui.label(RichText::new("Pick an entity and output, then Fire to preview the cascade.").weak());
+        return;
+    };
+
+    if result.events.is_empty() {
+        ui.label(RichText::new("That output is not wired to anything.").weak());
+        return;
+    }
+
+    let broken = result.broken();
+    ui.horizontal_wrapped(|ui| {
+        ui.label(format!("{} steps", result.events.len()));
+        if broken > 0 {
+            ui.label(RichText::new(format!("{broken} broken")).color(Color32::from_rgb(230, 90, 90)));
+        }
+
+        if result.truncated {
+            ui.label(RichText::new("truncated, feedback loop").weak());
+        }
+    });
+
+    ScrollArea::vertical().show(ui, |ui| {
+        for ev in &result.events {
+            ui.horizontal(|ui| {
+                ui.add_space(ev.depth as f32 * 14.0);
+                let mut text = format!("{}.{}  \u{2192}  {}.{}", ev.source_name, ev.output, ev.target, ev.input);
+                if ev.delay > 0.0 {
+                    text.push_str(&format!("  ({}s)", ev.delay));
+                }
+
+                let color = if ev.broken() {
+                    Color32::from_rgb(230, 90, 90)
+                } else if ev.dynamic {
+                    Color32::from_rgb(150, 170, 210)
+                } else {
+                    ui.visuals().text_color()
+                };
+                ui.label(RichText::new(text).color(color)).on_hover_text(if ev.dynamic {
+                    "runtime target, resolved when the map plays"
+                } else if ev.broken() {
+                    "no entity has this targetname"
+                } else {
+                    ""
+                });
+            });
+        }
+    });
 }
