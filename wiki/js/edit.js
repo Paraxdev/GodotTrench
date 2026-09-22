@@ -46,7 +46,7 @@ export const BLOCKS = [
 
 // Starter Markdown for the text cards the canvas add menu offers directly.
 export const STARTERS = {
-  table: "| Column | Column |\n| --- | --- |\n|  |  |",
+  table: "| Column | Column |\n| --- | --- |\n| Value | Value |",
   deflist: "Label\n: Value",
 };
 
@@ -304,6 +304,30 @@ function exec(cmd, value) {
   if (bubbleEditor) positionBubble(bubbleEditor);
 }
 
+// Chrome's insertHTML moves inline markup out of a definition or table cell and into the list
+// or row itself, so inside those the nodes are placed with a range instead.
+function insertInline(html) {
+  const sel = window.getSelection();
+  const at = sel && sel.rangeCount ? sel.anchorNode : null;
+  const host = at && (at.nodeType === 3 ? at.parentNode : at).closest("dt, dd, td, th");
+  if (!host || !host.isContentEditable) {
+    exec("insertHTML", html);
+    return;
+  }
+  const range = sel.getRangeAt(0);
+  range.deleteContents();
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html;
+  const last = tpl.content.lastChild;
+  range.insertNode(tpl.content);
+  const after = document.createRange();
+  after.setStartAfter(last);
+  after.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(after);
+  host.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 function closestIn(root, node, test) {
   let n = node && node.nodeType === 3 ? node.parentNode : node;
   while (n && n !== root) {
@@ -337,7 +361,7 @@ function toggleInlineCode() {
   }
   if (sel.isCollapsed) return;
   const text = sel.toString();
-  exec("insertHTML", "<code>" + escapeHtml(text) + "</code>&#8203;");
+  insertInline("<code>" + escapeHtml(text) + "</code>&#8203;");
 }
 
 function escapeHtml(s) {
@@ -564,7 +588,7 @@ export function mountTextEditor(root, card, ctx, opts) {
     const t = textBeforeCaret();
     if (linkQuery && t && t.node === linkQuery.node) deleteBack(t.node, t.offset, linkQuery.length);
     linkQuery = null;
-    exec("insertHTML", wikilinkHtml(p.slug, p.title) + "&nbsp;");
+    insertInline(wikilinkHtml(p.slug, p.title) + "&nbsp;");
   }
 
   function applyBlock(b) {
@@ -731,7 +755,7 @@ export function mountTextEditor(root, card, ctx, opts) {
       const m = re.exec(t.text);
       if (!m) continue;
       deleteBack(t.node, t.offset, m[0].length);
-      exec("insertHTML", html(m) + "&#8203;");
+      insertInline(html(m) + "&#8203;");
       return;
     }
   }
@@ -1423,7 +1447,7 @@ function imageControls(card, ctx) {
         const rel = await ctx.uploadAsset(f);
         if (rel) {
           card.src = rel;
-          card.svg = "";
+          delete card.svg;
           ctx.rerenderContent();
           ctx.markDirty();
         }
@@ -1436,7 +1460,7 @@ function imageControls(card, ctx) {
     file,
     textInput(card.src || "", "Image URL or assets/…", (v) => {
       card.src = v.trim();
-      if (v.trim()) card.svg = "";
+      if (v.trim()) delete card.svg;
       ctx.rerenderContent();
       ctx.markDirty();
     }),
