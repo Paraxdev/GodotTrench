@@ -93,6 +93,7 @@ async function init() {
   setupCardMenu();
   setupCardContextMenu();
   setupCanvasControls();
+  setupNav();
   wireToolbar();
   wireKeyboard();
   wirePaste();
@@ -246,6 +247,7 @@ async function openPage(slug) {
   state.slug = slug;
   state.selectedId = null;
   location.hash = slug;
+  closeNav();
 
   const indexEntry = state.pages.find((p) => p.slug === slug);
   const fallbackTitle = indexEntry ? indexEntry.title : slug;
@@ -325,11 +327,45 @@ function setButton(btn, iconName, label, ariaLabel) {
 }
 
 function setupToolbarIcons() {
+  setButton($("nav-toggle"), "menu", "", "Pages");
   setButton($("add-page"), "plus", "Page", "Add page");
   setButton($("rename-page"), "pencil-line", "Rename", "Rename page");
   setButton($("delete-page"), "trash-2", "Delete page", "Delete page");
   setButton(el.saveBtn, "save", "Save", "Save to GitHub");
   setButton($("refresh-btn"), "refresh", "Refresh", "Discard local drafts and reload from the repo");
+  setButton($("mobile-add"), "plus", "", "Add a card");
+}
+
+// ----- Mobile navigation drawer -----
+
+function openNav() {
+  document.body.classList.add("nav-open");
+  const bd = $("sidebar-backdrop");
+  if (bd) bd.hidden = false;
+}
+
+function closeNav() {
+  document.body.classList.remove("nav-open");
+  const bd = $("sidebar-backdrop");
+  if (bd) bd.hidden = true;
+}
+
+function setupNav() {
+  $("nav-toggle").addEventListener("click", () => {
+    if (document.body.classList.contains("nav-open")) closeNav();
+    else openNav();
+  });
+  const bd = $("sidebar-backdrop");
+  if (bd) bd.addEventListener("click", closeNav);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && document.body.classList.contains("nav-open")) closeNav();
+  });
+  // The mobile add button opens the add-card menu at the center of the board.
+  $("mobile-add").addEventListener("click", () => {
+    if (state.mode !== "edit") setMode("edit");
+    const r = el.board.getBoundingClientRect();
+    openCardMenu(r.left + r.width / 2, r.top + r.height / 2);
+  });
 }
 
 // ----- Add card context menu (edit mode only) -----

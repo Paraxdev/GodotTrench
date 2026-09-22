@@ -58,9 +58,12 @@
         </div>
       </aside>
 
+      <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
+
       <main class="main">
         <header class="toolbar">
           <div class="toolbar-left">
+            <button id="nav-toggle" class="btn nav-toggle" type="button" aria-label="Pages"></button>
             <button id="mode-toggle" class="btn" type="button">Edit</button>
             <span id="page-title" class="page-title"></span>
           </div>
@@ -73,6 +76,7 @@
 
         <div class="workspace">
           <div id="board" class="board-viewport"></div>
+          <button id="mobile-add" class="mobile-add" type="button" aria-label="Add a card"></button>
           <div class="canvas-controls" aria-label="Canvas zoom">
             <button id="zoom-out" class="canvas-btn" type="button"></button>
             <span id="zoom-label" class="zoom-label">100%</span>

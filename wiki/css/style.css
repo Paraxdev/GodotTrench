@@ -355,6 +355,49 @@ body.mode-edit .toolbar .edit-only {
   display: inline-flex;
 }
 
+/* ----- Mobile-only controls (hidden on desktop, revealed in the narrow media query) ----- */
+
+.nav-toggle {
+  display: none;
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+  background: rgba(4, 6, 12, 0.5);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  display: none;
+}
+
+.sidebar-backdrop[hidden] {
+  display: none;
+}
+
+.mobile-add {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 12;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(var(--accent-rgb), 0.55);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.5), rgba(var(--accent-rgb), 0.3));
+  color: var(--accent-ink);
+  box-shadow: var(--shadow-glass), var(--edge-hi);
+  cursor: pointer;
+  display: none;
+}
+
+.mobile-add .icon {
+  width: 22px;
+  height: 22px;
+}
+
 /* ----- Add card context menu ----- */
 
 .card-menu {
@@ -1418,16 +1461,76 @@ body.mode-edit .toolbar .edit-only {
     grid-template-columns: 1fr;
     padding: 8px;
     gap: 8px;
+    height: 100dvh;
+    grid-template-rows: 100dvh;
   }
+
+  /* The sidebar becomes a slide-in drawer opened by the hamburger. */
   .sidebar {
     position: fixed;
+    left: 8px;
+    top: 8px;
     z-index: 20;
-    width: 236px;
-    height: calc(100% - 16px);
-    transform: translateX(-110%);
-    transition: transform 0.2s ease;
+    width: min(280px, 82vw);
+    height: calc(100dvh - 16px);
+    transform: translateX(-115%);
+    transition: transform 0.22s ease;
+  }
+  body.nav-open .sidebar {
+    transform: translateX(0);
+  }
+  body.nav-open .sidebar-backdrop {
+    display: block;
+  }
+  .nav-toggle {
+    display: inline-flex;
+  }
+
+  /* Icon-only toolbar so it never overflows the screen. */
+  .toolbar {
+    gap: 6px;
+    padding: 0 8px;
+  }
+  .toolbar .btn {
+    padding: 8px;
+  }
+  .toolbar .btn-label {
+    display: none;
+  }
+  .toolbar-left {
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
   }
   .page-title {
-    max-width: 40vw;
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+    font-size: 14px;
+  }
+  .toolbar-right {
+    gap: 4px;
+  }
+
+  /* A thumb-reach add button, edit mode only. */
+  body.mode-edit .mobile-add {
+    display: inline-flex;
+  }
+
+  /* Larger resize hit zones for fingers. */
+  .handle-n,
+  .handle-s {
+    height: 12px;
+  }
+  .handle-e,
+  .handle-w {
+    width: 12px;
+  }
+  .handle-nw,
+  .handle-ne,
+  .handle-se,
+  .handle-sw {
+    width: 22px;
+    height: 22px;
   }
 }
