@@ -62,6 +62,21 @@ export function clearIndexDraft() {
   }
 }
 
+// Remove every local draft (all page boards and the index), so the next load comes entirely
+// from the repo. Used by the sidebar Refresh action.
+export function clearAllDrafts() {
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const k = localStorage.key(i);
+      if (k && (k.indexOf(DRAFT_PREFIX) === 0 || k === INDEX_DRAFT_KEY)) keys.push(k);
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+  } catch (err) {
+    // Ignore.
+  }
+}
+
 // Fetch a JSON file relative to the site root. Works on GitHub Pages and on a local server.
 // Returns null on 404 so callers can start an empty board or an empty index.
 export async function fetchJSON(path) {
