@@ -546,4 +546,18 @@ mod tests {
         assert!(gdscript_usage(door).contains("GodotTrenchIO.invoke(node, &\"open\""));
         assert_eq!(CodeKind::from_name("c#"), Some(CodeKind::CsharpClass));
     }
+
+    #[test]
+    fn generates_code_for_the_new_entities() {
+        let cfg = gt_formats::GameConfig::builtin();
+        let barrel = cfg.entity("prop_physics").unwrap();
+        let cs = csharp_class(barrel);
+        assert!(cs.contains("public partial class PropPhysics : RigidBody3D"), "{cs}");
+        assert!(cs.contains("[Signal] public delegate void BrokenEventHandler();"));
+        assert!(csharp_usage(barrel).contains("GodotTrench.Invoke(node, \"smash\""), "C# reaches the new inputs");
+
+        let script = cfg.entity("logic_script").unwrap();
+        assert!(csharp_class(script).contains("public partial class LogicScript : Node3D"));
+        assert!(gdscript_usage(script).contains("GodotTrenchIO.invoke(node, &\"run\""));
+    }
 }

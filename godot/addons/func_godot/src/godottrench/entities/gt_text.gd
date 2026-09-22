@@ -49,6 +49,9 @@ func _build() -> void:
 		_hud = Label.new()
 		_hud.text = text
 		_hud.add_theme_color_override("font_color", text_color)
+		_hud.add_theme_font_size_override("font_size", 28)
+		_hud.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.7))
+		_hud.add_theme_constant_override("outline_size", 6)
 		_hud.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 		_hud.offset_bottom = -48.0
 		_hud.offset_top = -96.0

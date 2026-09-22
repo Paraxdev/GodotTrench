@@ -15,6 +15,8 @@ signal broken
 @export var explosive := false
 @export var explosion_radius := 192.0
 @export var explosion_damage := 40.0
+## Seconds an ignited prop burns before it breaks.
+@export var fuse := 0.6
 ## Breaks when it hits something faster than this, in meters per second, 0 never breaks on impact.
 @export var impact_speed := 0.0
 ## res:// scene spawned where it broke, for debris.
@@ -31,6 +33,7 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	explosive = GodotTrenchIO.to_bool(props.get("explosive", explosive))
 	explosion_radius = float(props.get("explosion_radius", explosion_radius))
 	explosion_damage = float(props.get("explosion_damage", explosion_damage))
+	fuse = float(props.get("fuse", fuse))
 	impact_speed = float(props.get("impact_speed", impact_speed))
 	debris_scene = str(props.get("debris_scene", debris_scene))
 	mass = float(props.get("mass", mass))
@@ -79,8 +82,9 @@ func take_damage(amount: Variant = 0.0, _source: Node = null) -> void:
 func ignite(_activator: Node = null) -> void:
 	if _broken:
 		return
-	await get_tree().create_timer(0.6).timeout
-	if is_inside_tree():
+	if fuse > 0.0:
+		await get_tree().create_timer(fuse).timeout
+	if is_inside_tree() and not _broken:
 		smash()
 
 func push(direction: Variant = null) -> void:

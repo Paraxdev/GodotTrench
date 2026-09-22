@@ -78,4 +78,18 @@ public partial class NpcGuard : CharacterBody3D
 }
 ```
 
+The shipped entities work from C# too. Their outputs call C# methods (a map input `add_score` also finds `AddScore`), and a
+C# script reaches any entity's inputs and outputs through the `GodotTrench` helper:
+
+```csharp
+// React to the guide finishing its path, then damage the player when a barrel breaks.
+var guide = GodotTrench.FindTargets(this, "guide")[0];
+guide.Connect("finished", Callable.From(() => GD.Print("cutscene over")));
+foreach (Node barrel in GodotTrench.FindTargets(this, "barrel"))
+    GodotTrench.Invoke(barrel, "ignite", "", this);
+```
+
+The Reference tab (and the `code_reference` MCP tool) generates the exact C# class and usage for any entity, including
+`npc_walker`, `prop_physics`, `env_explosion`, `game_text` and the rest.
+
 What the fork changes compared to upstream FuncGodot is listed in [FORK.md](../godot/addons/func_godot/FORK.md).
