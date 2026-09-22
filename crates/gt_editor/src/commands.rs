@@ -1755,6 +1755,7 @@ fn explode_instances(state: &mut EditorState) {
         contents.push((*id, inst.clone(), format::nodes_to_string(&prefab, &roots)));
     }
 
+    let game = &state.game;
     state.doc.edit("Explode Instance", |m, s| {
         s.clear();
         for (id, inst, text) in contents {
@@ -1766,7 +1767,12 @@ fn explode_instances(state: &mut EditorState) {
             if !inst.fixup.is_empty() {
                 for new_id in sel.transformables(m) {
                     if let Some(e) = m.entity_mut(new_id) {
-                        for key in ["targetname", "target"] {
+                        let declared = game.entity(&e.classname).into_iter().flat_map(|d| &d.properties);
+                        let declared = declared
+                            .filter(|p| matches!(p.ty, gt_formats::game::PropertyType::TargetSource | gt_formats::game::PropertyType::TargetDestination))
+                            .map(|p| p.name.as_str());
+                        let keys: std::collections::BTreeSet<&str> = gt_doc::map::FIXUP_KEYS.into_iter().chain(declared).collect();
+                        for key in keys {
                             if let Some(v) = e.properties.get_mut(key)
                                 && let Some(fixed) = inst.fixup_name(v)
                             {

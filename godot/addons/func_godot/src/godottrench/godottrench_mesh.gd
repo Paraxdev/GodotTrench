@@ -49,6 +49,7 @@ static func triangulate(points: PackedVector3Array, normal: Vector3) -> PackedIn
 static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_texture: String) -> _BrushData:
 	var raw_vertices: Array = node.get("vertices", [])
 	var raw_faces: Array = node.get("faces", [])
+	var decal := bool(node.get("decal", false))
 	if raw_vertices.size() < 3 or raw_faces.is_empty():
 		return null
 	var mirror := xform.basis.determinant() < 0.0
@@ -125,6 +126,8 @@ static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_tex
 		var blend_material := str(src.get("props", {}).get("blend_material", ""))
 		if blend_material != "":
 			face.texture = GodotTrenchBlend.key(face.texture, blend_material)
+		if decal:
+			face.texture += GodotTrenchDecalMesh.SUFFIX
 		for p in pts:
 			var id_p := GodotTrenchParser.to_id(p) * scale
 			face.exact_vertices.append(id_p)

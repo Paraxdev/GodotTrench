@@ -36,8 +36,15 @@ static func rotation_basis(angles: Vector3) -> Basis:
 	return Basis.from_euler(Vector3(deg_to_rad(angles.x), deg_to_rad(angles.y), deg_to_rad(angles.z)), EULER_ORDER_YXZ)
 
 
+## Entity keys that name other entities and so get an instance's fixup, besides any property an entity definition
+## declares as a target. Kept in step with FIXUP_KEYS in crates/gt_doc/src/map.rs.
+const FIXUP_KEYS: Array[String] = ["targetname", "target", "destination", "call_target"]
+
 class Context:
 	var map_settings: FuncGodotMapSettings
+	## Classname to the keys that get a fixup, filled on first use inside an instance.
+	var fixup_keys: Dictionary = {}
+	var entity_defs: Variant = null
 	var parse_data: _ParseData
 	var map_path: String
 	var worldspawn: _EntityData
@@ -168,9 +175,10 @@ static func _parse_entity(ctx: Context, node: Dictionary, group: _GroupData) -> 
 	ent.group = group
 	ent.node_id = int(node.get("id", 0)) + ctx.instance_depth * 1000000
 
-	for key in ["targetname", "target"]:
-		if ent.properties.has(key):
-			ent.properties[key] = _fixup(ctx, ent.properties[key])
+	if ctx.name_prefix != "":
+		for key in _fixup_keys(ctx, ent.properties["classname"]):
+			if ent.properties.has(key):
+				ent.properties[key] = _fixup(ctx, ent.properties[key])
 
 	var children: Array = node.get("children", [])
 	if children.is_empty():
@@ -322,6 +330,22 @@ static func _fixup(ctx: Context, name: String) -> String:
 	if ctx.name_prefix == "" or name == "" or name[0] in ["!", "@", "/"]:
 		return name
 	return ctx.name_prefix + name
+
+static func _fixup_keys(ctx: Context, classname: String) -> Array[String]:
+	if ctx.fixup_keys.has(classname):
+		return ctx.fixup_keys[classname]
+	if ctx.entity_defs == null:
+		var fgd: FuncGodotFGDFile = ctx.map_settings.entity_fgd if ctx.map_settings else null
+		ctx.entity_defs = fgd.get_entity_definitions() if fgd else {}
+	var keys: Array[String] = FIXUP_KEYS.duplicate()
+	var def = ctx.entity_defs.get(classname)
+	if def is FuncGodotFGDEntityClass:
+		var declared: Dictionary = def.meta_properties.get("property_types", {})
+		for key in declared:
+			if str(declared[key]) in ["target_source", "target_destination"] and not key in keys:
+				keys.append(str(key))
+	ctx.fixup_keys[classname] = keys
+	return keys
 
 static func _parse_instance(ctx: Context, node: Dictionary, group: _GroupData) -> void:
 	if ctx.instance_depth >= MAX_INSTANCE_DEPTH:

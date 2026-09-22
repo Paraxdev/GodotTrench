@@ -163,7 +163,7 @@ static func is_origin(texture: String, map_settings: FuncGodotMapSettings) -> bo
 ## Filters faces textured with any of the tool textures during the geometry generation step of the build process.
 static func filter_face(texture: String, map_settings: FuncGodotMapSettings) -> bool:
 	if map_settings:
-		texture = texture.to_lower()
+		texture = GodotTrenchDecalMesh.base(texture).to_lower()
 		if (texture == map_settings.skip_texture
 			or texture == map_settings.clip_texture
 		 	or texture == map_settings.origin_texture
@@ -230,6 +230,8 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 		if wad and not wad in wad_resources:
 			wad_resources.append(wad)
 	
+	# GodotTrench: decal variants are made from their base material once every base is loaded.
+	var decals: Array[String] = []
 	for entity in entity_data:
 		if not entity.is_visual():
 			continue
@@ -237,6 +239,10 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 		for brush in entity.brushes:
 			for face in brush.faces:
 				var texture_name: String = face.texture
+				if GodotTrenchDecalMesh.is_decal(texture_name):
+					if not texture_name in decals:
+						decals.append(texture_name)
+					texture_name = GodotTrenchDecalMesh.base(texture_name)
 				
 				if filter_face(texture_name, map_settings):
 					continue
@@ -310,6 +316,13 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 					texture_materials[texture_name] = material
 				else: # No default material exists
 					printerr("Error: No default material found in map settings")
+	
+	for decal in decals:
+		var base := GodotTrenchDecalMesh.base(decal)
+		if texture_materials.has(base):
+			texture_materials[decal] = GodotTrenchDecalMesh.material(texture_materials[base])
+		if texture_sizes.has(base):
+			texture_sizes[decal] = texture_sizes[base]
 	
 	return [texture_materials, texture_sizes]
 

@@ -128,23 +128,27 @@ pub fn paste_nodes(map: &mut Map, parent: NodeId, text: &str) -> Result<Vec<Node
         nodes: Vec<FileNode>,
     }
 
-    let clip: Clip = serde_json::from_str(text)?;
+    let mut value: Value = serde_json::from_str(text)?;
+    fill_defaults(&mut value);
+    let clip: Clip = serde_json::from_value(value)?;
     if clip.format != "godottrench-clipboard" {
         return Err(FormatError::WrongFormat(clip.format));
     }
 
     clip.nodes.iter().try_for_each(validate)?;
     let mut out = Vec::new();
+    let mut copies = BTreeMap::new();
     for node in clip.nodes {
         if matches!(node.kind, FileKind::Layer(_)) {
             for child in node.children {
-                out.push(insert_fresh(map, parent, child));
+                out.push(insert_fresh(map, parent, child, &mut copies));
             }
         } else {
-            out.push(insert_fresh(map, parent, node));
+            out.push(insert_fresh(map, parent, node, &mut copies));
         }
     }
 
+    map.retarget_scatter_copies(&copies);
     Ok(out)
 }
 
@@ -173,15 +177,16 @@ fn file_kind_to_node(kind: FileKind) -> NodeKind {
     }
 }
 
-fn insert_fresh(map: &mut Map, parent: NodeId, node: FileNode) -> NodeId {
+fn insert_fresh(map: &mut Map, parent: NodeId, node: FileNode, copies: &mut BTreeMap<NodeId, NodeId>) -> NodeId {
     let id = map.insert(parent, file_kind_to_node(node.kind));
+    copies.insert(NodeId(node.id), id);
     if let Some(n) = map.get_mut(id) {
         n.hidden = node.hidden;
         n.locked = node.locked;
     }
 
     for c in node.children {
-        insert_fresh(map, id, c);
+        insert_fresh(map, id, c, copies);
     }
 
     id
@@ -211,6 +216,23 @@ fn insert_file_node(map: &mut Map, parent: Option<NodeId>, node: FileNode) {
     }
 }
 
+/// Defaults that depend on another key, which serde cannot express. A foliage set without `collision` has none, as
+/// in `Scatter::new` and the Godot scatter reader.
+fn fill_defaults(node: &mut Value) {
+    if node.get("type").and_then(Value::as_str) == Some("scatter")
+        && node.get("kind").and_then(Value::as_str) == Some("foliage")
+        && let Some(obj) = node.as_object_mut()
+    {
+        obj.entry("collision").or_insert_with(|| Value::from("none"));
+    }
+
+    for list in ["children", "layers", "nodes"] {
+        if let Some(children) = node.get_mut(list).and_then(Value::as_array_mut) {
+            children.iter_mut().for_each(fill_defaults);
+        }
+    }
+}
+
 fn migrate(value: &mut Value, version: u32) {
     // Version 1 is the first format, future migrations go here in ascending order.
     let _ = (value, version);
@@ -229,6 +251,7 @@ pub fn from_str(text: &str) -> Result<Map, FormatError> {
     }
 
     migrate(&mut value, version);
+    fill_defaults(&mut value);
     let file: FileMap = serde_json::from_value(value)?;
     file.layers.iter().try_for_each(validate)?;
 
@@ -323,6 +346,22 @@ mod tests {
     }
 
     #[test]
+    fn foliage_without_collision_has_none() {
+        let m = Map::new();
+        let layer = m.default_layer();
+        let mut v = to_value(&m);
+        let set = |kind: &str| serde_json::json!({ "id": 50, "type": "scatter", "name": "s", "kind": kind, "items": [] });
+        v["layers"][0]["children"] = serde_json::json!([set("foliage")]);
+        let back = from_str(&v.to_string()).unwrap();
+        let id = back.get(layer).unwrap().children[0];
+        assert_eq!(back.scatter(id).unwrap().collision, crate::scatter::ScatterCollision::None);
+        v["layers"][0]["children"] = serde_json::json!([set("props")]);
+        let back = from_str(&v.to_string()).unwrap();
+        let id = back.get(layer).unwrap().children[0];
+        assert_eq!(back.scatter(id).unwrap().collision, crate::scatter::ScatterCollision::Convex);
+    }
+
+    #[test]
     fn faces_are_single_lines() {
         let text = to_string(&sample());
         let face_lines = text.lines().filter(|l| l.trim_start().starts_with("{\"indices\"")).count();
@@ -355,5 +394,25 @@ mod tests {
         let pasted = paste_nodes(&mut m, layer, &text).unwrap();
         assert_eq!(pasted.len(), ids.len());
         assert_eq!(m.nodes.len(), before + 4);
+    }
+
+    #[test]
+    fn copied_scatter_sets_follow_copied_surfaces() {
+        let mut m = Map::new();
+        let layer = m.default_layer();
+        let ground = m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "g").unwrap()));
+        let other = m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(8.0)), "o").unwrap()));
+        let mut set = Scatter::new("trees", crate::scatter::ScatterKind::Props, Vec::new());
+        set.targets = vec![ground, other];
+        let scatter = m.insert(layer, NodeKind::Scatter(set));
+
+        let text = nodes_to_string(&m, &[ground, scatter]);
+        let pasted = paste_nodes(&mut m, layer, &text).unwrap();
+        assert_eq!(m.scatter(pasted[1]).unwrap().targets, vec![pasted[0], other], "the pasted ground is targeted, the uncopied brush kept");
+
+        let mut sel = crate::Selection::default();
+        sel.nodes.extend([ground, scatter]);
+        let copies = crate::ops::duplicate_selection(&mut m, &mut sel, DVec3::ZERO, crate::ops::EditOptions { uv_lock: true, grid: 0.0 });
+        assert_eq!(m.scatter(copies[1]).unwrap().targets, vec![copies[0], other]);
     }
 }

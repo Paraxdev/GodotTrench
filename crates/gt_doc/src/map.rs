@@ -73,6 +73,10 @@ pub struct Instance {
     pub fixup: String,
 }
 
+/// Entity keys that name other entities and so get an instance's fixup, besides any property an entity definition
+/// declares as a target. Kept in step with `FIXUP_KEYS` in `gtm_parser.gd`.
+pub const FIXUP_KEYS: [&str; 4] = ["targetname", "target", "destination", "call_target"];
+
 impl Instance {
     /// `name` as it is inside this instance. Special (`!self`), group (`@doors`) and node path targets are left
     /// alone. The Godot importer applies the same rule in `gtm_parser.gd`.
@@ -563,18 +567,42 @@ impl Map {
 
     /// Deep copies a subtree under a new parent with fresh ids. Returns the new root id.
     pub fn duplicate_subtree(&mut self, id: NodeId, parent: NodeId) -> Option<NodeId> {
+        let mut copies = BTreeMap::new();
+        let new_id = self.duplicate_subtree_into(id, parent, &mut copies);
+        self.retarget_scatter_copies(&copies);
+        new_id
+    }
+
+    /// [`Map::duplicate_subtree`] that records each original id and its copy, for copying several subtrees whose
+    /// scatter sets may target each other. Finish with [`Map::retarget_scatter_copies`].
+    pub fn duplicate_subtree_into(&mut self, id: NodeId, parent: NodeId, copies: &mut BTreeMap<NodeId, NodeId>) -> Option<NodeId> {
         let node = self.get(id)?.clone();
         let new_id = self.insert(parent, node.kind.clone());
+        copies.insert(id, new_id);
         if let Some(n) = self.get_mut(new_id) {
             n.hidden = node.hidden;
             n.locked = node.locked;
         }
 
         for c in node.children {
-            self.duplicate_subtree(c, new_id);
+            self.duplicate_subtree_into(c, new_id, copies);
         }
 
         Some(new_id)
+    }
+
+    /// Copied scatter sets paint on the copies of their target surfaces when those were copied with them, and keep
+    /// the original surfaces otherwise.
+    pub fn retarget_scatter_copies(&mut self, copies: &BTreeMap<NodeId, NodeId>) {
+        for copy in copies.values() {
+            if let Some(s) = self.scatter_mut(*copy) {
+                for t in &mut s.targets {
+                    if let Some(new) = copies.get(t) {
+                        *t = *new;
+                    }
+                }
+            }
+        }
     }
 
     pub fn brush_count(&self) -> usize {

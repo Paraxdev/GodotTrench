@@ -159,12 +159,15 @@ pub fn selection_center(map: &Map, sel: &Selection, grid: f64) -> DVec3 {
 pub fn duplicate_selection(map: &mut Map, sel: &mut Selection, offset: DVec3, opts: EditOptions) -> Vec<NodeId> {
     let roots = selection_roots(map, sel);
     let mut new_ids = Vec::new();
+    let mut copies = std::collections::BTreeMap::new();
     for id in roots {
         let parent = map.get(id).and_then(|n| n.parent).unwrap_or(map.default_layer());
-        if let Some(new_id) = map.duplicate_subtree(id, parent) {
+        if let Some(new_id) = map.duplicate_subtree_into(id, parent, &mut copies) {
             new_ids.push(new_id);
         }
     }
+
+    map.retarget_scatter_copies(&copies);
 
     sel.clear();
     for id in &new_ids {

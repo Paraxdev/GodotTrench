@@ -55,6 +55,7 @@ func _initialize() -> void:
 	await test_build()
 	await test_terrain()
 	await test_meshes_terrain_props()
+	await test_decal_mesh()
 	test_bbmodel()
 	await test_map_export()
 	test_default_fgd()
@@ -109,6 +110,9 @@ func test_parser() -> void:
 	fix_ctx.name_prefix = "p1-"
 	var fixed := ["door", "door*", "@doors", "!activator", "/root/Game", ""].map(func(n): return GodotTrenchParser._fixup(fix_ctx, n))
 	check(fixed == ["p1-door", "p1-door*", "@doors", "!activator", "/root/Game", ""], "fixup leaves special, group and path targets alone, got %s" % [fixed])
+	fix_ctx.map_settings = load(SETTINGS)
+	var keys := GodotTrenchParser._fixup_keys(fix_ctx, "trigger_teleport")
+	check("destination" in keys and "call_target" in keys and "targetname" in keys, "teleport destinations and call targets get the fixup, got %s" % [keys])
 
 	# Face planes must point out of their brush.
 	var floor_brush: FuncGodotData.BrushData = world.brushes[0]
@@ -261,6 +265,30 @@ func test_terrain() -> void:
 		check(decal.texture_albedo != null, "decal texture loaded from res:// path")
 		check(near(decal.size, Vector3(3, 2, 3)), "decal size converted to meters, got %s" % decal.size)
 		check(near(decal.position, Vector3(4, 2, 4)), "decal position, got %s" % decal.position)
+	map.queue_free()
+	await process_frame
+
+func test_decal_mesh() -> void:
+	print("- decal meshes are cut out and double sided")
+	var uv := { "u_axis": [1.0, 0.0, 0.0], "v_axis": [0.0, 0.0, 1.0], "offset": [0.0, 0.0], "scale": [1.0, 1.0], "rotation": 0.0 }
+	var quad := { "id": 2, "type": "mesh", "decal": true,
+		"vertices": [[0.0, 1.0, 0.0], [0.0, 1.0, 64.0], [64.0, 1.0, 64.0], [64.0, 1.0, 0.0]],
+		"faces": [{ "indices": [0, 1, 2, 3], "material": "base/wall", "uv": uv }] }
+	var text := JSON.stringify({ "format": "godottrench-map", "version": 1, "properties": { "classname": "worldspawn" },
+		"layers": [{ "id": 1, "type": "layer", "name": "Default", "color": "#ffffffff", "omit_from_export": false, "children": [quad] }] })
+	var path := "user://decal_test.gtm"
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	f.store_string(text)
+	f.close()
+	var map := FuncGodotMap.new()
+	map.map_settings = load(SETTINGS)
+	map.local_map_file = path
+	root.add_child(map)
+	map.build()
+	await process_frame
+	var meshes := collect(map, func(n): return n is MeshInstance3D)
+	var mat: Material = meshes[0].mesh.surface_get_material(0) if meshes.size() == 1 else null
+	check(mat is BaseMaterial3D and mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR and mat.cull_mode == BaseMaterial3D.CULL_DISABLED, "decal surface uses a cut out, double sided material, got %s" % mat)
 	map.queue_free()
 	await process_frame
 
