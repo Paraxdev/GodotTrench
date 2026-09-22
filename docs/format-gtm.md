@@ -26,8 +26,10 @@ array sizes. A file that fails is refused with the node id and the reason, for e
 `node 12: face 3 uses vertex 9, but there are only 8 vertices`, rather than opening half broken. Pasted nodes go through
 the same check.
 
-The Godot importer applies the same two checks, to maps and to the prefabs they instance, and reports a newer version
-as a build error that asks for an addon update.
+The Godot importer applies the same `format` and `version` checks, to maps and to the prefabs they instance, and reports
+a newer version as a build error that asks for an addon update. It also checks face indices, but instead of refusing the
+map it reports and skips a brush or mesh with an out of range index, and builds a displacement whose arrays have the
+wrong size as a flat face.
 
 Saving writes `<name>.gtm.tmp` first and renames it over the map, so a crash never leaves a truncated file.
 
@@ -85,7 +87,8 @@ Ids are positive integers that stay the same across saves. They are how the rest
 live link sends edits by id, scatter sets name their target surfaces by id, and Godot tags every generated node with the
 id it came from (`_gt_id` metadata, see [godot.md](godot.md)). The editor hands out new ids counting up from the highest id
 in the file. When loading, an id of `0` or one already used earlier in the file (which only happens in hand edited
-files) is replaced with a fresh one.
+files) is replaced with a fresh one above the highest id in the file, so every other node keeps its id and scatter
+targets keep pointing at the node that first used an id.
 
 Nodes inside prefab instances come from another file and may reuse ids of the including map, so the Godot importer
 offsets them by one million per level of instance nesting.
@@ -219,12 +222,13 @@ normal.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `power` | integer | required | the grid has `2^power + 1` vertices per side, normally 2, 3 or 4 |
+| `power` | integer | required | the grid has `2^power + 1` vertices per side, 1 to 4 |
 | `heights` | array of numbers | required | offset along the face normal per grid vertex, in map units |
 | `alphas` | array of numbers | empty, omitted | blend weight per grid vertex, 0 is the face material, 1 the blend material |
 
 Both arrays are row major with `(2^power + 1)^2` entries. Rows run from the face's first corner towards its fourth,
-columns from the first corner towards its second. A displacement whose `heights` count does not match is ignored.
+columns from the first corner towards its second. A `power` outside 1 to 4, or a `heights` or non-empty `alphas` count
+that does not match, is one of the checks above: the editor refuses the whole map with the node id and the reason.
 
 ## Mesh
 
@@ -387,8 +391,9 @@ Copy and paste use the same node shape inside a different wrapper:
 }
 ```
 
-`nodes` holds the copied subtrees, each with all of its descendants. Their parents are not included. Pasting checks
-`format` only, inserts every node under the paste target with fresh ids and keeps `hidden` and `locked`. A copied layer
+`nodes` holds the copied subtrees, each with all of its descendants. Their parents are not included. Pasting refuses
+another `format` or a newer `version` and runs the same geometry checks as loading a map, then inserts every node under
+the paste target with fresh ids and keeps `hidden` and `locked`. A copied layer
 is not pasted as a layer, its children are pasted instead. The live link to Godot sends single nodes in the same shape as
 well, without `children`.
 

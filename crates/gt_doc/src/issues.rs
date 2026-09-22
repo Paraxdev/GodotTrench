@@ -1,4 +1,4 @@
-//! Map problems that do not depend on a game configuration.
+//! Map problems. The game configuration is optional: [`check_with`] also checks I/O names against entity definitions.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -6,6 +6,22 @@ use gt_core::NodeId;
 use serde::Serialize;
 
 use crate::map::{Map, NodeKind};
+
+/// Outputs and inputs an entity class declares. Empty lists mean the class does not describe that side of its I/O.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ClassIo<'a> {
+    pub outputs: Vec<&'a str>,
+    pub inputs: Vec<&'a str>,
+}
+
+/// Inputs the Godot runtime handles on any node, see `godottrench_io.gd`.
+pub const BUILTIN_INPUTS: [&str; 6] = ["kill", "show", "hide", "enable", "disable", "toggle"];
+
+/// The runtime also finds `open` as `Open` or `open` as a C# or GDScript method, so names compare loosely.
+fn io_name_matches(a: &str, b: &str) -> bool {
+    let norm = |s: &str| s.chars().filter(|c| *c != '_').flat_map(char::to_lowercase).collect::<String>();
+    norm(a) == norm(b)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -24,9 +40,71 @@ pub struct Issue {
 }
 
 pub fn check(map: &Map) -> Vec<Issue> {
+    check_with(map, |_| None)
+}
+
+/// [`check`], plus warnings for outputs the source class does not declare and inputs the target class does not
+/// declare. `classes` gives the declared I/O of a classname, `None` for classes without a definition, which are
+/// skipped like dynamic targets.
+pub fn check_with<'a>(map: &Map, classes: impl Fn(&str) -> Option<ClassIo<'a>>) -> Vec<Issue> {
+    let mut out = check_map(map);
+    check_io_names(map, &classes, &mut out);
+    out.sort_by_key(|i| std::cmp::Reverse(i.severity));
+    out
+}
+
+fn check_io_names<'a>(map: &Map, classes: &impl Fn(&str) -> Option<ClassIo<'a>>, out: &mut Vec<Issue>) {
+    let mut cache: BTreeMap<&str, Option<ClassIo<'a>>> = BTreeMap::new();
+    let mut by_name: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for (_, e) in map.entities() {
+        if let Some(n) = e.targetname() {
+            by_name.entry(n).or_default().insert(e.classname.as_str());
+        }
+
+        cache.entry(e.classname.as_str()).or_insert_with(|| classes(&e.classname));
+    }
+
+    for (id, e) in map.entities() {
+        let source = cache.get(e.classname.as_str()).and_then(Option::as_ref);
+        for o in &e.outputs {
+            if let Some(io) = source
+                && !o.output.is_empty()
+                && !io.outputs.is_empty()
+                && !io.outputs.iter().any(|d| io_name_matches(d, &o.output))
+            {
+                out.push(Issue {
+                    node: Some(id),
+                    severity: Severity::Warning,
+                    code: "io_unknown_output",
+                    message: format!("{} has no output '{}'", e.classname, o.output),
+                });
+            }
+
+            if o.input.is_empty() || is_dynamic_target(&o.target) || BUILTIN_INPUTS.iter().any(|b| io_name_matches(b, &o.input)) {
+                continue;
+            }
+
+            for class in by_name.get(o.target.as_str()).into_iter().flatten() {
+                if let Some(Some(io)) = cache.get(class)
+                    && !io.inputs.is_empty()
+                    && !io.inputs.iter().any(|d| io_name_matches(d, &o.input))
+                {
+                    out.push(Issue {
+                        node: Some(id),
+                        severity: Severity::Warning,
+                        code: "io_unknown_input",
+                        message: format!("Output {} calls input '{}', which {class} '{}' does not have", o.output, o.input, o.target),
+                    });
+                }
+            }
+        }
+    }
+}
+
+fn check_map(map: &Map) -> Vec<Issue> {
     let mut out = Vec::new();
     let names: BTreeSet<&str> = map.entities().filter_map(|(_, e)| e.targetname()).collect();
-    let mut brush_keys: BTreeMap<Vec<i64>, NodeId> = BTreeMap::new();
+    let mut brush_keys: BTreeMap<Vec<[i64; 3]>, NodeId> = BTreeMap::new();
 
     for (id, node) in map.nodes.iter() {
         match &node.kind {
@@ -45,8 +123,8 @@ pub fn check(map: &Map) -> Vec<Issue> {
                     }
                 }
 
-                let mut key: Vec<i64> =
-                    b.vertices.iter().flat_map(|v| [(v.x * 64.0).round() as i64, (v.y * 64.0).round() as i64, (v.z * 64.0).round() as i64]).collect();
+                let mut key: Vec<[i64; 3]> =
+                    b.vertices.iter().map(|v| [(v.x * 64.0).round() as i64, (v.y * 64.0).round() as i64, (v.z * 64.0).round() as i64]).collect();
                 key.sort();
                 if let Some(other) = brush_keys.insert(key, *id) {
                     out.push(Issue {
@@ -92,6 +170,7 @@ pub fn check(map: &Map) -> Vec<Issue> {
 
                 if let Some(t) = e.property("target")
                     && !t.is_empty()
+                    && !is_dynamic_target(t)
                     && !names.contains(t)
                 {
                     out.push(Issue { node: Some(*id), severity: Severity::Warning, code: "missing_target", message: format!("target '{t}' does not exist") });
@@ -234,7 +313,14 @@ pub fn fix(map: &mut Map, issue: &Issue, default_material: &str) -> bool {
             s.targets.retain(|t| existing.contains(t));
             true
         }
-        "missing_target" => map.entity_mut(id).is_some_and(|e| e.properties.remove("target").is_some()),
+        "missing_target" => {
+            let Some(t) = map.entity(id).and_then(|e| e.property("target")) else { return false };
+            if t.is_empty() || is_dynamic_target(t) || !map.find_by_targetname(t).is_empty() {
+                return false;
+            }
+
+            map.entity_mut(id).is_some_and(|e| e.properties.remove("target").is_some())
+        }
         "no_material" => {
             match map.get_mut(id).map(|n| &mut n.kind) {
                 Some(NodeKind::Brush(b)) => {
@@ -281,5 +367,74 @@ mod tests {
         }
 
         assert!(check(&m).iter().all(|i| !fixable(i.code)), "{:?}", check(&m));
+    }
+
+    #[test]
+    fn perpendicular_walls_are_not_duplicates() {
+        let mut m = Map::new();
+        let l = m.default_layer();
+        let wall = |max: DVec3| NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, max), "m").unwrap());
+        m.insert(l, wall(DVec3::new(256.0, 128.0, 16.0)));
+        m.insert(l, wall(DVec3::new(16.0, 128.0, 256.0)));
+        assert!(check(&m).iter().all(|i| i.code != "duplicate_brush"), "{:?}", check(&m));
+    }
+
+    #[test]
+    fn dynamic_target_properties_are_kept() {
+        let mut m = Map::new();
+        let l = m.default_layer();
+        for t in ["!player", "@doors", "door*", "/root/Game", "nobody"] {
+            let mut e = Entity::new("trigger_once");
+            e.properties.insert("target".into(), t.into());
+            m.insert(l, NodeKind::Entity(e));
+        }
+
+        let issues: Vec<Issue> = check(&m).into_iter().filter(|i| i.code == "missing_target").collect();
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].message.contains("nobody"));
+        for (id, e) in m.entities() {
+            let issue = Issue { node: Some(id), ..issues[0].clone() };
+            let mut copy = m.clone();
+            assert_eq!(fix(&mut copy, &issue, "m"), e.property("target") == Some("nobody"));
+        }
+    }
+
+    #[test]
+    fn io_names_are_checked_against_definitions() {
+        let mut m = Map::new();
+        let l = m.default_layer();
+        let conn = |output: &str, target: &str, input: &str| IoConnection {
+            output: output.into(),
+            target: target.into(),
+            input: input.into(),
+            parameter: String::new(),
+            delay: 0.0,
+            times: -1,
+        };
+        let mut relay = Entity::new("logic_relay");
+        relay.outputs.push(conn("OnBogus", "door", "open"));
+        relay.outputs.push(conn("on_trigger", "door", "BogusInput"));
+        relay.outputs.push(conn("OnTrigger", "door", "Open"));
+        relay.outputs.push(conn("on_trigger", "door", "kill"));
+        relay.outputs.push(conn("on_trigger", "@doors", "whatever"));
+        relay.outputs.push(conn("on_trigger", "thing", "whatever"));
+        m.insert(l, NodeKind::Entity(relay));
+        let mut door = Entity::new("func_door");
+        door.properties.insert("targetname".into(), "door".into());
+        m.insert(l, NodeKind::Entity(door));
+        let mut thing = Entity::new("custom_thing");
+        thing.properties.insert("targetname".into(), "thing".into());
+        m.insert(l, NodeKind::Entity(thing));
+
+        let issues = check_with(&m, |class| match class {
+            "logic_relay" => Some(ClassIo { outputs: vec!["on_trigger"], inputs: vec!["trigger"] }),
+            "func_door" => Some(ClassIo { outputs: vec!["opened"], inputs: vec!["open", "close"] }),
+            _ => None,
+        });
+        let io: Vec<(&str, &str)> = issues.iter().filter(|i| i.code.starts_with("io_unknown")).map(|i| (i.code, i.message.as_str())).collect();
+        assert_eq!(io.len(), 2, "{io:?}");
+        assert!(io.iter().any(|(c, msg)| *c == "io_unknown_output" && msg.contains("OnBogus")));
+        assert!(io.iter().any(|(c, msg)| *c == "io_unknown_input" && msg.contains("BogusInput")));
+        assert!(check(&m).iter().all(|i| !i.code.starts_with("io_unknown")), "no definitions, no name checks");
     }
 }

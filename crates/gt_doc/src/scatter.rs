@@ -270,11 +270,11 @@ impl Scatter {
 
     /// Moves, rotates and scales every instance.
     pub fn transform(&mut self, m: &DMat4) {
-        let (scale, rot, _) = m.to_scale_rotation_translation();
+        let (scale, _, _) = m.to_scale_rotation_translation();
         let uniform = (scale.x.abs() * scale.y.abs() * scale.z.abs()).cbrt();
         for inst in &mut self.instances {
             inst.position = m.transform_point3(inst.position);
-            let (y, x, z) = (rot * inst.rotation()).normalize().to_euler(gt_core::EulerRot::YXZ);
+            let (y, x, z) = crate::entity::transform_rotation(m, inst.rotation()).to_euler(gt_core::EulerRot::YXZ);
             inst.angles = DVec3::new(x.to_degrees(), y.to_degrees(), z.to_degrees());
             inst.scale *= uniform;
         }

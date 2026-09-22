@@ -151,10 +151,17 @@ impl Mesh {
             let mut data = brush.faces[fi].data.clone();
             data.disp = None;
             data.colors.clear();
+            let blended = brush.faces[fi].data.disp.as_ref().is_some_and(|d| !d.alphas.is_empty()) && grid.alphas.len() == n * n;
             for j in 0..n - 1 {
                 for i in 0..n - 1 {
                     let k = j * n + i;
-                    polys.push((vec![grid.positions[k], grid.positions[k + 1], grid.positions[k + n + 1], grid.positions[k + n]], data.clone()));
+                    let corners = [k, k + 1, k + n + 1, k + n];
+                    let mut quad = data.clone();
+                    if blended {
+                        quad.colors = corners.iter().map(|c| [1.0, 1.0, 1.0, grid.alphas[*c]]).collect();
+                    }
+
+                    polys.push((corners.iter().map(|c| grid.positions[*c]).collect(), quad));
                 }
             }
         }
@@ -164,26 +171,33 @@ impl Mesh {
         mesh
     }
 
-    /// Builds a mesh from polygons, welding coincident vertices.
+    /// Builds a mesh from polygons, welding coincident vertices. Corner colors in `data.colors` stay with their corners.
     pub fn from_polygons(polys: impl IntoIterator<Item = (Vec<DVec3>, FaceData)>) -> Mesh {
         let mut mesh = Mesh::default();
         let mut lookup: HashMap<(i64, i64, i64), u32> = HashMap::new();
-        for (pts, data) in polys {
+        for (pts, mut data) in polys {
+            let colored = data.colors.len() == pts.len();
             let mut indices: Vec<u32> = Vec::with_capacity(pts.len());
-            for p in pts {
+            let mut colors = Vec::new();
+            for (k, p) in pts.into_iter().enumerate() {
                 let idx = *lookup.entry(weld_key(p)).or_insert_with(|| {
                     mesh.vertices.push(p);
                     (mesh.vertices.len() - 1) as u32
                 });
                 if indices.last() != Some(&idx) {
                     indices.push(idx);
+                    if colored {
+                        colors.push(data.colors[k]);
+                    }
                 }
             }
 
             while indices.len() > 1 && indices.first() == indices.last() {
                 indices.pop();
+                colors.pop();
             }
 
+            data.colors = if colored { colors } else { Vec::new() };
             if indices.len() >= 3 {
                 mesh.faces.push(MeshFace::new(indices, data));
             }
@@ -228,8 +242,10 @@ impl Mesh {
         hits.len() % 2 == 1
     }
 
+    /// Corner positions of a face, empty for a face index out of range.
     pub fn face_points(&self, fi: usize) -> Vec<DVec3> {
-        self.faces[fi].indices.iter().map(|i| self.vertices[*i as usize]).collect()
+        let Some(f) = self.faces.get(fi) else { return Vec::new() };
+        f.indices.iter().filter_map(|i| self.vertices.get(*i as usize).copied()).collect()
     }
 
     pub fn face_normal(&self, fi: usize) -> DVec3 {
@@ -249,7 +265,7 @@ impl Mesh {
     }
 
     fn face_edges(&self, fi: usize) -> impl Iterator<Item = (u32, u32)> + '_ {
-        let idx = &self.faces[fi].indices;
+        let idx: &[u32] = self.faces.get(fi).map_or(&[], |f| &f.indices);
         (0..idx.len()).map(move |k| (idx[k], idx[(k + 1) % idx.len()]))
     }
 
@@ -316,7 +332,7 @@ impl Mesh {
 
     /// Vertex index triples of the face triangulation, with the face's winding.
     pub fn triangulate_face(&self, fi: usize) -> Vec<[u32; 3]> {
-        let f = &self.faces[fi];
+        let Some(f) = self.faces.get(fi) else { return Vec::new() };
         let pts = self.face_points(fi);
         polygon::triangulate(&pts, polygon::newell(&pts)).into_iter().map(|[a, b, c]| [f.indices[a], f.indices[b], f.indices[c]]).collect()
     }
@@ -1030,8 +1046,9 @@ impl Mesh {
 
     /// Collapses the vertices into one at `target`.
     pub fn merge_vertices(&mut self, verts: &[u32], target: DVec3) {
-        let Some(&keep) = verts.first() else { return };
-        let set: BTreeSet<u32> = verts.iter().copied().collect();
+        let valid = |v: &&u32| (**v as usize) < self.vertices.len();
+        let Some(&keep) = verts.iter().find(valid) else { return };
+        let set: BTreeSet<u32> = verts.iter().filter(valid).copied().collect();
         self.vertices[keep as usize] = target;
         for f in &mut self.faces {
             for v in &mut f.indices {
@@ -1050,7 +1067,7 @@ impl Mesh {
         let mut target: HashMap<u32, u32> = HashMap::new();
         let mut buckets: HashMap<(i64, i64, i64), Vec<u32>> = HashMap::new();
         let cell = dist.max(1e-9);
-        let set: BTreeSet<u32> = verts.iter().copied().collect();
+        let set: BTreeSet<u32> = verts.iter().copied().filter(|v| (*v as usize) < self.vertices.len()).collect();
         for &v in &set {
             let p = self.vertices[v as usize];
             let key = ((p.x / cell).floor() as i64, (p.y / cell).floor() as i64, (p.z / cell).floor() as i64);
@@ -1157,7 +1174,7 @@ impl Mesh {
         let vertex_faces = self.vertex_faces();
         let mut normal: DVec3 = set.iter().flat_map(|v| vertex_faces[*v as usize].iter()).map(|f| self.face_normal(*f)).sum();
         if normal.length_squared() < 1e-12 {
-            let given: Vec<DVec3> = verts.iter().map(|v| self.vertices[*v as usize]).collect();
+            let given: Vec<DVec3> = verts.iter().filter_map(|v| self.vertices.get(*v as usize).copied()).collect();
             normal = polygon::newell(&given).normalize_or(DVec3::Y);
         }
 
@@ -1546,6 +1563,44 @@ mod tests {
         assert_eq!(tris.len(), 4);
         let area: f64 = tris.iter().map(|[a, b, c]| (l[*b] - l[*a]).cross(l[*c] - l[*a]).dot(n.normalize()) * 0.5).sum();
         assert!((area - 3.0).abs() < 1e-9, "area {area}");
+    }
+
+    #[test]
+    fn out_of_range_indices_are_ignored() {
+        let mut m = cube();
+        let before = m.clone();
+        assert!(m.face_points(999).is_empty());
+        assert!(m.triangulate_face(999).is_empty());
+        assert!(m.extrude_faces(&[999]).is_empty());
+        assert!(m.inset_faces(&[999], 2.0).is_empty());
+        assert!(m.subdivide_faces(&[999]).is_empty());
+        assert!(m.loop_cut((999, 1000), 1).is_empty());
+        m.merge_vertices(&[99999, 99998], DVec3::ZERO);
+        assert_eq!(m.merge_by_distance(&[99999], 1.0), 0);
+        m.smooth_vertices(&[99999], 0.5, 2);
+        m.bevel_vertices(&[99999], 2.0);
+        assert!(m.fill(&[99999, 99998, 99997], &FaceData::default()).is_none());
+        assert_eq!(m, before);
+
+        m.merge_vertices(&[99999, 0, 1], DVec3::ZERO);
+        assert_eq!(m.vertices.len(), before.vertices.len() - 1, "the valid vertices still merge");
+    }
+
+    #[test]
+    fn displacement_blend_becomes_vertex_alpha() {
+        let mut b = Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::new(64.0, 16.0, 64.0)), "m").unwrap();
+        let top = b.faces.iter().position(|f| f.plane.normal.y > 0.5).unwrap();
+        let mut disp = crate::displacement::Displacement::new(1);
+        disp.alphas = vec![0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
+        b.faces[top].data.disp = Some(disp);
+        let m = Mesh::from_brush(&b);
+        assert!(m.faces.iter().all(|f| f.data.colors.len() == f.indices.len()));
+        let center = m.vertices.iter().position(|v| (v.x - 32.0).abs() < 1e-6 && (v.z - 32.0).abs() < 1e-6).unwrap() as u32;
+        for f in &m.faces {
+            for (k, v) in f.indices.iter().enumerate() {
+                assert_eq!(f.data.colors[k][3], if *v == center { 1.0 } else { 0.0 });
+            }
+        }
     }
 
     #[test]

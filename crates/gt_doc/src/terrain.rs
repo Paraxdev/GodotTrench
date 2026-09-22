@@ -166,7 +166,7 @@ pub fn sculpt(map: &mut Map, faces: &[(NodeId, usize)], center: DVec3, brush: &S
 
         let old_heights = b.faces[*face].data.disp.as_ref().unwrap().heights.clone();
         let Some(disp) = map.brush_mut(*id).and_then(|b| b.faces[*face].data.disp.as_mut()) else { continue };
-        if matches!(brush.mode, SculptMode::PaintAlpha | SculptMode::EraseAlpha) && disp.alphas.is_empty() {
+        if matches!(brush.mode, SculptMode::PaintAlpha | SculptMode::PaintLayer | SculptMode::EraseAlpha) && disp.alphas.len() != n * n {
             disp.alphas = vec![0.0; n * n];
         }
 
@@ -315,12 +315,14 @@ pub fn paint_vertices(map: &mut Map, brushes: &[NodeId], center: DVec3, radius: 
                 }
 
                 let face = &mut bm.faces[fi];
+                // On blended faces alpha is the blend weight, unpainted means none of the blend material.
+                let blended = face.data.props.contains_key(crate::blend::BLEND_MATERIAL);
                 if face.data.colors.len() != face.indices.len() {
-                    face.data.colors = vec![[1.0; 4]; face.indices.len()];
+                    face.data.colors = vec![[1.0, 1.0, 1.0, if blended { 0.0 } else { 1.0 }]; face.indices.len()];
                 }
 
                 let c = &mut face.data.colors[k];
-                for ch in 0..4 {
+                for ch in 0..if blended { 3 } else { 4 } {
                     c[ch] += (color[ch] - c[ch]) * w.clamp(0.0, 1.0) as f32;
                 }
 
@@ -396,5 +398,28 @@ mod tests {
         let b = m.brush(id).unwrap();
         let painted = b.faces.iter().filter(|f| f.data.colors.iter().any(|c| c[1] < 0.5)).count();
         assert_eq!(painted, 3, "the three faces meeting at the origin corner");
+    }
+
+    #[test]
+    fn vertex_paint_keeps_blend_weights_of_blended_faces() {
+        let mut m = Map::new();
+        let l = m.default_layer();
+        let id = m.insert(l, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(32.0)), "m").unwrap()));
+        let faces: Vec<(NodeId, usize)> = (0..6).map(|f| (id, f)).collect();
+        crate::blend::set_blend_material(&mut m, &faces, Some("rock"));
+        assert!(paint_vertices(&mut m, &[id], DVec3::ZERO, 8.0, [1.0, 0.0, 0.0, 1.0], 1.0));
+        let b = m.brush(id).unwrap();
+        assert!(b.faces.iter().all(|f| f.data.colors.iter().all(|c| c[3] == 0.0)), "tinting does not switch faces to the blend material");
+        assert!(b.faces.iter().any(|f| f.data.colors.iter().any(|c| c[1] < 0.5)));
+    }
+
+    #[test]
+    fn layer_paint_on_unpainted_displacement() {
+        let (mut m, a, _) = terrain_map();
+        let faces = displacement_faces(&m, &[a]);
+        let paint = SculptBrush { mode: SculptMode::PaintLayer, radius: 20.0, strength: 0.5, ..Default::default() };
+        assert!(sculpt(&mut m, &faces, DVec3::new(32.0, 0.0, 32.0), &paint));
+        let d = m.brush(a).unwrap().faces[faces[0].1].data.disp.clone().unwrap();
+        assert!(d.alphas.iter().any(|v| *v > 0.4));
     }
 }

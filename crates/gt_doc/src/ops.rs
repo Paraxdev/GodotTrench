@@ -28,8 +28,16 @@ pub fn selection_roots(map: &Map, sel: &Selection) -> Vec<NodeId> {
 
 pub fn delete_selection(map: &mut Map, sel: &mut Selection) -> usize {
     let roots = selection_roots(map, sel);
+    let parents = remove_nodes(map, &roots);
+    remove_empty_containers(map, parents);
+    sel.clear();
+    roots.len()
+}
+
+/// Removes the nodes and returns their former parents, for [`remove_empty_containers`] once any replacements are in.
+fn remove_nodes(map: &mut Map, ids: &[NodeId]) -> BTreeSet<NodeId> {
     let mut parents = BTreeSet::new();
-    for id in &roots {
+    for id in ids {
         if let Some(p) = map.get(*id).and_then(|n| n.parent) {
             parents.insert(p);
         }
@@ -37,9 +45,7 @@ pub fn delete_selection(map: &mut Map, sel: &mut Selection) -> usize {
         map.remove(*id);
     }
 
-    remove_empty_containers(map, parents);
-    sel.clear();
-    roots.len()
+    parents
 }
 
 /// Groups and brush entities that lost all children are removed, like TrenchBroom does.
@@ -333,10 +339,9 @@ pub fn select_touching(map: &mut Map, sel: &mut Selection, open_groups: &[NodeId
     }
 
     let roots = selection_roots(map, sel);
-    for r in roots {
-        map.remove(r);
-    }
-
+    let parents = remove_nodes(map, &roots);
+    remove_empty_containers(map, parents);
+    result.retain(|id| map.contains(*id));
     sel.clear();
     sel.nodes = result;
 }
@@ -409,9 +414,10 @@ pub fn csg_subtract(map: &mut Map, sel: &mut Selection) -> usize {
         return 0;
     }
 
-    let cutter_ids: BTreeSet<NodeId> = cutters.iter().map(|(id, _)| *id).collect();
+    let cutter_ids: Vec<NodeId> = cutters.iter().map(|(id, _)| *id).collect();
     let targets: Vec<NodeId> = map.brushes().filter(|(id, _)| !cutter_ids.contains(id) && map.is_editable(*id)).map(|(id, _)| id).collect();
     let mut changed = 0;
+    let mut parents = BTreeSet::new();
     for t in targets {
         let Some(original) = map.brush(t).cloned() else { continue };
         let mut pieces = vec![original.clone()];
@@ -425,16 +431,14 @@ pub fn csg_subtract(map: &mut Map, sel: &mut Selection) -> usize {
 
         changed += 1;
         let parent = map.get(t).and_then(|n| n.parent).unwrap_or(map.default_layer());
-        map.remove(t);
+        parents.extend(remove_nodes(map, &[t]));
         for p in pieces {
             map.insert(parent, NodeKind::Brush(p));
         }
     }
 
-    for id in cutter_ids {
-        map.remove(id);
-    }
-
+    parents.extend(remove_nodes(map, &cutter_ids));
+    remove_empty_containers(map, parents);
     sel.clear();
     changed
 }
@@ -449,11 +453,9 @@ pub fn csg_merge(map: &mut Map, sel: &mut Selection, default_material: &str) -> 
     let refs: Vec<&Brush> = brushes.iter().collect();
     let merged = csg::convex_merge(&refs, default_material).ok()?;
     let parent = map.get(ids[0]).and_then(|n| n.parent).unwrap_or(map.default_layer());
-    for id in &ids {
-        map.remove(*id);
-    }
-
+    let parents = remove_nodes(map, &ids);
     let new_id = map.insert(parent, NodeKind::Brush(merged));
+    remove_empty_containers(map, parents);
     sel.clear();
     sel.nodes.insert(new_id);
     Some(new_id)
@@ -471,11 +473,9 @@ pub fn csg_intersect(map: &mut Map, sel: &mut Selection) -> Option<NodeId> {
     }
 
     let parent = map.get(ids[0]).and_then(|n| n.parent).unwrap_or(map.default_layer());
-    for id in &ids {
-        map.remove(*id);
-    }
-
+    let parents = remove_nodes(map, &ids);
     let new_id = map.insert(parent, NodeKind::Brush(result));
+    remove_empty_containers(map, parents);
     sel.clear();
     sel.nodes.insert(new_id);
     Some(new_id)
@@ -569,11 +569,12 @@ pub fn convert_to_mesh(map: &mut Map, sel: &mut Selection, join: bool) -> Vec<No
     let brushes = sel.brushes(map);
     let mut out = Vec::new();
     let mut joined: Option<(NodeId, Mesh)> = None;
+    let mut parents = BTreeSet::new();
     for id in brushes {
         let Some(b) = map.brush(id).cloned() else { continue };
         let parent = map.get(id).and_then(|n| n.parent).unwrap_or(map.default_layer());
         let mesh = Mesh::from_brush(&b);
-        map.remove(id);
+        parents.extend(remove_nodes(map, &[id]));
         if join {
             match &mut joined {
                 Some((_, m)) => m.join(&mesh),
@@ -589,6 +590,7 @@ pub fn convert_to_mesh(map: &mut Map, sel: &mut Selection, join: bool) -> Vec<No
         out.push(map.insert(parent, NodeKind::Mesh(mesh)));
     }
 
+    remove_empty_containers(map, parents);
     sel.clear();
     sel.nodes.extend(out.iter().copied());
     out
@@ -617,9 +619,13 @@ pub fn join_meshes(map: &mut Map, sel: &mut Selection) -> Option<NodeId> {
         return None;
     }
 
-    let mut result = Mesh::default();
-    let parent = map.get(ids[0]).and_then(|n| n.parent).unwrap_or(map.default_layer());
+    let first = ids.iter().copied().find(|id| map.mesh(*id).is_some());
+    let mut result = first.and_then(|id| map.mesh(id)).cloned().unwrap_or_default();
     for id in &ids {
+        if Some(*id) == first {
+            continue;
+        }
+
         match map.get(*id).map(|n| &n.kind) {
             Some(NodeKind::Mesh(m)) => {
                 result.smooth_angle = result.smooth_angle.max(m.smooth_angle);
@@ -631,14 +637,25 @@ pub fn join_meshes(map: &mut Map, sel: &mut Selection) -> Option<NodeId> {
     }
 
     result.weld(1e-4);
-    for id in &ids {
-        map.remove(*id);
-    }
+    let others: Vec<NodeId> = ids.iter().copied().filter(|id| Some(*id) != first).collect();
+    let target = match first {
+        Some(id) => {
+            if let Some(slot) = map.mesh_mut(id) {
+                *slot = result;
+            }
 
-    let new_id = map.insert(parent, NodeKind::Mesh(result));
+            id
+        }
+        None => {
+            let parent = map.get(ids[0]).and_then(|n| n.parent).unwrap_or(map.default_layer());
+            map.insert(parent, NodeKind::Mesh(result))
+        }
+    };
+    let parents = remove_nodes(map, &others);
+    remove_empty_containers(map, parents);
     sel.clear();
-    sel.nodes.insert(new_id);
-    Some(new_id)
+    sel.nodes.insert(target);
+    Some(target)
 }
 
 /// Duplicates the selected groups as linked copies offset by `offset`.
@@ -709,6 +726,61 @@ mod tests {
         sel.nodes.insert(ids[1]);
         assert_eq!(csg_subtract(&mut m, &mut sel), 1);
         assert_eq!(m.brush_count(), 5);
+    }
+
+    fn in_entity(m: &mut Map, id: NodeId, classname: &str) -> NodeId {
+        let l = m.default_layer();
+        let e = m.insert(l, NodeKind::Entity(Entity::new(classname)));
+        m.reparent(id, e);
+        e
+    }
+
+    #[test]
+    fn csg_and_join_remove_emptied_brush_entities() {
+        let (mut m, ids) = world_with_boxes();
+        let cutter = in_entity(&mut m, ids[1], "func_detail");
+        let mut sel = Selection::default();
+        sel.nodes.insert(ids[1]);
+        csg_subtract(&mut m, &mut sel);
+        assert!(!m.contains(cutter), "the cutter's entity went with it");
+
+        for op in 0..3 {
+            let (mut m, ids) = world_with_boxes();
+            let a = in_entity(&mut m, ids[0], "func_wall");
+            let b = in_entity(&mut m, ids[1], "func_door");
+            let mut sel = Selection::default();
+            sel.nodes.extend([ids[0], ids[1]]);
+            let result = match op {
+                0 => csg_merge(&mut m, &mut sel, "m"),
+                1 => csg_intersect(&mut m, &mut sel),
+                _ => join_meshes(&mut m, &mut sel),
+            };
+            let result = result.unwrap();
+            assert_eq!(m.get(result).unwrap().parent, Some(a), "op {op}");
+            assert!(!m.contains(b), "op {op} left an empty brush entity");
+        }
+
+        let (mut m, ids) = world_with_boxes();
+        let door = in_entity(&mut m, ids[1], "func_door");
+        let mut sel = Selection::default();
+        sel.nodes.insert(ids[1]);
+        select_touching(&mut m, &mut sel, &[], false);
+        assert!(!m.contains(door));
+    }
+
+    #[test]
+    fn join_keeps_the_first_mesh() {
+        let (mut m, ids) = world_with_boxes();
+        let mut sel = Selection::default();
+        sel.nodes.extend([ids[0], ids[1]]);
+        let meshes = convert_to_mesh(&mut m, &mut sel, false);
+        m.mesh_mut(meshes[0]).unwrap().decal = true;
+        sel.nodes.extend(meshes.iter().copied());
+        let joined = join_meshes(&mut m, &mut sel).unwrap();
+        assert_eq!(joined, meshes[0]);
+        assert!(m.mesh(joined).unwrap().decal);
+        assert!(!m.contains(meshes[1]));
+        assert_eq!(m.mesh(joined).unwrap().faces.len(), 12);
     }
 
     #[test]

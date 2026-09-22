@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use gt_core::{DMat4, DQuat, DVec3};
+use gt_core::{DMat3, DMat4, DQuat, DVec3};
 use serde::{Deserialize, Serialize};
 
 /// Hammer style output: when `output` fires on this entity, call `input` on every entity named `target`.
@@ -69,13 +69,77 @@ impl Entity {
     /// Applies a transform to origin and angles.
     pub fn transform_by(&mut self, m: &DMat4) {
         self.origin = gt_core::snap_vec(m.transform_point3(self.origin));
-        let (_, rot, _) = m.to_scale_rotation_translation();
-        let q = (rot * self.rotation()).normalize();
+        let q = transform_rotation(m, self.rotation());
         let (y, x, z) = q.to_euler(gt_core::EulerRot::YXZ);
         let clean = |d: f64| {
             let r = (d * 1e4).round() / 1e4;
             if r == -0.0 { 0.0 } else { r }
         };
         self.angles = DVec3::new(clean(x.to_degrees()), clean(y.to_degrees()), clean(z.to_degrees()));
+    }
+}
+
+/// Orientation `rot` after the transform `m`. A mirroring transform cannot be a rotation, so the result keeps the
+/// transformed forward (-Z) and up (+Y) directions and gives up the handedness of the side axis, the way a mirrored
+/// copy of a left-right symmetric object faces.
+pub fn transform_rotation(m: &DMat4, rot: DQuat) -> DQuat {
+    let linear = DMat3::from_mat4(*m);
+    let back = (linear * (rot * DVec3::Z)).normalize_or_zero();
+    let up = (linear * (rot * DVec3::Y)).normalize_or_zero();
+    let side = up.cross(back).normalize_or_zero();
+    if side == DVec3::ZERO || back == DVec3::ZERO {
+        let (_, r, _) = m.to_scale_rotation_translation();
+        return (r * rot).normalize();
+    }
+
+    DQuat::from_mat3(&DMat3::from_cols(side, back.cross(side), back)).normalize()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn flipped(yaw: f64, axis: usize) -> DVec3 {
+        let mut e = Entity::new("light");
+        e.angles = DVec3::new(0.0, yaw, 0.0);
+        let mut s = DVec3::ONE;
+        s[axis] = -1.0;
+        e.transform_by(&DMat4::from_scale(s));
+        e.angles
+    }
+
+    fn facing(angles: DVec3) -> DVec3 {
+        let mut e = Entity::new("light");
+        e.angles = angles;
+        e.rotation() * DVec3::NEG_Z
+    }
+
+    #[test]
+    fn flips_mirror_the_facing() {
+        assert_eq!(flipped(90.0, 0), DVec3::new(0.0, -90.0, 0.0));
+        assert_eq!(flipped(90.0, 2), DVec3::new(0.0, 90.0, 0.0));
+        assert_eq!(flipped(0.0, 0), DVec3::ZERO);
+        assert!((facing(flipped(0.0, 2)) - DVec3::Z).length() < 1e-9);
+        assert!((facing(flipped(30.0, 1)) - facing(DVec3::new(0.0, 30.0, 0.0))).length() < 1e-9, "a vertical flip keeps the yaw");
+
+        for axis in 0..3 {
+            let angles = DVec3::new(20.0, 70.0, 10.0);
+            let mut s = DVec3::ONE;
+            s[axis] = -1.0;
+            let mut want = facing(angles);
+            want[axis] = -want[axis];
+            let mut e = Entity::new("light");
+            e.angles = angles;
+            e.transform_by(&DMat4::from_scale(s));
+            assert!((facing(e.angles) - want).length() < 1e-6, "axis {axis}: {:?}", e.angles);
+        }
+    }
+
+    #[test]
+    fn rotations_are_unchanged() {
+        let mut e = Entity::new("light");
+        e.angles = DVec3::new(0.0, 45.0, 0.0);
+        e.transform_by(&DMat4::from_rotation_y(90f64.to_radians()));
+        assert_eq!(e.angles, DVec3::new(0.0, 135.0, 0.0));
     }
 }

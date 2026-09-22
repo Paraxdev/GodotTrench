@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Instant;
 
 use crate::map::Map;
 use crate::selection::Selection;
@@ -8,6 +9,8 @@ struct Snapshot {
     label: String,
     map: Map,
     selection: Selection,
+    /// Content state id of `map`, see `Document::state`.
+    state: u64,
 }
 
 /// Undo history of whole-map snapshots. Cheap because `Map::nodes` is a persistent map with structural sharing.
@@ -43,12 +46,19 @@ pub struct Document {
     /// The autosave this document was loaded from, until it is saved to `path`.
     pub recovered_from: Option<PathBuf>,
     pub history: History,
-    /// Incremented on every change, used by renderers and caches.
+    /// Incremented on every change, used by renderers and caches. Code that changes `map` directly bumps it, which
+    /// also marks the document modified.
     pub revision: u64,
-    saved_revision: u64,
+    /// Identifies the map content: every change gets a fresh id and undo or redo bring back the id of the state they
+    /// return to, so going back to the saved state reads as unmodified.
+    state: u64,
+    next_state: u64,
+    saved_state: Option<u64>,
+    /// `revision` as of the last change made through this type, a newer revision means `map` was changed directly.
+    accounted_revision: u64,
     transaction: Option<Snapshot>,
     last_command: Option<String>,
-    last_edit: Option<(String, std::time::Instant)>,
+    last_edit: Option<(String, Instant)>,
 }
 
 impl Default for Document {
@@ -70,7 +80,10 @@ impl Document {
             recovered_from: None,
             history: History { limit: 512, ..Default::default() },
             revision: 1,
-            saved_revision: 1,
+            state: 1,
+            next_state: 2,
+            saved_state: Some(1),
+            accounted_revision: 1,
             transaction: None,
             last_command: None,
             last_edit: None,
@@ -78,16 +91,19 @@ impl Document {
     }
 
     pub fn is_modified(&self) -> bool {
-        self.revision != self.saved_revision
+        self.revision != self.accounted_revision || self.saved_state != Some(self.state)
     }
 
     pub fn mark_saved(&mut self) {
-        self.saved_revision = self.revision;
+        self.absorb_direct_changes();
+        self.saved_state = Some(self.state);
         self.recovered_from = None;
+        // The saved state has to stay reachable by undo, so the next coalesced edit starts its own step.
+        self.last_edit = None;
     }
 
     pub fn mark_unsaved(&mut self) {
-        self.saved_revision = 0;
+        self.saved_state = None;
     }
 
     pub fn title(&self) -> String {
@@ -96,8 +112,31 @@ impl Document {
         if self.recovered_from.is_some() { format!("{name} (recovered)") } else { name }
     }
 
+    /// A revision bumped from outside turns into a content state of its own.
+    fn absorb_direct_changes(&mut self) {
+        if self.revision != self.accounted_revision {
+            self.new_state();
+            self.accounted_revision = self.revision;
+        }
+    }
+
+    fn new_state(&mut self) {
+        self.state = self.next_state;
+        self.next_state += 1;
+    }
+
+    fn bump(&mut self) {
+        self.revision += 1;
+        self.accounted_revision = self.revision;
+    }
+
+    fn changed(&mut self) {
+        self.new_state();
+        self.bump();
+    }
+
     fn snapshot(&self, label: &str) -> Snapshot {
-        Snapshot { label: label.into(), map: self.map.clone(), selection: self.selection.clone() }
+        Snapshot { label: label.into(), map: self.map.clone(), selection: self.selection.clone(), state: self.state }
     }
 
     fn push_undo(&mut self, snap: Snapshot) {
@@ -111,9 +150,11 @@ impl Document {
 
     /// Runs an undoable edit. Returns whatever the closure returns.
     pub fn edit<R>(&mut self, label: &str, f: impl FnOnce(&mut Map, &mut Selection) -> R) -> R {
+        self.absorb_direct_changes();
+        self.last_edit = None;
         if self.transaction.is_some() {
             let r = f(&mut self.map, &mut self.selection);
-            self.revision += 1;
+            self.changed();
             return r;
         }
 
@@ -122,20 +163,63 @@ impl Document {
         crate::linked::sync(&snap.map, &mut self.map);
         self.selection.prune(&self.map);
         self.push_undo(snap);
-        self.revision += 1;
+        self.changed();
         self.last_command = Some(label.into());
         r
+    }
+
+    /// Like `edit`, but an `Err` restores the map and selection and records nothing: no undo step,
+    /// no revision bump, and the redo stack is kept.
+    pub fn try_edit<T, E>(&mut self, label: &str, f: impl FnOnce(&mut Map, &mut Selection) -> Result<T, E>) -> Result<T, E> {
+        self.absorb_direct_changes();
+        if self.transaction.is_some() {
+            let before = self.snapshot(label);
+            let r = f(&mut self.map, &mut self.selection);
+            match &r {
+                Ok(_) => {
+                    self.last_edit = None;
+                    self.changed();
+                }
+                Err(_) => {
+                    self.map = before.map;
+                    self.selection = before.selection;
+                }
+            }
+
+            return r;
+        }
+
+        let snap = self.snapshot(label);
+        match f(&mut self.map, &mut self.selection) {
+            Ok(v) => {
+                crate::linked::sync(&snap.map, &mut self.map);
+                self.selection.prune(&self.map);
+                self.push_undo(snap);
+                self.changed();
+                self.last_edit = None;
+                self.last_command = Some(label.into());
+                Ok(v)
+            }
+            Err(e) => {
+                self.map = snap.map;
+                self.selection = snap.selection;
+                Err(e)
+            }
+        }
     }
 
     /// Like `edit`, but consecutive edits with the same label within a short time form one undo step.
     /// Used for continuous inputs such as dragging a number field.
     pub fn edit_coalesced<R>(&mut self, label: &str, f: impl FnOnce(&mut Map, &mut Selection) -> R) -> R {
-        let now = std::time::Instant::now();
+        let now = Instant::now();
+        self.absorb_direct_changes();
         let recent = self.last_edit.as_ref().is_some_and(|(l, t)| l == label && now.duration_since(*t).as_secs_f32() < 1.0);
         if recent && self.transaction.is_none() && self.history.redo.is_empty() && !self.history.undo.is_empty() {
+            let before = self.map.clone();
             let r = f(&mut self.map, &mut self.selection);
+            crate::linked::sync(&before, &mut self.map);
             self.selection.prune(&self.map);
-            self.revision += 1;
+            self.changed();
             self.last_edit = Some((label.into(), now));
             return r;
         }
@@ -145,19 +229,17 @@ impl Document {
         r
     }
 
-    /// Selection changes are not recorded in history, but still bump the revision.
+    /// Selection changes are not recorded in history and leave the modified flag alone, but still bump the revision.
     pub fn select(&mut self, f: impl FnOnce(&Map, &mut Selection)) {
+        self.absorb_direct_changes();
         f(&self.map, &mut self.selection);
         self.selection.prune(&self.map);
-        let was_saved = !self.is_modified();
-        self.revision += 1;
-        if was_saved {
-            self.saved_revision = self.revision;
-        }
+        self.bump();
     }
 
     /// Starts an interactive edit (drag). Intermediate changes go straight to the map.
     pub fn begin(&mut self, label: &str) {
+        self.absorb_direct_changes();
         if self.transaction.is_none() {
             self.transaction = Some(self.snapshot(label));
         }
@@ -172,7 +254,8 @@ impl Document {
         if let Some(t) = &self.transaction {
             self.map = t.map.clone();
             self.selection = t.selection.clone();
-            self.revision += 1;
+            self.state = t.state;
+            self.bump();
         }
     }
 
@@ -181,13 +264,17 @@ impl Document {
     }
 
     pub fn commit(&mut self) {
+        self.absorb_direct_changes();
         if let Some(snap) = self.transaction.take() {
+            self.last_edit = None;
             crate::linked::sync(&snap.map, &mut self.map);
             self.selection.prune(&self.map);
             if snap.map.nodes != self.map.nodes || snap.map.properties != self.map.properties || snap.map.layers != self.map.layers {
                 self.last_command = Some(snap.label.clone());
                 self.push_undo(snap);
-                self.revision += 1;
+                self.changed();
+            } else {
+                self.state = snap.state;
             }
         }
     }
@@ -196,35 +283,41 @@ impl Document {
         if let Some(snap) = self.transaction.take() {
             self.map = snap.map;
             self.selection = snap.selection;
-            self.revision += 1;
+            self.state = snap.state;
+            self.bump();
         }
     }
 
     pub fn undo(&mut self) -> Option<String> {
         self.commit();
         let snap = self.history.undo.pop()?;
-        let label = snap.label.clone();
-        let current = Snapshot {
-            label: snap.label.clone(),
-            map: std::mem::replace(&mut self.map, snap.map),
-            selection: std::mem::replace(&mut self.selection, snap.selection),
-        };
+        self.last_edit = None;
+        let current = self.swap_in(snap);
+        let label = current.label.clone();
         self.history.redo.push(current);
-        self.revision += 1;
         Some(label)
     }
 
     pub fn redo(&mut self) -> Option<String> {
+        self.absorb_direct_changes();
         let snap = self.history.redo.pop()?;
-        let label = snap.label.clone();
+        self.last_edit = None;
+        let current = self.swap_in(snap);
+        let label = current.label.clone();
+        self.history.undo.push(current);
+        Some(label)
+    }
+
+    /// Makes `snap` current and returns the state it replaced under the same label.
+    fn swap_in(&mut self, snap: Snapshot) -> Snapshot {
         let current = Snapshot {
-            label: snap.label.clone(),
+            label: snap.label,
             map: std::mem::replace(&mut self.map, snap.map),
             selection: std::mem::replace(&mut self.selection, snap.selection),
+            state: std::mem::replace(&mut self.state, snap.state),
         };
-        self.history.undo.push(current);
-        self.revision += 1;
-        Some(label)
+        self.bump();
+        current
     }
 
     pub fn last_command(&self) -> Option<&str> {
@@ -269,5 +362,110 @@ mod tests {
         assert_eq!(doc.map.entity(id).unwrap().origin.x, 9.0);
         doc.undo();
         assert_eq!(doc.map.entity(id).unwrap().origin.x, 0.0);
+    }
+
+    #[test]
+    fn failed_try_edit_leaves_no_trace() {
+        let mut doc = Document::new();
+        let layer = doc.map.default_layer();
+        doc.edit("add", |m, _| m.insert(layer, NodeKind::Entity(Entity::new("light"))));
+        doc.undo();
+        doc.mark_saved();
+        let r: Result<(), &str> = doc.try_edit("fail", |m, _| {
+            m.insert(layer, NodeKind::Entity(Entity::new("light")));
+            Err("nope")
+        });
+        assert!(r.is_err());
+        assert_eq!(doc.map.entity_count(), 0);
+        assert!(!doc.is_modified());
+        assert!(doc.history.can_redo());
+    }
+
+    #[test]
+    fn undo_and_redo_to_the_saved_state_are_unmodified() {
+        let mut doc = Document::new();
+        let layer = doc.map.default_layer();
+        let add = |doc: &mut Document| doc.edit("add", |m, _| m.insert(layer, NodeKind::Entity(Entity::new("light"))));
+        add(&mut doc);
+        doc.mark_saved();
+        add(&mut doc);
+        assert!(doc.is_modified());
+        doc.undo();
+        assert!(!doc.is_modified(), "undo back to the saved state");
+        doc.undo();
+        assert!(doc.is_modified(), "undo past the saved state");
+        doc.redo();
+        assert!(!doc.is_modified(), "redo back to the saved state");
+        doc.redo();
+        assert!(doc.is_modified());
+
+        doc.undo();
+        doc.select(|_, s| s.clear());
+        assert!(!doc.is_modified(), "selecting keeps a saved document saved");
+        doc.revision += 1;
+        assert!(doc.is_modified(), "a direct change with a revision bump marks it modified");
+        doc.select(|_, s| s.clear());
+        assert!(doc.is_modified(), "and selecting afterwards keeps it modified");
+        doc.mark_saved();
+        doc.mark_unsaved();
+        assert!(doc.is_modified());
+    }
+
+    #[test]
+    fn empty_transaction_keeps_the_saved_state() {
+        let mut doc = Document::new();
+        let layer = doc.map.default_layer();
+        let id = doc.edit("add", |m, _| m.insert(layer, NodeKind::Entity(Entity::new("light"))));
+        doc.mark_saved();
+        doc.begin("move");
+        doc.edit("drag", |m, _| m.entity_mut(id).unwrap().origin.x = 5.0);
+        assert!(doc.is_modified());
+        doc.edit("drag", |m, _| m.entity_mut(id).unwrap().origin.x = 0.0);
+        doc.commit();
+        assert!(!doc.is_modified(), "dragged back to where it was");
+        doc.begin("move");
+        doc.edit("drag", |m, _| m.entity_mut(id).unwrap().origin.x = 5.0);
+        doc.cancel();
+        assert!(!doc.is_modified());
+    }
+
+    #[test]
+    fn coalesced_edits_do_not_merge_into_other_steps() {
+        let mut doc = Document::new();
+        let layer = doc.map.default_layer();
+        let id = doc.edit("add", |m, _| m.insert(layer, NodeKind::Entity(Entity::new("light"))));
+        doc.edit_coalesced("x", |m, _| m.entity_mut(id).unwrap().origin.x = 1.0);
+        doc.edit_coalesced("x", |m, _| m.entity_mut(id).unwrap().origin.x = 2.0);
+        assert_eq!(doc.history.undo_labels().count(), 2);
+        doc.begin("move");
+        doc.edit("drag", |m, _| m.entity_mut(id).unwrap().origin.y = 8.0);
+        doc.commit();
+        doc.edit_coalesced("x", |m, _| m.entity_mut(id).unwrap().origin.x = 3.0);
+        assert_eq!(doc.history.undo_labels().collect::<Vec<_>>(), ["x", "move", "x", "add"]);
+        doc.undo();
+        assert_eq!(doc.map.entity(id).unwrap().origin, gt_core::DVec3::new(2.0, 8.0, 0.0));
+    }
+
+    #[test]
+    fn coalesced_typing_reaches_linked_copies() {
+        let mut doc = Document::new();
+        let layer = doc.map.default_layer();
+        let group = doc.edit("add", |m, s| {
+            let g = m.insert(layer, NodeKind::Group(crate::Group::new("g")));
+            m.insert(g, NodeKind::Entity(Entity::new("func_door")));
+            s.select_node(g);
+            g
+        });
+        let copy = doc.edit("link", |m, s| crate::ops::duplicate_linked(m, s, gt_core::DVec3::X * 64.0, Default::default()))[0];
+        let door = doc.map.get(copy).unwrap().children[0];
+        for typed in ["d", "do", "doo", "door"] {
+            doc.edit_coalesced("Edit Property", |m, _| {
+                m.entity_mut(door).unwrap().properties.insert("targetname".into(), typed.into());
+            });
+        }
+
+        let original = doc.map.get(group).unwrap().children[0];
+        assert_eq!(doc.map.entity(original).unwrap().targetname(), Some("door"));
+        assert_eq!(doc.map.entity(doc.map.get(copy).unwrap().children[0]).unwrap().targetname(), Some("door"));
     }
 }
