@@ -1,45 +1,58 @@
-/* Canvas Wiki dark theme.
-   Colors are defined once as CSS variables on :root and reused everywhere. */
+/* Canvas Wiki, a dark liquid glass theme.
+   Colors and material tokens are defined once as CSS variables on :root.
+   Panels are frosted glass floating over a deep, softly colored background. */
 
 :root {
-  --bg: #0f1117;
-  --bg-panel: #161923;
-  --bg-panel-2: #1b1f2b;
-  --bg-card: #1c2030;
-  --bg-card-header: #232838;
-  --bg-input: #12151f;
+  /* Base */
+  --bg: #06080c;
+  --text: #eef1f7;
+  --text-dim: #b6bccd;
+  --text-faint: #7c8498;
 
-  --border: #2a3040;
   --border-strong: #3a4256;
-  --border-light: #48516a;
+  --border-light: #4a5268;
 
-  --text: #e6e9f0;
-  --text-dim: #a4acc0;
-  --text-faint: #6f7890;
-
-  /* The single accent. A calm cyan blue, used sparingly for selection,
-     the active page, and primary actions. Everything else stays neutral. */
+  /* The single accent. A calm cyan blue, kept sparing. */
   --accent: #56b6d9;
+  --accent-rgb: 86, 182, 217;
   --accent-strong: #3f9fc4;
-  --accent-soft: rgba(86, 182, 217, 0.14);
+  --accent-soft: rgba(86, 182, 217, 0.16);
   --accent-glow: rgba(86, 182, 217, 0.45);
-  --accent-ink: #07141a;
+  --accent-ink: #eaf8ff;
 
-  --danger: #f7768e;
-  --success: #7fdba1;
-  --warn: #e0af68;
+  --danger: #f7869a;
+  --success: #86e0aa;
+  --warn: #e6b877;
+  --draw-stroke: #a6e06e;
 
-  --draw-stroke: #9ece6a;
+  /* Glass material */
+  --glass-bg: rgba(255, 255, 255, 0.07);
+  --glass-bg-strong: rgba(255, 255, 255, 0.11);
+  --glass-bg-soft: rgba(255, 255, 255, 0.05);
+  --glass-inner: rgba(8, 12, 20, 0.55);
+  --glass-inner-strong: rgba(8, 11, 18, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-border-strong: rgba(255, 255, 255, 0.22);
+  --glass-divider: rgba(255, 255, 255, 0.08);
+  --field-bg: rgba(255, 255, 255, 0.06);
+  --glass-blur: 22px;
+  --glass-sat: 160%;
 
-  --radius: 10px;
-  --radius-sm: 7px;
-  --shadow: 0 6px 20px rgba(0, 0, 0, 0.38);
-  --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.28);
-  --dot-grid: rgba(255, 255, 255, 0.05);
+  --edge-hi: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  --shadow-glass: 0 22px 48px -16px rgba(0, 0, 0, 0.62), 0 8px 20px -10px rgba(0, 0, 0, 0.45);
+  --shadow-hover: 0 30px 62px -18px rgba(0, 0, 0, 0.7), 0 12px 26px -10px rgba(0, 0, 0, 0.5);
+  --text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 
-  --sidebar-w: 232px;
-  --inspector-w: 300px;
-  --toolbar-h: 52px;
+  /* Squircle radii */
+  --radius-card: 26px;
+  --radius-panel: 22px;
+  --radius-pill: 16px;
+  --radius-input: 12px;
+  --radius-sm: 10px;
+
+  --sidebar-w: 236px;
+  --inspector-w: 306px;
+  --toolbar-h: 60px;
 
   --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --mono: "SFMono-Regular", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
@@ -56,7 +69,7 @@ body {
 }
 
 body {
-  background: var(--bg);
+  background-color: var(--bg);
   color: var(--text);
   font-family: var(--font);
   font-size: 14px;
@@ -64,20 +77,77 @@ body {
   overflow: hidden;
 }
 
+/* Soft, low saturation color blobs behind the frosted glass. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -25%;
+  z-index: -1;
+  background:
+    radial-gradient(38% 42% at 18% 20%, rgba(56, 116, 196, 0.32), transparent 70%),
+    radial-gradient(36% 40% at 84% 18%, rgba(38, 150, 150, 0.26), transparent 70%),
+    radial-gradient(44% 46% at 78% 82%, rgba(120, 92, 205, 0.26), transparent 72%),
+    radial-gradient(40% 44% at 22% 86%, rgba(40, 92, 172, 0.22), transparent 72%);
+  filter: saturate(112%);
+  animation: blob-drift 36s ease-in-out infinite alternate;
+}
+
+@keyframes blob-drift {
+  from {
+    transform: translate3d(-2%, -1%, 0) scale(1.02);
+  }
+  to {
+    transform: translate3d(2%, 2%, 0) scale(1.06);
+  }
+}
+
+/* ----- App shell as floating glass panels ----- */
+
 .app {
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-rows: 100vh;
   height: 100vh;
+  gap: 12px;
+  padding: 12px;
+}
+
+/* Shared frosted glass material. */
+.sidebar,
+.toolbar,
+.inspector,
+.add-tools,
+.status,
+.modal-card,
+.card {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  border: 1px solid var(--glass-border);
+}
+
+/* Solid fallback when backdrop-filter is unavailable. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .sidebar,
+  .toolbar,
+  .inspector,
+  .add-tools,
+  .status,
+  .modal-card,
+  .card {
+    background: rgba(24, 28, 38, 0.94);
+  }
 }
 
 /* ----- Sidebar ----- */
 
 .sidebar {
-  background: var(--bg-panel);
-  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   min-height: 0;
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-glass), var(--edge-hi);
+  overflow: hidden;
 }
 
 .sidebar-head {
@@ -85,14 +155,15 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 14px 14px 10px;
-  border-bottom: 1px solid var(--border);
+  padding: 16px 14px 12px;
+  border-bottom: 1px solid var(--glass-divider);
 }
 
 .brand {
   font-weight: 650;
   letter-spacing: 0.2px;
   font-size: 15px;
+  text-shadow: var(--text-shadow);
 }
 
 .page-list {
@@ -101,16 +172,15 @@ body {
   padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .page-item {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 8px 10px 8px 12px;
+  padding: 9px 10px 9px 12px;
   border: 1px solid transparent;
-  border-left: 2px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-dim);
@@ -119,21 +189,20 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
 }
 
 .page-item:hover {
-  background: var(--bg-panel-2);
+  background: var(--glass-bg-soft);
   color: var(--text);
-  border-left-color: var(--border-light);
+  box-shadow: inset 2px 0 0 var(--border-light);
 }
 
 .page-item.active {
   background: var(--accent-soft);
-  border-color: transparent;
-  border-left: 2px solid var(--accent);
   color: var(--text);
   font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent), var(--edge-hi);
 }
 
 .page-empty {
@@ -147,7 +216,7 @@ body {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--glass-divider);
 }
 
 .sidebar-link {
@@ -167,17 +236,18 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  gap: 12px;
   position: relative;
 }
 
 .toolbar {
-  height: var(--toolbar-h);
+  min-height: var(--toolbar-h);
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 0 14px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-glass), var(--edge-hi);
   flex-wrap: nowrap;
 }
 
@@ -194,7 +264,8 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 30vw;
+  max-width: 26vw;
+  text-shadow: var(--text-shadow);
 }
 
 .add-tools {
@@ -202,10 +273,9 @@ body {
   align-items: center;
   gap: 6px;
   overflow-x: auto;
-  padding: 5px 10px;
-  background: var(--bg-panel-2);
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--edge-hi);
 }
 
 .add-tools-label {
@@ -224,7 +294,6 @@ body {
   margin-left: auto;
 }
 
-/* Show edit only controls when the body is in edit mode. */
 .edit-only {
   display: none;
 }
@@ -237,64 +306,65 @@ body.mode-edit .add-tools {
   display: flex;
 }
 
-/* ----- Buttons ----- */
+/* ----- Buttons as glass pills ----- */
 
 .btn {
   appearance: none;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-panel-2);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(10px) saturate(150%);
+  backdrop-filter: blur(10px) saturate(150%);
   color: var(--text);
   font: inherit;
-  padding: 7px 12px;
-  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  box-shadow: var(--edge-hi);
+  transition: background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, transform 0.1s ease;
 }
 
 .btn:hover {
-  background: var(--bg-card-header);
-  border-color: var(--border-light);
+  background: var(--glass-bg-strong);
+  border-color: var(--glass-border-strong);
+}
+
+.btn:active {
+  transform: translateY(1px);
 }
 
 .btn:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: default;
 }
 
 .btn-small {
-  padding: 5px 10px;
+  padding: 6px 11px;
   font-size: 13px;
 }
 
 .btn-tiny {
-  padding: 2px 7px;
+  padding: 3px 8px;
   font-size: 12px;
+  border-radius: 10px;
 }
 
 .btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.44), rgba(var(--accent-rgb), 0.26));
+  border-color: rgba(var(--accent-rgb), 0.55);
   color: var(--accent-ink);
   font-weight: 600;
+  box-shadow: 0 8px 20px -8px rgba(var(--accent-rgb), 0.55), var(--edge-hi);
 }
 
 .btn-primary:hover {
-  background: var(--accent-strong);
-  border-color: var(--accent-strong);
-}
-
-/* The View/Edit toggle shows its active (editing) state clearly. */
-#mode-toggle.is-active {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--text);
-  font-weight: 600;
-  box-shadow: inset 0 0 0 1px var(--accent);
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.56), rgba(var(--accent-rgb), 0.34));
+  border-color: rgba(var(--accent-rgb), 0.7);
 }
 
 .btn-ghost {
   background: transparent;
+  box-shadow: none;
 }
 
 .btn.danger,
@@ -304,8 +374,17 @@ body.mode-edit .add-tools {
 }
 
 .btn.danger:hover {
-  border-color: var(--danger);
-  background: rgba(247, 118, 142, 0.12);
+  border-color: rgba(247, 134, 154, 0.55);
+  background: rgba(247, 134, 154, 0.12);
+}
+
+/* The View/Edit toggle active (editing) state. */
+#mode-toggle.is-active {
+  background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.32), rgba(var(--accent-rgb), 0.18));
+  border-color: rgba(var(--accent-rgb), 0.55);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.4), var(--edge-hi);
 }
 
 /* ----- Workspace ----- */
@@ -313,6 +392,7 @@ body.mode-edit .add-tools {
 .workspace {
   flex: 1;
   display: flex;
+  gap: 12px;
   min-height: 0;
 }
 
@@ -320,7 +400,9 @@ body.mode-edit .add-tools {
   flex: 1;
   position: relative;
   overflow: auto;
-  background-color: var(--bg);
+  background: transparent;
+  border-radius: var(--radius-panel);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
 .board-surface {
@@ -329,9 +411,9 @@ body.mode-edit .add-tools {
   height: 1600px;
 }
 
-/* A faint dot grid only in edit mode, aligned with the 8px snap (16px dots). */
+/* A faint dot grid layered over the background, only in edit mode. */
 .board-surface.is-edit {
-  background-image: radial-gradient(var(--dot-grid) 1.1px, transparent 1.4px);
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1.4px);
   background-size: 16px 16px;
   background-position: 0 0;
 }
@@ -346,34 +428,39 @@ body.mode-edit .add-tools {
   font-size: 15px;
   pointer-events: none;
   user-select: none;
+  text-shadow: var(--text-shadow);
 }
 
-/* Inspector hidden in view mode, shown in edit mode. */
 .inspector {
   width: var(--inspector-w);
   flex-shrink: 0;
-  border-left: 1px solid var(--border);
-  background: var(--bg-panel);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-glass), var(--edge-hi);
   overflow-y: auto;
   display: none;
-  padding: 12px;
+  padding: 14px;
 }
 
 body.mode-edit .inspector {
   display: block;
 }
 
-/* ----- Cards ----- */
+/* ----- Cards as floating glass squircles ----- */
 
 .card {
   position: absolute;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-card);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-glass), var(--edge-hi);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transform-style: preserve-3d;
+  transition: transform 0.16s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+/* View mode cards lift on hover. The pointer tilt is applied inline by board.js. */
+.board-surface:not(.is-edit) .card:hover {
+  box-shadow: var(--shadow-hover), var(--edge-hi);
 }
 
 .board-surface.is-edit .card {
@@ -381,25 +468,29 @@ body.mode-edit .inspector {
 }
 
 .card.selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent), 0 0 14px var(--accent-glow), var(--shadow-card);
+  background: var(--glass-bg-strong);
+  border-color: rgba(var(--accent-rgb), 0.6);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.72), 0 0 26px -2px var(--accent-glow),
+    var(--shadow-glass), var(--edge-hi);
+  transform: translateY(-2px);
 }
 
 .card.dragging,
 .card.resizing {
-  opacity: 0.97;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  transition: none;
+  box-shadow: 0 34px 66px -18px rgba(0, 0, 0, 0.72), 0 0 0 2px rgba(var(--accent-rgb), 0.72),
+    var(--edge-hi);
 }
 
 .card-header {
-  height: 28px;
+  height: 30px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 0 6px 0 10px;
-  background: var(--bg-card-header);
-  border-bottom: 1px solid var(--border);
+  padding: 0 6px 0 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid var(--glass-divider);
   cursor: grab;
   user-select: none;
   touch-action: none;
@@ -410,8 +501,8 @@ body.mode-edit .inspector {
 }
 
 .card-tag {
-  font-size: 11px;
-  letter-spacing: 0.5px;
+  font-size: 10.5px;
+  letter-spacing: 0.6px;
   text-transform: uppercase;
   color: var(--text-dim);
   font-weight: 600;
@@ -431,31 +522,32 @@ body.mode-edit .inspector {
   align-items: center;
   justify-content: center;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: 7px;
   background: transparent;
   color: var(--text-faint);
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
   padding: 0;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
 .card-ctrl:hover {
-  background: var(--bg-input);
+  background: rgba(255, 255, 255, 0.1);
   color: var(--text);
-  border-color: var(--border-strong);
+  border-color: var(--glass-border);
 }
 
 .card-ctrl.danger:hover {
   color: var(--danger);
-  border-color: var(--danger);
+  border-color: rgba(247, 134, 154, 0.5);
 }
 
 .card-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 10px 12px;
+  padding: 12px 14px;
   position: relative;
 }
 
@@ -469,15 +561,15 @@ body.mode-edit .inspector {
 
 .card-resize {
   position: absolute;
-  right: 3px;
-  bottom: 3px;
+  right: 4px;
+  bottom: 4px;
   width: 14px;
   height: 14px;
   cursor: nwse-resize;
   touch-action: none;
-  border-radius: 3px;
+  border-radius: 4px;
   background: repeating-linear-gradient(135deg, transparent 0 2.5px, var(--text-faint) 2.5px 3.6px);
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .card-resize:hover {
@@ -501,6 +593,7 @@ body.mode-edit .inspector {
 .md {
   color: var(--text);
   word-wrap: break-word;
+  text-shadow: var(--text-shadow);
 }
 
 .md h1,
@@ -524,20 +617,21 @@ body.mode-edit .inspector {
 
 .md a {
   color: var(--accent);
+  text-decoration-color: rgba(var(--accent-rgb), 0.5);
 }
 
 .md code {
-  background: var(--bg-input);
+  background: var(--glass-inner);
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: 6px;
   font-family: var(--mono);
   font-size: 0.9em;
 }
 
 .md pre {
-  background: var(--bg-input);
+  background: var(--glass-inner-strong);
   padding: 10px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-input);
   overflow: auto;
 }
 
@@ -550,19 +644,23 @@ body.mode-edit .inspector {
 .md blockquote {
   margin: 0.4em 0;
   padding-left: 10px;
-  border-left: 3px solid var(--border-strong);
+  border-left: 3px solid var(--glass-border-strong);
   color: var(--text-dim);
 }
 
+/* Code cards use a darker inner glass so syntax stays crisp. */
 .code-block {
   margin: 0;
   height: 100%;
   overflow: auto;
-  border-radius: var(--radius);
-  background: var(--bg-input);
+  border-radius: var(--radius-input);
+  background: var(--glass-inner-strong);
+  border: 1px solid var(--glass-divider);
 }
 
-.code-block code {
+.code-block code,
+.code-block code.hljs {
+  background: transparent;
   font-family: var(--mono);
   font-size: 12.5px;
   display: block;
@@ -575,7 +673,7 @@ body.mode-edit .inspector {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-input);
+  background: rgba(0, 0, 0, 0.22);
 }
 
 .card-img {
@@ -600,7 +698,7 @@ body.mode-edit .inspector {
 
 .card-draw-wrap {
   position: relative;
-  background: var(--bg-input);
+  background: rgba(0, 0, 0, 0.22);
   touch-action: none;
 }
 
@@ -630,17 +728,18 @@ body.mode-edit .inspector {
   border-collapse: collapse;
   width: 100%;
   font-size: 13px;
+  text-shadow: var(--text-shadow);
 }
 
 .card-table th,
 .card-table td {
-  border: 1px solid var(--border);
-  padding: 5px 9px;
+  border: 1px solid var(--glass-divider);
+  padding: 6px 10px;
   text-align: left;
 }
 
 .card-table th {
-  background: var(--bg-card-header);
+  background: rgba(255, 255, 255, 0.07);
   color: var(--text);
   font-weight: 600;
 }
@@ -659,13 +758,14 @@ body.mode-edit .inspector {
   justify-content: space-between;
   gap: 8px;
   padding-bottom: 10px;
-  margin-bottom: 10px;
-  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--glass-divider);
 }
 
 .inspector-title {
   font-weight: 650;
   font-size: 14px;
+  text-shadow: var(--text-shadow);
 }
 
 .inspector-actions {
@@ -698,33 +798,41 @@ body.mode-edit .inspector {
 .field input[type="text"],
 .field input[type="number"],
 .field select,
-.cell-input {
+.cell-input,
+.inspector-textarea,
+.modal-input {
   width: 100%;
-  background: var(--bg-input);
-  border: 1px solid var(--border-strong);
+  background: var(--field-bg);
+  border: 1px solid var(--glass-border);
   color: var(--text);
-  border-radius: var(--radius-sm);
-  padding: 7px 9px;
+  border-radius: var(--radius-input);
+  padding: 8px 10px;
   font: inherit;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
+}
+
+.field input[type="text"]:focus,
+.field input[type="number"]:focus,
+.field select:focus,
+.cell-input:focus,
+.inspector-textarea:focus,
+.modal-input:focus {
+  outline: none;
+  border-color: rgba(var(--accent-rgb), 0.6);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.18);
+  background: rgba(255, 255, 255, 0.09);
 }
 
 .field input[type="color"] {
   width: 48px;
-  height: 30px;
+  height: 32px;
   padding: 2px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  background: var(--field-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-input);
 }
 
 .inspector-textarea {
-  width: 100%;
-  background: var(--bg-input);
-  border: 1px solid var(--border-strong);
-  color: var(--text);
-  border-radius: var(--radius-sm);
-  padding: 9px 10px;
-  font: inherit;
   resize: vertical;
 }
 
@@ -752,8 +860,9 @@ body.mode-edit .inspector {
 }
 
 .cell-input {
-  padding: 5px 7px;
+  padding: 6px 8px;
   font-size: 13px;
+  border-radius: 9px;
 }
 
 .geo-grid {
@@ -774,24 +883,23 @@ body.mode-edit .inspector {
   width: 100%;
 }
 
-/* ----- Status line ----- */
+/* ----- Status ----- */
 
 .status {
   position: absolute;
   left: 50%;
-  bottom: 16px;
+  bottom: 18px;
   transform: translateX(-50%) translateY(12px);
   max-width: 70%;
-  padding: 9px 16px;
-  border-radius: 999px;
-  background: var(--bg-card-header);
-  border: 1px solid var(--border-strong);
+  padding: 10px 18px;
+  border-radius: var(--radius-pill);
   color: var(--text);
   font-size: 13px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.18s ease, transform 0.18s ease;
-  box-shadow: var(--shadow);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  box-shadow: var(--shadow-glass), var(--edge-hi);
+  z-index: 30;
 }
 
 .status.show {
@@ -800,17 +908,17 @@ body.mode-edit .inspector {
 }
 
 .status.success {
-  border-color: var(--success);
+  border-color: rgba(134, 224, 170, 0.5);
   color: var(--success);
 }
 
 .status.error {
-  border-color: var(--danger);
+  border-color: rgba(247, 134, 154, 0.5);
   color: var(--danger);
 }
 
 .status.info {
-  border-color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.5);
 }
 
 /* ----- Modal ----- */
@@ -818,7 +926,9 @@ body.mode-edit .inspector {
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(4, 6, 12, 0.62);
+  background: rgba(4, 6, 12, 0.55);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -832,17 +942,16 @@ body.mode-edit .inspector {
 
 .modal-card {
   width: 100%;
-  max-width: 460px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  padding: 20px;
-  box-shadow: var(--shadow);
+  max-width: 470px;
+  border-radius: var(--radius-panel);
+  padding: 22px;
+  box-shadow: var(--shadow-glass), var(--edge-hi);
 }
 
 .modal-card h2 {
   margin: 0 0 10px;
   font-size: 16px;
+  text-shadow: var(--text-shadow);
 }
 
 .modal-text {
@@ -852,12 +961,6 @@ body.mode-edit .inspector {
 }
 
 .modal-input {
-  width: 100%;
-  background: var(--bg-input);
-  border: 1px solid var(--border-strong);
-  color: var(--text);
-  border-radius: var(--radius-sm);
-  padding: 9px 10px;
   font-family: var(--mono);
   margin-bottom: 14px;
 }
@@ -880,12 +983,30 @@ body.mode-edit .inspector {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.26);
 }
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* ----- Reduced motion ----- */
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none;
+  }
+  .card,
+  .btn,
+  .page-item,
+  .status {
+    transition: none;
+  }
 }
 
 /* ----- Narrow screens ----- */
@@ -896,20 +1017,22 @@ body.mode-edit .inspector {
   }
   .app {
     grid-template-columns: 1fr;
+    padding: 8px;
+    gap: 8px;
   }
   .sidebar {
     position: fixed;
     z-index: 20;
-    width: 232px;
-    height: 100%;
-    transform: translateX(-100%);
+    width: 236px;
+    height: calc(100% - 16px);
+    transform: translateX(-110%);
     transition: transform 0.2s ease;
   }
   .inspector {
     position: fixed;
-    right: 0;
-    top: var(--toolbar-h);
-    bottom: 0;
+    right: 8px;
+    top: calc(var(--toolbar-h) + 16px);
+    bottom: 8px;
     z-index: 15;
   }
   .page-title {
