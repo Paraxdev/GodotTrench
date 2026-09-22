@@ -150,6 +150,9 @@
     { "tool": "create_brush", "args": { "min": [272, -16, -72], "max": [456, 0, 72], "material": "showcase/church_tiles" } },
     { "tool": "create_brush", "args": { "min": [264, 176, -88], "max": [464, 192, 88], "material": "showcase/planks_dark" } },
     { "tool": "create_entity", "args": { "classname": "light", "origin": [364, 150, 0], "properties": { "light_energy": "1.0", "light_color": "255 230 190", "omni_range": "8" } } },
+    { "note": "A crate and a barrel stacked against the cloister wall, storage clutter by the school entrance." },
+    { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [300, -16, 10], "angles": [0, 20, 0], "properties": { "model": "res://models/polyhaven/containers/wooden_crate_01.gltf" } } },
+    { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [340, -16, -20], "angles": [0, -35, 0], "properties": { "model": "res://models/polyhaven/containers/wine_barrel_01.gltf" } } },
     { "tool": "hierarchy", "args": { "op": "close_group" } },
     { "tool": "hierarchy", "args": { "op": "add_group", "name": "classroom" } },
     { "tool": "create_brush", "args": { "min": [456, -24, -248], "max": [888, 224, 248], "material": "showcase/red_bricks", "hollow": 24,
@@ -204,6 +207,10 @@
         { "output": "changed", "target": "school_log", "input": "write", "parameter": "a chalk mark lights up" }
       ] } },
     { "tool": "gameplay", "args": { "op": "place", "classname": "logic_debug", "origin": [700, 180, -200], "properties": { "targetname": "school_log", "message": "School: {parameter}" } } },
+    { "note": "A real bookshelf against the west wall and a teacher's desk and chair in front of the chalkboard." },
+    { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [470, 0, 150], "angles": [0, 90, 0], "properties": { "model": "res://models/polyhaven/furniture/wooden_bookshelf_worn.gltf" } } },
+    { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [600, 0, -180], "angles": [0, 0, 0], "properties": { "model": "res://models/polyhaven/furniture/SchoolDesk_01.gltf" } } },
+    { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [600, 0, -155], "angles": [0, 180, 0], "properties": { "model": "res://models/polyhaven/furniture/SchoolChair_01.gltf" } } },
     { "tool": "hierarchy", "args": { "op": "close_group", "all": true } },
 
     { "note": "Courtyard: a subdivided floor that blends cobble into grass along the walls, a swinging iron gate with its own button, a tree, benches and a lamp post." },
@@ -232,6 +239,9 @@
     { "tool": "create_mesh", "args": { "shape": "lathe", "center": [560, 0, 560], "profile": [[3, 0], [3, 150]], "sides": 8, "material": "showcase/metal", "smooth_angle": 50 } },
     { "tool": "create_mesh", "args": { "shape": "sphere", "min": [548, 150, 548], "max": [572, 174, 572], "sides": 10, "material": "showcase/lamp", "smooth_angle": 60 } },
     { "tool": "create_entity", "args": { "classname": "light", "origin": [560, 162, 560], "properties": { "light_energy": "1.4", "light_color": "255 220 160", "omni_range": "10" } } },
+    { "note": "A second bench and a lantern by the gate for the courtyard." },
+    { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [875, -2, 450], "angles": [0, -90, 0], "properties": { "model": "res://models/polyhaven/furniture/painted_wooden_bench.gltf" } } },
+    { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [650, -2, 600], "angles": [0, 40, 0], "properties": { "model": "res://models/polyhaven/lighting/wooden_lantern_01.gltf" } } },
     { "tool": "hierarchy", "args": { "op": "close_group", "all": true } },
 
     { "note": "Village woods on the hills, kept away from the church, the school and the road." },
@@ -248,6 +258,7 @@
       "points": [[-420, -700], [-420, 700], [-200, 1000], [260, 1000], [1000, 800], [1040, -400], [300, -760], [-420, -700]] } },
 
     { "tool": "hierarchy", "args": { "op": "add_layer", "name": "Gameplay" } },
+    { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [-60, -4, 850], "angles": [0, 0, 0], "properties": { "model": "res://models/polyhaven/decorative/ceramic_pot.gltf" } } },
     { "tool": "create_entity", "args": { "classname": "info_player_start", "origin": [0, 0, 1200], "angles": [0, 0, 0] } },
     { "tool": "set_camera", "args": { "view": "3d", "position": [1000, 620, 1450], "look_at": [250, 200, 100] } },
     { "tool": "run_action", "args": { "action": "store_camera", "args": { "slot": 1 } } },

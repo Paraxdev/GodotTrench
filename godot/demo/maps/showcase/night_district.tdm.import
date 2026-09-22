@@ -1,0 +1,14 @@
+[remap]
+
+importer="func_godot.map"
+type="QuakeMapFile"
+uid="uid://c5i36yx3g22y7"
+path="res://.godot/imported/night_district.tdm-430f58e26b06ef0722f0313b1e3e51a0.tres"
+
+[deps]
+
+source_file="res://demo/maps/showcase/night_district.tdm"
+dest_files=["res://.godot/imported/night_district.tdm-430f58e26b06ef0722f0313b1e3e51a0.tres"]
+
+[params]
+

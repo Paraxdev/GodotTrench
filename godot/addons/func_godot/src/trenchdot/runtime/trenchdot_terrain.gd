@@ -190,7 +190,8 @@ static func create(data: Dictionary, xform: Variant, settings: FuncGodotMapSetti
 	var sharpens := Vector4(0.5, 0.5, 0.5, 0.5)
 	var pixelated := false
 	for l in 4:
-		var layer: Dictionary = layers[mini(l, layers.size() - 1)] if not layers.is_empty() else {}
+		# Weight in a slot without a layer shows the first layer, like the editor's prepare_terrain_material.
+		var layer: Dictionary = (layers[l] if l < layers.size() else layers[0]) if not layers.is_empty() else {}
 		var texture_name := str(layer.get("material", ""))
 		if texture_name != "":
 			material.set_shader_parameter("layer%d" % l, FuncGodotUtil.load_texture(texture_name, [], settings))

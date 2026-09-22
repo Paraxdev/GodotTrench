@@ -130,5 +130,14 @@
                                                            ]
                                             }
                                         ]
-                          }
+                          },
+    "withered_city":  {
+                          "title":  "Withered City",
+                          "views":  [
+                                        { "name":  "rooftop", "position":  [0, 860, 1470], "target":  [0, 0, -150] },
+                                        { "name":  "overview", "position":  [3200, 2600, 3600], "target":  [0, 0, 400] },
+                                        { "name":  "street", "position":  [2400, 70, 1150], "target":  [0, 90, 1150] },
+                                        { "name":  "letters", "position":  [300, 60, 700], "target":  [0, 20, 0] }
+                                    ]
+                      }
 }

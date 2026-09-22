@@ -16,6 +16,16 @@ uniform float detile_b : hint_range(0.0, 1.0) = 0.0;
 // Crispness of the de-tiled blend: 0 mixes the cells evenly and looks softest, 1 mixes only in a narrow band.
 uniform float detile_sharpen_a : hint_range(0.0, 1.0) = 0.5;
 uniform float detile_sharpen_b : hint_range(0.0, 1.0) = 0.5;
+// Each side's emission like BaseMaterial3D: (color + texture) or (color * texture) with the multiply operator, times
+// energy. The textures default to black, as in BaseMaterial3D.
+uniform vec3 emission_a : source_color = vec3(0.0);
+uniform vec3 emission_b : source_color = vec3(0.0);
+uniform float emission_energy_a = 0.0;
+uniform float emission_energy_b = 0.0;
+uniform bool emission_multiply_a = false;
+uniform bool emission_multiply_b = false;
+uniform sampler2D emission_texture_a : source_color, hint_default_black, filter_linear_mipmap, repeat_enable;
+uniform sampler2D emission_texture_b : source_color, hint_default_black, filter_linear_mipmap, repeat_enable;
 
 vec2 hash2(vec2 p) {
 	vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
@@ -69,4 +79,11 @@ void fragment() {
 	}
 	ALBEDO = albedo;
 	ROUGHNESS = roughness;
+	if (emission_energy_a > 0.0 || emission_energy_b > 0.0) {
+		vec3 ta = texture(emission_texture_a, UV * uv_scale_a).rgb;
+		vec3 tb = texture(emission_texture_b, UV * uv_scale_b).rgb;
+		vec3 glow_a = (emission_multiply_a ? emission_a * ta : emission_a + ta) * emission_energy_a;
+		vec3 glow_b = (emission_multiply_b ? emission_b * tb : emission_b + tb) * emission_energy_b;
+		EMISSION = mix(glow_a, glow_b, w);
+	}
 }

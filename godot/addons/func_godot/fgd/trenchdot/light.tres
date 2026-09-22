@@ -13,14 +13,16 @@ class_properties = Dictionary[String, Variant]({
 "light_energy": 1.0,
 "light_color": Color(1, 1, 1, 1),
 "omni_range": 10.0,
-"start_on": true
+"start_on": true,
+"shadows": false
 })
 class_property_descriptions = Dictionary[String, Variant]({
 "targetname": "Name",
 "light_energy": "Brightness",
 "light_color": "Color",
 "omni_range": "Range in meters",
-"start_on": "Starts switched on"
+"start_on": "Starts switched on",
+"shadows": "Casts shadows, costs more to render"
 })
 meta_properties = Dictionary[String, Variant]({
 "color": Color(1, 0.9019608, 0.3019608, 1),
