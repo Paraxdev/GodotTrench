@@ -91,7 +91,13 @@ icons! {
     COPY = "copy",
     PASTE = "clipboard-paste",
     DELETE = "trash-2",
+    EYEDROPPER = "pipette",
     SHAPES = "shapes",
+    MOVE = "move",
+    FLIP_U = "flip-vertical-2",
+    FLIP_V = "flip-horizontal-2",
+    ROTATE_CW = "rotate-cw",
+    ROTATE_CCW = "rotate-ccw",
     GODOT = "godot",
 }
 

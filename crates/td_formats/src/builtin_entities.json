@@ -15,6 +15,9 @@
         { "name": "sky_ground_color", "type": "color", "default": "100 104 108", "description": "Below the horizon" },
         { "name": "fog_color", "type": "color", "default": "190 204 218", "description": "Fog color" },
         { "name": "fog_density", "type": "float", "default": "0", "description": "Fog density per meter, 0 disables fog" },
+        { "name": "ambient_energy", "type": "float", "default": "1.0", "description": "Ambient light brightness, low for night maps" },
+        { "name": "sky_energy", "type": "float", "default": "1.0", "description": "Sky brightness, low for night maps" },
+        { "name": "glow_intensity", "type": "float", "default": "0", "description": "Glow around bright lights and emissive materials, 0 disables it" },
         { "name": "environment", "type": "bool", "default": "1", "description": "Build the WorldEnvironment and sun in Godot" },
         { "name": "chunk_streaming", "type": "bool", "default": "0", "description": "Group the built map into chunks and only draw the ones near the camera" },
         { "name": "chunk_size", "type": "float", "default": "2048", "description": "Size of a streaming chunk in map units" },
@@ -49,7 +52,8 @@
         { "name": "light_energy", "type": "float", "default": "1.0", "description": "Brightness" },
         { "name": "light_color", "type": "color", "default": "255 255 255", "description": "Color" },
         { "name": "omni_range", "type": "float", "default": "10.0", "description": "Range in meters" },
-        { "name": "start_on", "type": "bool", "default": "1", "description": "Starts switched on" }
+        { "name": "start_on", "type": "bool", "default": "1", "description": "Starts switched on" },
+        { "name": "shadows", "type": "bool", "default": "0", "description": "Casts shadows, costs more to render" }
       ],
       "inputs": [{ "name": "turn_on" }, { "name": "turn_off" }, { "name": "toggle" }],
       "outputs": [{ "name": "switched", "parameter": "on" }]
@@ -403,7 +407,8 @@
         { "name": "start_visible", "type": "bool", "default": "0", "description": "Visible from map load" },
         { "name": "duration", "type": "float", "default": "0", "description": "Seconds to stay up before hiding on its own, 0 stays until hide" },
         { "name": "text_color", "type": "color", "default": "255 255 255", "description": "Text color" },
-        { "name": "world_size", "type": "float", "default": "0.01", "description": "World label size in meters per pixel" }
+        { "name": "world_size", "type": "float", "default": "0.01", "description": "World label size in meters per pixel" },
+        { "name": "billboard", "type": "bool", "default": "1", "description": "Turns to face the camera and draws over walls. Off keeps the entity's angles and hides behind walls, for signs" }
       ],
       "outputs": [{ "name": "shown" }, { "name": "hidden" }],
       "inputs": [{ "name": "show" }, { "name": "hide" }, { "name": "set_text", "parameter": "text" }, { "name": "flash", "parameter": "seconds" }]
@@ -471,7 +476,8 @@
         { "name": "light_color", "type": "color", "default": "255 255 255", "description": "Color" },
         { "name": "spot_range", "type": "float", "default": "15.0", "description": "Range in meters" },
         { "name": "spot_angle", "type": "float", "default": "35.0", "description": "Cone half angle in degrees" },
-        { "name": "start_on", "type": "bool", "default": "1", "description": "Starts switched on" }
+        { "name": "start_on", "type": "bool", "default": "1", "description": "Starts switched on" },
+        { "name": "shadows", "type": "bool", "default": "0", "description": "Casts shadows, costs more to render" }
       ],
       "inputs": [{ "name": "turn_on" }, { "name": "turn_off" }, { "name": "toggle" }],
       "outputs": [{ "name": "switched", "parameter": "on" }]

@@ -110,7 +110,7 @@ impl HotspotEditor {
                 ui.label("This material has no texture image.");
                 return;
             };
-            let size = state.materials.size(&self.material).map(|s| [s[0] as f64, s[1] as f64]).unwrap_or([64.0, 64.0]);
+            let size = state.materials.pixel_size(&self.material).map(|s| [s[0] as f64, s[1] as f64]).unwrap_or([64.0, 64.0]);
             ui.horizontal_wrapped(|ui| {
                 ui.add(egui::DragValue::new(&mut self.split[0]).range(1..=64).prefix("grid "));
                 ui.add(egui::DragValue::new(&mut self.split[1]).range(1..=64).prefix("x "));

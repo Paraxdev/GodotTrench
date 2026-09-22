@@ -382,6 +382,13 @@ fn terrain_sprinkle_cordon_tabs_bookmarks() {
     let rev = ed.state()["map"]["revision"].as_u64().unwrap();
     ed.input("3d", json!([{ "type": "drag", "world": [200, 0, -200], "to_world": [300, 0, -300], "steps": 10 }]));
     assert!(ed.state()["map"]["revision"].as_u64().unwrap() > rev, "sculpt drag edits the terrain");
+    ed.call("run_action", json!({ "action": "select_none" }));
+    assert_eq!(ed.state()["selection"]["nodes"], json!([]), "select_none empties the selection with the Sculpt tool active");
+    assert_eq!(ed.state()["editor"]["tool"], "Sculpt", "and leaves the tool alone");
+    ed.call("terrain_edit", json!({ "id": id, "op": "set_layers", "layers": [["dev/green", 256], ["dev/grey", 256], ["dev/blue", 256], ["dev/orange", 256]] }));
+    ed.call("terrain_edit", json!({ "id": id, "op": "auto_paint", "sea_level": 40 }));
+    let low = ed.call("blend", json!({ "op": "weights", "id": id, "center": [-500, 0, -500] }));
+    assert!(low["weights"][3].as_f64().unwrap() > 0.9, "flat ground below sea level is the low band: {low}");
     ed.call("set_editor", json!({ "shade": "lit", "tool": "select" }));
     let (_, _, colors) = ed.screenshot("3d", "terrain_lit");
     assert!(colors > 8);
@@ -517,7 +524,9 @@ fn example_mcp_scripts_replay() {
         .collect();
     assert_eq!(centers, vec![[0, -104], [-104, 0], [0, 104]], "copies rotate 90, 180 and 270 degrees");
 
-    for (script, min_brushes, min_entities) in [("mountain_house", 60, 10), ("church_school", 250, 20), ("lighthouse_forest", 100, 20)] {
+    for (script, min_brushes, min_entities) in
+        [("mountain_house", 60, 10), ("church_school", 250, 20), ("lighthouse_forest", 100, 20), ("night_district", 150, 30), ("withered_city", 600, 40)]
+    {
         let path = root.join("examples/mcp").join(format!("{script}.json")).canonicalize().unwrap();
         let summary = ed.call("run_script", json!({ "path": path, "vars": { "save_dir": out } }));
         assert_eq!(summary["errors"], json!([]), "{script}");
@@ -543,6 +552,27 @@ fn example_mcp_scripts_replay() {
         let (_, _, colors) = ed.screenshot("3d", script);
         assert!(colors > 40, "{script}: lit overview has {colors} colors");
     }
+
+    // The night map's roller door keeps the beacon outputs passed to make_door next to the ones the wizard wires.
+    let doors = ed.call("list_nodes", json!({ "type": "entity", "classname": "func_door" }));
+    let garage = doors["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|n| ed.call("get_node", json!({ "id": n["id"] })))
+        .find(|n| n.to_string().contains("garage_door"))
+        .expect("garage door in the night map");
+    let outputs = garage["outputs"].as_array().or_else(|| garage["entity"]["outputs"].as_array()).cloned().unwrap_or_default();
+    assert_eq!(outputs.iter().filter(|o| o["target"] == "garage_beacon").count(), 4, "{garage}");
+
+    // A bad scatter item is reported instead of leaving an empty palette.
+    let e = ed.call_err("scatter", json!({ "op": "new_set", "name": "bad", "items": [{ "source": "res://x.glb", "align": true }] }));
+    assert!(e.contains("items[0]"), "{e}");
+
+    // Screenshots can render the 3D camera larger than its docked pane.
+    let r = ed.try_rpc("tools/call", json!({ "name": "screenshot", "arguments": { "target": "3d", "width": 640, "height": 360 } })).unwrap();
+    let png = base64::engine::general_purpose::STANDARD.decode(r["result"]["content"][0]["data"].as_str().expect("image content")).unwrap();
+    assert_eq!(image::load_from_memory(&png).unwrap().to_rgba8().dimensions(), (640, 360));
 }
 
 #[test]
@@ -616,7 +646,8 @@ fn scatter_materials_and_scattering_onto_a_scatter() {
     assert_eq!(node["items"][0]["material"], "showcase/gold", "entry 0 is retextured");
     assert!(node["items"][1].get("material").is_none(), "entry 1 still follows the set");
     assert_eq!(node["material"], "showcase/snow", "the set keeps its own material");
-    assert_eq!(ed.call_err("scatter", json!({ "op": "material", "id": rocks_id, "item": 9 })), "the set has no palette entry 9, it has 2");
+    let entries = rocks["set"]["items"].as_array().unwrap().len();
+    assert_eq!(ed.call_err("scatter", json!({ "op": "material", "id": rocks_id, "item": 9 })), format!("the set has no palette entry 9, it has {entries}"));
 
     // Grass that targets the rock set lands on the rocks, above the floor they stand on.
     let grass = ed.call("scatter", json!({ "op": "new_set", "preset": "grass", "name": "on_rocks", "targets": [rocks_id] }));
@@ -626,4 +657,98 @@ fn scatter_materials_and_scattering_onto_a_scatter() {
     let blades = ed.call("get_node", json!({ "id": grass_id }));
     let above = blades["instances"].as_array().unwrap().iter().filter(|i| i[2].as_f64().unwrap() > 0.0).count();
     assert_eq!(above, blades["instances"].as_array().unwrap().len(), "every blade sits on a rock, not on the floor");
+}
+
+#[test]
+#[ignore]
+fn the_scatter_tool_paints_grass_onto_scattered_boulders_under_the_mouse() {
+    let ed = Editor::launch("scatter_on_scatter_mouse");
+    let floor = ed.box_brush([-1024.0, -32.0, -1024.0], [1024.0, 0.0, 1024.0]);
+    ed.call("scatter", json!({ "op": "new_set", "name": "boulders", "preset": "boulders", "targets": [floor] }));
+    let boulders = ed.call("scatter", json!({ "op": "paint", "center": [0, 0], "radius": 600, "density": 2, "seed": 3 }));
+    let boulders_id = boulders["set"]["id"].as_u64().unwrap();
+    let rock = ed.call("get_node", json!({ "id": boulders_id }))["instances"][0].clone();
+    let (x, z) = (rock[1].as_f64().unwrap(), rock[3].as_f64().unwrap());
+
+    // What a user does: a new grass set from the preset, the scatter tool, and a drag across a boulder.
+    let grass = ed.call("scatter", json!({ "op": "new_set", "name": "moss", "preset": "grass" }));
+    let grass_id = grass["id"].as_u64().unwrap();
+    ed.call("set_editor", json!({ "tool": "scatter" }));
+    ed.call("set_camera", json!({ "view": "3d", "position": [x, 420.0, z + 260.0], "look_at": [x, 20.0, z] }));
+    ed.input("3d", json!([{ "type": "drag", "world": [x - 20.0, 30.0, z], "to_world": [x + 20.0, 30.0, z], "steps": 10 }]));
+    ed.screenshot("3d", "grass_on_boulders");
+
+    let node = ed.call("get_node", json!({ "id": grass_id }));
+    assert_eq!(node["targets"], json!([boulders_id]), "the stroke started on a boulder, so the boulders are the target");
+    let blades = node["instances"].as_array().unwrap();
+    assert!(!blades.is_empty(), "grass was painted");
+    assert!(blades.iter().all(|i| i[2].as_f64().unwrap() > 0.0), "every blade sits on a boulder, above the floor");
+}
+
+#[test]
+#[ignore]
+fn mesh_uv_projections_adjustments_and_the_mesh_vertex_gizmo() {
+    let ed = Editor::launch("mesh_uv_adjust");
+    let mesh = ed.call("create_mesh", json!({ "shape": "cuboid", "min": [0, 0, 0], "max": [64, 64, 64] }))["id"].as_u64().unwrap();
+    let uvs = |face: u64| ed.call("texture", json!({ "op": "get", "faces": [[mesh, face]] }))["faces"][0]["explicit"].clone();
+    let floats = |v: &Value| v.as_array().unwrap().iter().flat_map(|c| c.as_array().unwrap().iter().map(|x| x.as_f64().unwrap())).collect::<Vec<_>>();
+    assert!(uvs(0).is_null(), "a new mesh uses planar projections");
+    let err = ed.call_err("texture", json!({ "op": "uv_adjust", "adjust": "flip_u" }));
+    assert!(err.contains("no explicit UV corners"), "{err}");
+
+    // Bake writes the planar look as corner UVs, every projection then relays them.
+    assert_eq!(ed.call("texture", json!({ "op": "mesh_uv", "kind": "bake" }))["changed"], 6);
+    assert!(uvs(0).is_array());
+    for kind in ["planar", "planar_x", "planar_y", "planar_z", "box", "cylinder_x", "cylinder", "cylinder_z", "sphere", "view", "unfold", "world"] {
+        assert_eq!(ed.call("texture", json!({ "op": "mesh_uv", "kind": kind }))["changed"], 6, "{kind}");
+    }
+
+    let start = floats(&uvs(0));
+    for _ in 0..2 {
+        ed.call("texture", json!({ "op": "uv_adjust", "adjust": "flip_u", "faces": [[mesh, 0]] }));
+    }
+
+    assert!(approx(&floats(&uvs(0)), &start), "flipping twice is the identity");
+    for _ in 0..4 {
+        ed.call("texture", json!({ "op": "uv_adjust", "adjust": "rotate", "degrees": 90, "faces": [[mesh, 0]] }));
+    }
+
+    assert!(approx(&floats(&uvs(0)), &start), "four quarter turns are the identity");
+
+    ed.call("texture", json!({ "op": "uv_adjust", "adjust": "fit", "faces": [[mesh, 0]] }));
+    let fitted = floats(&uvs(0));
+    assert!(fitted.iter().all(|x| (-1e-4..=1.0001).contains(x)), "fit spans the texture once: {fitted:?}");
+    assert!(fitted.iter().any(|x| *x < 1e-4) && fitted.iter().any(|x| *x > 0.9999));
+
+    let moved = ed.call("texture", json!({ "op": "uv_adjust", "adjust": "move", "texels": [8, 0], "corners": [[mesh, 0, 0]] }));
+    assert_eq!(moved["changed"], 1, "a corner stitched to nothing moves alone");
+    ed.call("texture", json!({ "op": "uv_adjust", "adjust": "align_horizontal", "corners": [[mesh, 0, 0], [mesh, 0, 1]] }));
+    let aligned = floats(&uvs(0));
+    assert!((aligned[1] - aligned[3]).abs() < 1e-5, "corners 0 and 1 share v: {aligned:?}");
+    ed.call("texture", json!({ "op": "uv_adjust", "adjust": "snap", "faces": [[mesh, 0]] }));
+    assert!(ed.call_err("texture", json!({ "op": "uv_adjust", "adjust": "wobble", "faces": [[mesh, 0]] })).contains("unknown adjust"));
+    assert_eq!(ed.call("texture", json!({ "op": "mesh_uv", "kind": "clear" }))["changed"], 6);
+    assert!(uvs(0).is_null());
+
+    // In the mesh tool a double click puts the transform gizmo on a vertex, its X arrow moves along X only.
+    ed.call("select", json!({ "ids": [mesh] }));
+    ed.call("set_editor", json!({ "tool": "mesh" }));
+    ed.call("set_camera", json!({ "view": "front", "center": [64, 64, 0], "zoom": 2.0 }));
+    ed.input("front", json!([{ "type": "double_click", "world": [64.0, 64.0, 64.0] }]));
+    ed.screenshot("front", "mesh_vertex_gizmo");
+    let before = ed.call("get_node", json!({ "id": mesh }))["vertices"].clone();
+    ed.input("front", json!([{ "type": "drag", "world": [80.0, 64.0, 64.0], "to_world": [112.0, 72.0, 64.0], "steps": 10 }]));
+    let after = ed.call("get_node", json!({ "id": mesh }))["vertices"].clone();
+    let changed: Vec<(Vec<f64>, Vec<f64>)> = before
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(after.as_array().unwrap())
+        .map(|(a, b)| (floats(&json!([a])), floats(&json!([b]))))
+        .filter(|(a, b)| a != b)
+        .collect();
+    assert_eq!(changed.len(), 1, "one vertex moved: {changed:?}");
+    let (a, b) = &changed[0];
+    assert_eq!((b[0] - a[0], b[1] - a[1], b[2] - a[2]), (32.0, 0.0, 0.0), "moved +32 along X only");
+    assert_eq!(ed.state()["undo"][0], "Move Vertices");
 }

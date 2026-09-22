@@ -4,7 +4,7 @@ use base64::Engine;
 use image::RgbaImage;
 use serde_json::{Value, json};
 
-use crate::textures::{hash, value_noise};
+use crate::noise::{hash, value_noise};
 
 /// Atlas regions in a 32x32 texture: bark on the left quarter, foliage in the rest.
 const BARK: [f64; 4] = [0.0, 0.0, 8.0, 32.0];

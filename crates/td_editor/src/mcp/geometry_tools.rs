@@ -373,11 +373,75 @@ impl App {
             "paste" => tex::paste_alignment(&mut self.state, &faces, args["with_material"].as_bool().unwrap_or(false)),
             "mesh_uv" => {
                 let Some(kind) = args["kind"].as_str().and_then(tex::MeshUvKind::from_name) else {
-                    return err("kind must be planar, box, cylinder, sphere, view, unfold or normalize");
+                    return err(
+                        "kind must be planar, planar_x, planar_y, planar_z, box, cylinder_x, cylinder_y (or cylinder), cylinder_z, sphere, view, unfold, world, bake, clear, normalize or pack",
+                    );
                 };
                 let cam = &self.viewports[0].camera;
                 let view = (cam.right(), cam.up());
                 tex::mesh_uv(&mut self.state, &faces, kind, view)
+            }
+            "uv_adjust" => {
+                let mut corners: Vec<tex::UvCorner> = args["corners"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|c| Some((NodeId(c.get(0)?.as_u64()?), c.get(1)?.as_u64()? as usize, c.get(2)?.as_u64()? as usize)))
+                    .collect();
+                for (id, f, _) in &corners {
+                    if !faces.contains(&(*id, *f)) {
+                        faces.push((*id, *f));
+                    }
+                }
+
+                if corners.is_empty() {
+                    corners = tex::all_corners(&self.state.doc.map, &faces);
+                } else if args["stitch"].as_bool().unwrap_or(true) {
+                    corners = tex::with_stitched(&self.state.doc.map, &faces, &corners);
+                }
+
+                if corners.is_empty() {
+                    return err("no explicit UV corners: pass corners [[mesh, face, corner]] or mesh faces with explicit UVs (mesh_uv writes them)");
+                }
+
+                let material = tex::face_info(&self.state.doc.map, corners[0].0, corners[0].1).map(|i| i.material).unwrap_or_default();
+                let size = tex::tex_size(&self.state, &material);
+                let texels = |v: &Value| vec2(v).map(|t| t / size);
+                let op = match args["adjust"].as_str().unwrap_or_default() {
+                    "flip_u" => tex::UvAdjust::FlipU,
+                    "flip_v" => tex::UvAdjust::FlipV,
+                    "rotate" => tex::UvAdjust::Rotate(args["degrees"].as_f64().unwrap_or(90.0)),
+                    "scale" => tex::UvAdjust::Scale(vec2(&args["factor"]).unwrap_or(DVec2::ONE)),
+                    "move" => tex::UvAdjust::Move(texels(&args["texels"]).unwrap_or_default()),
+                    "center" => match texels(&args["texels"]) {
+                        Some(c) => tex::UvAdjust::Center(c),
+                        None => return err("center needs texels [u, v], the new center in texture pixels"),
+                    },
+                    "align_horizontal" => tex::UvAdjust::AlignHorizontal,
+                    "align_vertical" => tex::UvAdjust::AlignVertical,
+                    "straighten" => tex::UvAdjust::Straighten,
+                    "fit" => {
+                        let r =
+                            args["rect"].as_array().and_then(|a| Some([a.first()?.as_f64()?, a.get(1)?.as_f64()?, a.get(2)?.as_f64()?, a.get(3)?.as_f64()?]));
+                        let r = r.unwrap_or([0.0, 0.0, size.x, size.y]);
+                        tex::UvAdjust::Fit([r[0] / size.x, r[1] / size.y, r[2] / size.x, r[3] / size.y])
+                    }
+                    "fit_hotspot" => {
+                        let uvs: Vec<DVec2> = corners.iter().filter_map(|c| tex::corner_uv(&self.state.doc.map, *c)).collect();
+                        let rects = crate::commands::hotspot_rects_uv(&self.state, &material);
+                        let Some(r) = crate::uv_editor::hotspot_for(&rects, &uvs, size) else {
+                            return err(format!("{material} has no hotspots, set_hotspots adds them"));
+                        };
+                        tex::UvAdjust::Fit([r[0] / size.x, r[1] / size.y, r[2] / size.x, r[3] / size.y])
+                    }
+                    "snap" => tex::UvAdjust::Snap(crate::uv_editor::image_pixels(&self.state, &material)),
+                    other => {
+                        return err(format!(
+                            "unknown adjust {other:?}, use flip_u, flip_v, rotate, scale, move, center, align_horizontal, align_vertical, straighten, fit, fit_hotspot or snap"
+                        ));
+                    }
+                };
+                tex::adjust_corners(&mut self.state, &corners, op, false)
             }
             "set_hotspots" => {
                 let material = args["material"].as_str().map(str::to_string).unwrap_or_else(|| self.state.current_material.clone());
@@ -403,10 +467,15 @@ impl App {
                 return ok(json!({
                     "material": material,
                     "size": size,
+                    "world_size": self.state.materials.world_size(&material),
                     "material_file": self.state.materials.find(&material).and_then(|e| e.material_file.clone()),
                     "summary": info.as_ref().map(crate::panels::material_summary).unwrap_or_default().trim_start_matches(", "),
                     "transparent": info.as_ref().is_some_and(|i| i.is_transparent()),
-                    "emissive": info.as_ref().is_some_and(|i| i.emission.is_some()),
+                    "emissive": self.state.materials.find(&material).is_some_and(|e| e.is_emissive) || info.as_ref().is_some_and(|i| i.is_emissive()),
+                    "emission": info.as_ref().filter(|i| i.emission.is_some()).map(|i| json!({
+                        "color": i.emission, "energy": i.emission_energy, "texture": i.emission_texture,
+                        "operator": if i.emission_multiply { "multiply" } else { "add" },
+                    })),
                     "nearest": info.as_ref().and_then(|i| i.nearest),
                     "hotspots": crate::commands::hotspot_rects(&self.state, &material),
                 }));
@@ -453,7 +522,16 @@ impl App {
             Some(list) => list.iter().filter_map(|l| Some((l.get(0)?.as_str()?.to_string(), l.get(1).and_then(|t| t.as_f64()).unwrap_or(256.0)))).collect(),
             None => vec![(self.state.current_material.clone(), 256.0)],
         };
-        let t = crate::dialogs::make_terrain(origin, resolution, cell, &params, &layers, None, args["auto_paint"].as_bool().unwrap_or(true));
+        let t = crate::dialogs::make_terrain(
+            origin,
+            resolution,
+            cell,
+            &params,
+            &layers,
+            None,
+            args["auto_paint"].as_bool().unwrap_or(true),
+            args["sea_level"].as_f64(),
+        );
         let bounds = t.bounds();
         let parent = match resolve_parent(&self.state, &args["parent"], Child::Geometry) {
             Ok(p) => p,

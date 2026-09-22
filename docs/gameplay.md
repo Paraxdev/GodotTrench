@@ -25,7 +25,8 @@ play animations, show text, break things and switch lights entirely through I/O:
 * `logic_animate`: plays animations on the `AnimationPlayer` under a target. Inputs `play(name)`, `stop`,
   `queue(name)`, `seek(time)`. Output `finished(anim)`.
 * `game_text`: shows a line in the world (a `Label3D`) and/or on the HUD. Inputs `show`, `hide`, `set_text(text)`,
-  `flash(seconds)`. Outputs `shown`, `hidden`.
+  `flash(seconds)`. Outputs `shown`, `hidden`. The world label faces the camera and draws over walls, `billboard 0` keeps
+  the entity's angles and hides it behind walls, for signs.
 * `prop_physics`: a throwable, breakable crate or barrel. Damage, a hard impact (`impact_speed`) or a `smash` input
   breaks it, and an `explosive` prop blasts when broken. Inputs `smash`, `ignite`, `push(direction)`,
   `take_damage(amount, source)`. Outputs `damaged(hp)`, `broken`.

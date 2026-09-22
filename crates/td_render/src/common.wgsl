@@ -81,6 +81,16 @@ fn shade(base: vec3<f32>, world: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
         let s = 0.62 + 0.38 * (abs(n.x) * 0.72 + max(n.y, 0.0) + max(-n.y, 0.0) * 0.5 + abs(n.z) * 0.86);
         return base * s;
     }
+    return tonemap(base * light_at(world, n));
+}
+
+/// Compresses linear light of any brightness into 0..1, so bright lamps and emissive signs saturate instead of clipping.
+fn tonemap(c: vec3<f32>) -> vec3<f32> {
+    return vec3<f32>(1.0) - exp(-c * 1.25);
+}
+
+/// Light arriving at a surface point from the ambient, the sun and the scene's point and spot lights, unbounded.
+fn light_at(world: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     var light = lighting.ambient.rgb;
     let to_sun = -normalize(lighting.sun_dir.xyz);
     let ndl = max(dot(n, to_sun), 0.0);
@@ -102,8 +112,7 @@ fn shade(base: vec3<f32>, world: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
         }
         light = light + l.color_energy.rgb * l.color_energy.w * att * max(dot(n, dir), 0.0);
     }
-    let lit = base * light;
-    return vec3<f32>(1.0) - exp(-lit * 1.25);
+    return light;
 }
 
 fn is_lit() -> bool {
