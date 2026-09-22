@@ -10,7 +10,6 @@ pub mod extra_tools;
 pub mod face_cull;
 pub mod gizmos;
 pub mod godot;
-pub mod guide;
 pub mod hotspot_editor;
 pub mod icons;
 pub mod live_link;

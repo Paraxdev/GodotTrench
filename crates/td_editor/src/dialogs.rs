@@ -147,8 +147,6 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("Gameplay: Make Lift".into(), Action::MakePlatform),
         ("Gameplay: Link Selected Entities".into(), Action::ShowLinkDialog),
         ("Help: Entity and Code Reference".into(), Action::ShowReference),
-        ("Help: Guide".into(), Action::ShowGuide),
-        ("Help: Guided Tour".into(), Action::StartTour),
         ("File: Preferences".into(), Action::ShowPreferences),
         ("View: Toggle Transform Gizmo".into(), Action::ToggleTransformGizmo),
         ("Edit: Repeat Last".into(), Action::RepeatLast),
