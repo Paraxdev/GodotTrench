@@ -15,8 +15,12 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	omni_range = float(props.get("omni_range", omni_range))
 	start_on = GodotTrenchIO.to_bool(props.get("start_on", start_on))
 	_on = start_on
+	# A map built inside the running tree applies properties after _ready.
+	if is_node_ready() and not Engine.is_editor_hint():
+		visible = _on
 
 func _ready() -> void:
+	_on = start_on
 	if Engine.is_editor_hint():
 		return
 	visible = _on

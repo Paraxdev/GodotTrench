@@ -23,6 +23,7 @@ class_property_descriptions = Dictionary[String, Variant]({
 meta_properties = Dictionary[String, Variant]({
 "color": Color(0.5411765, 0.4862745, 1, 1),
 "size": AABB(-8, -8, 0, 8, 8, 16),
+"property_types": {"target": "string"},
 "inputs": ["play", "stop", "queue", "seek"],
 "outputs": ["finished"]
 })

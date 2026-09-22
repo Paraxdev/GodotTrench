@@ -312,6 +312,8 @@ fn declared_type(p: &PropertyDef) -> Option<&'static str> {
         PropertyType::Resource => Some("resource"),
         PropertyType::TargetSource if p.name != "targetname" => Some("target_source"),
         PropertyType::TargetDestination if !["target", "killtarget", "parent"].contains(&p.name.as_str()) => Some("target_destination"),
+        // The Godot exporter infers target_destination from these names, so a plain string has to be declared.
+        PropertyType::String if ["target", "killtarget", "parent"].contains(&p.name.as_str()) => Some("string"),
         PropertyType::NodePath => Some("node_path"),
         _ => None,
     }

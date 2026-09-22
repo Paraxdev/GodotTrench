@@ -17,7 +17,8 @@ class_properties = Dictionary[String, Variant]({
 "method": "",
 "arguments": "[]",
 "once": false,
-"cooldown": 0.5
+"cooldown": 0.5,
+"start_disabled": false
 })
 class_property_descriptions = Dictionary[String, Variant]({
 "targetname": "Name",
@@ -26,7 +27,8 @@ class_property_descriptions = Dictionary[String, Variant]({
 "method": "Method to call, C# PascalCase names work too",
 "arguments": "JSON array. $activator, $self and $position are replaced",
 "once": "Only calls the first time",
-"cooldown": "Seconds between calls"
+"cooldown": "Seconds before the same body calls again",
+"start_disabled": "Needs an enable input first"
 })
 meta_properties = Dictionary[String, Variant]({
 "color": Color(0.9490196, 0.7607843, 0.2, 1),

@@ -46,17 +46,27 @@ func fire(...args: Array) -> void:
 	if times >= 0 and _fired >= times:
 		return
 	_fired += 1
+	# The first node the signal carries is the activator, the rest are values passed along to the input when the
+	# connection has no parameter of its own, like the value of changed(value).
 	var activator: Node = null
+	var values: Array = []
 	for a in args:
-		if a is Node:
+		if activator == null and a is Node:
 			activator = a
-			break
+		elif a != null:
+			values.append(a)
 	if delay > 0.0:
 		await get_tree().create_timer(delay).timeout
 	if not is_inside_tree():
 		return
-	GodotTrenchIO.events().fired.emit(get_parent(), output, target, input, parameter)
+	if not is_instance_valid(activator):
+		activator = null
+	values = values.filter(func(v): return typeof(v) != TYPE_OBJECT or is_instance_valid(v))
+	var shown := parameter
+	if shown == "" and not values.is_empty():
+		shown = ", ".join(values.map(func(v): return str(v)))
+	GodotTrenchIO.events().fired.emit(get_parent(), output, target, input, shown)
 	var targets := GodotTrenchIO.find_targets(self, target, activator)
 	for t in targets:
-		GodotTrenchIO.invoke(t, input, parameter, activator)
+		GodotTrenchIO.invoke(t, input, parameter, activator, self, values)
 	fired.emit(targets)

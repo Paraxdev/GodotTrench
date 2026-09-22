@@ -5,6 +5,10 @@ class_name GTParticles extends GPUParticles3D
 
 @export var start_emitting := false
 
+var _burst_id := 0
+## While a burst runs on a continuous emitter: whether it was emitting before, so it can resume afterwards.
+var _burst_resume: Variant = null
+
 func _func_godot_apply_properties(props: Dictionary) -> void:
 	amount = int(props.get("amount", amount))
 	lifetime = float(props.get("lifetime", lifetime))
@@ -32,14 +36,37 @@ func _default_material() -> ParticleProcessMaterial:
 	return mat
 
 func start() -> void:
+	_end_burst()
 	emitting = true
 
 func stop() -> void:
+	_end_burst()
 	emitting = false
 
 func toggle() -> void:
-	emitting = not emitting
+	var was := emitting
+	_end_burst()
+	emitting = not was
 
+## Emits exactly one shot. A continuous emitter goes back to how it was afterwards, emitting again if it was on.
 func burst() -> void:
+	if _burst_resume == null and not one_shot:
+		_burst_resume = emitting
+	_burst_id += 1
+	var id := _burst_id
+	one_shot = true
 	restart()
-	emitting = true
+	if _burst_resume == null or not is_inside_tree():
+		return
+	await finished
+	if id == _burst_id:
+		_end_burst()
+
+func _end_burst() -> void:
+	if _burst_resume == null:
+		return
+	var resume: bool = _burst_resume
+	_burst_resume = null
+	_burst_id += 1
+	one_shot = false
+	emitting = resume

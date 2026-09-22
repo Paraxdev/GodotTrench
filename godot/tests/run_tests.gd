@@ -83,6 +83,8 @@ func _initialize() -> void:
 	test_live_link_lines()
 	test_threaded_build_matches()
 	await test_showcase_playthrough()
+	await preload("res://tests/gt_editor_parity_test.gd").run(self)
+	await load("res://tests/entity_tests.gd").new().run(self)
 	print("%d checks, %d failures" % [checks, failures.size()])
 	quit(1 if failures.size() > 0 else 0)
 
@@ -357,8 +359,8 @@ func test_meshes_terrain_props() -> void:
 		check(t.resolution == Vector2i(17, 17), "terrain resolution")
 		var chunks := collect(t, func(n): return n is MeshInstance3D)
 		check(chunks.size() == 1, "one chunk for a small terrain")
-		var shapes := collect(t, func(n): return n is CollisionShape3D and n.shape is HeightMapShape3D)
-		check(shapes.size() == 1, "terrain has a heightmap collision shape")
+		var shapes := collect(t, func(n): return n is CollisionShape3D and n.shape is ConcavePolygonShape3D)
+		check(shapes.size() == 1, "terrain collides as a trimesh, matching its holes and alternating diagonal exactly")
 		check(near(t.height_at(10.0, 10.0), 5.0, 0.01), "center height is 160 units = 5 m, got %s" % t.height_at(10.0, 10.0))
 		if chunks.size() == 1:
 			var arrays: Array = (chunks[0] as MeshInstance3D).mesh.surface_get_arrays(0)
@@ -611,7 +613,7 @@ func test_gameplay_entities() -> void:
 	var stranger := CharacterBody3D.new()
 	map.add_child(stranger)
 	trigger.enable()
-	trigger._last_fired = -100.0
+	trigger._last_fired.clear()
 	trigger._body_entered(stranger)
 	check(receiver.calls.size() == 1, "filter_group ignores other bodies")
 

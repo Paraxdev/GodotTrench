@@ -52,6 +52,11 @@ class Context:
 	var worldspawn: _EntityData
 	var next_group_id := 1
 	var instance_depth := 0
+	## Id namespace of the instance occurrence currently being parsed, 0 at the top level. Every [method _parse_instance]
+	## call gets its own value from [member next_instance_ns], so two copies of the same prefab never share ids, however
+	## deep they are nested.
+	var instance_ns := 0
+	var next_instance_ns := 1
 	## Transform applied to everything parsed at the current instance level (Godot space, map units).
 	var xform := Transform3D.IDENTITY
 	var name_prefix := ""
@@ -105,7 +110,7 @@ static func _is_layer(node: Variant) -> bool:
 ## Leaves a slot for a brush or mesh node in [param entity], filled by [method _convert_geometry].
 static func _queue_geometry(ctx: Context, node: Dictionary, entity: _EntityData) -> void:
 	entity.brushes.append(null)
-	ctx.geometry.append({ "node": node, "xform": ctx.xform, "depth": ctx.instance_depth, "entity": entity, "slot": entity.brushes.size() - 1 })
+	ctx.geometry.append({ "node": node, "xform": ctx.xform, "ns": ctx.instance_ns, "entity": entity, "slot": entity.brushes.size() - 1 })
 
 
 ## Converts the queued brushes and meshes, on worker threads for bigger maps. Only data is created there.
@@ -122,7 +127,7 @@ static func _convert_geometry(ctx: Context) -> void:
 		else:
 			brush = _parse_brush(ctx.map_settings, job["xform"], node)
 		if brush:
-			brush.node_id = int(node.get("id", 0)) + int(job["depth"]) * 1000000
+			brush.node_id = int(node.get("id", 0)) + int(job["ns"]) * 1000000
 		results[i] = brush
 	if GodotTrenchBuild.threaded() and jobs.size() >= 32:
 		var task := WorkerThreadPool.add_group_task(convert, jobs.size(), -1, false, "Convert GodotTrench brushes")
@@ -144,7 +149,7 @@ static func _convert_geometry(ctx: Context) -> void:
 
 static func _make_group(ctx: Context, node: Dictionary, parent: _GroupData, is_layer: bool) -> _GroupData:
 	var group := _GroupData.new()
-	group.id = int(node.get("id", ctx.next_group_id)) + ctx.instance_depth * 1000000
+	group.id = int(node.get("id", ctx.next_group_id)) + ctx.instance_ns * 1000000
 	ctx.next_group_id += 1
 	group.type = _GroupData.GroupType.LAYER if is_layer else _GroupData.GroupType.GROUP
 	var label: String = str(node.get("name", "")).replace(" ", "_")
@@ -172,10 +177,11 @@ static func _parse_node(ctx: Context, node: Dictionary, group: _GroupData) -> vo
 		"brush", "mesh":
 			_queue_geometry(ctx, node, ctx.worldspawn)
 		"terrain":
-			# Terrains stay axis aligned: instances move them but do not rotate them.
-			ctx.parse_data.terrains.append({ "data": node, "offset": ctx.xform.origin, "group": group, "id": int(node.get("id", 0)) + ctx.instance_depth * 1000000 })
+			# Terrains stay axis aligned: an instance rotates the terrain's center about the instance origin, like
+			# Terrain::transformed in the editor, but never the grid itself. GodotTrenchTerrain.create does the rotation.
+			ctx.parse_data.terrains.append({ "data": node, "xform": ctx.xform, "group": group, "id": int(node.get("id", 0)) + ctx.instance_ns * 1000000 })
 		"scatter":
-			ctx.parse_data.scatters.append({ "data": node, "xform": ctx.xform, "group": group, "id": int(node.get("id", 0)) + ctx.instance_depth * 1000000 })
+			ctx.parse_data.scatters.append({ "data": node, "xform": ctx.xform, "group": group, "id": int(node.get("id", 0)) + ctx.instance_ns * 1000000 })
 		"entity":
 			_parse_entity(ctx, node, group)
 		"instance":
@@ -189,7 +195,7 @@ static func _parse_entity(ctx: Context, node: Dictionary, group: _GroupData) -> 
 		ent.properties[key] = str(props[key])
 	ent.properties["classname"] = str(node.get("classname", ""))
 	ent.group = group
-	ent.node_id = int(node.get("id", 0)) + ctx.instance_depth * 1000000
+	ent.node_id = int(node.get("id", 0)) + ctx.instance_ns * 1000000
 
 	if ctx.name_prefix != "":
 		for key in _fixup_keys(ctx, ent.properties["classname"]):
@@ -244,7 +250,11 @@ static func _parse_brush(map_settings: FuncGodotMapSettings, xform: Transform3D,
 			continue
 		var godot_points := PackedVector3Array()
 		for idx in indices:
-			godot_points.append(vertices[int(idx)])
+			var i := int(idx)
+			if i < 0 or i >= vertices.size():
+				push_error("[GTM] brush %s has a face indexing vertex %d, out of range for %d vertices, skipping the brush" % [str(int(node["id"])) if node.has("id") else "?", i, vertices.size()])
+				return null
+			godot_points.append(vertices[i])
 
 		# Newell normal is robust for any convex polygon, including slightly imprecise ones.
 		var normal := Vector3.ZERO
@@ -379,6 +389,7 @@ static func _parse_instance(ctx: Context, node: Dictionary, group: _GroupData) -
 	var saved_xform := ctx.xform
 	var saved_prefix := ctx.name_prefix
 	var saved_path := ctx.map_path
+	var saved_ns := ctx.instance_ns
 	var local := Transform3D(rotation_basis(vec3(node.get("angles"))), vec3(node.get("origin")))
 	ctx.xform = saved_xform * local
 	var fixup := str(node.get("fixup", ""))
@@ -386,6 +397,10 @@ static func _parse_instance(ctx: Context, node: Dictionary, group: _GroupData) -
 		ctx.name_prefix = saved_prefix + fixup + "-"
 	ctx.map_path = path
 	ctx.instance_depth += 1
+	# Every occurrence of an instance gets its own id namespace, so two copies of one prefab never collide, whichever
+	# depth they nest at. Only the top level (namespace 0) keeps the ids the main map document was saved with.
+	ctx.instance_ns = ctx.next_instance_ns
+	ctx.next_instance_ns += 1
 
 	for layer in json.get("layers", []):
 		if not _is_layer(layer) or bool(layer.get("omit_from_export", false)):
@@ -394,6 +409,7 @@ static func _parse_instance(ctx: Context, node: Dictionary, group: _GroupData) -
 			_parse_node(ctx, child, group)
 
 	ctx.instance_depth -= 1
+	ctx.instance_ns = saved_ns
 	ctx.xform = saved_xform
 	ctx.name_prefix = saved_prefix
 	ctx.map_path = saved_path

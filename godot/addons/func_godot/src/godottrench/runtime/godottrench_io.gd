@@ -167,32 +167,106 @@ static func resolve_method(node: Object, input: StringName) -> StringName:
 			return StringName(variant)
 	return &""
 
-## Arguments for an input fired without a parameter: the activator goes into the first argument typed as an object or
-## named activator, untyped arguments before it get null. Inputs taking only values, like a counter's add(amount), are
-## called without arguments so their defaults apply instead of receiving the player node.
-static func activator_arguments(node: Object, method: StringName, activator: Node) -> Array:
-	for m in node.get_method_list():
-		if m["name"] != method:
-			continue
-		var args: Array = []
-		for declared in m["args"]:
-			var type := int(declared.get("type", TYPE_NIL))
-			if type == TYPE_OBJECT or (type == TYPE_NIL and str(declared.get("name", "")) == "activator"):
-				args.append(activator)
-				return args
-			if type != TYPE_NIL:
-				return []
-			args.append(null)
-		return []
-	return []
-
-## True when the argument right after the parameter values is named activator, as in play(anim, activator).
-static func _declares_activator_at(node: Object, method: StringName, index: int) -> bool:
+## Declared arguments and defaults of [param method] on [param node], as get_method_list() reports them.
+static func _method_info(node: Object, method: StringName) -> Dictionary:
 	for m in node.get_method_list():
 		if m["name"] == method:
-			var declared: Array = m["args"]
-			return index < declared.size() and str(declared[index].get("name", "")) == "activator"
-	return false
+			return m
+	return {}
+
+## True for an argument that takes a node: typed as an object, or untyped and named activator.
+static func _takes_node(declared: Dictionary) -> bool:
+	var type := int(declared.get("type", TYPE_NIL))
+	return type == TYPE_OBJECT or (type == TYPE_NIL and str(declared.get("name", "")) == "activator")
+
+## What an argument gets when nothing is passed for it: its declared default, else the empty value of its type.
+static func _default_argument(info: Dictionary, index: int) -> Variant:
+	var declared: Array = info.get("args", [])
+	var defaults: Array = info.get("default_args", [])
+	var first_default := declared.size() - defaults.size()
+	if index >= first_default and index - first_default < defaults.size():
+		return defaults[index - first_default]
+	var type := int(declared[index].get("type", TYPE_NIL)) if index < declared.size() else TYPE_NIL
+	return null if type == TYPE_NIL or type == TYPE_OBJECT else type_convert(null, type)
+
+## Index of the first argument not in [param slots] that takes a node ([param nodes]) or a value, else -1.
+static func _first_free(declared: Array, slots: Dictionary, nodes: bool) -> int:
+	for i in declared.size():
+		if not slots.has(i) and _takes_node(declared[i]) == nodes:
+			return i
+	return -1
+
+## Argument list from [param slots] (index to value), the method's defaults filling the gaps up to the last one set.
+static func _slots_to_args(info: Dictionary, slots: Dictionary) -> Array:
+	var args: Array = []
+	if slots.is_empty():
+		return args
+	var last: int = slots.keys().max()
+	for i in last + 1:
+		args.append(slots[i] if slots.has(i) else _default_argument(info, i))
+	return args
+
+static func _place_activator(info: Dictionary, slots: Dictionary, activator: Node) -> void:
+	if not activator:
+		return
+	var at := _first_free(info.get("args", []), slots, true)
+	if at >= 0:
+		slots[at] = activator
+
+## Arguments for an input fired without a parameter: the activator goes into the first argument typed as an object or
+## named activator, wherever it is, and the method's defaults fill the arguments before it. Inputs taking only values,
+## like a counter's add(amount), are called without arguments so their defaults apply instead of receiving the player.
+static func activator_arguments(node: Object, method: StringName, activator: Node) -> Array:
+	var info := _method_info(node, method)
+	var slots := {}
+	_place_activator(info, slots, activator)
+	return _slots_to_args(info, slots)
+
+## Arguments for an input. A parameter goes into the first value argument, or into a leading node argument when it
+## names a target (!player, !self, a targetname). Without a parameter, [param values] an output passed along (the
+## hp of damaged(hp)) fill the arguments of their kind in order. The activator then takes the first free node
+## argument, and the method's defaults fill the gaps. [param from] resolves target names, !self meaning its entity.
+static func input_arguments(node: Object, method: StringName, parameter: String, activator: Node, from: Node = null, values: Array = []) -> Array:
+	var info := _method_info(node, method)
+	var declared: Array = info.get("args", [])
+	var slots := {}
+	var text := parameter.strip_edges()
+	if parameter == "":
+		_place_activator(info, slots, activator)
+		for v in values:
+			var at := _first_free(declared, slots, typeof(v) == TYPE_OBJECT)
+			if at >= 0:
+				slots[at] = v
+		return _slots_to_args(info, slots)
+	if text.begins_with("[") and JSON.parse_string(text) is Array:
+		var list := build_arguments(parameter, activator, node as Node)
+		if declared.is_empty():
+			return list
+		for i in list.size():
+			slots[i] = list[i]
+		_place_activator(info, slots, activator)
+		return _slots_to_args(info, slots)
+	var value: Variant = substitute(parse_parameter(parameter), activator, node as Node)
+	var node_at := _first_free(declared, slots, true)
+	var value_at := _first_free(declared, slots, false)
+	var as_node: Object = null
+	if node_at >= 0 and (value_at < 0 or node_at < value_at):
+		as_node = _as_object(value, from if from else node as Node, activator)
+	if as_node:
+		slots[node_at] = as_node
+	elif value_at >= 0 and typeof(value) != TYPE_OBJECT:
+		slots[value_at] = value
+	_place_activator(info, slots, activator)
+	return _slots_to_args(info, slots)
+
+## [param value] as a node: nodes pass through, text is resolved as a target from [param from], anything else is null.
+static func _as_object(value: Variant, from: Node, activator: Node) -> Object:
+	if typeof(value) == TYPE_OBJECT:
+		return value if is_instance_valid(value) else null
+	if (value is String or value is StringName) and str(value) != "" and from and from.is_inside_tree():
+		var found := find_targets(from, str(value), activator)
+		return found[0] if not found.is_empty() else null
+	return null
 
 ## Arguments for a call: a JSON array parameter spreads into several arguments, placeholders are replaced.
 static func build_arguments(parameter: String, activator: Node, caller: Node) -> Array:
@@ -238,40 +312,72 @@ static func coerce(value: Variant, type: int) -> Variant:
 			return to_color(value) if value is String else value
 	return value
 
+## True when [param value] can be passed to an argument of [param type] without Godot refusing the call.
+static func _fits(value: Variant, type: int) -> bool:
+	match type:
+		TYPE_STRING, TYPE_STRING_NAME:
+			return value is String or value is StringName
+		TYPE_INT, TYPE_FLOAT, TYPE_BOOL:
+			return value is int or value is float or value is bool
+		TYPE_VECTOR3, TYPE_COLOR:
+			return typeof(value) == type
+	return true
+
 ## Calls [param method] on [param node] with [param args], trimming to the declared argument count and converting
-## simple values to the declared parameter types.
-static func call_method(node: Object, method: StringName, args: Array) -> Variant:
+## simple values to the declared parameter types. Text for a node argument is resolved as a target from [param from],
+## and a value that still does not fit its argument is replaced by the argument's default, so a call never fails on
+## a type mismatch.
+static func call_method(node: Object, method: StringName, args: Array, from: Node = null) -> Variant:
 	var resolved := resolve_method(node, method)
 	if resolved == &"":
 		return null
 	var call_args := args.duplicate()
-	for m in node.get_method_list():
-		if m["name"] == resolved:
-			var declared: Array = m["args"]
-			call_args.resize(mini(call_args.size(), declared.size()))
-			for i in call_args.size():
-				call_args[i] = coerce(call_args[i], int(declared[i].get("type", TYPE_NIL)))
-			break
+	var info := _method_info(node, resolved)
+	if not info.is_empty():
+		var declared: Array = info["args"]
+		call_args.resize(mini(call_args.size(), declared.size()))
+		for i in call_args.size():
+			var type := int(declared[i].get("type", TYPE_NIL))
+			if type == TYPE_OBJECT:
+				call_args[i] = _as_object(call_args[i], from if from else node as Node, null)
+				continue
+			var value: Variant = coerce(call_args[i], type)
+			if not _fits(value, type):
+				push_warning("[GT I/O] %s.%s: '%s' does not fit argument %s, using its default" % [node, resolved, str(value), declared[i].get("name", i)])
+				value = _default_argument(info, i)
+			call_args[i] = value
 	return node.callv(resolved, call_args)
 
-## Delivers an input to a node: a method, a property, or one of the built-in inputs.
-static func invoke(node: Node, input: StringName, parameter: String, activator: Node) -> void:
+## True when the script on [param node] (GDScript or C#) defines [param input] itself, not only its engine class.
+static func _script_defines(node: Object, input: StringName) -> bool:
+	var script: Script = node.get_script()
+	var wanted := str(input).to_lower()
+	while script:
+		for m in script.get_script_method_list():
+			if str(m["name"]).to_lower() == wanted:
+				return true
+		script = script.get_base_script()
+	return false
+
+## Delivers an input to a node: a method, a property, or one of the built-in inputs. [param caller] is the output
+## (or node) the call comes from, for resolving target names in the parameter. With an empty parameter,
+## [param values] are the values the output passed along.
+static func invoke(node: Node, input: StringName, parameter: String, activator: Node, caller: Node = null, values: Array = []) -> void:
 	if not is_instance_valid(node):
 		return
-	var method := resolve_method(node, input)
+	var lower := str(input).to_lower()
+	# Node3D and CanvasItem have native show() and hide() that only change visibility. The built in inputs also
+	# stop processing, so they win unless the entity's own script defines show or hide.
+	var builtin_visibility := (lower == "show" or lower == "hide") and not _script_defines(node, input)
+	var method := &"" if builtin_visibility else resolve_method(node, input)
 	if method != &"":
-		var args := build_arguments(parameter, activator, node)
-		if args.is_empty():
-			args = activator_arguments(node, method, activator)
-		elif _declares_activator_at(node, method, args.size()):
-			args.append(activator)
-		call_method(node, method, args)
+		call_method(node, method, input_arguments(node, method, parameter, activator, caller, values), caller)
 		return
-	var value: Variant = parse_parameter(parameter)
-	if input in node and value != null:
+	var value: Variant = parse_parameter(parameter) if parameter != "" else (values[0] if not values.is_empty() else null)
+	if not builtin_visibility and input in node and value != null:
 		node.set(input, value)
 		return
-	match str(input).to_lower():
+	match lower:
 		"kill":
 			node.queue_free()
 		"show", "enable":

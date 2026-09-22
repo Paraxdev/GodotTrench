@@ -25,6 +25,7 @@ class_property_descriptions = Dictionary[String, Variant]({
 meta_properties = Dictionary[String, Variant]({
 "color": Color(0.7019608, 0.4, 1, 1),
 "size": AABB(-8, -8, 0, 8, 8, 24),
-"inputs": ["start", "stop", "toggle", "burst"]
+"inputs": ["start", "stop", "toggle", "burst"],
+"outputs": ["finished"]
 })
 node_class = "GPUParticles3D"

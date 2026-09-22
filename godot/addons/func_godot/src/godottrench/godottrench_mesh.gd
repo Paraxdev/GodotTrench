@@ -15,7 +15,12 @@ static func _newell(points: PackedVector3Array) -> Vector3:
 		n.z += (cur.x - nxt.x) * (cur.y + nxt.y)
 	return n
 
-## Triangle corner indices of a polygon, counter-clockwise around [param normal].
+static func _cross2(a: Vector2, b: Vector2, c: Vector2) -> float:
+	return (b - a).cross(c - a)
+
+## Triangle corner indices of a polygon, counter-clockwise around [param normal]. Ear clipping, mirroring
+## gt_geom::polygon::triangulate exactly (including its shorter-diagonal quad split) so the editor and the Godot
+## build triangulate the same face the same way.
 static func triangulate(points: PackedVector3Array, normal: Vector3) -> PackedInt32Array:
 	var n := points.size()
 	if n < 3:
@@ -26,24 +31,59 @@ static func triangulate(points: PackedVector3Array, normal: Vector3) -> PackedIn
 	var helper := Vector3.UP if absf(nn.y) < 0.9 else Vector3.RIGHT
 	var u := helper.cross(nn).normalized()
 	var v := nn.cross(u)
-	var flat := PackedVector2Array()
+	var p2 := PackedVector2Array()
 	for p in points:
-		flat.append(Vector2(p.dot(u), p.dot(v)))
-	var tris := Geometry2D.triangulate_polygon(flat)
-	if tris.is_empty():
-		for k in range(1, n - 1):
-			tris.append_array([0, k, k + 1])
-		return tris
-	# Geometry2D may return either winding, triangles are flipped to match the polygon.
-	for t in range(0, tris.size(), 3):
-		var a := flat[tris[t]]
-		var b := flat[tris[t + 1]]
-		var c := flat[tris[t + 2]]
-		if (b - a).cross(c - a) < 0.0:
-			var tmp := tris[t + 1]
-			tris[t + 1] = tris[t + 2]
-			tris[t + 2] = tmp
-	return tris
+		p2.append(Vector2(p.dot(u), p.dot(v)))
+
+	if n == 4:
+		var convex_quad := true
+		for i in 4:
+			if _cross2(p2[i], p2[(i + 1) % 4], p2[(i + 2) % 4]) <= 0.0:
+				convex_quad = false
+				break
+		if convex_quad:
+			# Split along the shorter diagonal, it keeps slivers out of near-planar quads.
+			if p2[0].distance_squared_to(p2[2]) <= p2[1].distance_squared_to(p2[3]):
+				return PackedInt32Array([0, 1, 2, 0, 2, 3])
+			return PackedInt32Array([0, 1, 3, 1, 2, 3])
+
+	var idx: Array[int] = []
+	for i in n:
+		idx.append(i)
+	var out := PackedInt32Array()
+	var guard := 0
+	while idx.size() > 3 and guard < n * n:
+		guard += 1
+		var m := idx.size()
+		var clipped := false
+		for k in m:
+			var ia: int = idx[(k + m - 1) % m]
+			var ib: int = idx[k]
+			var ic: int = idx[(k + 1) % m]
+			var a := p2[ia]
+			var b := p2[ib]
+			var c := p2[ic]
+			if _cross2(a, b, c) <= 1e-12:
+				continue
+			var blocked := false
+			for j in idx:
+				if j != ia and j != ib and j != ic and p2[j] != a and p2[j] != b and p2[j] != c and _cross2(a, b, p2[j]) >= -1e-9 and _cross2(b, c, p2[j]) >= -1e-9 and _cross2(c, a, p2[j]) >= -1e-9:
+					blocked = true
+					break
+			if blocked:
+				continue
+			out.append_array([ia, ib, ic])
+			idx.remove_at(k)
+			clipped = true
+			break
+		if not clipped:
+			break
+	if idx.size() == 3:
+		out.append_array([idx[0], idx[1], idx[2]])
+	elif idx.size() > 3:
+		for k in range(1, idx.size() - 1):
+			out.append_array([idx[0], idx[k], idx[k + 1]])
+	return out
 
 ## Brush data for one mesh node. [param xform] places it (Godot space, map units), [param scale] converts to FuncGodot units.
 static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_texture: String) -> _BrushData:
@@ -123,9 +163,13 @@ static func parse(node: Dictionary, xform: Transform3D, scale: float, origin_tex
 		var id_normal := GodotTrenchParser.to_id(unit)
 		face.plane = Plane(id_normal, id_normal.dot(GodotTrenchParser.to_id(centroid) * scale))
 		face.texture = str(src.get("material", ""))
-		var blend_material := str(src.get("props", {}).get("blend_material", ""))
+		var face_props: Dictionary = src.get("props", {})
+		var blend_material := str(face_props.get("blend_material", ""))
 		if blend_material != "":
-			face.texture = GodotTrenchBlend.key(face.texture, blend_material)
+			var detile := float(face_props.get("blend_detile", 0.0))
+			var uv_scale := float(face_props.get("blend_uv_scale", 1.0))
+			var sharpen := float(face_props.get("blend_detile_sharpen", 0.5))
+			face.texture = GodotTrenchBlend.key(face.texture, blend_material, detile, uv_scale, sharpen)
 		if decal:
 			face.texture += GodotTrenchDecalMesh.SUFFIX
 		for p in pts:

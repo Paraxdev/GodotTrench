@@ -1,7 +1,7 @@
 @tool
 class_name GTAnimate extends Node3D
 ## logic_animate: plays animations on the AnimationPlayer under a target entity, so I/O can drive doors, props or
-## characters that carry their own animations. Inputs: play(name), stop, queue(name), seek(time). Output: finished(name).
+## characters that carry their own animations. Inputs: play(name), stop, queue(name), seek(time). Output: finished(anim).
 
 signal finished(anim: String)
 

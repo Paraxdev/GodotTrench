@@ -13,17 +13,21 @@ signal exited(activator: Node)
 @export var start_disabled := false
 ## Disables itself after firing once.
 @export var once := false
-## Seconds between firings.
+## Seconds before the same body fires it again.
 @export var cooldown := 0.5
 
 var enabled := true
-var _last_fired := -1.0e9
+## Seconds each body last fired it at, by instance id.
+var _last_fired: Dictionary = {}
 
 func _func_godot_apply_properties(props: Dictionary) -> void:
 	filter_group = str(props.get("filter_group", filter_group))
 	start_disabled = GodotTrenchIO.to_bool(props.get("start_disabled", start_disabled))
 	once = GodotTrenchIO.to_bool(props.get("once", once))
 	cooldown = float(props.get("cooldown", cooldown))
+	# A map built inside the running tree applies properties after _ready.
+	if is_node_ready() and not Engine.is_editor_hint():
+		enabled = not start_disabled
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
@@ -40,9 +44,14 @@ func _body_entered(body: Node) -> void:
 		return
 	entered.emit(body)
 	var now := Time.get_ticks_msec() / 1000.0
-	if now - _last_fired < cooldown:
+	var id := body.get_instance_id()
+	if now - float(_last_fired.get(id, -1.0e9)) < cooldown:
 		return
-	_last_fired = now
+	if _last_fired.size() > 64:
+		for key in _last_fired.keys():
+			if now - float(_last_fired[key]) >= cooldown:
+				_last_fired.erase(key)
+	_last_fired[id] = now
 	fire(body)
 
 func _body_exited(body: Node) -> void:

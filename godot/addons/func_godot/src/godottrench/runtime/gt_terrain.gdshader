@@ -86,7 +86,9 @@ void fragment() {
 	vec3 c2 = layer(layer2, tiles.z, detiles.z, sharpens.z, blend);
 	vec3 c3 = layer(layer3, tiles.w, detiles.w, sharpens.w, blend);
 	vec4 w = COLOR;
-	float sum = max(w.r + w.g + w.b + w.a, 0.0001);
-	ALBEDO = (c0 * w.r + c1 * w.g + c2 * w.b + c3 * w.a) / sum;
+	float sum = w.r + w.g + w.b + w.a;
+	// An all zero splat means the first layer, matching Terrain::weights.
+	w = sum > 0.0001 ? w / sum : vec4(1.0, 0.0, 0.0, 0.0);
+	ALBEDO = c0 * w.r + c1 * w.g + c2 * w.b + c3 * w.a;
 	ROUGHNESS = roughness_value;
 }

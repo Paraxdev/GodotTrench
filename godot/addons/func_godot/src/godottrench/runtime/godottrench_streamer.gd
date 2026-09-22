@@ -6,6 +6,11 @@ class_name GodotTrenchStreamer extends Node3D
 ## costs what the player can see rather than what the map contains. It has no visuals of its own and touches
 ## nothing but [member Node3D.visible] on visual nodes, so scripts, physics and gameplay keep running.
 ##
+## Only geometry the map build generated is streamed. Visuals created at runtime (game_text and logic_debug
+## labels, spawned scenes) and everything under a moving body (func_train, func_door, npc_walker, prop_physics)
+## are left alone, since their chunk would be wrong as soon as they move. A visual that gameplay hid stays hidden
+## when its chunk comes back into range.
+##
 ## Set it up by giving worldspawn the key [code]chunk_streaming[/code] (plus optional [code]chunk_size[/code]
 ## and [code]load_radius[/code] in map units) and the map build adds one. It follows the viewport's current
 ## camera by default, so it works with your own player, and falls back to an [code]info_player_start[/code]
@@ -46,6 +51,21 @@ class Chunk:
 	var bounds: AABB
 	var nodes: Array[Node3D] = []
 	var shown := true
+	## Nodes this streamer hid, so coming back into range only restores those and not ones gameplay hid.
+	var hidden: Array[Node3D] = []
+
+	func set_shown(value: bool) -> void:
+		shown = value
+		if value:
+			for node in hidden:
+				if is_instance_valid(node):
+					node.visible = true
+			hidden.clear()
+			return
+		for node in nodes:
+			if is_instance_valid(node) and node.visible:
+				node.visible = false
+				hidden.append(node)
 
 var _chunks: Array[Chunk] = []
 var _fallback := Vector3.INF
@@ -98,24 +118,28 @@ func _visual_aabb(node: Node3D) -> AABB:
 		box = box.expand(node.global_transform * local.get_endpoint(i))
 	return box
 
-## Every visual below [param node], descending through plain containers so a scatter set's chunks and a
-## terrain's chunks are streamed one by one rather than all at once.
+## Every build generated visual below [param node], descending through plain containers so a scatter set's
+## chunks and a terrain's chunks are streamed one by one rather than all at once.
 func _collect(node: Node, out: Array[Node3D]) -> void:
 	for child in node.get_children():
-		if child == self or child is Light3D or child is WorldEnvironment:
+		if child == self or child is Light3D or child is WorldEnvironment or is_moving_body(child):
 			continue
 		if child is VisualInstance3D:
-			out.append(child)
+			# Nodes without an owner were added at runtime, by entity scripts or game code, not by the build.
+			if child.owner != null:
+				out.append(child)
 			continue
 		if child is Node3D:
 			_collect(child, out)
 
+## Bodies that move at runtime, their visuals travel with them and cannot be bucketed by where they started.
+static func is_moving_body(node: Node) -> bool:
+	return node is AnimatableBody3D or node is RigidBody3D or node is CharacterBody3D or node is PhysicalBone3D
+
 ## Rereads the map's visuals and regroups them. Called on load, and again whenever the map is rebuilt.
 func rebuild() -> void:
 	for chunk in _chunks:
-		for node in chunk.nodes:
-			if is_instance_valid(node):
-				node.visible = true
+		chunk.set_shown(true)
 	_chunks.clear()
 	_fallback = Vector3.INF
 	_last_eye = Vector3.INF
@@ -153,9 +177,7 @@ func rebuild() -> void:
 		# Start from nothing drawn, so the first frame reports everything it brings in through area_loaded and a
 		# listener connected before then sees the whole sequence.
 		for chunk in _chunks:
-			chunk.shown = false
-			for node in chunk.nodes:
-				node.visible = false
+			chunk.set_shown(false)
 
 func _viewer() -> Vector3:
 	if not camera_path.is_empty():
@@ -196,10 +218,7 @@ func _process(_delta: float) -> void:
 		var shown := distance <= (hide_beyond if chunk.shown else show_within)
 		if shown == chunk.shown:
 			continue
-		chunk.shown = shown
-		for node in chunk.nodes:
-			if is_instance_valid(node):
-				node.visible = shown
+		chunk.set_shown(shown)
 		if shown:
 			area_loaded.emit(chunk.key, chunk.bounds)
 		else:

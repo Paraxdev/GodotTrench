@@ -1,6 +1,6 @@
 @tool
 class_name GTSpawnArea extends GTTrigger
-## trigger_spawn_area: spawns [member GTSpawnLogic.scene] at random spots inside its volume when a body of
+## trigger_spawn_area: spawns [member scene] at random spots inside its volume when a body of
 ## [member GTTrigger.filter_group] enters, on input, or on a timer.
 ## Inputs: spawn, start, stop, toggle, kill_all. Outputs: spawned(node), all_dead, exhausted.
 
@@ -10,23 +10,37 @@ signal exhausted
 
 @export var interval := 0.0
 @export var spawn_on_enter := true
+## res:// scene to spawn.
+@export var scene := ""
+@export var count := 3
+@export var max_alive := 10
+## Stops after this many, 0 is unlimited.
+@export var total := 0
+@export var spawn_group := "enemies"
+@export var snap_to_ground := true
 
 var logic := GTSpawnLogic.new()
 var active := false
 var _timer: Timer
-var _props: Dictionary = {}
 
 func _func_godot_apply_properties(props: Dictionary) -> void:
 	super(props)
-	_props = props
+	scene = str(props.get("scene", scene))
+	count = int(props.get("count", count))
+	max_alive = int(props.get("max_alive", max_alive))
+	total = int(props.get("total", total))
+	spawn_group = str(props.get("spawn_group", spawn_group))
+	snap_to_ground = GodotTrenchIO.to_bool(props.get("snap_to_ground", snap_to_ground))
 	interval = float(props.get("interval", interval))
 	spawn_on_enter = GodotTrenchIO.to_bool(props.get("spawn_on_enter", spawn_on_enter))
+	if is_node_ready() and not Engine.is_editor_hint():
+		logic.configure(self, GTSpawnLogic.settings_of(self))
 
 func _ready() -> void:
 	super()
 	if Engine.is_editor_hint():
 		return
-	logic.configure(self, _props)
+	logic.configure(self, GTSpawnLogic.settings_of(self))
 	logic.spawned.connect(func(n): spawned.emit(n))
 	logic.all_dead.connect(func(): all_dead.emit())
 	logic.exhausted.connect(func(): exhausted.emit())

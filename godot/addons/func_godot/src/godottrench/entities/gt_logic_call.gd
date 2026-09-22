@@ -38,6 +38,6 @@ static func call_targets(from: Node, target: String, method_name: String, args_j
 		if GodotTrenchIO.resolve_method(node, method_name) == &"":
 			push_warning("[GT] %s has no method %s (or %s)" % [node.name, method_name, method_name.to_pascal_case()])
 			continue
-		result = GodotTrenchIO.call_method(node, method_name, GodotTrenchIO.build_arguments(args_json, activator, from))
+		result = GodotTrenchIO.call_method(node, method_name, GodotTrenchIO.build_arguments(args_json, activator, from), from)
 	GodotTrenchIO.events().fired.emit(from, &"call", target, StringName(method_name), args_json)
 	return result

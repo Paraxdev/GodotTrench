@@ -1,7 +1,7 @@
 @tool
 class_name GTHurt extends GTTrigger
 ## trigger_hurt: calls [member damage_method](amount, source) on bodies inside every [member interval] seconds.
-## Output: hurt(activator).
+## Output: hurt(activator), for bodies that took damage: they have the damage method, or filter_group picked them.
 
 signal hurt(activator: Node)
 
@@ -29,6 +29,8 @@ func _physics_process(delta: float) -> void:
 		apply_damage(body)
 
 func apply_damage(body: Node) -> void:
-	if GodotTrenchIO.resolve_method(body, damage_method) != &"":
+	var damageable := GodotTrenchIO.resolve_method(body, damage_method) != &""
+	if damageable:
 		GodotTrenchIO.call_method(body, damage_method, [damage * interval, self])
-	hurt.emit(body)
+	if damageable or filter_group != "":
+		hurt.emit(body)

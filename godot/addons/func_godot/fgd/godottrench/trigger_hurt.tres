@@ -15,14 +15,16 @@ class_properties = Dictionary[String, Variant]({
 "damage": 10.0,
 "damage_method": "take_damage",
 "interval": 0.5,
-"filter_group": ""
+"filter_group": "",
+"start_disabled": false
 })
 class_property_descriptions = Dictionary[String, Variant]({
 "targetname": "Name",
 "damage": "Damage per second",
 "damage_method": "Method called on the body with (amount, source)",
 "interval": "Seconds between damage ticks",
-"filter_group": "Only bodies in this group, empty hurts any body"
+"filter_group": "Only bodies in this group, empty hurts any body",
+"start_disabled": "Needs an enable input first"
 })
 meta_properties = Dictionary[String, Variant]({
 "color": Color(1, 0.2, 0.2, 1),

@@ -20,7 +20,9 @@ class_properties = Dictionary[String, Variant]({
 "spawn_on_enter": true,
 "filter_group": "player",
 "spawn_group": "enemies",
-"snap_to_ground": true
+"snap_to_ground": true,
+"cooldown": 0.5,
+"start_disabled": false
 })
 class_property_descriptions = Dictionary[String, Variant]({
 "targetname": "Name",
@@ -32,7 +34,9 @@ class_property_descriptions = Dictionary[String, Variant]({
 "spawn_on_enter": "Spawns when a body of filter_group enters",
 "filter_group": "Group that activates the area",
 "spawn_group": "Group added to spawned nodes",
-"snap_to_ground": "Drops spawns onto the floor below"
+"snap_to_ground": "Drops spawns onto the floor below",
+"cooldown": "Seconds before the same body fires it again",
+"start_disabled": "Needs an enable input first"
 })
 meta_properties = Dictionary[String, Variant]({
 "color": Color(0.9019608, 0.3019608, 0.3019608, 1),

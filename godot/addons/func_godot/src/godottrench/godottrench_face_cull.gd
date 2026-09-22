@@ -58,8 +58,55 @@ class Solid:
 				crossings += 1
 		return crossings % 2 == 1
 
+## Segment a-b passing through the inside of triangle t0-t1-t2. Touching an edge or ending on the plane does not
+## count. Mirrors segment_hits_triangle in crates/gt_editor/src/face_cull.rs.
+static func _segment_hits_triangle(a: Vector3, b: Vector3, t0: Vector3, t1: Vector3, t2: Vector3) -> bool:
+	const EPS := 1e-6
+	var dir := b - a
+	var e1 := t1 - t0
+	var e2 := t2 - t0
+	var p := dir.cross(e2)
+	var det := e1.dot(p)
+	if absf(det) < 1e-12:
+		return false
+	var inv := 1.0 / det
+	var s := a - t0
+	var u := s.dot(p) * inv
+	var q := s.cross(e1)
+	var v := dir.dot(q) * inv
+	var tt := e2.dot(q) * inv
+	return u > EPS and v > EPS and u + v < 1.0 - EPS and tt > EPS and tt < 1.0 - EPS
+
+## Whether [param solid]'s own surface triangles cut through [param entry]'s polygon anywhere, meaning part of
+## it lies outside a concave mesh even though every sampled corner tested inside. Mirrors crosses_surface.
+static func _crosses_surface(entry: Entry, solid: Solid) -> bool:
+	var poly := entry.points
+	var face_tris := GodotTrenchMesh.triangulate(poly, entry.normal)
+	var reach := entry.bounds.grow(COPLANAR_DIST)
+	var tris := solid.tris
+	var i := 0
+	while i < tris.size():
+		var a: Vector3 = tris[i]
+		var b: Vector3 = tris[i + 1]
+		var c: Vector3 = tris[i + 2]
+		var tri_bounds := AABB(a, Vector3.ZERO).expand(b).expand(c)
+		if tri_bounds.intersects(reach):
+			for k in poly.size():
+				if _segment_hits_triangle(poly[k], poly[(k + 1) % poly.size()], a, b, c):
+					return true
+			for k in 3:
+				var sa: Vector3 = tris[i + k]
+				var sb: Vector3 = tris[i + (k + 1) % 3]
+				for t in range(0, face_tris.size(), 3):
+					if _segment_hits_triangle(sa, sb, poly[face_tris[t]], poly[face_tris[t + 1]], poly[face_tris[t + 2]]):
+						return true
+		i += 3
+	return false
+
 ## True when [param face] has solid material on both of its sides inside [param solid]. Probing to both sides
-## keeps a face resting on the solid's surface out of it, that one belongs to the coplanar pass.
+## keeps a face resting on the solid's surface out of it, that one belongs to the coplanar pass. Brushes are
+## convex, so their corners decide it. A closed mesh can be concave, there the face must also not cross its
+## surface, so a face spanning an opening of the mesh is not wrongly counted as buried.
 static func _buried_in(solid: Solid, entry: Entry) -> bool:
 	var nudge := entry.normal * COPLANAR_DIST
 	var centroid := Vector3.ZERO
@@ -71,6 +118,8 @@ static func _buried_in(solid: Solid, entry: Entry) -> bool:
 	for p in samples:
 		if not solid.contains(p + nudge) or not solid.contains(p - nudge):
 			return false
+	if solid.is_mesh and _crosses_surface(entry, solid):
+		return false
 	return true
 
 static func _solid(brush: FuncGodotData.BrushData, inv_scale: float) -> Solid:
@@ -95,9 +144,14 @@ static func _solid(brush: FuncGodotData.BrushData, inv_scale: float) -> Solid:
 			first = false
 		centroid /= float(points.size())
 		if solid.is_mesh:
-			# Fan triangulation is enough, the map's faces are convex.
-			for k in range(1, points.size() - 1):
-				solid.tris.append_array([points[0], points[k], points[k + 1]])
+			# Faces can be concave, so use the face's own triangulation (disp_indices) instead of a fan.
+			var tris: PackedInt32Array = face.disp_indices
+			for t in range(0, tris.size() - 2, 3):
+				var ia := tris[t]
+				var ib := tris[t + 1]
+				var ic := tris[t + 2]
+				if ia < points.size() and ib < points.size() and ic < points.size():
+					solid.tris.append_array([points[ia], points[ib], points[ic]])
 		else:
 			solid.normals.append(face.plane.normal)
 			solid.dists.append(face.plane.normal.dot(centroid))
@@ -117,10 +171,18 @@ static func apply(entities: Array[FuncGodotData.EntityData], settings: FuncGodot
 		for brush in entity.brushes:
 			if brush.origin or (brush.has_disp and not brush.is_mesh):
 				continue
-			# A solid hides what is inside it whatever its textures are, so this is not filtered by material.
-			var solid := _solid(brush, inv_scale)
-			if solid:
-				solids.append(solid)
+			# A container only hides what is inside it when it is drawn opaque on every one of its faces: a box
+			# with any tool textured face (special/clip/trigger/skip/nodraw) or any see-through one (like water)
+			# shows what is inside it there, so it must not bury detail placed inside it either.
+			var every_face_solid := not brush.faces.is_empty()
+			for f in brush.faces:
+				if FuncGodotUtil.filter_face(f.texture, settings) or not _opaque(materials.get(f.texture)):
+					every_face_solid = false
+					break
+			if every_face_solid:
+				var solid := _solid(brush, inv_scale)
+				if solid:
+					solids.append(solid)
 			for fi in brush.faces.size():
 				var face := brush.faces[fi]
 				if FuncGodotUtil.filter_face(face.texture, settings) or not _opaque(materials.get(face.texture)):

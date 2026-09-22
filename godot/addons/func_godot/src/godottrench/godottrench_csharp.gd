@@ -70,18 +70,85 @@ static func _cs_type(cs: String) -> String:
 			return "resource"
 	return "string"
 
+## A C# numeric literal such as 3.5f, -2, 1e3d or 10m as text, else "".
+static func _cs_number(text: String) -> String:
+	var v := text.strip_edges()
+	if v.length() > 1 and v[v.length() - 1].to_lower() in ["f", "d", "m"]:
+		v = v.substr(0, v.length() - 1)
+	return v if v.is_valid_float() else ""
+
+## The numbers inside a C# constructor call like new Vector3(1, 2f, 3), or [] when any argument is not a literal.
+static func _cs_call_numbers(text: String) -> Array:
+	var open := text.find("(")
+	var close := text.rfind(")")
+	if open < 0 or close < open or text.substr(close + 1).strip_edges() != "":
+		return []
+	var out := []
+	for part in text.substr(open + 1, close - open - 1).split(",", false):
+		var n := _cs_number(part)
+		if n == "":
+			return []
+		out.append(n.to_float())
+	return out
+
+const _CS_VECTORS := {
+	"Zero": "0 0 0", "One": "1 1 1", "Up": "0 1 0", "Down": "0 -1 0", "Left": "-1 0 0", "Right": "1 0 0",
+	"Forward": "0 0 -1", "Back": "0 0 1",
+}
+
+## The map default for a C# member initializer. An initializer this cannot read, such as 2 * Mathf.Pi, gives "", so
+## the key stays empty and the member keeps the value its C# initializer gives it.
 static func _cs_default(value: String, type: String) -> String:
 	var v := value.strip_edges().trim_suffix(";").strip_edges()
 	match type:
 		"float", "int":
-			return v.trim_suffix("f").trim_suffix("d") if v != "" else "0"
+			if v == "":
+				return "0"
+			var n := _cs_number(v)
+			if n != "" and type == "int" and not n.is_valid_int():
+				return ""
+			return n
 		"bool":
-			return "1" if v == "true" else "0"
+			if v == "" or v == "false":
+				return "0"
+			return "1" if v == "true" else ""
 		"vector3":
-			var inside := v.substr(v.find("(") + 1) if v.contains("(") else v
-			var nums := RegEx.create_from_string("-?[\\d.]+").search_all(inside).map(func(m): return m.get_string().trim_suffix("f"))
-			return " ".join(nums) if nums.size() >= 3 else "0 0 0"
-	return v.trim_prefix("\"").trim_suffix("\"")
+			if v == "":
+				return "0 0 0"
+			if v.begins_with("Vector3."):
+				return _CS_VECTORS.get(v.trim_prefix("Vector3."), "")
+			if v.begins_with("new"):
+				var nums := _cs_call_numbers(v)
+				if nums.size() == 3:
+					return "%s %s %s" % [_gd_num(nums[0]), _gd_num(nums[1]), _gd_num(nums[2])]
+			return ""
+		"color":
+			var color: Variant = null
+			if v.begins_with("Colors."):
+				var named := Color.from_string(v.trim_prefix("Colors."), Color(-1, -1, -1))
+				color = named if named.r >= 0.0 else null
+			elif v.begins_with("new") or v.begins_with("Color.FromHtml") or v.begins_with("Color.FromString"):
+				var quoted := RegEx.create_from_string("\"([^\"]*)\"").search(v)
+				if quoted:
+					var parsed := Color.from_string(quoted.get_string(1), Color(-1, -1, -1))
+					color = parsed if parsed.r >= 0.0 else null
+				else:
+					var nums := _cs_call_numbers(v)
+					if nums.size() == 3 or nums.size() == 4:
+						color = Color(nums[0], nums[1], nums[2])
+			return "%d %d %d" % [color.r8, color.g8, color.b8] if color is Color else ""
+		"resource":
+			var path := RegEx.create_from_string("\"((?:res|uid)://[^\"]*)\"").search(v)
+			return path.get_string(1) if path else ""
+		"target_destination":
+			var np := RegEx.create_from_string("^(?:new\\s+NodePath\\s*\\(\\s*)?\"([^\"]*)\"\\s*\\)?$").search(v)
+			return np.get_string(1) if np else ""
+	if v.length() >= 2 and v.begins_with("\"") and v.ends_with("\"") and not v.substr(1, v.length() - 2).contains("\""):
+		return v.substr(1, v.length() - 2)
+	return ""
+
+static func _gd_num(f: float) -> String:
+	return str(int(f)) if f == floorf(f) and absf(f) < 1.0e9 else str(f)
 
 static func _params(text: String) -> String:
 	var names: PackedStringArray = []
@@ -194,6 +261,10 @@ static func definitions(dirs: PackedStringArray = source_dirs()) -> Dictionary:
 		def.node_class = e["node_class"]
 		var props: Dictionary[String, Variant] = {}
 		for p in e["properties"]:
+			# An empty default stays text, so the key arrives empty and apply_properties leaves the member alone.
+			if str(p["default"]) == "":
+				props[p["name"]] = ""
+				continue
 			match p["type"]:
 				"float":
 					props[p["name"]] = float(p["default"])
@@ -214,21 +285,37 @@ static func definitions(dirs: PackedStringArray = source_dirs()) -> Dictionary:
 static func apply_properties(node: Node, properties: Dictionary) -> bool:
 	if node.has_method("_func_godot_apply_properties"):
 		return false
+	var types := {}
+	for prop in node.get_property_list():
+		types[prop["name"]] = int(prop["type"])
 	for key in properties:
 		var member := str(key).to_pascal_case()
-		if member in node:
-			var current: Variant = node.get(member)
-			var value: Variant = properties[key]
-			match typeof(current):
-				TYPE_VECTOR3:
-					value = GodotTrenchIO.to_vector3(value)
-				TYPE_COLOR:
-					value = GodotTrenchIO.to_color(value)
-				TYPE_BOOL:
-					value = GodotTrenchIO.to_bool(value)
-				TYPE_FLOAT:
-					value = float(value)
-				TYPE_INT:
-					value = int(value)
-			node.set(member, value)
+		if not member in node:
+			continue
+		var value: Variant = properties[key]
+		# An empty key means the map did not set it, the member keeps its C# initializer.
+		if value is String and value == "":
+			continue
+		var current: Variant = node.get(member)
+		var type: int = types.get(member, typeof(current))
+		match type:
+			TYPE_VECTOR3:
+				value = GodotTrenchIO.to_vector3(value)
+			TYPE_COLOR:
+				value = GodotTrenchIO.to_color(value)
+			TYPE_BOOL:
+				value = GodotTrenchIO.to_bool(value)
+			TYPE_FLOAT:
+				value = float(value)
+			TYPE_INT:
+				value = int(value)
+			TYPE_NODE_PATH:
+				value = NodePath(str(value))
+			TYPE_OBJECT:
+				if value is String:
+					if not ResourceLoader.exists(value):
+						push_warning("[GT] %s: resource %s for %s not found" % [node.name, value, member])
+						continue
+					value = load(value)
+		node.set(member, value)
 	return true

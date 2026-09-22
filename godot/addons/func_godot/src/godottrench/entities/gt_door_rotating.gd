@@ -29,6 +29,8 @@ var is_open := false
 var _closed: Transform3D
 var _angle := 0.0
 var _tween: Tween
+## Bumped by every open and close, so an auto close timer from an earlier opening does nothing.
+var _cycle := 0
 
 func _func_godot_apply_properties(props: Dictionary) -> void:
 	hinge = GodotTrenchIO.to_vector3(props.get("hinge", hinge))
@@ -83,6 +85,7 @@ func open(activator: Node = null) -> void:
 		locked_use.emit(activator)
 		return
 	is_open = true
+	_cycle += 1
 	started_opening.emit()
 	_swing(angle_for(activator), opened)
 
@@ -90,6 +93,7 @@ func close() -> void:
 	if not is_open:
 		return
 	is_open = false
+	_cycle += 1
 	started_closing.emit()
 	_swing(0.0, closed)
 
@@ -114,7 +118,10 @@ func _swing(target: float, done: Signal) -> void:
 		_tween.kill()
 	_tween = create_tween()
 	_tween.tween_method(_set_angle, _angle, target, absf(target - _angle) / maxf(speed, 0.001))
+	var cycle := _cycle
 	_tween.finished.connect(func():
 		done.emit()
 		if is_open and wait >= 0.0 and is_inside_tree():
-			get_tree().create_timer(wait).timeout.connect(close))
+			get_tree().create_timer(wait).timeout.connect(func():
+				if cycle == _cycle:
+					close()))

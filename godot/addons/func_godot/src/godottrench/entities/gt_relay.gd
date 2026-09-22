@@ -13,6 +13,9 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	start_disabled = GodotTrenchIO.to_bool(props.get("start_disabled", start_disabled))
 	enabled = not start_disabled
 
+func _ready() -> void:
+	enabled = not start_disabled
+
 func trigger(activator: Node = null) -> void:
 	if enabled:
 		triggered.emit(activator)

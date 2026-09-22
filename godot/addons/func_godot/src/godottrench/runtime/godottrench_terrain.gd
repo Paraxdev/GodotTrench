@@ -1,7 +1,7 @@
 @tool
 class_name GodotTrenchTerrain extends StaticBody3D
-## Heightmap terrain built from a GodotTrench terrain node: chunked meshes with a four layer blend shader
-## and a [HeightMapShape3D] for collision.
+## Heightmap terrain built from a GodotTrench terrain node: chunked meshes with a four layer blend shader,
+## each chunk colliding as a [ConcavePolygonShape3D] built from the same triangles it renders.
 
 const SHADER := preload("res://addons/func_godot/src/godottrench/runtime/gt_terrain.gdshader")
 
@@ -12,20 +12,42 @@ const SHADER := preload("res://addons/func_godot/src/godottrench/runtime/gt_terr
 ## Heights in meters relative to this node, row major (z then x).
 @export var heights := PackedFloat32Array()
 
-## Height of the terrain surface in local space at a local x/z position, or NAN outside.
+## Barycentric weights of [param px]/[param pz] in the XZ projection of triangle abc, or a negative weight when
+## the point is outside it.
+static func _barycentric(px: float, pz: float, a: Vector3, b: Vector3, c: Vector3) -> Vector3:
+	var v0x := b.x - a.x
+	var v0z := b.z - a.z
+	var v1x := c.x - a.x
+	var v1z := c.z - a.z
+	var v2x := px - a.x
+	var v2z := pz - a.z
+	var den := v0x * v1z - v1x * v0z
+	if absf(den) < 1e-12:
+		return Vector3(-1.0, -1.0, -1.0)
+	var v := (v2x * v1z - v1x * v2z) / den
+	var w := (v0x * v2z - v2x * v0z) / den
+	return Vector3(1.0 - v - w, v, w)
+
+## Height of the terrain surface in local space at a local x/z position, or NAN outside. Follows the same
+## triangles as the rendered mesh and Terrain::height_at, respecting the alternating diagonal.
 func height_at(local_x: float, local_z: float) -> float:
 	var fx := local_x / cell_size
 	var fz := local_z / cell_size
 	if fx < 0.0 or fz < 0.0 or fx > resolution.x - 1 or fz > resolution.y - 1:
 		return NAN
-	var i := mini(int(fx), resolution.x - 2)
-	var j := mini(int(fz), resolution.y - 2)
-	var tx := fx - i
-	var tz := fz - j
+	var ci := mini(int(fx), resolution.x - 2)
+	var cj := mini(int(fz), resolution.y - 2)
 	var h := func(x: int, z: int) -> float: return heights[z * resolution.x + x]
-	var top := lerpf(h.call(i, j), h.call(i + 1, j), tx)
-	var bottom := lerpf(h.call(i, j + 1), h.call(i + 1, j + 1), tx)
-	return lerpf(top, bottom, tz)
+	var p00 := Vector3(ci * cell_size, h.call(ci, cj), cj * cell_size)
+	var p01 := Vector3(ci * cell_size, h.call(ci, cj + 1), (cj + 1) * cell_size)
+	var p11 := Vector3((ci + 1) * cell_size, h.call(ci + 1, cj + 1), (cj + 1) * cell_size)
+	var p10 := Vector3((ci + 1) * cell_size, h.call(ci + 1, cj), cj * cell_size)
+	var tris: Array = [[p00, p01, p11], [p00, p11, p10]] if (ci + cj) % 2 == 0 else [[p00, p01, p10], [p01, p11, p10]]
+	for tri in tris:
+		var bary := _barycentric(local_x, local_z, tri[0], tri[1], tri[2])
+		if bary.x >= -1e-6 and bary.y >= -1e-6 and bary.z >= -1e-6:
+			return bary.x * tri[0].y + bary.y * tri[1].y + bary.z * tri[2].y
+	return h.call(ci, cj)
 
 static var _nearest_shader: Shader
 
@@ -58,14 +80,17 @@ static func build_all(map_node: Node3D, terrains: Array[Dictionary], settings: F
 		var parent: Node = map_node
 		if settings.use_groups_hierarchy and group and group.node:
 			parent = group.node
-		var terrain := build_one(map_node, parent, entry["data"], entry.get("offset", Vector3.ZERO), int(entry.get("id", out.size())), settings)
+		var terrain := build_one(map_node, parent, entry["data"], entry.get("xform", Transform3D.IDENTITY), int(entry.get("id", out.size())), settings)
 		if terrain:
 			out.append(terrain)
 	return out
 
 ## Creates one terrain node named after its map node id under [param parent], owned like the other generated nodes.
-static func build_one(map_node: Node, parent: Node, data: Dictionary, offset: Vector3, id: int, settings: FuncGodotMapSettings) -> GodotTrenchTerrain:
-	var terrain := create(data, offset, settings)
+## [param xform] places it: a [Transform3D] for an instance occurrence (rotates the terrain's center about the
+## instance, like Terrain::transformed, the grid itself stays axis aligned), or a plain [Vector3] offset for a
+## live rebuild that only moves the terrain.
+static func build_one(map_node: Node, parent: Node, data: Dictionary, xform: Variant, id: int, settings: FuncGodotMapSettings) -> GodotTrenchTerrain:
+	var terrain := create(data, xform, settings)
 	if not terrain:
 		return null
 	terrain.name = "terrain_%d" % id
@@ -128,7 +153,7 @@ static func _chunk_arrays(start: Vector2i, chunk_cells: int, res: Vector2i, cell
 	arrays[Mesh.ARRAY_INDEX] = indices
 	return arrays
 
-static func create(data: Dictionary, offset: Vector3, settings: FuncGodotMapSettings) -> GodotTrenchTerrain:
+static func create(data: Dictionary, xform: Variant, settings: FuncGodotMapSettings) -> GodotTrenchTerrain:
 	var res_raw: Array = data.get("resolution", [0, 0])
 	var res := Vector2i(int(res_raw[0]), int(res_raw[1]))
 	var raw_heights := _decode_f32(str(data.get("heights", "")))
@@ -142,7 +167,15 @@ static func create(data: Dictionary, offset: Vector3, settings: FuncGodotMapSett
 	var chunk_cells := maxi(int(data.get("chunk_cells", 32)), 1)
 
 	var t := GodotTrenchTerrain.new()
-	t.position = (GodotTrenchParser.vec3(data.get("origin")) + offset) * scale
+	var t_xform: Transform3D = xform if xform is Transform3D else Transform3D(Basis.IDENTITY, xform as Vector3)
+	# Terrains stay axis aligned: like Terrain::transformed, the instance rotates the terrain's center about
+	# its own origin, not the grid, so a rotated prefab's terrain does not tilt.
+	var raw_cell := float(data.get("cell_size", 32.0))
+	var local_origin := GodotTrenchParser.vec3(data.get("origin"))
+	var size := Vector3((res.x - 1) * raw_cell, 0.0, (res.y - 1) * raw_cell)
+	var center := local_origin + size * 0.5
+	var new_origin: Vector3 = t_xform * center - size * 0.5
+	t.position = new_origin * scale
 	t.resolution = res
 	t.cell_size = cell
 	t.heights = PackedFloat32Array()
@@ -199,19 +232,24 @@ static func create(data: Dictionary, offset: Vector3, settings: FuncGodotMapSett
 		mi.mesh = mesh
 		t.add_child(mi)
 
-	# HeightMapShape3D samples are one unit apart, so the shape is scaled uniformly by the cell size.
-	var shape := HeightMapShape3D.new()
-	shape.map_width = res.x
-	shape.map_depth = res.y
-	var scaled := PackedFloat32Array()
-	scaled.resize(t.heights.size())
-	for k in t.heights.size():
-		scaled[k] = t.heights[k] / cell
-	shape.map_data = scaled
-	var collision := CollisionShape3D.new()
-	collision.name = "collision"
-	collision.shape = shape
-	collision.scale = Vector3.ONE * cell
-	collision.position = Vector3(cells.x * cell * 0.5, 0.0, cells.y * cell * 0.5)
-	t.add_child(collision)
+	# HeightMapShape3D can only punch holes by setting a whole vertex to NAN, which would also remove its other,
+	# solid cells, and it always splits a cell along one fixed diagonal. Holes and the alternating diagonal are
+	# per cell, not per vertex, so collision instead reuses the exact triangles the chunks above were built
+	# from: one ConcavePolygonShape3D per chunk, holes and all, matching the visuals and Terrain::cell_triangles.
+	for c in chunks.size():
+		var arrays: Array = surfaces[c]
+		if arrays.is_empty():
+			continue
+		var chunk_verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var chunk_indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+		var faces := PackedVector3Array()
+		faces.resize(chunk_indices.size())
+		for k in chunk_indices.size():
+			faces[k] = chunk_verts[chunk_indices[k]]
+		var shape := ConcavePolygonShape3D.new()
+		shape.set_faces(faces)
+		var collision := CollisionShape3D.new()
+		collision.name = "collision_%d_%d" % [chunks[c].x / chunk_cells, chunks[c].y / chunk_cells]
+		collision.shape = shape
+		t.add_child(collision)
 	return t

@@ -181,7 +181,7 @@
       "properties": [
         { "name": "targetname", "type": "target_source", "description": "Name" },
         { "name": "filter_group", "type": "string", "default": "player", "description": "Only bodies in this group, empty accepts any body" },
-        { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds between firings" },
+        { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body fires it again" },
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
       "outputs": [{ "name": "triggered", "parameter": "activator" }, { "name": "entered", "parameter": "activator" }, { "name": "exited", "parameter": "activator" }],
@@ -197,7 +197,8 @@
         { "name": "method", "type": "string", "default": "", "description": "Method to call, C# PascalCase names work too" },
         { "name": "arguments", "type": "string", "default": "[]", "description": "JSON array. $activator, $self and $position are replaced" },
         { "name": "once", "type": "bool", "default": "0", "description": "Only calls the first time" },
-        { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds between calls" }
+        { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body calls again" },
+        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
       "outputs": [{ "name": "called", "parameter": "result" }, { "name": "triggered", "parameter": "activator" }],
       "inputs": [{ "name": "trigger", "parameter": "activator" }, { "name": "enable" }, { "name": "disable" }]
@@ -215,7 +216,9 @@
         { "name": "spawn_on_enter", "type": "bool", "default": "1", "description": "Spawns when a body of filter_group enters" },
         { "name": "filter_group", "type": "string", "default": "player", "description": "Group that activates the area" },
         { "name": "spawn_group", "type": "string", "default": "enemies", "description": "Group added to spawned nodes" },
-        { "name": "snap_to_ground", "type": "bool", "default": "1", "description": "Drops spawns onto the floor below" }
+        { "name": "snap_to_ground", "type": "bool", "default": "1", "description": "Drops spawns onto the floor below" },
+        { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body fires it again" },
+        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
       "outputs": [{ "name": "spawned", "parameter": "node" }, { "name": "all_dead" }, { "name": "exhausted" }],
       "inputs": [{ "name": "spawn" }, { "name": "start" }, { "name": "stop" }, { "name": "toggle" }, { "name": "kill_all" }]
@@ -228,7 +231,8 @@
         { "name": "damage", "type": "float", "default": "10", "description": "Damage per second" },
         { "name": "damage_method", "type": "string", "default": "take_damage", "description": "Method called on the body with (amount, source)" },
         { "name": "interval", "type": "float", "default": "0.5", "description": "Seconds between damage ticks" },
-        { "name": "filter_group", "type": "string", "default": "", "description": "Only bodies in this group, empty hurts any body" }
+        { "name": "filter_group", "type": "string", "default": "", "description": "Only bodies in this group, empty hurts any body" },
+        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
       "outputs": [{ "name": "hurt", "parameter": "activator" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
@@ -240,7 +244,9 @@
         { "name": "targetname", "type": "target_source", "description": "Name" },
         { "name": "destination", "type": "target_destination", "description": "info_teleport_destination or any named entity" },
         { "name": "filter_group", "type": "string", "default": "player", "description": "Only bodies in this group" },
-        { "name": "keep_velocity", "type": "bool", "default": "0", "description": "Keeps the body's velocity" }
+        { "name": "keep_velocity", "type": "bool", "default": "0", "description": "Keeps the body's velocity" },
+        { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body fires it again" },
+        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
       "outputs": [{ "name": "teleported", "parameter": "activator" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
@@ -252,7 +258,8 @@
         { "name": "targetname", "type": "target_source", "description": "Name" },
         { "name": "push", "type": "vector3", "default": "0 384 0", "description": "Velocity in map units per second" },
         { "name": "filter_group", "type": "string", "default": "", "description": "Only bodies in this group" },
-        { "name": "once", "type": "bool", "default": "1", "description": "One impulse on entering instead of a steady push" }
+        { "name": "once", "type": "bool", "default": "1", "description": "One impulse on entering instead of a steady push" },
+        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
       "outputs": [{ "name": "pushed", "parameter": "activator" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }],
@@ -495,6 +502,7 @@
         { "name": "one_shot", "type": "bool", "default": "0", "description": "Emits one burst instead of continuously" },
         { "name": "start_emitting", "type": "bool", "default": "0", "description": "Emits from map load" }
       ],
+      "outputs": [{ "name": "finished" }],
       "inputs": [{ "name": "start" }, { "name": "stop" }, { "name": "toggle" }, { "name": "burst" }]
     },
     {

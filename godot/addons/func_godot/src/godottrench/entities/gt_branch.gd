@@ -14,6 +14,9 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	start_value = GodotTrenchIO.to_bool(props.get("start_value", start_value))
 	value = start_value
 
+func _ready() -> void:
+	value = start_value
+
 func set_true() -> void:
 	value = true
 

@@ -15,6 +15,8 @@ signal locked_use(activator: Node)
 
 var is_pressed := false
 var _rest: Vector3
+## Bumped by every press and release, so a pop out timer from an earlier press does nothing.
+var _cycle := 0
 
 func _func_godot_apply_properties(props: Dictionary) -> void:
 	travel = GodotTrenchIO.to_vector3(props.get("travel", travel))
@@ -32,16 +34,21 @@ func press(activator: Node = null) -> void:
 	if is_pressed:
 		return
 	is_pressed = true
+	_cycle += 1
 	if is_inside_tree():
 		create_tween().tween_property(self, "position", _rest + travel / GodotTrenchIO.units_per_meter(self), 0.08)
 	pressed.emit(activator)
 	if wait >= 0.0 and is_inside_tree():
-		get_tree().create_timer(maxf(wait, 0.1)).timeout.connect(release)
+		var cycle := _cycle
+		get_tree().create_timer(maxf(wait, 0.1)).timeout.connect(func():
+			if cycle == _cycle:
+				release())
 
 func release() -> void:
 	if not is_pressed:
 		return
 	is_pressed = false
+	_cycle += 1
 	if is_inside_tree():
 		create_tween().tween_property(self, "position", _rest, 0.12)
 	released.emit()

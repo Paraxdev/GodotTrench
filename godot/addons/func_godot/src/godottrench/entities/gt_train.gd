@@ -18,6 +18,8 @@ var _running := false
 var _next: Node3D
 var _first: Node3D
 var _tween: Tween
+## Bumped by every new leg and stop, so a finished tween or corner wait from an older leg does nothing.
+var _leg := 0
 
 func _func_godot_apply_properties(props: Dictionary) -> void:
 	target = str(props.get("target", target))
@@ -50,6 +52,7 @@ func start() -> void:
 
 func stop() -> void:
 	_running = false
+	_leg += 1
 	if _tween:
 		_tween.kill()
 
@@ -62,15 +65,21 @@ func toggle() -> void:
 func _travel() -> void:
 	if not _running or not _next or not is_inside_tree():
 		return
+	_leg += 1
+	var leg := _leg
+	if _tween:
+		_tween.kill()
 	var dest := _next.global_position
 	if orient and global_position.distance_to(dest) > 0.01:
 		look_at(dest, Vector3.UP)
 	_tween = create_tween()
 	_tween.set_process_mode(Tween.TWEEN_PROCESS_PHYSICS)
 	_tween.tween_property(self, "global_position", dest, global_position.distance_to(dest) / maxf(speed, 0.001))
-	_tween.finished.connect(_reached)
+	_tween.finished.connect(_reached.bind(leg))
 
-func _reached() -> void:
+func _reached(leg: int) -> void:
+	if leg != _leg:
+		return
 	var corner := _next
 	arrived.emit(corner)
 	if corner.has_signal(&"reached"):
@@ -89,4 +98,6 @@ func _reached() -> void:
 		return
 	if wait > 0.0:
 		await get_tree().create_timer(wait).timeout
+		if leg != _leg:
+			return
 	_travel()

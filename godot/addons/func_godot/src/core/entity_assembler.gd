@@ -379,6 +379,12 @@ func attach_entity(entity_node: Node, entity_data: _EntityData, parent: Node, sc
 	if not parent:
 		entity_node.free()
 		return null
+	# Properties are applied before the node enters the tree, so a build that runs inside a live tree (hot reload,
+	# runtime builds) has its _ready() see the map's values instead of the node's script defaults. Nothing here
+	# reads global_position, global_transform or get_tree(): only add_child gives a node a parent to read those
+	# from, and owner assignment below only needs the node to be a descendant, not to be inside the tree yet.
+	entity_data.node = entity_node
+	apply_entity_properties(entity_node, entity_data)
 	parent.add_child(entity_node)
 	entity_node.owner = scene_root
 	if entity_data.mesh_instance:
@@ -390,6 +396,4 @@ func attach_entity(entity_node: Node, entity_data: _EntityData, parent: Node, sc
 		entity_data.occluder_instance.owner = scene_root
 	if entity_data.node_id >= 0:
 		entity_node.set_meta(GodotTrenchBuild.ID_META, entity_data.node_id)
-	entity_data.node = entity_node
-	apply_entity_properties(entity_node, entity_data)
 	return entity_node
