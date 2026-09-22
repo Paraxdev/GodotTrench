@@ -453,6 +453,59 @@
       ],
       "outputs": [{ "name": "arrived", "parameter": "corner" }, { "name": "reached_goal" }, { "name": "finished" }],
       "inputs": [{ "name": "start" }, { "name": "stop" }, { "name": "walk_to", "parameter": "corner" }, { "name": "play_anim", "parameter": "name" }, { "name": "face", "parameter": "target" }]
+    },
+    {
+      "classname": "light_spot", "type": "point", "description": "Switchable spot light", "color": "#ffe64dff", "node_class": "SpotLight3D",
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_spot_light.gd",
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "light_energy", "type": "float", "default": "1.5", "description": "Brightness" },
+        { "name": "light_color", "type": "color", "default": "255 255 255", "description": "Color" },
+        { "name": "spot_range", "type": "float", "default": "15.0", "description": "Range in meters" },
+        { "name": "spot_angle", "type": "float", "default": "35.0", "description": "Cone half angle in degrees" },
+        { "name": "start_on", "type": "bool", "default": "1", "description": "Starts switched on" }
+      ],
+      "inputs": [{ "name": "turn_on" }, { "name": "turn_off" }, { "name": "toggle" }],
+      "outputs": [{ "name": "switched", "parameter": "on" }]
+    },
+    {
+      "classname": "env_sound", "type": "point", "description": "A positional sound played through I/O", "color": "#66b3ffff", "node_class": "AudioStreamPlayer3D",
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_sound.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "sound", "type": "resource", "description": "res:// audio stream" },
+        { "name": "volume_db", "type": "float", "default": "0", "description": "Volume in decibels" },
+        { "name": "max_distance", "type": "float", "default": "0", "description": "Falloff distance in meters, 0 is unlimited" },
+        { "name": "autoplay_on", "type": "bool", "default": "0", "description": "Plays from map load" },
+        { "name": "loop_sound", "type": "bool", "default": "0", "description": "Replays when it finishes" }
+      ],
+      "outputs": [{ "name": "finished" }],
+      "inputs": [{ "name": "play" }, { "name": "stop" }, { "name": "toggle" }]
+    },
+    {
+      "classname": "env_particles", "type": "point", "description": "A particle effect toggled through I/O: smoke, fire, sparks or dust", "color": "#b366ffff", "node_class": "GPUParticles3D",
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_particles.gd",
+      "size": [[-8, 0, -8], [8, 24, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "amount", "type": "int", "default": "32", "description": "Particles alive at once" },
+        { "name": "lifetime", "type": "float", "default": "2.0", "description": "Seconds each particle lives" },
+        { "name": "one_shot", "type": "bool", "default": "0", "description": "Emits one burst instead of continuously" },
+        { "name": "start_emitting", "type": "bool", "default": "0", "description": "Emits from map load" }
+      ],
+      "inputs": [{ "name": "start" }, { "name": "stop" }, { "name": "toggle" }, { "name": "burst" }]
+    },
+    {
+      "classname": "logic_branch", "type": "point", "description": "Stores a boolean and, on test, fires on_true or on_false, for conditional wiring", "color": "#c0c0c0ff", "node_class": "Node3D",
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_branch.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "start_value", "type": "bool", "default": "0", "description": "Initial boolean value" }
+      ],
+      "outputs": [{ "name": "on_true" }, { "name": "on_false" }],
+      "inputs": [{ "name": "set_true" }, { "name": "set_false" }, { "name": "toggle" }, { "name": "test" }, { "name": "set_and_test", "parameter": "value" }]
     }
   ]
 }

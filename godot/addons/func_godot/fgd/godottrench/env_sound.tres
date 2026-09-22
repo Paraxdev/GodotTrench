@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_sound.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "env_sound"
+description = "A positional sound played through I/O"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"sound": "",
+"volume_db": 0.0,
+"max_distance": 0.0,
+"autoplay_on": false,
+"loop_sound": false
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"sound": "res:// audio stream",
+"volume_db": "Volume in decibels",
+"max_distance": "Falloff distance in meters, 0 is unlimited",
+"autoplay_on": "Plays from map load",
+"loop_sound": "Replays when it finishes"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.4, 0.7019608, 1, 1),
+"size": AABB(-8, -8, 0, 8, 8, 16),
+"property_types": {"sound": "resource"},
+"inputs": ["play", "stop", "toggle"],
+"outputs": ["finished"]
+})
+node_class = "AudioStreamPlayer3D"

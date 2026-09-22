@@ -68,6 +68,7 @@ func _initialize() -> void:
 	await test_npc_path()
 	await test_sequence()
 	await test_logic_script()
+	await test_more_entities()
 	await test_scripted_scene()
 	test_scatter_and_blend()
 	test_face_cull()
@@ -1228,6 +1229,56 @@ func test_logic_script() -> void:
 	await process_frame
 
 ## Adds a Hammer style output connection from [param source] to a named target, like the map builder does.
+func test_more_entities() -> void:
+	print("- spot light, particles, branch and sound")
+	var map := Node3D.new()
+	root.add_child(map)
+
+	var spot := GTSpotLight.new()
+	spot._func_godot_apply_properties({ "light_energy": 2.0, "spot_range": 12.0, "spot_angle": 30.0, "start_on": false })
+	map.add_child(spot)
+	await process_frame
+	check(not spot.visible and not spot.is_on(), "spot light starts off")
+	var switched: Array = []
+	spot.switched.connect(func(on): switched.append(on))
+	GodotTrenchIO.invoke(spot, &"turn_on", "", null)
+	check(spot.is_on() and spot.visible and switched.back() == true, "spot turn_on switches on")
+	check(near(spot.spot_range, 12.0) and near(spot.spot_angle, 30.0), "spot properties applied")
+
+	var particles := GTParticles.new()
+	particles._func_godot_apply_properties({ "amount": 48, "lifetime": 1.5, "start_emitting": false })
+	map.add_child(particles)
+	await process_frame
+	check(particles.amount == 48 and not particles.emitting, "particles start idle with amount set")
+	GodotTrenchIO.invoke(particles, &"start", "", null)
+	check(particles.emitting, "start emits particles")
+	GodotTrenchIO.invoke(particles, &"toggle", "", null)
+	check(not particles.emitting, "toggle stops particles")
+
+	var branch := GTBranch.new()
+	branch._func_godot_apply_properties({ "start_value": false })
+	map.add_child(branch)
+	var hits: Array = []
+	branch.on_true.connect(func(): hits.append("true"))
+	branch.on_false.connect(func(): hits.append("false"))
+	GodotTrenchIO.invoke(branch, &"test", "", null)
+	check(hits == ["false"], "branch tests false by default")
+	GodotTrenchIO.invoke(branch, &"set_true", "", null)
+	GodotTrenchIO.invoke(branch, &"test", "", null)
+	check(hits == ["false", "true"], "branch tests true after set_true")
+	branch.set_and_test(false)
+	check(hits.back() == "false", "set_and_test evaluates the passed value")
+
+	var sound := GTSound.new()
+	sound._func_godot_apply_properties({ "volume_db": -6.0, "loop_sound": true, "max_distance": 20.0 })
+	map.add_child(sound)
+	await process_frame
+	check(near(sound.volume_db, -6.0) and sound.loop_sound and near(sound.max_distance, 20.0), "env_sound applies its properties")
+	sound.toggle()
+
+	map.queue_free()
+	await process_frame
+
 func _wire(source: Node, output: StringName, target: String, input: StringName, parameter := "") -> void:
 	var out := GodotTrenchOutput.new()
 	out.output = output

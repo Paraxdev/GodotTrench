@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_particles.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "env_particles"
+description = "A particle effect toggled through I/O: smoke, fire, sparks or dust"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"amount": 32,
+"lifetime": 2.0,
+"one_shot": false,
+"start_emitting": false
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"amount": "Particles alive at once",
+"lifetime": "Seconds each particle lives",
+"one_shot": "Emits one burst instead of continuously",
+"start_emitting": "Emits from map load"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7019608, 0.4, 1, 1),
+"size": AABB(-8, -8, 0, 8, 8, 24),
+"inputs": ["start", "stop", "toggle", "burst"]
+})
+node_class = "GPUParticles3D"

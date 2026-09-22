@@ -420,10 +420,24 @@ mod tests {
             assert!(cfg.entity(classname).is_some(), "{classname} is built in");
         }
 
-        for classname in ["logic_script", "logic_sequence", "logic_animate", "game_text", "env_explosion", "prop_physics", "npc_walker"] {
+        for classname in [
+            "logic_script",
+            "logic_sequence",
+            "logic_animate",
+            "game_text",
+            "env_explosion",
+            "prop_physics",
+            "npc_walker",
+            "light_spot",
+            "env_sound",
+            "env_particles",
+            "logic_branch",
+        ] {
             let def = cfg.entity(classname).unwrap_or_else(|| panic!("{classname} is built in"));
             assert!(!def.script.is_empty(), "{classname} points at a runtime script");
         }
+
+        assert!(cfg.entity("logic_branch").unwrap().outputs.iter().any(|o| o.name == "on_true"));
 
         assert!(cfg.entity("logic_script").unwrap().inputs.iter().any(|i| i.name == "run"));
         assert!(cfg.entity("light").unwrap().script.ends_with("gt_light.gd"), "light has a switch script");

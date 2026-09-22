@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_branch.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "logic_branch"
+description = "Stores a boolean and, on test, fires on_true or on_false, for conditional wiring"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"start_value": false
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"start_value": "Initial boolean value"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7529412, 0.7529412, 0.7529412, 1),
+"size": AABB(-8, -8, 0, 8, 8, 16),
+"inputs": ["set_true", "set_false", "toggle", "test", "set_and_test"],
+"outputs": ["on_true", "on_false"]
+})
+node_class = "Node3D"
