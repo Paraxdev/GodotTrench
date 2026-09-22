@@ -86,6 +86,8 @@ pub struct MeshTool {
     pub modal: Option<Modal>,
     box_start: Option<Pos2>,
     drag_grab: bool,
+    /// Wheel movement not yet turned into a loop cut step, for wheels and touchpads that report fractions of a notch.
+    wheel: f32,
 }
 
 const PICK_RADIUS: f32 = 8.0;
@@ -109,6 +111,17 @@ impl MeshTool {
         self.modal = None;
         self.box_start = None;
         self.drag_grab = false;
+        self.wheel = 0.0;
+    }
+
+    /// A modal that edits inside an open undo transaction.
+    pub fn holds_transaction(&self) -> bool {
+        matches!(self.modal, Some(Modal::Transform { .. } | Modal::Inset { .. } | Modal::Bevel { .. }))
+    }
+
+    /// The loop cut modal steps its cut count with the wheel, so the views must not dolly meanwhile.
+    pub fn takes_wheel(&self) -> bool {
+        matches!(self.modal, Some(Modal::LoopCut { .. }))
     }
 
     /// Drops selections of meshes that are no longer edited and indices that went out of range.
@@ -213,13 +226,24 @@ impl MeshTool {
             }
 
             if let Modal::LoopCut { hover, cuts } = modal {
-                let delta = ctx.input(|i| i.smooth_scroll_delta.y);
+                // One step per wheel notch. egui's smoothed scroll spreads a notch over several frames.
+                self.wheel += ctx.input(|i| crate::viewport::wheel_notches(i, |_| true));
                 let mut cuts = cuts;
-                if pressed(ctx, Modifiers::NONE, Key::Plus) || pressed(ctx, Modifiers::NONE, Key::Equals) || delta > 0.0 {
+                if pressed(ctx, Modifiers::NONE, Key::Plus) || pressed(ctx, Modifiers::NONE, Key::Equals) {
                     cuts = (cuts + 1).min(32);
                 }
 
-                if pressed(ctx, Modifiers::NONE, Key::Minus) || delta < 0.0 {
+                if pressed(ctx, Modifiers::NONE, Key::Minus) {
+                    cuts = cuts.saturating_sub(1).max(1);
+                }
+
+                while self.wheel >= 1.0 {
+                    self.wheel -= 1.0;
+                    cuts = (cuts + 1).min(32);
+                }
+
+                while self.wheel <= -1.0 {
+                    self.wheel += 1.0;
                     cuts = cuts.saturating_sub(1).max(1);
                 }
 
@@ -261,6 +285,7 @@ impl MeshTool {
 
         if pressed(ctx, ctrl, Key::R) {
             self.modal = Some(Modal::LoopCut { hover: None, cuts: 1 });
+            self.wheel = 0.0;
             return true;
         }
 
@@ -547,7 +572,9 @@ impl MeshTool {
                                 *mesh = mesh.transformed(&mx, false);
                             } else {
                                 mesh.transform_vertices(&verts, &mx);
-                                mesh.flip_faces(&faces);
+                                let moved: BTreeSet<u32> = verts.iter().copied().collect();
+                                let mirrored = mesh.faces_within(&moved);
+                                mesh.flip_faces(&mirrored);
                             }
                         }
 
@@ -660,6 +687,11 @@ impl MeshTool {
                         if let Some(mesh) = map.mesh_mut(*id) {
                             let verts = sel.moved_vertices(mesh);
                             mesh.transform_vertices(&verts, &m);
+                            // A negative scale mirrors, so the faces it moved whole need their winding flipped back.
+                            if m.determinant() < 0.0 {
+                                let mirrored = mesh.faces_within(&verts.iter().copied().collect());
+                                mesh.flip_faces(&mirrored);
+                            }
                         }
                     }
                 });
@@ -1324,5 +1356,35 @@ mod tests {
         let x = Some(Constraint { dir: DVec3::X, exclude: false, label: "X" });
         let s = transform_matrix(TransformKind::Scale, x, Pos2::ZERO, Pos2::ZERO, DVec3::ZERO, "2", &cam, rect, false, 16.0);
         assert!((s.transform_point3(DVec3::ONE) - DVec3::new(2.0, 1.0, 1.0)).length() < 1e-9);
+    }
+
+    #[test]
+    fn mirroring_part_of_a_mesh_keeps_its_faces_outward() {
+        let a = gt_core::Aabb::new(DVec3::ZERO, DVec3::new(32.0, 16.0, 16.0));
+        let mut mesh = gt_geom::mesh_shapes::cuboid(&a, "m");
+        let other = gt_geom::mesh_shapes::cuboid(&gt_core::Aabb::new(DVec3::splat(100.0), DVec3::splat(116.0)), "m");
+        let offset = mesh.vertices.len() as u32;
+        let first: Vec<usize> = (0..mesh.faces.len()).collect();
+        mesh.vertices.extend(other.vertices.iter().copied());
+        mesh.faces.extend(other.faces.iter().cloned().map(|mut f| {
+            f.indices.iter_mut().for_each(|i| *i += offset);
+            f
+        }));
+
+        let mut state = EditorState::new(Default::default());
+        let layer = state.doc.map.default_layer();
+        let id = state.doc.edit("mesh", |m, s| {
+            let id = m.insert(layer, gt_doc::NodeKind::Mesh(mesh));
+            s.select_node(id);
+            id
+        });
+        let mut tool = MeshTool::default();
+        tool.selection.insert(id, MeshSel { verts: (0..offset).collect(), ..Default::default() });
+        tool.run(&mut state, MeshOp::Mirror(0));
+        let m = state.doc.map.mesh(id).unwrap();
+        for f in first {
+            let out = m.face_center(f) - a.center();
+            assert!(m.face_normal(f).dot(out) > 0.0, "face {f} points into the mirrored box");
+        }
     }
 }

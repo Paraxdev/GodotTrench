@@ -99,6 +99,13 @@ pub struct ToolSet {
     pub measure: crate::extra_tools::MeasureTool,
     pub texture: crate::texture_tool::TextureTool,
     active: Option<ToolKind>,
+    /// A tool was switched away from mid drag with its undo transaction open. `sync` cannot reach the document,
+    /// so `settle` commits it on the next call that can.
+    orphaned: bool,
+    /// Set by the app while a viewport's right mouse look runs, read and cleared by `keys`.
+    pub flying: bool,
+    /// Bounds of the last brush drawn in a view, 2D views give a new brush its depth.
+    pub last_brush: Option<Aabb>,
 }
 
 fn screen_dist(cam: &Camera, rect: Rect, world: DVec3, pos: Pos2) -> f32 {
@@ -114,12 +121,10 @@ impl ToolSet {
     /// Resets per-tool state when the active tool changes.
     pub fn sync(&mut self, state: &EditorState) {
         if self.active != Some(state.tool) {
+            self.orphaned |= self.holds_transaction();
             self.clip = ClipTool::default();
-            self.vertex.drag = None;
+            self.end_drags();
             self.vertex.gizmo = None;
-            self.vertex.gizmo_drag = None;
-            self.rotate.drag = None;
-            self.scale.drag = None;
             if self.rotate.snap_degrees == 0.0 {
                 self.rotate.snap_degrees = 15.0;
             }
@@ -132,10 +137,93 @@ impl ToolSet {
         }
     }
 
+    /// A drag, stroke or mesh modal that edits inside an open undo transaction.
+    fn holds_transaction(&self) -> bool {
+        self.holds_drag() || self.mesh.holds_transaction()
+    }
+
+    fn holds_drag(&self) -> bool {
+        self.vertex.drag.is_some()
+            || self.vertex.gizmo_drag.is_some()
+            || self.rotate.drag.is_some()
+            || self.scale.drag.is_some()
+            || self.stroke.stroking
+            || self.scatter.stroking()
+            || self.blend.stroking()
+    }
+
+    /// Drops drags and strokes without touching the document.
+    fn end_drags(&mut self) {
+        self.vertex.drag = None;
+        self.vertex.gizmo_drag = None;
+        self.rotate.drag = None;
+        self.scale.drag = None;
+        self.stroke.stroking = false;
+        self.stroke.last_dab = None;
+        self.scatter.reset();
+        self.blend.reset();
+    }
+
+    /// Closes what a tool switch left open, and forgets the old map after a tab switch, New or Open. Runs from
+    /// `keys` and the viewports, which can reach the document where `sync` cannot.
+    pub fn settle(&mut self, state: &mut EditorState) {
+        if state.scene_reset {
+            self.reset();
+        } else if std::mem::take(&mut self.orphaned) {
+            state.doc.commit();
+        } else if self.holds_transaction() && !state.doc.in_transaction() {
+            // Something else closed the transaction (an undo mid drag), the drag must not go on editing outside it.
+            self.end_drags();
+            if self.mesh.holds_transaction() {
+                self.mesh.reset();
+            }
+        }
+    }
+
+    /// Forgets everything that refers to the current map, node ids restart per map. For a tab switch, New or Open,
+    /// after the document was swapped: an open drag's transaction belongs to the map that was left, so the document
+    /// is not touched.
+    pub fn reset(&mut self) {
+        self.orphaned = false;
+        self.clip = ClipTool::default();
+        self.end_drags();
+        self.vertex.selected.clear();
+        self.vertex.gizmo = None;
+        self.stroke.hover = None;
+        self.mesh.reset();
+        self.mesh.selection.clear();
+        self.path.finish();
+        self.measure = Default::default();
+        self.texture.reset();
+        self.volume.reset();
+    }
+
     /// Enter, Tab and similar keys for the active tool. Returns true if the key was consumed.
     pub fn keys(&mut self, ctx: &egui::Context, state: &mut EditorState) -> bool {
+        self.settle(state);
+        let flying = std::mem::take(&mut self.flying);
         if ctx.egui_wants_keyboard_input() {
             return false;
+        }
+
+        if flying {
+            // WASD, Q and E steer the camera during the right mouse look, so letters and other plain keys must not
+            // reach tool shortcuts. Only Escape and Ctrl or Alt combinations get through.
+            ctx.input_mut(|i| {
+                i.events.retain(|e| match e {
+                    egui::Event::Key { key, pressed: true, modifiers, .. } => *key == Key::Escape || modifiers.command || modifiers.alt,
+                    egui::Event::Text(_) => false,
+                    _ => true,
+                })
+            });
+            return false;
+        }
+
+        if self.holds_drag() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
+            state.doc.cancel();
+            self.end_drags();
+            state.set_status("Cancelled");
+            return true;
         }
 
         match state.tool {
@@ -199,17 +287,11 @@ impl ToolSet {
 
     // ------------------------------------------------------- sculpt / paint
 
-    fn stroke_targets(state: &EditorState) -> Vec<NodeId> {
-        let selected = state.doc.selection.brushes(&state.doc.map);
-        if selected.is_empty() { state.doc.map.brushes().filter(|(id, _)| state.doc.map.is_editable(*id)).map(|(id, _)| id).collect() } else { selected }
-    }
-
     fn stroke_input(&mut self, ui: &Ui, response: &Response, cam: &Camera, rect: Rect, hover: Option<Pos2>, state: &mut EditorState) {
-        let targets = Self::stroke_targets(state);
+        let scope = crate::blend_tool::StrokeScope::of(state);
         let sculpting = state.tool == ToolKind::Sculpt;
-        let faces = gt_doc::terrain::displacement_faces(&state.doc.map, &targets);
-        let selected_terrains = state.doc.selection.terrains(&state.doc.map);
-        let terrains = gt_doc::terrain::terrain_targets(&state.doc.map, &selected_terrains);
+        let faces = if sculpting { scope.displacements(state) } else { Vec::new() };
+        let (targets, terrains) = (scope.brushes, scope.terrains);
         let pointer = if self.stroke.stroking { ui.input(|i| i.pointer.interact_pos()) } else { hover };
         self.stroke.hover = pointer.and_then(|pos| {
             let ray = cam.ray(rect, pos);
@@ -219,7 +301,8 @@ impl ToolSet {
                 let terrain = gt_doc::terrain::terrain_ray_cast(&state.doc.map, &terrains, &ray).map(|(d, p, _)| (d, p, DVec3::Y));
                 [disp, terrain].into_iter().flatten().min_by(|a, b| a.0.total_cmp(&b.0)).map(|(_, p, n)| (p, n))
             } else {
-                picking::pick(state, &ray).filter(|h| h.face.is_some()).map(|h| (h.point, h.normal))
+                // Vertex paint only reaches brush faces, a mesh or anything else in front shows no brush ring.
+                picking::pick(state, &ray).filter(|h| h.face.is_some() && targets.contains(&h.node)).map(|h| (h.point, h.normal))
             }
         });
 
@@ -512,8 +595,8 @@ impl ToolSet {
                         delta = DVec3::new(0.0, delta.y, 0.0);
                     }
 
-                    let target = state.snap(drag.start + delta);
-                    let delta = target - drag.start;
+                    // Snaps the offset like the Move tool, so an off grid vertex keeps its position on the other axes.
+                    let delta = state.snap(delta);
                     state.doc.reset_transaction();
                     let base = drag.base.clone();
                     let moved = move_vertices(state, &base, delta);
@@ -537,9 +620,7 @@ impl ToolSet {
                 let ray = cam.ray(rect, pos);
                 if let Some(t) = ray.intersect_plane(&plane) {
                     let offset = ray.at(t) - start;
-                    let delta = unit_axis(axis) * offset[axis];
-                    let target = state.snap(base + delta);
-                    let delta = target - base;
+                    let delta = unit_axis(axis) * state.snap_scalar(offset[axis]);
                     state.doc.reset_transaction();
                     if move_vertices(state, &[base], delta) {
                         self.vertex.selected = vec![base + delta];
@@ -982,7 +1063,8 @@ impl ToolSet {
             }
             ToolKind::Sculpt => {
                 let has_terrain = state.doc.map.terrains().next().is_some();
-                let hint = if !has_terrain && gt_doc::terrain::displacement_faces(&state.doc.map, &Self::stroke_targets(state)).is_empty() {
+                // An empty list is the whole map here: the hint is about the map having nothing to sculpt at all.
+                let hint = if !has_terrain && gt_doc::terrain::displacement_faces(&state.doc.map, &[]).is_empty() {
                     "Sculpt: no terrain or displacements. Terrain > Create Terrain, or select quad faces and use Brush > Displacement".to_string()
                 } else {
                     format!("Sculpt {:?}: drag to apply, Shift inverts, Ctrl smooths", state.sculpt.mode)
@@ -999,7 +1081,7 @@ impl ToolSet {
                 painter.text(
                     rect.left_bottom() + Vec2::new(8.0, -8.0),
                     Align2::LEFT_BOTTOM,
-                    "Vertex paint: drag over faces (selection, or everything when nothing is selected)",
+                    "Vertex paint: drag over brush faces (the selected brushes, or every brush when nothing is selected)",
                     FontId::proportional(12.0),
                     Color32::from_rgb(255, 170, 230),
                 );
@@ -1119,5 +1201,76 @@ fn ring_plane_point(cam: &Camera, rect: Rect, pos: Pos2, center: DVec3, axis: DV
             let (_, t) = ray.distance_to_point(center);
             Some(plane.project_point(ray.at(t)))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state_with_brush() -> (EditorState, NodeId) {
+        let mut state = EditorState::new(Default::default());
+        let layer = state.doc.map.default_layer();
+        let brush = Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "dev/grey").unwrap();
+        let id = state.doc.edit("brush", |m, s| {
+            let id = m.insert(layer, gt_doc::NodeKind::Brush(brush));
+            s.select_node(id);
+            id
+        });
+        (state, id)
+    }
+
+    /// Starts a rotate drag the way `rotate_input` does and applies a quarter turn inside it.
+    fn rotate_mid_drag(tools: &mut ToolSet, state: &mut EditorState) {
+        state.tool = ToolKind::Rotate;
+        tools.sync(state);
+        state.doc.begin("Rotate");
+        tools.rotate.drag = Some(RotateDrag { axis: DVec3::Y, center: DVec3::splat(32.0), start_vec: DVec3::X, screen_start: Pos2::ZERO });
+        let m = ops::rotation_about(DVec3::splat(32.0), DVec3::Y, 90.0);
+        let opts = state.opts();
+        state.doc.edit("Rotate", |map, s| ops::transform_selection(map, s, &m, opts));
+    }
+
+    #[test]
+    fn switching_tools_mid_drag_closes_the_undo_step() {
+        let (mut state, _) = state_with_brush();
+        let mut tools = ToolSet::default();
+        rotate_mid_drag(&mut tools, &mut state);
+        let undo_before = state.doc.history.undo_labels().count();
+
+        state.tool = ToolKind::Select;
+        tools.sync(&state);
+        assert!(tools.rotate.drag.is_none());
+        tools.settle(&mut state);
+        assert!(!state.doc.in_transaction(), "the rotate transaction is not left open");
+        assert_eq!(state.doc.history.undo_labels().count(), undo_before + 1, "the rotation so far is kept as its own undo step");
+    }
+
+    #[test]
+    fn escape_mid_drag_cancels_it() {
+        let (mut state, id) = state_with_brush();
+        let before = state.doc.map.brush(id).unwrap().clone();
+        let mut tools = ToolSet::default();
+        rotate_mid_drag(&mut tools, &mut state);
+        let ctx = egui::Context::default();
+        let mut input = egui::RawInput::default();
+        input.events.push(egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE });
+        ctx.begin_pass(input);
+        assert!(tools.keys(&ctx, &mut state), "Escape is taken by the drag");
+        assert!(!state.doc.in_transaction());
+        assert_eq!(state.doc.map.brush(id), Some(&before), "the brush is back where it was");
+        assert_eq!(state.tool, ToolKind::Rotate, "the tool stays, only the drag ends");
+    }
+
+    #[test]
+    fn a_document_swap_forgets_node_ids() {
+        let (mut state, id) = state_with_brush();
+        let mut tools = ToolSet::default();
+        tools.path.last = Some(id);
+        tools.mesh.selection.insert(id, Default::default());
+        state.scene_reset = true;
+        tools.settle(&mut state);
+        assert!(tools.path.last.is_none(), "the next path corner does not link into another map's node");
+        assert!(tools.mesh.selection.is_empty());
     }
 }

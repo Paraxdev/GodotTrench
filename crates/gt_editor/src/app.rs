@@ -87,6 +87,8 @@ pub struct App {
     actions: Vec<Action>,
     pub(crate) project_generation: u64,
     confirm_close: bool,
+    /// Asking whether to save the active map before its tab closes.
+    confirm_tab_close: bool,
     allow_close: bool,
     show_prefs: bool,
     title: String,
@@ -343,6 +345,14 @@ impl MenuCx<'_> {
         self.push_if_clicked(ui, menu_button(on.then_some(icons::CHECK), label, shortcut), action);
     }
 
+    fn toggle_enabled(&mut self, ui: &mut Ui, label: &str, on: bool, action: Action, enabled: bool, why: &str) {
+        let shortcut = self.shortcut(&action);
+        if ui.add_enabled(enabled, menu_button(on.then_some(icons::CHECK), label, shortcut)).on_disabled_hover_text(why).clicked() {
+            self.actions.push(action);
+            ui.close();
+        }
+    }
+
     fn point_entities(&mut self, ui: &mut Ui, game: &gt_formats::game::GameConfig, classes: &[&str]) {
         let mut any = false;
         for class in classes.iter().filter(|c| game.entity(c).is_some()) {
@@ -428,6 +438,7 @@ impl App {
         let prefs: Prefs = if args.default_prefs { Prefs::default() } else { cc.storage.and_then(|s| eframe::get_value(s, "prefs")).unwrap_or_default() };
         let keep_prefs = !args.default_prefs;
         let mut state = EditorState::new(prefs);
+        state.stdio_mcp = args.mcp_stdio;
         let project = args.project.clone().or_else(|| state.prefs.recent_projects.first().cloned());
         if let Some(root) = project.as_deref().and_then(gt_formats::game::find_project_root) {
             state.load_project(&root);
@@ -471,6 +482,11 @@ impl App {
             if !map_failed {
                 state.set_status(warning);
             }
+        } else if !map_failed {
+            let autosaves = state.recoverable_autosaves().len();
+            if autosaves > 0 {
+                state.set_status(format!("Found {autosaves} autosaved untitled map(s), File > Open Recent lists them for recovery"));
+            }
         }
 
         state.link = Some(crate::live_link::LiveLink::start(Some(cc.egui_ctx.clone())));
@@ -499,6 +515,7 @@ impl App {
             actions: Vec::new(),
             project_generation: 1,
             confirm_close: false,
+            confirm_tab_close: false,
             allow_close: false,
             show_prefs: false,
             title: String::new(),
@@ -544,6 +561,8 @@ impl App {
             return;
         }
 
+        // While a view flies with WASD, Q and E, ToolSet::keys swallows plain keys so no single key shortcut fires.
+        self.tools.flying |= self.viewports.iter().any(|v| v.is_flying());
         if self.tools.keys(ctx, &mut self.state) {
             return;
         }
@@ -562,7 +581,7 @@ impl App {
         // Most specific modifier combinations first, so Ctrl+Shift+Z is not taken by Ctrl+Z.
         shortcuts.sort_by_key(|(s, _)| std::cmp::Reverse(s.modifiers.shift as u8 + s.modifiers.command as u8 + s.modifiers.alt as u8));
         for (shortcut, action) in shortcuts {
-            if ctx.input_mut(|i| i.consume_shortcut(&shortcut)) {
+            if ctx.input_mut(|i| commands::consume_shortcut(i, &shortcut)) {
                 self.actions.push(action);
             }
         }
@@ -606,6 +625,8 @@ impl App {
                     .unwrap_or_else(|| self.state.current_material.clone());
                 self.hotspot_editor.open_for(&material);
             }
+            Action::EditHotspots(material) => self.hotspot_editor.open_for(&material),
+            Action::CloseTab if self.state.doc.is_modified() => self.confirm_tab_close = true,
             Action::AlignTextureToView => {
                 let cam = &self.viewports[0].camera;
                 let (right, up) = (cam.right(), cam.up());
@@ -664,7 +685,14 @@ impl App {
                         empty_hint(ui, "No recent maps");
                     }
 
-                    for path in recent {
+                    let autosaves: Vec<std::path::PathBuf> = self.state.recoverable_autosaves().into_iter().take(8).collect();
+                    let first_autosave = recent.len();
+                    for (i, path) in recent.into_iter().chain(autosaves).enumerate() {
+                        if i == first_autosave {
+                            ui.separator();
+                            empty_hint(ui, "Autosaved untitled maps");
+                        }
+
                         if ui.button(path.display().to_string()).clicked() {
                             if let Err(e) = commands::open_map_in_tab(&mut self.state, &path) {
                                 self.state.set_status(format!("Open failed: {e}"));
@@ -964,8 +992,7 @@ impl App {
                     }
 
                     for t in group.iter().copied() {
-                        let action = if t == ToolKind::Mesh { Action::EditMesh } else { Action::SetTool(t) };
-                        let shortcut = m.shortcut(&action);
+                        let shortcut = m.shortcut(&Action::SetTool(t));
                         let button = menu_button(Some(icons::tool(t)), &format!("{} Tool", t.label()), shortcut).selected(self.state.tool == t);
                         if ui.add(button).on_hover_text(panels::tool_help(t)).clicked() {
                             m.actions.push(Action::SetTool(t));
@@ -1060,7 +1087,8 @@ impl App {
                 m.item_enabled(ui, Some(icons::GODOT), "Open Project in Godot Editor", Action::OpenGodotEditor, found, commands::GODOT_NOT_FOUND);
                 let open = self.state.godot_has_project();
                 m.item_enabled(ui, None, "Build in Godot", Action::BuildInGodot, open, "Needs the Godot editor with this project open");
-                m.toggle(ui, "Live Mode", self.state.prefs.live_mode, Action::ToggleLiveMode);
+                let live = self.state.prefs.live_mode;
+                m.toggle_enabled(ui, "Live Mode", live, Action::ToggleLiveMode, live || self.state.prefs.live_link, commands::LIVE_LINK_OFF);
                 ui.separator();
                 m.item(ui, Some(icons::OPEN), "Open Godot Project…", Action::OpenProject);
                 sub_menu(ui, Some(icons::RECENT), "Recent Projects", |ui| {
@@ -1159,8 +1187,7 @@ impl App {
                 }
 
                 for t in tools.iter().copied() {
-                    let action = if t == ToolKind::Mesh { Action::EditMesh } else { Action::SetTool(t) };
-                    let tooltip = format!("{}\n{}", tip(&format!("{} tool", t.label()), &action), panels::tool_help(t));
+                    let tooltip = format!("{}\n{}", tip(&format!("{} tool", t.label()), &Action::SetTool(t)), panels::tool_help(t));
                     let resp = icons::toggle(ui, icons::tool(t), size, self.state.tool == t, t.label(), tooltip);
                     group |= resp.rect;
                     icon_count += 1;
@@ -1287,10 +1314,11 @@ impl App {
             (true, _, true) => "Live mode on: edits reach Godot before you save. Click to turn it off",
             (true, true, false) => "Live mode on, waiting for Godot to show a scene that uses this map",
             (true, false, _) => "Live mode on, waiting for the Godot editor with this project",
+            (false, _, _) if !s.prefs.live_link => commands::LIVE_LINK_OFF,
             (false, true, _) => "Live mode: send edits to Godot before saving",
             (false, false, _) => "Live mode needs the Godot editor with this project open",
         };
-        let toggle = ui.add_enabled_ui(live || open, |ui| icons::toggle(ui, icons::LINK, size, live, "Godot live mode", live_tip)).inner;
+        let toggle = ui.add_enabled_ui(live || (open && s.prefs.live_link), |ui| icons::toggle(ui, icons::LINK, size, live, "Godot live mode", live_tip)).inner;
         let toggle = toggle.on_disabled_hover_text(live_tip);
         rect |= toggle.rect;
         if toggle.clicked() {
@@ -1492,6 +1520,13 @@ impl App {
                 if ui.selectable_label(i == active, title).clicked() && i != active {
                     self.state.switch_tab(i);
                 }
+
+                if ui.small_button("×").on_hover_text(format!("Close {title}")).clicked() {
+                    self.state.switch_tab(i);
+                    self.actions.push(Action::CloseTab);
+                }
+
+                ui.add_space(6.0);
             }
 
             if ui.small_button("+").on_hover_text("New tab").clicked() {
@@ -1704,25 +1739,36 @@ impl App {
             return;
         }
 
+        let modified = self.state.modified_tabs();
+        if modified.is_empty() {
+            self.confirm_close = false;
+            self.allow_close = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        }
+
         egui::Modal::new(egui::Id::new("confirm_close")).show(ctx, |ui| {
             ui.heading("Unsaved changes");
-            ui.label(format!("Save changes to {} before closing?", self.state.doc.title()));
-            if self.state.tabs.iter().any(|t| t.doc.is_modified()) {
-                ui.label("Other tabs have unsaved changes too.");
+            ui.label(if modified.len() == 1 { "This map has unsaved changes:" } else { "These maps have unsaved changes:" });
+            for i in &modified {
+                ui.label(RichText::new(self.state.tab_doc(*i).title()).strong());
             }
 
             ui.horizontal(|ui| {
-                if ui.button("Save").clicked() {
-                    commands::execute(&mut self.state, Action::Save, ctx);
-                    if !self.state.doc.is_modified() && !self.state.tabs.iter().any(|t| t.doc.is_modified()) {
+                let save = if modified.len() == 1 { "Save" } else { "Save All" };
+                if ui.button(save).clicked() {
+                    if commands::save_all(&mut self.state, ctx) {
                         self.allow_close = true;
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    } else {
+                        self.state.set_status("Not every map was saved, quitting was cancelled");
                     }
 
                     self.confirm_close = false;
                 }
 
-                if ui.button("Discard").clicked() {
+                let discard = if modified.len() == 1 { "Discard" } else { "Discard All" };
+                if ui.button(discard).clicked() {
                     self.state.revert_all_live_changes();
                     self.allow_close = true;
                     self.confirm_close = false;
@@ -1731,6 +1777,41 @@ impl App {
 
                 if ui.button("Cancel").clicked() {
                     self.confirm_close = false;
+                }
+            });
+        });
+    }
+
+    fn close_tab_dialog(&mut self, ctx: &egui::Context) {
+        if !self.confirm_tab_close {
+            return;
+        }
+
+        if !self.state.doc.is_modified() {
+            self.confirm_tab_close = false;
+            return;
+        }
+
+        egui::Modal::new(egui::Id::new("confirm_tab_close")).show(ctx, |ui| {
+            ui.heading("Unsaved changes");
+            ui.label(format!("Save changes to {} before closing its tab?", self.state.doc.title()));
+            ui.horizontal(|ui| {
+                if ui.button("Save").clicked() {
+                    commands::execute(&mut self.state, Action::Save, ctx);
+                    if !self.state.doc.is_modified() {
+                        commands::execute(&mut self.state, Action::CloseTab, ctx);
+                    }
+
+                    self.confirm_tab_close = false;
+                }
+
+                if ui.button("Discard").clicked() {
+                    self.state.discard_tab();
+                    self.confirm_tab_close = false;
+                }
+
+                if ui.button("Cancel").clicked() {
+                    self.confirm_tab_close = false;
                 }
             });
         });
@@ -1816,6 +1897,7 @@ impl eframe::App for App {
         self.tools.sync(&self.state);
         self.state.tick_godot(&ctx);
         self.process_mcp(&ctx);
+        self.state.validate_insert_context();
         self.tools.sync(&self.state);
         self.collect_input_actions(&ctx);
 
@@ -1844,7 +1926,7 @@ impl eframe::App for App {
 
         if std::mem::take(&mut self.state.scene_reset) {
             self.scene.invalidate();
-            self.tools.mesh.selection.clear();
+            self.tools.reset();
         }
 
         self.scene.update(&mut self.renderer, &mut self.state, self.project_generation);
@@ -1901,6 +1983,7 @@ impl eframe::App for App {
 
         self.prefs_window(&ctx);
         self.close_dialog(&ctx);
+        self.close_tab_dialog(&ctx);
         self.state.tick_autosave();
         self.state.poll_live_link();
         self.finish_input_script(&ctx);

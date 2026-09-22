@@ -715,8 +715,10 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
             changed = true;
         }
 
+        let longest = t.resolution[0].max(t.resolution[1]);
         for res in [65u32, 129, 257, 513] {
-            if res != t.resolution[0] && ui.small_button(format!("resample {res}")).clicked() {
+            let tip = format!("At most {res} vertices along the longer side, cells stay square so the other side keeps its extent");
+            if res != longest && ui.small_button(format!("resample {res}")).on_hover_text(tip).clicked() {
                 edited = t.resample([res, res]);
                 changed = true;
             }
@@ -1702,8 +1704,7 @@ fn material_interactions(resp: egui::Response, state: &mut EditorState, name: &s
         }
 
         if ui.button("Hotspot editor").clicked() {
-            state.current_material = name.to_string();
-            actions.push(Action::ShowHotspotEditor);
+            actions.push(Action::EditHotspots(name.to_string()));
             ui.close();
         }
 
@@ -2181,7 +2182,12 @@ fn place_action(state: &EditorState, classnames: Vec<String>) -> Action {
 
 fn collect_issues(state: &EditorState) -> Vec<gt_doc::issues::Issue> {
     use gt_doc::issues::{Issue, Severity};
-    let mut list = gt_doc::issues::check(&state.doc.map);
+    let mut list = gt_doc::issues::check_with(&state.doc.map, |class| {
+        state.game.entity(class).map(|d| gt_doc::issues::ClassIo {
+            outputs: d.outputs.iter().map(|o| o.name.as_str()).collect(),
+            inputs: d.inputs.iter().map(|i| i.name.as_str()).collect(),
+        })
+    });
     for (id, e) in state.doc.map.entities() {
         if state.game.entity(&e.classname).is_none() && !e.classname.is_empty() {
             list.push(Issue {
@@ -2472,14 +2478,18 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
 
 /// Opens a file with the operating system's default application.
 pub fn open_in_system(path: &std::path::Path) {
-    let result = if cfg!(windows) {
-        std::process::Command::new("cmd").args(["/C", "start", ""]).arg(path).spawn()
+    let mut cmd = if cfg!(windows) {
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.args(["/C", "start", ""]);
+        cmd
     } else if cfg!(target_os = "macos") {
-        std::process::Command::new("open").arg(path).spawn()
+        std::process::Command::new("open")
     } else {
-        std::process::Command::new("xdg-open").arg(path).spawn()
+        std::process::Command::new("xdg-open")
     };
-    let _ = result;
+    // stdout carries the JSON-RPC stream when MCP runs over stdio.
+    use std::process::Stdio;
+    let _ = cmd.arg(path).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
 }
 
 // ------------------------------------------------------------------- history
@@ -2509,11 +2519,11 @@ pub fn history(ui: &mut Ui, state: &mut EditorState) {
         }
     });
     for _ in 0..undo_steps {
-        state.doc.undo();
+        state.undo();
     }
 
     for _ in 0..redo_steps {
-        state.doc.redo();
+        state.redo();
     }
 }
 

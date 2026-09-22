@@ -39,30 +39,37 @@ pub struct FaceCull {
     pub pieces: HashMap<NodeId, FacePieces>,
 }
 
-/// Bounds of a node that can swallow another solid's faces: a closed, visible solid. Same eligibility as
-/// `FaceCull::node_faces`, but the material does not matter, a tool textured box still hides what is inside it.
-fn solid_bounds(map: &Map, game: &GameConfig, id: NodeId) -> Option<Aabb> {
+/// Node classes the Godot build leaves out of culling, their brushes move or do not draw.
+const MOVING_CLASSES: [&str; 5] = ["Area3D", "AnimatableBody3D", "RigidBody3D", "CharacterBody3D", "VehicleBody3D"];
+
+/// Brushes of triggers and of moving or volume entities take no part in culling, like godottrench_face_cull.gd.
+fn skipped_entity(map: &Map, game: &GameConfig, id: NodeId) -> bool {
+    map.owning_entity(id)
+        .and_then(|e| map.entity(e))
+        .is_some_and(|e| e.classname.starts_with("trigger") || game.entity(&e.classname).is_some_and(|d| MOVING_CLASSES.contains(&d.node_class.as_str())))
+}
+
+/// Bounds of a node that can swallow another solid's faces: a closed, visible solid drawn opaque on every face.
+/// A tool textured or see-through box (clip, water) shows what is inside it, so it buries nothing.
+fn solid_bounds(map: &Map, game: &GameConfig, opaque: &(dyn Fn(&str) -> bool + Sync), id: NodeId) -> Option<Aabb> {
     let node = map.get(id)?;
-    if map.is_hidden(id) || !map.in_cordon(id) {
+    if map.is_hidden(id) || !map.in_cordon(id) || skipped_entity(map, game, id) {
         return None;
     }
 
-    let entity = map.owning_entity(id).and_then(|e| map.entity(e));
-    if entity.is_some_and(|e| e.classname.starts_with("trigger") || game.entity(&e.classname).is_some_and(|d| d.node_class == "Area3D")) {
-        return None;
-    }
-
+    let solid = |material: &str| !game.is_tool_texture(material) && opaque(material);
     match &node.kind {
-        NodeKind::Brush(b) if b.faces.iter().all(|f| f.data.disp.is_none()) => Some(b.bounds()),
-        NodeKind::Mesh(m) if m.edge_faces().values().all(|f| f.len() == 2) => Some(m.bounds()),
+        NodeKind::Brush(b) if b.faces.iter().all(|f| f.data.disp.is_none() && solid(&f.data.material)) => Some(b.bounds()),
+        NodeKind::Mesh(m) if m.edge_faces().values().all(|f| f.len() == 2) && m.faces.iter().all(|f| solid(&f.data.material)) => Some(m.bounds()),
         _ => None,
     }
 }
 
 /// True when every corner of `face` sits well inside the solid `id`. Each sample is probed a little to both
 /// sides of the face: a face resting on the other solid's surface leaves it on one side and is left to the
-/// coplanar pass, only a face with solid material on both sides counts as buried.
-fn buried_in(map: &Map, id: NodeId, face: &CullFace) -> bool {
+/// coplanar pass, only a face with solid material on both sides counts as buried. Brushes are convex, so their
+/// corners decide it. A closed mesh can be concave, there the face must also not cross the mesh surface.
+fn buried_in(map: &Map, id: NodeId, face: &CullFace, mesh_tris: &mut HashMap<NodeId, Vec<[DVec3; 3]>>) -> bool {
     let Some(node) = map.get(id) else { return false };
     let nudge = face.normal * COPLANAR_DIST;
     let mut samples: Vec<DVec3> = Vec::with_capacity((face.polygon.len() + 1) * 2);
@@ -73,9 +80,59 @@ fn buried_in(map: &Map, id: NodeId, face: &CullFace) -> bool {
 
     match &node.kind {
         NodeKind::Brush(b) => samples.iter().all(|p| b.contains_point(*p)),
-        NodeKind::Mesh(m) => samples.iter().all(|p| m.contains_point(*p)),
+        NodeKind::Mesh(m) => {
+            if !samples.iter().all(|p| m.contains_point(*p)) {
+                return false;
+            }
+
+            let tris = mesh_tris.entry(id).or_insert_with(|| {
+                (0..m.faces.len())
+                    .flat_map(|fi| m.triangulate_face(fi))
+                    .filter_map(|t| {
+                        let [a, b, c] = t.map(|i| m.vertices.get(i as usize).copied());
+                        Some([a?, b?, c?])
+                    })
+                    .collect()
+            });
+            !crosses_surface(face, tris)
+        }
         _ => false,
     }
+}
+
+/// Whether the surface triangles cut through the face polygon anywhere, meaning part of it lies outside.
+fn crosses_surface(face: &CullFace, tris: &[[DVec3; 3]]) -> bool {
+    let poly = &face.polygon;
+    let face_tris: Vec<[DVec3; 3]> = polygon::triangulate(poly, face.normal).into_iter().map(|[a, b, c]| [poly[a], poly[b], poly[c]]).collect();
+    let reach = face.bounds.expanded(COPLANAR_DIST);
+    tris.iter().any(|tri| {
+        if !Aabb::from_points(tri.iter().copied()).intersects(&reach) {
+            return false;
+        }
+
+        (0..poly.len()).any(|k| segment_hits_triangle(poly[k], poly[(k + 1) % poly.len()], tri))
+            || (0..3).any(|k| face_tris.iter().any(|ft| segment_hits_triangle(tri[k], tri[(k + 1) % 3], ft)))
+    })
+}
+
+/// Segment a-b passing through the inside of triangle `tri`. Touching an edge or ending on the plane does not count.
+fn segment_hits_triangle(a: DVec3, b: DVec3, tri: &[DVec3; 3]) -> bool {
+    const EPS: f64 = 1e-6;
+    let dir = b - a;
+    let (e1, e2) = (tri[1] - tri[0], tri[2] - tri[0]);
+    let p = dir.cross(e2);
+    let det = e1.dot(p);
+    if det.abs() < 1e-12 {
+        return false;
+    }
+
+    let inv = 1.0 / det;
+    let s = a - tri[0];
+    let u = s.dot(p) * inv;
+    let q = s.cross(e1);
+    let v = dir.dot(q) * inv;
+    let t = e2.dot(q) * inv;
+    u > EPS && v > EPS && u + v < 1.0 - EPS && t > EPS && t < 1.0 - EPS
 }
 
 /// Opposite normals share a key so back to back faces land in one group.
@@ -89,13 +146,7 @@ impl FaceCull {
     /// Faces of a node that take part: opaque, single sided, not tool textures, triggers or displacements.
     fn node_faces(map: &Map, game: &GameConfig, opaque: &(dyn Fn(&str) -> bool + Sync), id: NodeId) -> Vec<CullFace> {
         let Some(node) = map.get(id) else { return Vec::new() };
-        if map.is_hidden(id) || !map.in_cordon(id) {
-            return Vec::new();
-        }
-
-        let entity = map.owning_entity(id).and_then(|e| map.entity(e));
-        let volume = entity.is_some_and(|e| e.classname.starts_with("trigger") || game.entity(&e.classname).is_some_and(|d| d.node_class == "Area3D"));
-        if volume {
+        if map.is_hidden(id) || !map.in_cordon(id) || skipped_entity(map, game, id) {
             return Vec::new();
         }
 
@@ -168,11 +219,11 @@ impl FaceCull {
 
     /// The changed nodes plus every closed solid sharing space with them. Moving a solid buries or uncovers the
     /// faces of its neighbours, so those are recomputed in the same pass and stay consistent.
-    fn with_neighbours(&self, map: &Map, game: &GameConfig, dirty: &BTreeSet<NodeId>) -> Vec<NodeId> {
+    fn with_neighbours(&self, map: &Map, game: &GameConfig, opaque: &(dyn Fn(&str) -> bool + Sync), dirty: &BTreeSet<NodeId>) -> Vec<NodeId> {
         let mut regions: Vec<Aabb> = Vec::new();
         for id in dirty {
             regions.extend(self.solids.get(id).copied());
-            regions.extend(solid_bounds(map, game, *id));
+            regions.extend(solid_bounds(map, game, opaque, *id));
         }
 
         let mut nodes = dirty.clone();
@@ -191,6 +242,7 @@ impl FaceCull {
     /// shell instead of every solid's whole surface. Whole faces only, like the coplanar pass.
     fn hide_buried_faces(&mut self, map: &Map, nodes: &[NodeId], changed: &mut BTreeSet<NodeId>) {
         let solids: Vec<(NodeId, Aabb)> = self.solids.iter().map(|(id, b)| (*id, *b)).collect();
+        let mut mesh_tris: HashMap<NodeId, Vec<[DVec3; 3]>> = HashMap::new();
         for id in nodes {
             let Some(faces) = self.faces.get(id) else { continue };
             let reach = faces.iter().fold(Aabb::EMPTY, |mut b, f| {
@@ -207,7 +259,10 @@ impl FaceCull {
                 .iter()
                 .filter(|f| {
                     let already_hidden = self.pieces.get(id).and_then(|p| p.get(&f.face)).is_some_and(|p| p.is_empty());
-                    !already_hidden && containers.iter().any(|other| self.solids.get(other).is_some_and(|b| b.contains(&f.bounds)) && buried_in(map, *other, f))
+                    !already_hidden
+                        && containers
+                            .iter()
+                            .any(|other| self.solids.get(other).is_some_and(|b| b.contains(&f.bounds)) && buried_in(map, *other, f, &mut mesh_tris))
                 })
                 .map(|f| f.face)
                 .collect();
@@ -224,7 +279,7 @@ impl FaceCull {
             *self = Self::default();
             map.nodes.keys().copied().collect()
         } else {
-            self.with_neighbours(map, game, dirty)
+            self.with_neighbours(map, game, opaque, dirty)
         };
         // Areas on each plane that changed, from the old and the new faces of the refreshed nodes.
         let mut touched: HashMap<PlaneKey, Vec<Aabb>> = HashMap::new();
@@ -250,7 +305,7 @@ impl FaceCull {
             }
 
             self.solids.remove(id);
-            if let Some(b) = solid_bounds(map, game, *id) {
+            if let Some(b) = solid_bounds(map, game, opaque, *id) {
                 self.solids.insert(*id, b);
             }
         }
@@ -496,6 +551,75 @@ mod tests {
         assert!(changed.contains(&rock));
         assert!(!cull.pieces.contains_key(&rock), "the rock draws again once it is outside");
         let _ = hill;
+    }
+
+    fn add_box_with(map: &mut Map, parent: NodeId, min: DVec3, max: DVec3, material: &str) -> NodeId {
+        map.insert(parent, NodeKind::Brush(Brush::from_aabb(&Aabb::new(min, max), material).unwrap()))
+    }
+
+    #[test]
+    fn tool_and_see_through_solids_bury_nothing() {
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        let clip = add_box_with(&mut map, layer, DVec3::splat(-128.0), DVec3::splat(128.0), "special/clip");
+        let water = add_box_with(&mut map, layer, DVec3::new(512.0, -128.0, -128.0), DVec3::new(768.0, 128.0, 128.0), "liquids/water");
+        let in_clip = add_box(&mut map, DVec3::splat(-16.0), DVec3::splat(16.0));
+        let in_water = add_box(&mut map, DVec3::new(624.0, -16.0, -16.0), DVec3::new(656.0, 16.0, 16.0));
+        let mut cull = FaceCull::default();
+        cull.update(&map, &GameConfig::default(), &|m| m != "liquids/water", &BTreeSet::new(), true);
+        assert!(!cull.pieces.contains_key(&in_clip), "detail inside a clip box still draws");
+        assert!(!cull.pieces.contains_key(&in_water), "a rock under water still draws");
+        let _ = (clip, water);
+    }
+
+    #[test]
+    fn moving_bodies_take_no_part() {
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        let mut game = GameConfig::default();
+        game.entities.push(serde_json::from_str(r#"{"classname": "prop_physics", "type": "solid", "node_class": "RigidBody3D"}"#).unwrap());
+        let body = map.insert(layer, NodeKind::Entity(gt_doc::Entity::new("prop_physics")));
+        let crate_box = add_box_with(&mut map, body, DVec3::splat(-128.0), DVec3::splat(128.0), "dev/grey");
+        let inner = add_box(&mut map, DVec3::splat(-16.0), DVec3::splat(16.0));
+        let wall = add_box(&mut map, DVec3::new(128.0, -128.0, -128.0), DVec3::new(160.0, 128.0, 128.0));
+        let mut cull = FaceCull::default();
+        cull.update(&map, &game, &|_| true, &BTreeSet::new(), true);
+        assert!(!cull.pieces.contains_key(&inner), "a rigid body moves away, what it covers must still draw");
+        assert!(!cull.pieces.contains_key(&crate_box) && !cull.pieces.contains_key(&wall), "no back to back culling against a body");
+    }
+
+    /// A closed U shaped prism, x 0..96, y 0..64, z 0..64, with a notch at x 32..64, y 32..64.
+    fn u_mesh() -> gt_geom::Mesh {
+        let outline = [(0.0, 0.0), (96.0, 0.0), (96.0, 32.0), (96.0, 64.0), (64.0, 64.0), (64.0, 32.0), (32.0, 32.0), (32.0, 64.0), (0.0, 64.0), (0.0, 32.0)];
+        let at = |k: usize, z: f64| DVec3::new(outline[k].0, outline[k].1, z);
+        let data = || gt_geom::FaceData::new("dev/grey", Default::default());
+        let mut polys: Vec<(Vec<DVec3>, gt_geom::FaceData)> = Vec::new();
+        for cap in [vec![0, 1, 2, 5, 6, 9], vec![9, 6, 7, 8], vec![5, 2, 3, 4]] {
+            polys.push((cap.iter().map(|k| at(*k, 0.0)).rev().collect(), data()));
+            polys.push((cap.iter().map(|k| at(*k, 64.0)).collect(), data()));
+        }
+
+        for k in 0..outline.len() {
+            let n = (k + 1) % outline.len();
+            polys.push((vec![at(k, 0.0), at(n, 0.0), at(n, 64.0), at(k, 64.0)], data()));
+        }
+
+        gt_geom::Mesh::from_polygons(polys)
+    }
+
+    #[test]
+    fn a_face_crossing_the_opening_of_a_concave_mesh_stays() {
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        let u = map.insert(layer, NodeKind::Mesh(u_mesh()));
+        assert!(map.mesh(u).unwrap().edge_faces().values().all(|f| f.len() == 2), "the test shape is closed");
+        // Its front face has every corner and its centre inside the U, but the middle of its top edge runs through the notch.
+        let bar = add_box(&mut map, DVec3::new(8.0, 8.0, 8.0), DVec3::new(88.0, 40.0, 56.0));
+        let buried = add_box(&mut map, DVec3::new(4.0, 4.0, 58.0), DVec3::new(20.0, 20.0, 62.0));
+        let cull = run(&map);
+        let front = face_towards(&map, bar, DVec3::NEG_Z);
+        assert!(!cull.pieces.get(&bar).is_some_and(|p| p.get(&front).is_some_and(|v| v.is_empty())), "the face shows through the notch");
+        assert_eq!(cull.pieces[&buried].len(), 6, "a box wholly inside the U is still dropped");
     }
 
     #[test]

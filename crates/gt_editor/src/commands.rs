@@ -154,6 +154,8 @@ pub enum Action {
     TexelDensity(f64),
     MeshUv(crate::texture_ops::MeshUvKind),
     ShowHotspotEditor,
+    /// Opens the hotspot editor on this material.
+    EditHotspots(String),
     ReloadMaterials,
     /// Makes a scatter set the one the scatter tool paints into.
     ActivateScatter(NodeId),
@@ -245,6 +247,7 @@ const CTRL: Modifiers = Modifiers::COMMAND;
 const CTRL_SHIFT: Modifiers = Modifiers { alt: false, ctrl: false, shift: true, mac_cmd: false, command: true };
 const SHIFT: Modifiers = Modifiers::SHIFT;
 const ALT: Modifiers = Modifiers::ALT;
+const ALT_SHIFT: Modifiers = Modifiers { alt: true, ctrl: false, shift: true, mac_cmd: false, command: false };
 const NONE: Modifiers = Modifiers::NONE;
 
 const DIGITS: [Key; 9] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9];
@@ -326,7 +329,8 @@ fn trenchbroom_bindings() -> Vec<(KeyboardShortcut, Action)> {
     out
 }
 
-/// Key bindings for a preset. Hammer and Blender presets replace some TrenchBroom keys with their own.
+/// Key bindings for a preset. Hammer and Blender presets take over some TrenchBroom chords, actions keep their other
+/// bindings, and the last entries of each preset rebind actions whose only chord was taken.
 pub fn preset_bindings(preset: &str) -> Vec<(KeyboardShortcut, Action)> {
     let mut base = trenchbroom_bindings();
     let replace: Vec<(KeyboardShortcut, Action)> = match preset {
@@ -341,6 +345,9 @@ pub fn preset_bindings(preset: &str) -> Vec<(KeyboardShortcut, Action)> {
             (sc(CTRL, Key::L), Action::Rotate { axis: 1, degrees: 90.0 }),
             (sc(CTRL, Key::M), Action::ShowShapeDialog),
             (sc(SHIFT, Key::A), Action::SetTool(ToolKind::Texture)),
+            (sc(CTRL, Key::F4), Action::CloseTab),
+            (sc(CTRL_SHIFT, Key::M), Action::CsgMerge),
+            (sc(CTRL_SHIFT, Key::L), Action::CsgIntersect),
         ],
         "blender" => vec![
             (sc(NONE, Key::A), Action::SelectAll),
@@ -356,11 +363,14 @@ pub fn preset_bindings(preset: &str) -> Vec<(KeyboardShortcut, Action)> {
             (sc(NONE, Key::Z), Action::ToggleTextured),
             (sc(SHIFT, Key::A), Action::ShowShapeDialog),
             (sc(NONE, Key::F3), Action::ShowCommandPalette),
+            (sc(NONE, Key::Slash), Action::IsolateSelected),
+            (sc(ALT_SHIFT, Key::H), Action::HotspotTexture),
+            (sc(NONE, Key::F4), Action::SetShade(Shade::Lit)),
         ],
         _ => Vec::new(),
     };
     for (shortcut, action) in replace {
-        base.retain(|(s, a)| *s != shortcut && *a != action);
+        base.retain(|(s, _)| *s != shortcut);
         base.push((shortcut, action));
     }
 
@@ -491,6 +501,25 @@ pub fn shortcut_text(ctx: &egui::Context, prefs: &Prefs, action: &Action) -> Opt
     shortcuts(prefs).into_iter().find(|(_, a)| a == action).map(|(s, _)| ctx.format_shortcut(&s))
 }
 
+/// `InputState::consume_shortcut` that also matches digits by their physical key. With Shift held the logical key is
+/// the shifted symbol ("!" for 1 on a US layout), so Ctrl+Shift+1 would never fire otherwise.
+pub fn consume_shortcut(input: &mut egui::InputState, shortcut: &KeyboardShortcut) -> bool {
+    input.consume_shortcut(shortcut) | consume_physical_digit(&mut input.events, shortcut)
+}
+
+fn consume_physical_digit(events: &mut Vec<egui::Event>, shortcut: &KeyboardShortcut) -> bool {
+    if !DIGITS.contains(&shortcut.logical_key) && shortcut.logical_key != Key::Num0 {
+        return false;
+    }
+
+    let before = events.len();
+    events.retain(|e| {
+        !matches!(e, egui::Event::Key { physical_key: Some(k), pressed: true, modifiers, .. }
+            if *k == shortcut.logical_key && modifiers.matches_logically(shortcut.modifiers))
+    });
+    events.len() != before
+}
+
 fn selection_bounds(state: &EditorState) -> Aabb {
     let map = &state.doc.map;
     if state.doc.selection.has_faces() {
@@ -514,6 +543,22 @@ fn selection_bounds(state: &EditorState) -> Aabb {
 }
 
 pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
+    state.validate_insert_context();
+    run(state, action, ctx);
+    state.validate_insert_context();
+}
+
+/// Runs an edit that returns `None` when there is nothing to do, recording no undo step then and showing `why`.
+fn edit_or<T>(state: &mut EditorState, label: &str, why: &str, f: impl FnOnce(&mut gt_doc::Map, &mut gt_doc::Selection) -> Option<T>) -> Option<T> {
+    let result = state.doc.try_edit(label, |m, s| f(m, s).ok_or(())).ok();
+    if result.is_none() {
+        state.set_status(why);
+    }
+
+    result
+}
+
+fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
     if matches!(action, Action::Rotate { .. } | Action::Flip { .. } | Action::Nudge(_) | Action::Duplicate) {
         state.last_repeatable = Some(action.clone());
     }
@@ -593,12 +638,12 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             }
         }
         Action::Undo => {
-            if let Some(l) = state.doc.undo() {
+            if let Some(l) = state.undo() {
                 state.set_status(format!("Undo {l}"));
             }
         }
         Action::Redo => {
-            if let Some(l) = state.doc.redo() {
+            if let Some(l) = state.redo() {
                 state.set_status(format!("Redo {l}"));
             }
         }
@@ -612,11 +657,6 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             }
 
             let n = state.doc.edit("Delete", ops::delete_selection);
-            // Deleting the current layer would leave new objects homeless, so fall back to the default layer.
-            if !state.doc.map.contains(state.current_layer) {
-                state.current_layer = state.doc.map.default_layer();
-            }
-
             state.set_status(format!("Deleted {n} objects"));
         }
         Action::Duplicate => {
@@ -626,16 +666,16 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::DuplicateLinked => {
             let offset = DVec3::new(grid, 0.0, grid);
             let has_groups = state.doc.selection.nodes.iter().any(|id| matches!(state.doc.map.get(*id).map(|n| &n.kind), Some(gt_doc::NodeKind::Group(_))));
-            if !has_groups {
-                if state.doc.selection.nodes.is_empty() {
-                    return;
+            let linked = edit_or(state, "Duplicate Linked", "Select objects or groups to duplicate linked", |m, s| {
+                if !has_groups {
+                    ops::group_selection(m, s, "Linked", parent)?;
                 }
 
-                state.doc.edit("Group", |m, s| ops::group_selection(m, s, "Linked", parent));
+                Some(ops::duplicate_linked(m, s, offset, opts)).filter(|ids| !ids.is_empty())
+            });
+            if let Some(ids) = linked {
+                state.set_status(format!("Created {} linked group(s). Edits inside one update the others", ids.len()));
             }
-
-            let n = state.doc.edit("Duplicate Linked", |m, s| ops::duplicate_linked(m, s, offset, opts)).len();
-            state.set_status(format!("Created {n} linked group(s). Edits inside one update the others"));
         }
         Action::UnlinkGroups => state.doc.edit("Unlink Groups", |m, s| ops::unlink_groups(m, s)),
         Action::SelectAll => state.doc.select(|m, s| ops::select_all(m, s, &open_groups)),
@@ -647,18 +687,21 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             }
         }
         Action::SelectInverse => state.doc.select(|m, s| ops::select_inverse(m, s, &open_groups)),
-        Action::SelectTouching => state.doc.edit("Select Touching", |m, s| ops::select_touching(m, s, &open_groups, false)),
-        Action::SelectInside => state.doc.edit("Select Inside", |m, s| ops::select_touching(m, s, &open_groups, true)),
+        // Not pure selection changes: like TrenchBroom they delete the selecting brushes, so they stay undoable edits.
+        Action::SelectTouching | Action::SelectInside => {
+            let inside = action == Action::SelectInside;
+            let label = if inside { "Select Inside" } else { "Select Touching" };
+            edit_or(state, label, "Select the brushes to select with first", |m, s| {
+                (!s.brushes(m).is_empty()).then(|| ops::select_touching(m, s, &open_groups, inside))
+            });
+        }
         Action::SelectSiblings => state.doc.select(ops::select_siblings),
         Action::SelectSameMaterial => {
             let mat = first_selected_material(state).unwrap_or_else(|| state.current_material.clone());
             state.doc.select(|m, s| ops::select_by_material(m, s, &mat, &open_groups));
         }
         Action::Group => {
-            let name = "Group".to_string();
-            if state.doc.edit("Group", |m, s| ops::group_selection(m, s, &name, parent)).is_none() {
-                state.set_status("Nothing to group");
-            }
+            edit_or(state, "Group", "Nothing to group", |m, s| ops::group_selection(m, s, "Group", parent));
         }
         Action::Ungroup => state.doc.edit("Ungroup", ops::ungroup_selection),
         Action::HideSelected => state.doc.edit("Hide", ops::hide_selection),
@@ -721,14 +764,10 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         }
         Action::CsgMerge => {
             let mat = state.current_material.clone();
-            if state.doc.edit("CSG Merge", |m, s| ops::csg_merge(m, s, &mat)).is_none() {
-                state.set_status("Select at least two brushes to merge");
-            }
+            edit_or(state, "CSG Merge", "Select at least two brushes to merge", |m, s| ops::csg_merge(m, s, &mat));
         }
         Action::CsgIntersect => {
-            if state.doc.edit("CSG Intersect", ops::csg_intersect).is_none() {
-                state.set_status("Selected brushes do not intersect");
-            }
+            edit_or(state, "CSG Intersect", "Select at least two brushes that intersect", ops::csg_intersect);
         }
         Action::CsgHollow => {
             let t = state.hollow_thickness.max(state.grid.min(state.hollow_thickness));
@@ -787,18 +826,14 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             state.set_status(format!("Converted {n} mesh(es) to convex brushes"));
         }
         Action::JoinMeshes => {
-            if state.doc.edit("Join Meshes", ops::join_meshes).is_none() {
-                state.set_status("Select two or more meshes or brushes to join");
-            }
+            edit_or(state, "Join Meshes", "Select two or more meshes or brushes to join", ops::join_meshes);
         }
         Action::FocusSelection => {
             let b = selection_bounds(state);
             state.focus_request = Some(if b.is_empty() { state.doc.map.bounds_of(state.doc.map.layers.clone()) } else { b });
         }
         Action::CreateBrushEntity(classname) => {
-            if state.doc.edit("Create Brush Entity", |m, s| ops::create_brush_entity(m, s, &classname, parent)).is_none() {
-                state.set_status("Select brushes first");
-            }
+            edit_or(state, "Create Brush Entity", "Select brushes first", |m, s| ops::create_brush_entity(m, s, &classname, parent));
         }
         Action::CreatePointEntity { classname, at } => {
             let origin = state.snap(at.or(state.cursor_world).unwrap_or(DVec3::ZERO));
@@ -815,7 +850,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         },
         Action::CreateDecal { material, at, normal } => create_decal(state, &material, at, normal),
         Action::MoveToWorld => {
-            let layer = state.current_layer;
+            let layer = state.valid_layer();
             state.doc.edit("Move to World", |m, s| ops::move_brushes_to_world(m, s, layer));
         }
         Action::MoveToLayer(layer) => state.doc.edit("Move to Layer", |m, s| ops::move_to_layer(m, s, layer)),
@@ -846,30 +881,26 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             state.set_status(format!("Copied {} objects", roots.len()));
         }
         Action::Paste(text) => {
-            let result = state.doc.edit("Paste", |m, s| {
+            let cursor = state.cursor_world;
+            let (snap, grid) = (state.snap, state.grid);
+            let result = state.doc.try_edit("Paste", |m, s| {
                 let ids = format::paste_nodes(m, parent, &text)?;
                 s.clear();
                 s.nodes.extend(ids.iter().copied());
+                // Paste at cursor: center the pasted objects under the mouse, snapped to grid.
+                let b = m.bounds_of(ids.iter().copied());
+                if let Some(cursor) = cursor
+                    && !b.is_empty()
+                {
+                    let offset = cursor - b.center();
+                    let offset = if snap { gt_core::snap_vec_to_grid(offset, grid) } else { offset };
+                    ops::translate_selection(m, s, DVec3::new(offset.x, 0.0, offset.z), opts);
+                }
+
                 Ok::<_, format::FormatError>(ids)
             });
-            match result {
-                Ok(ids) => {
-                    // Paste at cursor: center the pasted objects under the mouse, snapped to grid.
-                    if let Some(cursor) = state.cursor_world {
-                        let b = state.doc.map.bounds_of(ids.iter().copied());
-                        if !b.is_empty() {
-                            let offset = state.snap(cursor - b.center());
-                            let offset = DVec3::new(offset.x, 0.0, offset.z);
-                            // Part of the paste undo step, the snapshot was taken before pasting.
-                            ops::translate_selection(&mut state.doc.map, &state.doc.selection, offset, opts);
-                            state.doc.revision += 1;
-                        }
-                    }
-                }
-                Err(_) => {
-                    state.doc.undo();
-                    state.set_status("Clipboard does not contain GodotTrench objects");
-                }
+            if result.is_err() {
+                state.set_status("Clipboard does not contain GodotTrench objects");
             }
         }
         Action::OpenGroup => {
@@ -911,6 +942,11 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         },
         Action::BuildInGodot => build_in_godot(state),
         Action::ToggleLiveMode => {
+            if !state.prefs.live_mode && !state.prefs.live_link {
+                state.set_status(LIVE_LINK_OFF);
+                return;
+            }
+
             state.prefs.live_mode = !state.prefs.live_mode;
             state.set_status(match (state.prefs.live_mode, state.godot_has_project()) {
                 (true, true) => "Live mode on: edits reach Godot before you save",
@@ -989,7 +1025,9 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             }
         }
         Action::ImportModel(mode) => {
-            if let Some(path) = rfd::FileDialog::new().add_filter("Models", &crate::models::MODEL_EXTS).pick_file() {
+            let Some(picked) = rfd::FileDialog::new().add_filter("Models", &crate::models::MODEL_EXTS).pick_file() else { return };
+            let path = if mode == ModelImport::Prop { prop_model_in_project(state, &picked) } else { Some(picked) };
+            if let Some(path) = path {
                 let at = state.snap(state.cursor_world.unwrap_or(DVec3::ZERO));
                 match import_model(state, &path, mode, at) {
                     Ok(n) => state.set_status(format!("Imported {} ({n} object(s))", path.display())),
@@ -1061,7 +1099,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             state.material_reload = true;
             state.set_status("Reloading materials");
         }
-        Action::AlignTextureToView | Action::MeshUv(_) | Action::ShowHotspotEditor => {}
+        Action::AlignTextureToView | Action::MeshUv(_) | Action::ShowHotspotEditor | Action::EditHotspots(_) => {}
         Action::HotspotTexture => {
             let n = hotspot_texture(state);
             state.set_status(if n == 0 {
@@ -1198,6 +1236,22 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
     }
 }
 
+/// Saves every map with unsaved changes, asking for a file name for untitled ones. Returns false when one was not
+/// saved, its tab is then left active.
+pub fn save_all(state: &mut EditorState, ctx: &egui::Context) -> bool {
+    let start = state.active_tab.min(state.tabs.len());
+    for i in state.modified_tabs() {
+        state.switch_tab(i);
+        execute(state, Action::Save, ctx);
+        if state.doc.is_modified() {
+            return false;
+        }
+    }
+
+    state.switch_tab(start);
+    true
+}
+
 pub fn time_seed() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7)
 }
@@ -1284,8 +1338,11 @@ fn create_prefab(state: &mut EditorState) {
 
     let reference = prefab_reference(&path, Some(&map_path), state.game.project_root.as_deref());
     let parent = state.insert_parent();
+    let layer = state.valid_layer();
     state.doc.edit("Create Prefab", |m, s| {
         ops::delete_selection(m, s);
+        // The selection can hold the open group or the current layer itself.
+        let parent = [parent, layer].into_iter().find(|p| m.contains(*p)).unwrap_or_else(|| m.default_layer());
         let id = m.insert(
             parent,
             gt_doc::NodeKind::Instance(gt_doc::map::Instance { path: reference.clone(), origin: pivot, angles: DVec3::ZERO, fixup: String::new() }),
@@ -1404,15 +1461,79 @@ fn sanitize(name: &str) -> String {
     name.chars().map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c.to_ascii_lowercase() } else { '_' }).collect()
 }
 
-/// Imports a model file. Blockbench textures are written into the project texture folder so faces can use them.
+/// The file a prop entity can reference: the model itself when it is inside the Godot project, else a copy under
+/// res://models made after asking. `None` with a status when there is no project or the user declines.
+fn prop_model_in_project(state: &mut EditorState, path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let Some(root) = state.game.project_root.clone() else {
+        state.set_status("Open a Godot project first, a model prop has to reference a file Godot can load");
+        return None;
+    };
+    if gt_formats::game::to_res_path(&root, path).is_some() {
+        return Some(path.to_path_buf());
+    }
+
+    let copy = rfd::MessageDialog::new()
+        .set_title("Copy model into the project?")
+        .set_description(format!("{} is outside the Godot project, so Godot cannot load it. Copy it into res://models?", path.display()))
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show();
+    if copy != rfd::MessageDialogResult::Yes {
+        state.set_status("Model not imported, a model prop has to be inside the Godot project");
+        return None;
+    }
+
+    match copy_into_project(&root, path) {
+        Ok(target) => {
+            let game = state.game.clone();
+            state.model_library.rescan(&game);
+            Some(target)
+        }
+        Err(e) => {
+            state.set_status(format!("Could not copy the model into the project: {e}"));
+            None
+        }
+    }
+}
+
+/// Copies a file into `<root>/models`, never overwriting an existing one.
+fn copy_into_project(root: &std::path::Path, path: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    let dir = root.join("models");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into());
+    let ext = path.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    let mut target = dir.join(format!("{stem}{ext}"));
+    let mut n = 1;
+    while target.exists() {
+        target = dir.join(format!("{stem}_{n}{ext}"));
+        n += 1;
+    }
+
+    std::fs::copy(path, &target).map_err(|e| e.to_string())?;
+    Ok(target)
+}
+
+/// Imports a model file. Blockbench textures are written into the project texture folder so faces can use them. Other
+/// formats become an editable mesh like a model dragged in from the Models panel, or a prop entity for `Prop`, which
+/// needs the file inside the Godot project.
 pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: ModelImport, at: DVec3) -> Result<usize, String> {
     let parent = state.insert_parent();
     let is_bb = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("bbmodel"));
-    if mode == ModelImport::Prop || !is_bb {
-        let reference = match &state.game.project_root {
-            Some(root) => gt_formats::game::to_res_path(root, path).unwrap_or_else(|| path.to_string_lossy().replace('\\', "/")),
-            None => path.to_string_lossy().replace('\\', "/"),
-        };
+    if mode == ModelImport::Brushes && !is_bb {
+        return Err("only Blockbench .bbmodel files import as brushes, import it as a mesh instead".into());
+    }
+
+    if mode == ModelImport::Mesh && !is_bb {
+        place_model_mesh(state, path, at)?;
+        return Ok(1);
+    }
+
+    if mode == ModelImport::Prop {
+        let reference = state
+            .game
+            .project_root
+            .as_deref()
+            .and_then(|root| gt_formats::game::to_res_path(root, path))
+            .ok_or_else(|| format!("{} is outside the Godot project, Godot can only load a prop's model from inside it", path.display()))?;
         let class = state.prefs.scatter.prop_class.clone();
         state.doc.edit("Place Model", |m, s| {
             let mut e = gt_doc::Entity::new(class);
@@ -1696,9 +1817,13 @@ fn launch_godot(state: &mut EditorState, editor: bool) {
         return;
     };
     let mut cmd = std::process::Command::new(&exe);
-    cmd.arg("--path").arg(&root);
+    cmd.arg("--path").arg(&root).stdin(std::process::Stdio::null());
     if editor {
         cmd.arg("--editor");
+    }
+
+    if state.stdio_mcp {
+        cmd.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     }
 
     match cmd.spawn() {
@@ -1708,6 +1833,7 @@ fn launch_godot(state: &mut EditorState, editor: bool) {
 }
 
 pub const GODOT_NOT_FOUND: &str = "Godot was not found, set the Godot executable in Preferences or the GODOT environment variable";
+pub const LIVE_LINK_OFF: &str = "Live mode needs the Godot live link, turn it on in Preferences first";
 
 fn build_in_godot(state: &mut EditorState) {
     let Some(path) = state.doc.path.clone() else {
@@ -1857,7 +1983,9 @@ mod tests {
         prefs.keymap_preset = "hammer".into();
         let hammer = shortcuts(&prefs);
         assert!(hammer.iter().any(|(s, a)| *a == Action::SetTool(ToolKind::Clip) && s.modifiers.shift && s.logical_key == Key::X));
-        assert!(!hammer.iter().any(|(s, a)| *a == Action::SetTool(ToolKind::Clip) && s.logical_key == Key::C));
+        assert!(hammer.iter().any(|(s, a)| *a == Action::SetTool(ToolKind::Clip) && s.logical_key == Key::C), "moved actions keep their old key");
+        assert!(hammer.iter().any(|(s, a)| *a == Action::MoveToWorld && *s == sc(CTRL, Key::W)));
+        assert!(!hammer.iter().any(|(s, a)| *a == Action::CloseTab && *s == sc(CTRL, Key::W)), "a taken chord leaves its old action");
         prefs.key_overrides.insert(Action::CsgSubtract.binding_id(), "Ctrl+Shift+Q".into());
         let custom = shortcuts(&prefs);
         let (s, _) = custom.iter().find(|(_, a)| *a == Action::CsgSubtract).unwrap();
@@ -1866,5 +1994,187 @@ mod tests {
         let ids: Vec<String> = bindable_actions().iter().map(|a| a.binding_id()).collect();
         let unique: std::collections::BTreeSet<&String> = ids.iter().collect();
         assert_eq!(ids.len(), unique.len());
+    }
+
+    #[test]
+    fn every_preset_keeps_a_key_for_every_default_action() {
+        for preset in PRESETS {
+            let bindings = preset_bindings(preset);
+            for (_, action) in trenchbroom_bindings() {
+                assert!(bindings.iter().any(|(_, a)| *a == action), "{preset} leaves {action:?} unbound");
+            }
+
+            let chords: Vec<&KeyboardShortcut> = bindings.iter().map(|(s, _)| s).collect();
+            assert!(chords.iter().enumerate().all(|(i, c)| !chords[..i].contains(c)), "{preset} binds a chord twice");
+            let has = |action: Action, s: KeyboardShortcut| bindings.iter().any(|(b, a)| *a == action && *b == s);
+            assert!(has(Action::Delete, sc(NONE, Key::Delete)), "{preset}");
+            assert!(has(Action::SelectNone, sc(NONE, Key::Escape)), "{preset}");
+            assert!(has(Action::ShowCommandPalette, sc(CTRL_SHIFT, Key::P)), "{preset}");
+            for action in [Action::CloseTab, Action::CsgMerge, Action::CsgIntersect, Action::ShowShapeDialog, Action::ShowCommandPalette] {
+                assert!(bindings.iter().any(|(_, a)| *a == action), "{preset} leaves {action:?} unbound");
+            }
+        }
+    }
+
+    #[test]
+    fn digit_shortcuts_match_the_physical_key_under_shift() {
+        let mods = Modifiers { ctrl: true, command: true, shift: true, ..Modifiers::NONE };
+        let press = |key, physical| egui::Event::Key { key, physical_key: Some(physical), pressed: true, repeat: false, modifiers: mods };
+        let store = sc(CTRL_SHIFT, Key::Num1);
+        let mut events = vec![press(Key::Exclamationmark, Key::Num1)];
+        assert!(consume_physical_digit(&mut events, &store));
+        assert!(events.is_empty());
+        let mut events = vec![press(Key::Exclamationmark, Key::Num2)];
+        assert!(!consume_physical_digit(&mut events, &store));
+        assert!(!consume_physical_digit(&mut events, &sc(CTRL_SHIFT, Key::S)), "only digit bindings look at the physical key");
+        assert_eq!(events.len(), 1);
+    }
+
+    fn brush_at(state: &mut EditorState, x: f64) -> NodeId {
+        let parent = state.insert_parent();
+        let min = DVec3::new(x, 0.0, 0.0);
+        let brush = gt_geom::Brush::from_aabb(&Aabb::new(min, min + DVec3::splat(32.0)), "dev/grey").unwrap();
+        state.doc.edit("Create Brush", |m, _| ops::create_brush(m, parent, brush))
+    }
+
+    #[test]
+    fn undoing_a_new_layer_keeps_objects_on_a_real_layer() {
+        let mut state = EditorState::new(Default::default());
+        let ctx = egui::Context::default();
+        execute(&mut state, Action::AddLayer, &ctx);
+        let layer = state.current_layer;
+        execute(&mut state, Action::Undo, &ctx);
+        assert_eq!(state.current_layer, state.doc.map.default_layer());
+
+        // The removed layer's id comes back as the next node, it must not become a parent.
+        let first = brush_at(&mut state, 0.0);
+        assert_eq!(first, layer);
+        let second = brush_at(&mut state, 64.0);
+        let map = &state.doc.map;
+        assert_eq!(map.get(second).unwrap().parent, Some(map.default_layer()));
+        execute(&mut state, Action::Redo, &ctx);
+        assert!(state.doc.map.layers.contains(&state.current_layer));
+
+        state.open_groups.push(first);
+        execute(&mut state, Action::SelectNone, &ctx);
+        assert!(state.open_groups.is_empty(), "a brush is not an open group");
+    }
+
+    #[test]
+    fn cutting_the_current_layer_falls_back_to_the_default_layer() {
+        let mut state = EditorState::new(Default::default());
+        let ctx = egui::Context::default();
+        execute(&mut state, Action::AddLayer, &ctx);
+        let layer = state.current_layer;
+        brush_at(&mut state, 0.0);
+        state.doc.select(|_, s| s.select_node(layer));
+        execute(&mut state, Action::Cut, &ctx);
+        assert!(!state.doc.map.contains(layer));
+        assert_eq!(state.current_layer, state.doc.map.default_layer(), "cutting the current layer falls back like delete");
+    }
+
+    #[test]
+    fn failed_and_empty_commands_record_nothing() {
+        let mut state = EditorState::new(Default::default());
+        let ctx = egui::Context::default();
+        brush_at(&mut state, 0.0);
+        execute(&mut state, Action::Undo, &ctx);
+        state.doc.mark_saved();
+        let steps = state.doc.history.undo_labels().count();
+        for action in [
+            Action::Group,
+            Action::CsgMerge,
+            Action::CsgIntersect,
+            Action::JoinMeshes,
+            Action::CreateBrushEntity("func_door".into()),
+            Action::SelectTouching,
+            Action::SelectInside,
+            Action::DuplicateLinked,
+            Action::Paste("not a map".into()),
+        ] {
+            execute(&mut state, action.clone(), &ctx);
+            assert!(!state.doc.is_modified(), "{action:?} marked the map modified");
+            assert_eq!(state.doc.history.undo_labels().count(), steps, "{action:?} added an undo step");
+            assert!(state.doc.history.can_redo(), "{action:?} dropped the redo step");
+        }
+    }
+
+    #[test]
+    fn duplicate_linked_is_one_undo_step_and_paste_lands_at_the_cursor() {
+        let mut state = EditorState::new(Default::default());
+        let ctx = egui::Context::default();
+        let brush = brush_at(&mut state, 0.0);
+        state.doc.select(|_, s| s.select_node(brush));
+        let steps = state.doc.history.undo_labels().count();
+        execute(&mut state, Action::DuplicateLinked, &ctx);
+        assert_eq!(state.doc.history.undo_labels().count(), steps + 1);
+        assert_eq!(state.doc.map.nodes.values().filter(|n| matches!(n.kind, gt_doc::NodeKind::Group(_))).count(), 2);
+
+        let text = format::nodes_to_string(&state.doc.map, &[brush]);
+        state.cursor_world = Some(DVec3::new(512.0, 0.0, 512.0));
+        execute(&mut state, Action::Paste(text), &ctx);
+        assert_eq!(state.doc.history.undo_labels().next(), Some("Paste"));
+        let b = state.doc.map.bounds_of(state.doc.selection.nodes.iter().copied());
+        assert_eq!(b.center().x, 512.0);
+        execute(&mut state, Action::Undo, &ctx);
+        assert_eq!(state.doc.map.brushes().count(), 2, "one undo takes the paste and its move back");
+    }
+
+    #[test]
+    fn camera_bookmarks_survive_undo() {
+        let mut state = EditorState::new(Default::default());
+        let ctx = egui::Context::default();
+        brush_at(&mut state, 0.0);
+        let bookmark = gt_doc::map::CameraBookmark { position: DVec3::splat(5.0), yaw: 1.0, pitch: 0.5 };
+        state.doc.map.editor.cameras.insert(3, bookmark);
+        execute(&mut state, Action::Undo, &ctx);
+        assert!(state.doc.map.editor.cameras.contains_key(&3));
+        execute(&mut state, Action::Redo, &ctx);
+        assert!(state.doc.map.editor.cameras.contains_key(&3));
+    }
+
+    #[test]
+    fn live_mode_needs_the_live_link() {
+        let mut state = EditorState::new(Default::default());
+        state.prefs.live_link = false;
+        execute(&mut state, Action::ToggleLiveMode, &egui::Context::default());
+        assert!(!state.prefs.live_mode);
+        assert_eq!(state.status, LIVE_LINK_OFF);
+    }
+
+    #[test]
+    fn model_props_never_reference_files_outside_the_project() {
+        let mut state = EditorState::new(Default::default());
+        let outside = std::env::temp_dir().join("gt_outside_model.glb");
+        assert!(import_model(&mut state, &outside, ModelImport::Prop, DVec3::ZERO).is_err());
+        assert!(import_model(&mut state, &outside, ModelImport::Brushes, DVec3::ZERO).is_err());
+        assert_eq!(state.doc.map.entity_count(), 0);
+    }
+
+    #[test]
+    fn save_all_saves_every_tab_and_discard_closes_one() {
+        let dir = std::env::temp_dir().join(format!("gt_save_all_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut state = EditorState::new(Default::default());
+        state.prefs.live_link = false;
+        let ctx = egui::Context::default();
+        for name in ["a.gtm", "b.gtm"] {
+            state.open_tab(Document::from_map(gt_doc::Map::new(), Some(dir.join(name))));
+            brush_at(&mut state, 0.0);
+        }
+
+        state.switch_tab(0);
+        assert_eq!(state.modified_tabs(), vec![1, 2]);
+        assert!(save_all(&mut state, &ctx));
+        assert!(state.modified_tabs().is_empty());
+        assert_eq!(state.active_tab, 0);
+        assert!(dir.join("a.gtm").exists() && dir.join("b.gtm").exists());
+
+        state.switch_tab(2);
+        brush_at(&mut state, 64.0);
+        state.discard_tab();
+        assert_eq!(state.tabs.len(), 1);
+        assert!(state.modified_tabs().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

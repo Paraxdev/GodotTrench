@@ -128,6 +128,21 @@ pub struct MapTab {
     pub doc: Document,
     pub open_groups: Vec<NodeId>,
     pub current_layer: NodeId,
+    autosave: Autosave,
+}
+
+/// Autosave bookkeeping of one open map.
+#[derive(Clone, Debug, Default)]
+struct Autosave {
+    revision: u64,
+    /// Temp file of an untitled map, named once so every untitled tab keeps its own.
+    untitled: Option<PathBuf>,
+}
+
+impl Autosave {
+    fn for_doc(doc: &Document) -> Self {
+        Self { revision: 0, untitled: doc.recovered_from.clone().filter(|_| doc.path.is_none()) }
+    }
 }
 
 /// How placed models are sized. Real-world-scale assets (many glTF samples are authored in metres) come in
@@ -287,7 +302,9 @@ pub struct EditorState {
     pub focus_request: Option<Aabb>,
     pub hollow_thickness: f64,
     last_autosave: Instant,
-    autosave_revision: u64,
+    autosave: Autosave,
+    /// MCP runs over stdin and stdout, so launched programs must not write to them.
+    pub stdio_mcp: bool,
     live_link_status: Option<std::sync::mpsc::Receiver<String>>,
     pub godot: crate::godot::GodotStatus,
     /// Started by the app, tests and tools run without it.
@@ -360,7 +377,8 @@ impl EditorState {
             focus_request: None,
             hollow_thickness: 16.0,
             last_autosave: Instant::now(),
-            autosave_revision: 0,
+            autosave: Autosave::default(),
+            stdio_mcp: false,
             live_link_status: None,
             godot: Default::default(),
             link: None,
@@ -413,13 +431,42 @@ impl EditorState {
 
     /// Parent for newly created objects: the innermost open group, or the current layer.
     pub fn insert_parent(&self) -> NodeId {
-        for g in self.open_groups.iter().rev() {
-            if self.doc.map.contains(*g) {
-                return *g;
-            }
+        let map = &self.doc.map;
+        if let Some(g) = self.open_groups.iter().rev().find(|g| is_group(map, **g)) {
+            return *g;
         }
 
-        if self.doc.map.contains(self.current_layer) { self.current_layer } else { self.doc.map.default_layer() }
+        self.valid_layer()
+    }
+
+    /// The current layer, or the default layer when the current one is gone.
+    pub fn valid_layer(&self) -> NodeId {
+        if self.doc.map.layers.contains(&self.current_layer) { self.current_layer } else { self.doc.map.default_layer() }
+    }
+
+    /// Drops open groups and a current layer that no longer exist. Undo restores `next_id`, so a removed layer's id can
+    /// come back as a brush and new objects would nest under it.
+    pub fn validate_insert_context(&mut self) {
+        let map = &self.doc.map;
+        self.open_groups.retain(|g| is_group(map, *g));
+        self.current_layer = self.valid_layer();
+    }
+
+    /// Undo that keeps camera bookmarks, they are view state stored in the map, not edits.
+    pub fn undo(&mut self) -> Option<String> {
+        let cameras = self.doc.map.editor.cameras.clone();
+        let label = self.doc.undo();
+        self.doc.map.editor.cameras = cameras;
+        self.validate_insert_context();
+        label
+    }
+
+    pub fn redo(&mut self) -> Option<String> {
+        let cameras = self.doc.map.editor.cameras.clone();
+        let label = self.doc.redo();
+        self.doc.map.editor.cameras = cameras;
+        self.validate_insert_context();
+        label
     }
 
     pub fn shade_mode(&self) -> ShadeMode {
@@ -446,8 +493,30 @@ impl EditorState {
         (titles, self.active_tab.min(self.tabs.len()))
     }
 
+    /// The map at `index` in tab order.
+    pub fn tab_doc(&self, index: usize) -> &Document {
+        let active = self.active_tab.min(self.tabs.len());
+        match index.cmp(&active) {
+            std::cmp::Ordering::Equal => &self.doc,
+            std::cmp::Ordering::Less => &self.tabs[index].doc,
+            std::cmp::Ordering::Greater => &self.tabs[index - 1].doc,
+        }
+    }
+
+    /// Tab order indices of the maps with unsaved changes.
+    pub fn modified_tabs(&self) -> Vec<usize> {
+        (0..=self.tabs.len()).filter(|i| self.tab_doc(*i).is_modified()).collect()
+    }
+
     fn take_active(&mut self) -> MapTab {
-        MapTab { doc: std::mem::take(&mut self.doc), open_groups: std::mem::take(&mut self.open_groups), current_layer: self.current_layer }
+        // A drag still running on the map being left keeps its work as an undo step instead of staying open.
+        self.doc.commit();
+        MapTab {
+            doc: std::mem::take(&mut self.doc),
+            open_groups: std::mem::take(&mut self.open_groups),
+            current_layer: self.current_layer,
+            autosave: std::mem::take(&mut self.autosave),
+        }
     }
 
     fn activate(&mut self, mut all: Vec<MapTab>, index: usize) {
@@ -456,9 +525,13 @@ impl EditorState {
         self.doc = target.doc;
         self.open_groups = target.open_groups;
         self.current_layer = target.current_layer;
+        self.autosave = target.autosave;
         self.tabs = all;
         self.active_tab = index;
         self.scene_reset = true;
+        // Node ids restart per map, the active set would name another map's node.
+        self.active_scatter = None;
+        self.validate_insert_context();
     }
 
     /// Makes tab `index` (in tab order) the active map.
@@ -480,7 +553,8 @@ impl EditorState {
         let current = self.take_active();
         all.insert(self.active_tab.min(all.len()), current);
         let layer = doc.map.default_layer();
-        all.push(MapTab { doc, open_groups: Vec::new(), current_layer: layer });
+        let autosave = Autosave::for_doc(&doc);
+        all.push(MapTab { doc, open_groups: Vec::new(), current_layer: layer, autosave });
         let last = all.len() - 1;
         self.activate(all, last);
         let bounds = self.doc.map.bounds_of(self.doc.map.layers.clone());
@@ -501,6 +575,22 @@ impl EditorState {
         true
     }
 
+    /// Closes the active tab and throws away its unsaved changes. The last open map is replaced by a new one.
+    pub fn discard_tab(&mut self) {
+        if self.tabs.is_empty() {
+            self.reset_document(Document::new());
+            return;
+        }
+
+        if self.doc.is_modified()
+            && let Some(path) = self.doc.path.clone()
+        {
+            self.revert_live(vec![path], false);
+        }
+
+        self.close_tab();
+    }
+
     pub fn reset_document(&mut self, doc: Document) {
         if self.doc.is_modified()
             && let Some(path) = self.doc.path.clone()
@@ -510,8 +600,10 @@ impl EditorState {
 
         self.current_layer = doc.map.default_layer();
         self.open_groups.clear();
+        self.autosave = Autosave::for_doc(&doc);
         self.doc = doc;
         self.scene_reset = true;
+        self.active_scatter = None;
         let bounds = self.doc.map.bounds_of(self.doc.map.layers.clone());
         if !bounds.is_empty() {
             self.focus_request = Some(bounds);
@@ -555,6 +647,10 @@ impl EditorState {
         self.add_recent(path);
         for autosave in [autosave_path(path), legacy_autosave_path(path)] {
             let _ = std::fs::remove_file(autosave);
+        }
+
+        if let Some(untitled) = self.autosave.untitled.take().filter(|u| u != path) {
+            let _ = std::fs::remove_file(untitled);
         }
 
         if let Some(map_path) = autosave_source(path) {
@@ -706,28 +802,74 @@ impl EditorState {
         self.prefs.recent_projects.truncate(8);
     }
 
+    /// Autosaves every open map with unsaved changes.
     pub fn tick_autosave(&mut self) {
-        if self.prefs.autosave_minutes <= 0.0 || !self.doc.is_modified() || self.doc.in_transaction() {
-            return;
-        }
-
-        if self.last_autosave.elapsed().as_secs_f64() < self.prefs.autosave_minutes * 60.0 || self.autosave_revision == self.doc.revision {
+        if self.prefs.autosave_minutes <= 0.0 || self.doc.in_transaction() || self.last_autosave.elapsed().as_secs_f64() < self.prefs.autosave_minutes * 60.0 {
             return;
         }
 
         self.last_autosave = Instant::now();
-        self.autosave_revision = self.doc.revision;
-        let path = match &self.doc.path {
-            Some(p) => autosave_path(p),
-            None => std::env::temp_dir().join(UNTITLED_AUTOSAVE),
-        };
-        if format::save(&self.doc.map, &path).is_ok() {
-            self.set_status(format!("Autosaved to {}", path.display()));
+        let tabs = self.tabs.iter_mut().map(|t| (&t.doc, &mut t.autosave));
+        let saved: Vec<PathBuf> =
+            std::iter::once((&self.doc, &mut self.autosave)).chain(tabs).filter_map(|(doc, autosave)| autosave_doc(doc, autosave)).collect();
+        match saved.as_slice() {
+            [] => {}
+            [one] => self.set_status(format!("Autosaved to {}", one.display())),
+            many => self.set_status(format!("Autosaved {} maps", many.len())),
         }
+    }
+
+    /// Untitled map autosaves in the temp folder that no open tab is writing, newest first.
+    pub fn recoverable_autosaves(&self) -> Vec<PathBuf> {
+        let open: Vec<&PathBuf> = std::iter::once(&self.autosave)
+            .chain(self.tabs.iter().map(|t| &t.autosave))
+            .filter_map(|a| a.untitled.as_ref())
+            .chain(std::iter::once(&self.doc).chain(self.tabs.iter().map(|t| &t.doc)).filter_map(|d| d.recovered_from.as_ref()))
+            .collect();
+        untitled_autosaves(&std::env::temp_dir()).into_iter().filter(|p| !open.contains(&p)).collect()
     }
 }
 
-const UNTITLED_AUTOSAVE: &str = "godottrench_untitled.gtm.autosave";
+fn autosave_doc(doc: &Document, autosave: &mut Autosave) -> Option<PathBuf> {
+    if !doc.is_modified() || doc.in_transaction() || autosave.revision == doc.revision {
+        return None;
+    }
+
+    let path = match &doc.path {
+        Some(p) => autosave_path(p),
+        None => autosave.untitled.get_or_insert_with(new_untitled_autosave).clone(),
+    };
+    format::save(&doc.map, &path).ok()?;
+    autosave.revision = doc.revision;
+    Some(path)
+}
+
+const UNTITLED_PREFIX: &str = "godottrench_untitled";
+
+fn new_untitled_autosave() -> PathBuf {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    std::env::temp_dir().join(format!("{UNTITLED_PREFIX}_{}_{n}.gtm.autosave", std::process::id()))
+}
+
+/// Autosaves of untitled maps in `dir`, newest first.
+pub fn untitled_autosaves(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut found: Vec<(std::time::SystemTime, PathBuf)> = entries
+        .flatten()
+        .filter(|e| {
+            let name = e.file_name().to_string_lossy().to_lowercase();
+            name.starts_with(UNTITLED_PREFIX) && name.ends_with(".gtm.autosave")
+        })
+        .map(|e| (e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH), e.path()))
+        .collect();
+    found.sort_by(|a, b| b.0.cmp(&a.0));
+    found.into_iter().map(|(_, p)| p).collect()
+}
+
+fn is_group(map: &gt_doc::Map, id: NodeId) -> bool {
+    matches!(map.get(id).map(|n| &n.kind), Some(gt_doc::NodeKind::Group(_)))
+}
 
 // Autosaves must not end in .gtm: Godot would import them and they would sit next to the real map in file dialogs.
 pub fn autosave_path(path: &Path) -> PathBuf {
@@ -760,7 +902,7 @@ pub fn load_document(path: &Path) -> Result<Document, String> {
     let Some(source) = autosave_source(path) else {
         return Ok(Document::from_map(map, Some(path.to_path_buf())));
     };
-    let untitled = source.file_stem().is_some_and(|s| s == "godottrench_untitled");
+    let untitled = source.file_stem().is_some_and(|s| s.to_string_lossy().to_lowercase().starts_with(UNTITLED_PREFIX));
     let mut doc = Document::from_map(map, (!untitled).then_some(source));
     doc.recovered_from = Some(path.to_path_buf());
     doc.mark_unsaved();
@@ -798,6 +940,35 @@ mod tests {
         assert!(!autosave_path(&map_path).exists() && !legacy_autosave_path(&map_path).exists());
         assert_eq!(state.doc.title(), "church.gtm");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn every_modified_tab_autosaves_and_untitled_ones_get_their_own_file() {
+        let mut state = EditorState::new(Prefs::default());
+        state.prefs.autosave_minutes = 1e-9;
+        let layer = state.doc.map.default_layer();
+        state.doc.edit("add", |m, _| gt_doc::ops::create_point_entity(m, layer, "light", DVec3::ZERO));
+        state.open_tab(Document::new());
+        let layer = state.doc.map.default_layer();
+        state.doc.edit("add", |m, _| gt_doc::ops::create_point_entity(m, layer, "light", DVec3::X));
+        state.open_tab(Document::new());
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        state.tick_autosave();
+
+        let autosaves = std::iter::once(&state.autosave).chain(state.tabs.iter().map(|t| &t.autosave));
+        let files: Vec<PathBuf> = autosaves.filter_map(|a| a.untitled.clone()).collect();
+        assert_eq!(files.len(), 2, "the unmodified tab is not autosaved");
+        assert_ne!(files[0], files[1]);
+        let found = untitled_autosaves(&std::env::temp_dir());
+        assert!(files.iter().all(|f| found.contains(f)), "recovery lists them");
+        assert!(state.recoverable_autosaves().iter().all(|f| !files.contains(f)), "open maps are not offered for recovery");
+
+        let recovered = load_document(&files[0]).unwrap();
+        assert!(recovered.path.is_none() && recovered.is_modified());
+        assert_eq!(recovered.recovered_from.as_deref(), Some(files[0].as_path()));
+        for f in files {
+            let _ = std::fs::remove_file(f);
+        }
     }
 
     #[test]

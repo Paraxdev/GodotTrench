@@ -1,12 +1,12 @@
 //! Loaded prefab maps referenced by instance nodes, reloaded when their file changes.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use gt_core::{Aabb, DMat4, DQuat, EulerRot};
+use gt_core::{Aabb, DMat4, DQuat, EulerRot, NodeId};
 use gt_doc::map::Instance;
-use gt_doc::{Map, NodeKind, format};
+use gt_doc::{Map, Node, NodeKind, format};
 
 pub const MAX_DEPTH: usize = 8;
 
@@ -23,6 +23,8 @@ pub struct PrefabCache {
     entries: HashMap<PathBuf, PrefabEntry>,
     /// Bumped whenever a prefab is (re)loaded, so render caches know to rebuild.
     pub generation: u64,
+    /// Godot project root that res:// instance paths inside prefabs resolve against.
+    pub project_root: Option<PathBuf>,
 }
 
 pub fn instance_transform(i: &Instance) -> DMat4 {
@@ -42,6 +44,14 @@ pub fn resolve(path: &str, map_path: Option<&Path>, project_root: Option<&Path>)
     }
 
     map_path.and_then(|m| m.parent()).map(|dir| dir.join(p))
+}
+
+/// The nodes of a prefab that Godot builds: everything under a layer that is not omitted from export.
+/// Top level nodes outside any layer are ignored, like the addon does.
+pub fn exported_nodes(map: &Map) -> Vec<(NodeId, &Node)> {
+    let kept: BTreeSet<NodeId> =
+        map.layers.iter().copied().filter(|l| matches!(map.get(*l).map(|n| &n.kind), Some(NodeKind::Layer(layer)) if !layer.omit_from_export)).collect();
+    map.nodes.iter().filter(|(id, _)| kept.contains(&map.layer_of(**id))).map(|(id, n)| (*id, n)).collect()
 }
 
 fn transformed_bounds(b: &Aabb, m: &DMat4) -> Aabb {
@@ -79,13 +89,17 @@ impl PrefabCache {
         }
 
         let Some(map) = self.entries.get(path).and_then(|e| e.map.clone()) else { return Aabb::EMPTY };
+        let root = self.project_root.clone();
         let mut b = Aabb::EMPTY;
-        for (id, node) in map.nodes.iter() {
+        for (_, node) in exported_nodes(&map) {
             match &node.kind {
                 NodeKind::Brush(brush) => b.include(&brush.bounds()),
+                NodeKind::Mesh(m) => b.include(&m.bounds()),
+                NodeKind::Terrain(t) => b.include(&t.bounds()),
+                NodeKind::Scatter(s) if !s.instances.is_empty() => b.include(&s.bounds()),
                 NodeKind::Entity(e) if node.children.is_empty() => b.include(&Aabb::from_center_size(e.origin, gt_core::DVec3::splat(16.0))),
                 NodeKind::Instance(i) => {
-                    if let Some(p) = resolve(&i.path, Some(path), None) {
+                    if let Some(p) = resolve(&i.path, Some(path), root.as_deref()) {
                         self.get(&p);
                         let inner = self.compute_bounds(&p, depth + 1);
                         b.include(&transformed_bounds(&inner, &instance_transform(i)));
@@ -93,8 +107,6 @@ impl PrefabCache {
                 }
                 _ => {}
             }
-
-            let _ = id;
         }
 
         b
@@ -134,5 +146,21 @@ mod tests {
         assert!(gt_core::vec_approx_eq(b.min, DVec3::new(100.0, 0.0, -64.0)), "{b:?}");
         assert!(gt_core::vec_approx_eq(b.max, DVec3::new(116.0, 16.0, 0.0)), "{b:?}");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn layers_omitted_from_export_are_not_part_of_the_prefab() {
+        let mut prefab = Map::new();
+        let layer = prefab.default_layer();
+        let kept = prefab.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(16.0)), "m").unwrap()));
+        let notes = prefab.add_layer("notes");
+        if let Some(NodeKind::Layer(l)) = prefab.get_mut(notes).map(|n| &mut n.kind) {
+            l.omit_from_export = true;
+        }
+
+        let omitted = prefab.insert(notes, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::splat(512.0), DVec3::splat(528.0)), "m").unwrap()));
+        let ids: Vec<NodeId> = exported_nodes(&prefab).into_iter().map(|(id, _)| id).collect();
+        assert!(ids.contains(&kept));
+        assert!(!ids.contains(&omitted) && !ids.contains(&notes), "Godot and Explode skip the omitted layer");
     }
 }

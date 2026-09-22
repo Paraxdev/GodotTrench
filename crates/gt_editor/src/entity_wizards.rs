@@ -254,7 +254,7 @@ pub fn link_options(state: &EditorState, from: NodeId, to: NodeId) -> (Vec<Strin
     let class = |id: NodeId| state.doc.map.entity(id).and_then(|e| state.game.entity(&e.classname));
     let outputs = class(from).map(|d| d.outputs.iter().map(|o| o.name.clone()).collect()).unwrap_or_default();
     let mut inputs: Vec<String> = class(to).map(|d| d.inputs.iter().map(|i| i.name.clone()).collect()).unwrap_or_default();
-    for builtin in ["kill", "show", "hide", "enable", "disable"] {
+    for builtin in gt_doc::issues::BUILTIN_INPUTS {
         if !inputs.iter().any(|i| i == builtin) {
             inputs.push(builtin.into());
         }

@@ -54,7 +54,7 @@ pub fn pick_all(state: &EditorState, ray: &Ray) -> Vec<Hit> {
                 }
             }
             NodeKind::Entity(e) if node.children.is_empty() => {
-                if map.is_editable(*id) {
+                if map.is_editable(*id) && map.in_cordon(*id) {
                     let b = state.model_bounds.get(id).copied().unwrap_or_else(|| entity_box(&state.game, e));
                     hits.extend(bounds_hit(&b));
                 }
@@ -82,7 +82,7 @@ pub fn pick_all(state: &EditorState, ray: &Ray) -> Vec<Hit> {
                     hits.push(Hit { node: *id, face: None, distance: t, point: ray.at(t), normal: -ray.dir });
                 }
             }
-            NodeKind::Instance(i) if map.is_editable(*id) => {
+            NodeKind::Instance(i) if map.is_editable(*id) && map.in_cordon(*id) => {
                 let b = state.instance_bounds.get(id).copied().unwrap_or(Aabb::from_center_size(i.origin, DVec3::splat(16.0)));
                 hits.extend(bounds_hit(&b));
             }
@@ -263,6 +263,21 @@ mod tests {
 
         let (state, floor, _) = floor_with_scatter(ScatterKind::Foliage);
         assert_eq!(pick(&state, &ray).map(|h| h.node), Some(floor), "grass does not stand in front of the floor");
+    }
+
+    #[test]
+    fn entities_outside_the_cordon_are_not_picked() {
+        let mut state = EditorState::new(Default::default());
+        let layer = state.doc.map.default_layer();
+        let mut e = gt_doc::Entity::new("info_null");
+        e.origin = DVec3::new(0.0, 8.0, 0.0);
+        let id = state.doc.edit("entity", |m, _| m.insert(layer, NodeKind::Entity(e)));
+        let ray = Ray::new(DVec3::new(0.0, 512.0, 0.0), DVec3::NEG_Y);
+        assert_eq!(pick(&state, &ray).map(|h| h.node), Some(id));
+
+        state.doc.map.editor.cordon = Some(Aabb::new(DVec3::splat(1024.0), DVec3::splat(2048.0)));
+        state.doc.map.editor.cordon_enabled = true;
+        assert!(pick(&state, &ray).is_none(), "the entity is hidden by the cordon, so a click goes through");
     }
 
     #[test]

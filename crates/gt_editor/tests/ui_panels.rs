@@ -381,6 +381,31 @@ fn dragged_entities_and_materials_show_a_preview_at_the_pointer() {
 }
 
 #[test]
+fn material_menu_opens_the_hotspot_editor_on_the_clicked_material() {
+    let mut f = Fixture::new();
+    f.state.prefs.recent_materials = vec!["bricks/red".into()];
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(700.0, 400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::material_browser(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    // Missing thumbnails keep requesting repaints, so step a fixed number of frames.
+    harness.run_steps(2);
+    let label = harness.get_by_label("recent").rect();
+    let cell = egui::pos2(label.max.x + 22.0, label.center().y);
+    harness.hover_at(cell);
+    harness.run_steps(1);
+    for pressed in [true, false] {
+        harness.event(egui::Event::PointerButton { pos: cell, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() });
+        harness.run_steps(1);
+    }
+
+    harness.run_steps(2);
+    harness.get_by_label("Hotspot editor").click();
+    harness.run_steps(2);
+    assert_eq!(harness.state().actions, vec![Action::EditHotspots("bricks/red".into())]);
+    assert_eq!(harness.state().state.current_material, "dev/grey", "opening the editor does not change the current material");
+}
+
+#[test]
 fn history_panel_undoes_to_clicked_step() {
     let mut f = Fixture::new();
     let layer = f.state.doc.map.default_layer();

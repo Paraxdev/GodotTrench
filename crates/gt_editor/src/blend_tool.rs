@@ -23,20 +23,55 @@ impl BlendTargets {
     }
 }
 
+/// Brushes and terrains a brush tool (sculpt, paint, blend) works on: the selected ones, or every one when nothing
+/// is selected. Locked and hidden ones are always left alone.
+pub struct StrokeScope {
+    pub brushes: Vec<NodeId>,
+    pub terrains: Vec<NodeId>,
+}
+
+impl StrokeScope {
+    pub fn of(state: &EditorState) -> Self {
+        let map = &state.doc.map;
+        let sel = &state.doc.selection;
+        let (brushes, terrains): (Vec<NodeId>, Vec<NodeId>) = if sel.is_empty() {
+            (map.brushes().map(|(id, _)| id).collect(), map.terrains().map(|(id, _)| id).collect())
+        } else {
+            let mut brushes = sel.brushes(map);
+            brushes.extend(sel.faces.iter().map(|(id, _)| *id).filter(|id| map.brush(*id).is_some()));
+            brushes.sort();
+            brushes.dedup();
+            (brushes, sel.terrains(map))
+        };
+        Self {
+            brushes: brushes.into_iter().filter(|id| map.is_editable(*id)).collect(),
+            terrains: terrains.into_iter().filter(|id| map.is_editable(*id)).collect(),
+        }
+    }
+
+    /// Displacement faces of the scope's brushes. `displacement_faces` reads an empty list as the whole map.
+    pub fn displacements(&self, state: &EditorState) -> Vec<(NodeId, usize)> {
+        if self.brushes.is_empty() { Vec::new() } else { gt_doc::terrain::displacement_faces(&state.doc.map, &self.brushes) }
+    }
+}
+
 pub fn targets(state: &EditorState) -> BlendTargets {
     let map = &state.doc.map;
     let sel = &state.doc.selection;
-    let geometry: Vec<NodeId> = sel.geometry(map).into_iter().filter(|id| map.is_editable(*id)).collect();
-    let selected_terrains = sel.terrains(map);
-    let terrains = gt_doc::terrain::terrain_targets(map, &selected_terrains);
-    let brushes: Vec<NodeId> = if geometry.is_empty() { Vec::new() } else { sel.brushes(map) };
-    let displacements = gt_doc::terrain::displacement_faces(map, &brushes).into_iter().filter(|(id, _)| map.is_editable(*id)).collect();
+    let scope = StrokeScope::of(state);
+    let displacements = scope.displacements(state);
     let faces = if sel.has_faces() {
-        sel.faces.iter().copied().filter(|(id, f)| blend::blend_faces(map, &[*id]).contains(&(*id, *f))).collect()
+        sel.faces.iter().copied().filter(|(id, f)| map.is_editable(*id) && blend::blend_faces(map, &[*id]).contains(&(*id, *f))).collect()
     } else {
-        blend::blend_faces(map, &geometry).into_iter().filter(|(id, _)| map.is_editable(*id)).collect()
+        let geometry: Vec<NodeId> = sel.geometry(map).into_iter().filter(|id| map.is_editable(*id)).collect();
+        // `blend_faces` reads an empty list as the whole map, which is only meant when nothing is selected.
+        if geometry.is_empty() && !sel.is_empty() {
+            Vec::new()
+        } else {
+            blend::blend_faces(map, &geometry).into_iter().filter(|(id, _)| map.is_editable(*id)).collect()
+        }
     };
-    BlendTargets { terrains, displacements, faces }
+    BlendTargets { terrains: scope.terrains, displacements, faces }
 }
 
 /// One dab. Returns true when anything changed.
@@ -97,6 +132,17 @@ pub struct BlendTool {
 }
 
 impl BlendTool {
+    pub fn stroking(&self) -> bool {
+        self.stroking
+    }
+
+    /// Ends a stroke without touching the document, the caller owns its transaction.
+    pub fn reset(&mut self) {
+        self.hover = None;
+        self.last = None;
+        self.stroking = false;
+    }
+
     pub fn input(&mut self, ui: &Ui, response: &Response, cam: &Camera, rect: Rect, hover: Option<Pos2>, state: &mut EditorState) {
         let pointer = if self.stroking { ui.input(|i| i.pointer.interact_pos()) } else { hover };
         self.hover = pointer
@@ -191,5 +237,50 @@ impl BlendTool {
             FontId::proportional(12.0),
             Color32::from_rgb(240, 170, 255),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gt_core::Aabb;
+    use gt_doc::NodeKind;
+    use gt_geom::{Brush, Terrain};
+
+    /// A displacement brush beside a terrain, both editable.
+    fn map_with_both() -> (EditorState, NodeId, NodeId) {
+        let mut state = EditorState::new(Default::default());
+        let layer = state.doc.map.default_layer();
+        let mut brush = Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::new(128.0, 16.0, 128.0)), "dev/grey").unwrap();
+        let top = brush.faces.iter().position(|f| f.plane.normal.y > 0.9).unwrap();
+        brush.faces[top].data.disp = Some(gt_geom::displacement::Displacement::new(2));
+        let terrain = Terrain::new(DVec3::new(128.0, 0.0, 0.0), [5, 5], 32.0, "dev/grey");
+        let (disp, ter) = state.doc.edit("setup", |m, _| (m.insert(layer, NodeKind::Brush(brush)), m.insert(layer, NodeKind::Terrain(terrain))));
+        (state, disp, ter)
+    }
+
+    #[test]
+    fn a_selection_limits_the_stroke_to_what_is_selected() {
+        let (mut state, disp, ter) = map_with_both();
+        let all = targets(&state);
+        assert_eq!(all.terrains, vec![ter], "nothing selected reaches everything");
+        assert_eq!(all.displacements.len(), 1);
+
+        state.doc.select(|_, s| s.select_node(disp));
+        let t = targets(&state);
+        assert!(t.terrains.is_empty(), "a selected displacement leaves the terrain alone");
+        assert_eq!(t.displacements, vec![(disp, all.displacements[0].1)]);
+
+        state.doc.select(|_, s| {
+            s.clear();
+            s.select_node(ter);
+        });
+        let t = targets(&state);
+        assert_eq!(t.terrains, vec![ter]);
+        assert!(t.displacements.is_empty(), "a selected terrain leaves the displacement alone");
+
+        state.doc.select(|_, s| s.clear());
+        state.doc.map.get_mut(ter).unwrap().locked = true;
+        assert!(targets(&state).terrains.is_empty(), "a locked terrain is never painted");
     }
 }

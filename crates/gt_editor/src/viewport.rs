@@ -65,6 +65,20 @@ impl Viewport {
         self.pixels_per_point = ppp;
         cx.renderer.ensure_target(&mut self.target, [(rect.width() * ppp).round() as u32, (rect.height() * ppp).round() as u32]);
 
+        cx.tools.settle(cx.state);
+        if self.drag.is_some() && !self.is_camera_drag() {
+            // A tool picked mid drag (a shortcut, the toolbar) stops the select handling below, so close its edit here.
+            // A drag whose transaction was closed elsewhere (undo, a tab switch) must not go on editing outside it.
+            let switched = cx.state.tool != ToolKind::Select;
+            if switched || !cx.state.doc.in_transaction() {
+                self.drag = None;
+                cx.state.drag_preview = None;
+                if switched {
+                    cx.state.doc.commit();
+                }
+            }
+        }
+
         self.handle_camera(ui, &response, cx);
         self.handle_keys(ui, cx);
         if cx.state.tool == ToolKind::Select || self.is_camera_drag() {
@@ -96,10 +110,16 @@ impl Viewport {
         matches!(self.drag, Some(Drag::Look | Drag::Pan | Drag::Orbit { .. }))
     }
 
+    /// The right mouse look in the 3D view, while it runs WASD, Q and E fly the camera.
+    pub fn is_flying(&self) -> bool {
+        matches!(self.drag, Some(Drag::Look))
+    }
+
     fn handle_camera(&mut self, ui: &Ui, response: &Response, cx: &mut ViewCtx) {
         let rect = self.rect;
         let (delta, scroll, modifiers, dt, press_origin) =
             ui.input(|i| (i.pointer.delta(), i.smooth_scroll_delta.y, i.modifiers, i.stable_dt as f64, i.pointer.press_origin()));
+        let scroll = if cx.tools.mesh.takes_wheel() && cx.state.tool == ToolKind::Mesh { 0.0 } else { scroll };
         let (invert_y, look_sensitivity, fly_speed) = (cx.state.prefs.invert_y, cx.state.prefs.look_sensitivity, cx.state.prefs.fly_speed);
         match self.camera.kind {
             ViewKind::Perspective => {
@@ -123,19 +143,22 @@ impl Viewport {
                     _ => {}
                 }
 
-                let brush_tool = matches!(cx.state.tool, ToolKind::Scatter | ToolKind::Blend | ToolKind::Sculpt);
-                if self.hovered && scroll != 0.0 && brush_tool && modifiers.command {
-                    let factor = (1.0015f64).powf(scroll as f64);
+                let brush_tool = matches!(cx.state.tool, ToolKind::Scatter | ToolKind::Blend | ToolKind::Sculpt | ToolKind::Paint);
+                // egui turns Ctrl+wheel into zoom and leaves the smoothed scroll at zero, so read the raw notches.
+                let resize = if self.hovered && brush_tool { ui.input(|i| wheel_notches(i, |m| m.command)) } else { 0.0 };
+                if resize != 0.0 {
+                    let factor = 1.08f64.powf(resize as f64);
                     match cx.state.tool {
                         ToolKind::Scatter => cx.state.prefs.scatter.radius = (cx.state.prefs.scatter.radius * factor).clamp(8.0, 16384.0),
                         ToolKind::Blend => cx.state.blend.radius = (cx.state.blend.radius * factor).clamp(2.0, 16384.0),
                         _ => cx.state.sculpt.radius = (cx.state.sculpt.radius * factor).clamp(2.0, 16384.0),
                     }
-                } else if self.hovered && scroll != 0.0 && !(cx.state.tool == ToolKind::Texture && modifiers.alt) {
+                } else if self.hovered && scroll != 0.0 && !(brush_tool && modifiers.command) && !(cx.state.tool == ToolKind::Texture && modifiers.alt) {
                     self.camera.position += self.camera.forward() * (scroll as f64) * fly_speed * 0.004;
                 }
 
-                if (self.hovered || matches!(self.drag, Some(Drag::Look))) && !ui.ctx().egui_wants_keyboard_input() && !modifiers.command {
+                // Like TrenchBroom, the fly keys only steer while the right mouse look is held, otherwise they are tool shortcuts.
+                if self.is_flying() && !ui.ctx().egui_wants_keyboard_input() && !modifiers.command {
                     let mut dir = DVec3::ZERO;
                     ui.input(|i| {
                         if i.key_down(Key::W) {
@@ -154,14 +177,12 @@ impl Viewport {
                             dir -= self.camera.right();
                         }
 
-                        if matches!(self.drag, Some(Drag::Look)) {
-                            if i.key_down(Key::E) {
-                                dir += DVec3::Y;
-                            }
+                        if i.key_down(Key::E) {
+                            dir += DVec3::Y;
+                        }
 
-                            if i.key_down(Key::Q) {
-                                dir -= DVec3::Y;
-                            }
+                        if i.key_down(Key::Q) {
+                            dir -= DVec3::Y;
                         }
                     });
                     if dir != DVec3::ZERO {
@@ -378,6 +399,7 @@ impl Viewport {
                 let b = cx.state.doc.map.bounds_of(cx.state.doc.selection.nodes.iter().copied());
                 if !b.is_empty() {
                     cx.state.last_bounds = b;
+                    cx.tools.last_brush = Some(b);
                 }
             }
 
@@ -421,11 +443,17 @@ impl Viewport {
         let state = &mut *cx.state;
         let map = &state.doc.map;
         let ray = self.camera.ray(self.rect, origin);
-        let hit = picking::pick(state, &ray);
         let open_groups = state.open_groups.clone();
         let is_selected = |id: NodeId| {
             let target = map.click_target(id, &open_groups);
             state.doc.selection.nodes.contains(&target) || map.ancestors(id).iter().any(|a| state.doc.selection.nodes.contains(a))
+        };
+        let hit = if self.camera.kind.is_2d() {
+            // A 2D view sees through everything, so a selection under other objects (a floor under its ceiling) still drags.
+            let hits = picking::pick_all(state, &ray);
+            hits.iter().copied().find(|h| is_selected(h.node)).or(hits.first().copied())
+        } else {
+            picking::pick(state, &ray)
         };
 
         if let Some(h) = hit {
@@ -440,7 +468,8 @@ impl Viewport {
                 return Some(Drag::FaceResize { faces, origin: h.point, normal: plane.normal });
             }
 
-            if is_selected(h.node) && !modifiers.shift {
+            // Shift on a selected brush face in 3D resizes (above), anywhere else it moves locked to the main axis.
+            if is_selected(h.node) {
                 let plane = match self.camera.kind {
                     ViewKind::Perspective => {
                         if modifiers.alt {
@@ -553,12 +582,7 @@ impl Viewport {
                         b[i] = *anchor + normal[axis] * grid;
                     } else {
                         // Include the grid cell under the cursor, like TrenchBroom.
-                        let (lo, hi) = (start[i].min(current[i]), start[i].max(current[i]));
-                        a[i] = if state.snap { (lo / grid).floor() * grid } else { lo };
-                        b[i] = if state.snap { (hi / grid).ceil() * grid } else { hi };
-                        if (b[i] - a[i]).abs() < 1e-6 {
-                            b[i] = a[i] + grid;
-                        }
+                        (a[i], b[i]) = cell_span(start[i], current[i], grid, state.snap);
                     }
                 }
 
@@ -566,28 +590,20 @@ impl Viewport {
             }
             Drag::CreateBrush2d { start } => {
                 let current = self.camera.screen_to_plane(rect, pos);
-                let (r, u, _) = self.camera.kind.axes();
                 let depth_axis = self.camera.kind.depth_axis();
                 let grid = state.grid;
                 let mut a = DVec3::ZERO;
                 let mut b = DVec3::ZERO;
                 for i in 0..3 {
                     if i == depth_axis {
-                        let lb = state.last_bounds;
-                        let (lo, hi) = if lb.is_empty() || lb.size()[i] < 1e-6 { (0.0, grid) } else { (lb.min[i], lb.max[i]) };
-                        a[i] = lo;
-                        b[i] = hi;
+                        // The depth of the last brush drawn, not of whatever was clicked last.
+                        let lb = cx.tools.last_brush.unwrap_or(Aabb::new(DVec3::ZERO, DVec3::splat(64.0)));
+                        (a[i], b[i]) = if lb.is_empty() || lb.size()[i] < 1e-6 { (0.0, grid) } else { (lb.min[i], lb.max[i]) };
                     } else {
-                        let (lo, hi) = (start[i].min(current[i]), start[i].max(current[i]));
-                        a[i] = state.snap_scalar(lo);
-                        b[i] = state.snap_scalar(hi);
-                        if (b[i] - a[i]).abs() < 1e-6 {
-                            b[i] = a[i] + grid;
-                        }
+                        (a[i], b[i]) = cell_span(start[i], current[i], grid, state.snap);
                     }
                 }
 
-                let _ = (r, u);
                 self.replace_created_brush(Aabb::new(a, b), state);
             }
             Drag::FaceResize { faces, origin, normal } => {
@@ -771,7 +787,7 @@ impl Viewport {
                     }
                     Some(Hit { node, face: None, .. }) if cx.state.doc.map.terrain(node).is_some() => {
                         // Dropping on a terrain assigns the material to the layer being painted.
-                        let layer = cx.state.sculpt.layer as usize;
+                        let layer = if cx.state.tool == ToolKind::Blend { cx.state.blend.layer } else { cx.state.sculpt.layer as usize };
                         cx.state.doc.edit("Set Terrain Layer", |m, _| {
                             if let Some(t) = m.terrain_mut(node) {
                                 while t.layers.len() <= layer.min(3) {
@@ -912,6 +928,34 @@ impl Viewport {
     }
 }
 
+/// Wheel movement this frame in notches, from the raw events whose modifiers pass `keep`. egui spreads one notch
+/// over several frames of `smooth_scroll_delta` and turns Ctrl+wheel into zoom, so tools that step or resize per
+/// notch read the events instead. Positive is away from the user.
+pub fn wheel_notches(input: &egui::InputState, keep: impl Fn(egui::Modifiers) -> bool) -> f32 {
+    input
+        .raw
+        .events
+        .iter()
+        .map(|e| match e {
+            egui::Event::MouseWheel { unit, delta, modifiers, .. } if keep(*modifiers) => match unit {
+                egui::MouseWheelUnit::Line => delta.y,
+                egui::MouseWheelUnit::Point => delta.y / 50.0,
+                egui::MouseWheelUnit::Page => delta.y * 3.0,
+            },
+            _ => 0.0,
+        })
+        .sum()
+}
+
+/// A grid aligned span covering `a` to `b` and the cells under both ends, at least one cell wide. An end a hair
+/// past a grid line (pointer to world rounding) counts as on it.
+fn cell_span(a: f64, b: f64, grid: f64, snap: bool) -> (f64, f64) {
+    let (lo, hi) = (a.min(b), a.max(b));
+    let eps = grid * 1e-3;
+    let (lo, hi) = if snap { (((lo + eps) / grid).floor() * grid, ((hi - eps) / grid).ceil() * grid) } else { (lo, hi) };
+    if (hi - lo).abs() < 1e-6 { (lo, lo + grid) } else { (lo, hi) }
+}
+
 fn fmt_num(v: f64) -> String {
     if (v - v.round()).abs() < 1e-6 { format!("{}", v.round() as i64) } else { format!("{v:.3}") }
 }
@@ -1042,4 +1086,19 @@ fn context_menu(ui: &mut Ui, cx: &mut ViewCtx) {
         });
     });
     cx.actions.extend(out);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_drawn_brush_covers_the_cells_under_both_ends() {
+        assert_eq!(cell_span(10.0, 20.0, 16.0, true), (0.0, 32.0));
+        assert_eq!(cell_span(20.0, 10.0, 16.0, true), (0.0, 32.0), "dragging backwards gives the same span");
+        assert_eq!(cell_span(16.0, 48.0, 16.0, true), (16.0, 48.0), "ends on grid lines stay put");
+        assert_eq!(cell_span(15.9999, 48.0001, 16.0, true), (16.0, 48.0), "so do ends a rounding error off them");
+        assert_eq!(cell_span(3.0, 3.0, 16.0, true), (0.0, 16.0), "a click still makes one cell");
+        assert_eq!(cell_span(3.0, 3.0, 16.0, false), (3.0, 19.0));
+    }
 }

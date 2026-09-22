@@ -1071,12 +1071,31 @@ impl LinkDialog {
 
         self.from = Some(entities[0]);
         self.to = Some(entities[1]);
-        let (outs, ins) = crate::entity_wizards::link_options(state, entities[0], entities[1]);
-        self.output = outs.first().cloned().unwrap_or_default();
-        self.input = ins.first().cloned().unwrap_or_default();
+        self.output.clear();
+        self.input.clear();
+        self.fit_choices(state);
         self.parameter.clear();
         self.delay = 0.0;
         self.open = true;
+    }
+
+    /// Swaps source and target. Outputs belong to the source class and inputs to the target, so choices that the new
+    /// pair does not offer go back to the first option.
+    pub fn swap(&mut self, state: &EditorState) {
+        std::mem::swap(&mut self.from, &mut self.to);
+        self.fit_choices(state);
+    }
+
+    fn fit_choices(&mut self, state: &EditorState) {
+        let (Some(from), Some(to)) = (self.from, self.to) else { return };
+        let (outs, ins) = crate::entity_wizards::link_options(state, from, to);
+        if !outs.contains(&self.output) {
+            self.output = outs.first().cloned().unwrap_or_default();
+        }
+
+        if !ins.contains(&self.input) {
+            self.input = ins.first().cloned().unwrap_or_default();
+        }
     }
 
     pub fn show(&mut self, ctx: &egui::Context, state: &mut EditorState) {
@@ -1095,12 +1114,11 @@ impl LinkDialog {
         let (outs, ins) = crate::entity_wizards::link_options(state, from, to);
         let mut open = self.open;
         let mut apply = false;
+        let mut swap = false;
         egui::Window::new("Link Entities").open(&mut open).resizable(false).show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(&from_name).strong());
-                if ui.small_button("⇄").on_hover_text("Swap").clicked() {
-                    std::mem::swap(&mut self.from, &mut self.to);
-                }
+                swap = ui.small_button("⇄").on_hover_text("Swap").clicked();
 
                 ui.label(RichText::new(&to_name).strong());
             });
@@ -1128,6 +1146,10 @@ impl LinkDialog {
             });
             apply = ui.button("Link").clicked();
         });
+        if swap {
+            self.swap(state);
+        }
+
         if apply {
             if let (Some(from), Some(to)) = (self.from, self.to) {
                 match crate::entity_wizards::link(state, from, to, &self.output, &self.input, &self.parameter, self.delay) {
@@ -1163,6 +1185,29 @@ mod tests {
             palette_entries(&state).into_iter().filter_map(|(label, action)| fuzzy_score("grid larger", &label).map(|s| (s, label, action))).collect();
         matches.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
         assert_eq!(matches[0].2, Action::GridUp);
+    }
+
+    #[test]
+    fn swapping_a_link_picks_output_and_input_of_the_new_pair() {
+        let mut state = EditorState::new(crate::state::Prefs::default());
+        let layer = state.doc.map.default_layer();
+        let (branch, light) = state.doc.edit("add", |m, s| {
+            let branch = gt_doc::ops::create_point_entity(m, layer, "logic_branch", DVec3::ZERO);
+            let light = gt_doc::ops::create_point_entity(m, layer, "light", DVec3::X);
+            s.select_node(branch);
+            s.select_node(light);
+            (branch, light)
+        });
+        let mut dialog = LinkDialog::default();
+        dialog.open_for(&state);
+        let (from, to) = (dialog.from.unwrap(), dialog.to.unwrap());
+        assert_eq!((from, to), (branch.min(light), branch.max(light)));
+        for _ in 0..2 {
+            dialog.swap(&state);
+            let (outs, ins) = crate::entity_wizards::link_options(&state, dialog.from.unwrap(), dialog.to.unwrap());
+            assert_eq!(dialog.output, outs.first().cloned().unwrap_or_default());
+            assert!(ins.contains(&dialog.input), "{} is not an input of the target", dialog.input);
+        }
     }
 
     #[test]

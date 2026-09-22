@@ -348,6 +348,16 @@ fn instance_hash(set: &gt_doc::Scatter, instances: &[&gt_doc::scatter::ScatterIn
     h.finish()
 }
 
+fn scatter_item_models(game: &GameConfig, models: &mut crate::models::ModelCache, set: &gt_doc::Scatter) -> Vec<Option<std::sync::Arc<crate::models::Model>>> {
+    set.items
+        .iter()
+        .map(|item| {
+            let path = if item.source.starts_with("res://") { game.resolve_res(&item.source) } else { Some(std::path::PathBuf::from(&item.source)) };
+            path.filter(|p| crate::models::is_model_path(&p.to_string_lossy())).and_then(|p| models.get(&p, game.units_per_meter))
+        })
+        .collect()
+}
+
 fn build_scatter(
     renderer: &mut Renderer,
     game: &GameConfig,
@@ -361,14 +371,7 @@ fn build_scatter(
         by_chunk.entry(((inst.position.x / SCATTER_CHUNK).floor() as i64, (inst.position.z / SCATTER_CHUNK).floor() as i64)).or_default().push(inst);
     }
 
-    let item_models: Vec<Option<std::sync::Arc<crate::models::Model>>> = set
-        .items
-        .iter()
-        .map(|item| {
-            let path = if item.source.starts_with("res://") { game.resolve_res(&item.source) } else { Some(std::path::PathBuf::from(&item.source)) };
-            path.filter(|p| crate::models::is_model_path(&p.to_string_lossy())).and_then(|p| models.get(&p, game.units_per_meter))
-        })
-        .collect();
+    let item_models = scatter_item_models(game, models, set);
     for m in item_models.iter().flatten() {
         register_model_textures(renderer, m);
     }
@@ -810,7 +813,7 @@ impl Builder<'_> {
         let Some(map) = cx.prefabs.get(path).map.clone() else { return Aabb::EMPTY };
         let mut bounds = Aabb::EMPTY;
         let tint = if selected { SELECTED_TINT } else { INSTANCE_TINT };
-        for (_, node) in map.nodes.iter() {
+        for (_, node) in prefabs::exported_nodes(&map) {
             match &node.kind {
                 NodeKind::Brush(b) => {
                     let placed = b.transformed(xform, true);
@@ -829,8 +832,20 @@ impl Builder<'_> {
                     bounds.include(&entity_box(self.game, &placed));
                     self.point_entity(None, &placed, selected, Some([0.6, 0.85, 1.0, 1.0]), model.as_deref());
                 }
+                NodeKind::Terrain(t) if t.is_valid() => {
+                    // Like the Godot build, instances move terrains but never rotate them.
+                    let placed = t.translated(xform.w_axis.truncate());
+                    bounds.include(&placed.bounds());
+                    self.prefab_terrain(&placed, tint);
+                }
+                NodeKind::Scatter(set) if !set.instances.is_empty() => {
+                    let mut placed = set.clone();
+                    placed.transform(xform);
+                    bounds.include(&placed.bounds());
+                    self.prefab_scatter(cx, &placed, tint);
+                }
                 NodeKind::Instance(inner) => {
-                    if let Some(p) = prefabs::resolve(&inner.path, Some(path), None) {
+                    if let Some(p) = prefabs::resolve(&inner.path, Some(path), cx.project_root) {
                         let m = *xform * prefabs::instance_transform(inner);
                         bounds.include(&self.prefab(cx, &p, &m, selected, depth + 1));
                     }
@@ -841,11 +856,94 @@ impl Builder<'_> {
 
         bounds
     }
+
+    /// A prefab's terrain as plain triangles, each cell in the material of its strongest layer.
+    fn prefab_terrain(&mut self, t: &Terrain, tint: [f32; 4]) {
+        self.stats.terrains += 1;
+        let layer_count = t.layers.len().clamp(1, 4);
+        let mut per_layer: Vec<(Vec<MeshVertex>, Vec<u32>)> = vec![(Vec::new(), Vec::new()); layer_count];
+        let [cells_x, cells_z] = t.cells();
+        for cj in 0..cells_z {
+            for ci in 0..cells_x {
+                if t.is_hole(ci, cj) {
+                    continue;
+                }
+
+                let mut sum = [0.0f32; 4];
+                for (i, j) in [(ci, cj), (ci + 1, cj), (ci, cj + 1), (ci + 1, cj + 1)] {
+                    for (s, w) in sum.iter_mut().zip(t.weights(i, j)) {
+                        *s += w;
+                    }
+                }
+
+                let layer = (0..layer_count).max_by(|a, b| sum[*a].total_cmp(&sum[*b])).unwrap_or(0);
+                let tile = t.layers.get(layer).map(|l| l.tile.max(1.0)).unwrap_or(256.0);
+                let (verts, indices) = &mut per_layer[layer];
+                for tri in Terrain::cell_triangles(ci, cj) {
+                    for (i, j) in tri {
+                        let p = t.vertex(i, j);
+                        indices.push(verts.len() as u32);
+                        verts.push(MeshVertex { pos: v3(p), normal: v3(t.normal(i, j)), uv: [(p.x / tile) as f32, (p.z / tile) as f32], color: tint });
+                    }
+                }
+            }
+        }
+
+        for (layer, (verts, indices)) in per_layer.iter().enumerate() {
+            if indices.is_empty() {
+                continue;
+            }
+
+            let mat = t.layers.get(layer).map(|l| l.material.as_str()).unwrap_or(gt_render::MISSING_MATERIAL);
+            self.stats.triangles += indices.len() / 3;
+            self.batch(mat, false).add_triangles(mat, verts, indices);
+        }
+
+        let corners = t.bounds().corners();
+        for (i, j) in Aabb::EDGES {
+            push_line(&mut self.edges_2d, corners[i], corners[j], INSTANCE_EDGE);
+        }
+    }
+
+    /// A prefab's scatter set: instance models in place, or small boxes where a model is missing.
+    fn prefab_scatter(&mut self, cx: &mut BuildCx, set: &gt_doc::Scatter, tint: [f32; 4]) {
+        let item_models = scatter_item_models(self.game, cx.models, set);
+        for inst in &set.instances {
+            let xform = inst.transform().as_mat4();
+            match item_models.get(inst.item as usize).and_then(|m| m.as_ref()) {
+                Some(model) => {
+                    let normal_m = glam::Mat3::from_mat4(xform);
+                    let material = set.item_material(inst.item as usize);
+                    for part in &model.parts {
+                        let verts: Vec<MeshVertex> = part
+                            .vertices
+                            .iter()
+                            .map(|v| MeshVertex {
+                                pos: xform.transform_point3(v.pos).to_array(),
+                                normal: (normal_m * v.normal).normalize_or_zero().to_array(),
+                                uv: v.uv,
+                                color: tint,
+                            })
+                            .collect();
+                        let key = material.unwrap_or(&part.material);
+                        self.stats.triangles += part.indices.len() / 3;
+                        self.batch(key, false).add_triangles(key, &verts, &part.indices);
+                    }
+                }
+                None => {
+                    let s = (12.0 * inst.scale) as f32;
+                    let p = Vec3::from_array(v3(inst.position));
+                    self.opaque.add_box(p - Vec3::new(s * 0.5, 0.0, s * 0.5), p + Vec3::new(s * 0.5, s * 2.0, s * 0.5), [0.45, 0.85, 0.4, 1.0]);
+                }
+            }
+        }
+    }
 }
 
 struct BuildCx<'a> {
     prefabs: &'a mut PrefabCache,
     models: &'a mut crate::models::ModelCache,
+    project_root: Option<&'a std::path::Path>,
 }
 
 fn entity_center(map: &Map, game: &GameConfig, id: NodeId) -> Option<DVec3> {
@@ -1305,21 +1403,38 @@ impl SceneCache {
         }
 
         let mut visited = BTreeSet::new();
+        let mut prefab_models: Vec<std::sync::Arc<crate::models::Model>> = Vec::new();
+        state.prefabs.project_root = state.game.project_root.clone();
         while let Some((path, depth)) = pending_prefabs.pop() {
             if depth > prefabs::MAX_DEPTH || !visited.insert(path.clone()) {
                 continue;
             }
 
             if let Some(prefab) = state.prefabs.get(&path).map.clone() {
-                for n in prefab.nodes.values() {
+                for (_, n) in prefabs::exported_nodes(&prefab) {
                     collect(n, &mut needed);
-                    if let NodeKind::Instance(i) = &n.kind
-                        && let Some(p) = prefabs::resolve(&i.path, Some(&path), None)
-                    {
-                        pending_prefabs.push((p, depth + 1));
+                    match &n.kind {
+                        NodeKind::Instance(i) => {
+                            if let Some(p) = prefabs::resolve(&i.path, Some(&path), state.game.project_root.as_deref()) {
+                                pending_prefabs.push((p, depth + 1));
+                            }
+                        }
+                        NodeKind::Scatter(set) => prefab_models.extend(scatter_item_models(&state.game, &mut state.models, set).into_iter().flatten()),
+                        NodeKind::Entity(e) => {
+                            if let Some(p) = crate::models::entity_model_path(&state.game, e)
+                                && let Some(m) = state.models.get(&p, state.game.units_per_meter)
+                            {
+                                prefab_models.push(m);
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
+        }
+
+        for m in &prefab_models {
+            register_model_textures(renderer, m);
         }
 
         for name in needed {
@@ -1494,12 +1609,16 @@ impl SceneCache {
 
                 // Prefab instances need the mutable caches, so their buckets build on this thread.
                 if !serial.is_empty() {
-                    let mut cx = BuildCx { prefabs: &mut state.prefabs, models: &mut state.models };
+                    let mut cx = BuildCx { prefabs: &mut state.prefabs, models: &mut state.models, project_root: game.project_root.as_deref() };
                     for b in serial {
                         let ids = per_bucket_ref.get(&b).map(|v| v.as_slice()).unwrap_or(&[]);
                         let mut builder = build_bucket(&ctx, ids);
                         for &id in ids {
                             let Some(NodeKind::Instance(inst)) = map.get(id).map(|n| &n.kind) else { continue };
+                            if map.is_hidden(id) || !map.in_cordon(id) {
+                                continue;
+                            }
+
                             let selected = ctx.selection.nodes.contains(&id) || map.ancestors(id).iter().any(|a| ctx.selection.nodes.contains(a));
                             let path = prefabs::resolve(&inst.path, state.doc.path.as_deref(), game.project_root.as_deref());
                             let bounds = match &path {
