@@ -128,17 +128,49 @@ function uploadButton(label, onClick) {
 
 // ----- Per type inspectors -----
 
+const TEXT_FORMATS = [
+  ["markdown", "Markdown"],
+  ["bbcode", "BBCode"],
+  ["html", "HTML"],
+];
+
 function textInspector(body, ctx) {
   const ta = document.createElement("textarea");
   ta.className = "inspector-textarea";
   ta.rows = 10;
   ta.value = ctx.card.md || "";
   ta.spellcheck = false;
+
+  const label = field("Markdown", ta);
+  const labelSpan = label.querySelector(".field-label");
+
+  const select = document.createElement("select");
+  TEXT_FORMATS.forEach(([value, text]) => {
+    const o = document.createElement("option");
+    o.value = value;
+    o.textContent = text;
+    if ((ctx.card.format || "markdown") === value) o.selected = true;
+    select.appendChild(o);
+  });
+  const applyLabel = () => {
+    const cur = TEXT_FORMATS.find(([v]) => v === (ctx.card.format || "markdown"));
+    if (labelSpan) labelSpan.textContent = cur ? cur[1] : "Text";
+    ta.classList.toggle("mono", (ctx.card.format || "markdown") !== "markdown");
+  };
+  select.addEventListener("change", () => {
+    ctx.card.format = select.value;
+    applyLabel();
+    ctx.update();
+    ctx.rerender();
+  });
+  body.appendChild(field("Format", select));
+
   ta.addEventListener("input", () => {
     ctx.card.md = ta.value;
     ctx.update();
   });
-  body.appendChild(field("Markdown", ta));
+  applyLabel();
+  body.appendChild(label);
 }
 
 function codeInspector(body, ctx) {

@@ -17,6 +17,7 @@ import {
   clearToken,
   hasToken,
   commitPage,
+  deletePageFiles,
   uploadAsset as ghUploadAsset,
 } from "./github.js";
 import {
@@ -38,6 +39,8 @@ const state = {
   board: { title: "", cards: [] },
   mode: "view",
   selectedId: null,
+  // Slugs whose page files should be removed from the repo on the next Save.
+  deletedPages: [],
 };
 
 let boardView = null;
@@ -67,11 +70,14 @@ async function init() {
     onBringToFront: (id) => doBringToFront(id),
     onSendToBack: (id) => doSendToBack(id),
     onDelete: (id) => doDeleteCard(id),
+    onToggleCollapse: (id) => doToggleCollapse(id),
+    onCardMenu: (id, x, y) => openCardContextMenu(id, x, y),
     grid: 8,
   });
 
   setupToolbarIcons();
   setupCardMenu();
+  setupCardContextMenu();
   wireToolbar();
   wireKeyboard();
 
@@ -187,7 +193,7 @@ function applyMode() {
     setButton(el.modeToggle, "pencil", "Edit", "Switch to edit mode");
   }
   el.modeToggle.classList.toggle("is-active", editing);
-  if (!editing) closeCardMenu();
+  if (!editing) closeMenus();
   boardView.render();
   refreshInspector();
 }
@@ -274,11 +280,13 @@ function setupCardMenu() {
   // Close on an outside pointerdown or Escape.
   document.addEventListener("pointerdown", (e) => {
     if (!menuEl.hidden && !menuEl.contains(e.target)) closeCardMenu();
+    if (cardCtxEl && !cardCtxEl.hidden && !cardCtxEl.contains(e.target)) closeCardContextMenu();
   });
   document.addEventListener("keydown", (e) => {
-    if (!menuEl.hidden && e.key === "Escape") {
+    const ctxOpen = cardCtxEl && !cardCtxEl.hidden;
+    if ((!menuEl.hidden || ctxOpen) && e.key === "Escape") {
       e.preventDefault();
-      closeCardMenu();
+      closeMenus();
       return;
     }
     if (state.mode !== "edit") return;
@@ -303,6 +311,7 @@ function setupCardMenu() {
 }
 
 function openCardMenu(clientX, clientY) {
+  closeCardContextMenu();
   menuBoardPoint = boardView.clientToBoard(clientX, clientY);
   menuEl.hidden = false;
   const mw = menuEl.offsetWidth || 190;
@@ -317,6 +326,76 @@ function openCardMenu(clientX, clientY) {
 
 function closeCardMenu() {
   if (menuEl) menuEl.hidden = true;
+}
+
+// ----- Per card context menu: hide, collapse, layering, delete (edit mode) -----
+
+let cardCtxEl = null;
+
+function setupCardContextMenu() {
+  cardCtxEl = document.createElement("div");
+  cardCtxEl.className = "card-menu card-ctx-menu";
+  cardCtxEl.setAttribute("role", "menu");
+  cardCtxEl.setAttribute("aria-label", "Card actions");
+  cardCtxEl.hidden = true;
+  document.body.appendChild(cardCtxEl);
+}
+
+function ctxItem(iconName, label, onClick, danger) {
+  const item = document.createElement("button");
+  item.type = "button";
+  item.className = "menu-item" + (danger ? " danger" : "");
+  item.setAttribute("role", "menuitem");
+  item.appendChild(icon(iconName));
+  const span = document.createElement("span");
+  span.textContent = label;
+  item.appendChild(span);
+  item.addEventListener("click", () => {
+    closeCardContextMenu();
+    onClick();
+  });
+  return item;
+}
+
+// Build the menu fresh for the target card, so labels reflect its collapsed and hidden state.
+function openCardContextMenu(cardId, clientX, clientY) {
+  const card = state.board.cards.find((c) => c.id === cardId);
+  if (!card || !cardCtxEl) return;
+  closeCardMenu();
+  cardCtxEl.innerHTML = "";
+
+  cardCtxEl.appendChild(
+    card.collapsed
+      ? ctxItem("chevrons-up-down", "Expand", () => doToggleCollapse(cardId))
+      : ctxItem("chevrons-down-up", "Collapse", () => doToggleCollapse(cardId))
+  );
+  cardCtxEl.appendChild(
+    card.hidden
+      ? ctxItem("eye", "Show", () => doSetHidden(cardId, false))
+      : ctxItem("eye-off", "Hide", () => doSetHidden(cardId, true))
+  );
+  cardCtxEl.appendChild(ctxItem("bring-to-front", "Bring to front", () => doBringToFront(cardId)));
+  cardCtxEl.appendChild(ctxItem("send-to-back", "Send to back", () => doSendToBack(cardId)));
+  cardCtxEl.appendChild(ctxItem("trash-2", "Delete", () => doDeleteCard(cardId), true));
+
+  cardCtxEl.hidden = false;
+  const mw = cardCtxEl.offsetWidth || 190;
+  const mh = cardCtxEl.offsetHeight || 220;
+  let left = clientX;
+  let top = clientY;
+  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+  if (top + mh > window.innerHeight - 8) top = window.innerHeight - mh - 8;
+  cardCtxEl.style.left = Math.max(8, left) + "px";
+  cardCtxEl.style.top = Math.max(8, top) + "px";
+}
+
+function closeCardContextMenu() {
+  if (cardCtxEl) cardCtxEl.hidden = true;
+}
+
+function closeMenus() {
+  closeCardMenu();
+  closeCardContextMenu();
 }
 
 function wireToolbar() {
@@ -339,7 +418,7 @@ function wireKeyboard() {
     if (state.mode !== "edit" || !state.selectedId) return;
     const tag = (document.activeElement && document.activeElement.tagName) || "";
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-    if (e.key === "Delete") {
+    if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       removeSelected();
     }
@@ -395,6 +474,26 @@ function doSendToBack(id) {
   if (!id) return;
   sendToBack(state.board.cards, id);
   state.selectedId = id;
+  markDirty();
+  boardView.render();
+  boardView.updateSelection();
+  refreshInspector();
+}
+
+function doToggleCollapse(id) {
+  const card = state.board.cards.find((c) => c.id === id);
+  if (!card) return;
+  card.collapsed = !card.collapsed;
+  markDirty();
+  boardView.render();
+  boardView.updateSelection();
+  refreshInspector();
+}
+
+function doSetHidden(id, hidden) {
+  const card = state.board.cards.find((c) => c.id === id);
+  if (!card) return;
+  card.hidden = hidden;
   markDirty();
   boardView.render();
   boardView.updateSelection();
@@ -457,6 +556,8 @@ function addPage() {
   const clean = title.trim();
   if (!clean) return;
   const slug = deriveSlug(clean);
+  // If this reuses a slug queued for deletion, keep its file.
+  state.deletedPages = state.deletedPages.filter((s) => s !== slug);
   state.pages.push({ slug, title: clean });
   saveIndexDraft(state.pages);
   state.board = { title: clean, cards: [] };
@@ -486,12 +587,14 @@ function deletePage() {
   if (!state.slug) return;
   const entry = state.pages.find((p) => p.slug === state.slug);
   const label = entry ? entry.title : state.slug;
-  const ok = window.confirm('Delete page "' + label + '"? This also removes it from the index on the next Save.');
+  const ok = window.confirm('Delete page "' + label + '"? Save removes it from the site and the repo.');
   if (!ok) return;
   const removed = state.slug;
   state.pages = state.pages.filter((p) => p.slug !== removed);
   clearDraft(removed);
   saveIndexDraft(state.pages);
+  // Queue the repo file for deletion on the next Save.
+  if (!state.deletedPages.includes(removed)) state.deletedPages.push(removed);
   const nextSlug = state.pages.length ? state.pages[0].slug : null;
   renderSidebar();
   if (nextSlug) {
@@ -503,7 +606,7 @@ function deletePage() {
     boardView.render();
     refreshInspector();
   }
-  setStatus('Deleted "' + label + '". Save to publish, and remove wiki/pages/' + removed + '.json in the repo if needed.', "info");
+  setStatus('Deleted "' + label + '". Save to publish the removal.', "info");
 }
 
 // ----- GitHub Save -----
@@ -533,6 +636,10 @@ async function save() {
   setStatus("Committing to " + GH.owner + "/" + GH.repo + " ...", "info");
   try {
     await commitPage(state.slug, state.board, state.pages, token);
+    // Remove the files of any deleted pages, unless a slug was recreated in the meantime.
+    const toDelete = state.deletedPages.filter((s) => !state.pages.some((p) => p.slug === s));
+    if (toDelete.length) await deletePageFiles(toDelete, token);
+    state.deletedPages = [];
     clearDraft(state.slug);
     clearIndexDraft();
     setStatus("Saved to GitHub. Pages will redeploy shortly.", "success");
@@ -631,12 +738,27 @@ window.__wiki = {
     mode: state.mode,
     selectedId: state.selectedId,
     cardCount: state.board.cards.length,
-    cards: state.board.cards.map((c) => ({ id: c.id, type: c.type, x: c.x, y: c.y, w: c.w, h: c.h, z: c.z })),
+    pageCount: state.pages.length,
+    deletedPages: state.deletedPages.slice(),
+    cards: state.board.cards.map((c) => ({
+      id: c.id,
+      type: c.type,
+      x: c.x,
+      y: c.y,
+      w: c.w,
+      h: c.h,
+      z: c.z,
+      collapsed: !!c.collapsed,
+      hidden: !!c.hidden,
+      format: c.format,
+    })),
   }),
   setMode,
   addCard,
   addCardAt,
   selectCard,
+  toggleCollapse: doToggleCollapse,
+  setHidden: doSetHidden,
 };
 
 init();

@@ -84,7 +84,10 @@ export function newCard(type, at, cards) {
 function typeDefaults(type) {
   switch (type) {
     case "text":
-      return { md: "## New note\n\nWrite **markdown** here. Links like [Godot](https://godotengine.org) work in view mode." };
+      return {
+        format: "markdown",
+        md: "## New note\n\nWrite **markdown** here. Links like [Godot](https://godotengine.org) work in view mode.",
+      };
     case "code":
       return { lang: "gdscript", code: 'func _ready():\n\tprint("hello from GodotTrench")' };
     case "image":
@@ -132,24 +135,97 @@ function placeholder(text) {
   return div;
 }
 
+// Text cards render Markdown, BBCode, or raw HTML. Whatever the format, the final HTML
+// is always run through DOMPurify before it touches the DOM, so authored content, even raw
+// HTML, cannot inject script or event handlers on this public site.
 function renderText(card) {
   const div = document.createElement("div");
   div.className = "md";
-  const md = card.md || "";
-  if (window.marked && window.DOMPurify) {
-    const raw = window.marked.parse(md);
-    const clean = window.DOMPurify.sanitize(raw, { ADD_ATTR: ["target"] });
-    div.innerHTML = clean;
+  const source = card.md || "";
+  const format = card.format || "markdown";
+
+  let html = null;
+  if (format === "html") {
+    html = source;
+  } else if (format === "bbcode") {
+    html = bbcodeToHtml(source);
+  } else if (window.marked) {
+    html = window.marked.parse(source, markedOptions());
+  }
+
+  if (html != null && window.DOMPurify) {
+    div.innerHTML = window.DOMPurify.sanitize(html, { ADD_ATTR: ["target"] });
     div.querySelectorAll("a[href]").forEach((a) => {
       a.target = "_blank";
       a.rel = "noopener noreferrer";
     });
   } else {
+    // No sanitizer available (offline without the vendored copy). Show the raw source safely
+    // as plain text rather than risk injecting unsanitized markup.
     const pre = document.createElement("pre");
-    pre.textContent = md;
+    pre.textContent = source;
     div.appendChild(pre);
   }
   return div;
+}
+
+// Full GitHub flavored Markdown, with single line breaks honored.
+function markedOptions() {
+  return { gfm: true, breaks: true };
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// A compact BBCode to HTML converter. The result is sanitized by DOMPurify before use, so it
+// only needs to build reasonable markup, not enforce safety itself. Code blocks are pulled out
+// first so their contents are never treated as BBCode or line broken.
+function bbcodeToHtml(src) {
+  let s = escapeHtml(src);
+
+  const codeBlocks = [];
+  s = s.replace(/\[code\]([\s\S]*?)\[\/code\]/gi, (_m, body) => {
+    codeBlocks.push(body);
+    return "\u0000CODE" + (codeBlocks.length - 1) + "\u0000";
+  });
+
+  // Lists: turn [list] ... [*] item ... [/list] into <ul><li>...</li></ul>.
+  s = s.replace(/\[list\]([\s\S]*?)\[\/list\]/gi, (_m, body) => {
+    const items = body
+      .split(/\[\*\]/)
+      .map((part) => part.trim())
+      .filter((part) => part.length);
+    return "<ul>" + items.map((it) => "<li>" + it + "</li>").join("") + "</ul>";
+  });
+
+  const inline = [
+    [/\[b\]([\s\S]*?)\[\/b\]/gi, "<strong>$1</strong>"],
+    [/\[i\]([\s\S]*?)\[\/i\]/gi, "<em>$1</em>"],
+    [/\[u\]([\s\S]*?)\[\/u\]/gi, "<u>$1</u>"],
+    [/\[s\]([\s\S]*?)\[\/s\]/gi, "<s>$1</s>"],
+    [/\[quote\]([\s\S]*?)\[\/quote\]/gi, "<blockquote>$1</blockquote>"],
+    [/\[center\]([\s\S]*?)\[\/center\]/gi, '<div style="text-align:center">$1</div>'],
+    [/\[color=([#\w(),.\s]+)\]([\s\S]*?)\[\/color\]/gi, '<span style="color:$1">$2</span>'],
+    [/\[size=(\d{1,3})\]([\s\S]*?)\[\/size\]/gi, '<span style="font-size:$1px">$2</span>'],
+    [/\[url=([^\]\s]+)\]([\s\S]*?)\[\/url\]/gi, '<a href="$1">$2</a>'],
+    [/\[url\]([^\[]+)\[\/url\]/gi, '<a href="$1">$1</a>'],
+    [/\[img\]([^\[]+)\[\/img\]/gi, '<img src="$1" alt="" />'],
+  ];
+  // A few passes so nested inline tags resolve.
+  for (let pass = 0; pass < 3; pass += 1) {
+    inline.forEach(([re, out]) => {
+      s = s.replace(re, out);
+    });
+  }
+
+  // Line breaks for the remaining text, then restore protected code blocks.
+  s = s.replace(/\r?\n/g, "<br>");
+  s = s.replace(/\u0000CODE(\d+)\u0000/g, (_m, i) => "<pre><code>" + codeBlocks[Number(i)] + "</code></pre>");
+  return s;
 }
 
 function renderCode(card) {
