@@ -125,6 +125,8 @@ pub fn paste_nodes(map: &mut Map, parent: NodeId, text: &str) -> Result<Vec<Node
     #[derive(Deserialize)]
     struct Clip {
         format: String,
+        #[serde(default)]
+        version: u32,
         nodes: Vec<FileNode>,
     }
 
@@ -133,6 +135,10 @@ pub fn paste_nodes(map: &mut Map, parent: NodeId, text: &str) -> Result<Vec<Node
     let clip: Clip = serde_json::from_value(value)?;
     if clip.format != "godottrench-clipboard" {
         return Err(FormatError::WrongFormat(clip.format));
+    }
+
+    if clip.version > FORMAT_VERSION {
+        return Err(FormatError::TooNew(clip.version));
     }
 
     clip.nodes.iter().try_for_each(validate)?;
@@ -394,6 +400,8 @@ mod tests {
         let pasted = paste_nodes(&mut m, layer, &text).unwrap();
         assert_eq!(pasted.len(), ids.len());
         assert_eq!(m.nodes.len(), before + 4);
+        let newer = text.replacen(&format!("\"version\": {FORMAT_VERSION}"), &format!("\"version\": {}", FORMAT_VERSION + 1), 1);
+        assert!(matches!(paste_nodes(&mut m, layer, &newer), Err(FormatError::TooNew(_))));
     }
 
     #[test]
