@@ -21,7 +21,7 @@
       "h": 316,
       "z": 1,
       "format": "markdown",
-      "md": "## Files\n\n- `index.html` — the shell: sidebar, toolbar, board and inspector.\n- `css/style.css` — the whole theme, one set of tokens on `:root`.\n- `js/app.js` — wires everything together (state, sidebar, save flow, paste, menus).\n- `js/board.js` — the canvas: renders cards, drag, resize, z order, freehand draw.\n- `js/cards.js` — the card model and per type renderers (text/code/image/video/table/shape/draw).\n- `js/inspector.js` — the per card editor on the right.\n- `js/github.js` — the only code that writes to the network, via the GitHub Contents API.\n- `js/icons.js` — inline Lucide icons.\n- `pages/index.json` — the page list with categories. `pages/<slug>.json` — one board each.\n- `assets/` — uploaded images and video, committed through the API.\n"
+      "md": "## Files\n\n- `index.html`, the shell: sidebar, toolbar, board and inspector.\n- `css/style.css`, the whole theme, one set of tokens on `:root`.\n- `js/app.js`, wires everything together (state, sidebar, save flow, paste, menus).\n- `js/board.js`, the canvas: renders cards, drag, resize, z order, freehand draw.\n- `js/cards.js`, the card model and per type renderers (text/code/image/video/table/shape/draw).\n- `js/inspector.js`, the per card editor on the right.\n- `js/github.js`, the only code that writes to the network, via the GitHub Contents API.\n- `js/icons.js`, inline Lucide icons.\n- `pages/index.json`, the page list with categories. `pages/<slug>.json`, one board each.\n- `assets/`, uploaded images and video, committed through the API.\n"
     },
     {
       "id": "c3",

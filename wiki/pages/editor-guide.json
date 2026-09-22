@@ -18,27 +18,27 @@
       "x": 48,
       "y": 367,
       "w": 780,
-      "h": 454,
+      "h": 431,
       "z": 1,
       "format": "markdown",
-      "md": "## The tools\n\n- **Select** — the default tool for drawing, selecting, moving and resizing brushes.\n- **Clip** — cuts brushes along a plane, for slopes, ramps and angled walls.\n- **Vertex** — moves single corners and edges for shapes a box cannot make. Brushes always stay convex.\n- **Rotate** — rotates the selection around its center.\n- **Scale** — stretches the selection by its bounding box.\n- **Mesh** — turns brushes into polygon meshes you edit like in Blender, for organic or detailed shapes.\n- **Texture** — Hammer style texturing right in the 3D view.\n- **Paint** — paints vertex colors on faces, for dirt, tint or fake lighting.\n- **Sculpt** — shapes terrains and displacements.\n- **Blend** — mixes materials: terrain layers, displacement alpha and blend material faces.\n- **Scatter** — paints trees, rocks and foliage onto the surfaces you choose.\n- **Volume** — drags out trigger and gameplay volumes in one step.\n- **Path** — lays down `path_corner` chains for trains and moving platforms.\n- **Measure** — measures the distance between two points.\n"
+      "md": "## The tools\n\n- **Select**, the default tool for drawing, selecting, moving and resizing brushes.\n- **Clip**, cuts brushes along a plane, for slopes, ramps and angled walls.\n- **Vertex**, moves single corners and edges for shapes a box cannot make. Brushes always stay convex.\n- **Rotate**, rotates the selection around its center.\n- **Scale**, stretches the selection by its bounding box.\n- **Mesh**, turns brushes into polygon meshes you edit like in Blender, for organic or detailed shapes.\n- **Texture**, Hammer style texturing right in the 3D view.\n- **Paint**, paints vertex colors on faces, for dirt, tint or fake lighting.\n- **Sculpt**, shapes terrains and displacements.\n- **Blend**, mixes materials: terrain layers, displacement alpha and blend material faces.\n- **Scatter**, paints trees, rocks and foliage onto the surfaces you choose.\n- **Volume**, drags out trigger and gameplay volumes in one step.\n- **Path**, lays down `path_corner` chains for trains and moving platforms.\n- **Measure**, measures the distance between two points.\n"
     },
     {
       "id": "c3",
       "type": "text",
       "x": 48,
-      "y": 843,
+      "y": 820,
       "w": 780,
       "h": 431,
       "z": 2,
       "format": "markdown",
-      "md": "## The panels\n\n- **Outliner** — every layer, group, brush, mesh and entity as a tree. Click to select, the eye hides, the lock locks. Clicking a layer makes it the current layer new objects go into.\n- **Inspector** — edits whatever is selected: entity properties and outputs, face materials and UVs, scatter sets and terrains. With nothing selected it shows the map's own settings (worldspawn): sun, sky and fog.\n- **Materials** — the textures and materials of the Godot project. Click to apply, drag onto a face, right click for favourites.\n- **Entities** — entity classes from the game config as cards. Drag one into a view or double click to place it at the cursor.\n- **History** — every edit in order. Click an older entry to undo back to it, a later one to redo.\n- **Issues** — problems in the map: invalid brushes, missing materials, outputs pointing at nothing. Click one to select the object, most offer a fix.\n- **UV Editor** — edits the UVs of selected mesh faces directly.\n- **Reference** — how to use the selected entity from code: GDScript and C# snippets, the FGD resource, and buttons that create the script in your project.\n"
+      "md": "## The panels\n\n- **Outliner**, every layer, group, brush, mesh and entity as a tree. Click to select, the eye hides, the lock locks. Clicking a layer makes it the current layer new objects go into.\n- **Inspector**, edits whatever is selected: entity properties and outputs, face materials and UVs, scatter sets and terrains. With nothing selected it shows the map's own settings (worldspawn): sun, sky and fog.\n- **Materials**, the textures and materials of the Godot project. Click to apply, drag onto a face, right click for favourites.\n- **Entities**, entity classes from the game config as cards. Drag one into a view or double click to place it at the cursor.\n- **History**, every edit in order. Click an older entry to undo back to it, a later one to redo.\n- **Issues**, problems in the map: invalid brushes, missing materials, outputs pointing at nothing. Click one to select the object, most offer a fix.\n- **UV Editor**, edits the UVs of selected mesh faces directly.\n- **Reference**, how to use the selected entity from code: GDScript and C# snippets, the FGD resource, and buttons that create the script in your project.\n"
     },
     {
       "id": "c4",
       "type": "text",
       "x": 48,
-      "y": 1296,
+      "y": 1273,
       "w": 780,
       "h": 316,
       "z": 3,
@@ -49,7 +49,7 @@
       "id": "c5",
       "type": "text",
       "x": 48,
-      "y": 1634,
+      "y": 1611,
       "w": 780,
       "h": 224,
       "z": 4,
