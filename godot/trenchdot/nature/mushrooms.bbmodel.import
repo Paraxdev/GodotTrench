@@ -1,0 +1,17 @@
+[remap]
+
+importer="trenchdot.bbmodel"
+type="PackedScene"
+uid="uid://dvy6ntl7r7qy6"
+path="res://.godot/imported/mushrooms.bbmodel-3730a091e596bf12d66c058254c2f9f8.scn"
+
+[deps]
+
+source_file="res://trenchdot/nature/mushrooms.bbmodel"
+dest_files=["res://.godot/imported/mushrooms.bbmodel-3730a091e596bf12d66c058254c2f9f8.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

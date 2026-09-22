@@ -1,0 +1,17 @@
+[remap]
+
+importer="trenchdot.bbmodel"
+type="PackedScene"
+uid="uid://cwsc5c6puou2g"
+path="res://.godot/imported/boulder_mossy.bbmodel-5167c830170e572eef0979332efd3116.scn"
+
+[deps]
+
+source_file="res://trenchdot/nature/boulder_mossy.bbmodel"
+dest_files=["res://.godot/imported/boulder_mossy.bbmodel-5167c830170e572eef0979332efd3116.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

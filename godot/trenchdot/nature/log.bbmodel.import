@@ -1,0 +1,17 @@
+[remap]
+
+importer="trenchdot.bbmodel"
+type="PackedScene"
+uid="uid://bao8hyw5fhd0y"
+path="res://.godot/imported/log.bbmodel-c3e916ddf3ee70f61a5d6aeb17fb1fb7.scn"
+
+[deps]
+
+source_file="res://trenchdot/nature/log.bbmodel"
+dest_files=["res://.godot/imported/log.bbmodel-c3e916ddf3ee70f61a5d6aeb17fb1fb7.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

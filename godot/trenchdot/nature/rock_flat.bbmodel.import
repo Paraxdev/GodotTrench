@@ -1,0 +1,17 @@
+[remap]
+
+importer="trenchdot.bbmodel"
+type="PackedScene"
+uid="uid://ei2y11qbsun0"
+path="res://.godot/imported/rock_flat.bbmodel-ea465b00a692b1416565785295c76afa.scn"
+
+[deps]
+
+source_file="res://trenchdot/nature/rock_flat.bbmodel"
+dest_files=["res://.godot/imported/rock_flat.bbmodel-ea465b00a692b1416565785295c76afa.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

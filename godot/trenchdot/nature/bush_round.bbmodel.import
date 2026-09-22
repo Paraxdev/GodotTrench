@@ -1,0 +1,17 @@
+[remap]
+
+importer="trenchdot.bbmodel"
+type="PackedScene"
+uid="uid://d2f07p3lj44k"
+path="res://.godot/imported/bush_round.bbmodel-bcc5c0cd8b4aa7bfa2f80f2cb5674420.scn"
+
+[deps]
+
+source_file="res://trenchdot/nature/bush_round.bbmodel"
+dest_files=["res://.godot/imported/bush_round.bbmodel-bcc5c0cd8b4aa7bfa2f80f2cb5674420.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

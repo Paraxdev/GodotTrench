@@ -1,0 +1,17 @@
+[remap]
+
+importer="trenchdot.bbmodel"
+type="PackedScene"
+uid="uid://delv84nhg2rj7"
+path="res://.godot/imported/grass_tall.bbmodel-f4309458e46bf5e0e21e6b57b9896a87.scn"
+
+[deps]
+
+source_file="res://trenchdot/nature/grass_tall.bbmodel"
+dest_files=["res://.godot/imported/grass_tall.bbmodel-f4309458e46bf5e0e21e6b57b9896a87.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

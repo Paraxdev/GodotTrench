@@ -1,0 +1,17 @@
+[remap]
+
+importer="trenchdot.bbmodel"
+type="PackedScene"
+uid="uid://babn6ba10rckq"
+path="res://.godot/imported/bush_berries.bbmodel-ae709e285b8c93411416b60ec2a2b072.scn"
+
+[deps]
+
+source_file="res://trenchdot/nature/bush_berries.bbmodel"
+dest_files=["res://.godot/imported/bush_berries.bbmodel-ae709e285b8c93411416b60ec2a2b072.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true
