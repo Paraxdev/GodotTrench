@@ -73,7 +73,13 @@
 
         <div class="workspace">
           <div id="board" class="board-viewport"></div>
-          <aside id="inspector" class="inspector" aria-label="Inspector"></aside>
+          <div class="canvas-controls" aria-label="Canvas zoom">
+            <button id="zoom-out" class="canvas-btn" type="button"></button>
+            <span id="zoom-label" class="zoom-label">100%</span>
+            <button id="zoom-in" class="canvas-btn" type="button"></button>
+            <button id="zoom-fit" class="canvas-btn" type="button"></button>
+            <button id="zoom-reset" class="canvas-btn" type="button"></button>
+          </div>
         </div>
 
         <div id="status" class="status" aria-live="polite"></div>

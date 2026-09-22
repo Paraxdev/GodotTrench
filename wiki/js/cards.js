@@ -145,7 +145,11 @@ function renderText(card) {
   const format = card.format || "markdown";
 
   let html = null;
-  if (format === "html") {
+  if (typeof card.html === "string" && card.html.length) {
+    // WYSIWYG-edited cards store rich HTML directly. It wins over the source path, so legacy
+    // markdown pages keep rendering from card.md until they are edited inline.
+    html = card.html;
+  } else if (format === "html") {
     html = source;
   } else if (format === "bbcode") {
     html = bbcodeToHtml(source);
@@ -449,7 +453,7 @@ function renderDraw(card) {
     class: "draw-line",
     d: card.path || "",
     fill: "none",
-    stroke: "var(--draw-stroke)",
+    stroke: card.stroke || "var(--draw-stroke)",
     "stroke-width": 2.5,
     "stroke-linecap": "round",
     "stroke-linejoin": "round",
