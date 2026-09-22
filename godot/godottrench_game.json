@@ -3100,6 +3100,28 @@
           "type": "bool",
           "default": "0",
           "description": "Emits from map load"
+        },
+        {
+          "name": "effect",
+          "type": "choices",
+          "default": "rise",
+          "description": "Built in look: puffs rising, or rain falling from a box above the entity",
+          "options": [
+            [
+              "rise",
+              "rise"
+            ],
+            [
+              "rain",
+              "rain"
+            ]
+          ]
+        },
+        {
+          "name": "area",
+          "type": "string",
+          "default": "10 1 10",
+          "description": "Rain: width, height and depth in meters of the box the drops start in"
         }
       ],
       "script": "res://addons/func_godot/src/godottrench/entities/gt_particles.gd",

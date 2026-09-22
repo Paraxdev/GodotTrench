@@ -1,0 +1,7 @@
+[gd_resource type="StandardMaterial3D" load_steps=2 format=3]
+
+[ext_resource type="Texture2D" path="res://demo/textures/withered/cloud.jpg" id="1_albedo"]
+
+[resource]
+albedo_texture = ExtResource("1_albedo")
+metadata/texture_size = Vector2(512, 512)

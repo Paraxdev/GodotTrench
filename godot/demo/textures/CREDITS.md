@@ -74,7 +74,20 @@ The world size is what one repeat of the texture covers in the map, stored in ea
 | `withered/tiles` | Poly Haven [large_floor_tiles_02](https://polyhaven.com/a/large_floor_tiles_02) | Rob Tuytel | 96 units (3 m) |
 | `withered/letters` | drawn by tools/fetch_demo_textures.py, from [damaged_concrete_floor_03](https://polyhaven.com/a/damaged_concrete_floor_03) | GodotTrench, scan by Poly Haven | 64 units (2 m) |
 | `withered/puddle` | drawn by tools/fetch_demo_textures.py | GodotTrench | 96 units (3 m) |
+| `withered/asphalt_wet` | Poly Haven [asphalt_02](https://polyhaven.com/a/asphalt_02) | Rob Tuytel | 96 units (3 m) |
+| `withered/sign_backing` | drawn by tools/fetch_demo_textures.py, from [rusty_metal_04](https://polyhaven.com/a/rusty_metal_04) | GodotTrench, scan by Poly Haven | 64 units (2 m) |
+| `withered/neon_dead` | drawn by tools/fetch_demo_textures.py | GodotTrench | 32 units (1 m) |
+| `withered/neon_magenta` | drawn by tools/fetch_demo_textures.py | GodotTrench | 32 units (1 m) |
+| `withered/neon_cyan` | drawn by tools/fetch_demo_textures.py | GodotTrench | 32 units (1 m) |
+| `withered/neon_yellow` | drawn by tools/fetch_demo_textures.py | GodotTrench | 32 units (1 m) |
+| `withered/neon_green` | drawn by tools/fetch_demo_textures.py | GodotTrench | 32 units (1 m) |
+| `withered/neon_red` | drawn by tools/fetch_demo_textures.py | GodotTrench | 32 units (1 m) |
+| `withered/neon_blue_white` | drawn by tools/fetch_demo_textures.py | GodotTrench | 32 units (1 m) |
+| `withered/neon_orange` | drawn by tools/fetch_demo_textures.py | GodotTrench | 32 units (1 m) |
+| `withered/lightning` | drawn by tools/fetch_demo_textures.py | GodotTrench | 32 units (1 m) |
+| `withered/cloud` | drawn by tools/fetch_demo_textures.py | GodotTrench | 512 units (16 m) |
+| `withered/lantern` | drawn by tools/fetch_demo_textures.py | GodotTrench | 32 units (1 m) |
 
-Glass, stained glass, water and the withered puddle have no fitting scan and are drawn by the script. They and the `special/*` tool
-textures were made for GodotTrench and fall under its MIT license. The other drawn textures recolour or rearrange
+Glass, stained glass, water, the withered puddle and the neon tubes have no fitting scan and are drawn by the script.
+They and the `special/*` tool textures were made for GodotTrench and fall under its MIT license. The other drawn textures recolour or rearrange
 the CC0 scans named in their row.

@@ -4,10 +4,10 @@ class_name GodotTrenchEnvironment extends RefCounted
 ## GodotTrench editor's lit preview: sun_angles ("pitch yaw"), sun_color, sun_energy, ambient_color,
 ## sky_top_color, sky_horizon_color, sky_ground_color, fog_color and fog_density (per meter). For night maps
 ## ambient_energy and sky_energy scale the ambient light and the sky, and glow_intensity above 0 turns on glow so
-## emissive materials and lamps bloom. Colors are "r g b" in 0..255 or 0..1. Set the worldspawn key "environment"
-## to 0 to skip it.
+## emissive materials and lamps bloom, while ssr 1 turns on screen space reflections for wet streets and glossy
+## floors. Colors are "r g b" in 0..255 or 0..1. Set the worldspawn key "environment" to 0 to skip it.
 
-const KEYS := ["sun_angles", "sky_top_color", "sky_horizon_color", "sky_ground_color", "fog_color", "fog_density", "ambient_energy", "sky_energy", "glow_intensity"]
+const KEYS := ["sun_angles", "sky_top_color", "sky_horizon_color", "sky_ground_color", "fog_color", "fog_density", "ambient_energy", "sky_energy", "glow_intensity", "ssr"]
 
 static func parse_color(text: String, fallback: Color) -> Color:
 	var parts := text.split_floats(" ", false)
@@ -54,6 +54,9 @@ static func build(map_node: Node3D, properties: Dictionary) -> Array[Node]:
 		env.glow_bloom = 0.05
 		env.glow_hdr_threshold = 0.9
 		env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	if str(properties.get("ssr", "0")) == "1":
+		env.ssr_enabled = true
+		env.ssr_max_steps = 96
 	var density := str(properties.get("fog_density", "0")).to_float()
 	if density > 0.0:
 		env.fog_enabled = true

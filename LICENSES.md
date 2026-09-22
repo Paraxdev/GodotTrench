@@ -17,14 +17,14 @@ it uses, with their licenses. Everything below keeps its own license.
 | emoji-icon-font | embedded in the editor through `epaint_default_fonts` | MIT | 2014 John Slegers |
 | [Poly Haven](https://polyhaven.com) and [ambientCG](https://ambientcg.com) nature textures | bark maps and the photographed leaves of the twig cards in `godot/godottrench/nature/textures`, used by the procedural trees and bushes in `godot/godottrench/nature/trees`, `trees_detailed` and `bushes`, every asset id and source link in the `pack.json` of those folders | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Poly Haven bark: Rob Tuytel (bark_brown_02), Dimitrios Savva (pine_bark), Charlotte Baglioni (japanese_sycamore, chinese_hackberry_bark, bark_willow_02). ambientCG: Bark001, LeafSet002, 004, 010, 013, 014, 015, 016, 018, 019, 023, 024, 027, Leaf003, FlowerSet001 |
 | [Poly Haven](https://polyhaven.com) models | showcase props in `godot/models/polyhaven`, credits per asset in [`godot/models/polyhaven/pack.json`](godot/models/polyhaven/pack.json) and [`godot/models/CREDITS.md`](godot/models/CREDITS.md) | [CC0](https://polyhaven.com/license), see the [Poly Haven license page](https://polyhaven.com/license) | Poly Haven contributors |
-| [Poly Haven](https://polyhaven.com) and [ambientCG](https://ambientcg.com) textures | photo textures of the demo project in `godot/demo/textures/showcase`, `godot/demo/textures/withered` and `godot/demo/textures/base`, every asset id and source link in [`godot/demo/textures/CREDITS.md`](godot/demo/textures/CREDITS.md), rebuilt by `tools/fetch_demo_textures.py` | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Poly Haven and ambientCG contributors |
+| [Poly Haven](https://polyhaven.com) and [ambientCG](https://ambientcg.com) textures | photo textures of the demo project in `godot/demo/textures/showcase`, `godot/demo/textures/withered`, `godot/demo/textures/night` and `godot/demo/textures/base`, every asset id and source link in [`godot/demo/textures/CREDITS.md`](godot/demo/textures/CREDITS.md), rebuilt by `tools/fetch_demo_textures.py` | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) | Poly Haven and ambientCG contributors |
 
 The font license texts ship with the [epaint_default_fonts](https://crates.io/crates/epaint_default_fonts) crate.
 
 The Blockbench nature and demo models, the demo maps, the example scripts, the tool textures in
 `godot/demo/textures/special` and the few demo textures drawn by `tools/fetch_demo_textures.py` (glass, stained glass,
-water, the withered puddle) were made for this project and fall under its MIT license. The other demo textures are the CC0 scans listed above,
-some recoloured or rearranged by that script. The procedural trees and bushes in `godot/godottrench/nature/trees`,
+water, the withered puddle, the night neon strip) were made for this project and fall under its MIT license. The other demo textures are the CC0 scans listed above,
+some recoloured or rearranged by that script. The night shop sign sets its lettering in the Aileron font bundled with Pillow, which is CC0. The procedural trees and bushes in `godot/godottrench/nature/trees`,
 `trees_detailed` and `bushes` were generated for this project (MIT). Their textures in `godot/godottrench/nature/textures` are
 the CC0 scans listed above, graded, and for the leaves composed into twig cards, by the out of repo generator.
 

@@ -144,7 +144,31 @@ TEXTURES = [
         extra="emission_enabled = true\nemission = Color(0, 0, 0, 1)\nemission_energy_multiplier = 4.0\n"),
     tex("withered/puddle", MADE, "puddle", size=96, recipe="puddle",
         extra="transparency = 1\nalbedo_color = Color(1, 1, 1, 0.78)\nroughness = 0.02\nmetallic_specular = 1.0\n"),
+    tex("withered/asphalt_wet", PH, "asphalt_02", level=(46, 0.6), extra="roughness = 0.16\nmetallic_specular = 0.8\n"),
+    tex("withered/sign_backing", MADE, "sign_backing", size=64, recipe="sign_backing", uses=[(PH, "rusty_metal_04")],
+        extra="roughness = 0.45\nmetallic = 0.5\n"),
+    tex("withered/neon_dead", MADE, "neon_dead", size=32, normal=False, recipe="neon",
+        extra="roughness = 0.12\nmetallic_specular = 0.9\n"),
+    *[tex(f"withered/{n}", MADE, n, size=32, normal=False, recipe="neon",
+          extra=f"emission_enabled = true\nemission = Color(0, 0, 0, 1)\nemission_energy_multiplier = {e}\n")
+      for n, e in (("neon_magenta", 4.5), ("neon_cyan", 4.0), ("neon_yellow", 3.5), ("neon_green", 4.0), ("neon_red", 4.5), ("neon_blue_white", 3.0),
+                   ("neon_orange", 4.0), ("lightning", 10.0))],
+    tex("withered/cloud", MADE, "cloud", size=512, normal=False, recipe="cloud"),
+    tex("withered/lantern", MADE, "lantern", size=32, normal=False, recipe="lantern",
+        extra="emission_enabled = true\nemission = Color(0, 0, 0, 1)\nemission_energy_multiplier = 3.0\n"),
 ]
+
+NEON = {
+    "neon_magenta": (255, 36, 196),
+    "neon_cyan": (24, 226, 255),
+    "neon_yellow": (255, 206, 40),
+    "neon_green": (56, 255, 104),
+    "neon_red": (255, 34, 48),
+    "neon_blue_white": (176, 204, 255),
+    "neon_orange": (255, 118, 24),
+    "lightning": (214, 226, 255),
+    "neon_dead": (58, 64, 72),
+}
 
 
 def get(url):
@@ -526,6 +550,41 @@ def recipe_neon_red(_):
     return {"color": img, "emission": img}
 
 
+def recipe_neon(t):
+    """Glass tube colour for block letters and tubes, flat but for a little dust, since any stripe would band across
+    faces a few units wide. The dead tube is the same glass, grey and without glow."""
+    s = 64
+    color = np.array(NEON[t["asset"]], dtype=np.float32)
+    dust = tiling_noise(s, 4, 61, octaves=3)
+    rgb = color * (0.88 + dust[..., None] * 0.12)
+    img = Image.fromarray(rgb.clip(0, 255).astype(np.uint8))
+    return {"color": img} if t["asset"] == "neon_dead" else {"color": img, "emission": img}
+
+
+def recipe_cloud(_):
+    s = 256
+    billow = tiling_noise(s, 4, 81, octaves=5)
+    rgb = np.array([14.0, 17.0, 26.0]) + np.array([26.0, 30.0, 40.0]) * (billow ** 2)[..., None]
+    return {"color": Image.fromarray(rgb.clip(0, 255).astype(np.uint8))}
+
+
+def recipe_lantern(_):
+    """Red orange paper over bamboo ribs, brighter between the ribs where the flame shines through."""
+    s = 64
+    v = np.arange(s) / s
+    ribs = 1 - 0.12 * np.exp(-(((v * 4) % 1 - 0.5) ** 2) / 0.004)
+    fibre = tiling_noise(s, 8, 71, octaves=3)
+    shade = ribs[:, None] * (0.85 + fibre * 0.15)
+    rgb = np.array([255.0, 96.0, 36.0]) * shade[..., None]
+    img = Image.fromarray(rgb.clip(0, 255).astype(np.uint8))
+    return {"color": img, "emission": img}
+
+
+def recipe_sign_backing(_):
+    src = ph_maps("rusty_metal_04")
+    return {"color": relevel(fit(src["color"]), 20, 0.35), "normal": fit(src["normal"])}
+
+
 def world_size(t):
     if isinstance(t["size"], tuple):
         return t["size"]
@@ -654,8 +713,8 @@ def credits(sizes):
         "The world size is what one repeat of the texture covers in the map, stored in each material as\n"
         "`metadata/texture_size` and taken from the real size of the scan where the source publishes one.\n\n"
         "| Material | Source | Author | World size |\n|---|---|---|---|\n" + "\n".join(rows) + "\n\n"
-        "Glass, stained glass, water and the withered puddle have no fitting scan and are drawn by the script. They and the `special/*` tool\n"
-        "textures were made for GodotTrench and fall under its MIT license. The other drawn textures recolour or rearrange\n"
+        "Glass, stained glass, water, the withered puddle and the neon tubes have no fitting scan and are drawn by the script.\n"
+        "They and the `special/*` tool textures were made for GodotTrench and fall under its MIT license. The other drawn textures recolour or rearrange\n"
         "the CC0 scans named in their row.\n"
     )
 

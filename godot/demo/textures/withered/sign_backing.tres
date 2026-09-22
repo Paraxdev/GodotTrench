@@ -1,0 +1,12 @@
+[gd_resource type="StandardMaterial3D" load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://demo/textures/withered/sign_backing.jpg" id="1_albedo"]
+[ext_resource type="Texture2D" path="res://demo/textures/withered/sign_backing_normal.jpg" id="2_normal"]
+
+[resource]
+albedo_texture = ExtResource("1_albedo")
+normal_enabled = true
+normal_texture = ExtResource("2_normal")
+roughness = 0.45
+metallic = 0.5
+metadata/texture_size = Vector2(64, 64)

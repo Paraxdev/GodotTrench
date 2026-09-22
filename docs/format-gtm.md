@@ -46,8 +46,9 @@ Saving writes `<name>.gtm.tmp` first and renames it over the map, so a crash nev
 `properties` are the worldspawn entity's keys. Values are always strings, like in a `.map` file, and keys are written in
 sorted order. The Godot importer copies them onto the worldspawn and then forces `classname` to `worldspawn`. The
 environment keys (`sun_angles`, `sun_color`, `sun_energy`, `ambient_color`, `sky_top_color`, `sky_horizon_color`,
-`sky_ground_color`, `fog_color`, `fog_density`, `ambient_energy`, `sky_energy`, `glow_intensity`, and `environment = 0`
-to switch it off) are read by `GodotTrenchEnvironment`, and all of them but `glow_intensity` by the editor's lit preview.
+`sky_ground_color`, `fog_color`, `fog_density`, `ambient_energy`, `sky_energy`, `glow_intensity`, `ssr`, and
+`environment = 0` to switch it off) are read by `GodotTrenchEnvironment`, and all of them but `glow_intensity` and `ssr` by
+the editor's lit preview.
 
 Only nodes of type `layer` are taken from `layers`, anything else at that level is skipped by the editor. A file with no
 layers gets a `Default` layer on load.

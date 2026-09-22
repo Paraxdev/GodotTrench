@@ -1396,6 +1396,12 @@ func test_more_entities() -> void:
 	check(particles.emitting, "start emits particles")
 	GodotTrenchIO.invoke(particles, &"toggle", "", null)
 	check(not particles.emitting, "toggle stops particles")
+	var rain := GTParticles.new()
+	rain._func_godot_apply_properties({ "effect": "rain", "area": "40 2 12", "lifetime": "1.0" })
+	map.add_child(rain)
+	var drops := rain.process_material as ParticleProcessMaterial
+	check(drops != null and drops.emission_shape == ParticleProcessMaterial.EMISSION_SHAPE_BOX and drops.emission_box_extents.is_equal_approx(Vector3(20, 1, 6)) and drops.direction.y < 0, "rain falls from a box of its area")
+	check(rain.visibility_aabb.size.y > 20.0, "rain stays visible along its whole fall")
 
 	var branch := GTBranch.new()
 	branch._func_godot_apply_properties({ "start_value": false })
@@ -1555,12 +1561,12 @@ func test_showcase_playthrough() -> void:
 	player.free()
 	map.free()
 
-func has_glowing_letters(mesh: MeshInstance3D) -> bool:
+func has_glowing_letters(mesh: MeshInstance3D, texture := "withered/letters") -> bool:
 	if mesh.mesh == null:
 		return false
 	for i in mesh.mesh.get_surface_count():
 		var mat := mesh.get_active_material(i) as BaseMaterial3D
-		if mat and mat.emission_enabled and mat.emission_texture and mat.emission_texture.resource_path.contains("withered/letters"):
+		if mat and mat.emission_enabled and mat.emission_texture and mat.emission_texture.resource_path.contains(texture):
 			return true
 	return false
 
@@ -1584,6 +1590,10 @@ func test_withered_city_playthrough() -> void:
 		map.free()
 		return
 	check(collect(map, func(n): return n is MeshInstance3D and has_glowing_letters(n)).size() > 0, "the block letters glow through withered/letters and its emission map")
+	check(collect(map, func(n): return n is MeshInstance3D and has_glowing_letters(n, "withered/neon_")).size() > 0, "the neon signs glow")
+	var lightning := find_targetname(map, "lightning") as GTLight
+	check(lightning != null and not lightning.is_on(), "the storm flash waits dark for its random timer")
+	check(find_targetname(map, "lightning_bolt") != null and find_targetname(map, "open_sign_e") != null, "the lightning bolt and the flickering OPEN letters are named fixtures")
 	var player: DemoPlayer = load("res://demo/player.tscn").instantiate()
 	root.add_child(player)
 	player.global_position = units.call(Vector3(96, 8, 1392))
@@ -1595,10 +1605,10 @@ func test_withered_city_playthrough() -> void:
 	check(shutter.is_open, "using the button beside the doorway opens the shutter")
 	var lift_start := lift.global_position
 	call_low.use(player)
-	var deadline := Time.get_ticks_msec() + 2000
+	var deadline := Time.get_ticks_msec() + 4000
 	while lift.global_position.y - lift_start.y < 0.5 and Time.get_ticks_msec() < deadline:
 		await physics_frame
-	check(lift.global_position.y - lift_start.y >= 0.5, "the ground floor button sends the lift up, rose %.2f m" % (lift.global_position.y - lift_start.y))
+	check(lift.global_position.y - lift_start.y >= 0.5, "the ground floor button sends the lift up after a moment to step on, rose %.2f m" % (lift.global_position.y - lift_start.y))
 	player.global_position = units.call(Vector3(0, 772, 1700))
 	deadline = Time.get_ticks_msec() + 2000
 	while not (words._canvas and words._canvas.visible) and Time.get_ticks_msec() < deadline:
@@ -1671,17 +1681,19 @@ func test_night_environment() -> void:
 	print("- night environment keys")
 	var holder := Node3D.new()
 	root.add_child(holder)
-	var props := { "sun_angles": "-35 120", "sun_energy": "0.12", "ambient_energy": "0.4", "sky_energy": "0.2", "glow_intensity": "0.8" }
+	var props := { "sun_angles": "-35 120", "sun_energy": "0.12", "ambient_energy": "0.4", "sky_energy": "0.2", "glow_intensity": "0.8", "ssr": "1" }
 	var nodes := GodotTrenchEnvironment.build(holder, props)
 	check(nodes.size() == 2, "environment and moon built")
 	if nodes.size() == 2:
 		var env: Environment = (nodes[0] as WorldEnvironment).environment
 		check(near(env.ambient_light_energy, 0.4), "ambient_energy, got %s" % env.ambient_light_energy)
 		check(env.glow_enabled and near(env.glow_intensity, 0.8), "glow_intensity turns glow on")
+		check(env.ssr_enabled, "ssr turns on screen space reflections")
 		check(near((env.sky.sky_material as ProceduralSkyMaterial).energy_multiplier, 0.2), "sky_energy dims the sky")
 		check(near((nodes[1] as DirectionalLight3D).light_energy, 0.12), "a dim sun as the moon")
 	var day := GodotTrenchEnvironment.build(holder, { "sun_angles": "-40 -45" })
 	check(day.size() == 2 and not (day[0] as WorldEnvironment).environment.glow_enabled, "no glow unless asked for")
+	check(not (day[0] as WorldEnvironment).environment.ssr_enabled, "no reflections unless asked for")
 	var light := GTLight.new()
 	light._func_godot_apply_properties({ "shadows": "1" })
 	check(light.shadow_enabled, "light shadows property")
@@ -1690,7 +1702,7 @@ func test_night_environment() -> void:
 	await process_frame
 
 ## Plays the night map built by examples/mcp/night_district.json: the garage switch and its beacon, the flickering alley
-## lamp whose bulb follows it, and the hall tubes that logic_auto hides until their lights come on.
+## lamp whose bulb follows it through the fixture key, and the hall tube that stays hidden until its light comes on.
 func test_night_district() -> void:
 	print("- night district playthrough (night_district.gtm)")
 	var path := "res://demo/maps/showcase/night_district.gtm"
@@ -1723,9 +1735,10 @@ func test_night_district() -> void:
 		switch.press(null)
 		await process_frame
 		check(door.is_open and beacon.is_on(), "the switch opens the roller door and the beacon turns on while it moves")
-	check(not tube.visible and not hall.is_on(), "logic_auto hid the hall tubes while their lights are off")
+	check(not tube.visible and not hall.is_on(), "hall_light_2 starts off and its fixture stays hidden")
 	GodotTrenchIO.invoke(hall, &"turn_on", "", null)
-	check(tube.visible, "a hall light switching on shows its tube through switched -> set_visible")
+	check(tube.visible, "a hall light switching on shows its tube through its fixture")
+	var bulb_mesh := (collect(bulb, func(n): return n is MeshInstance3D)[0] as MeshInstance3D)
 	var flips := 0
 	var in_step := true
 	var was_on := lamp.is_on()
@@ -1735,7 +1748,9 @@ func test_night_district() -> void:
 		if lamp.is_on() != was_on:
 			was_on = lamp.is_on()
 			flips += 1
-			in_step = in_step and bulb.visible == lamp.is_on()
+			var glowing: bool = (bulb_mesh.get_active_material(0) as BaseMaterial3D).emission_enabled
+			in_step = in_step and glowing == lamp.is_on()
 	check(flips >= 3, "the random timer flickers the alley lamp, %d switches" % flips)
-	check(in_step, "the alley bulb follows the lamp")
+	check(bulb.visible, "the alley bulb is a dark fixture, always visible")
+	check(in_step, "the alley bulb's glow follows the lamp")
 	map.free()

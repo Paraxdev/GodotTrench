@@ -1,0 +1,12 @@
+[gd_resource type="StandardMaterial3D" load_steps=3 format=3]
+
+[ext_resource type="Texture2D" path="res://demo/textures/withered/neon_orange.jpg" id="1_albedo"]
+[ext_resource type="Texture2D" path="res://demo/textures/withered/neon_orange_emission.jpg" id="4_emission"]
+
+[resource]
+albedo_texture = ExtResource("1_albedo")
+emission_texture = ExtResource("4_emission")
+emission_enabled = true
+emission = Color(0, 0, 0, 1)
+emission_energy_multiplier = 4.0
+metadata/texture_size = Vector2(32, 32)

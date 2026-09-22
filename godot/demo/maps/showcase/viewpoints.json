@@ -139,5 +139,14 @@
                                         { "name":  "street", "position":  [2400, 70, 1150], "target":  [0, 90, 1150] },
                                         { "name":  "letters", "position":  [300, 60, 700], "target":  [0, 20, 0] }
                                     ]
-                      }
+                      },
+    "night_district":  {
+                           "title":  "Night District",
+                           "views":  [
+                                         { "name":  "street", "position":  [180, 170, 180], "target":  [-600, 140, -300] },
+                                         { "name":  "alley", "position":  [-190, 120, -300], "target":  [-190, 100, -900] },
+                                         { "name":  "warehouse", "position":  [500, 150, 150], "target":  [300, 100, -500] },
+                                         { "name":  "viaduct", "position":  [900, 600, 1600], "target":  [0, 150, -300] }
+                                     ]
+                       }
 }

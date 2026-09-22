@@ -418,7 +418,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "set_map_properties",
-            "description": "Sets worldspawn keys, e.g. message, sun_angles, sun_color, sun_energy, ambient_color, sky_top_color, sky_horizon_color, sky_ground_color, fog_color, fog_density, ambient_energy, sky_energy, glow_intensity (Godot glow for emissive materials and lamps). null removes a key.",
+            "description": "Sets worldspawn keys, e.g. message, sun_angles, sun_color, sun_energy, ambient_color, sky_top_color, sky_horizon_color, sky_ground_color, fog_color, fog_density, ambient_energy, sky_energy, glow_intensity (Godot glow for emissive materials and lamps), ssr (1 turns on Godot's screen space reflections for wet streets and glossy floors). null removes a key.",
             "inputSchema": { "type": "object", "properties": { "properties": { "type": "object" } }, "required": ["properties"] }
         }),
         json!({

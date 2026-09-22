@@ -386,9 +386,12 @@ fn terrain_sprinkle_cordon_tabs_bookmarks() {
     assert_eq!(ed.state()["selection"]["nodes"], json!([]), "select_none empties the selection with the Sculpt tool active");
     assert_eq!(ed.state()["editor"]["tool"], "Sculpt", "and leaves the tool alone");
     ed.call("terrain_edit", json!({ "id": id, "op": "set_layers", "layers": [["dev/green", 256], ["dev/grey", 256], ["dev/blue", 256], ["dev/orange", 256]] }));
-    ed.call("terrain_edit", json!({ "id": id, "op": "auto_paint", "sea_level": 40 }));
-    let low = ed.call("blend", json!({ "op": "weights", "id": id, "center": [-500, 0, -500] }));
-    assert!(low["weights"][3].as_f64().unwrap() > 0.9, "flat ground below sea level is the low band: {low}");
+    let low_weight = |sea_level: Value| {
+        ed.call("terrain_edit", json!({ "id": id, "op": "auto_paint", "sea_level": sea_level }));
+        ed.call("blend", json!({ "op": "weights", "id": id, "center": [-500, 0, -500] }))["weights"][3].as_f64().unwrap()
+    };
+    let (from_floor, from_sea) = (low_weight(Value::Null), low_weight(json!(40)));
+    assert!(from_floor < 0.5 && from_sea > 0.8, "flat ground below sea level joins the low band only when bands start at sea level: {from_floor} {from_sea}");
     ed.call("set_editor", json!({ "shade": "lit", "tool": "select" }));
     let (_, _, colors) = ed.screenshot("3d", "terrain_lit");
     assert!(colors > 8);
@@ -559,16 +562,9 @@ fn example_mcp_scripts_replay() {
     }
 
     // The night map's roller door keeps the beacon outputs passed to make_door next to the ones the wizard wires.
-    let doors = ed.call("list_nodes", json!({ "type": "entity", "classname": "func_door" }));
-    let garage = doors["nodes"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|n| ed.call("get_node", json!({ "id": n["id"] })))
-        .find(|n| n.to_string().contains("garage_door"))
-        .expect("garage door in the night map");
-    let outputs = garage["outputs"].as_array().or_else(|| garage["entity"]["outputs"].as_array()).cloned().unwrap_or_default();
-    assert_eq!(outputs.iter().filter(|o| o["target"] == "garage_beacon").count(), 4, "{garage}");
+    let night = gt_doc::format::load(&out.join("night_district.gtm")).unwrap();
+    let (_, garage) = night.entities().find(|(_, e)| e.targetname() == Some("garage_door")).expect("garage door in the night map");
+    assert_eq!(garage.outputs.iter().filter(|o| o.target == "garage_beacon").count(), 4, "{:?}", garage.outputs);
 
     // A bad scatter item is reported instead of leaving an empty palette.
     let e = ed.call_err("scatter", json!({ "op": "new_set", "name": "bad", "items": [{ "source": "res://x.glb", "align": true }] }));

@@ -269,6 +269,43 @@ mod tests {
     }
 
     #[test]
+    fn laid_out_letters_rasterise_back_to_their_bitmaps() {
+        let chars: Vec<char> = ('A'..='Z').chain('0'..='9').chain(".,!?'-+:/".chars()).collect();
+        for standing in [false, true] {
+            for &c in &chars {
+                // Two stacked lines, like the vertical blade signs, so the second glyph sits below a line gap.
+                let text = format!("{c}\n{c}");
+                let bounds = sized_bounds(&text, DVec3::new(3.0, 5.0, 7.0), 70.0, 6.0, standing, 1.0).unwrap();
+                let letters = layout(&text, &bounds, standing, 1.0).unwrap();
+                assert_eq!(letters.len(), 2, "{c}");
+                for (line, boxes) in letters.iter().enumerate() {
+                    let mut lit = [[false; COLS]; ROWS];
+                    for b in boxes {
+                        let down = |v: f64| if standing { bounds.max.y - v } else { v - bounds.min.z };
+                        let (top, bottom) = if standing { (down(b.max.y), down(b.min.y)) } else { (down(b.min.z), down(b.max.z)) };
+                        let row0 = (top / 10.0).round() as usize - line * (ROWS + LINE_GAP);
+                        let rows = ((bottom - top) / 10.0).round() as usize;
+                        let col0 = ((b.min.x - bounds.min.x) / 10.0).round() as usize;
+                        let cols = (b.size().x / 10.0).round() as usize;
+                        for (r, row) in lit.iter_mut().enumerate().skip(row0).take(rows) {
+                            for (x, cell) in row.iter_mut().enumerate().skip(col0).take(cols) {
+                                assert!(!*cell, "{c} standing {standing}: cell {x},{r} covered twice");
+                                *cell = true;
+                            }
+                        }
+                    }
+
+                    let expected = glyph(c).unwrap();
+                    for r in 0..ROWS {
+                        let got: String = lit[r].iter().map(|l| if *l { '#' } else { '.' }).collect();
+                        assert_eq!(got, expected[r], "{c} standing {standing} line {line} row {r}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn lines_spaces_and_unknown_characters() {
         let bounds = Aabb::new(DVec3::ZERO, DVec3::new(1000.0, 8.0, 1000.0));
         assert_eq!(layout("COME\nHOME", &bounds, false, 1.0).unwrap().len(), 8);

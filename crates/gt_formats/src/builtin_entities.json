@@ -18,6 +18,7 @@
         { "name": "ambient_energy", "type": "float", "default": "1.0", "description": "Ambient light brightness, low for night maps" },
         { "name": "sky_energy", "type": "float", "default": "1.0", "description": "Sky brightness, low for night maps" },
         { "name": "glow_intensity", "type": "float", "default": "0", "description": "Glow around bright lights and emissive materials, 0 disables it" },
+        { "name": "ssr", "type": "bool", "default": "0", "description": "Screen space reflections in Godot, so glossy floors and wet streets mirror lights and signs" },
         { "name": "environment", "type": "bool", "default": "1", "description": "Build the WorldEnvironment and sun in Godot" },
         { "name": "chunk_streaming", "type": "bool", "default": "0", "description": "Group the built map into chunks and only draw the ones near the camera" },
         { "name": "chunk_size", "type": "float", "default": "2048", "description": "Size of a streaming chunk in map units" },
@@ -511,7 +512,9 @@
         { "name": "amount", "type": "int", "default": "32", "description": "Particles alive at once" },
         { "name": "lifetime", "type": "float", "default": "2.0", "description": "Seconds each particle lives" },
         { "name": "one_shot", "type": "bool", "default": "0", "description": "Emits one burst instead of continuously" },
-        { "name": "start_emitting", "type": "bool", "default": "0", "description": "Emits from map load" }
+        { "name": "start_emitting", "type": "bool", "default": "0", "description": "Emits from map load" },
+        { "name": "effect", "type": "choices", "default": "rise", "description": "Built in look: puffs rising, or rain falling from a box above the entity", "options": [["rise", "rise"], ["rain", "rain"]] },
+        { "name": "area", "type": "string", "default": "10 1 10", "description": "Rain: width, height and depth in meters of the box the drops start in" }
       ],
       "outputs": [{ "name": "finished" }],
       "inputs": [{ "name": "start" }, { "name": "stop" }, { "name": "toggle" }, { "name": "burst" }]
