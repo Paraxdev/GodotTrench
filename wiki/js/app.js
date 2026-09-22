@@ -1,5 +1,5 @@
-// Application entry point. Wires the sidebar, toolbar, board, inline editing, autosave,
-// and the GitHub Save flow together.
+// Application entry point. Owns the state and wires the sidebar, toolbar, the two page layouts
+// (document and canvas), drafts, undo, search and the GitHub save flow together.
 
 import { GH } from "./config.js";
 // Imported as h because app.js uses el as the cache of toolbar and sidebar element references.
@@ -12,47 +12,56 @@ import {
   saveIndexDraft,
   clearIndexDraft,
   clearAllDrafts,
+  listDraftSlugs,
+  savePending,
+  loadPending,
+  clearPending,
+  hashString,
   loadView,
   saveView,
   fetchJSON,
 } from "./storage.js";
-import {
-  getToken,
-  setToken,
-  clearToken,
-  hasToken,
-  commitPage,
-  deletePageFiles,
-  uploadAsset as ghUploadAsset,
-} from "./github.js";
-import {
-  CARD_TYPES,
-  TYPE_LABELS,
-  newCard,
-  normalizeZ,
-  bringToFront,
-  sendToBack,
-} from "./cards.js";
+import { getToken, setToken, clearToken, hasToken, commitFiles, uploadAsset as ghUploadAsset } from "./github.js";
+import { CARD_TYPES, TYPE_LABELS, newCard, normalizeZ, bringToFront, sendToBack } from "./cards.js";
 import { BoardView } from "./board.js";
+import { DocView } from "./doc.js";
+import { closeSuggest } from "./edit.js";
+import { setPageResolver, slugify } from "./markdown.js";
+import { SearchIndex, openSearchDialog } from "./search.js";
 import { registerGdscript } from "./highlight-gdscript.js";
 import { icon, TYPE_ICON } from "./icons.js";
 
 const state = {
   pages: [],
   slug: null,
-  board: { title: "", cards: [] },
+  board: { title: "", layout: "doc", cards: [] },
   mode: "view",
   selectedId: null,
   editingId: null,
   // Slugs whose page files should be removed from the repo on the next Save.
   deletedPages: [],
+  // Hash of the repo version the open page was loaded from, stored with its draft.
+  baseHash: null,
+  // Set when a draft was started from an older repo version: { board, hash }.
+  conflict: null,
+  publishing: false,
 };
 
 let boardView = null;
+let docView = null;
+let searchIndex = null;
 const el = {};
 
 function $(id) {
   return document.getElementById(id);
+}
+
+function layout() {
+  return state.board.layout === "canvas" ? "canvas" : "doc";
+}
+
+function pageInfo(slug) {
+  return state.pages.find((p) => p.slug === (slug || state.slug)) || null;
 }
 
 async function init() {
@@ -64,7 +73,12 @@ async function init() {
   el.modeToggle = $("mode-toggle");
   el.saveBtn = $("save-btn");
   el.board = $("board");
+  el.doc = $("doc");
+  el.banner = $("banner");
   el.zoomLabel = $("zoom-label");
+
+  setPageResolver(resolvePage);
+  searchIndex = new SearchIndex(loadBoardForIndex, resolvePage);
 
   boardView = new BoardView(el.board, {
     getMode: () => state.mode,
@@ -88,7 +102,22 @@ async function init() {
     onZoomChange: (scale) => {
       if (el.zoomLabel) el.zoomLabel.textContent = Math.round(scale * 100) + "%";
     },
+    pages: () => state.pages,
+    pasteFiles: (files, afterId) => pasteFiles(files, afterId),
+    onInsertBelow: (card, type) => insertBelowOnCanvas(card, type),
     grid: 8,
+  });
+
+  docView = new DocView(el.doc, {
+    getMode: () => state.mode,
+    getBoard: () => state.board,
+    getPageInfo: () => pageInfo(),
+    onMutate: () => markDirty(),
+    uploadAsset: (file) => uploadAsset(file),
+    pages: () => state.pages,
+    backlinks: () => (state.slug ? searchIndex.backlinks(state.slug) : []),
+    pasteFiles: (files, afterId) => pasteFiles(files, afterId),
+    onCardMenuAction: (action, id) => cardAction(action, id),
   });
 
   setupToolbarIcons();
@@ -103,52 +132,75 @@ async function init() {
   await loadIndex();
   renderSidebar();
 
-  const startSlug = pickStartSlug();
-  if (startSlug) {
-    await openPage(startSlug);
-  } else {
-    renderBoardChrome();
-  }
-
+  const start = parseHash();
+  const startSlug = start && state.pages.some((p) => p.slug === start) ? start : state.pages.length ? state.pages[0].slug : null;
+  if (startSlug) await openPage(startSlug);
+  else renderChrome();
   applyMode();
 }
 
-function pickStartSlug() {
-  const hash = decodeURIComponent((location.hash || "").replace(/^#/, "")).trim();
-  if (hash && state.pages.some((p) => p.slug === hash)) return hash;
-  return state.pages.length ? state.pages[0].slug : null;
+function parseHash() {
+  return decodeURIComponent((location.hash || "").replace(/^#/, "")).trim();
 }
 
+// Wikilinks resolve by slug, by title, or by the slug a title would get.
+function resolvePage(target) {
+  const t = String(target || "").trim();
+  if (!t) return null;
+  const lower = t.toLowerCase();
+  return (
+    state.pages.find((p) => p.slug === t) ||
+    state.pages.find((p) => (p.title || "").toLowerCase() === lower) ||
+    state.pages.find((p) => p.slug === slugify(t)) ||
+    null
+  );
+}
+
+// ----- Page index -----
+
 async function loadIndex() {
-  // The repo index is the source of truth for which pages exist and their titles and
-  // categories, so freshly published pages always appear. A local draft only contributes
-  // pages the user created but has not saved yet (slugs the server does not have), so unsaved
-  // new pages are not lost. This prevents a stale draft from hiding published content.
-  let serverPages = [];
-  let serverOk = false;
+  // The repo index is the source of truth for which pages exist, so freshly published pages
+  // always appear. A local draft only adds pages created but not saved yet, and hides pages
+  // deleted but not saved yet.
+  let serverPages = null;
   try {
     const fromServer = await fetchJSON("pages/index.json");
     serverPages = Array.isArray(fromServer) ? fromServer : [];
-    serverOk = true;
   } catch (err) {
     setStatus("Could not load the page index: " + err.message, "error");
   }
 
+  const pending = loadPending("index");
+  if (pending && serverPages) {
+    if (JSON.stringify(pending.data) === JSON.stringify(serverPages)) clearPending("index");
+    else serverPages = pending.data;
+  }
+
   const draft = loadIndexDraft();
   if (draft && draft.pages.length) {
-    if (serverOk) {
+    if (serverPages) {
       const serverSlugs = new Set(serverPages.map((p) => p.slug));
+      const draftBySlug = new Map(draft.pages.map((p) => [p.slug, p]));
+      const deleted = new Set(draft.deleted || []);
+      const merged = serverPages.filter((p) => !deleted.has(p.slug)).map((p) => draftBySlug.get(p.slug) || p);
       const draftOnly = draft.pages.filter((p) => !serverSlugs.has(p.slug));
-      state.pages = serverPages.concat(draftOnly);
-      // The index draft has served its purpose; drop it unless it carries unsaved new pages.
-      if (!draftOnly.length) clearIndexDraft();
+      state.pages = merged.concat(draftOnly);
+      state.deletedPages = Array.from(deleted);
+      if (!draftOnly.length && !deleted.size && JSON.stringify(merged) === JSON.stringify(serverPages)) clearIndexDraft();
     } else {
-      // Offline: fall back to the draft so the app still works.
       state.pages = draft.pages;
+      state.deletedPages = draft.deleted || [];
     }
   } else {
-    state.pages = serverPages;
+    state.pages = serverPages || [];
   }
+  searchIndex.setPages(state.pages);
+}
+
+function saveIndex() {
+  saveIndexDraft(state.pages, state.deletedPages);
+  searchIndex.setPages(state.pages);
+  updateDirtyUi();
 }
 
 // ----- Sidebar -----
@@ -159,7 +211,6 @@ function pageCategory(page) {
   return (page.category && String(page.category).trim()) || DEFAULT_CATEGORY;
 }
 
-// Categories the user has collapsed in the sidebar, remembered per browser.
 function loadCollapsedCats() {
   try {
     return new Set(JSON.parse(localStorage.getItem("wiki_collapsed_cats") || "[]"));
@@ -182,8 +233,8 @@ function renderSidebar() {
     el.pageList.appendChild(h("div", { class: "page-empty", text: "No pages yet. Add one to begin." }));
     return;
   }
+  const dirty = new Set(listDraftSlugs());
 
-  // Group pages by category, preserving first-seen order for both categories and pages.
   const order = [];
   const groups = new Map();
   state.pages.forEach((page) => {
@@ -198,13 +249,13 @@ function renderSidebar() {
   order.forEach((cat) => {
     const group = h("div", { class: "page-group" });
     const isCollapsed = collapsedCats.has(cat);
-
     group.appendChild(
       h(
         "button",
         {
           type: "button",
           class: "page-cat" + (isCollapsed ? " collapsed" : ""),
+          "aria-expanded": String(!isCollapsed),
           on: {
             click: () => {
               if (collapsedCats.has(cat)) collapsedCats.delete(cat);
@@ -214,30 +265,34 @@ function renderSidebar() {
             },
           },
         },
-        [
-          icon(isCollapsed ? "chevron-right" : "chevron-down", { size: 14 }),
-          h("span", { class: "page-cat-label", text: cat }),
-          h("span", { class: "page-cat-count", text: String(groups.get(cat).length) }),
-        ]
+        [icon("chevron-down", { size: 14, cls: "page-cat-chevron" }), h("span", { class: "page-cat-label", text: cat })]
       )
     );
 
     if (!isCollapsed) {
       groups.get(cat).forEach((page) => {
         group.appendChild(
-          h("button", {
-            type: "button",
-            class: "page-item" + (page.slug === state.slug ? " active" : ""),
-            title: page.slug,
-            text: page.title || page.slug,
-            on: {
-              click: () => openPage(page.slug),
-              contextmenu: (e) => {
-                e.preventDefault();
-                openPageMenu(page.slug, e.clientX, e.clientY);
+          h(
+            "button",
+            {
+              type: "button",
+              class: "page-item" + (page.slug === state.slug ? " active" : ""),
+              title: page.title || page.slug,
+              "aria-current": page.slug === state.slug ? "page" : null,
+              on: {
+                click: () => openPage(page.slug),
+                contextmenu: (e) => {
+                  e.preventDefault();
+                  openPageMenu(page.slug, e.clientX, e.clientY);
+                },
               },
             },
-          })
+            [
+              icon(page.layout === "canvas" ? "layout-dashboard" : "file-text", { size: 16, cls: "page-item-icon" }),
+              h("span", { class: "page-item-label", text: page.title || page.slug }),
+              dirty.has(page.slug) ? h("span", { class: "dirty-dot", title: "Unsaved changes" }) : null,
+            ]
+          )
         );
       });
     }
@@ -247,51 +302,221 @@ function renderSidebar() {
 
 // ----- Page loading -----
 
-async function openPage(slug) {
+function normalizeBoard(board, fallbackTitle, fallbackLayout) {
+  const cards = Array.isArray(board && board.cards) ? board.cards : [];
+  const lay = (board && board.layout) || fallbackLayout || "canvas";
+  cards.forEach((c, i) => {
+    if (!c.id) c.id = "card_" + i;
+    if (lay === "canvas") {
+      c.x = Number(c.x) || 0;
+      c.y = Number(c.y) || 0;
+      c.w = Number(c.w) || 200;
+      c.h = Number(c.h) || 140;
+      c.z = Number.isFinite(c.z) ? c.z : i;
+    }
+  });
+  return { title: (board && board.title) || fallbackTitle, layout: lay, cards };
+}
+
+// The on-disk form of a board. Documents carry no positions, only a height for the few
+// card types that have one.
+function serializeBoard(board) {
+  const lay = board.layout === "canvas" ? "canvas" : "doc";
+  const cards = board.cards.map((c) => {
+    const out = {};
+    Object.keys(c).forEach((k) => {
+      const v = c[k];
+      if (v === undefined || v === false) return;
+      if (lay === "doc" && (k === "x" || k === "y" || k === "w" || k === "z" || k === "collapsed")) return;
+      if (lay === "doc" && k === "h" && c.type !== "draw" && c.type !== "shape") return;
+      if (k === "html" && !v) return;
+      out[k] = v;
+    });
+    return out;
+  });
+  return { title: board.title, layout: lay, cards };
+}
+
+function boardHash(board) {
+  return hashString(JSON.stringify(serializeBoard(board)));
+}
+
+async function fetchServerBoard(slug) {
+  const info = pageInfo(slug);
+  const fallbackTitle = info ? info.title : slug;
+  let server = null;
+  let ok = true;
+  try {
+    const loaded = await fetchJSON("pages/" + slug + ".json");
+    if (loaded) server = normalizeBoard(loaded, fallbackTitle, info && info.layout);
+  } catch (err) {
+    ok = false;
+  }
+  const pending = loadPending("page_" + slug);
+  if (pending) {
+    const served = server ? boardHash(server) : null;
+    if (served === pending.hash) clearPending("page_" + slug);
+    else return { board: normalizeBoard(pending.data, fallbackTitle), ok, publishing: true };
+  }
+  return { board: server, ok, publishing: false };
+}
+
+// Used by the search index: the draft if there is one, else the repo copy.
+async function loadBoardForIndex(slug) {
+  if (slug === state.slug) return state.board;
+  const draft = loadDraft(slug);
+  if (draft) return draft.board;
+  const res = await fetchServerBoard(slug);
+  return res.board || { title: slug, cards: [] };
+}
+
+async function openPage(slug, focusCardId) {
+  if (state.slug) commitEditors();
+  const info = pageInfo(slug);
+  const fallbackTitle = info ? info.title : slug;
   state.slug = slug;
   state.selectedId = null;
-  location.hash = slug;
+  state.conflict = null;
+  if (location.hash.replace(/^#/, "") !== slug) setHash(slug);
   closeNav();
 
-  const indexEntry = state.pages.find((p) => p.slug === slug);
-  const fallbackTitle = indexEntry ? indexEntry.title : slug;
-
+  const res = await fetchServerBoard(slug);
+  if (state.slug !== slug) return;
+  const server = res.board;
+  state.publishing = res.publishing;
+  const serverHash = server ? boardHash(server) : null;
   const draft = loadDraft(slug);
-  if (draft) {
-    state.board = normalizeBoard(draft.board, fallbackTitle);
+
+  if (!draft) {
+    state.board = server || { title: fallbackTitle, layout: (info && info.layout) || "doc", cards: [] };
   } else {
-    let loaded = null;
-    try {
-      loaded = await fetchJSON("pages/" + slug + ".json");
-    } catch (err) {
-      setStatus("Could not load page " + slug + ": " + err.message, "error");
+    const draftBoard = normalizeBoard(draft.board, fallbackTitle, info && info.layout);
+    if (server && boardHash(draftBoard) === serverHash) {
+      clearDraft(slug);
+      state.board = server;
+    } else {
+      state.board = draftBoard;
+      if (server && draft.base !== serverHash) state.conflict = { board: server, hash: serverHash };
     }
-    state.board = loaded ? normalizeBoard(loaded, fallbackTitle) : { title: fallbackTitle, cards: [] };
   }
+  if (!res.ok && !draft) setStatus("Could not load page " + slug + ".", "error");
+  state.baseHash = serverHash;
+  resetHistory();
+  searchIndex.update(slug, state.board);
 
   renderSidebar();
-  renderBoardChrome();
-  boardView.render();
-  // Restore the per-viewer pan/zoom for this page, otherwise frame the content.
-  const savedView = loadView(slug);
-  if (savedView) boardView.setView(savedView);
-  else boardView.fit();
+  renderView();
+  if (layout() === "canvas") {
+    const savedView = loadView(slug);
+    if (savedView) boardView.setView(savedView);
+    else boardView.fit();
+  } else {
+    el.doc.querySelector(".doc-scroll").scrollTop = 0;
+  }
+  if (focusCardId) revealCard(focusCardId);
 }
 
-function normalizeBoard(board, fallbackTitle) {
-  const cards = Array.isArray(board.cards) ? board.cards : [];
-  cards.forEach((c) => {
-    c.x = Number(c.x) || 0;
-    c.y = Number(c.y) || 0;
-    c.w = Number(c.w) || 200;
-    c.h = Number(c.h) || 140;
-    c.z = Number.isFinite(c.z) ? c.z : 0;
-  });
-  return { title: board.title || fallbackTitle, cards };
+// pushState rather than location.hash, so opening a page does not fire hashchange and load it
+// twice. The first page replaces the entry, so Back leaves the wiki instead of stalling on it.
+function setHash(slug) {
+  try {
+    if (location.hash) history.pushState(null, "", "#" + slug);
+    else history.replaceState(null, "", "#" + slug);
+  } catch (err) {
+    location.hash = slug;
+  }
 }
 
-function renderBoardChrome() {
-  el.pageTitle.textContent = state.board.title || state.slug || "";
+function revealCard(id) {
+  if (layout() === "doc") docView.scrollToCard(id, true);
+  else {
+    const card = state.board.cards.find((c) => c.id === id);
+    if (card) {
+      const r = el.board.getBoundingClientRect();
+      boardView.setView({ panX: r.width / 2 - (card.x + card.w / 2), panY: 80 - card.y, scale: 1 });
+      state.selectedId = id;
+      boardView.updateSelection();
+    }
+  }
+}
+
+function renderChrome() {
+  const info = pageInfo();
+  el.pageTitle.innerHTML = "";
+  if (info && info.category) el.pageTitle.appendChild(h("span", { class: "crumb", text: info.category }));
+  el.pageTitle.appendChild(h("span", { class: "crumb-page", text: state.board.title || state.slug || "" }));
+  if (state.publishing) {
+    el.pageTitle.appendChild(h("span", { class: "chip chip-accent", title: "Saved. GitHub Pages is still deploying, this is your saved version.", text: "Publishing" }));
+  }
+  document.title = (state.board.title ? state.board.title + " · " : "") + "GodotTrench Wiki";
+  document.body.classList.toggle("layout-canvas", layout() === "canvas");
+  document.body.classList.toggle("layout-doc", layout() === "doc");
+  renderBanner();
+  updateDirtyUi();
+}
+
+function renderView() {
+  renderChrome();
+  if (layout() === "canvas") {
+    el.doc.hidden = true;
+    el.board.hidden = false;
+    boardView.render();
+  } else {
+    el.board.hidden = true;
+    el.doc.hidden = false;
+    docView.render();
+  }
+}
+
+function commitEditors() {
+  if (layout() === "canvas") boardView.commitEdit();
+  else docView.commitAll();
+}
+
+// ----- Conflict banner -----
+
+function renderBanner() {
+  el.banner.innerHTML = "";
+  el.banner.hidden = !state.conflict;
+  if (!state.conflict) return;
+  el.banner.appendChild(icon("triangle-alert", { size: 18 }));
+  el.banner.appendChild(
+    h("span", { class: "banner-text", text: "This page changed in the repo after your local draft was started. Keeping the draft will overwrite those changes on the next save." })
+  );
+  el.banner.appendChild(
+    h("button", {
+      type: "button",
+      class: "btn btn-small",
+      text: "Keep my draft",
+      on: {
+        click: () => {
+          state.baseHash = state.conflict.hash;
+          state.conflict = null;
+          saveDraft(state.slug, serializeBoard(state.board), state.baseHash);
+          renderChrome();
+        },
+      },
+    })
+  );
+  el.banner.appendChild(
+    h("button", {
+      type: "button",
+      class: "btn btn-small btn-primary",
+      text: "Use the repo version",
+      on: {
+        click: () => {
+          state.board = state.conflict.board;
+          state.baseHash = state.conflict.hash;
+          state.conflict = null;
+          clearDraft(state.slug);
+          resetHistory();
+          searchIndex.update(state.slug, state.board);
+          renderSidebar();
+          renderView();
+        },
+      },
+    })
+  );
 }
 
 // ----- Mode -----
@@ -299,17 +524,16 @@ function renderBoardChrome() {
 function applyMode() {
   const editing = state.mode === "edit";
   document.body.classList.toggle("mode-edit", editing);
-  if (editing) {
-    setButton(el.modeToggle, "check", "Done", "Switch to view mode");
-  } else {
-    setButton(el.modeToggle, "pencil", "Edit", "Switch to edit mode");
-  }
+  if (editing) setButton(el.modeToggle, "check", "Done", "Finish editing (E)");
+  else setButton(el.modeToggle, "pencil", "Edit", "Edit this page (E)");
   el.modeToggle.classList.toggle("is-active", editing);
   if (!editing) closeMenus();
-  boardView.render();
+  renderView();
 }
 
 function setMode(mode) {
+  if (mode === state.mode) return;
+  commitEditors();
   state.mode = mode;
   if (mode !== "edit") state.selectedId = null;
   applyMode();
@@ -317,21 +541,29 @@ function setMode(mode) {
 
 // ----- Toolbar -----
 
-// Set a button's content to an icon plus an optional text label.
 function setButton(btn, iconName, label, ariaLabel) {
   btn.innerHTML = "";
   btn.appendChild(icon(iconName));
   if (label) btn.appendChild(h("span", { class: "btn-label", text: label }));
-  if (ariaLabel) btn.setAttribute("aria-label", ariaLabel);
+  if (ariaLabel) {
+    btn.setAttribute("aria-label", ariaLabel);
+    btn.setAttribute("title", ariaLabel);
+  }
 }
 
 function setupToolbarIcons() {
   setButton($("nav-toggle"), "menu", "", "Pages");
-  setButton($("add-page"), "plus", "Page", "Add page");
-  setButton($("rename-page"), "pencil-line", "Rename", "Rename page");
-  setButton($("delete-page"), "trash-2", "Delete page", "Delete page");
-  setButton(el.saveBtn, "save", "Save", "Save to GitHub");
-  setButton($("refresh-btn"), "refresh", "Refresh", "Discard local drafts and reload from the repo");
+  setButton($("add-page"), "plus", "", "New page");
+  setButton($("search-btn"), "search", "Search", "Search pages (Ctrl+K)");
+  $("search-btn").appendChild(h("kbd", { text: "Ctrl K" }));
+  setButton($("undo-btn"), "undo-2", "", "Undo (Ctrl+Z)");
+  setButton($("redo-btn"), "redo-2", "", "Redo (Ctrl+Shift+Z)");
+  setButton($("settings-page"), "settings", "", "Page settings");
+  setButton($("delete-page"), "trash-2", "", "Delete page");
+  setButton(el.saveBtn, "save", "Save", "Publish all changes to GitHub (Ctrl+S)");
+  setButton($("token-btn"), "key-round", "", "GitHub token");
+  setButton($("refresh-btn"), "refresh", "", "Discard local drafts and reload from the repo");
+  setButton($("help-btn"), "circle-help", "", "How to use this wiki");
   setButton($("mobile-add"), "plus", "", "Add a card");
 }
 
@@ -339,14 +571,12 @@ function setupToolbarIcons() {
 
 function openNav() {
   document.body.classList.add("nav-open");
-  const bd = $("sidebar-backdrop");
-  if (bd) bd.hidden = false;
+  $("sidebar-backdrop").hidden = false;
 }
 
 function closeNav() {
   document.body.classList.remove("nav-open");
-  const bd = $("sidebar-backdrop");
-  if (bd) bd.hidden = true;
+  $("sidebar-backdrop").hidden = true;
 }
 
 function setupNav() {
@@ -354,20 +584,20 @@ function setupNav() {
     if (document.body.classList.contains("nav-open")) closeNav();
     else openNav();
   });
-  const bd = $("sidebar-backdrop");
-  if (bd) bd.addEventListener("click", closeNav);
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && document.body.classList.contains("nav-open")) closeNav();
-  });
-  // The mobile add button opens the add-card menu at the center of the board.
+  $("sidebar-backdrop").addEventListener("click", closeNav);
   $("mobile-add").addEventListener("click", () => {
     if (state.mode !== "edit") setMode("edit");
+    if (layout() === "doc") {
+      const last = state.board.cards[state.board.cards.length - 1];
+      docView.insertAfter(last ? last.id : null, { id: "text" });
+      return;
+    }
     const r = el.board.getBoundingClientRect();
     openCardMenu(r.left + r.width / 2, r.top + r.height / 2);
   });
 }
 
-// ----- Add card context menu (edit mode only) -----
+// ----- Canvas add card menu (edit mode only) -----
 
 let menuEl = null;
 let menuBoardPoint = { x: 0, y: 0 };
@@ -375,7 +605,7 @@ const lastPointer = { x: 0, y: 0, overBoard: false };
 
 function setupCardMenu() {
   menuEl = h("div", { class: "card-menu", role: "menu", "aria-label": "Add a card", hidden: true });
-
+  menuEl.appendChild(h("div", { class: "suggest-title", text: "Add card" }));
   CARD_TYPES.forEach((type) => {
     menuEl.appendChild(
       h(
@@ -385,7 +615,6 @@ function setupCardMenu() {
           class: "menu-item",
           dataset: { type },
           role: "menuitem",
-          "aria-label": "Add " + TYPE_LABELS[type] + " card",
           on: {
             click: () => {
               const at = menuBoardPoint;
@@ -400,7 +629,6 @@ function setupCardMenu() {
   });
   document.body.appendChild(menuEl);
 
-  // Track the pointer over the board so Shift+A can place a card under the cursor.
   el.board.addEventListener("pointermove", (e) => {
     lastPointer.x = e.clientX;
     lastPointer.y = e.clientY;
@@ -409,68 +637,42 @@ function setupCardMenu() {
   el.board.addEventListener("pointerleave", () => {
     lastPointer.overBoard = false;
   });
-
-  // Right click opens the menu in edit mode and suppresses the browser menu. View mode is
-  // left untouched.
   el.board.addEventListener("contextmenu", (e) => {
     if (state.mode !== "edit") return;
     e.preventDefault();
     openCardMenu(e.clientX, e.clientY);
   });
 
-  // Close on an outside pointerdown or Escape.
   document.addEventListener("pointerdown", (e) => {
     if (!menuEl.hidden && !menuEl.contains(e.target)) closeCardMenu();
     if (cardCtxEl && !cardCtxEl.hidden && !cardCtxEl.contains(e.target)) closeCardContextMenu();
     if (pageMenuEl && !pageMenuEl.hidden && !pageMenuEl.contains(e.target)) closePageMenu();
   });
-  document.addEventListener("keydown", (e) => {
-    const ctxOpen = (cardCtxEl && !cardCtxEl.hidden) || (pageMenuEl && !pageMenuEl.hidden);
-    if ((!menuEl.hidden || ctxOpen) && e.key === "Escape") {
-      e.preventDefault();
-      closeMenus();
-      return;
-    }
-    if (state.mode !== "edit") return;
-    const tag = (document.activeElement && document.activeElement.tagName) || "";
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-    // Shift+A opens the add menu at the cursor, Blender style.
-    if (e.shiftKey && (e.code === "KeyA" || e.key === "A" || e.key === "a")) {
-      e.preventDefault();
-      let cx;
-      let cy;
-      if (lastPointer.overBoard) {
-        cx = lastPointer.x;
-        cy = lastPointer.y;
-      } else {
-        const r = el.board.getBoundingClientRect();
-        cx = r.left + r.width / 2;
-        cy = r.top + r.height / 2;
-      }
-      openCardMenu(cx, cy);
-    }
-  });
+}
+
+function placeMenu(menu, clientX, clientY) {
+  menu.hidden = false;
+  const mw = menu.offsetWidth || 190;
+  const mh = menu.offsetHeight || 240;
+  let left = clientX;
+  let top = clientY;
+  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+  if (top + mh > window.innerHeight - 8) top = window.innerHeight - mh - 8;
+  menu.style.left = Math.max(8, left) + "px";
+  menu.style.top = Math.max(8, top) + "px";
 }
 
 function openCardMenu(clientX, clientY) {
   closeCardContextMenu();
   menuBoardPoint = boardView.clientToBoard(clientX, clientY);
-  menuEl.hidden = false;
-  const mw = menuEl.offsetWidth || 190;
-  const mh = menuEl.offsetHeight || 280;
-  let left = clientX;
-  let top = clientY;
-  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
-  if (top + mh > window.innerHeight - 8) top = window.innerHeight - mh - 8;
-  menuEl.style.left = Math.max(8, left) + "px";
-  menuEl.style.top = Math.max(8, top) + "px";
+  placeMenu(menuEl, clientX, clientY);
 }
 
 function closeCardMenu() {
   if (menuEl) menuEl.hidden = true;
 }
 
-// ----- Per card context menu: hide, collapse, layering, delete (edit mode) -----
+// ----- Canvas card context menu -----
 
 let cardCtxEl = null;
 
@@ -488,7 +690,7 @@ function ctxItem(iconName, label, onClick, danger) {
       role: "menuitem",
       on: {
         click: () => {
-          closeCardContextMenu();
+          closeMenus();
           onClick();
         },
       },
@@ -497,36 +699,25 @@ function ctxItem(iconName, label, onClick, danger) {
   );
 }
 
-// Build the menu fresh for the target card, so labels reflect its collapsed and hidden state.
 function openCardContextMenu(cardId, clientX, clientY) {
   const card = state.board.cards.find((c) => c.id === cardId);
   if (!card || !cardCtxEl) return;
   closeCardMenu();
   cardCtxEl.innerHTML = "";
-
+  if (card.type === "text") cardCtxEl.appendChild(ctxItem("hash", "Edit source", () => boardView.beginEdit(card, true)));
+  cardCtxEl.appendChild(ctxItem("copy", "Duplicate", () => cardAction("duplicate", cardId)));
   cardCtxEl.appendChild(
     card.collapsed
       ? ctxItem("chevrons-up-down", "Expand", () => doToggleCollapse(cardId))
       : ctxItem("chevrons-down-up", "Collapse", () => doToggleCollapse(cardId))
   );
   cardCtxEl.appendChild(
-    card.hidden
-      ? ctxItem("eye", "Show", () => doSetHidden(cardId, false))
-      : ctxItem("eye-off", "Hide", () => doSetHidden(cardId, true))
+    card.hidden ? ctxItem("eye", "Show to readers", () => doSetHidden(cardId, false)) : ctxItem("eye-off", "Hide from readers", () => doSetHidden(cardId, true))
   );
   cardCtxEl.appendChild(ctxItem("bring-to-front", "Bring to front", () => doBringToFront(cardId)));
   cardCtxEl.appendChild(ctxItem("send-to-back", "Send to back", () => doSendToBack(cardId)));
   cardCtxEl.appendChild(ctxItem("trash-2", "Delete", () => doDeleteCard(cardId), true));
-
-  cardCtxEl.hidden = false;
-  const mw = cardCtxEl.offsetWidth || 190;
-  const mh = cardCtxEl.offsetHeight || 220;
-  let left = clientX;
-  let top = clientY;
-  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
-  if (top + mh > window.innerHeight - 8) top = window.innerHeight - mh - 8;
-  cardCtxEl.style.left = Math.max(8, left) + "px";
-  cardCtxEl.style.top = Math.max(8, top) + "px";
+  placeMenu(cardCtxEl, clientX, clientY);
 }
 
 function closeCardContextMenu() {
@@ -537,36 +728,24 @@ function closeMenus() {
   closeCardMenu();
   closeCardContextMenu();
   closePageMenu();
+  closeSuggest();
 }
 
-// ----- Page (sidebar) context menu: rename, category, delete -----
+// ----- Sidebar page menu -----
 
 let pageMenuEl = null;
 
-function ensurePageMenu() {
-  if (pageMenuEl) return;
-  pageMenuEl = h("div", { class: "card-menu page-ctx-menu", role: "menu", "aria-label": "Page actions", hidden: true });
-  document.body.appendChild(pageMenuEl);
-}
-
 function openPageMenu(slug, clientX, clientY) {
-  ensurePageMenu();
+  if (!pageMenuEl) {
+    pageMenuEl = h("div", { class: "card-menu page-ctx-menu", role: "menu", "aria-label": "Page actions", hidden: true });
+    document.body.appendChild(pageMenuEl);
+  }
   closeCardMenu();
   closeCardContextMenu();
   pageMenuEl.innerHTML = "";
-  pageMenuEl.appendChild(ctxItem("pencil-line", "Rename", () => renamePageSlug(slug)));
-  pageMenuEl.appendChild(ctxItem("folder-input", "Set category", () => setCategorySlug(slug)));
+  pageMenuEl.appendChild(ctxItem("settings", "Page settings", () => openPageSettings(slug)));
   pageMenuEl.appendChild(ctxItem("trash-2", "Delete page", () => deletePageSlug(slug), true));
-
-  pageMenuEl.hidden = false;
-  const mw = pageMenuEl.offsetWidth || 190;
-  const mh = pageMenuEl.offsetHeight || 140;
-  let left = clientX;
-  let top = clientY;
-  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
-  if (top + mh > window.innerHeight - 8) top = window.innerHeight - mh - 8;
-  pageMenuEl.style.left = Math.max(8, left) + "px";
-  pageMenuEl.style.top = Math.max(8, top) + "px";
+  placeMenu(pageMenuEl, clientX, clientY);
 }
 
 function closePageMenu() {
@@ -589,53 +768,105 @@ function setupCanvasControls() {
 function wireToolbar() {
   el.modeToggle.addEventListener("click", () => setMode(state.mode === "edit" ? "view" : "edit"));
   el.saveBtn.addEventListener("click", () => save());
-  $("add-page").addEventListener("click", addPage);
-  $("rename-page").addEventListener("click", renamePage);
-  $("delete-page").addEventListener("click", deletePage);
+  $("add-page").addEventListener("click", () => openPageSettings(null));
+  $("settings-page").addEventListener("click", () => state.slug && openPageSettings(state.slug));
+  $("delete-page").addEventListener("click", () => state.slug && deletePageSlug(state.slug));
+  $("undo-btn").addEventListener("click", () => undo());
+  $("redo-btn").addEventListener("click", () => redo());
+  $("search-btn").addEventListener("click", () => openSearch());
   $("token-btn").addEventListener("click", () => openTokenModal());
   $("refresh-btn").addEventListener("click", refreshFromRepo);
-  window.addEventListener("hashchange", () => {
-    const slug = decodeURIComponent((location.hash || "").replace(/^#/, "")).trim();
-    if (slug && slug !== state.slug && state.pages.some((p) => p.slug === slug)) {
-      openPage(slug);
-    }
-  });
+  $("help-btn").addEventListener("click", () => openPage("using-this-wiki"));
+  const onNav = () => {
+    const slug = parseHash();
+    if (slug && slug !== state.slug && state.pages.some((p) => p.slug === slug)) openPage(slug);
+  };
+  window.addEventListener("hashchange", onNav);
+  window.addEventListener("popstate", onNav);
 }
 
-// Discard every local draft and reload straight from the repo. This is the escape hatch when
-// a browser is showing stale local content instead of what was published.
 function refreshFromRepo() {
-  const ok = window.confirm(
-    "Discard local drafts and reload the wiki from the repo? Unsaved edits on this device will be lost."
-  );
+  const ok = window.confirm("Discard every local draft and reload the wiki from the repo? Unsaved edits on this device will be lost.");
   if (!ok) return;
   clearAllDrafts();
   location.reload();
 }
 
+function isTyping() {
+  const ae = document.activeElement;
+  const tag = (ae && ae.tagName) || "";
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (ae && ae.isContentEditable);
+}
+
 function wireKeyboard() {
   document.addEventListener("keydown", (e) => {
-    if (state.mode !== "edit") return;
-    // Escape commits an open inline editor.
-    if (e.key === "Escape") {
-      boardView.commitEdit();
+    const mod = e.ctrlKey || e.metaKey;
+    const key = e.key.toLowerCase();
+    if (mod && key === "s") {
+      e.preventDefault();
+      save();
       return;
     }
-    if (!state.selectedId) return;
-    const ae = document.activeElement;
-    const tag = (ae && ae.tagName) || "";
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (ae && ae.isContentEditable)) return;
-    if (state.editingId) return;
-    if (e.key === "Delete" || e.key === "Backspace") {
+    if (document.querySelector(".search-modal, .modal:not([hidden])")) return;
+    if (e.key === "Escape") {
+      const menuOpen = (menuEl && !menuEl.hidden) || (cardCtxEl && !cardCtxEl.hidden) || (pageMenuEl && !pageMenuEl.hidden);
+      if (menuOpen) {
+        e.preventDefault();
+        closeMenus();
+        return;
+      }
+      if (state.mode === "edit" && layout() === "canvas") boardView.commitEdit();
+      return;
+    }
+    if (isTyping()) return;
+    if (mod && key === "k") {
       e.preventDefault();
-      removeSelected();
+      openSearch();
+      return;
+    }
+    if (mod && key === "z") {
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if (mod && key === "y") {
+      e.preventDefault();
+      redo();
+      return;
+    }
+    if (!mod && !e.altKey && key === "e") {
+      e.preventDefault();
+      setMode(state.mode === "edit" ? "view" : "edit");
+      return;
+    }
+    if (state.mode !== "edit") return;
+    if (layout() === "canvas" && e.shiftKey && key === "a") {
+      e.preventDefault();
+      const r = el.board.getBoundingClientRect();
+      if (lastPointer.overBoard) openCardMenu(lastPointer.x, lastPointer.y);
+      else openCardMenu(r.left + r.width / 2, r.top + r.height / 2);
+      return;
+    }
+    if ((e.key === "Delete" || e.key === "Backspace") && state.selectedId && !state.editingId) {
+      e.preventDefault();
+      doDeleteCard(state.selectedId);
     }
   });
 }
 
-// ----- Paste images, gifs and SVG onto the board -----
+function openSearch() {
+  commitEditors();
+  if (state.slug) searchIndex.update(state.slug, state.board);
+  openSearchDialog(searchIndex, (slug, cardId) => {
+    if (slug === state.slug) {
+      if (cardId) revealCard(cardId);
+    } else openPage(slug, cardId);
+  });
+}
 
-// The point where a pasted or newly placed item should land.
+// ----- Paste images, gifs and SVG -----
+
 function pastePoint() {
   if (lastPointer.overBoard) return boardView.clientToBoard(lastPointer.x, lastPointer.y);
   return boardView.spawnPoint();
@@ -647,84 +878,109 @@ function isImageUrl(text) {
   return /\.(png|jpe?g|gif|webp|svg|avif|bmp)(\?.*)?$/i.test(text);
 }
 
-// Place an image card from a resolved src (data URL or link).
-function placeImageCard(src, name, offset) {
-  const at = pastePoint();
-  const n = offset || 0;
-  at.x += n * 24;
-  at.y += n * 24;
-  const card = addCardAt("image", at);
-  card.src = src;
-  card.svg = "";
-  if (name) card.alt = name;
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Could not read the pasted image."));
+    reader.readAsDataURL(file);
+  });
+}
+
+// With a token, pasted images are committed as assets. Without one they are embedded as data
+// URLs, which works but makes the page file large.
+async function imageSource(file) {
+  if (hasToken()) {
+    const rel = await uploadAsset(file);
+    if (rel) return rel;
+  }
+  return readAsDataUrl(file);
+}
+
+async function pasteFiles(files, afterId) {
+  if (state.mode !== "edit") setMode("edit");
+  for (let i = 0; i < files.length; i += 1) {
+    const file = files[i];
+    let src;
+    try {
+      src = await imageSource(file);
+    } catch (err) {
+      setStatus(err.message, "error");
+      continue;
+    }
+    if (layout() === "doc") {
+      const card = docView.insertAfter(afterId || lastCardId(), { card: "image" });
+      card.src = src;
+      card.alt = "";
+      markDirty();
+      docView.render({ keepScroll: true });
+      afterId = card.id;
+    } else {
+      const at = pastePoint();
+      const card = addCardAt("image", { x: at.x + i * 24, y: at.y + i * 24 });
+      card.src = src;
+      markDirty();
+      boardView.refreshCard(card);
+    }
+  }
+  setStatus(files.length > 1 ? "Pasted " + files.length + " images." : "Pasted an image.", "success");
+}
+
+function lastCardId() {
+  const c = state.board.cards[state.board.cards.length - 1];
+  return c ? c.id : null;
+}
+
+function placeImage(src, extra) {
+  if (layout() === "doc") {
+    const card = docView.insertAfter(lastCardId(), { card: "image" });
+    Object.assign(card, { src: "", svg: "", alt: "" }, extra, src != null ? { src } : {});
+    markDirty();
+    docView.render({ keepScroll: true });
+    return card;
+  }
+  const card = addCardAt("image", pastePoint());
+  Object.assign(card, { src: "", svg: "" }, extra, src != null ? { src } : {});
   markDirty();
   boardView.refreshCard(card);
   return card;
 }
 
-// Place an SVG card from inline markup.
-function placeSvgCard(svg) {
-  const at = pastePoint();
-  const card = addCardAt("image", at);
-  card.svg = svg;
-  card.src = "";
-  markDirty();
-  boardView.refreshCard(card);
-  return card;
-}
-
-// Handle pasted text: inline SVG, or a link to an image. Returns true when it was handled.
 function handlePastedText(text) {
   const t = (text || "").trim();
   if (!t) return false;
   if (/^<svg[\s>]/i.test(t) && /<\/svg>/i.test(t)) {
-    placeSvgCard(t);
+    placeImage(null, { svg: t });
     setStatus("Pasted SVG.", "success");
     return true;
   }
   if (isImageUrl(t)) {
-    placeImageCard(t, "");
+    placeImage(t, {});
     setStatus("Pasted image link.", "success");
     return true;
   }
   return false;
 }
 
-function addImageFromFile(file, index) {
-  const reader = new FileReader();
-  reader.onload = () => {
-    placeImageCard(String(reader.result), file.name || "", index);
-    setStatus("Pasted " + (file.name || "image") + ".", "success");
-  };
-  reader.onerror = () => setStatus("Could not read the pasted image.", "error");
-  reader.readAsDataURL(file);
-}
-
 function wirePaste() {
   document.addEventListener("paste", (e) => {
     if (state.mode !== "edit") return;
-    // Let a focused field or an open inline editor handle its own paste.
-    const ae = document.activeElement;
-    const tag = (ae && ae.tagName) || "";
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (ae && ae.isContentEditable)) return;
+    // A focused field or text block handles its own paste.
+    if (isTyping()) return;
     const dt = e.clipboardData;
     if (!dt) return;
-
     const files = Array.from(dt.files || []).filter((f) => f.type.startsWith("image/"));
     if (files.length) {
       e.preventDefault();
-      files.forEach((file, i) => addImageFromFile(file, i));
+      pasteFiles(files, null);
       return;
     }
-
-    const text = dt.getData("text/plain") || "";
-    if (handlePastedText(text)) e.preventDefault();
+    if (handlePastedText(dt.getData("text/plain") || "")) e.preventDefault();
   });
 }
 
 // ----- Card actions -----
 
-// Add a card at a specific board coordinate (from the context menu or Shift+A).
 function addCardAt(type, at) {
   if (state.mode !== "edit") setMode("edit");
   const card = newCard(type, at, state.board.cards);
@@ -732,45 +988,74 @@ function addCardAt(type, at) {
   markDirty();
   boardView.render();
   selectCard(card.id);
+  if (type === "text" || type === "code" || type === "table") boardView.beginEdit(card);
   return card;
 }
 
-// Add a card near the top left of the viewport (used by the test hook).
-function addCard(type) {
-  return addCardAt(type, boardView.spawnPoint());
+function insertBelowOnCanvas(card, type) {
+  const node = el.board.querySelector('.card[data-id="' + CSS.escape(card.id) + '"]');
+  const height = node ? node.offsetHeight : card.h;
+  addCardAt(type, { x: card.x, y: card.y + height + 24 });
 }
 
 function selectCard(id) {
   state.selectedId = id;
-  boardView.updateSelection();
+  if (layout() === "canvas") boardView.updateSelection();
 }
 
-// Shared card actions, used by the card action bar and the right click menu.
+function cardAction(action, id) {
+  if (action === "delete") doDeleteCard(id);
+  else if (action === "hide") doSetHidden(id, true);
+  else if (action === "show") doSetHidden(id, false);
+  else if (action === "duplicate") doDuplicate(id);
+}
+
+function rerender() {
+  if (layout() === "doc") docView.render({ keepScroll: true });
+  else {
+    boardView.render();
+    boardView.updateSelection();
+  }
+}
 
 function doDeleteCard(id) {
   if (!id) return;
+  commitEditors();
   state.board.cards = state.board.cards.filter((c) => c.id !== id);
   if (state.selectedId === id) state.selectedId = null;
   markDirty();
-  boardView.render();
+  rerender();
+  setStatus("Block deleted. Ctrl+Z brings it back.", "info");
+}
+
+function doDuplicate(id) {
+  commitEditors();
+  const i = state.board.cards.findIndex((c) => c.id === id);
+  if (i < 0) return;
+  const copy = JSON.parse(JSON.stringify(state.board.cards[i]));
+  copy.id = newCard(copy.type, { x: 0, y: 0 }, []).id;
+  if (layout() === "canvas") {
+    copy.x += 24;
+    copy.y += 24;
+    copy.z = state.board.cards.length;
+  }
+  state.board.cards.splice(i + 1, 0, copy);
+  markDirty();
+  rerender();
 }
 
 function doBringToFront(id) {
-  if (!id) return;
   bringToFront(state.board.cards, id);
   state.selectedId = id;
   markDirty();
-  boardView.render();
-  boardView.updateSelection();
+  rerender();
 }
 
 function doSendToBack(id) {
-  if (!id) return;
   sendToBack(state.board.cards, id);
   state.selectedId = id;
   markDirty();
-  boardView.render();
-  boardView.updateSelection();
+  rerender();
 }
 
 function doToggleCollapse(id) {
@@ -778,130 +1063,237 @@ function doToggleCollapse(id) {
   if (!card) return;
   card.collapsed = !card.collapsed;
   markDirty();
-  boardView.render();
-  boardView.updateSelection();
+  rerender();
 }
 
 function doSetHidden(id, hidden) {
   const card = state.board.cards.find((c) => c.id === id);
   if (!card) return;
+  commitEditors();
   card.hidden = hidden;
   markDirty();
-  boardView.render();
-  boardView.updateSelection();
+  rerender();
 }
 
-function removeSelected() {
-  doDeleteCard(state.selectedId);
+// ----- Drafts and undo -----
+
+const undoStack = { back: [], forward: [], last: null };
+
+function snapshot() {
+  return JSON.stringify(state.board);
 }
 
-// ----- Autosave -----
+function resetHistory() {
+  undoStack.back = [];
+  undoStack.forward = [];
+  undoStack.last = snapshot();
+  updateDirtyUi();
+}
 
-// Card edits only change the current board, not the page index, so only the board draft is
-// written here. Page add/rename/category/delete save the index draft themselves.
+// Every mutation ends up here, so it is also where undo steps are recorded.
 function markDirty() {
-  if (state.slug) saveDraft(state.slug, state.board);
+  if (!state.slug) return;
+  const now = snapshot();
+  if (now !== undoStack.last) {
+    if (undoStack.last != null) undoStack.back.push(undoStack.last);
+    if (undoStack.back.length > 200) undoStack.back.shift();
+    undoStack.forward = [];
+    undoStack.last = now;
+  }
+  saveDraft(state.slug, serializeBoard(state.board), state.baseHash);
+  searchIndex.update(state.slug, state.board);
+  updateDirtyUi();
+}
+
+function restore(json) {
+  state.board = JSON.parse(json);
+  undoStack.last = json;
+  saveDraft(state.slug, serializeBoard(state.board), state.baseHash);
+  searchIndex.update(state.slug, state.board);
+  rerender();
+  renderChrome();
+}
+
+function undo() {
+  commitEditors();
+  if (!undoStack.back.length) return;
+  undoStack.forward.push(undoStack.last);
+  restore(undoStack.back.pop());
+}
+
+function redo() {
+  commitEditors();
+  if (!undoStack.forward.length) return;
+  undoStack.back.push(undoStack.last);
+  restore(undoStack.forward.pop());
+}
+
+function hasUnsaved() {
+  return listDraftSlugs().length > 0 || !!loadIndexDraft() || state.deletedPages.length > 0;
+}
+
+let lastDirtyKey = "";
+function updateDirtyUi() {
+  el.saveBtn.classList.toggle("has-changes", hasUnsaved());
+  $("undo-btn").disabled = !undoStack.back.length;
+  $("redo-btn").disabled = !undoStack.forward.length;
+  const key = listDraftSlugs().sort().join(",");
+  if (key !== lastDirtyKey) {
+    lastDirtyKey = key;
+    renderSidebar();
+  }
 }
 
 // ----- Page management -----
 
-function deriveSlug(title) {
-  let slug = String(title)
-    .toLowerCase()
-    .replace(/[^\w]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  if (!slug) slug = "page";
-  let unique = slug;
+function uniqueSlug(title, except) {
+  const base = slugify(title);
+  let slug = base;
   let n = 2;
-  while (state.pages.some((p) => p.slug === unique)) {
-    unique = slug + "-" + n;
+  while (state.pages.some((p) => p.slug === slug && p.slug !== except)) {
+    slug = base + "-" + n;
     n += 1;
   }
-  return unique;
+  return slug;
+}
+
+function openPageSettings(slug) {
+  const entry = slug ? pageInfo(slug) : null;
+  const modal = $("page-modal");
+  const title = $("page-title-input");
+  const cat = $("page-cat-input");
+  const cats = $("page-cats");
+  const heading = $("page-modal-title");
+  const submit = $("page-save");
+  heading.textContent = entry ? "Page settings" : "New page";
+  submit.textContent = entry ? "Apply" : "Create page";
+  title.value = entry ? entry.title || "" : "";
+  cat.value = entry ? entry.category || "" : lastCategory;
+  cats.innerHTML = "";
+  Array.from(new Set(state.pages.map(pageCategory))).forEach((c) => cats.appendChild(h("option", { value: c })));
+  const current = entry ? entry.layout || (slug === state.slug ? layout() : "doc") : "doc";
+  modal.querySelectorAll("input[name=layout]").forEach((r) => {
+    r.checked = r.value === current;
+  });
+  modal.hidden = false;
+  title.focus();
+  title.select();
+
+  const close = () => {
+    modal.hidden = true;
+    submit.removeEventListener("click", onSubmit);
+    $("page-cancel").removeEventListener("click", close);
+    modal.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e) => {
+    if (e.key === "Escape") close();
+    if (e.key === "Enter" && e.target.tagName === "INPUT" && e.target.type === "text") onSubmit();
+  };
+  const onSubmit = () => {
+    const t = title.value.trim();
+    if (!t) {
+      title.focus();
+      return;
+    }
+    const category = cat.value.trim() || DEFAULT_CATEGORY;
+    const chosen = (modal.querySelector("input[name=layout]:checked") || {}).value || "doc";
+    lastCategory = category === DEFAULT_CATEGORY ? "" : category;
+    close();
+    if (entry) applyPageSettings(entry, t, category, chosen);
+    else createPage(t, category, chosen);
+  };
+  submit.addEventListener("click", onSubmit);
+  $("page-cancel").addEventListener("click", close);
+  modal.addEventListener("keydown", onKey);
 }
 
 let lastCategory = "";
 
-function addPage() {
-  const title = window.prompt("New page title");
-  if (title == null) return;
-  const clean = title.trim();
-  if (!clean) return;
-  const cat = window.prompt("Category (blank for General)", lastCategory);
-  if (cat == null) return;
-  const category = cat.trim() || DEFAULT_CATEGORY;
-  lastCategory = category === DEFAULT_CATEGORY ? "" : category;
-  const slug = deriveSlug(clean);
-  // If this reuses a slug queued for deletion, keep its file.
+function createPage(title, category, lay) {
+  const slug = uniqueSlug(title);
   state.deletedPages = state.deletedPages.filter((s) => s !== slug);
-  state.pages.push({ slug, title: clean, category });
-  saveIndexDraft(state.pages);
-  state.board = { title: clean, cards: [] };
-  saveDraft(slug, state.board);
+  state.pages.push({ slug, title, category, layout: lay });
+  saveIndex();
+  const board = {
+    title,
+    layout: lay,
+    cards: lay === "doc" ? [Object.assign(newCard("text", { x: 0, y: 0 }, []), { md: "# " + title })] : [],
+  };
+  saveDraft(slug, board, null);
   renderSidebar();
-  openPage(slug);
-  setStatus('Page "' + clean + '" added to ' + category + ". Save to publish it.", "info");
+  state.mode = "edit";
+  openPage(slug).then(() => {
+    applyMode();
+    if (lay === "doc" && state.board.cards[0]) docView.focusCard(state.board.cards[0].id, true, true);
+  });
+  setStatus('Created "' + title + '". Save to publish it.', "info");
 }
 
-function renamePage() {
-  if (state.slug) renamePageSlug(state.slug);
-}
-
-function deletePage() {
-  if (state.slug) deletePageSlug(state.slug);
-}
-
-function renamePageSlug(slug) {
-  const entry = state.pages.find((p) => p.slug === slug);
-  if (!entry) return;
-  const title = window.prompt("Rename page", entry.title || slug);
-  if (title == null) return;
-  const clean = title.trim();
-  if (!clean) return;
-  entry.title = clean;
-  if (slug === state.slug) {
-    state.board.title = clean;
-    renderBoardChrome();
+function applyPageSettings(entry, title, category, lay) {
+  entry.title = title;
+  entry.category = category;
+  const layoutChanged = (entry.layout || "canvas") !== lay;
+  entry.layout = lay;
+  saveIndex();
+  if (entry.slug === state.slug) {
+    commitEditors();
+    state.board.title = title;
+    if (layoutChanged || state.board.layout !== lay) convertLayout(lay);
     markDirty();
+    renderView();
+    if (lay === "canvas") boardView.fit();
+  } else if (layoutChanged) {
+    const draft = loadDraft(entry.slug);
+    setStatus("Open the page to finish switching its layout.", "info");
+    if (draft) {
+      draft.board.layout = lay;
+      saveDraft(entry.slug, draft.board, draft.base);
+    }
   }
-  saveIndexDraft(state.pages);
   renderSidebar();
-  setStatus("Renamed. Save to publish the change.", "info");
+  renderChrome();
+  setStatus("Page settings updated. Save to publish.", "info");
 }
 
-function setCategorySlug(slug) {
-  const entry = state.pages.find((p) => p.slug === slug);
-  if (!entry) return;
-  const cat = window.prompt("Category for this page (blank for General)", entry.category || "");
-  if (cat == null) return;
-  entry.category = cat.trim() || DEFAULT_CATEGORY;
-  lastCategory = entry.category === DEFAULT_CATEGORY ? "" : entry.category;
-  saveIndexDraft(state.pages);
-  renderSidebar();
-  setStatus('Moved to ' + entry.category + ". Save to publish the change.", "info");
+// Documents keep cards in reading order; a canvas keeps positions. Switching stacks the cards
+// in a column one way, and reads them top to bottom, left to right the other way.
+function convertLayout(lay) {
+  const cards = state.board.cards;
+  if (lay === "canvas") {
+    let y = 40;
+    cards.forEach((c, i) => {
+      const block = el.doc.querySelector('.block[data-id="' + CSS.escape(c.id) + '"]');
+      const height = block ? block.offsetHeight : c.h || 160;
+      c.x = 40;
+      c.y = y;
+      c.w = c.type === "image" || c.type === "video" || c.type === "shape" || c.type === "draw" ? 480 : 760;
+      c.h = c.type === "text" || c.type === "code" || c.type === "table" ? 60 : Math.max(80, height);
+      c.z = i;
+      y += height + 24;
+    });
+  } else {
+    cards.sort((a, b) => (a.y || 0) - (b.y || 0) || (a.x || 0) - (b.x || 0));
+  }
+  state.board.layout = lay;
 }
 
 function deletePageSlug(slug) {
-  const entry = state.pages.find((p) => p.slug === slug);
+  const entry = pageInfo(slug);
   if (!entry) return;
   const label = entry.title || slug;
-  const ok = window.confirm('Delete page "' + label + '"? Save removes it from the site and the repo.');
-  if (!ok) return;
+  if (!window.confirm('Delete "' + label + '"? The page is removed from the site and the repo on the next save.')) return;
   state.pages = state.pages.filter((p) => p.slug !== slug);
   clearDraft(slug);
-  saveIndexDraft(state.pages);
-  // Queue the repo file for deletion on the next Save.
   if (!state.deletedPages.includes(slug)) state.deletedPages.push(slug);
+  saveIndex();
   renderSidebar();
   if (slug === state.slug) {
-    const nextSlug = state.pages.length ? state.pages[0].slug : null;
-    if (nextSlug) {
-      openPage(nextSlug);
-    } else {
+    const next = state.pages.length ? state.pages[0].slug : null;
+    if (next) openPage(next);
+    else {
       state.slug = null;
-      state.board = { title: "", cards: [] };
-      renderBoardChrome();
-      boardView.render();
+      state.board = { title: "", layout: "doc", cards: [] };
+      renderView();
     }
   }
   setStatus('Deleted "' + label + '". Save to publish the removal.', "info");
@@ -915,38 +1307,73 @@ async function ensureToken() {
   return hasToken() ? getToken() : null;
 }
 
+let saving = false;
+
 async function save() {
-  if (!state.slug) {
-    setStatus("There is no page to save. Add a page first.", "error");
+  if (saving) return;
+  commitEditors();
+  if (!hasUnsaved()) {
+    setStatus("Everything is already published.", "info");
     return;
   }
-  boardView.commitEdit();
   const token = await ensureToken();
   if (!token) {
     setStatus("Save cancelled, no token provided.", "info");
     return;
   }
-  normalizeZ(state.board.cards);
-  boardView.render();
-  boardView.updateSelection();
 
+  const slugs = listDraftSlugs().filter((s) => state.pages.some((p) => p.slug === s));
+  const boards = new Map();
+  slugs.forEach((s) => {
+    if (s === state.slug) {
+      if (layout() === "canvas") normalizeZ(state.board.cards);
+      boards.set(s, serializeBoard(state.board));
+    } else {
+      const d = loadDraft(s);
+      if (d) boards.set(s, serializeBoard(normalizeBoard(d.board, s)));
+    }
+  });
+  const files = Array.from(boards.entries()).map(([s, b]) => ({ path: "pages/" + s + ".json", content: JSON.stringify(b, null, 2) + "\n" }));
+  files.push({ path: "pages/index.json", content: JSON.stringify(state.pages, null, 2) + "\n" });
+  const deletes = state.deletedPages.filter((s) => !state.pages.some((p) => p.slug === s)).map((s) => "pages/" + s + ".json");
+
+  const names = Array.from(boards.keys()).map((s) => (pageInfo(s) || {}).title || s);
+  let message = "wiki: ";
+  if (names.length === 1) message += "update " + names[0];
+  else if (names.length > 1 && names.length <= 3) message += "update " + names.join(", ");
+  else if (names.length) message += "update " + names.length + " pages";
+  else message += "update the page index";
+  if (deletes.length) message += (names.length ? ", " : "") + "delete " + deletes.length + (deletes.length === 1 ? " page" : " pages");
+
+  saving = true;
   el.saveBtn.disabled = true;
-  setButton(el.saveBtn, "save", "Saving...", "Saving");
-  setStatus("Committing to " + GH.owner + "/" + GH.repo + " ...", "info");
+  setButton(el.saveBtn, "save", "Saving", "Saving");
+  setStatus("Committing to " + GH.owner + "/" + GH.repo + "...", "info");
   try {
-    await commitPage(state.slug, state.board, state.pages, token);
-    // Remove the files of any deleted pages, unless a slug was recreated in the meantime.
-    const toDelete = state.deletedPages.filter((s) => !state.pages.some((p) => p.slug === s));
-    if (toDelete.length) await deletePageFiles(toDelete, token);
-    state.deletedPages = [];
-    clearDraft(state.slug);
+    const res = await commitFiles(files, deletes, message, token);
+    boards.forEach((b, s) => {
+      savePending("page_" + s, b, hashString(JSON.stringify(b)));
+      clearDraft(s);
+    });
+    savePending("index", state.pages, null);
+    deletes.forEach((d) => clearPending("page_" + d.replace(/^pages\/|\.json$/g, "")));
     clearIndexDraft();
-    setStatus("Saved to GitHub. Pages will redeploy shortly.", "success");
+    state.deletedPages = [];
+    if (boards.has(state.slug)) {
+      state.baseHash = hashString(JSON.stringify(boards.get(state.slug)));
+      state.conflict = null;
+      state.publishing = true;
+    }
+    renderChrome();
+    renderSidebar();
+    setStatus(res.unchanged ? "The repo already had these changes." : "Published. GitHub Pages redeploys in a minute or so.", "success");
   } catch (err) {
     setStatus("Save failed: " + err.message, "error");
   } finally {
+    saving = false;
     el.saveBtn.disabled = false;
-    setButton(el.saveBtn, "save", "Save", "Save to GitHub");
+    setButton(el.saveBtn, "save", "Save", "Publish all changes to GitHub (Ctrl+S)");
+    updateDirtyUi();
   }
 }
 
@@ -956,7 +1383,7 @@ async function uploadAsset(file) {
     setStatus("Upload cancelled, no token provided.", "info");
     return null;
   }
-  setStatus("Uploading " + file.name + " ...", "info");
+  setStatus("Uploading " + (file.name || "image") + "...", "info");
   try {
     const relPath = await ghUploadAsset(file, token);
     setStatus("Uploaded " + relPath + ".", "success");
@@ -987,12 +1414,13 @@ function openTokenModal() {
       clearBtn.removeEventListener("click", onClear);
       cancelBtn.removeEventListener("click", onCancel);
       modal.removeEventListener("click", onBackdrop);
+      input.removeEventListener("keydown", onKey);
       resolve();
     };
     const onSave = () => {
       const value = input.value.trim();
       if (!value) {
-        setStatus("Token was empty.", "error");
+        setStatus("The token was empty.", "error");
         return;
       }
       setToken(value);
@@ -1001,18 +1429,23 @@ function openTokenModal() {
     };
     const onClear = () => {
       clearToken();
-      setStatus("Token cleared from this browser.", "info");
+      setStatus("Token removed from this browser.", "info");
       close();
     };
     const onCancel = () => close();
     const onBackdrop = (e) => {
       if (e.target === modal) close();
     };
+    const onKey = (e) => {
+      if (e.key === "Enter") onSave();
+      if (e.key === "Escape") close();
+    };
 
     saveBtn.addEventListener("click", onSave);
     clearBtn.addEventListener("click", onClear);
     cancelBtn.addEventListener("click", onCancel);
     modal.addEventListener("click", onBackdrop);
+    input.addEventListener("keydown", onKey);
   });
 }
 
@@ -1023,72 +1456,50 @@ function setStatus(message, kind) {
   el.status.textContent = message;
   el.status.className = "status show " + (kind || "info");
   if (statusTimer) clearTimeout(statusTimer);
-  if (kind !== "error") {
-    statusTimer = setTimeout(() => {
+  statusTimer = setTimeout(
+    () => {
       el.status.className = "status";
-    }, 4000);
-  }
+    },
+    kind === "error" ? 9000 : 4000
+  );
 }
 
-// Expose a tiny hook for headless verification. This reads state only, it never writes.
+// A small hook for headless verification. It reads state and drives the UI the way a user would.
 window.__wiki = {
   getState: () => ({
     slug: state.slug,
     mode: state.mode,
+    layout: layout(),
     selectedId: state.selectedId,
     editingId: state.editingId,
     cardCount: state.board.cards.length,
     pageCount: state.pages.length,
     deletedPages: state.deletedPages.slice(),
-    view: boardView ? boardView.getView() : null,
-    cards: state.board.cards.map((c) => ({
-      id: c.id,
-      type: c.type,
-      x: c.x,
-      y: c.y,
-      w: c.w,
-      h: c.h,
-      z: c.z,
-      collapsed: !!c.collapsed,
-      hidden: !!c.hidden,
-      format: c.format,
-      md: c.md,
-      html: c.html,
-      code: c.code,
-      lang: c.lang,
-      rows: c.rows,
-      src: c.src,
-      svg: c.svg,
-      shape: c.shape,
-      stroke: c.stroke,
-    })),
+    conflict: !!state.conflict,
+    publishing: state.publishing,
+    undo: undoStack.back.length,
+    redo: undoStack.forward.length,
+    unsaved: hasUnsaved(),
+    view: layout() === "canvas" ? boardView.getView() : null,
+    cards: state.board.cards.map((c) => Object.assign({}, c)),
   }),
+  serialize: () => serializeBoard(state.board),
   setMode,
-  addCard,
+  openPage,
   addCardAt,
   selectCard,
+  undo,
+  redo,
   toggleCollapse: doToggleCollapse,
   setHidden: doSetHidden,
   pasteText: handlePastedText,
-  placeImageSrc: (src, name) => placeImageCard(src, name || ""),
   categories: () => Array.from(new Set(state.pages.map((p) => pageCategory(p)))),
-  // Canvas + inline-edit hooks for headless verification.
   getView: () => boardView.getView(),
   setView: (v) => boardView.setView(v),
   fit: () => boardView.fit(),
   clientToBoard: (x, y) => boardView.clientToBoard(x, y),
-  beginEdit: (id) => {
-    const card = state.board.cards.find((c) => c.id === id);
-    if (card) boardView.beginEdit(card);
-  },
-  commitEdit: () => boardView.commitEdit(),
-  setContent: (id, patch) => {
-    const card = state.board.cards.find((c) => c.id === id);
-    if (!card) return;
-    Object.assign(card, patch);
-    boardView.refreshCard(card);
-    markDirty();
-  },
+  search: (q) => searchIndex.ensure().then(() => searchIndex.search(q).map((r) => ({ slug: r.page.slug, cardId: r.cardId }))),
+  backlinks: (slug) => searchIndex.backlinks(slug).then((ps) => ps.map((p) => p.slug)),
 };
 
 init();

@@ -10,7 +10,9 @@ import {
   mountTextEditor,
   mountCodeEditor,
   mountTableEditor,
+  mountSourceEditor,
   mountSelectionControls,
+  attachDrawing,
 } from "./edit.js";
 
 const MIN_W = 90;
@@ -21,6 +23,8 @@ const DRAG_THRESHOLD = 4;
 
 // Types that enter a full inline edit on double click. The rest use on-card controls.
 const EDITABLE_TYPES = { text: 1, code: 1, table: 1 };
+// These grow with their content; h is their minimum height.
+const AUTO_HEIGHT = { text: 1, code: 1, table: 1 };
 
 const RESIZE_DIRS = [
   { dir: "n", cursor: "ns-resize" },
@@ -46,7 +50,7 @@ function mid(a, b) {
 export class BoardView {
   // opts: { getMode, getBoard, getSelectedId, onSelect, onMutate, onBringToFront, onSendToBack,
   //         onDelete, onToggleCollapse, onSetHidden, onCardMenu, onEditingChange, uploadAsset,
-  //         onViewChange, onZoomChange, grid }
+  //         onViewChange, onZoomChange, pages, pasteFiles, onInsertBelow, grid }
   constructor(viewport, opts) {
     this.viewport = viewport;
     this.opts = opts;
@@ -140,7 +144,7 @@ export class BoardView {
     let maxX = -Infinity;
     let maxY = -Infinity;
     for (const c of cards) {
-      const h = c.collapsed ? 40 : c.h || 0;
+      const h = c.collapsed ? 40 : this._cardHeight(c);
       minX = Math.min(minX, c.x || 0);
       minY = Math.min(minY, c.y || 0);
       maxX = Math.max(maxX, (c.x || 0) + (c.w || 0));
@@ -156,6 +160,11 @@ export class BoardView {
     this.view.panY = (r.height - (maxY - minY) * scale) / 2 - minY * scale;
     this.applyTransform();
     this._persist();
+  }
+
+  _cardHeight(card) {
+    const node = this.surface.querySelector('.card[data-id="' + cssEscape(card.id) + '"]');
+    return node ? node.offsetHeight : card.h || 0;
   }
 
   _persist() {
@@ -321,7 +330,7 @@ export class BoardView {
     el.style.left = card.x + "px";
     el.style.top = card.y + "px";
     el.style.width = card.w + "px";
-    el.style.height = card.h + "px";
+    applyHeight(el, card);
     el.style.zIndex = String(card.z || 0);
     const body = el.querySelector(".card-body");
     if (body) {
@@ -340,7 +349,7 @@ export class BoardView {
     });
     if (collapsed) cardEl.classList.add("collapsed");
     if (card.hidden) cardEl.classList.add("is-hidden");
-    if (!collapsed) cardEl.style.height = card.h + "px";
+    if (!collapsed) applyHeight(cardEl, card);
     if (mode === "edit" && card.id === selId) cardEl.classList.add("selected");
 
     if (collapsed) {
@@ -388,7 +397,7 @@ export class BoardView {
         // The whole body is the drag surface, except draw cards where the body draws.
         if (card.type === "draw") this._attachDraw(body, card);
         else this._attachDrag(body, cardEl, card, true);
-        mountSelectionControls(cardEl, body, card, this._ctx(card, cardEl, body));
+        mountSelectionControls(cardEl, card, this._ctx(card, cardEl, body));
       }
     }
 
@@ -405,6 +414,13 @@ export class BoardView {
       },
       uploadAsset: (f) => this.opts.uploadAsset(f),
       requestCommit: () => this.commitEdit(),
+      reopen: () => this.beginEdit(card),
+      insertBlock: (type) => {
+        this.commitEdit();
+        if (this.opts.onInsertBelow) this.opts.onInsertBelow(card, type);
+      },
+      pasteFiles: (files) => this.opts.pasteFiles && this.opts.pasteFiles(files, card.id),
+      pages: () => (this.opts.pages ? this.opts.pages() : []),
     };
   }
 
@@ -465,7 +481,7 @@ export class BoardView {
 
   // ----- Inline editing -----
 
-  beginEdit(card) {
+  beginEdit(card, source) {
     if (this.editingId === card.id) return;
     this.commitEdit();
     const el = this.surface.querySelector('.card[data-id="' + cssEscape(card.id) + '"]');
@@ -475,9 +491,10 @@ export class BoardView {
     this.editingId = card.id;
     el.classList.add("editing");
     const ctx = this._ctx(card, el, body);
-    if (card.type === "code") this._editor = mountCodeEditor(el, body, card, ctx);
-    else if (card.type === "table") this._editor = mountTableEditor(el, body, card, ctx);
-    else this._editor = mountTextEditor(el, body, card, ctx);
+    if (card.type === "code") this._editor = mountCodeEditor(body, card, ctx);
+    else if (card.type === "table") this._editor = mountTableEditor(body, card, ctx);
+    else if (source || (card.format || "markdown") === "bbcode") this._editor = mountSourceEditor(body, card, ctx);
+    else this._editor = mountTextEditor(body.querySelector(".md") || body, card, ctx);
     if (this.opts.onEditingChange) this.opts.onEditingChange(card.id);
   }
 
@@ -608,7 +625,7 @@ export class BoardView {
       originX = card.x;
       originY = card.y;
       originW = card.w;
-      originH = card.h;
+      originH = AUTO_HEIGHT[card.type] ? el.offsetHeight : card.h;
       el.classList.add("resizing");
       e.preventDefault();
       e.stopPropagation();
@@ -644,7 +661,7 @@ export class BoardView {
       el.style.left = x + "px";
       el.style.top = y + "px";
       el.style.width = w + "px";
-      el.style.height = h + "px";
+      applyHeight(el, card);
     });
     const end = (e) => {
       if (!resizing) return;
@@ -662,47 +679,17 @@ export class BoardView {
   }
 
   _attachDraw(body, card) {
-    const svg = body.querySelector("svg.card-draw");
-    const path = svg ? svg.querySelector("path.draw-line") : null;
-    if (!path) return;
-    let drawing = false;
+    attachDrawing(body, card, () => this.view.scale, () => this.opts.onMutate());
+  }
+}
 
-    const toLocal = (e) => {
-      const rect = body.getBoundingClientRect();
-      return {
-        x: Math.round(((e.clientX - rect.left) / this.view.scale) * 10) / 10,
-        y: Math.round(((e.clientY - rect.top) / this.view.scale) * 10) / 10,
-      };
-    };
-    body.addEventListener("pointerdown", (e) => {
-      if (this.opts.getMode() !== "edit") return;
-      drawing = true;
-      body.setPointerCapture(e.pointerId);
-      const p = toLocal(e);
-      card.path = (card.path ? card.path + " " : "") + "M " + p.x + " " + p.y;
-      path.setAttribute("d", card.path);
-      const hint = body.querySelector(".draw-hint");
-      if (hint) hint.remove();
-      e.stopPropagation();
-    });
-    body.addEventListener("pointermove", (e) => {
-      if (!drawing) return;
-      const p = toLocal(e);
-      card.path += " L " + p.x + " " + p.y;
-      path.setAttribute("d", card.path);
-    });
-    const end = (e) => {
-      if (!drawing) return;
-      drawing = false;
-      try {
-        body.releasePointerCapture(e.pointerId);
-      } catch (err) {
-        // Ignore.
-      }
-      this.opts.onMutate();
-    };
-    body.addEventListener("pointerup", end);
-    body.addEventListener("pointercancel", end);
+function applyHeight(node, card) {
+  if (AUTO_HEIGHT[card.type]) {
+    node.style.height = "auto";
+    node.style.minHeight = (card.h || 60) + "px";
+  } else {
+    node.style.minHeight = "";
+    node.style.height = card.h + "px";
   }
 }
 

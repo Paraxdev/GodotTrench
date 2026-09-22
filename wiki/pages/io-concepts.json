@@ -1,82 +1,78 @@
 {
   "title": "How entity I/O works",
+  "layout": "doc",
   "cards": [
     {
-      "id": "c1",
+      "id": "b1",
       "type": "text",
-      "x": 48,
-      "y": 40,
-      "w": 780,
-      "h": 259,
-      "z": 0,
       "format": "markdown",
-      "md": "# How entity I/O works\n\nEntities are wired together the Hammer / Source way: when something happens on one entity (an **output**), it calls an **input** on another, for example a button opening a door. The runtime lives in `godottrench_io.gd` and `godottrench_output.gd`.\n\n**An output fires in three steps: output -> find_targets -> invoke.** Each configured output on an entity becomes a child `GodotTrenchOutput` node that connects to its parent's `output` signal. When the signal emits, the output node honors its `delay` and `times` settings, picks the first `Node` argument as the **activator**, resolves its targets, and calls the named input on each.\n"
+      "md": "# How entity I/O works\n\nGameplay in a GodotTrench map is wired the way Hammer does it for Source. Every entity has **outputs**, things it announces, and **inputs**, things it can be told to do. A connection says: when this output fires, call that input on some target. A button's `pressed` output calls a door's `open` input, and the door opens. None of it needs a script, the wiring is saved in the map."
     },
     {
-      "id": "c2",
+      "id": "b2",
       "type": "text",
-      "x": 48,
-      "y": 321,
-      "w": 780,
-      "h": 362,
-      "z": 1,
       "format": "markdown",
-      "md": "## Target selectors\n\nAn output's target can be:\n\n| Selector | Resolves to |\n| --- | --- |\n| `a_targetname` | every entity with that targetname (`*` suffix = prefix match) |\n| `@group` | every node in that group |\n| `/root/Game` | an absolute node path (autoloads, singletons) |\n| `!player` | the first node in the `player` group |\n| `!activator` / `!caller` | the node that started this chain |\n| `!self` | the emitting entity itself |\n\nNamed lookups are cached per map. After spawning or renaming named entities at runtime, call `GodotTrenchIO.invalidate(from)` to clear the cache.\n"
+      "md": "## A connection has six fields\n\n| Field | Meaning |\n| --- | --- |\n| Output | The event on this entity, for example `pressed` or `triggered` |\n| Target | Who to call. Usually a targetname, see the selectors below |\n| Input | The method to call on each target, for example `open` |\n| Parameter | An optional value passed to the input |\n| Delay | Seconds to wait before calling |\n| Times | How often this connection may fire. -1 means no limit |\n\nUnderneath, an output is an ordinary Godot signal and an input is an ordinary method. `func_button` declares `signal pressed(activator)` and emits it, `func_door` has `func open()`. That is why your own scripts can take part without any special API, as the end of this page shows."
     },
     {
-      "id": "c3",
+      "id": "b3",
+      "type": "text",
+      "format": "markdown",
+      "md": "## What happens when an output fires\n\nWhen the map is built, each connection becomes a small `GodotTrenchOutput` child node that listens to its entity's signal. When the signal is emitted, it counts the fire against *Times* and stops if the limit is used up. Then it waits for *Delay*, works out the activator, resolves the target to a list of nodes, and calls the input on each of them with the parameter.\n\nWith no delay, all of that happens immediately, inside the call that emitted the signal. That sounds like a detail, but it decides the order things happen in, and the [[cutscene-example]] shows a case where it matters. With a delay, the call is scheduled on a timer, and if the entity leaves the tree before the timer runs out, the call is dropped."
+    },
+    {
+      "id": "b4",
+      "type": "text",
+      "format": "markdown",
+      "md": "## The activator\n\nThe activator is whoever started the chain, usually the player. It is simply the first `Node` argument of the signal that fired. When the player walks into a trigger, `triggered(activator)` carries the player's body, so everything the trigger calls knows who set it off, and a `!activator` target further on means the player who walked in.\n\nIt only survives while the chain keeps passing a node along. `triggered`, `pressed`, `entered`, `hurt` and `teleported` carry it. Signals without a node argument, such as a door's `opened`, a timer's `timer`, the steps of a `logic_sequence` or a prop's `broken`, reset it to nothing. A few carry a different node, which then becomes the activator: `arrived(corner)` passes the path corner and `spawned(node)` the new node.\n\nSo when you need the player several steps down a chain, keep the chain on signals that pass it, or target `!player`, which does not depend on the chain at all."
+    },
+    {
+      "id": "b5",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Choosing targets\n\n| Target | Resolves to |\n| --- | --- |\n| `main_door` | Every entity with that targetname in the same map |\n| `door_*` | Every targetname starting with `door_`. Only a trailing `*` works |\n| `@enemies` | Every node in the Godot group `enemies`, anywhere in the tree |\n| `!player` | The first node in the `player` group |\n| `!activator` | The activator of this chain. `!caller` means the same |\n| `!self` | The entity that owns the output |\n| `/root/Game` | An absolute node path, handy for autoloads. It must start with `/` |\n\nTargetnames are looked up inside the nearest `FuncGodotMap`, so two maps in one scene cannot reach each other's names. Groups, node paths and `!player` work across the whole tree.\n\n> [!NOTE] `!caller` is not Source's `!caller`\n> In Source, `!caller` is the entity that fired the output. Here it is another name for `!activator`. Use `!self` for the entity itself."
+    },
+    {
+      "id": "b6",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Passing values\n\nThe parameter is a string, parsed when the input is called. A plain value is tried as an integer, then a float, then `true` or `false`, then three numbers as a `Vector3`, and otherwise stays a string. A JSON array like `[10, \"$activator\"]` spreads into several arguments. Each value is then converted to the type the method declares.\n\nA few placeholders are replaced before the call: `$activator`, `$self` (or `$caller`), `$position` and `$caller_name`. They are worked out on the **receiving** entity, so `$position` is the target's position, not the sender's. Inside an array, a placeholder only counts when the element is exactly that string.\n\nWith no parameter at all, the activator goes into the first argument that is typed as an object or named `activator`, and the method's defaults fill the rest. That is why inputs like `trigger(activator)` receive the player without you setting anything."
+    },
+    {
+      "id": "b7",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Inputs that are not methods\n\nThe input name is matched against the target's methods as written, then in PascalCase, then in camelCase, so a C# `AddScore` answers to `add_score`. If no method matches and you gave a parameter, a property with that name is set instead, so the input `speed` with the parameter `4` changes a door's speed.\n\nWhen there is neither, a few built in inputs work on any node: `kill` frees it, `show` and `enable` make it visible and processing, `hide` and `disable` do the opposite, and `toggle` flips visibility. An entity's own methods always come first, which is why `disable` on a trigger switches the trigger off instead of just hiding it."
+    },
+    {
+      "id": "b8",
+      "type": "text",
+      "format": "markdown",
+      "md": "## When nothing happens\n\nMost wiring mistakes fail quietly, so it helps to know which ones do.\n\nA target that resolves to nothing does nothing, without a warning. A typo in a targetname is the most common reason a door stays shut. The editor's Issues panel flags outputs aimed at targetnames no entity has, and the Logic panel shows the whole chain, so look there first.\n\nA target that exists but has no such input prints `[GT I/O] <node> has no input '<name>'` in the Godot output. An output the entity never emits prints a warning once when the map is built, and that connection never fires.\n\nTargetnames are cached per map. If you spawn or rename named entities at runtime, call `GodotTrenchIO.invalidate(node)` afterwards. Renaming here means changing the `gt_targetname` meta, a node's `name` plays no part. Spawned nodes have no targetname at all, so reach them through their group, for example `@enemies`."
+    },
+    {
+      "id": "b9",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Your own entities\n\nAny script can be an entity. Declare a signal for each output and a method for each input, and emit the signal when the thing happens. This is the whole trigger path of `logic_relay`:"
+    },
+    {
+      "id": "b10",
       "type": "code",
-      "x": 48,
-      "y": 705,
-      "w": 780,
-      "h": 386,
-      "z": 2,
       "lang": "gdscript",
-      "code": "static func find_targets(from: Node, target: String, activator: Node) -> Array[Node]:\n    match target:\n        \"!self\":\n            return [from.get_parent() if from is GodotTrenchOutput else from]\n        \"!activator\", \"!caller\":\n            return [activator] if activator else []\n        \"!player\":\n            var player := from.get_tree().get_first_node_in_group(&\"player\")\n            return [player] if player else []\n    if target.begins_with(\"@\"):\n        return from.get_tree().get_nodes_in_group(StringName(target.substr(1)))\n    if target.begins_with(\"/\"):\n        var node := from.get_node_or_null(NodePath(target))\n        return [node] if node else []\n    var named := _named_nodes(lookup_root(from))   # targetname cache\n    if target.ends_with(\"*\"):\n        var prefix := target.trim_suffix(\"*\")\n        # ... collect every named[key] whose key begins_with(prefix)\n    return named.get(target, [])"
+      "code": "@tool\nclass_name GTRelay extends Node3D\nsignal triggered(activator: Node)    # the \"triggered\" output\n\nfunc trigger(activator: Node = null) -> void:    # the \"trigger\" input\n\tif enabled:\n\t\ttriggered.emit(activator)    # fires every connection on this output"
     },
     {
-      "id": "c4",
+      "id": "b11",
       "type": "text",
-      "x": 48,
-      "y": 1113,
-      "w": 780,
-      "h": 316,
-      "z": 3,
       "format": "markdown",
-      "md": "## Passing values to inputs\n\n`invoke` first resolves the method name, trying the exact name then PascalCase then camelCase, so a C# `AddScore` matches the map input `add_score`. The output's **parameter** string becomes the arguments:\n\n- A JSON array like `[10, \"$activator\"]` spreads into several arguments.\n- Placeholders `$activator`, `$self` / `$caller`, `$position`, `$caller_name` are substituted.\n- Scalars are parsed (int, float, bool, `Vector3`) and coerced to each declared parameter type.\n- With no parameter, the activator node is passed into the first object argument.\n\nIf the input name is not a method but matches a property, it sets the property. Built in fallbacks always exist: `kill` (`queue_free`), `show` / `enable`, `hide` / `disable`, `toggle`.\n"
+      "md": "To call inputs or watch outputs from code, use the same functions the map uses:"
     },
     {
-      "id": "c5",
-      "type": "text",
-      "x": 48,
-      "y": 1451,
-      "w": 780,
-      "h": 132,
-      "z": 4,
-      "format": "markdown",
-      "md": "## Declaring an output on an entity\n\nAn entity just declares a `signal` and emits it. The runtime turns each wired connection into a `GodotTrenchOutput` that listens for it. This is the whole of `logic_relay`'s trigger path:\n"
-    },
-    {
-      "id": "c6",
+      "id": "b12",
       "type": "code",
-      "x": 48,
-      "y": 1605,
-      "w": 780,
-      "h": 161,
-      "z": 5,
       "lang": "gdscript",
-      "code": "@tool\nclass_name GTRelay extends Node3D\nsignal triggered(activator: Node)            # the \"triggered\" output\n\nfunc trigger(activator: Node = null) -> void:  # the \"trigger\" input\n    if enabled:\n        triggered.emit(activator)            # fires every wired output"
-    },
-    {
-      "id": "c7",
-      "type": "text",
-      "x": 48,
-      "y": 1788,
-      "w": 780,
-      "h": 201,
-      "z": 6,
-      "format": "markdown",
-      "md": "## Debugging\n\n- `GodotTrenchIO.events()` reports every fired output.\n- The in game `GodotTrenchDebugOverlay` shows fired outputs and trigger volumes (**F3**).\n- The editor's **Logic** panel previews wiring without launching Godot: pick a named entity and output, press **Fire**, and it lists each `output > target.input` step and flags targets that resolve to nothing. Runtime targets like `!player` and `@group` are shown but not resolved.\n"
+      "code": "# Open everything the map would reach as \"main_door\".\nfor door in GodotTrenchIO.find_targets(self, \"main_door\", null):\n\tGodotTrenchIO.invoke(door, &\"open\", \"\", null)\n\n# Print every output in the game while debugging.\nGodotTrenchIO.events().fired.connect(func(source, output, target, input, parameter):\n\tprint(source.name, \".\", output, \" -> \", target, \".\", input))"
     }
   ]
 }

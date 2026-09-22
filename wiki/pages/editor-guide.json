@@ -1,60 +1,72 @@
 {
-  "title": "Editor guide",
+  "title": "Editor tour",
+  "layout": "doc",
   "cards": [
     {
-      "id": "c1",
+      "id": "b1",
       "type": "text",
-      "x": 48,
-      "y": 40,
-      "w": 780,
-      "h": 305,
-      "z": 0,
       "format": "markdown",
-      "md": "# Editor guide\n\nA tour of the interface, ported from the in editor guided tour. Every command lives in the menu bar, grouped by what it works on: **File, Edit, Brush, Mesh, Texture, Terrain, Gameplay, Tools, View, Godot** and **Help**.\n\n- Maps are `.gtm` files. Save them inside your Godot project so the addon can build them.\n- The **grid** number is the grid size in map units. By default 32 map units are one meter in Godot.\n- **CSG:** *Subtract* carves, *Merge* joins, *Intersect* keeps only the overlap, *Hollow* turns brushes into walls.\n- Hold the **right mouse button** in the 3D view to look around and fly with **WASD** (Q/E down/up, Shift faster).\n"
+      "md": "# Editor tour\n\nGodotTrench borrows its habits from TrenchBroom and Hammer, so if you know either, most of this will feel familiar. This page explains how the window is organized and which tool fits which job. The keys are collected in [[shortcuts]]."
     },
     {
-      "id": "c2",
+      "id": "b2",
       "type": "text",
-      "x": 48,
-      "y": 367,
-      "w": 780,
-      "h": 431,
-      "z": 1,
       "format": "markdown",
-      "md": "## The tools\n\n- **Select**, the default tool for drawing, selecting, moving and resizing brushes.\n- **Clip**, cuts brushes along a plane, for slopes, ramps and angled walls.\n- **Vertex**, moves single corners and edges for shapes a box cannot make. Brushes always stay convex.\n- **Rotate**, rotates the selection around its center.\n- **Scale**, stretches the selection by its bounding box.\n- **Mesh**, turns brushes into polygon meshes you edit like in Blender, for organic or detailed shapes.\n- **Texture**, Hammer style texturing right in the 3D view.\n- **Paint**, paints vertex colors on faces, for dirt, tint or fake lighting.\n- **Sculpt**, shapes terrains and displacements.\n- **Blend**, mixes materials: terrain layers, displacement alpha and blend material faces.\n- **Scatter**, paints trees, rocks and foliage onto the surfaces you choose.\n- **Volume**, drags out trigger and gameplay volumes in one step.\n- **Path**, lays down `path_corner` chains for trains and moving platforms.\n- **Measure**, measures the distance between two points.\n"
+      "md": "## The window\n\nAcross the top sit the menu bar and the toolbar. The menus group commands by what they act on: **File, Edit, Brush, Mesh, Texture, Terrain, Gameplay, Tools, View, Godot** and **Help**. When you are looking for a command, think about the object first. Under the toolbar, the tool options bar shows the settings of the active tool, or a one line explanation of how to use it.\n\nThe middle holds four views, 3D, Top, Front and Side. Drag the point where the dividers cross to resize all four at once. The 2D views show the size of the selection in their corner, which is the quickest way to check that a doorway really is 64 units wide.\n\nPanels dock around the views. By default the Outliner, History and Issues sit on the left, the Inspector, Entities and UV Editor on the right, and Materials and Models along the bottom. Two useful panels are not in the default layout: **Logic** and **Reference**. Open them from *View > Panels*, where *Reset Layout* also puts everything back.\n\nIf you cannot find a command, the command palette (Ctrl+Shift+P or F1) finds it by name."
     },
     {
-      "id": "c3",
+      "id": "b3",
       "type": "text",
-      "x": 48,
-      "y": 820,
-      "w": 780,
-      "h": 431,
-      "z": 2,
       "format": "markdown",
-      "md": "## The panels\n\n- **Outliner**, every layer, group, brush, mesh and entity as a tree. Click to select, the eye hides, the lock locks. Clicking a layer makes it the current layer new objects go into.\n- **Inspector**, edits whatever is selected: entity properties and outputs, face materials and UVs, scatter sets and terrains. With nothing selected it shows the map's own settings (worldspawn): sun, sky and fog.\n- **Materials**, the textures and materials of the Godot project. Click to apply, drag onto a face, right click for favourites.\n- **Entities**, entity classes from the game config as cards. Drag one into a view or double click to place it at the cursor.\n- **History**, every edit in order. Click an older entry to undo back to it, a later one to redo.\n- **Issues**, problems in the map: invalid brushes, missing materials, outputs pointing at nothing. Click one to select the object, most offer a fix.\n- **UV Editor**, edits the UVs of selected mesh faces directly.\n- **Reference**, how to use the selected entity from code: GDScript and C# snippets, the FGD resource, and buttons that create the script in your project.\n"
+      "md": "## Moving around\n\nIn the 3D view, hold the right mouse button to look around and use WASD to move, with Q and E for down and up while you look, and Shift to go three times as fast. The middle button pans, the wheel dollies, and Alt+left drag orbits when nothing is selected. In the 2D views, right or middle drag pans and the wheel zooms towards the cursor.\n\n**F** frames the selection in every view, or the whole map when nothing is selected. For spots you keep coming back to, Ctrl+Shift+1 to 9 stores a camera bookmark and Ctrl+1 to 9 jumps back to it. Bookmarks are saved in the map, so they survive a restart.\n\nF2 cycles the 3D shading between Textured, Flat, Lit Preview and Wireframe. Lit Preview (F3) shows the map's lights, sun shadows, sky and fog, which is a good check before you go to Godot."
     },
     {
-      "id": "c4",
+      "id": "b4",
       "type": "text",
-      "x": 48,
-      "y": 1273,
-      "w": 780,
-      "h": 316,
-      "z": 3,
       "format": "markdown",
-      "md": "## Shortcuts and tips\n\n- Hover any toolbar button to see its shortcut and a short explanation.\n- Shift+click selects a single face, Ctrl+Shift+click adds more faces.\n- Hold **Ctrl** while dragging the selection to drag out a copy, **Alt** moves it vertically in the 3D view.\n- With the texture tool, **Alt+click** picks up a face's material and alignment and right click applies it elsewhere.\n- **Ctrl+Shift+1..9** stores a camera bookmark, **Ctrl+1..9** jumps back to it.\n- **Ctrl+= / Ctrl+-** scale the whole interface, the size is remembered.\n- Opening a map that lives inside a Godot project loads that project too.\n- Shortcuts here are the TrenchBroom preset. *Help > Keyboard Shortcuts* shows and changes yours.\n"
+      "md": "## Blocking out with brushes\n\nBrushes are convex solids, and almost everything starts as one. With the **Select** tool (Q), drag on empty space to draw a box, drag a selection to move it, hold Ctrl while dragging to leave a copy behind, and hold Alt in 3D to move vertically. The arrow keys and Page Up and Page Down nudge by one grid step, and `[` and `]` halve and double the grid.\n\nTo reshape a selected brush, Shift drag one of its faces in the 3D view to push or pull it, or Ctrl+Shift drag a face outwards to extrude a new brush from it. In the 2D views you resize by dragging the edges of the selection instead.\n\nWhen a box is not the right shape, **Clip** (C) cuts a brush along a plane: click two or three points, press Tab to choose which side to keep and Enter to cut. That is how slopes, ramps and angled walls are made. **Vertex** (V) moves corners and edges directly, and because the brush is rebuilt as a convex hull afterwards, you can reshape a brush but never dent it. For cylinders, arches, stairs and other shapes that are tedious by hand, use the **Shape Generator** (Ctrl+Shift+B).\n\nCSG combines brushes. **Hollow** (Ctrl+Shift+K) turns a brush into walls. **Subtract** (Ctrl+K) carves the selected brushes out of everything they touch and then deletes them, so the selection acts as a cutter; this is how you punch doorways and windows. **Convex Merge** (Ctrl+M) fuses the selection into one convex brush, and **Intersect** (Ctrl+L) keeps only the overlap."
     },
     {
-      "id": "c5",
+      "id": "b5",
       "type": "text",
-      "x": 48,
-      "y": 1611,
-      "w": 780,
-      "h": 224,
-      "z": 4,
       "format": "markdown",
-      "md": "## Into Godot\n\n- Build a map with a `FuncGodotMap` node and **Build Map**. With the Godot editor open, saving rebuilds every map (**Auto Rebuild On Save**).\n- For a running game, add `res://addons/func_godot/src/godottrench/runtime/godottrench_hot_reload.gd` as an autoload.\n- The `GodotTrenchDebugOverlay` node shows fired outputs and trigger volumes. **F3** toggles it.\n- Big maps stream via `chunk_streaming` / `chunk_size` / `load_radius` on worldspawn.\n"
+      "md": "## Meshes, models and texturing\n\nBrushes are ideal for architecture and poor for anything organic. For that, the **Mesh** tool edits polygon meshes the way Blender does: 1, 2 and 3 switch between vertex, edge and face mode, G, R and S move, rotate and scale, E extrudes, I insets, Ctrl+R adds a loop cut and K is the knife. Select brushes and press Tab (or *Mesh > Edit Mesh*) to convert them and start editing; picking the Mesh tool from the toolbar does not convert anything. Imported models, glTF, OBJ, Blockbench and a few others, appear in the Models panel and are placed by dragging them into a view.\n\nTexturing happens mostly in the 3D view. Click a thumbnail in Materials to apply it to the selection, or drag it onto a face, holding Shift to cover the whole brush or Alt to drop a decal. The **Texture** tool (Shift+T) is Hammer's face edit mode, in place: drag slides the texture, Ctrl+wheel scales and Alt+wheel rotates. Alt+click is the eyedropper, it picks up a face's material together with its alignment. A plain right click then applies just the material to another face, and Shift+right click applies the material and the alignment, which is how you make a texture run cleanly around a corner.\n\nUV lock (Ctrl+Shift+U) is on by default, so textures stay attached to a brush while you move it. The UV Editor panel handles what the 3D view cannot, for brush faces as well as meshes. The **Paint** tool (P) paints vertex colours onto faces, for dirt, tint and fake lighting."
+    },
+    {
+      "id": "b6",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Terrain and foliage\n\n*Terrain > Create Terrain...* generates a heightfield from a few parameters, with shapes like hills, mountains, islands and ridges plus erosion, or from a heightmap image. It then switches to **Sculpt** (G) so you can shape it by hand. **Blend** (Shift+G) paints between the terrain's four material layers, and *Auto Paint Layers* does a first pass by slope and height. For a patch of uneven ground inside a brush level, turn a face into a displacement with *Brush > Displacement* and sculpt that instead.\n\n**Scatter** (B) paints trees, rocks and grass onto surfaces you choose. Alt+click toggles which surfaces are targets, Shift erases and Ctrl+wheel changes the radius. If your project has no foliage yet, *Terrain > Scatter > Install Nature Models* copies the bundled trees and rocks into `res://godottrench/nature`."
+    },
+    {
+      "id": "b7",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Gameplay\n\nPoint entities come from the Entities panel: drag one into a view, or double click it to place it at the cursor. Brush entities such as doors and triggers are brushes you convert, by selecting them and picking a class from *Create Brush Entity* in the view's right click menu or from *Brush > Brush Entity*. The **Volume** tool (Shift+E) drags out a trigger in one go, and the **Path** tool (Shift+P) clicks down a chain of `path_corner` entities for trains and walking NPCs. The Gameplay menu has ready made setups too: hinged and sliding doors that come with their trigger, lifts, moving platforms, and triggers sized to fit around the selection.\n\nEntities are wired together with outputs, set in the Inspector. For the common case of connecting two entities, select both and use *Gameplay > Logic > Link Two Selected Entities...*. The dialog does not take the entity you clicked first as the source, it takes the one with the lower internal id, so check the direction and press the ⇄ button to swap it if needed. [[io-concepts]] explains what every field means.\n\nTo check wiring without starting Godot, open the Logic panel, pick a named entity and one of its outputs, and press **Fire**. It lists every `source.output → target.input` step that would follow, with delays, and marks targets that do not exist in red. Targets that only exist in a running game, such as `!player` or `@enemies`, are shown in blue and not followed further.\n\nThe Reference panel shows how to use an entity class from code: GDScript and C# snippets, a class skeleton for writing your own, and the FGD resource. Its **Create in project** button writes the skeleton straight into `res://entities`."
+    },
+    {
+      "id": "b8",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Keeping a map organized\n\nThe Outliner shows the map as a tree of layers, groups and objects. New objects go into the current layer, and clicking a layer makes it current. The eye hides and the lock locks. A layer can also be marked *Omit From Export*, which is handy for reference geometry that should never reach Godot.\n\nCtrl+G groups the selection. A click selects inside a group and a double click selects the whole group. **Duplicate Linked** (Ctrl+Shift+D) makes a copy that stays in sync with its original, so fixing one window frame fixes all of them. *Edit > Groups > Unlink Groups* breaks the link when one copy needs to differ.\n\nFor pieces you reuse across maps, *Edit > Prefabs > Create from Selection...* saves the selection as its own `.gtm` and replaces it with an instance that updates whenever the prefab file changes. Save the map once before you do this, prefab paths are stored relative to it."
+    },
+    {
+      "id": "b9",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Catching problems early\n\nThe Issues panel checks the map as you work: brushes with no volume, faces with no material, outputs aimed at a targetname nothing has, classes with no definition, and a few more. Clicking an issue selects the object and frames it, and most issues have a **Fix** button, with *Fix all* in the header. It only checks that a face has a material name at all, not that the material exists in your Godot project.\n\nThe History panel lists every edit. Clicking an older entry undoes back to it, including that entry, and clicking one of the dimmed entries above the marker redoes up to it."
+    },
+    {
+      "id": "b10",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Saving and recovering\n\nEvery save first copies the previous version to `<map>.gtm.bak`, and autosave writes `<map>.gtm.autosave` every three minutes. The interval is in *File > Preferences*, where 0 turns it off. To recover, open the autosave file with *File > Open Map* using the \"Autosave (recover a map)\" filter.\n\n*File > New Map* (Ctrl+N) and importing a `.map` never throw away unsaved work. If the current map has changes, the new one opens in a tab next to it, and quitting asks about every tab with changes.\n\nSeveral maps can be open at once as tabs: Ctrl+Shift+N opens a new one, Ctrl+Tab cycles and Ctrl+W closes. The tab bar only appears once two maps are open."
+    },
+    {
+      "id": "b11",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Working with Godot and other tools\n\n*Godot > Live Mode* pushes edits into the scene open in the Godot editor before you save, so you can judge lighting and scale in the real renderer while you work. It is off by default. F5 runs the project. [[building-in-godot]] explains the Godot side in detail.\n\nThe editor can also run an MCP server, so scripts and AI assistants can build and inspect maps through the same operations you use. Start it with `--mcp` for stdio or `--mcp-http` for a local HTTP server, or turn it on in *File > Preferences*, which also shows the command to register it with Claude Code. The tools are documented in `docs/mcp.md` in the repo."
     }
   ]
 }

@@ -1,82 +1,48 @@
 {
   "title": "How this wiki works",
+  "layout": "doc",
   "cards": [
     {
-      "id": "c1",
+      "id": "b1",
       "type": "text",
-      "x": 48,
-      "y": 40,
-      "w": 780,
-      "h": 236,
-      "z": 0,
       "format": "markdown",
-      "md": "# How this wiki works\n\nThis wiki is a small static site that lives in the repo under `wiki/` and is published by GitHub Pages. There is no build step and no framework: it is plain HTML, CSS and ES module JavaScript, with three libraries (marked, DOMPurify, highlight.js) loaded from a CDN with a vendored fallback.\n\nEvery page is a **board**: a free canvas of cards you position yourself. You edit the board on the live site and **Save** commits the JSON straight back to the repo through the GitHub API, so the published site updates on the next Pages build.\n"
+      "md": "# How this wiki works\n\nThe wiki is a static site in the repo's `wiki/` folder, published by GitHub Pages with no build step. It is plain HTML, CSS and JavaScript modules. Three libraries are loaded from cdnjs, with copies in `js/vendor` as a fallback: marked for Markdown, DOMPurify for sanitizing, and a trimmed highlight.js for code."
     },
     {
-      "id": "c2",
+      "id": "b2",
       "type": "text",
-      "x": 48,
-      "y": 298,
-      "w": 780,
-      "h": 316,
-      "z": 1,
       "format": "markdown",
-      "md": "## Files\n\n- `index.html`, the shell: sidebar, toolbar, board and inspector.\n- `css/style.css`, the whole theme, one set of tokens on `:root`.\n- `js/app.js`, wires everything together (state, sidebar, save flow, paste, menus).\n- `js/board.js`, the canvas: renders cards, drag, resize, z order, freehand draw.\n- `js/cards.js`, the card model and per type renderers (text/code/image/video/table/shape/draw).\n- `js/inspector.js`, the per card editor on the right.\n- `js/github.js`, the only code that writes to the network, via the GitHub Contents API.\n- `js/icons.js`, inline Lucide icons.\n- `pages/index.json`, the page list with categories. `pages/<slug>.json`, one board each.\n- `assets/`, uploaded images and video, committed through the API.\n"
+      "md": "## Files\n\n| File | Role |\n| --- | --- |\n| `index.html` | The shell: sidebar, toolbar, page area and dialogs |\n| `css/style.css` | The whole theme. Colour and material tokens are defined once on `:root` |\n| `js/app.js` | State, the sidebar, page loading, drafts, saving, undo and keyboard shortcuts |\n| `js/doc.js` | The document layout |\n| `js/board.js` | The canvas layout: pan, zoom, dragging, resizing and drawing |\n| `js/cards.js` | The card model and a renderer for each card type |\n| `js/edit.js` | Editing in place: WYSIWYG text, the slash menu, page links, code, tables and media controls |\n| `js/markdown.js` | Markdown rendering with page links and callouts, and the HTML to Markdown serializer |\n| `js/search.js` | The search index, the search dialog and backlinks |\n| `js/github.js` | Everything that writes to GitHub |\n| `js/storage.js` | Drafts and per browser view state in localStorage |\n| `js/dom.js`, `js/icons.js` | A small element builder and inline Lucide icons |\n| `pages/index.json` | The page list with titles, categories and layouts |\n| `pages/<slug>.json` | One file per page |\n| `assets/` | Uploaded images and video |"
     },
     {
-      "id": "c3",
+      "id": "b3",
       "type": "text",
-      "x": 48,
-      "y": 636,
-      "w": 780,
-      "h": 132,
-      "z": 2,
       "format": "markdown",
-      "md": "## The card model\n\nA board is `{ title, cards: [...] }`. A card is an absolutely positioned box with a type and its own data:\n"
+      "md": "## Pages and cards\n\nA page is a title, a layout and a list of cards:"
     },
     {
-      "id": "c4",
+      "id": "b4",
       "type": "code",
-      "x": 48,
-      "y": 790,
-      "w": 780,
-      "h": 179,
-      "z": 3,
-      "lang": "javascript",
-      "code": "// A text card\n{ id: \"c_abc\", type: \"text\", x: 48, y: 40, w: 780, h: 200, z: 0,\n  format: \"markdown\",          // or \"bbcode\" | \"html\"\n  md: \"## Hello\\n\\nSome **markdown**.\" }\n\n// A code card\n{ id: \"c_def\", type: \"code\", x: 48, y: 280, w: 780, h: 160, z: 1,\n  lang: \"gdscript\", code: \"func _ready():\\n\\tprint(\\\"hi\\\")\" }"
+      "lang": "json",
+      "code": "{\n  \"title\": \"Using this wiki\",\n  \"layout\": \"doc\",\n  \"cards\": [\n    { \"id\": \"b1\", \"type\": \"text\", \"format\": \"markdown\", \"md\": \"# Using this wiki\\n\\nAnyone can read...\" },\n    { \"id\": \"b2\", \"type\": \"code\", \"lang\": \"gdscript\", \"code\": \"func _ready():\\n\\tpass\" }\n  ]\n}"
     },
     {
-      "id": "c5",
+      "id": "b5",
       "type": "text",
-      "x": 48,
-      "y": 991,
-      "w": 780,
-      "h": 178,
-      "z": 4,
       "format": "markdown",
-      "md": "## Saving back to the repo\n\n**Save** asks once for a fine grained GitHub token with Contents read and write on this repo. The token is stored only in your browser `localStorage` and is only ever sent to `api.github.com`. A save reads the file's current SHA, then PUTs the new content; a page delete DELETEs the file. This is the whole write path:\n"
+      "md": "In a document the cards are shown in array order and carry no position. On a canvas every card also has `x`, `y`, `w`, `h` and `z`, and text cards grow to fit their content, with `h` as the minimum.\n\nText cards store Markdown, even though they are edited visually. When a text block loses focus, the editor turns its HTML back into Markdown, so the page files in the repo stay readable and can be edited by hand. Page links are written `[[slug]]` and callouts `> [!NOTE]`, the same syntax Obsidian and GitHub use. BBCode and raw HTML cards are still supported through the source editor."
     },
     {
-      "id": "c6",
-      "type": "code",
-      "x": 48,
-      "y": 1191,
-      "w": 780,
-      "h": 278,
-      "z": 5,
-      "lang": "javascript",
-      "code": "// github.js, trimmed\nexport async function putFile(relPath, contentBase64, message, token) {\n  const sha = await getFileSha(relPath, token);        // null when new\n  const payload = { message, content: contentBase64, branch: GH.branch };\n  if (sha) payload.sha = sha;                           // update vs create\n  const res = await fetch(contentsUrl(relPath), {\n    method: \"PUT\",\n    headers: headers(token),\n    body: JSON.stringify(payload),\n  });\n  if (!res.ok) throw new Error(await describeError(res));\n  return res.json();\n}"
-    },
-    {
-      "id": "c7",
+      "id": "b6",
       "type": "text",
-      "x": 48,
-      "y": 1491,
-      "w": 780,
-      "h": 247,
-      "z": 6,
       "format": "markdown",
-      "md": "## Interactions\n\n- **Right click the board** or press **Shift+A** to add a card where you point.\n- **Drag** a card by its header, **resize** from any edge or corner.\n- **Right click a card** to collapse it, hide it from the published page, restack it, or delete it. Select and press **Delete** to remove it.\n- **Paste** an image, gif or SVG straight onto the board in edit mode.\n- **Right click a page** in the sidebar to rename it, set its category, or delete it.\n- Text cards render **Markdown, BBCode or HTML**, all sanitized before display.\n"
+      "md": "## Saving\n\nEvery change is written to localStorage as a draft, along with a hash of the repo version it started from. Save collects every draft, the page index and any deleted pages and writes them in one commit through the Git Data API: it reads the branch head, creates a tree on top of it, creates a commit and moves the branch. Uploads go through the Contents API as commits of their own.\n\nAfter a save, the saved pages are kept locally as publishing until the Pages deploy catches up, so a reload does not flash back to the old version. When a page loads, its draft is compared with the repo copy. A draft identical to the repo is dropped, and a draft started from an older repo version shows the conflict banner instead of silently winning."
+    },
+    {
+      "id": "b7",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Safety\n\nEverything rendered, raw HTML cards and pasted content included, goes through DOMPurify before it reaches the page. The token is only read by `github.js` and only sent to `api.github.com`. `window.__wiki` exposes read only state and a few actions for headless tests."
     }
   ]
 }

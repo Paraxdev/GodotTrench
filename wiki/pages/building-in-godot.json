@@ -1,0 +1,78 @@
+{
+  "title": "From map to scene",
+  "layout": "doc",
+  "cards": [
+    {
+      "id": "b1",
+      "type": "text",
+      "format": "markdown",
+      "md": "# From map to scene\n\nThe editor never writes Godot scenes itself. It saves a `.gtm` file, and the addon turns that file into nodes. This page covers the ways that happens, from a manual build to hot reloading a game that is already running."
+    },
+    {
+      "id": "b2",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Building a map\n\nA `FuncGodotMap` node does the work. Give it a map with *Local Map File*, a `res://` path to a `.gtm`, `.map` or `.vmf`, or with *Global Map File* for a file outside the project, which wins when both are set. *Map Settings* falls back to the project's `func_godot/default_map_settings`. **Build Map** generates everything and **Clear Map** removes it.\n\nA build clears the node's children, then turns brushes into meshes and collision, creates the entities and applies their properties, and connects every entity's outputs. Terrain, scatter, the environment from worldspawn and the chunk streamer come last, and the node emits `build_complete` when it is done.\n\nThe built nodes are owned by the scene. A map built in the editor is saved into the `.tscn` and loads like any other scene, and nothing is rebuilt at runtime unless you ask. You can still build from code, which is how the demo's scripted scene works:"
+    },
+    {
+      "id": "b3",
+      "type": "code",
+      "lang": "gdscript",
+      "code": "var map := FuncGodotMap.new()\nmap.map_settings = load(\"res://demo/demo_map_settings.tres\")\nmap.local_map_file = \"res://demo/maps/scripted_scene.gtm\"\nadd_child(map)\nmap.build()"
+    },
+    {
+      "id": "b4",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Rebuild on save\n\nWhile the Godot editor is open, the addon runs a small server called the live link, on port 7842 by default. When you save in GodotTrench, the editor tells Godot, and Godot rebuilds every `FuncGodotMap` **in the scene you have open** whose file matches and whose *Auto Rebuild On Save* is on, which it is by default. Maps in other scenes are left alone until you open them and build.\n\nThe editor's status bar reports what happened: how many map nodes were rebuilt, that no open scene uses the map, or that no Godot with the addon answered. A rebuild marks the scene as modified, so save it in Godot to keep the result.\n\n*Godot > Live Mode* goes a step further and streams edits into that scene before you save. It needs the map to have been saved once, and like rebuild on save it only touches the scene open in the Godot editor."
+    },
+    {
+      "id": "b5",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Hot reload in a running game\n\nTo see changes in a game that is already running, register the hot reload script as an autoload under *Project Settings > Globals > Autoload*:"
+    },
+    {
+      "id": "b6",
+      "type": "code",
+      "lang": "plaintext",
+      "code": "res://addons/func_godot/src/godottrench/runtime/godottrench_hot_reload.gd"
+    },
+    {
+      "id": "b7",
+      "type": "text",
+      "format": "markdown",
+      "md": "It listens on port 7843, rebuilds the matching maps whenever you save, and then emits `map_reloaded(map)`, which is your chance to put the player back at a spawn point or reset game state. It only runs in games launched from the Godot editor, unless you set `enabled_in_exported_builds` on it.\n\n> [!WARNING] Every rebuild frees what is under the map\n> A manual build, a rebuild on save and a hot reload all start by deleting the map node's children. A player or pickup you parented under the map node disappears with them. Keep your own nodes beside the map node."
+    },
+    {
+      "id": "b8",
+      "type": "text",
+      "format": "markdown",
+      "md": "## The debug overlay\n\nAdd a `GodotTrenchDebugOverlay` node to your scene and press F3 in the running game. It lists outputs as they fire and draws every trigger volume, which answers the usual question of why a door did not open: either the trigger never fired, or it fired at a target that does not exist. The volumes are collected at the moment you turn the overlay on, so toggle it again after spawning new triggers. (F3 in the editor is Lit Preview, which is unrelated.)\n\nFor logging from code, `GodotTrenchIO.events()` returns an object whose `fired(source, output, target, input, parameter)` signal is emitted for every output, including ones whose target resolves to nothing. That makes it the most reliable way to catch a silent wiring mistake."
+    },
+    {
+      "id": "b9",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Streaming big maps\n\nLarge outdoor maps can stream their visuals by distance. Select nothing in the editor so the Inspector shows worldspawn, and set `chunk_streaming` to 1. `chunk_size`, 2048 units by default, sets the size of a cell, and `load_radius`, 8192 by default, how far from the camera cells stay visible. The build splits oversized meshes into cells and shows or hides them as the camera moves.\n\nStreaming only hides meshes. Collision and scripts keep running across the whole map, so it saves rendering cost, not physics or logic. The streamer node emits `area_loaded(key, bounds)` and `area_unloaded(key, bounds)` if you want to stream your own content alongside it."
+    },
+    {
+      "id": "b10",
+      "type": "text",
+      "format": "markdown",
+      "md": "## The game config in more detail\n\n`godottrench_game.json` is how the editor learns about your project. It is written by the `GodotTrenchGameConfig` resource named in the `godottrench/game_config` project setting, and contains every class from that config's FGD with its properties, size, colour and the inputs and outputs found in its script, any C# entities, the texture folder and the unit scale.\n\nWith `godottrench/auto_export_game_config` on, the default, the addon exports again about a second and a half after Godot notices files changing. You can also export by hand from *Project > Tools*, or headless, for example in CI:"
+    },
+    {
+      "id": "b11",
+      "type": "code",
+      "lang": "bash",
+      "code": "godot --headless --path <project> --script res://addons/func_godot/src/godottrench/export_game_config_cli.gd"
+    },
+    {
+      "id": "b12",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Project settings\n\n| Setting | Default | Purpose |\n| --- | --- | --- |\n| `func_godot/default_map_settings` | none | Map settings for every `FuncGodotMap` that does not set its own |\n| `func_godot/default_inverse_scale_factor` | 32 | Map units per meter |\n| `godottrench/game_config` | none | The config resource that writes `godottrench_game.json` |\n| `godottrench/auto_export_game_config` | true | Export again when files change |\n| `godottrench/live_link_enabled` | true | Run the live link server in the Godot editor |\n| `godottrench/live_link_port` | 7842 | Must match the port in the editor's preferences |\n| `godottrench/csharp_entity_dirs` | `res://` | Where C# entities are found at build time |"
+    }
+  ]
+}

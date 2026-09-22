@@ -2,61 +2,79 @@
   {
     "slug": "home",
     "title": "Home",
-    "category": "Start"
+    "category": "Start",
+    "layout": "doc"
   },
   {
     "slug": "getting-started",
     "title": "Getting started",
-    "category": "Start"
-  },
-  {
-    "slug": "using-this-wiki",
-    "title": "Using this wiki",
-    "category": "Start"
-  },
-  {
-    "slug": "godottrench",
-    "title": "GodotTrench",
-    "category": "GodotTrench"
+    "category": "Start",
+    "layout": "doc"
   },
   {
     "slug": "editor-guide",
-    "title": "Editor guide",
-    "category": "GodotTrench"
+    "title": "Editor tour",
+    "category": "Editor",
+    "layout": "doc"
   },
   {
-    "slug": "io-concepts",
-    "title": "How entity I/O works",
-    "category": "Entity I/O"
+    "slug": "shortcuts",
+    "title": "Shortcuts",
+    "category": "Editor",
+    "layout": "doc"
   },
   {
-    "slug": "entity-reference",
-    "title": "Entity reference",
-    "category": "Entity I/O"
-  },
-  {
-    "slug": "io-cheatsheet",
-    "title": "IO Cheatsheet",
-    "category": "Entity I/O"
-  },
-  {
-    "slug": "cutscene-example",
-    "title": "Example: scripted cutscene",
-    "category": "Entity I/O"
-  },
-  {
-    "slug": "button-door-example",
-    "title": "Example: button opens a door",
-    "category": "Entity I/O"
+    "slug": "building-in-godot",
+    "title": "From map to scene",
+    "category": "Godot",
+    "layout": "doc"
   },
   {
     "slug": "csharp-entities",
     "title": "C# entities",
-    "category": "Entity I/O"
+    "category": "Godot",
+    "layout": "doc"
+  },
+  {
+    "slug": "io-concepts",
+    "title": "How entity I/O works",
+    "category": "Entity I/O",
+    "layout": "doc"
+  },
+  {
+    "slug": "entity-reference",
+    "title": "Entity reference",
+    "category": "Entity I/O",
+    "layout": "doc"
+  },
+  {
+    "slug": "io-cheatsheet",
+    "title": "I/O cheatsheet",
+    "category": "Entity I/O",
+    "layout": "canvas"
+  },
+  {
+    "slug": "button-door-example",
+    "title": "Button opens a door",
+    "category": "Examples",
+    "layout": "doc"
+  },
+  {
+    "slug": "cutscene-example",
+    "title": "Scripted cutscene",
+    "category": "Examples",
+    "layout": "doc"
+  },
+  {
+    "slug": "using-this-wiki",
+    "title": "Using this wiki",
+    "category": "This wiki",
+    "layout": "doc"
   },
   {
     "slug": "how-this-wiki-works",
     "title": "How this wiki works",
-    "category": "Meta"
+    "category": "This wiki",
+    "layout": "doc"
   }
 ]

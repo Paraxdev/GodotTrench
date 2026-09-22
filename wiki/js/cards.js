@@ -5,6 +5,8 @@
 // gracefully if a library did not load.
 
 import { el } from "./dom.js";
+import { icon } from "./icons.js";
+import { renderMarkdownInto, renderHtmlInto } from "./markdown.js";
 
 export const CARD_TYPES = ["text", "code", "image", "video", "table", "shape", "draw"];
 
@@ -86,20 +88,17 @@ export function newCard(type, at, cards) {
 function typeDefaults(type) {
   switch (type) {
     case "text":
-      return {
-        format: "markdown",
-        md: "## New note\n\nWrite **markdown** here. Links like [Godot](https://godotengine.org) work in view mode.",
-      };
+      return { format: "markdown", md: "" };
     case "code":
-      return { lang: "gdscript", code: 'func _ready():\n\tprint("hello from GodotTrench")' };
+      return { lang: "gdscript", code: "" };
     case "image":
       return { src: "", alt: "" };
     case "video":
       return { src: "", embed: false };
     case "table":
-      return { rows: [["Column A", "Column B"], ["a1", "b1"], ["a2", "b2"]] };
+      return { rows: [["Column", "Column"], ["", ""]] };
     case "shape":
-      return { shape: "rect", stroke: "#7aa2f7", fill: "rgba(122,162,247,0.16)", strokeWidth: 2 };
+      return { shape: "rect", stroke: "#58b3e6", fill: "rgba(88,179,230,0.14)", strokeWidth: 2 };
     case "draw":
       return { path: "" };
     default:
@@ -142,36 +141,23 @@ function renderText(card) {
   const source = card.md || "";
   const format = card.format || "markdown";
 
-  let html = null;
+  let ok;
   if (typeof card.html === "string" && card.html.length) {
-    // WYSIWYG-edited cards store rich HTML directly. It wins over the source path, so legacy
-    // markdown pages keep rendering from card.md until they are edited inline.
-    html = card.html;
+    // Cards edited by an older build stored rich HTML directly.
+    ok = renderHtmlInto(div, card.html);
   } else if (format === "html") {
-    html = source;
+    ok = renderHtmlInto(div, source);
   } else if (format === "bbcode") {
-    html = bbcodeToHtml(source);
-  } else if (window.marked) {
-    html = window.marked.parse(source, markedOptions());
-  }
-
-  if (html != null && window.DOMPurify) {
-    div.innerHTML = window.DOMPurify.sanitize(html, { ADD_ATTR: ["target"] });
-    div.querySelectorAll("a[href]").forEach((a) => {
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-    });
+    ok = renderHtmlInto(div, bbcodeToHtml(source));
   } else {
+    ok = renderMarkdownInto(div, source);
+  }
+  if (!ok) {
     // No sanitizer available (offline without the vendored copy). Show the raw source safely
     // as plain text rather than risk injecting unsanitized markup.
     div.appendChild(el("pre", { text: source }));
   }
   return div;
-}
-
-// Full GitHub flavored Markdown, with single line breaks honored.
-function markedOptions() {
-  return { gfm: true, breaks: true };
 }
 
 function escapeHtml(str) {
@@ -234,7 +220,9 @@ function renderCode(card) {
   const lang = card.lang || "";
   const source = card.code || "";
   const hljs = window.hljs;
-  if (hljs && lang && hljs.getLanguage && hljs.getLanguage(lang)) {
+  if (!source) {
+    code.appendChild(el("span", { class: "code-empty", text: "Empty code block" }));
+  } else if (hljs && lang && hljs.getLanguage && hljs.getLanguage(lang)) {
     code.className = "language-" + lang;
     code.textContent = source;
     try {
@@ -242,19 +230,39 @@ function renderCode(card) {
     } catch (err) {
       code.textContent = source;
     }
-  } else if (hljs && hljs.highlightAuto) {
-    try {
-      const result = hljs.highlightAuto(source);
-      code.innerHTML = result.value;
-      code.classList.add("hljs");
-    } catch (err) {
-      code.textContent = source;
-    }
   } else {
     code.textContent = source;
   }
   pre.appendChild(code);
-  return pre;
+  const copy = el(
+    "button",
+    {
+      type: "button",
+      class: "code-copy",
+      title: "Copy code",
+      "aria-label": "Copy code",
+      on: {
+        pointerdown: (e) => e.stopPropagation(),
+        click: (e) => {
+          e.stopPropagation();
+          copyText(source).then(() => {
+            copy.classList.add("done");
+            setTimeout(() => copy.classList.remove("done"), 1200);
+          });
+        },
+      },
+    },
+    [icon("copy", { size: 14 }), el("span", { class: "code-copy-done" }, icon("check", { size: 14 }))]
+  );
+  return el("div", { class: "code-wrap" }, [
+    pre,
+    el("div", { class: "code-meta" }, [lang ? el("span", { class: "code-lang-tag", text: lang }) : null, source ? copy : null]),
+  ]);
+}
+
+function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text).catch(() => {});
+  return Promise.resolve();
 }
 
 function renderImage(card) {
@@ -277,6 +285,7 @@ function renderImage(card) {
     wrap.appendChild(placeholder("No image yet. Paste an image or SVG, set a src, or upload one."));
     return wrap;
   }
+  if (card.alt) wrap.classList.add("has-caption");
   wrap.appendChild(
     el("img", {
       class: "card-img",
@@ -291,6 +300,7 @@ function renderImage(card) {
       },
     })
   );
+  if (card.alt) wrap.appendChild(el("div", { class: "card-caption", text: card.alt }));
   return wrap;
 }
 
@@ -376,7 +386,7 @@ function renderShape(card) {
     viewBox: "0 0 100 100",
     preserveAspectRatio: "none",
   });
-  const stroke = card.stroke || "#7aa2f7";
+  const stroke = card.stroke || "#58b3e6";
   const fill = card.fill || "none";
   const sw = card.strokeWidth == null ? 2 : card.strokeWidth;
   const kind = card.shape || "rect";

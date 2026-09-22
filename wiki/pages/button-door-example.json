@@ -1,38 +1,60 @@
 {
-  "title": "Example: button opens a door",
+  "title": "Button opens a door",
+  "layout": "doc",
   "cards": [
     {
-      "id": "c1",
+      "id": "b1",
       "type": "text",
-      "x": 48,
-      "y": 40,
-      "w": 780,
-      "h": 270,
-      "z": 0,
       "format": "markdown",
-      "md": "# Example: a button opens a door\n\nThe smallest useful wiring.\n\n1. Give the door a **targetname**, e.g. `main_door`.\n2. Select the `func_button`. In the Inspector's **Outputs**, add one: when `pressed` fires, target `main_door`, call input `open`.\n\nThat is written `pressed -> main_door.open`. You can also use *Gameplay > Link...* to connect the button's `pressed` output to the door's `open` input. At runtime the button's `pressed` signal becomes a `GodotTrenchOutput` that resolves the targetname `main_door` and calls `open()` on the door.\n"
+      "md": "# Example: a button opens a door\n\nThe smallest piece of useful wiring, and a good first test that a project is set up correctly."
     },
     {
-      "id": "c2",
+      "id": "b2",
       "type": "text",
-      "x": 48,
-      "y": 332,
-      "w": 780,
-      "h": 109,
-      "z": 1,
       "format": "markdown",
-      "md": "## The equivalent in GDScript\n\nThe runtime makes this connection for you. Hand wired, it is just:\n"
+      "md": "## Build it\n\n1. Draw a door sized brush in a doorway, right click it and choose *Create Brush Entity > func_door*. In the Inspector, set its targetname to `main_door`. Its default `travel` of `0 64 0` slides it up 64 units, 2 m, when it opens.\n2. Draw a small brush on the wall next to it and turn it into a `func_button` the same way.\n3. Select the button and the door together and choose *Gameplay > Logic > Link Two Selected Entities...*. Make sure the button is the source and press ⇄ if it is not. Choose `pressed` under *When* and `open` under *call*, then press **Link**.\n\nThe button now has one output, written `pressed -> main_door.open`: when the button is pressed, call `open` on everything named `main_door`. The Logic panel shows the same line if you fire the button's `pressed` output there."
     },
     {
-      "id": "c3",
+      "id": "b3",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Pressing it\n\nSave, and build the map in Godot. Both entities are there, but nothing presses the button yet, because the addon has no interaction system of its own. Doors and buttons expose a `use(activator)` input and leave it to your player to call it. The demo player does it on **E**, by casting a ray from the camera and calling `use` on the first thing it hits that has one:"
+    },
+    {
+      "id": "b4",
       "type": "code",
-      "x": 48,
-      "y": 463,
-      "w": 780,
-      "h": 179,
-      "z": 2,
       "lang": "gdscript",
-      "code": "# button.pressed(activator) -> door.open()\nvar door := GodotTrenchIO.find_targets(self, \"main_door\", null)[0]\nbutton.pressed.connect(func(_activator): door.open())\n\n# or via the I/O helper, matching how the map fires it:\nbutton.pressed.connect(func(activator):\n    for d in GodotTrenchIO.find_targets(button, \"main_door\", activator):\n        GodotTrenchIO.invoke(d, &\"open\", \"\", activator))"
+      "code": "func use_target() -> void:\n\tvar from := camera.global_position\n\tvar query := PhysicsRayQueryParameters3D.create(from, from - camera.global_basis.z * use_distance)\n\tquery.exclude = [get_rid()]\n\tquery.collide_with_areas = false\n\tvar hit := get_world_3d().direct_space_state.intersect_ray(query)\n\tvar node: Node = hit.get(\"collider\")\n\twhile node:\n\t\tif node.has_method(&\"use\"):\n\t\t\tnode.call(&\"use\", self)\n\t\t\treturn\n\t\tnode = node.get_parent()"
+    },
+    {
+      "id": "b5",
+      "type": "text",
+      "format": "markdown",
+      "md": "Because the player passes itself, the button's `pressed(activator)` carries the player, and anything further down the chain can target `!activator` to mean them."
+    },
+    {
+      "id": "b6",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Variations\n\nGive the door a `wait` in seconds and it closes again by itself; the default of -1 keeps it open. Set `locked` to 1 and the door ignores the button and fires `locked_use` instead, which is a good hook for a rattle sound or a hint text. Another output can `unlock` it later, for example when a `logic_counter` reaches its maximum.\n\nTo open several doors with one button, name them `gate_1`, `gate_2` and so on and target `gate_*`. For a door that swings instead of sliding, use `func_door_rotating` and drag its hinge into place in the viewport."
+    },
+    {
+      "id": "b7",
+      "type": "text",
+      "format": "markdown",
+      "md": "## The same thing in code\n\nThe map makes this connection for you, but underneath it is ordinary Godot. Wired by hand it would be:"
+    },
+    {
+      "id": "b8",
+      "type": "code",
+      "lang": "gdscript",
+      "code": "# pressed(activator) -> main_door.open\nbutton.pressed.connect(func(activator):\n\tfor door in GodotTrenchIO.find_targets(button, \"main_door\", activator):\n\t\tGodotTrenchIO.invoke(door, &\"open\", \"\", activator))"
+    },
+    {
+      "id": "b9",
+      "type": "text",
+      "format": "markdown",
+      "md": "Connecting `pressed` straight to `door.open` would fail with an argument count error, because `pressed` passes one argument and `open()` takes none. `invoke` fits the arguments to the method, which is one of the reasons to go through it."
     }
   ]
 }

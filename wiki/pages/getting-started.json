@@ -1,49 +1,60 @@
 {
   "title": "Getting started",
+  "layout": "doc",
   "cards": [
     {
-      "id": "c1",
+      "id": "b1",
       "type": "text",
-      "x": 48,
-      "y": 40,
-      "w": 780,
-      "h": 236,
-      "z": 0,
       "format": "markdown",
-      "md": "# Getting started\n\n**GodotTrench** is a brush based level editor for Godot, written in Rust and inspired by TrenchBroom and Hammer++. You build maps from brushes, meshes, terrains and entities, save them as `.gtm` files inside your Godot project, and the **FuncGodot (GodotTrench)** addon turns them into scenes: add a `FuncGodotMap` node, point it at a `.gtm` file, and press **Build Map**. Brushes become meshes with collision, entities become nodes with their scripts and connected outputs.\n\nThis wiki reproduces the in editor help and reference so it is searchable and always at hand.\n"
+      "md": "# Getting started\n\nThis page takes you from an empty Godot project to a room you built in GodotTrench, standing in a Godot scene. The setup half only has to be done once per project."
     },
     {
-      "id": "c2",
+      "id": "b2",
       "type": "text",
-      "x": 48,
-      "y": 298,
-      "w": 780,
-      "h": 270,
-      "z": 1,
       "format": "markdown",
-      "md": "## Set up a Godot project\n\n- You need **Godot 4.7+** (the .NET build if you want C# entities).\n- Enable **FuncGodot (GodotTrench)** in *Project Settings > Plugins*.\n- Put textures in `res://textures`.\n- The plugin writes `godottrench_game.json`, or run *Project > Tools > GodotTrench: Export Game Config*. The editor reads it when you open the project folder.\n- GodotTrench finds Godot via the `GODOT` env var, your PATH, or the usual install folders, otherwise set it in *File > Preferences*.\n- The status bar shows **\"Loaded game config\"** when the editor is connected to your project.\n"
+      "md": "## What you need\n\nGodot 4.7, the version the addon is developed and tested against. Older 4.x releases will not work, since the runtime uses GDScript features that arrived in 4.5. Use the .NET build if you plan to write entities in C#. You also need the GodotTrench editor and the `godot/addons/func_godot` folder from this repo."
     },
     {
-      "id": "c3",
+      "id": "b3",
       "type": "text",
-      "x": 48,
-      "y": 590,
-      "w": 780,
-      "h": 247,
-      "z": 2,
       "format": "markdown",
-      "md": "## A first room, in short\n\n1. With the **Select** tool, left drag in a 2D view to draw a box brush.\n2. Drag to move it (hold **Alt** to move vertically in 3D, **Ctrl** to drag out a copy).\n3. Shift drag a face to resize it, **Ctrl+Shift** drag to extrude.\n4. **Hollow** a brush to turn it into a room with walls.\n5. Apply a material from the **Materials** panel.\n6. **Save** the `.gtm` inside your Godot project. If the Godot editor is open it rebuilds the map automatically.\n"
+      "md": "## Install the addon\n\nCopy `godot/addons/func_godot` into your project's `addons` folder, then enable **FuncGodot (GodotTrench)** under *Project > Project Settings > Plugins*.\n\nThat is all the setup a first map needs. The addon's default map settings and game config already include the GodotTrench entity library, so a `func_door` builds as a working door, triggers fire and lights switch, without any resources of your own."
     },
     {
-      "id": "c4",
+      "id": "b4",
       "type": "text",
-      "x": 48,
-      "y": 859,
-      "w": 780,
-      "h": 270,
-      "z": 3,
       "format": "markdown",
-      "md": "## Handy tips\n\n- The **command palette** (`Ctrl+Shift+P` or `F1`) runs any command by typing part of its name.\n- `[` and `]` change the grid size. **F** frames the selection in every view.\n- **Ctrl+click** adds or removes objects from the selection. **Shift+click** picks a single face.\n- **Duplicate Linked** (`Ctrl+Shift+D`) keeps copies identical, great for repeated windows, pillars or lamps.\n- **Ctrl+H** hides the selection, **Ctrl+J** isolates it, *Show All* brings everything back.\n- The **Issues** panel catches broken brushes and outputs without a target before Godot does.\n- 32 map units = 1 meter by default, so a 128 unit tall room is 4 meters high.\n"
+      "md": "## Export the game config\n\nThe editor learns about your entities and textures from `godottrench_game.json` in the project root. Run *Project > Tools > GodotTrench: Export Game Config* once to write it. After that the addon exports again by itself whenever Godot notices files changing, so new entity scripts and textures reach the editor without you thinking about it.\n\nThe editor reads the file when it opens the project and does not watch it afterwards. If you add an entity while the editor is running, use *Godot > Reload > Game Config*."
+    },
+    {
+      "id": "b5",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Open the project in GodotTrench\n\nStart the editor and choose *Godot > Open Godot Project...*, or click **Open Godot project...** at the right end of the toolbar, and pick the project folder. Any folder inside the project works, the editor walks up until it finds `project.godot`. From then on it reopens the most recent project at startup, and opening a map that is saved inside a project loads that project too.\n\nYou can tell it worked from the toolbar, where the project button now shows your game's name and folder, and from the Entities panel, which lists the GodotTrench classes. The status bar also says \"Loaded game config\" for a few seconds. If it says the project has no `godottrench_game.json` and is using built in entities, the export has not happened yet, run it from *Project > Tools* as above.\n\nThe editor only needs the Godot executable for *Run Project* (F5) and *Open Project in Godot Editor*. It looks in *File > Preferences > Godot executable* first, then the `GODOT` environment variable, then your PATH and the usual install folders. Saving and rebuilding do not need it, they go through the addon's live link."
+    },
+    {
+      "id": "b6",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Build a first room\n\nThe editor opens with four views: 3D in the top left, Top in the top right, Front and Side underneath. The world is Y-up like Godot, not Z-up like TrenchBroom, so the Top view looks down the Y axis.\n\n1. **Draw a box.** With the Select tool (Q), left drag on empty space in the Top view. The brush snaps to the grid, which starts at 16 units, and takes its height from the last brush you made. Dragging in the 3D view works too and draws on whatever surface is under the cursor.\n2. **Make it a room.** Press Ctrl+Shift+K, or use *Brush > CSG > Hollow*. The box becomes a shell of wall brushes, 16 units thick unless you change *Wall thickness* in the same menu.\n3. **Give it a material.** Click a texture in the Materials panel at the bottom. It is applied to the selection and becomes the current material for new brushes. To texture a single wall, Shift+click that face first.\n4. **Save.** Ctrl+S. For a new map the dialog opens in the project root and suggests `map.gtm`. Keep maps inside the project, the addon loads them by `res://` path.\n\nSizes are in map units, 32 to a meter by default. A 128 unit tall room is 4 m, which is comfortable for a corridor and a little low for a hall."
+    },
+    {
+      "id": "b7",
+      "type": "text",
+      "format": "markdown",
+      "md": "## See it in Godot\n\nCreate a scene, add a `FuncGodotMap` node, set its *Local Map File* to your `.gtm`, and press **Build Map** in the Inspector. Brushes become meshes with collision, and entities become nodes with their scripts and outputs connected. The built nodes belong to the scene, so saving the scene stores the result and the game does not rebuild anything at runtime.\n\nLeave that scene open in the Godot editor. From now on, every save in GodotTrench makes the addon rebuild the `FuncGodotMap` nodes in that scene that use the file, and the editor's status bar reports how many it rebuilt. The rebuild marks the scene as modified, so save it in Godot once you are happy.\n\n> [!WARNING] A rebuild replaces everything under the map node\n> Building frees every child of the `FuncGodotMap` before generating new ones. Anything you add under that node by hand is gone after the next save in the editor. Put your own nodes next to the map node, not inside it."
+    },
+    {
+      "id": "b8",
+      "type": "text",
+      "format": "markdown",
+      "md": "## When you outgrow the defaults\n\nThe defaults live inside the addon folder, so they are replaced whenever you update it. Once you write entities of your own, or want different map settings such as another texture folder, give the project its own three resources. The demo project in `godot/demo` has working copies, so the quickest route is to copy `demo_fgd.tres`, `demo_map_settings.tres` and `demo_game_config.tres` into your project and adjust the paths.\n\n1. **An FGD file** (`FuncGodotFGDFile`). Set *Base Fgd Files* to `res://addons/func_godot/fgd/godottrench_default_fgd.tres`, which brings in both the plain FuncGodot classes and the GodotTrench library. Your own entity definitions go into *Entity Definitions*.\n2. **Map settings** (`FuncGodotMapSettings`). Set *Entity Fgd* to the FGD above and *Base Texture Dir* to your texture folder, `res://textures` by default. Setting *Entity Name Property* to `targetname` names the built nodes after their targetnames, which makes the scene tree much easier to read.\n3. **A game config** (`GodotTrenchGameConfig`). Point *Fgd File* and *Map Settings* at the two resources above. This is what gets exported for the editor.\n\nThen register two of them in *Project Settings*: `func_godot/default_map_settings` gets the map settings and `godottrench/game_config` gets the game config. The demo's `project.godot` has both lines if you want to compare."
+    },
+    {
+      "id": "b9",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Next\n\nThe [[editor-guide]] explains the rest of the interface. When you want the room to do something, read [[io-concepts]] and then build the [[button-door-example]]."
     }
   ]
 }
