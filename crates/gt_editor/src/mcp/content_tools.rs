@@ -2,7 +2,6 @@
 //! array duplication and scripts of tool calls.
 
 use std::collections::BTreeMap;
-use std::sync::mpsc::Sender;
 
 use gt_core::{Aabb, DVec2, DVec3, NodeId};
 use gt_doc::scatter::Rng;
@@ -10,6 +9,7 @@ use gt_doc::{IoConnection, NodeKind, ScatterItem, ops};
 use serde_json::{Value, json};
 
 use super::ToolResult;
+use super::tools::{Child, check_container, editable_ids, face_list, id_list, optional_id, require_id, resolve_parent, uint};
 use crate::app::App;
 
 fn vec3(v: &Value) -> Option<DVec3> {
@@ -34,16 +34,12 @@ fn bounds_json(b: &Aabb) -> Value {
     if b.is_empty() { Value::Null } else { json!({ "min": arr(b.min), "max": arr(b.max) }) }
 }
 
-fn ids(v: &Value) -> Vec<NodeId> {
-    v.as_array().into_iter().flatten().filter_map(|i| i.as_u64()).map(NodeId).collect()
+fn err(msg: impl Into<String>) -> ToolResult {
+    ToolResult::Error(msg.into())
 }
 
-fn err(msg: impl Into<String>) -> Option<ToolResult> {
-    Some(ToolResult::Error(msg.into()))
-}
-
-fn ok(v: Value) -> Option<ToolResult> {
-    Some(ToolResult::Json(v))
+fn ok(v: Value) -> ToolResult {
+    ToolResult::Json(v)
 }
 
 /// Points along a polyline every `spacing` units, the end points included.
@@ -102,6 +98,25 @@ fn scatter_item(v: &Value) -> Option<ScatterItem> {
         }
         _ => None,
     }
+}
+
+/// Picks the link name to use: the given one, else the only candidate. `builtin` names never count as the only candidate.
+fn link_name(given: Option<&str>, options: &[String], builtin: &[&str], what: &str, class: &str) -> Result<String, String> {
+    if let Some(g) = given.filter(|g| !g.is_empty()) {
+        return Ok(g.to_string());
+    }
+
+    let own: Vec<&String> = options.iter().filter(|o| !builtin.contains(&o.as_str())).collect();
+    match own.as_slice() {
+        [only] => Ok((*only).clone()),
+        [] if options.is_empty() => Err(format!("{what} required, {class} defines none")),
+        _ => Err(format!("{what} required, {class} offers {}", options.join(", "))),
+    }
+}
+
+/// Default name for a new layer, matching the editor's Add Layer command.
+fn next_layer_name(map: &gt_doc::Map) -> String {
+    format!("Layer {}", map.layers.len() + 1)
 }
 
 impl App {
@@ -175,15 +190,19 @@ impl App {
         })
     }
 
-    pub(crate) fn tool_scatter(&mut self, args: &Value) -> Option<ToolResult> {
+    pub(crate) fn tool_scatter(&mut self, args: &Value) -> ToolResult {
         let op = args["op"].as_str().unwrap_or_default();
+        let (set_id, targets) = match (optional_id(args, "id"), id_list(args, "targets")) {
+            (Ok(i), Ok(t)) => (i, t),
+            (Err(e), _) | (_, Err(e)) => return err(e),
+        };
         let saved = self.state.prefs.scatter.clone();
         if let Err(e) = self.apply_scatter_args(args) {
             self.state.prefs.scatter = saved;
             return err(e);
         }
 
-        if let Some(id) = args["id"].as_u64().map(NodeId) {
+        if let Some(id) = set_id {
             if self.state.doc.map.scatter(id).is_none() {
                 self.state.prefs.scatter = saved;
                 return err(format!("{id} is not a scatter set"));
@@ -204,7 +223,6 @@ impl App {
             "new_set" => {
                 let name = args["name"].as_str().map(str::to_string);
                 let id = crate::scatter_tool::new_set(&mut self.state, name.as_deref());
-                let targets = ids(&args["targets"]);
                 let props = args.clone();
                 self.state.doc.edit("Scatter Set Settings", |m, _| {
                     if let Some(s) = m.scatter_mut(id) {
@@ -232,44 +250,48 @@ impl App {
                 });
                 ok(self.scatter_summary(id))
             }
-            "material" => {
-                let Some(id) = self.state.active_scatter else { return err("id required, or activate a set first") };
-                let material = args["material"].as_str().filter(|m| !m.is_empty()).map(str::to_string);
-                let item = args["item"].as_u64().map(|i| i as usize);
-                let mut missing = None;
-                self.state.doc.edit("Scatter Material", |m, _| {
-                    if let Some(s) = m.scatter_mut(id) {
-                        match item {
-                            // One palette entry, so a single model of the set is retextured.
-                            Some(k) => match s.items.get_mut(k) {
-                                Some(entry) => entry.material = material.clone(),
-                                None => missing = Some(k),
-                            },
-                            None => s.material = material.clone(),
+            "material" => match self.state.active_scatter {
+                None => err("id required, or activate a set first"),
+                Some(id) => {
+                    let material = args["material"].as_str().filter(|m| !m.is_empty()).map(str::to_string);
+                    let item = args["item"].as_u64().map(|i| i as usize);
+                    let count = self.state.doc.map.scatter(id).map(|s| s.items.len()).unwrap_or(0);
+                    match item {
+                        Some(k) if k >= count => err(format!("the set has no palette entry {k}, it has {count}")),
+                        _ => {
+                            self.state.doc.edit("Scatter Material", |m, _| {
+                                if let Some(s) = m.scatter_mut(id) {
+                                    match item.and_then(|k| s.items.get_mut(k)) {
+                                        // One palette entry, so a single model of the set is retextured.
+                                        Some(entry) => entry.material = material.clone(),
+                                        None => s.material = material.clone(),
+                                    }
+                                }
+                            });
+                            ok(self.scatter_summary(id))
                         }
                     }
-                });
-                match missing {
-                    Some(k) => err(format!("the set has no palette entry {k}")),
-                    None => ok(self.scatter_summary(id)),
                 }
-            }
+            },
             "activate" => match self.state.active_scatter {
                 Some(id) => ok(self.scatter_summary(id)),
                 None => err("id required"),
             },
-            "paint" | "erase" | "stroke" => {
+            "paint" | "erase" | "stroke" => 'paint: {
                 let points: Vec<DVec3> = if op == "stroke" {
                     args["points"].as_array().into_iter().flatten().filter_map(point).collect()
                 } else {
                     point(&args["center"]).into_iter().collect()
                 };
                 if points.is_empty() {
-                    self.state.prefs.scatter = saved;
-                    return err("center (paint, erase) or points (stroke) required");
+                    break 'paint err("center (paint, erase) or points (stroke) required");
                 }
 
                 let erase = op == "erase" || args["erase"].as_bool().unwrap_or(false);
+                if !erase && self.state.prefs.scatter.palette.is_empty() {
+                    break 'paint err("the scatter palette is empty, pass items or a preset (or set them with scatter palette first)");
+                }
+
                 let normal = vec3(&args["normal"]).unwrap_or(DVec3::Y);
                 let spacing = self.state.prefs.scatter.radius * 0.5;
                 let mut changed = 0;
@@ -296,8 +318,7 @@ impl App {
                 ok(json!({ if erase { "removed" } else { "placed" }: changed, "set": set.map(|id| self.scatter_summary(id)) }))
             }
             "fill" => {
-                if let Some(t) = args["targets"].as_array() {
-                    let targets: Vec<NodeId> = t.iter().filter_map(|i| i.as_u64()).map(NodeId).collect();
+                if args["targets"].is_array() {
                     let id =
                         crate::scatter_tool::active_set(&self.state).unwrap_or_else(|| crate::scatter_tool::new_set(&mut self.state, args["name"].as_str()));
                     self.state.doc.edit("Scatter Targets", |m, _| {
@@ -315,11 +336,12 @@ impl App {
                     Err(e) => err(e),
                 }
             }
-            "toggle_target" => match args["target"].as_u64() {
-                Some(t) => {
-                    let added = crate::scatter_tool::toggle_target(&mut self.state, NodeId(t));
+            "toggle_target" => match uint(&args["target"]).map(NodeId) {
+                Some(t) if self.state.doc.map.contains(t) => {
+                    let added = crate::scatter_tool::toggle_target(&mut self.state, t);
                     ok(json!({ "added": added }))
                 }
+                Some(t) => err(format!("no node {t}")),
                 None => err("target node id required"),
             },
             "clear" => match crate::scatter_tool::active_set(&self.state) {
@@ -334,8 +356,8 @@ impl App {
                 None => err("no scatter set, pass id"),
             },
             "get" => {
-                let sets: Vec<Value> = match args["id"].as_u64() {
-                    Some(id) => vec![self.scatter_summary(NodeId(id))],
+                let sets: Vec<Value> = match set_id {
+                    Some(id) => vec![self.scatter_summary(id)],
                     None => self.state.doc.map.scatters().map(|(id, _)| id).collect::<Vec<_>>().into_iter().map(|id| self.scatter_summary(id)).collect(),
                 };
                 ok(json!({ "sets": sets, "active": self.state.active_scatter.map(|i| i.0), "palette": self.state.prefs.scatter.palette }))
@@ -345,7 +367,7 @@ impl App {
                 None => err("no scatter set, pass id"),
             },
             other => err(format!(
-                "unknown scatter op {other}, use palette, install_models, new_set, activate, paint, stroke, erase, fill, toggle_target, clear, get or to_entities"
+                "unknown scatter op {other}, use palette, install_models, new_set, activate, paint, stroke, erase, fill, toggle_target, material, clear, get or to_entities"
             )),
         };
         if !persistent {
@@ -364,7 +386,7 @@ impl App {
         result
     }
 
-    pub(crate) fn tool_blend(&mut self, args: &Value) -> Option<ToolResult> {
+    pub(crate) fn tool_blend(&mut self, args: &Value) -> ToolResult {
         let op = args["op"].as_str().unwrap_or("dab");
         let mut brush = self.state.blend;
         for (key, slot) in [("mode", 0), ("falloff", 1)] {
@@ -395,7 +417,10 @@ impl App {
             brush.height = [h.first().and_then(|v| v.as_f64()).unwrap_or(-1e9), h.get(1).and_then(|v| v.as_f64()).unwrap_or(1e9)];
         }
 
-        let select_ids = ids(&args["ids"]);
+        let select_ids = match id_list(args, "ids").and_then(|i| editable_ids(&self.state, &i)) {
+            Ok(i) => i,
+            Err(e) => return err(e),
+        };
         if !select_ids.is_empty() {
             self.state.doc.select(|_, s| {
                 s.clear();
@@ -410,8 +435,14 @@ impl App {
                 } else {
                     Some(args["material"].as_str().map(str::to_string).unwrap_or_else(|| self.state.current_material.clone()))
                 };
-                let faces: Vec<(NodeId, usize)> =
-                    args["faces"].as_array().into_iter().flatten().filter_map(|f| Some((NodeId(f.get(0)?.as_u64()?), f.get(1)?.as_u64()? as usize))).collect();
+                let faces = match face_list(args, "faces") {
+                    Ok(f) => f,
+                    Err(e) => return err(e),
+                };
+                if let Err(e) = editable_ids(&self.state, &faces.iter().map(|(i, _)| *i).collect::<Vec<_>>()) {
+                    return err(e);
+                }
+
                 if !faces.is_empty() {
                     self.state.doc.select(|_, s| {
                         s.clear();
@@ -453,8 +484,12 @@ impl App {
             }
             "weights" => {
                 let Some(p) = point(&args["center"]) else { return err("center required") };
+                let given = match optional_id(args, "id") {
+                    Ok(i) => i,
+                    Err(e) => return err(e),
+                };
                 let map = &self.state.doc.map;
-                let terrain = args["id"].as_u64().map(NodeId).or_else(|| map.terrains().next().map(|(id, _)| id));
+                let terrain = given.or_else(|| map.terrains().next().map(|(id, _)| id));
                 let Some(t) = terrain.and_then(|id| map.terrain(id)) else { return err("no terrain") };
                 let i = ((p.x - t.origin.x) / t.cell_size).round().clamp(0.0, (t.resolution[0] - 1) as f64) as u32;
                 let j = ((p.z - t.origin.z) / t.cell_size).round().clamp(0.0, (t.resolution[1] - 1) as f64) as u32;
@@ -464,13 +499,19 @@ impl App {
         }
     }
 
-    pub(crate) fn tool_gameplay(&mut self, args: &Value) -> Option<ToolResult> {
+    pub(crate) fn tool_gameplay(&mut self, args: &Value) -> ToolResult {
         use crate::entity_wizards as wiz;
         let op = args["op"].as_str().unwrap_or_default();
-        let target_ids = {
-            let given = ids(&args["ids"]);
-            if given.is_empty() { self.state.doc.selection.nodes.iter().copied().collect() } else { given }
+        let given = match id_list(args, "ids").and_then(|i| editable_ids(&self.state, &i)) {
+            Ok(i) => i,
+            Err(e) => return err(e),
         };
+        let target_ids: Vec<NodeId> = if given.is_empty() { self.state.doc.selection.nodes.iter().copied().collect() } else { given };
+        let creates = matches!(op, "make_door" | "make_platform" | "make_button" | "brush_entity" | "volume" | "place");
+        if creates && let Err(e) = resolve_parent(&self.state, &Value::Null, Child::Other) {
+            return err(e);
+        }
+
         let entity_json = |app: &App, id: NodeId| {
             let e = app.state.doc.map.entity(id);
             json!({ "id": id.0, "classname": e.map(|e| e.classname.clone()), "properties": e.map(|e| e.properties.clone()), "outputs": e.map(|e| e.outputs.clone()), "bounds": bounds_json(&app.state.doc.map.bounds(id)) })
@@ -531,18 +572,17 @@ impl App {
                     Ok(outs) => self
                         .state
                         .doc
-                        .edit("Create Brush Entity", |m, s| {
+                        .try_edit("Create Brush Entity", |m, s| {
                             s.clear();
                             s.nodes.extend(target_ids.iter().copied());
-                            let id = ops::create_brush_entity(m, s, &classname, parent)?;
+                            let id = ops::create_brush_entity(m, s, &classname, parent).ok_or_else(|| "select or pass the brushes (ids)".to_string())?;
                             if let Some(e) = m.entity_mut(id) {
                                 e.properties.extend(props);
                                 e.outputs = outs;
                             }
 
-                            Some(id)
+                            Ok(id)
                         })
-                        .ok_or_else(|| "select or pass the brushes (ids)".to_string())
                         .map(|id| entity_json(self, id)),
                     Err(e) => Err(e),
                 }
@@ -559,23 +599,35 @@ impl App {
                 }
             }
             "link" => {
-                let (Some(from), Some(to)) = (args["from"].as_u64().map(NodeId), args["to"].as_u64().map(NodeId)) else {
-                    return err("from and to entity ids required");
+                let (from, to) = match (require_id(args, "from"), require_id(args, "to")) {
+                    (Ok(f), Ok(t)) => (f, t),
+                    (Err(e), _) | (_, Err(e)) => return err(e),
                 };
-                wiz::link(
-                    &mut self.state,
-                    from,
-                    to,
-                    args["output"].as_str().unwrap_or_default(),
-                    args["input"].as_str().unwrap_or_default(),
-                    args["parameter"].as_str().unwrap_or_default(),
-                    args["delay"].as_f64().unwrap_or(0.0),
-                )
-                .map(|c| serde_json::to_value(c).unwrap_or_default())
+                let class = |id: NodeId| self.state.doc.map.entity(id).map(|e| e.classname.clone()).unwrap_or_default();
+                let (outs, ins) = wiz::link_options(&self.state, from, to);
+                let names = link_name(args["output"].as_str(), &outs, &[], "output", &class(from))
+                    .and_then(|o| link_name(args["input"].as_str(), &ins, &["kill", "show", "hide", "enable", "disable"], "input", &class(to)).map(|i| (o, i)));
+                match names {
+                    Ok((output, input)) => wiz::link(
+                        &mut self.state,
+                        from,
+                        to,
+                        &output,
+                        &input,
+                        args["parameter"].as_str().unwrap_or_default(),
+                        args["delay"].as_f64().unwrap_or(0.0),
+                    )
+                    .map(|c| serde_json::to_value(c).unwrap_or_default()),
+                    Err(e) => Err(e),
+                }
             }
             "place" => {
                 let classname = args["classname"].as_str().unwrap_or("info_null");
                 let Some(mut origin) = point(&args["origin"]) else { return err("origin required") };
+                let outs = match outputs(&args["outputs"]) {
+                    Ok(o) => o,
+                    Err(e) => return err(e),
+                };
                 if args["origin"].as_array().is_some_and(|a| a.len() == 2) || args["snap_to_ground"].as_bool().unwrap_or(false) {
                     let caster = crate::picking::SurfaceCaster::new(&self.state, &Aabb::from_center_size(origin, DVec3::new(2.0, 1.0e6, 2.0)));
                     if let Some(h) = caster.cast(DVec3::new(origin.x, origin.y.max(0.0) + 1.0e5, origin.z), DVec3::NEG_Y) {
@@ -584,22 +636,19 @@ impl App {
                 }
 
                 let props = string_map(&args["properties"]);
-                let id = wiz::place_entity(&mut self.state, classname, origin, &props);
                 let angles = vec3(&args["angles"]);
-                match outputs(&args["outputs"]) {
-                    Ok(outs) => {
-                        self.state.doc.edit("Entity Setup", |m, _| {
-                            if let Some(e) = m.entity_mut(id) {
-                                e.outputs = outs;
-                                if let Some(a) = angles {
-                                    e.angles = a;
-                                }
-                            }
-                        });
-                        Ok(entity_json(self, id))
+                self.state.doc.begin("Place Entity");
+                let id = wiz::place_entity(&mut self.state, classname, origin, &props);
+                self.state.doc.edit("Entity Setup", |m, _| {
+                    if let Some(e) = m.entity_mut(id) {
+                        e.outputs = outs;
+                        if let Some(a) = angles {
+                            e.angles = a;
+                        }
                     }
-                    Err(e) => Err(e),
-                }
+                });
+                self.state.doc.commit();
+                Ok(entity_json(self, id))
             }
             "gizmos" => {
                 if !target_ids.is_empty() {
@@ -623,7 +672,7 @@ impl App {
         }
     }
 
-    pub(crate) fn tool_code_reference(&mut self, args: &Value) -> Option<ToolResult> {
+    pub(crate) fn tool_code_reference(&mut self, args: &Value) -> ToolResult {
         use crate::code_refs::{self, CodeKind};
         let Some(classname) = args["classname"].as_str() else {
             let list: Vec<Value> = self
@@ -649,18 +698,23 @@ impl App {
         )
     }
 
-    pub(crate) fn tool_hierarchy(&mut self, args: &Value) -> Option<ToolResult> {
+    pub(crate) fn tool_hierarchy(&mut self, args: &Value) -> ToolResult {
         let op = args["op"].as_str().unwrap_or_default();
-        let name = args["name"].as_str().unwrap_or("Group").to_string();
+        let name = args["name"].as_str().filter(|n| !n.trim().is_empty()).map(str::to_string);
         match op {
             "add_layer" => {
+                let name = name.unwrap_or_else(|| next_layer_name(&self.state.doc.map));
                 let id = self.state.doc.edit("Add Layer", |m, _| m.add_layer(&name));
                 self.state.current_layer = id;
                 self.state.open_groups.clear();
-                ok(json!({ "id": id.0 }))
+                ok(json!({ "id": id.0, "name": name }))
             }
             "add_group" => {
-                let parent = args["parent"].as_u64().map(NodeId).filter(|p| self.state.doc.map.contains(*p)).unwrap_or_else(|| self.state.insert_parent());
+                let parent = match resolve_parent(&self.state, &args["parent"], Child::Other) {
+                    Ok(p) => p,
+                    Err(e) => return err(e),
+                };
+                let name = name.unwrap_or_else(|| "Group".to_string());
                 let id = self.state.doc.edit("Add Group", |m, _| m.insert(parent, NodeKind::Group(gt_doc::Group::new(name.clone()))));
                 if args["open"].as_bool().unwrap_or(true) {
                     self.state.open_groups.push(id);
@@ -668,13 +722,20 @@ impl App {
 
                 ok(json!({ "id": id.0, "parent": parent.0 }))
             }
-            "open_group" => match args["id"].as_u64().map(NodeId).filter(|g| self.state.doc.map.contains(*g)) {
-                Some(g) => {
-                    self.state.open_groups.push(g);
-                    ok(json!({ "insert_parent": self.state.insert_parent().0 }))
+            "open_group" => {
+                let id = match require_id(args, "id") {
+                    Ok(id) => id,
+                    Err(e) => return err(e),
+                };
+                match self.state.doc.map.get(id).map(|n| &n.kind) {
+                    Some(NodeKind::Group(_)) => {
+                        self.state.open_groups.push(id);
+                        ok(json!({ "insert_parent": self.state.insert_parent().0 }))
+                    }
+                    Some(kind) => err(format!("{id} is a {}, open_group needs a group", kind.type_name())),
+                    None => err(format!("no node {id}")),
                 }
-                None => err("id of an existing group required"),
-            },
+            }
             "close_group" => {
                 if args["all"].as_bool().unwrap_or(false) {
                     self.state.open_groups.clear();
@@ -684,35 +745,81 @@ impl App {
 
                 ok(json!({ "insert_parent": self.state.insert_parent().0 }))
             }
-            "set_current_layer" => match args["id"].as_u64().map(NodeId).filter(|l| self.state.doc.map.layers.contains(l)) {
-                Some(l) => {
+            "set_current_layer" => match require_id(args, "id") {
+                Ok(l) if self.state.doc.map.layers.contains(&l) => {
                     self.state.current_layer = l;
                     self.state.open_groups.clear();
                     ok(json!({ "insert_parent": l.0 }))
                 }
-                None => err("id of a layer required"),
+                Ok(l) => err(format!("{l} is not a layer")),
+                Err(e) => err(e),
             },
             "reparent" => {
-                let Some(parent) = args["parent"].as_u64().map(NodeId).filter(|p| self.state.doc.map.contains(*p)) else { return err("parent required") };
-                let list = ids(&args["ids"]);
+                let (parent, list) = match (require_id(args, "parent"), id_list(args, "ids")) {
+                    (Ok(p), Ok(l)) => (p, l),
+                    (Err(e), _) | (_, Err(e)) => return err(e),
+                };
+                if let Err(e) = editable_ids(&self.state, &list) {
+                    return err(e);
+                }
+
+                for id in &list {
+                    let geometry = self.state.doc.map.get(*id).is_some_and(|n| n.kind.is_geometry());
+                    if let Err(e) = check_container(&self.state, parent, if geometry { Child::Geometry } else { Child::Other }) {
+                        return err(format!("cannot move {id}: {e}"));
+                    }
+
+                    if *id == parent || self.state.doc.map.is_ancestor(*id, parent) {
+                        return err(format!("cannot move {id} into itself or one of its children"));
+                    }
+
+                    if self.state.doc.map.layers.contains(id) {
+                        return err(format!("{id} is a layer, layers have no parent"));
+                    }
+                }
+
+                if self.state.doc.map.is_locked(parent) {
+                    return err(format!("{parent} is locked"));
+                }
+
                 self.state.doc.edit("Reparent", |m, _| list.iter().for_each(|id| m.reparent(*id, parent)));
                 ok(json!({ "moved": list.len() }))
             }
             "rename" => {
-                let Some(id) = args["id"].as_u64().map(NodeId) else { return err("id required") };
-                self.state.doc.edit("Rename", |m, _| match m.get_mut(id).map(|n| &mut n.kind) {
-                    Some(NodeKind::Layer(l)) => l.name = name.clone(),
-                    Some(NodeKind::Group(g)) => g.name = name.clone(),
-                    Some(NodeKind::Scatter(s)) => s.name = name.clone(),
-                    Some(NodeKind::Entity(e)) => {
-                        e.properties.insert("targetname".into(), name.clone());
+                let id = match require_id(args, "id") {
+                    Ok(id) => id,
+                    Err(e) => return err(e),
+                };
+                let Some(name) = name else { return err("name required") };
+                let renamed = self.state.doc.try_edit("Rename", |m, _| {
+                    match m.get_mut(id).map(|n| &mut n.kind) {
+                        Some(NodeKind::Layer(l)) => l.name = name.clone(),
+                        Some(NodeKind::Group(g)) => g.name = name.clone(),
+                        Some(NodeKind::Scatter(s)) => s.name = name.clone(),
+                        Some(NodeKind::Entity(e)) => {
+                            e.properties.insert("targetname".into(), name.clone());
+                        }
+                        Some(kind) => return Err(format!("a {} has no name, rename layers, groups, scatter sets or entities", kind.type_name())),
+                        None => return Err(format!("no node {id}")),
                     }
-                    _ => {}
+
+                    Ok(())
                 });
-                ok(json!({ "id": id.0, "name": name }))
+                match renamed {
+                    Ok(()) => ok(json!({ "id": id.0, "name": name })),
+                    Err(e) => err(e),
+                }
             }
             "set_flags" => {
-                let list = ids(&args["ids"]);
+                let list = match id_list(args, "ids") {
+                    Ok(l) => l,
+                    Err(e) => return err(e),
+                };
+                let missing: Vec<u64> = list.iter().filter(|i| !self.state.doc.map.contains(**i)).map(|i| i.0).collect();
+                if !missing.is_empty() {
+                    return err(format!("no nodes with ids {missing:?}"));
+                }
+
                 let (hidden, locked, omit) = (args["hidden"].as_bool(), args["locked"].as_bool(), args["omit_from_export"].as_bool());
                 self.state.doc.edit("Set Flags", |m, _| {
                     for id in &list {
@@ -739,7 +846,7 @@ impl App {
         }
     }
 
-    pub(crate) fn tool_set_map_properties(&mut self, args: &Value) -> Option<ToolResult> {
+    pub(crate) fn tool_set_map_properties(&mut self, args: &Value) -> ToolResult {
         let Some(props) = args["properties"].as_object().cloned() else { return err("properties object required") };
         self.state.doc.edit("Set Map Properties", |m, _| {
             m.properties.insert("classname".into(), "worldspawn".into());
@@ -754,18 +861,37 @@ impl App {
         ok(json!({ "properties": self.state.doc.map.properties }))
     }
 
-    pub(crate) fn tool_terrain_edit(&mut self, args: &Value) -> Option<ToolResult> {
+    pub(crate) fn tool_terrain_edit(&mut self, args: &Value) -> ToolResult {
         use gt_doc::terrain::{SculptBrush, SculptMode};
+        let given = match optional_id(args, "id") {
+            Ok(i) => i,
+            Err(e) => return err(e),
+        };
         let map = &self.state.doc.map;
-        let id = args["id"]
-            .as_u64()
-            .map(NodeId)
-            .or_else(|| self.state.doc.selection.terrains(map).first().copied())
-            .or_else(|| map.terrains().next().map(|(id, _)| id));
+        let id = given.or_else(|| self.state.doc.selection.terrains(map).first().copied()).or_else(|| map.terrains().next().map(|(id, _)| id));
         let Some(id) = id.filter(|id| map.terrain(*id).is_some()) else { return err("no terrain, pass id or create one") };
+        let probe = match &args["probe"] {
+            Value::Null => None,
+            v => match point(v) {
+                Some(p) => Some(p),
+                None => return err("probe must be [x, z]"),
+            },
+        };
+        let probe_height = |app: &App| probe.and_then(|p| app.state.doc.map.terrain(id).map(|t| t.height_at(p.x, p.z)));
         let op = args["op"].as_str().unwrap_or_default().to_string();
+        if op.is_empty() || op == "probe" {
+            return match probe {
+                Some(_) => ok(json!({ "id": id.0, "probe_height": probe_height(self) })),
+                None => err("op required, or probe [x, z] to read the height"),
+            };
+        }
+
+        if !self.state.doc.map.is_editable(id) {
+            return err(format!("terrain {id} is hidden or locked"));
+        }
+
         let a = args.clone();
-        let result: Result<Value, String> = self.state.doc.edit(&format!("Terrain {op}"), |m, _| {
+        let result: Result<Value, String> = self.state.doc.try_edit(&format!("Terrain {op}"), |m, _| {
             let Some(t) = m.terrain_mut(id) else { return Err("terrain vanished".to_string()) };
             let radius = a["radius"].as_f64().unwrap_or(256.0);
             let strength = a["strength"].as_f64().unwrap_or(16.0);
@@ -778,6 +904,10 @@ impl App {
                     } else {
                         a["points"].as_array().into_iter().flatten().filter_map(point).collect()
                     };
+                    if points.is_empty() {
+                        return Err(if op == "sculpt" { "center [x, z] required" } else { "points [[x, z], ...] required" }.to_string());
+                    }
+
                     let brush = SculptBrush {
                         mode,
                         radius,
@@ -797,6 +927,10 @@ impl App {
                     let layer = a["layer"].as_u64().unwrap_or(1) as usize;
                     let amount = a["strength"].as_f64().unwrap_or(1.0);
                     let points: Vec<DVec3> = a["points"].as_array().into_iter().flatten().filter_map(point).collect();
+                    if points.is_empty() {
+                        return Err("points [[x, z], ...] required".to_string());
+                    }
+
                     let mut any = false;
                     for p in resample(&points, radius * 0.4) {
                         any |= t.paint_layer(p, radius, layer, amount);
@@ -854,7 +988,7 @@ impl App {
                 }
                 other => {
                     return Err(format!(
-                        "unknown terrain op {other}, use sculpt, sculpt_path, paint_path, flatten_rect, ramp, erode, auto_paint, set_layers or holes"
+                        "unknown terrain op {other}, use sculpt, sculpt_path, paint_path, flatten_rect, ramp, erode, auto_paint, set_layers or holes, or only probe"
                     ));
                 }
             };
@@ -863,28 +997,28 @@ impl App {
         match result {
             Ok(mut v) => {
                 v["id"] = json!(id.0);
-                if let Some(p) = point(&args["probe"])
-                    && let Some(t) = self.state.doc.map.terrain(id)
-                {
-                    v["probe_height"] = json!(t.height_at(p.x, p.z));
+                if probe.is_some() {
+                    v["probe_height"] = json!(probe_height(self));
                 }
 
                 ok(v)
             }
-            Err(e) => {
-                self.state.doc.undo();
-                err(e)
-            }
+            Err(e) => err(e),
         }
     }
 
-    pub(crate) fn tool_duplicate(&mut self, args: &Value) -> Option<ToolResult> {
-        let source = {
-            let given = ids(&args["ids"]);
-            if given.is_empty() { self.state.doc.selection.nodes.iter().copied().collect::<Vec<_>>() } else { given }
+    pub(crate) fn tool_duplicate(&mut self, args: &Value) -> ToolResult {
+        let given = match id_list(args, "ids") {
+            Ok(i) => i,
+            Err(e) => return err(e),
         };
+        let source = if given.is_empty() { self.state.doc.selection.nodes.iter().copied().collect::<Vec<_>>() } else { given };
         if source.is_empty() {
             return err("nothing to duplicate, pass ids or select objects");
+        }
+
+        if let Err(e) = editable_ids(&self.state, &source) {
+            return err(e);
         }
 
         let offset = vec3(&args["offset"]).unwrap_or(DVec3::new(self.state.grid, 0.0, 0.0));
@@ -893,7 +1027,11 @@ impl App {
         let rotate = args["rotate_y"].as_f64().unwrap_or(0.0);
         let pivot = vec3(&args["pivot"]);
         let opts = ops::EditOptions { uv_lock: true, grid: 0.0 };
-        let parent = self.state.insert_parent();
+        let parent = match resolve_parent(&self.state, &Value::Null, Child::Other) {
+            Ok(p) => p,
+            Err(e) if linked => return err(e),
+            Err(_) => self.state.insert_parent(),
+        };
         let mut all = Vec::new();
         self.state.doc.begin(if linked { "Duplicate Linked" } else { "Array Duplicate" });
         self.state.doc.select(|_, s| {
@@ -930,7 +1068,9 @@ impl App {
         ok(json!({ "copies": all, "selection": self.state.doc.selection.nodes.iter().map(|i| i.0).collect::<Vec<_>>() }))
     }
 
-    pub(crate) fn tool_run_script(&mut self, args: &Value, ctx: &egui::Context, reply: &Sender<ToolResult>) -> Option<ToolResult> {
+    pub(crate) fn tool_run_script(&mut self, args: &Value, ctx: &egui::Context) -> ToolResult {
+        let project = self.state.game.project_root.as_ref().map(|p| p.to_string_lossy().replace('\\', "/"));
+        let cwd = || std::env::current_dir().map(|d| d.to_string_lossy().replace('\\', "/")).unwrap_or_default();
         let (doc, dir) = match args["path"].as_str() {
             Some(path) => {
                 let text = match std::fs::read_to_string(path) {
@@ -938,11 +1078,16 @@ impl App {
                     Err(e) => return err(format!("cannot read {path}: {e}")),
                 };
                 match serde_json::from_str::<Value>(&text) {
-                    Ok(v) => (v, std::path::Path::new(path).parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default()),
+                    Ok(v) => {
+                        let parent = std::path::Path::new(path).parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+                        (v, if parent.is_empty() { cwd() } else { parent })
+                    }
                     Err(e) => return err(format!("{path}: {e}")),
                 }
             }
-            None => (args.get("steps").map(|s| json!({ "steps": s })).unwrap_or(Value::Null), String::new()),
+
+            // Inline steps have no file, so relative paths resolve against the project, else the editor's working directory.
+            None => (args.get("steps").map(|s| json!({ "steps": s })).unwrap_or(Value::Null), project.clone().unwrap_or_else(cwd)),
         };
         let steps = match super::script::parse(&doc) {
             Ok(s) => s,
@@ -950,7 +1095,10 @@ impl App {
         };
         let mut vars: BTreeMap<String, Value> = BTreeMap::new();
         vars.insert("script_dir".into(), json!(dir));
-        vars.insert("project".into(), json!(self.state.game.project_root.as_ref().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default()));
+        if let Some(p) = project {
+            vars.insert("project".into(), json!(p));
+        }
+
         if let Some(extra) = args["vars"].as_object() {
             vars.extend(extra.iter().map(|(k, v)| (k.clone(), v.clone())));
         }
@@ -994,23 +1142,22 @@ impl App {
                     break;
                 }
             };
-            let result = self.call_tool(&step.tool, resolved, ctx, reply);
             ran += 1;
-            match result {
-                Some(ToolResult::Json(v)) => {
+            match self.run_tool(&step.tool, resolved, ctx) {
+                ToolResult::Json(v) => {
                     if let Some(name) = &step.save {
                         vars.insert(name.clone(), v.clone());
                     }
 
                     vars.insert("last".into(), v);
                 }
-                Some(ToolResult::Error(e)) => {
+                ToolResult::Error(e) => {
                     errors.push(json!({ "step": i, "tool": step.tool, "error": e }));
                     if !continue_on_error {
                         break;
                     }
                 }
-                _ => {}
+                ToolResult::Image { .. } => {}
             }
         }
 
@@ -1022,7 +1169,7 @@ impl App {
 
         let saved: serde_json::Map<String, Value> = vars.into_iter().filter(|(k, _)| k != "last").collect();
         let summary = json!({ "steps": steps.len(), "ran": ran, "errors": errors, "vars": saved, "state": self.state_summary()["map"] });
-        if errors.is_empty() || continue_on_error { ok(summary) } else { Some(ToolResult::Error(serde_json::to_string_pretty(&summary).unwrap_or_default())) }
+        if errors.is_empty() || continue_on_error { ok(summary) } else { ToolResult::Error(serde_json::to_string_pretty(&summary).unwrap_or_default()) }
     }
 }
 
@@ -1036,5 +1183,25 @@ mod tests {
         assert_eq!(pts.len(), 5);
         assert_eq!(*pts.last().unwrap(), DVec3::new(100.0, 0.0, 0.0));
         assert_eq!(point(&json!([3, 4])), Some(DVec3::new(3.0, 0.0, 4.0)));
+    }
+
+    #[test]
+    fn link_names_default_only_when_unambiguous() {
+        let one = vec!["trigger".to_string()];
+        assert_eq!(link_name(None, &one, &[], "output", "button"), Ok("trigger".into()));
+        assert_eq!(link_name(Some("custom"), &one, &[], "output", "button"), Ok("custom".into()));
+        let two = vec!["open".to_string(), "close".to_string()];
+        assert!(link_name(Some(""), &two, &[], "output", "door").unwrap_err().contains("open, close"));
+        let with_builtins = vec!["toggle".to_string(), "kill".to_string()];
+        assert_eq!(link_name(None, &with_builtins, &["kill"], "input", "door"), Ok("toggle".into()));
+        assert!(link_name(None, &[], &[], "output", "info_null").is_err());
+    }
+
+    #[test]
+    fn new_layers_are_numbered_like_the_add_layer_command() {
+        let mut map = gt_doc::Map::new();
+        assert_eq!(next_layer_name(&map), "Layer 2");
+        map.add_layer("x");
+        assert_eq!(next_layer_name(&map), "Layer 3");
     }
 }

@@ -87,8 +87,31 @@ fn vec3_schema(desc: &str) -> Value {
     json!({ "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3, "description": desc })
 }
 
+fn numbers() -> Value {
+    json!({ "type": "array", "items": { "type": "number" } })
+}
+
+/// [[x, z] or [x, y, z], ...]
+fn points_schema() -> Value {
+    json!({ "type": "array", "items": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 3 } })
+}
+
+/// A number, or [u, v] for separate axes.
+fn scalar_or_pair() -> Value {
+    json!({ "type": ["number", "array"], "items": { "type": "number" }, "minItems": 2, "maxItems": 2 })
+}
+
+fn outputs_schema() -> Value {
+    json!({ "type": "array", "items": { "type": "object", "properties": {
+        "output": { "type": "string" }, "target": { "type": "string" }, "input": { "type": "string" },
+        "parameter": { "type": "string" }, "delay": { "type": "number" }, "times": { "type": "integer" }
+    }, "required": ["output", "target", "input"] } })
+}
+
 pub fn tool_definitions() -> Vec<Value> {
     let view_enum = json!(["window", "3d", "top", "front", "side"]);
+    let mesh_ops = super::tools::mesh_op_names().join("|");
+    let presets = gt_doc::scatter::PRESETS.join("|");
     vec![
         json!({
             "name": "get_state",
@@ -112,7 +135,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "run_action",
-            "description": "Runs an editor command. Actions: new_map, save, undo, redo, delete, duplicate, select_all, select_none, select_inverse, select_touching, select_inside, select_siblings, select_same_material, group, ungroup, hide_selected, isolate_selected, unhide_all, lock_selected, unlock_all, grid_up, grid_down, toggle_snap, toggle_uv_lock, toggle_textured, csg_subtract, csg_merge, csg_intersect, csg_hollow, rotate {axis, degrees}, flip {axis}, focus_selection, create_brush_entity {classname}, place_entities {classnames, at, normal, row}, move_to_world, add_layer, snap_vertices, apply_material {material}, copy, cut, paste {text}, nudge {offset}, set_tool {tool}, clip_apply, insert_prefab {path, origin, angles, fixup}, explode_instances, create_displacement {power}, remove_displacement, sew_displacements, sculpt {center, mode: raise|lower|smooth|flatten|noise|terrace|paint_alpha|erase_alpha|paint_layer|hole|unhole, radius, strength, height, layer, step} (displacements of selected brushes and terrains), sprinkle {center, items, radius, density, min_spacing, seed} (point entities, see the scatter tool for trees and foliage), set_shade {shade: textured|flat|lit}, edit_mesh, convert_to_mesh, convert_to_brushes, join_meshes, mesh_op {op: merge_at_center|fill|delete|subdivide|triangulate|flip_normals|smooth_vertices|solidify|duplicate|separate|shade_smooth|shade_flat|mirror_x|snap_vertices_to_grid}, duplicate_linked, unlink_groups, set_cordon, toggle_cordon, clear_cordon, store_camera {slot}, recall_camera {slot}, new_tab, next_tab, close_tab, hotspot_texture, terrain_auto_paint, reload_models, open_godot_editor, run_godot_project, focus_godot, build_in_godot (full build in the connected Godot editor of the map as shown, saved or not), toggle_live_mode.",
+            "description": "Runs an editor command. Actions: new_map, save, undo, redo, delete, duplicate, select_all, select_none, select_inverse, select_touching, select_inside, select_siblings, select_same_material, group, ungroup, hide_selected, isolate_selected, unhide_all, lock_selected, unlock_all, grid_up, grid_down, toggle_snap, toggle_uv_lock, toggle_textured, csg_subtract, csg_merge, csg_intersect, csg_hollow, rotate {axis, degrees}, flip {axis}, focus_selection, create_brush_entity {classname}, place_entities {classnames, at, normal, row}, move_to_world, add_layer, snap_vertices, apply_material {material}, copy and cut (return the clipboard text), paste {text, offset, origin, parent} (text from copy or cut, moved by offset or centered on origin), nudge {offset}, set_tool {tool}, clip_apply, insert_prefab {path, origin, angles, fixup}, explode_instances, create_displacement {power}, remove_displacement, sew_displacements, sculpt {center, mode: raise|lower|smooth|flatten|noise|terrace|paint_alpha|erase_alpha|paint_layer|hole|unhole, radius, strength, height, layer, step} (displacements of selected brushes and terrains), sprinkle {center, items, radius, density, min_spacing, seed} (point entities, see the scatter tool for trees and foliage), set_shade {shade: textured|flat|lit}, edit_mesh, convert_to_mesh, convert_to_brushes, join_meshes, mesh_op {op: {mesh_ops}}, duplicate_linked, unlink_groups, set_cordon, toggle_cordon, clear_cordon, store_camera {slot}, recall_camera {slot}, new_tab, next_tab, close_tab {discard} (refused with unsaved changes unless discard is true), hotspot_texture, terrain_auto_paint, reload_models, open_godot_editor, run_godot_project, focus_godot, build_in_godot (full build in the connected Godot editor of the map as shown, saved or not), toggle_live_mode. save needs a map that already has a file (use map_file save with a path otherwise), and actions that open file dialogs are refused. Failed actions return an error, status is only the message this action set.".replace("{mesh_ops}", &mesh_ops),
             "inputSchema": { "type": "object", "properties": {
                 "action": { "type": "string" },
                 "args": { "type": "object" }
@@ -124,16 +147,16 @@ pub fn tool_definitions() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": {
                 "min": vec3_schema("minimum corner"),
                 "max": vec3_schema("maximum corner"),
-                "openings": { "type": "array", "items": { "type": "array" } },
+                "openings": { "type": "array", "items": { "type": "array", "items": vec3_schema("corner"), "minItems": 2, "maxItems": 2 } },
                 "hollow": { "type": "number" },
                 "uv_scale": { "type": "number" },
-                "entity": { "type": "object" },
+                "entity": { "type": "object", "properties": { "classname": { "type": "string" }, "properties": { "type": "object" }, "outputs": outputs_schema() } },
                 "shape": { "type": "string", "enum": ["box", "cylinder", "cone", "sphere", "wedge", "spike", "arch", "pipe", "stairs", "spiral_stairs", "gable"] }, "turns": { "type": "number" }, "ridge_x": { "type": "boolean" },
                 "material": { "type": "string" },
                 "sides": { "type": "integer" },
                 "thickness": { "type": "number" },
                 "steps": { "type": "integer" },
-                "parent": { "type": "integer", "description": "layer, group or brush entity id" }
+                "parent": { "type": "integer", "description": "layer, group or brush entity id, unlocked" }
             }, "required": ["min", "max"] }
         }),
         json!({
@@ -149,20 +172,24 @@ pub fn tool_definitions() -> Vec<Value> {
                 "center": vec3_schema("lathe axis point"), "caps": { "type": "boolean" },
                 "footprint": { "type": "array", "items": { "type": "array", "items": { "type": "number" } } },
                 "bottom": { "type": "number" }, "top": { "type": "number" },
-                "smooth_angle": { "type": "number" }, "parent": { "type": "integer" },
-                "uv_scale": { "type": "number" }, "translate": vec3_schema("moves the mesh after building"), "rotate_y": { "type": "number" }, "roughen": { "type": "object" }
+                "smooth_angle": { "type": "number" }, "parent": { "type": "integer", "description": "layer, group or brush entity id, unlocked" },
+                "uv_scale": { "type": "number" }, "translate": vec3_schema("moves the mesh after building"), "rotate_y": { "type": "number" },
+                "roughen": { "type": "object", "properties": { "amount": { "type": "number" }, "seed": { "type": "integer" } } }
             }, "required": ["shape"] }
         }),
         json!({
             "name": "mesh_edit",
-            "description": "Topology operation on a mesh by vertex, edge and face indices (see get_node). ops: extrude_faces {faces, offset|distance}, extrude_edges {edges, offset}, inset {faces, thickness}, loop_cut {edges:[[a,b]], cuts}, bisect {point, normal, faces?, delete: front|back, fill}, subdivide {faces}, merge {verts, at?}, weld {distance}, fill {verts}, delete_faces {faces}, delete_faces_in_box {min, max} (faces whose center lies inside, e.g. door and window holes), set_material_in_box {min, max, material}, delete_vertices {verts}, bevel_edges {edges, width}, bevel_vertices {verts, width}, translate {verts, offset}, smooth {verts, factor, iterations}, solidify {thickness}, flip {faces}, triangulate {faces}, smooth_angle {angle}, set_material {faces, material}, separate {faces}.",
+            "description": "Topology operation on a mesh by vertex, edge and face indices (see get_node). ops: extrude_faces {faces, offset|distance}, extrude_edges {edges, offset}, inset {faces, thickness}, loop_cut {edges:[[a,b]], cuts}, bisect {point, normal, faces?, delete: front|back, fill}, subdivide {faces}, merge {verts, at?}, weld {distance}, fill {verts}, delete_faces {faces}, delete_faces_in_box {min, max} (faces whose center lies inside, e.g. door and window holes), set_material_in_box {min, max, material}, delete_vertices {verts}, bevel_edges {edges, width}, bevel_vertices {verts, width}, translate {verts, offset}, smooth {verts, factor, iterations}, solidify {thickness}, flip {faces}, triangulate {faces}, smooth_angle {angle}, set_material {faces, material}, separate {faces}. Indices outside the mesh are an error.",
             "inputSchema": { "type": "object", "properties": {
                 "id": { "type": "integer" }, "op": { "type": "string" },
                 "faces": { "type": "array", "items": { "type": "integer" } },
                 "verts": { "type": "array", "items": { "type": "integer" } },
                 "edges": { "type": "array", "items": { "type": "array", "items": { "type": "integer" } } },
                 "offset": vec3_schema("offset"), "point": vec3_schema("plane point"), "normal": vec3_schema("plane normal"),
-                "distance": { "type": "number" }, "thickness": { "type": "number" }, "width": { "type": "number" }, "cuts": { "type": "integer" }
+                "distance": { "type": "number" }, "thickness": { "type": "number" }, "width": { "type": "number" }, "cuts": { "type": "integer" },
+                "at": vec3_schema("merge target, default the vertices' center"), "min": vec3_schema("box min"), "max": vec3_schema("box max"),
+                "material": { "type": "string" }, "factor": { "type": "number" }, "iterations": { "type": "integer" }, "angle": { "type": "number" },
+                "delete": { "type": "string", "enum": ["front", "back"] }, "fill": { "type": "boolean" }
             }, "required": ["id", "op"] }
         }),
         json!({
@@ -174,7 +201,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "source": { "type": "array", "items": { "type": "integer" } },
                 "material": { "type": "string" }, "mode": { "type": "string" }, "kind": { "type": "string" },
                 "treat_as_one": { "type": "boolean" }, "reset": { "type": "boolean" }, "with_material": { "type": "boolean" },
-                "texels": { "type": "array", "items": { "type": "number" } }, "factor": {}, "scale": {},
+                "texels": { "type": "array", "items": { "type": "number" } }, "factor": scalar_or_pair(), "scale": scalar_or_pair(),
                 "degrees": { "type": "number" }, "units_per_texel": { "type": "number" },
                 "rects": { "type": "array", "items": { "type": "array", "items": { "type": "number" } } }
             }, "required": ["op"] }
@@ -186,27 +213,28 @@ pub fn tool_definitions() -> Vec<Value> {
                 "origin": vec3_schema("minimum corner"), "resolution": { "type": "integer", "description": "vertices per side, e.g. 65, 129, 257" },
                 "cell_size": { "type": "number" }, "shape": { "type": "string" }, "height": { "type": "number" }, "seed": { "type": "integer" },
                 "feature_size": { "type": "number" }, "erosion": { "type": "integer" },
-                "layers": { "type": "array", "items": { "type": "array" } }, "auto_paint": { "type": "boolean" }, "parent": { "type": "integer" }
+                "layers": { "type": "array", "items": { "type": "array", "items": { "type": ["string", "number"] }, "description": "[material, world units per repeat]" } }, "auto_paint": { "type": "boolean" },
+                "parent": { "type": "integer", "description": "layer, group or brush entity id, unlocked" }
             } }
         }),
         json!({
             "name": "import_model",
-            "description": "Imports a model. mode mesh (Blockbench as an editable mesh), brushes (Blockbench cubes as brushes) or prop (entity referencing a .bbmodel, .glb or .gltf).",
+            "description": "Imports a model file that must exist (.bbmodel, .glb, .gltf, .obj, .stl, .md2 or .md3). mode mesh (default) makes an editable mesh, brushes turns Blockbench .bbmodel cubes into brushes (other formats are refused), prop places an entity that references the model by its res:// path, so the file must be inside the open Godot project.",
             "inputSchema": { "type": "object", "properties": {
                 "path": { "type": "string" }, "mode": { "type": "string", "enum": ["mesh", "brushes", "prop"] }, "origin": vec3_schema("placement")
             }, "required": ["path"] }
         }),
         json!({
             "name": "create_entity",
-            "description": "Creates a point entity and selects it. outputs are I/O connections {output, target, input, parameter, delay, times}.",
+            "description": "Creates a point entity and selects it. origin defaults to [0, 0, 0]. outputs are I/O connections {output, target, input, parameter, delay, times}.",
             "inputSchema": { "type": "object", "properties": {
                 "classname": { "type": "string" },
                 "origin": vec3_schema("position"),
                 "angles": vec3_schema("pitch yaw roll in degrees"),
                 "properties": { "type": "object" },
-                "outputs": { "type": "array" },
-                "parent": { "type": "integer" }
-            }, "required": ["classname", "origin"] }
+                "outputs": outputs_schema(),
+                "parent": { "type": "integer", "description": "layer or group id, unlocked" }
+            }, "required": ["classname"] }
         }),
         json!({
             "name": "update_entity",
@@ -217,15 +245,12 @@ pub fn tool_definitions() -> Vec<Value> {
                 "origin": vec3_schema("position"),
                 "angles": vec3_schema("pitch yaw roll"),
                 "properties": { "type": "object" },
-                "outputs": { "type": "array", "items": { "type": "object", "properties": {
-                    "output": { "type": "string" }, "target": { "type": "string" }, "input": { "type": "string" },
-                    "parameter": { "type": "string" }, "delay": { "type": "number" }, "times": { "type": "integer" }
-                }, "required": ["output", "target", "input"] } }
+                "outputs": outputs_schema()
             }, "required": ["id"] }
         }),
         json!({
             "name": "select",
-            "description": "Changes the selection. faces are [brush_id, face_index] pairs.",
+            "description": "Changes the selection. faces are [brush or mesh id, face index] pairs. Unknown ids are an error, hidden or locked nodes are left out and listed in skipped, like clicking them in a view.",
             "inputSchema": { "type": "object", "properties": {
                 "ids": { "type": "array", "items": { "type": "integer" } },
                 "faces": { "type": "array", "items": { "type": "array", "items": { "type": "integer" } } },
@@ -234,7 +259,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "transform",
-            "description": "Transforms the selection: translate, rotate about an axis, flip, or scale into new bounds.",
+            "description": "Transforms the selection as one undo step, applied in this order: translate, rotate about an axis, flip, scale_to new bounds. rotate (without center) and flip pivot on the selection center at that step, so after a translate they turn the selection in place.",
             "inputSchema": { "type": "object", "properties": {
                 "translate": vec3_schema("offset"),
                 "rotate": { "type": "object", "properties": { "axis": { "type": "string", "enum": ["x", "y", "z"] }, "degrees": { "type": "number" }, "center": vec3_schema("pivot") } },
@@ -256,7 +281,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "map_file",
-            "description": "new, open or save .gtm maps, import or export Quake/TrenchBroom .map files. save without path saves to the current file.",
+            "description": "new, open or save .gtm maps, import or export Quake/TrenchBroom .map files. new and open keep a map with unsaved changes in its own tab, like the File menu. save without path saves to the current file. export_map returns the written .map path.",
             "inputSchema": { "type": "object", "properties": {
                 "op": { "type": "string", "enum": ["new", "open", "open_tab", "save", "import_map", "import_vmf", "export_map"] },
                 "path": { "type": "string" }
@@ -271,7 +296,7 @@ pub fn tool_definitions() -> Vec<Value> {
             "name": "set_editor",
             "description": "Editor settings: grid size, snapping, uv lock, active tool (select, clip, vertex, rotate, scale, mesh, sculpt, blend, paint, scatter, volume, path, measure, texture), current material, shading, mesh component mode, scatter palette items, brush radius, sculpt mode and interface scale.",
             "inputSchema": { "type": "object", "properties": {
-                "grid": { "type": "number" }, "snap": { "type": "boolean" }, "uv_lock": { "type": "boolean" },
+                "grid": { "type": "number", "exclusiveMinimum": 0, "description": "positive, clamped to 0.125..1024" }, "snap": { "type": "boolean" }, "uv_lock": { "type": "boolean" },
                 "tool": { "type": "string" }, "material": { "type": "string" }, "textured": { "type": "boolean" },
                 "shade": { "type": "string", "enum": ["textured", "flat", "lit", "wireframe"] },
                 "mesh_component": { "type": "string", "enum": ["vertex", "edge", "face"] },
@@ -320,18 +345,20 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "validate_map",
-            "description": "Checks the map for problems: invalid brushes, entities without definitions, broken I/O targets, empty brush entities.",
+            "description": "Checks the map for problems: invalid brushes, entities without definitions, broken I/O targets, output and input names the entity definitions do not know, empty brush entities.",
             "inputSchema": { "type": "object", "properties": {} }
         }),
         json!({
             "name": "scatter",
-            "description": "Scatter trees, rocks and foliage into scatter sets that live on their own layers and only cover their target surfaces. ops: palette {items: [model path or {source, weight, scale: [min, max], spacing, align, tilt, sink}], preset: forest|pines|undergrowth|rocks|grass, kind: props|foliage}, install_models (writes the built-in nature models to res://godottrench/nature), new_set {name, targets, collision, cast_shadows, visibility_range, chunk_size, material}, activate {id}, paint {center [x, y, z] or [x, z] dropped to the ground, radius, density, slope, height, falloff, seed}, stroke {points, ...}, erase {center, radius, amount}, fill {id, targets, density, slope, height, seed} (whole target area), toggle_target {target} (a scatter set works too, so foliage can be painted onto scattered rocks), material {material, item} (retextures the whole set, or one palette entry when item is given, empty clears it), clear, get {id}, to_entities {id}. Settings passed to paint, stroke, erase and fill apply to that call; palette and preset persist.",
+            "description": "Scatter trees, rocks and foliage into scatter sets that live on their own layers and only cover their target surfaces. ops: palette {items: [model path or {source, weight, scale: [min, max], spacing, align, tilt, sink}], preset: {presets}, kind: props|foliage}, install_models (writes the built-in nature models to res://godottrench/nature), new_set {name, targets, collision, cast_shadows, visibility_range, chunk_size, material}, activate {id}, paint {center [x, y, z] or [x, z] dropped to the ground, normal, radius, density, slope, height, falloff, avoid_other_sets, seed, erase} (erase true removes instead), stroke {points, ...}, erase {center, radius, amount}, fill {id, targets, density, slope, height, seed} (whole target area), toggle_target {target} (a scatter set works too, so foliage can be painted onto scattered rocks), material {material, item} (retextures the whole set, or one palette entry when item is given, empty clears it), clear, get {id}, to_entities {id}. Settings passed to paint, stroke, erase and fill apply to that call; palette and preset persist. Painting with an empty palette is an error.".replace("{presets}", &presets),
             "inputSchema": { "type": "object", "properties": {
                 "op": { "type": "string" }, "id": { "type": "integer" }, "name": { "type": "string" },
-                "items": { "type": "array" }, "preset": { "type": "string" }, "kind": { "type": "string", "enum": ["props", "foliage"] },
-                "center": { "type": "array", "items": { "type": "number" } }, "points": { "type": "array" },
+                "items": { "type": "array", "items": { "type": ["string", "object"] } }, "preset": { "type": "string", "enum": gt_doc::scatter::PRESETS },
+                "kind": { "type": "string", "enum": ["props", "foliage"] },
+                "center": numbers(), "points": points_schema(), "normal": vec3_schema("surface normal for paint, default up"),
+                "erase": { "type": "boolean" }, "avoid_other_sets": { "type": "boolean" },
                 "targets": { "type": "array", "items": { "type": "integer" } }, "target": { "type": "integer" },
-                "radius": { "type": "number" }, "density": { "type": "number" }, "slope": { "type": "array" }, "height": { "type": "array" },
+                "radius": { "type": "number" }, "density": { "type": "number" }, "slope": numbers(), "height": numbers(),
                 "falloff": { "type": "number" }, "amount": { "type": "number" }, "seed": { "type": "integer" }, "only_targets": { "type": "boolean" },
                 "collision": { "type": "string", "enum": ["none", "convex", "trimesh"] }, "cast_shadows": { "type": "boolean" }, "visibility_range": { "type": "number" },
                 "output": { "type": "string", "enum": ["set", "entities"] }, "overwrite": { "type": "boolean" },
@@ -344,21 +371,21 @@ pub fn tool_definitions() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": {
                 "op": { "type": "string" }, "ids": { "type": "array", "items": { "type": "integer" } },
                 "faces": { "type": "array", "items": { "type": "array", "items": { "type": "integer" } } }, "material": { "type": "string" },
-                "center": { "type": "array", "items": { "type": "number" } }, "points": { "type": "array" }, "mode": { "type": "string" }, "falloff": { "type": "string" },
-                "radius": { "type": "number" }, "strength": { "type": "number" }, "layer": { "type": "integer" }, "slope": { "type": "array" }, "height": { "type": "array" },
+                "center": numbers(), "points": points_schema(), "mode": { "type": "string" }, "falloff": { "type": "string" },
+                "radius": { "type": "number" }, "strength": { "type": "number" }, "layer": { "type": "integer" }, "slope": numbers(), "height": numbers(),
                 "noise_scale": { "type": "number" }, "seed": { "type": "integer" }, "id": { "type": "integer" }
             }, "required": ["op"] }
         }),
         json!({
             "name": "gameplay",
-            "description": "Gameplay setups with the FuncGodot fork's entity library. ops: make_door {ids, kind: hinged|sliding, side: left|right, angle, direction: up|down|left|right, lip, trigger, properties} (hinge and travel computed from the brushes), make_platform {ids, travel [x, y, z], mode 0 toggle|1 ping pong|2 once}, make_button {ids, target, input}, brush_entity {ids, classname, properties, outputs}, volume {classname: trigger_once|trigger_multiple|trigger_call|trigger_spawn_area|trigger_hurt|trigger_teleport|trigger_push, min, max, properties, outputs}, link {from, to, output, input, parameter, delay} (names the target when needed), place {classname, origin ([x, z] snaps to the ground), angles, properties, outputs}, gizmos {ids} (viewport handle positions). Outputs can target /root/Node paths, @groups, targetnames with * wildcards or !activator, calling GDScript or C# methods.",
+            "description": "Gameplay setups with the FuncGodot fork's entity library. ops: make_door {ids, kind: hinged|sliding, side: left|right, angle, direction: up|down|left|right, lip, trigger, properties} (hinge and travel computed from the brushes), make_platform {ids, travel [x, y, z], mode 0 toggle|1 ping pong|2 once}, make_button {ids, target, input}, brush_entity {ids, classname, properties, outputs}, volume {classname: trigger_once|trigger_multiple|trigger_call|trigger_spawn_area|trigger_hurt|trigger_teleport|trigger_push, min, max, properties, outputs}, link {from, to, output, input, parameter, delay} (names the target when needed, output and input default to the only one the definitions offer), place {classname, origin ([x, z] or snap_to_ground drops it onto the ground), angles, properties, outputs}, gizmos {ids} (viewport handle positions). Outputs can target /root/Node paths, @groups, targetnames with * wildcards or !activator, calling GDScript or C# methods.",
             "inputSchema": { "type": "object", "properties": {
                 "op": { "type": "string" }, "ids": { "type": "array", "items": { "type": "integer" } }, "kind": { "type": "string" }, "side": { "type": "string" },
                 "angle": { "type": "number" }, "direction": { "type": "string" }, "lip": { "type": "number" }, "trigger": { "type": "boolean" },
                 "travel": vec3_schema("offset in map units"), "mode": { "type": "integer" }, "target": { "type": "string" }, "input": { "type": "string" }, "output": { "type": "string" },
-                "classname": { "type": "string" }, "min": vec3_schema("volume min"), "max": vec3_schema("volume max"), "properties": { "type": "object" }, "outputs": { "type": "array" },
+                "classname": { "type": "string" }, "min": vec3_schema("volume min"), "max": vec3_schema("volume max"), "properties": { "type": "object" }, "outputs": outputs_schema(),
                 "from": { "type": "integer" }, "to": { "type": "integer" }, "parameter": { "type": "string" }, "delay": { "type": "number" },
-                "origin": { "type": "array", "items": { "type": "number" } }, "angles": vec3_schema("pitch yaw roll")
+                "origin": numbers(), "angles": vec3_schema("pitch yaw roll"), "snap_to_ground": { "type": "boolean" }
             }, "required": ["op"] }
         }),
         json!({
@@ -370,7 +397,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "hierarchy",
-            "description": "Layers and groups. New objects go into the innermost open group, else the current layer. ops: add_layer {name} (becomes current), add_group {name, parent, open (default true)}, open_group {id}, close_group {all}, set_current_layer {id}, reparent {ids, parent}, rename {id, name} (entities get a targetname), set_flags {ids, hidden, locked, omit_from_export}.",
+            "description": "Layers and groups. New objects go into the innermost open group, else the current layer. ops: add_layer {name, default Layer N} (becomes current), add_group {name, parent, open (default true)}, open_group {id} (a group), close_group {all}, set_current_layer {id}, reparent {ids, parent} (into a layer or group, brushes and meshes also into a brush entity), rename {id, name} (entities get a targetname), set_flags {ids, hidden, locked, omit_from_export}. Locked layers and groups accept no new objects.",
             "inputSchema": { "type": "object", "properties": {
                 "op": { "type": "string" }, "name": { "type": "string" }, "id": { "type": "integer" }, "parent": { "type": "integer" },
                 "ids": { "type": "array", "items": { "type": "integer" } }, "open": { "type": "boolean" }, "all": { "type": "boolean" },
@@ -384,15 +411,16 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "terrain_edit",
-            "description": "Shapes a terrain (id, else the selected or first one). ops: sculpt {center, mode: raise|lower|smooth|flatten|noise|terrace|paint_layer|hole|unhole, radius, strength, height, step, layer}, sculpt_path {points, spacing, ...}, paint_path {points, layer, radius, strength}, flatten_rect {min [x, z], max [x, z], height, margin} (building pads), ramp {from [x, y, z], to [x, y, z], width, margin} (roads and slopes), erode {iterations, talus}, auto_paint {rock_slope, top_height, low_height} (world heights), set_layers {layers: [[material, tile, detile, sharpen]]} (detile 0..1 breaks up the repeat for paths, sharpen 0..1 keeps it crisp), holes {center, radius, hole}. probe [x, z] returns the height there.",
+            "description": "Shapes a terrain (id, else the selected or first one). ops: sculpt {center, mode: raise|lower|smooth|flatten|noise|terrace|paint_layer|hole|unhole, radius, strength, height, step, layer}, sculpt_path {points, spacing, ...}, paint_path {points, layer, radius, strength}, flatten_rect {min [x, z], max [x, z], height, margin} (building pads), ramp {from [x, y, z], to [x, y, z], width, margin} (roads and slopes), erode {iterations, talus}, auto_paint {rock_slope, top_height, low_height} (world heights), set_layers {layers: [[material, tile, detile, sharpen]]} (detile 0..1 breaks up the repeat for paths, sharpen 0..1 keeps it crisp), holes {center, radius, hole}. probe [x, z] returns the height there, after the op, or alone without op to only read it.",
             "inputSchema": { "type": "object", "properties": {
-                "op": { "type": "string" }, "id": { "type": "integer" }, "center": { "type": "array" }, "points": { "type": "array" }, "mode": { "type": "string" },
+                "op": { "type": "string" }, "id": { "type": "integer" }, "center": numbers(), "points": points_schema(), "mode": { "type": "string" },
                 "radius": { "type": "number" }, "strength": { "type": "number" }, "height": { "type": "number" }, "step": { "type": "number" }, "layer": { "type": "integer" },
-                "spacing": { "type": "number" }, "min": { "type": "array" }, "max": { "type": "array" }, "margin": { "type": "number" }, "from": vec3_schema("ramp start"),
+                "spacing": { "type": "number" }, "min": numbers(), "max": numbers(), "margin": { "type": "number" }, "from": vec3_schema("ramp start"),
                 "to": vec3_schema("ramp end"), "width": { "type": "number" }, "iterations": { "type": "integer" }, "talus": { "type": "number" },
-                "rock_slope": { "type": "number" }, "top_height": { "type": "number" }, "low_height": { "type": "number" }, "layers": { "type": "array" },
-                "hole": { "type": "boolean" }, "probe": { "type": "array" }
-            }, "required": ["op"] }
+                "rock_slope": { "type": "number" }, "top_height": { "type": "number" }, "low_height": { "type": "number" },
+                "layers": { "type": "array", "items": { "type": "array", "items": { "type": ["string", "number"] }, "description": "[material, tile, detile, sharpen]" } },
+                "hole": { "type": "boolean" }, "probe": numbers()
+            } }
         }),
         json!({
             "name": "duplicate",
@@ -404,9 +432,12 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "run_script",
-            "description": "Runs a GodotTrench MCP script: {\"format\": \"godottrench-mcp-script\", \"steps\": [{\"tool\", \"args\", \"save\"}]}. A step's result is saved under its save name; \"$name.path\" in later args is replaced by that value, \"${name.path}\" inside strings by its text. $script_dir and $project are predefined. Pass path to a .json script, or steps inline. screenshot and simulate_input cannot run inside scripts.",
+            "description": "Runs a GodotTrench MCP script: {\"format\": \"godottrench-mcp-script\", \"steps\": [{\"tool\", \"args\", \"save\"}]}. A step's result is saved under its save name; \"$name.path\" in later args is replaced by that value, \"${name.path}\" inside strings by its text, and $$ is a literal $ (a $ that starts no reference, like $5, stays as it is, an unknown $name is an error). $script_dir (the script's folder, for inline steps the project or working directory) and $project (only while a project is open) are predefined. Pass path to a .json script, or steps inline. screenshot and simulate_input cannot run inside scripts.",
             "inputSchema": { "type": "object", "properties": {
-                "path": { "type": "string" }, "steps": { "type": "array" }, "vars": { "type": "object" }, "continue_on_error": { "type": "boolean" }
+                "path": { "type": "string" }, "vars": { "type": "object" }, "continue_on_error": { "type": "boolean" },
+                "steps": { "type": "array", "items": { "type": "object", "properties": {
+                    "tool": { "type": "string" }, "args": { "type": "object" }, "save": { "type": "string" }, "note": { "type": "string" }
+                } } }
             } }
         }),
         json!({
@@ -450,6 +481,39 @@ mod tests {
         assert_eq!(bad["error"]["code"], -32602);
         let missing = handle(json!({"jsonrpc":"2.0","id":4,"method":"bogus"}), &Echo).unwrap();
         assert_eq!(missing["error"]["code"], -32601);
+    }
+
+    fn check_schema(path: &str, v: &Value) {
+        let Some(o) = v.as_object() else { return };
+        assert!(!o.is_empty(), "{path} has an empty schema");
+        let is_array = o.get("type").is_some_and(|t| t == "array" || t.as_array().is_some_and(|a| a.iter().any(|x| x == "array")));
+        assert!(!is_array || o.contains_key("items"), "{path} is an array without items");
+        if let Some(props) = o.get("properties").and_then(|p| p.as_object()) {
+            for (k, p) in props {
+                check_schema(&format!("{path}.{k}"), p);
+            }
+        }
+
+        if let Some(items) = o.get("items") {
+            check_schema(&format!("{path}[]"), items);
+        }
+    }
+
+    #[test]
+    fn schemas_are_complete_and_lists_match_the_editor() {
+        let tools = tool_definitions();
+        for t in &tools {
+            check_schema(t["name"].as_str().unwrap(), &t["inputSchema"]);
+        }
+
+        let text = |name: &str| tools.iter().find(|t| t["name"] == name).unwrap()["description"].as_str().unwrap().to_string();
+        for op in crate::mcp::tools::mesh_op_names() {
+            assert!(text("run_action").contains(&op), "{op}");
+        }
+
+        for preset in gt_doc::scatter::PRESETS {
+            assert!(text("scatter").contains(preset), "{preset}");
+        }
     }
 
     #[test]

@@ -8,7 +8,7 @@ pub mod script;
 pub mod tools;
 pub mod transport;
 
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -21,6 +21,12 @@ pub enum ToolResult {
     Error(String),
 }
 
+/// What the UI thread does with a tool call: answer it now, or keep the reply sender and answer in a later frame.
+pub enum Reply {
+    Now(ToolResult),
+    Deferred,
+}
+
 pub trait ToolExecutor: Send + Sync {
     fn call(&self, name: &str, args: Value) -> ToolResult;
 }
@@ -29,6 +35,26 @@ pub struct ToolCall {
     pub name: String,
     pub args: Value,
     pub reply: Sender<ToolResult>,
+}
+
+/// How long a transport waits for the UI thread. Scripts replay whole maps, so they get no limit.
+pub fn reply_timeout(tool: &str) -> Option<Duration> {
+    match tool {
+        "run_script" => None,
+        _ => Some(Duration::from_secs(120)),
+    }
+}
+
+fn wait_for_reply(rx: &Receiver<ToolResult>, timeout: Option<Duration>) -> ToolResult {
+    let dropped = || ToolResult::Error("the editor dropped the request without answering it".into());
+    match timeout {
+        None => rx.recv().unwrap_or_else(|_| dropped()),
+        Some(t) => match rx.recv_timeout(t) {
+            Ok(r) => r,
+            Err(RecvTimeoutError::Disconnected) => dropped(),
+            Err(RecvTimeoutError::Timeout) => ToolResult::Error(format!("timed out after {} s waiting for the editor", t.as_secs())),
+        },
+    }
 }
 
 /// Thread-safe handle used by transports to reach the UI thread.
@@ -49,7 +75,7 @@ impl ToolExecutor for Bridge {
             ctx.request_repaint();
         }
 
-        rx.recv_timeout(Duration::from_secs(120)).unwrap_or_else(|_| ToolResult::Error("timed out waiting for the editor".into()))
+        wait_for_reply(&rx, reply_timeout(name))
     }
 }
 
@@ -62,5 +88,23 @@ impl McpHost {
     pub fn new(ctx: egui::Context) -> Self {
         let (tx, rx) = mpsc::channel();
         Self { rx, bridge: Bridge { tx, ctx: Arc::new(Mutex::new(Some(ctx))) } }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dropped_requests_are_not_reported_as_timeouts() {
+        let (tx, rx) = mpsc::channel::<ToolResult>();
+        drop(tx);
+        let ToolResult::Error(e) = wait_for_reply(&rx, Some(Duration::from_millis(10))) else { panic!() };
+        assert!(e.contains("dropped"));
+
+        let (_tx, rx) = mpsc::channel::<ToolResult>();
+        let ToolResult::Error(e) = wait_for_reply(&rx, Some(Duration::from_millis(10))) else { panic!() };
+        assert!(e.contains("timed out"));
+        assert_eq!(reply_timeout("run_script"), None);
     }
 }

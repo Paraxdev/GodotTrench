@@ -44,4 +44,33 @@ godot --path godot                                                            # 
 
 Scripts are JSON: `{"format": "godottrench-mcp-script", "vars": {...}, "steps": [{"tool", "args", "save", "note"}]}`. A step's
 result is stored under its `save` name and later args refer to it with `"$name.path"` (the JSON value) or `"${name.path}"`
-(inside strings). `$project` and `$script_dir` are predefined.
+(its text inside a longer string). Ids that arrive as text this way, such as `"42"`, are accepted wherever a node id is expected.
+
+* `$$` is a literal `$`, so a Godot node path is written `"$$Player"` and `"get_node($$Door)"`.
+* A `$` that cannot start a reference, such as `"$5"` or `"a $ b"`, stays as it is.
+* `"$name"` with a name no step saved is an error, so typos never pass silently.
+* `$project` is the open Godot project's folder. It is only defined while a project is open, a script that uses it without
+  one fails with a hint to call `open_project` first, instead of writing to the drive root.
+* `$script_dir` is the folder of the script file. For steps passed inline it is the project folder, or the editor's working
+  directory without a project.
+
+Scripts run on the editor's UI thread, so the server waits for `run_script` as long as it takes. Other calls give up after
+120 s with a timeout error, and a request the editor dropped says so instead of timing out. `tools/mcp_script.py` waits up
+to an hour per call (`--timeout` changes that) and prints the editor's error text when a script cannot start.
+
+## Behaviour worth knowing
+
+* Errors are errors: a tool that could not do its job returns `isError`, including `run_action` failures such as a save
+  that failed or a `close_tab` refused because of unsaved changes (pass `args.discard: true` to drop them). `run_action` only reports a `status` set by that action.
+* `run_action save` needs a map that already has a file, and actions that would open a native file dialog (open, save as,
+  import, export) are refused, use `map_file` with a path instead. `map_file new` and `open` keep a modified map open in
+  its own tab like the File menu, `export_map` returns the written `.map` path.
+* `run_action copy` and `cut` return the clipboard text, `paste` takes it back as `args.text`, optionally moved by
+  `offset` or centered on `origin`, independent of the mouse.
+* `select` refuses unknown ids and leaves out hidden or locked nodes (listed in `skipped`), like clicking in a view.
+  Creating objects in a locked layer or group is an error, and parents must be layers or groups (or brush entities for
+  brushes and meshes).
+* `transform` applies translate, rotate, flip and scale_to in that order as one undo step, rotating and flipping about the
+  selection center at that point.
+* `mesh_edit` checks every face, vertex and edge index against the mesh first.
+* `terrain_edit` with only `probe [x, z]` reads the height without editing.

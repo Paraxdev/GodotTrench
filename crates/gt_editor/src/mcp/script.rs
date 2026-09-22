@@ -1,5 +1,6 @@
 //! MCP scripts: JSON lists of tool calls replayed against the editor, with results saved under names and referenced by
-//! later steps. `"$door.id"` is replaced by that JSON value, `"${door.id}"` inside a longer string by its text.
+//! later steps. `"$door.id"` is replaced by that JSON value, `"${door.id}"` inside a longer string by its text, and `$$` is a
+//! literal `$`.
 
 use std::collections::BTreeMap;
 
@@ -65,27 +66,57 @@ fn text_of(v: &Value) -> String {
     }
 }
 
-/// Replaces variable references in `args`. Unknown names are an error so typos do not silently pass.
+/// The path of a whole-string reference: `$name` or `$name.path`, the name starting with a letter or underscore.
+fn whole_reference(s: &str) -> Option<&str> {
+    let path = s.strip_prefix('$')?;
+    let first = path.chars().next()?;
+    let ident = (first.is_ascii_alphabetic() || first == '_') && path.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
+    ident.then_some(path)
+}
+
+fn missing(vars: &BTreeMap<String, Value>, path: &str) -> String {
+    let name = path.split('.').next().unwrap_or(path);
+    if vars.contains_key(name) {
+        return format!("${path}: {name} has no value at that path");
+    }
+
+    if name == "project" {
+        return "$project is not set because no Godot project is open, call open_project first".into();
+    }
+
+    format!("unknown variable ${path}, write $$ for a literal $")
+}
+
+/// Replaces variable references in `args`. Unknown names are an error so typos do not silently pass, `$$` is a literal `$`,
+/// and a `$` that starts no reference (such as `$5`) stays as it is.
 pub fn resolve(args: &Value, vars: &BTreeMap<String, Value>) -> Result<Value, String> {
     Ok(match args {
         Value::String(s) => {
-            if let Some(path) = s.strip_prefix('$').filter(|p| !p.starts_with('{') && !p.is_empty() && !p.contains(' ')) {
-                return lookup(vars, path).cloned().ok_or_else(|| format!("unknown variable ${path}"));
+            if let Some(path) = whole_reference(s) {
+                return lookup(vars, path).cloned().ok_or_else(|| missing(vars, path));
             }
 
-            if !s.contains("${") {
+            if !s.contains('$') {
                 return Ok(args.clone());
             }
 
             let mut out = String::new();
             let mut rest = s.as_str();
-            while let Some(start) = rest.find("${") {
-                out.push_str(&rest[..start]);
-                let after = &rest[start + 2..];
-                let end = after.find('}').ok_or_else(|| format!("unclosed ${{ in {s}"))?;
-                let path = &after[..end];
-                out.push_str(&text_of(lookup(vars, path).ok_or_else(|| format!("unknown variable ${{{path}}}"))?));
-                rest = &after[end + 1..];
+            while let Some(i) = rest.find('$') {
+                out.push_str(&rest[..i]);
+                let after = &rest[i + 1..];
+                if let Some(r) = after.strip_prefix('$') {
+                    out.push('$');
+                    rest = r;
+                } else if let Some(r) = after.strip_prefix('{') {
+                    let end = r.find('}').ok_or_else(|| format!("unclosed ${{ in {s}"))?;
+                    let path = &r[..end];
+                    out.push_str(&text_of(lookup(vars, path).ok_or_else(|| missing(vars, path))?));
+                    rest = &r[end + 1..];
+                } else {
+                    out.push('$');
+                    rest = after;
+                }
             }
 
             out.push_str(rest);
@@ -117,5 +148,18 @@ mod tests {
         assert_eq!(args, json!({ "ids": [42], "label": "wall 42 done" }));
         assert!(resolve(&json!("$missing"), &vars).is_err());
         assert_eq!(resolve(&json!("costs $5 each"), &vars).unwrap(), json!("costs $5 each"));
+    }
+
+    #[test]
+    fn dollar_escapes_and_clear_errors() {
+        let mut vars = BTreeMap::new();
+        vars.insert("wall".to_string(), json!({ "ids": [42] }));
+        assert_eq!(resolve(&json!("$5"), &vars).unwrap(), json!("$5"));
+        assert_eq!(resolve(&json!("$$Node"), &vars).unwrap(), json!("$Node"));
+        assert_eq!(resolve(&json!("get_node($$Door) ${wall.ids.0} $$${wall.ids.0}"), &vars).unwrap(), json!("get_node($Door) 42 $42"));
+        assert!(resolve(&json!("$Node"), &vars).unwrap_err().contains("$$"));
+        assert!(resolve(&json!("$wall.nope"), &vars).unwrap_err().contains("no value"));
+        assert!(resolve(&json!("${project}/maps"), &vars).unwrap_err().contains("open_project"));
+        assert_eq!(resolve(&json!("a $ b"), &vars).unwrap(), json!("a $ b"));
     }
 }

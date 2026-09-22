@@ -16,10 +16,13 @@ import sys
 import urllib.request
 
 
+TIMEOUT = 3600
+
+
 def rpc(url, method, params=None):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}).encode()
     req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=600) as r:
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         return json.loads(r.read())
 
 
@@ -34,11 +37,23 @@ def text_of(result):
     return "\n".join(c.get("text", "") for c in result.get("content", []) if c.get("type") == "text")
 
 
+def parse_summary(result):
+    """The run_script summary, or None when the editor answered with plain error text such as a timeout."""
+    if isinstance(result.get("structuredContent"), dict):
+        return result["structuredContent"]
+    try:
+        summary = json.loads(text_of(result) or "{}")
+    except json.JSONDecodeError:
+        return None
+    return summary if isinstance(summary, dict) else None
+
+
 def vec(text):
     return [float(v) for v in text.split(",")]
 
 
 def main():
+    global TIMEOUT
     p = argparse.ArgumentParser()
     p.add_argument("cmd", choices=["run", "shot", "call"])
     p.add_argument("target", nargs="?")
@@ -49,11 +64,16 @@ def main():
     p.add_argument("--shade")
     p.add_argument("--json", help="file with tool arguments")
     p.add_argument("--continue-on-error", action="store_true")
+    p.add_argument("--timeout", type=float, default=TIMEOUT, help="seconds to wait for one call")
     a = p.parse_args()
+    TIMEOUT = a.timeout
     rpc(a.url, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "mcp_script", "version": "1"}})
     if a.cmd == "run":
         result = call(a.url, "run_script", {"path": os.path.abspath(a.target), "continue_on_error": a.continue_on_error})
-        summary = result.get("structuredContent") or json.loads(text_of(result) or "{}")
+        summary = parse_summary(result)
+        if summary is None:
+            print(f"error: {text_of(result)}")
+            sys.exit(1)
         errors = summary.get("errors", [])
         print(f"ran {summary.get('ran')} of {summary.get('steps')} steps, {len(errors)} errors")
         for e in errors:

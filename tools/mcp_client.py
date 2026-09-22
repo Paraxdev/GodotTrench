@@ -19,7 +19,8 @@ URL = "http://127.0.0.1:7841/mcp"
 def rpc(method, params=None, url=URL, rid=1):
     body = json.dumps({"jsonrpc": "2.0", "id": rid, "method": method, "params": params or {}}).encode()
     req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"})
-    with urllib.request.urlopen(req, timeout=180) as r:
+    # The editor gives up on ordinary calls itself after 120 s, scripts may run for as long as they need.
+    with urllib.request.urlopen(req, timeout=3600) as r:
         return json.loads(r.read())
 
 

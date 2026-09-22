@@ -6,6 +6,7 @@ use gt_geom::mesh_shapes;
 use serde_json::{Value, json};
 
 use super::ToolResult;
+use super::tools::{Child, pair_list, require_id, resolve_parent, uint_list};
 use crate::app::App;
 
 fn vec3(v: &Value) -> Option<DVec3> {
@@ -22,16 +23,46 @@ fn bounds_json(b: &Aabb) -> Value {
     if b.is_empty() { Value::Null } else { json!({ "min": [b.min.x, b.min.y, b.min.z], "max": [b.max.x, b.max.y, b.max.z] }) }
 }
 
-fn err(msg: impl Into<String>) -> Option<ToolResult> {
-    Some(ToolResult::Error(msg.into()))
+fn err(msg: impl Into<String>) -> ToolResult {
+    ToolResult::Error(msg.into())
 }
 
-fn ok(v: Value) -> Option<ToolResult> {
-    Some(ToolResult::Json(v))
+fn ok(v: Value) -> ToolResult {
+    ToolResult::Json(v)
+}
+
+/// Checks mesh_edit indices before any topology op runs, the ops index the mesh directly and would panic.
+fn check_mesh_indices(mesh: &gt_geom::Mesh, op: &str, faces: &[u64], verts: &[u64], edges: &[(u64, u64)]) -> Result<(), String> {
+    let (nf, nv) = (mesh.faces.len() as u64, mesh.vertices.len() as u64);
+    let range = |n: u64| if n == 0 { "none".to_string() } else { format!("0..{}", n - 1) };
+    if let Some(f) = faces.iter().find(|f| **f >= nf) {
+        return Err(format!("face {f} does not exist, the mesh has faces {}", range(nf)));
+    }
+
+    if let Some(v) = verts.iter().chain(edges.iter().flat_map(|(a, b)| [a, b])).find(|v| **v >= nv) {
+        return Err(format!("vertex {v} does not exist, the mesh has vertices {}", range(nv)));
+    }
+
+    let existing = mesh.edges();
+    if let Some((a, b)) = edges.iter().find(|(a, b)| existing.binary_search(&gt_geom::mesh::edge_key(*a as u32, *b as u32)).is_err()) {
+        return Err(format!("[{a}, {b}] is not an edge of the mesh, edges join vertices that follow each other around a face"));
+    }
+
+    let needs = match op {
+        "extrude_faces" | "inset" | "subdivide" | "delete_faces" | "flip" | "triangulate" | "set_material" | "separate" => Some(("faces", faces.is_empty())),
+        "merge" | "delete_vertices" | "bevel_vertices" | "translate" => Some(("verts", verts.is_empty())),
+        "fill" => Some(("verts", verts.len() < 3)),
+        "extrude_edges" | "bevel_edges" | "loop_cut" => Some(("edges", edges.is_empty())),
+        _ => None,
+    };
+    match needs {
+        Some((what, true)) => Err(format!("{op} needs {what}{}", if op == "fill" { ", at least three" } else { "" })),
+        _ => Ok(()),
+    }
 }
 
 impl App {
-    pub(crate) fn tool_create_mesh(&mut self, args: &Value) -> Option<ToolResult> {
+    pub(crate) fn tool_create_mesh(&mut self, args: &Value) -> ToolResult {
         let material = args["material"].as_str().map(str::to_string).unwrap_or_else(|| self.state.current_material.clone());
         let bounds = match (vec3(&args["min"]), vec3(&args["max"])) {
             (Some(a), Some(b)) => Aabb::new(a, b),
@@ -112,7 +143,10 @@ impl App {
             }
         }
 
-        let parent = args["parent"].as_u64().map(NodeId).filter(|p| self.state.doc.map.contains(*p)).unwrap_or_else(|| self.state.insert_parent());
+        let parent = match resolve_parent(&self.state, &args["parent"], Child::Geometry) {
+            Ok(p) => p,
+            Err(e) => return err(e),
+        };
         let faces = mesh.faces.len();
         let id = self.state.doc.edit("Create Mesh", |m, s| {
             let id = m.insert(parent, NodeKind::Mesh(mesh));
@@ -123,20 +157,32 @@ impl App {
         ok(json!({ "id": id.0, "faces": faces }))
     }
 
-    pub(crate) fn tool_mesh_edit(&mut self, args: &Value) -> Option<ToolResult> {
-        let id = NodeId(args["id"].as_u64()?);
-        if self.state.doc.map.mesh(id).is_none() {
-            return err(format!("{id} is not a mesh"));
+    pub(crate) fn tool_mesh_edit(&mut self, args: &Value) -> ToolResult {
+        let id = match require_id(args, "id") {
+            Ok(id) => id,
+            Err(e) => return err(e),
+        };
+        let Some(mesh) = self.state.doc.map.mesh(id) else { return err(format!("{id} is not a mesh")) };
+        if !self.state.doc.map.is_editable(id) {
+            return err(format!("{id} is hidden or locked"));
         }
 
         let op = args["op"].as_str().unwrap_or_default().to_string();
-        let faces: Vec<usize> = args["faces"].as_array().into_iter().flatten().filter_map(|v| v.as_u64()).map(|v| v as usize).collect();
-        let verts: Vec<u32> = args["verts"].as_array().into_iter().flatten().filter_map(|v| v.as_u64()).map(|v| v as u32).collect();
-        let edges: Vec<(u32, u32)> =
-            args["edges"].as_array().into_iter().flatten().filter_map(|e| Some((e.get(0)?.as_u64()? as u32, e.get(1)?.as_u64()? as u32))).collect();
+        let parsed = (uint_list(args, "faces"), uint_list(args, "verts"), pair_list(args, "edges"));
+        let (faces, verts, edges) = match parsed {
+            (Ok(f), Ok(v), Ok(e)) => (f, v, e),
+            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => return err(e),
+        };
+        if let Err(e) = check_mesh_indices(mesh, &op, &faces, &verts, &edges) {
+            return err(e);
+        }
+
+        let faces: Vec<usize> = faces.into_iter().map(|f| f as usize).collect();
+        let verts: Vec<u32> = verts.into_iter().map(|v| v as u32).collect();
+        let edges: Vec<(u32, u32)> = edges.into_iter().map(|(a, b)| (a as u32, b as u32)).collect();
         let a = args.clone();
         let parent = self.state.doc.map.get(id).and_then(|n| n.parent).unwrap_or_else(|| self.state.insert_parent());
-        let result: Result<Value, String> = self.state.doc.edit(&format!("Mesh {op}"), |m, s| {
+        let result: Result<Value, String> = self.state.doc.try_edit(&format!("Mesh {op}"), |m, s| {
             let Some(mesh) = m.mesh_mut(id) else { return Err("mesh vanished".to_string()) };
             let out = match op.as_str() {
                 "extrude_faces" => {
@@ -274,14 +320,11 @@ impl App {
 
                 ok(v)
             }
-            Err(e) => {
-                self.state.doc.undo();
-                err(e)
-            }
+            Err(e) => err(e),
         }
     }
 
-    pub(crate) fn tool_texture(&mut self, args: &Value) -> Option<ToolResult> {
+    pub(crate) fn tool_texture(&mut self, args: &Value) -> ToolResult {
         use crate::texture_ops as tex;
         let face_list = |v: &Value| -> Vec<(NodeId, usize)> {
             v.as_array().into_iter().flatten().filter_map(|f| Some((NodeId(f.get(0)?.as_u64()?), f.get(1)?.as_u64()? as usize))).collect()
@@ -387,7 +430,7 @@ impl App {
         ok(json!({ "changed": changed, "faces": details, "clipboard": self.state.uv_clipboard.as_ref().map(|c| c.material.clone()) }))
     }
 
-    pub(crate) fn tool_create_terrain(&mut self, args: &Value) -> Option<ToolResult> {
+    pub(crate) fn tool_create_terrain(&mut self, args: &Value) -> ToolResult {
         let resolution = args["resolution"].as_u64().unwrap_or(65).clamp(3, 2049) as u32;
         let cell = args["cell_size"].as_f64().unwrap_or(64.0);
         let origin = vec3(&args["origin"]).unwrap_or_else(|| {
@@ -412,7 +455,10 @@ impl App {
         };
         let t = crate::dialogs::make_terrain(origin, resolution, cell, &params, &layers, None, args["auto_paint"].as_bool().unwrap_or(true));
         let bounds = t.bounds();
-        let parent = args["parent"].as_u64().map(NodeId).filter(|p| self.state.doc.map.contains(*p)).unwrap_or_else(|| self.state.insert_parent());
+        let parent = match resolve_parent(&self.state, &args["parent"], Child::Geometry) {
+            Ok(p) => p,
+            Err(e) => return err(e),
+        };
         let id = self.state.doc.edit("Create Terrain", |m, s| {
             let id = m.insert(parent, NodeKind::Terrain(t));
             s.clear();
@@ -420,5 +466,23 @@ impl App {
             id
         });
         ok(json!({ "id": id.0, "bounds": bounds_json(&bounds) }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mesh_indices_out_of_range_are_errors_not_panics() {
+        let mesh = mesh_shapes::cuboid(&Aabb::new(DVec3::ZERO, DVec3::splat(8.0)), "a");
+        assert!(check_mesh_indices(&mesh, "extrude_faces", &[0, 5], &[], &[]).is_ok());
+        assert!(check_mesh_indices(&mesh, "extrude_faces", &[999], &[], &[]).unwrap_err().contains("0..5"));
+        assert!(check_mesh_indices(&mesh, "merge", &[], &[99999], &[]).unwrap_err().contains("0..7"));
+        assert!(check_mesh_indices(&mesh, "merge", &[], &[], &[]).is_err());
+        assert!(check_mesh_indices(&mesh, "bevel_edges", &[], &[], &[(0, 99)]).is_err());
+        let (a, b) = mesh.edges()[0];
+        assert!(check_mesh_indices(&mesh, "bevel_edges", &[], &[], &[(b as u64, a as u64)]).is_ok());
+        assert!(check_mesh_indices(&mesh, "weld", &[], &[], &[]).is_ok());
     }
 }
