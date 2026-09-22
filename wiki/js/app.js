@@ -63,6 +63,9 @@ async function init() {
     getSelectedId: () => state.selectedId,
     onSelect: (id) => selectCard(id),
     onMutate: () => markDirty(),
+    onBringToFront: (id) => doBringToFront(id),
+    onSendToBack: (id) => doSendToBack(id),
+    onDelete: (id) => doDeleteCard(id),
     grid: 8,
   });
 
@@ -177,7 +180,7 @@ function applyMode() {
   const editing = state.mode === "edit";
   document.body.classList.toggle("mode-edit", editing);
   el.modeToggle.textContent = editing ? "Done" : "Edit";
-  el.modeToggle.classList.toggle("btn-primary", editing);
+  el.modeToggle.classList.toggle("is-active", editing);
   boardView.render();
   refreshInspector();
 }
@@ -192,6 +195,10 @@ function setMode(mode) {
 
 function buildAddTools() {
   el.addTools.innerHTML = "";
+  const label = document.createElement("span");
+  label.className = "add-tools-label";
+  label.textContent = "Add";
+  el.addTools.appendChild(label);
   CARD_TYPES.forEach((type) => {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -247,14 +254,39 @@ function selectCard(id) {
   refreshInspector();
 }
 
-function removeSelected() {
-  const id = state.selectedId;
+// Shared card actions, used by both the inspector and the card header controls.
+
+function doDeleteCard(id) {
   if (!id) return;
   state.board.cards = state.board.cards.filter((c) => c.id !== id);
-  state.selectedId = null;
+  if (state.selectedId === id) state.selectedId = null;
   markDirty();
   boardView.render();
   refreshInspector();
+}
+
+function doBringToFront(id) {
+  if (!id) return;
+  bringToFront(state.board.cards, id);
+  state.selectedId = id;
+  markDirty();
+  boardView.render();
+  boardView.updateSelection();
+  refreshInspector();
+}
+
+function doSendToBack(id) {
+  if (!id) return;
+  sendToBack(state.board.cards, id);
+  state.selectedId = id;
+  markDirty();
+  boardView.render();
+  boardView.updateSelection();
+  refreshInspector();
+}
+
+function removeSelected() {
+  doDeleteCard(state.selectedId);
 }
 
 function refreshInspector() {
@@ -272,21 +304,9 @@ function refreshInspector() {
     rerender: () => {
       if (card) boardView.refreshCard(card);
     },
-    bringToFront: () => {
-      if (!card) return;
-      bringToFront(state.board.cards, card.id);
-      markDirty();
-      boardView.render();
-      boardView.updateSelection();
-    },
-    sendToBack: () => {
-      if (!card) return;
-      sendToBack(state.board.cards, card.id);
-      markDirty();
-      boardView.render();
-      boardView.updateSelection();
-    },
-    remove: () => removeSelected(),
+    bringToFront: () => card && doBringToFront(card.id),
+    sendToBack: () => card && doSendToBack(card.id),
+    remove: () => card && doDeleteCard(card.id),
     uploadAsset: (file) => uploadAsset(file),
   });
 }

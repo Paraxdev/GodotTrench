@@ -1,0 +1,65 @@
+{
+  "title": "Using this wiki",
+  "cards": [
+    {
+      "id": "use-heading",
+      "type": "text",
+      "x": 64,
+      "y": 48,
+      "w": 560,
+      "h": 96,
+      "z": 0,
+      "md": "# Using this wiki\n\nA short guide to editing pages, the card types, and saving your work back to the repo."
+    },
+    {
+      "id": "use-editing",
+      "type": "text",
+      "x": 64,
+      "y": 176,
+      "w": 390,
+      "h": 220,
+      "z": 1,
+      "md": "## Editing\n\nToggle **Edit** in the toolbar to add and arrange cards. Click a card to select it, then edit its content in the inspector on the right. Toggle back to view mode to read the page."
+    },
+    {
+      "id": "use-types",
+      "type": "text",
+      "x": 480,
+      "y": 176,
+      "w": 440,
+      "h": 330,
+      "z": 2,
+      "md": "## Card types\n\n- **Text**, written in Markdown\n- **Code**, with syntax highlighting\n- **Image**, including animated gifs\n- **Video**, an mp4 or a YouTube or Vimeo embed\n- **Table**, an editable cell grid\n- **Shape**, a rectangle, ellipse, line or arrow\n- **Draw**, a freehand sketch"
+    },
+    {
+      "id": "use-arranging",
+      "type": "text",
+      "x": 64,
+      "y": 420,
+      "w": 390,
+      "h": 220,
+      "z": 3,
+      "md": "## Arranging\n\nDrag a card by its header to move it. Resize from the grip in the bottom right corner. Use bring to front and send to back, on the card header or in the inspector, to set the stacking order."
+    },
+    {
+      "id": "use-saving",
+      "type": "text",
+      "x": 480,
+      "y": 530,
+      "w": 440,
+      "h": 240,
+      "z": 4,
+      "md": "## Saving\n\nPress **Save** to publish. The first save asks for a fine grained GitHub token with Contents read and write on Paraxdev/GodotTrench. The token is stored only in your browser and is only ever sent to api.github.com."
+    },
+    {
+      "id": "use-uploading",
+      "type": "text",
+      "x": 64,
+      "y": 664,
+      "w": 390,
+      "h": 180,
+      "z": 5,
+      "md": "## Uploading media\n\nUse the upload button on an image or video card to add a file. It is committed under `wiki/assets` and the card points at it. External links and gifs work too."
+    }
+  ]
+}

@@ -45,6 +45,13 @@ export class BoardView {
     this.surface.classList.toggle("is-edit", mode === "edit");
     this.surface.innerHTML = "";
     const cards = board.cards.slice().sort((a, b) => (a.z || 0) - (b.z || 0));
+    if (!cards.length) {
+      const hint = document.createElement("div");
+      hint.className = "board-empty";
+      hint.textContent = mode === "edit" ? "Add cards from the toolbar" : "This page is empty";
+      this.surface.appendChild(hint);
+      return;
+    }
     for (const card of cards) {
       this.surface.appendChild(this._renderCard(card, mode, selId));
     }
@@ -100,6 +107,20 @@ export class BoardView {
       tag.className = "card-tag";
       tag.textContent = card.type;
       header.appendChild(tag);
+
+      const controls = document.createElement("div");
+      controls.className = "card-controls";
+      controls.appendChild(
+        this._ctrlButton("^", "Bring to front", () => this.opts.onBringToFront(card.id))
+      );
+      controls.appendChild(
+        this._ctrlButton("v", "Send to back", () => this.opts.onSendToBack(card.id))
+      );
+      const del = this._ctrlButton("x", "Delete card", () => this.opts.onDelete(card.id));
+      del.classList.add("danger");
+      controls.appendChild(del);
+      header.appendChild(controls);
+
       el.appendChild(header);
       this._attachDrag(header, el, card);
 
@@ -121,6 +142,21 @@ export class BoardView {
       if (card.type === "draw") this._attachDraw(body, card);
     }
     return el;
+  }
+
+  // A small header control button. Its pointerdown is stopped so it does not start a drag.
+  _ctrlButton(label, title, onClick) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "card-ctrl";
+    btn.textContent = label;
+    btn.title = title;
+    btn.addEventListener("pointerdown", (e) => e.stopPropagation());
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onClick();
+    });
+    return btn;
   }
 
   _attachDrag(header, el, card) {
