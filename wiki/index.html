@@ -38,10 +38,13 @@
       window.DOMPurify || document.write('<script src="js/vendor/purify.min.js"><\/script>');
     </script>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
-    <script>
-      window.hljs || document.write('<script src="js/vendor/highlight.min.js"><\/script>');
-    </script>
+    <!--
+      highlight.js is a trimmed, self-hosted build: the core plus only the languages this wiki
+      uses (bash, csharp, glsl, javascript, json, plaintext, python, xml), with gdscript registered
+      at runtime. That is about 48 KB instead of the ~125 KB common bundle, so it is served directly
+      rather than from a CDN.
+    -->
+    <script src="js/vendor/highlight.min.js"></script>
   </head>
   <body class="mode-view">
     <div class="app">
