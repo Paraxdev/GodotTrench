@@ -64,17 +64,5 @@
     "title": "Scripted cutscene",
     "category": "Examples",
     "layout": "doc"
-  },
-  {
-    "slug": "using-this-wiki",
-    "title": "Using this wiki",
-    "category": "This wiki",
-    "layout": "doc"
-  },
-  {
-    "slug": "how-this-wiki-works",
-    "title": "How this wiki works",
-    "category": "This wiki",
-    "layout": "doc"
   }
 ]
