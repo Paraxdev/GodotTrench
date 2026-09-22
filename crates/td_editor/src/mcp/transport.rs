@@ -105,9 +105,14 @@ fn respond(stream: &mut TcpStream, status: &str, extra_headers: &[(&str, String)
 }
 
 fn is_local_origin(origin: &str) -> bool {
-    let host = origin.split("://").nth(1).unwrap_or(origin);
-    let host = host.split(['/', ':']).next().unwrap_or_default();
-    matches!(host, "localhost" | "127.0.0.1" | "[::1]")
+    let authority = origin.split("://").nth(1).unwrap_or(origin);
+    let authority = authority.split('/').next().unwrap_or_default();
+    // IPv6 hosts are bracketed and contain colons themselves, so the port can only be split off after the bracket.
+    let host = match authority.strip_prefix('[') {
+        Some(rest) => rest.split(']').next().unwrap_or_default(),
+        None => authority.split(':').next().unwrap_or_default(),
+    };
+    matches!(host.to_ascii_lowercase().as_str(), "localhost" | "127.0.0.1" | "::1")
 }
 
 fn serve_connection(stream: TcpStream, exec: &dyn ToolExecutor) -> std::io::Result<()> {
@@ -187,5 +192,16 @@ mod tests {
         assert!(note.starts_with("HTTP/1.1 202"));
         let evil = post(addr, r#"{"jsonrpc":"2.0","id":3,"method":"ping"}"#, Some("https://evil.example"));
         assert!(evil.starts_with("HTTP/1.1 403"));
+    }
+
+    #[test]
+    fn local_origins_include_ipv6() {
+        assert!(is_local_origin("http://[::1]:7841"));
+        assert!(is_local_origin("http://[::1]"));
+        assert!(is_local_origin("http://localhost:3000/app"));
+        assert!(is_local_origin("http://127.0.0.1"));
+        assert!(!is_local_origin("http://[::2]:7841"));
+        assert!(!is_local_origin("http://localhost.evil.example"));
+        assert!(!is_local_origin("https://evil.example"));
     }
 }
