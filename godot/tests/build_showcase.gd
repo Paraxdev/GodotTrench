@@ -1,9 +1,10 @@
 extends SceneTree
 ## Builds the showcase maps into ready to play scenes (the environment comes from worldspawn keys).
-## godot --headless --path godot --script res://tests/build_showcase.gd
+## godot --headless --path godot --script res://tests/build_showcase.gd [-- map_name ...]
+## Names after -- build only those maps, the others keep their saved scenes.
 
 const SETTINGS := "res://demo/demo_map_settings.tres"
-const MAPS := ["mountain_house", "church_school", "lighthouse_forest"]
+const MAPS := ["mountain_house", "church_school", "lighthouse_forest", "withered_city", "night_district"]
 
 func reown(node: Node, old_owner: Node, new_owner: Node) -> void:
 	for child in node.get_children():
@@ -19,7 +20,10 @@ func count(node: Node, predicate: Callable) -> int:
 
 func _initialize() -> void:
 	var failures := 0
+	var only := OS.get_cmdline_user_args()
 	for name in MAPS:
+		if not only.is_empty() and not only.has(name):
+			continue
 		var started := Time.get_ticks_msec()
 		var map_file := "res://demo/maps/showcase/%s.gtm" % name
 		var root := Node3D.new()

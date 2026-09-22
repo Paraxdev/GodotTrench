@@ -13,6 +13,7 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	if props.has("light_color"):
 		light_color = GodotTrenchIO.to_color(props.get("light_color"))
 	omni_range = float(props.get("omni_range", omni_range))
+	shadow_enabled = GodotTrenchIO.to_bool(props.get("shadows", shadow_enabled))
 	start_on = GodotTrenchIO.to_bool(props.get("start_on", start_on))
 	_on = start_on
 	# A map built inside the running tree applies properties after _ready.

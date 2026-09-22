@@ -68,8 +68,42 @@ static func build(texture_name: String, settings: FuncGodotMapSettings, wads: Ar
 	# Only the painted texture is de-tiled and rescaled: it is the one laid over the surface as a path, the
 	# base keeps the look and alignment the face was built with.
 	var opts := options(texture_name)
+	var size := texture_size(names[0], base, settings)
+	# Face UVs follow the base's world size, the painted texture is rescaled so it keeps its own.
+	var blend_size := texture_size(names[1] if names.size() > 1 else names[0], blend, settings)
 	material.set_shader_parameter("detile_b", opts[0])
-	material.set_shader_parameter("uv_scale_b", Vector2.ONE * opts[1])
+	material.set_shader_parameter("uv_scale_b", Vector2.ONE * opts[1] * size / blend_size)
 	material.set_shader_parameter("detile_sharpen_b", opts[2])
-	var size := base.get_size() if base else Vector2.ONE * settings.inverse_scale_factor
+	_apply_emission(material, "a", names[0], settings)
+	_apply_emission(material, "b", names[1] if names.size() > 1 else names[0], settings)
 	return [material, size]
+
+## Carries a side's emission into the blend: from its material file, else from an emission map named by the map
+## settings' emission pattern, the one FuncGodot's generated materials pick up.
+static func _apply_emission(material: ShaderMaterial, side: String, texture_name: String, settings: FuncGodotMapSettings) -> void:
+	var source := _material_file(texture_name, settings)
+	if source is BaseMaterial3D:
+		if not source.emission_enabled:
+			return
+		material.set_shader_parameter("emission_" + side, source.emission)
+		material.set_shader_parameter("emission_energy_" + side, source.emission_energy_multiplier)
+		material.set_shader_parameter("emission_multiply_" + side, source.emission_operator == BaseMaterial3D.EMISSION_OP_MULTIPLY)
+		if source.emission_texture:
+			material.set_shader_parameter("emission_texture_" + side, source.emission_texture)
+		return
+	var pattern := settings.emission_map_pattern
+	if source or pattern.count("%s") != 1:
+		return
+	for ext in settings.texture_file_extensions:
+		var path := (pattern % settings.base_texture_dir.path_join(texture_name)) + "." + ext
+		if ResourceLoader.exists(path):
+			material.set_shader_parameter("emission_energy_" + side, 1.0)
+			material.set_shader_parameter("emission_texture_" + side, load(path))
+			return
+
+## The world size one repeat of a texture covers: its material's texture_size metadata, else its pixel size.
+static func texture_size(texture_name: String, albedo_texture: Texture2D, settings: FuncGodotMapSettings) -> Vector2:
+	var world := FuncGodotUtil.material_texture_size(_material_file(texture_name, settings))
+	if world != Vector2.ZERO:
+		return world
+	return albedo_texture.get_size() if albedo_texture else Vector2.ONE * settings.inverse_scale_factor

@@ -116,6 +116,13 @@
     { "tool": "create_mesh", "args": { "shape": "lathe", "center": [1650, 0, 0], "profile": [[3, 1026], [10, 1034], [4, 1044], [0, 1046]], "sides": 10, "material": "showcase/lamp", "smooth_angle": 50 } },
     { "tool": "create_mesh", "args": { "shape": "lathe", "center": [1650, 0, 0], "profile": [[1, 1044], [1, 1048]], "sides": 6, "material": "showcase/metal" } },
     { "tool": "create_entity", "args": { "classname": "light", "origin": [1650, 1020, 0], "properties": { "light_energy": "1.6", "light_color": "255 214 160", "omni_range": "12" } } },
+    { "note": "A real armchair and side table indoors, a barrel, bucket and lantern outside on the deck by the door." },
+    { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [1760, 912, 140], "angles": [0, -110, 0], "properties": { "model": "res://models/polyhaven/furniture/WoodenChair_01.gltf" } } },
+    { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [1790, 912, -70], "angles": [0, 0, 0], "properties": { "model": "res://models/polyhaven/furniture/WoodenTable_02.gltf" } } },
+    { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [1650, 1016, -183], "angles": [0, 0, 0], "properties": { "model": "res://models/polyhaven/decorative/ceramic_pot.gltf" } } },
+    { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [1470, 896, -260], "angles": [0, 25, 0], "properties": { "model": "res://models/polyhaven/containers/wine_barrel_01.gltf" } } },
+    { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [1500, 896, -280], "angles": [0, -40, 0], "properties": { "model": "res://models/polyhaven/containers/wooden_bucket_01.gltf" } } },
+    { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [1500, 960, -258], "angles": [0, 200, 0], "properties": { "model": "res://models/polyhaven/lighting/wooden_lantern_01.gltf" } } },
     { "tool": "hierarchy", "args": { "op": "close_group", "all": true } },
 
     { "note": "Gameplay: player start, a ping pong lift up the cliff, a teleport that brings fallen players back, and a welcome message on map load." },

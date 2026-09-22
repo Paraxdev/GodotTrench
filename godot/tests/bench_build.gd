@@ -3,7 +3,7 @@ extends SceneTree
 ## godot --headless --path godot --script res://tests/bench_build.gd [-- runs=3 threaded=1]
 
 const SETTINGS := "res://demo/demo_map_settings.tres"
-const MAPS := ["mountain_house", "church_school", "lighthouse_forest"]
+const MAPS := ["mountain_house", "church_school", "lighthouse_forest", "withered_city"]
 
 var _marks: Array = []
 

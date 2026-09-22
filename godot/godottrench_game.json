@@ -464,6 +464,12 @@
           "type": "bool",
           "default": "1",
           "description": "Starts switched on"
+        },
+        {
+          "name": "shadows",
+          "type": "bool",
+          "default": "0",
+          "description": "Casts shadows, costs more to render"
         }
       ],
       "script": "res://addons/func_godot/src/godottrench/entities/gt_light.gd",
@@ -2485,6 +2491,12 @@
           "type": "float",
           "default": "0.01",
           "description": "World label size in meters per pixel"
+        },
+        {
+          "name": "billboard",
+          "type": "bool",
+          "default": "1",
+          "description": "Turns to face the camera and draws over walls. Off keeps the entity's angles and hides behind walls, for signs"
         }
       ],
       "script": "res://addons/func_godot/src/godottrench/entities/gt_text.gd",
@@ -2880,6 +2892,12 @@
           "type": "bool",
           "default": "1",
           "description": "Starts switched on"
+        },
+        {
+          "name": "shadows",
+          "type": "bool",
+          "default": "0",
+          "description": "Casts shadows, costs more to render"
         }
       ],
       "script": "res://addons/func_godot/src/godottrench/entities/gt_spot_light.gd",

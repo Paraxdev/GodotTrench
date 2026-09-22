@@ -19,7 +19,8 @@ class_properties = Dictionary[String, Variant]({
 "start_visible": false,
 "duration": 0.0,
 "text_color": Color(1, 1, 1, 1),
-"world_size": 0.01
+"world_size": 0.01,
+"billboard": true
 })
 class_property_descriptions = Dictionary[String, Variant]({
 "targetname": "Name",
@@ -28,7 +29,8 @@ class_property_descriptions = Dictionary[String, Variant]({
 "start_visible": "Visible from map load",
 "duration": "Seconds to stay up before hiding on its own, 0 stays until hide",
 "text_color": "Text color",
-"world_size": "World label size in meters per pixel"
+"world_size": "World label size in meters per pixel",
+"billboard": "Turns to face the camera and draws over walls. Off keeps the entity's angles and hides behind walls, for signs"
 })
 meta_properties = Dictionary[String, Variant]({
 "color": Color(0.4, 0.8509804, 0.7607843, 1),

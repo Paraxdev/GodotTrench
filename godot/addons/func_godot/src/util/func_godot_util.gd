@@ -217,6 +217,19 @@ static func build_base_material(map_settings: FuncGodotMapSettings, material: Ba
 						material.set_texture(_pbr_textures[i], load(pbr))
 						break
 
+## GodotTrench: the world size in map units one repeat of the material's texture covers, from its
+## [code]texture_size[/code] metadata, or [constant Vector2.ZERO] when it has none. Photos are often a thousand
+## pixels wide or more, so dividing UVs by their pixel size would stretch them over dozens of meters.
+static func material_texture_size(material: Material) -> Vector2:
+	if not material or not material.has_meta("texture_size"):
+		return Vector2.ZERO
+	var size = material.get_meta("texture_size")
+	if size is Vector2 or size is Vector2i:
+		return Vector2(size) if size.x > 0 and size.y > 0 else Vector2.ZERO
+	if (size is float or size is int) and size > 0:
+		return Vector2.ONE * float(size)
+	return Vector2.ZERO
+
 ## Builds both materials and sizes dictionaries for use in the geometry generation step of the build process. 
 ## Both dictionaries use texture names as keys. The materials dictionary uses [Material] as values, 
 ## while the sizes dictionary saves the albedo texture sizes to aid in UV mapping.
@@ -276,6 +289,9 @@ static func build_texture_map(entity_data: Array[FuncGodotData.EntityData], map_
 							texture_sizes[texture_name] = texture.get_size()
 					if not texture_sizes.has(texture_name):
 						texture_sizes[texture_name] = Vector2.ONE * map_settings.inverse_scale_factor
+					var world_size := material_texture_size(material)
+					if world_size != Vector2.ZERO:
+						texture_sizes[texture_name] = world_size
 				
 				# Material generation
 				elif map_settings.default_material:

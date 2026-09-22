@@ -75,6 +75,9 @@ func _initialize() -> void:
 	await test_scripted_scene()
 	await test_scripted_scene_map()
 	test_scatter_and_blend()
+	test_texture_size_override()
+	test_emission()
+	await test_night_environment()
 	test_face_cull()
 	test_interior_face_culling()
 	test_chunk_streamer()
@@ -83,6 +86,8 @@ func _initialize() -> void:
 	test_live_link_lines()
 	test_threaded_build_matches()
 	await test_showcase_playthrough()
+	await test_night_district()
+	await test_withered_city_playthrough()
 	await preload("res://tests/gt_editor_parity_test.gd").run(self)
 	await load("res://tests/entity_tests.gd").new().run(self)
 	print("%d checks, %d failures" % [checks, failures.size()])
@@ -410,6 +415,19 @@ func test_bbmodel() -> void:
 	var imported := load("res://demo/models/pine.bbmodel")
 	check(imported is PackedScene, "editor import produces a PackedScene")
 	scene.free()
+	var v5 := GodotTrenchBBModel.parse(JSON.stringify({
+		"meta": { "format_version": "5.0" },
+		"elements": [{ "type": "cube", "uuid": "c", "from": [4, 0, -1], "to": [6, 2, 1], "origin": [5, 1, 0], "faces": { "up": { "uv": [0, 0, 2, 2], "texture": 0 } } }],
+		"groups": [{ "uuid": "g", "origin": [0, 0, 0], "rotation": [0, 90, 0] }],
+		"outliner": [{ "uuid": "g", "children": ["c"] }],
+	}))
+	var up_z := 0.0
+	for p in v5["polygons"][0]["positions"]:
+		up_z += p.z / 4.0
+	check(near(up_z, -5.0, 0.001), "Blockbench 5 group rotation read from the groups list, got z %s" % up_z)
+	for file in ["pine", "bush_berries", "boulder_mossy", "fern", "log"]:
+		var nature := GodotTrenchBBModel.parse(FileAccess.get_file_as_string("res://godottrench/nature/%s.bbmodel" % file))
+		check(nature.has("polygons") and nature["polygons"].size() > 8 and not (nature["textures"][0]["image"] as Image).is_empty(), "nature %s parses with its texture" % file)
 
 func world_mesh_aabb(file: String) -> AABB:
 	var map := FuncGodotMap.new()
@@ -740,6 +758,47 @@ func test_scatter_and_blend() -> void:
 	check(is_equal_approx(path_mat.get_shader_parameter("detile_sharpen_b"), 0.9), "the painted texture keeps its crispness")
 	# Older names without the crispness still load, they just take the default.
 	check(is_equal_approx(GodotTrenchBlend.options("a|blend|b|opt|0.500,2.000")[2], 0.5), "a two value option tail still parses")
+
+func test_texture_size_override() -> void:
+	print("- material texture_size overrides the pixel size")
+	var bricks := load("res://demo/textures/showcase/red_bricks.tres") as BaseMaterial3D
+	check(FuncGodotUtil.material_texture_size(bricks) == Vector2(64, 64), "the material carries its world size, got %s" % FuncGodotUtil.material_texture_size(bricks))
+	check(bricks.albedo_texture.get_size().x > 64.0, "the photo has more pixels than its world size, so pixels would be the wrong scale")
+	var plain := StandardMaterial3D.new()
+	check(FuncGodotUtil.material_texture_size(plain) == Vector2.ZERO, "a material without the metadata keeps its pixel size")
+	plain.set_meta("texture_size", Vector2i(96, 48))
+	check(FuncGodotUtil.material_texture_size(plain) == Vector2(96, 48), "integer vectors are read too")
+	plain.set_meta("texture_size", 128)
+	check(FuncGodotUtil.material_texture_size(plain) == Vector2(128, 128), "a single number is square")
+	plain.set_meta("texture_size", Vector2(0, 64))
+	check(FuncGodotUtil.material_texture_size(plain) == Vector2.ZERO, "a zero size is ignored rather than dividing by zero")
+
+	# The texture map feeds every face's UVs: a face on red_bricks repeats every 64 units, a decal of it too, and a
+	# texture without a material file still follows its pixels.
+	var settings := (load(SETTINGS) as FuncGodotMapSettings).duplicate() as FuncGodotMapSettings
+	settings.save_generated_materials = false
+	var decal := "showcase/red_bricks" + GodotTrenchDecalMesh.SUFFIX
+	var brush := FuncGodotData.BrushData.new()
+	for texture in ["showcase/red_bricks", decal, "special/trigger"]:
+		var face := FuncGodotData.FaceData.new()
+		face.texture = texture
+		brush.faces.append(face)
+	var entity := FuncGodotData.EntityData.new()
+	entity.definition = FuncGodotFGDSolidClass.new()
+	entity.brushes.append(brush)
+	var entities: Array[FuncGodotData.EntityData] = [entity]
+	var sizes: Dictionary = FuncGodotUtil.build_texture_map(entities, settings)[1]
+	check(sizes.get("showcase/red_bricks") == Vector2(64, 64), "faces use the world size, got %s" % sizes.get("showcase/red_bricks"))
+	check(sizes.get(decal) == Vector2(64, 64), "a decal repeats like its base material, got %s" % sizes.get(decal))
+	check(sizes.get("special/trigger") == Vector2(64, 64), "no material file, the pixel size, got %s" % sizes.get("special/trigger"))
+	var uv := FuncGodotUtil.get_valve_uv(Vector3(64, 0, 32), Vector3.RIGHT, Vector3.BACK, Transform2D.IDENTITY, sizes["showcase/red_bricks"])
+	check(uv.is_equal_approx(Vector2(1.0, 0.5)), "one world size along u is one repeat, got %s" % uv)
+
+	# A blend keeps the painted texture at its own world size: cobble repeats every 64 units, carpet every 32.
+	var blend: Array = GodotTrenchBlend.build(GodotTrenchBlend.key("showcase/cobble", "showcase/carpet"), settings, [])
+	check(blend[1] == Vector2(64, 64), "the blend's UVs follow the base material, got %s" % blend[1])
+	var scale_b: Vector2 = (blend[0] as ShaderMaterial).get_shader_parameter("uv_scale_b")
+	check(scale_b.is_equal_approx(Vector2(2, 2)), "the painted texture repeats twice as often, got %s" % scale_b)
 
 func test_face_cull() -> void:
 	print("- coplanar face culling")
@@ -1128,6 +1187,13 @@ func test_text() -> void:
 	GodotTrenchIO.invoke(text, &"hide", "", null)
 	check(not text._label3d.visible, "hide hides it")
 	text.queue_free()
+	check(text._label3d.billboard == BaseMaterial3D.BILLBOARD_ENABLED and text._label3d.no_depth_test, "labels face the camera and draw over walls by default")
+	var sign := GTText.new()
+	sign._func_godot_apply_properties({ "text": "EXIT", "billboard": "0" })
+	root.add_child(sign)
+	await process_frame
+	check(sign._label3d.billboard == BaseMaterial3D.BILLBOARD_DISABLED and not sign._label3d.no_depth_test, "billboard 0 keeps a sign fixed and hidden behind walls")
+	sign.queue_free()
 	await process_frame
 
 func test_animate() -> void:
@@ -1487,4 +1553,189 @@ func test_showcase_playthrough() -> void:
 		await physics_frame
 	check(near(beacon.light_energy, 30.0), "trigger_call ran set_param(0, 30) on the beacon, energy %.1f" % beacon.light_energy)
 	player.free()
+	map.free()
+
+func has_glowing_letters(mesh: MeshInstance3D) -> bool:
+	if mesh.mesh == null:
+		return false
+	for i in mesh.mesh.get_surface_count():
+		var mat := mesh.get_active_material(i) as BaseMaterial3D
+		if mat and mat.emission_enabled and mat.emission_texture and mat.emission_texture.resource_path.contains("withered/letters"):
+			return true
+	return false
+
+## Plays the withered city built by examples/mcp/withered_city.json: the shutter button, the lift, the roof text and the flickering light.
+func test_withered_city_playthrough() -> void:
+	print("- showcase playthrough (withered_city.gtm)")
+	var map := FuncGodotMap.new()
+	map.map_settings = load(SETTINGS)
+	map.local_map_file = "res://demo/maps/showcase/withered_city.gtm"
+	root.add_child(map)
+	map.build()
+	await process_frame
+	var units := func(v: Vector3) -> Vector3: return v * map.map_settings.scale_factor
+	var shutter := find_targetname(map, "shutter") as GTDoor
+	var lift := find_targetname(map, "lift") as GTPlatform
+	var call_low := find_targetname(map, "lift_call_low") as GTButton
+	var words := find_targetname(map, "roof_words") as GTText
+	var flicker := find_targetname(map, "letter_flicker") as GTLight
+	check(shutter != null and lift != null and call_low != null and words != null and flicker != null, "shutter, lift, lift button, roof text and flickering light built")
+	if not (shutter and lift and call_low and words and flicker):
+		map.free()
+		return
+	check(collect(map, func(n): return n is MeshInstance3D and has_glowing_letters(n)).size() > 0, "the block letters glow through withered/letters and its emission map")
+	var player: DemoPlayer = load("res://demo/player.tscn").instantiate()
+	root.add_child(player)
+	player.global_position = units.call(Vector3(96, 8, 1392))
+	player.rotation.y = PI
+	for i in 4:
+		await physics_frame
+	check(not shutter.is_open, "the shutter starts closed")
+	player.use_target()
+	check(shutter.is_open, "using the button beside the doorway opens the shutter")
+	var lift_start := lift.global_position
+	call_low.use(player)
+	var deadline := Time.get_ticks_msec() + 2000
+	while lift.global_position.y - lift_start.y < 0.5 and Time.get_ticks_msec() < deadline:
+		await physics_frame
+	check(lift.global_position.y - lift_start.y >= 0.5, "the ground floor button sends the lift up, rose %.2f m" % (lift.global_position.y - lift_start.y))
+	player.global_position = units.call(Vector3(0, 772, 1700))
+	deadline = Time.get_ticks_msec() + 2000
+	while not (words._canvas and words._canvas.visible) and Time.get_ticks_msec() < deadline:
+		await physics_frame
+	check(words._canvas != null and words._canvas.visible, "reaching the roof shows the line on the HUD")
+	var was_on := flicker.is_on()
+	deadline = Time.get_ticks_msec() + 3000
+	while flicker.is_on() == was_on and Time.get_ticks_msec() < deadline:
+		await physics_frame
+	check(flicker.is_on() != was_on, "the timer flickers the light over the letters")
+	player.free()
+	map.free()
+
+func test_emission() -> void:
+	print("- emissive materials survive the build")
+	var settings := (load(SETTINGS) as FuncGodotMapSettings).duplicate() as FuncGodotMapSettings
+	settings.save_generated_materials = false
+	var decal := "showcase/lamp" + GodotTrenchDecalMesh.SUFFIX
+	var brush := FuncGodotData.BrushData.new()
+	for texture in ["showcase/lamp", decal, "showcase/cobble"]:
+		var face := FuncGodotData.FaceData.new()
+		face.texture = texture
+		brush.faces.append(face)
+	var entity := FuncGodotData.EntityData.new()
+	entity.definition = FuncGodotFGDSolidClass.new()
+	entity.brushes.append(brush)
+	var entities: Array[FuncGodotData.EntityData] = [entity]
+	var materials: Dictionary = FuncGodotUtil.build_texture_map(entities, settings)[0]
+	var lamp := materials.get("showcase/lamp") as BaseMaterial3D
+	check(lamp != null and lamp.emission_enabled and near(lamp.emission_energy_multiplier, 3.0), "a face keeps its material's emission")
+	var lamp_decal := materials.get(decal) as BaseMaterial3D
+	check(lamp_decal != null and lamp_decal.emission_enabled and lamp_decal.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, "the decal variant keeps emission")
+	check(not (materials.get("showcase/cobble") as BaseMaterial3D).emission_enabled, "plain materials stay dark")
+
+	var blend := GodotTrenchBlend.build(GodotTrenchBlend.key("showcase/cobble", "showcase/lamp"), settings, [])[0] as ShaderMaterial
+	check(near(blend.get_shader_parameter("emission_energy_b"), 3.0) and blend.get_shader_parameter("emission_energy_a") == null, "a blend glows where the emissive side is painted")
+	var glass := GodotTrenchBlend.build(GodotTrenchBlend.key("showcase/stained_glass", "showcase/cobble"), settings, [])[0] as ShaderMaterial
+	check(glass.get_shader_parameter("emission_texture_a") != null, "a blend carries the emission texture")
+
+	var bb := GodotTrenchBBModel.parse(FileAccess.get_file_as_string("res://demo/models/pine.bbmodel"))
+	check(not bb["textures"][0]["emissive"], "a default Blockbench texture does not glow")
+	bb["textures"][0]["emissive"] = true
+	var glowing_scene := GodotTrenchBBModel.build_scene(bb, 1.0 / 16.0, "none")
+	var glow_material := (glowing_scene.get_node("mesh") as MeshInstance3D).mesh.surface_get_material(0) as BaseMaterial3D
+	check(glow_material.emission_enabled and glow_material.emission_texture == glow_material.albedo_texture, "Blockbench's emissive render mode glows with its own texture")
+	glowing_scene.free()
+
+	var night := "res://demo/maps/showcase/night_district.gtm"
+	if not ResourceLoader.exists(night) and not FileAccess.file_exists(night):
+		return
+	var map := FuncGodotMap.new()
+	map.map_settings = load(SETTINGS)
+	map.local_map_file = night
+	map.build()
+	var glowing := 0
+	for mi in collect(map, func(n): return n is MeshInstance3D):
+		var mesh: Mesh = (mi as MeshInstance3D).mesh
+		if not mesh:
+			continue
+		for i in mesh.get_surface_count():
+			var m := mesh.surface_get_material(i)
+			if m is BaseMaterial3D and m.emission_enabled:
+				glowing += 1
+	check(glowing >= 3, "the night map builds with its emissive windows and signs, %d glowing surfaces" % glowing)
+	var shadowed := collect(map, func(n): return n is Light3D and not n is DirectionalLight3D and n.shadow_enabled)
+	check(shadowed.size() >= 1, "street lamps cast shadows")
+	map.free()
+
+func test_night_environment() -> void:
+	print("- night environment keys")
+	var holder := Node3D.new()
+	root.add_child(holder)
+	var props := { "sun_angles": "-35 120", "sun_energy": "0.12", "ambient_energy": "0.4", "sky_energy": "0.2", "glow_intensity": "0.8" }
+	var nodes := GodotTrenchEnvironment.build(holder, props)
+	check(nodes.size() == 2, "environment and moon built")
+	if nodes.size() == 2:
+		var env: Environment = (nodes[0] as WorldEnvironment).environment
+		check(near(env.ambient_light_energy, 0.4), "ambient_energy, got %s" % env.ambient_light_energy)
+		check(env.glow_enabled and near(env.glow_intensity, 0.8), "glow_intensity turns glow on")
+		check(near((env.sky.sky_material as ProceduralSkyMaterial).energy_multiplier, 0.2), "sky_energy dims the sky")
+		check(near((nodes[1] as DirectionalLight3D).light_energy, 0.12), "a dim sun as the moon")
+	var day := GodotTrenchEnvironment.build(holder, { "sun_angles": "-40 -45" })
+	check(day.size() == 2 and not (day[0] as WorldEnvironment).environment.glow_enabled, "no glow unless asked for")
+	var light := GTLight.new()
+	light._func_godot_apply_properties({ "shadows": "1" })
+	check(light.shadow_enabled, "light shadows property")
+	light.free()
+	holder.queue_free()
+	await process_frame
+
+## Plays the night map built by examples/mcp/night_district.json: the garage switch and its beacon, the flickering alley
+## lamp whose bulb follows it, and the hall tubes that logic_auto hides until their lights come on.
+func test_night_district() -> void:
+	print("- night district playthrough (night_district.gtm)")
+	var path := "res://demo/maps/showcase/night_district.gtm"
+	if not FileAccess.file_exists(path):
+		return
+	var map := FuncGodotMap.new()
+	map.map_settings = load(SETTINGS)
+	map.local_map_file = path
+	root.add_child(map)
+	map.build()
+	for i in 3:
+		await process_frame
+	var door := find_targetname(map, "garage_door") as GTDoor
+	var beacon := find_targetname(map, "garage_beacon") as GTLight
+	var lamp := find_targetname(map, "alley_lamp") as GTLight
+	var bulb := find_targetname(map, "alley_bulb") as Node3D
+	var tube := find_targetname(map, "hall_tube_2") as Node3D
+	var hall := find_targetname(map, "hall_light_2") as GTLight
+	check(door != null and beacon != null and lamp != null and bulb != null and tube != null and hall != null, "night map entities built")
+	if not (door and beacon and lamp and bulb and tube and hall):
+		map.free()
+		return
+	var switch: GTButton = null
+	for relay in collect(map, func(n): return n is GodotTrenchOutput and n.target == "garage_door"):
+		if relay.get_parent() is GTButton:
+			switch = relay.get_parent()
+	check(switch != null, "the garage switch is a button wired to the door")
+	check(not door.is_open and not beacon.is_on(), "garage closed and beacon off at start")
+	if switch:
+		switch.press(null)
+		await process_frame
+		check(door.is_open and beacon.is_on(), "the switch opens the roller door and the beacon turns on while it moves")
+	check(not tube.visible and not hall.is_on(), "logic_auto hid the hall tubes while their lights are off")
+	GodotTrenchIO.invoke(hall, &"turn_on", "", null)
+	check(tube.visible, "a hall light switching on shows its tube through switched -> set_visible")
+	var flips := 0
+	var in_step := true
+	var was_on := lamp.is_on()
+	var deadline := Time.get_ticks_msec() + 4000
+	while Time.get_ticks_msec() < deadline and flips < 3:
+		await process_frame
+		if lamp.is_on() != was_on:
+			was_on = lamp.is_on()
+			flips += 1
+			in_step = in_step and bulb.visible == lamp.is_on()
+	check(flips >= 3, "the random timer flickers the alley lamp, %d switches" % flips)
+	check(in_step, "the alley bulb follows the lamp")
 	map.free()

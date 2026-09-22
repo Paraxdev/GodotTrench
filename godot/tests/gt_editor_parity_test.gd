@@ -18,6 +18,7 @@ static func run(t) -> void:
 	_test_concave_mesh_containment(t)
 	_test_tool_and_transparent_containers_do_not_bury(t)
 	_test_terrain_splat_shader_defaults_to_first_layer(t)
+	_test_terrain_missing_layer_slots_use_first_layer(t)
 	_test_terrain_height_at_follows_triangles(t)
 	_test_brush_bad_index_is_skipped(t)
 	await t.process_frame
@@ -227,6 +228,27 @@ static func _test_terrain_splat_shader_defaults_to_first_layer(t) -> void:
 	print("- terrain splat shader defaults to the first layer")
 	var code: String = GodotTrenchTerrain.SHADER.code
 	t.check(code.contains("vec4(1.0, 0.0, 0.0, 0.0)") and code.contains("sum > 0.0001"), "the fragment shader still falls back to the first layer on an all zero splat")
+
+## Auto Paint writes all four weight slots even on a terrain with fewer layers. The editor draws an empty slot
+## with the first layer, so Godot must too, not with the last one (rock where the editor shows grass).
+static func _test_terrain_missing_layer_slots_use_first_layer(t) -> void:
+	print("- terrain slots without a layer use the first layer")
+	var heights := PackedFloat32Array()
+	heights.resize(4)
+	var data := {
+		"resolution": [2, 2], "cell_size": 1.0,
+		"heights": Marshalls.raw_to_base64(heights.to_byte_array()),
+		"layers": [{ "material": "showcase/grass", "tile": 100.0 }, { "material": "showcase/rock", "tile": 50.0 }],
+	}
+	var terrain := GodotTrenchTerrain.create(data, Vector3.ZERO, load(SETTINGS))
+	t.check(terrain != null, "terrain built")
+	if terrain:
+		var mat: ShaderMaterial = (terrain.get_child(0) as MeshInstance3D).mesh.surface_get_material(0)
+		var first: Texture2D = mat.get_shader_parameter("layer0")
+		t.check(first != null and mat.get_shader_parameter("layer2") == first and mat.get_shader_parameter("layer3") == first, "slots 2 and 3 show the first layer's texture")
+		var tiles: Vector4 = mat.get_shader_parameter("tiles")
+		t.check(is_equal_approx(tiles.z, tiles.x) and is_equal_approx(tiles.w, tiles.x), "and repeat at its tile size, got %s" % tiles)
+		terrain.free()
 
 ## Finding 9: height_at must follow the same triangles (and alternating diagonal) as the rendered surface,
 ## not a bilinear blend of the four corners.

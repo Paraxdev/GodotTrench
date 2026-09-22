@@ -58,6 +58,7 @@ static func parse(text: String) -> Dictionary:
 			"name": str(t.get("name", "texture")).trim_suffix(".png"),
 			"image": image,
 			"uv_size": Vector2(float(t.get("uv_width", resolution.x)), float(t.get("uv_height", resolution.y))),
+			"emissive": str(t.get("render_mode", "")) == "emissive",
 		})
 		if t.has("id"):
 			texture_index[str(t["id"])] = i
@@ -76,6 +77,11 @@ static func parse(text: String) -> Dictionary:
 	var uv_size := func(tex: int) -> Vector2:
 		return textures[tex]["uv_size"] if tex >= 0 and tex < textures.size() else resolution
 
+	# Blockbench 5 keeps group data in a separate "groups" list, the outliner only names the uuid.
+	var groups := {}
+	for g in root.get("groups", []):
+		if g is Dictionary and g.has("uuid"):
+			groups[str(g["uuid"])] = g
 	var element_xform := {}
 	var stack: Array = []
 	for node in root.get("outliner", []):
@@ -87,7 +93,8 @@ static func parse(text: String) -> Dictionary:
 		if node is String:
 			element_xform[node] = parent
 		elif node is Dictionary:
-			var m := parent * pivot_rotation(_vec3(node.get("origin")), _vec3(node.get("rotation")))
+			var data: Dictionary = groups.get(str(node.get("uuid", "")), {})
+			var m := parent * pivot_rotation(_vec3(node.get("origin", data.get("origin"))), _vec3(node.get("rotation", data.get("rotation"))))
 			for c in node.get("children", []):
 				stack.append([c, m])
 
@@ -211,6 +218,11 @@ static func build_scene(model: Dictionary, scale: float = 1.0 / 16.0, collision:
 			material.albedo_texture = ImageTexture.create_from_image(textures[tex]["image"])
 			material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 			material.alpha_scissor_threshold = 0.5
+			# Blockbench's emissive render mode draws the texture at full brightness.
+			if textures[tex].get("emissive", false):
+				material.emission_enabled = true
+				material.emission = Color.BLACK
+				material.emission_texture = material.albedo_texture
 		if filter_nearest:
 			material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 		material.cull_mode = BaseMaterial3D.CULL_BACK

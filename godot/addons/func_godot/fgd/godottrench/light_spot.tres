@@ -14,7 +14,8 @@ class_properties = Dictionary[String, Variant]({
 "light_color": Color(1, 1, 1, 1),
 "spot_range": 15.0,
 "spot_angle": 35.0,
-"start_on": true
+"start_on": true,
+"shadows": false
 })
 class_property_descriptions = Dictionary[String, Variant]({
 "targetname": "Name",
@@ -22,7 +23,8 @@ class_property_descriptions = Dictionary[String, Variant]({
 "light_color": "Color",
 "spot_range": "Range in meters",
 "spot_angle": "Cone half angle in degrees",
-"start_on": "Starts switched on"
+"start_on": "Starts switched on",
+"shadows": "Casts shadows, costs more to render"
 })
 meta_properties = Dictionary[String, Variant]({
 "color": Color(1, 0.9019608, 0.3019608, 1),

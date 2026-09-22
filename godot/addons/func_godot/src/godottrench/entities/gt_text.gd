@@ -15,6 +15,8 @@ signal hidden
 @export var text_color := Color.WHITE
 ## World label size in meters per pixel.
 @export var world_size := 0.01
+## Faces the camera and draws over walls. Off keeps the node's rotation and depth, for signs.
+@export var billboard := true
 
 var _label3d: Label3D
 var _canvas: CanvasLayer
@@ -30,6 +32,7 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	if props.has("text_color"):
 		text_color = GodotTrenchIO.to_color(props.get("text_color"))
 	world_size = float(props.get("world_size", world_size))
+	billboard = GodotTrenchIO.to_bool(props.get("billboard", billboard))
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
@@ -41,10 +44,10 @@ func _build() -> void:
 	if place == "world" or place == "both":
 		_label3d = Label3D.new()
 		_label3d.text = text
-		_label3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_label3d.billboard = BaseMaterial3D.BILLBOARD_ENABLED if billboard else BaseMaterial3D.BILLBOARD_DISABLED
 		_label3d.pixel_size = world_size
 		_label3d.modulate = text_color
-		_label3d.no_depth_test = true
+		_label3d.no_depth_test = billboard
 		add_child(_label3d)
 	if place == "hud" or place == "both":
 		_canvas = CanvasLayer.new()

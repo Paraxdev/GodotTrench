@@ -64,6 +64,7 @@ All changes are small and marked with `GodotTrench` comments.
 * `src/core/parser.gd` and `src/core/entity_assembler.gd`: merge C# entity definitions and apply their properties.
 * `src/util/func_godot_util.gd` (`build_texture_map`) and `src/core/geometry_generator.gd`: blend texture keys build blend materials and force a color array.
 * `src/util/func_godot_util.gd` (`build_texture_map`, `filter_face`): decal mesh faces (`|decal|` texture suffix) get an alpha scissor, double sided copy of their base material and are filtered by their base texture.
+* `src/util/func_godot_util.gd` (`material_texture_size`, `build_texture_map`): a material's `texture_size` metadata replaces the albedo's pixel size for UVs, so photo textures keep their world size. Blends rescale the painted texture to its own world size.
 * `src/map/func_godot_map.gd`: builds scatter sets after terrains.
 
 GodotTrench files changed alongside: `gtm_parser.gd` converts brushes and meshes on the WorkerThreadPool (data only, in

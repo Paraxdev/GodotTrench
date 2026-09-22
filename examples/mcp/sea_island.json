@@ -1,0 +1,57 @@
+{
+  "format": "godottrench-mcp-script",
+  "vars": {"save_dir": "${project}/demo/maps/showcase"},
+  "title": "Sea Island",
+  "description": "A large island in the sea, built the way the wiki's sea island tutorial does it: an island terrain lowered into a water plane, two hills, terraced cliffs on the north east coast, a flattened beach, sand, rock and grass painted with height and slope masks, dirt paths from the beach to the hilltops and de-tiled layers.",
+  "steps": [
+    {"tool": "map_file", "args": {"op": "new"}},
+    {"tool": "set_map_properties", "args": {"properties": {"message": "Sea Island", "sun_angles": "-35 -125", "sun_color": "255 236 210", "sun_energy": "1.1", "ambient_color": "96 108 132", "sky_top_color": "70 124 196", "sky_horizon_color": "206 220 232", "sky_ground_color": "64 96 120", "fog_color": "196 212 226", "fog_density": "0.00012"}}},
+
+    {"note": "The terrain from Terrain > Create Terrain: 257 x 257 vertices, 64 unit cells, island shape, auto paint off. The origin is lowered by 576 units so the sea at y = 0 covers the outer third."},
+    {"tool": "create_terrain", "args": {"origin": [-8192, -576, -8192], "resolution": 257, "cell_size": 64, "shape": "island", "height": 1600, "seed": 1, "feature_size": 3000, "erosion": 20, "auto_paint": false, "layers": [["showcase/grass", 256], ["showcase/cliff", 256], ["showcase/dirt", 192], ["showcase/sand", 192]]}, "save": "island"},
+
+    {"note": "The sea: one flat water brush at y = 0, made a func_illusionary so it has no collision."},
+    {"tool": "create_brush", "args": {"min": [-262144, -32, -262144], "max": [262144, 0, 262144], "material": "showcase/water", "uv_scale": 8, "entity": {"classname": "func_illusionary"}}},
+
+    {"note": "Hills: a broad raise west of the centre with a steeper top, and a lower hill to the south east."},
+    {"tool": "terrain_edit", "args": {"mode": "raise", "center": [-2200, -600], "radius": 2800, "strength": 650, "op": "sculpt", "id": "$island.id"}},
+    {"tool": "terrain_edit", "args": {"mode": "raise", "center": [-2000, -900], "radius": 1300, "strength": 420, "op": "sculpt", "id": "$island.id"}},
+    {"tool": "terrain_edit", "args": {"mode": "raise", "center": [2400, 1400], "radius": 1900, "strength": 480, "op": "sculpt", "id": "$island.id"}},
+
+    {"note": "Cliffs: raise a headland along the north east coast, smooth everything once, deepen the water in front of it, then terrace its seaward face."},
+    {"tool": "terrain_edit", "args": {"mode": "raise", "points": [[-1200, -2400], [600, -3700], [2400, -3900], [3900, -3100], [4700, -1900]], "radius": 1800, "strength": 200, "spacing": 500, "op": "sculpt_path", "id": "$island.id"}},
+    {"tool": "terrain_edit", "args": {"mode": "smooth", "center": [0, 0], "radius": 7000, "strength": 16, "op": "sculpt", "id": "$island.id"}},
+    {"tool": "terrain_edit", "args": {"mode": "lower", "points": [[400, -5200], [2400, -5400], [4600, -4500], [5900, -2600]], "radius": 1000, "strength": 300, "spacing": 300, "op": "sculpt_path", "id": "$island.id"}},
+    {"tool": "terrain_edit", "args": {"mode": "terrace", "points": [[600, -4400], [2400, -4600], [4100, -3800], [5100, -2300]], "radius": 1000, "strength": 12, "step": 300, "spacing": 250, "op": "sculpt_path", "id": "$island.id"}},
+    {"tool": "terrain_edit", "args": {"mode": "smooth", "points": [[600, -4400], [2400, -4600], [4100, -3800], [5100, -2300]], "radius": 1000, "strength": 4, "spacing": 250, "op": "sculpt_path", "id": "$island.id"}},
+
+    {"note": "Beach: flatten the south shore to just above the waterline and smooth the edge."},
+    {"tool": "terrain_edit", "args": {"mode": "flatten", "points": [[-2600, 4300], [-800, 4700], [1000, 4800], [2600, 4400]], "radius": 900, "strength": 10, "height": 8, "spacing": 300, "op": "sculpt_path", "id": "$island.id"}},
+    {"tool": "terrain_edit", "args": {"mode": "smooth", "points": [[-2600, 4300], [-800, 4700], [1000, 4800], [2600, 4400]], "radius": 1100, "strength": 12, "spacing": 300, "op": "sculpt_path", "id": "$island.id"}},
+
+    {"note": "Sand below 40 units everywhere with a height masked dab, then a wider band on the south beach."},
+    {"tool": "blend", "args": {"mode": "height", "layer": 3, "height": [-3000, 40], "center": [0, 0, 0], "radius": 12000, "strength": 1, "falloff": "constant", "op": "dab", "ids": ["$island.id"]}},
+    {"tool": "blend", "args": {"mode": "paint", "layer": 3, "points": [[-2600, 4300], [-800, 4700], [1000, 4800], [2600, 4400]], "radius": 700, "strength": 0.7, "falloff": "smooth", "op": "stroke", "ids": ["$island.id"]}},
+
+    {"note": "Rock on everything steeper than 32 degrees with a slope masked dab."},
+    {"tool": "blend", "args": {"mode": "slope", "layer": 1, "slope": [32, 90], "center": [0, 0, 0], "radius": 12000, "strength": 1, "falloff": "constant", "op": "dab", "ids": ["$island.id"]}},
+
+    {"note": "Dirt paths: from the beach up the big hill, from its top along the ridge to the cliffs, and from the beach to the second hill."},
+    {"tool": "blend", "args": {"mode": "paint", "layer": 2, "points": [[200, 4400], [420, 3900], [300, 3400], [-200, 3000], [-700, 2600], [-950, 2100], [-850, 1500], [-1150, 1000], [-1550, 600], [-1700, 100], [-1750, -350], [-2000, -800]], "radius": 140, "strength": 0.8, "falloff": "smooth", "op": "stroke", "ids": ["$island.id"]}},
+    {"tool": "blend", "args": {"mode": "paint", "layer": 2, "points": [[-1900, -1150], [-1500, -1500], [-1000, -1950], [-400, -2300], [300, -2650], [1000, -2950], [1700, -3150], [2300, -3300]], "radius": 140, "strength": 0.8, "falloff": "smooth", "op": "stroke", "ids": ["$island.id"]}},
+    {"tool": "blend", "args": {"mode": "paint", "layer": 2, "points": [[1300, 4300], [1550, 3800], [1900, 3350], [2400, 2950], [2700, 2500], [2650, 2000], [2450, 1500]], "radius": 140, "strength": 0.8, "falloff": "smooth", "op": "stroke", "ids": ["$island.id"]}},
+
+    {"note": "Break up the repeat: de-tile every layer, strongest on the cliff rock."},
+    {"tool": "terrain_edit", "args": {"layers": [["showcase/grass", 256, 0.5, 0.5], ["showcase/cliff", 256, 0.7, 0.4], ["showcase/dirt", 192, 0.5, 0.5], ["showcase/sand", 192, 0.4, 0.5]], "op": "set_layers", "id": "$island.id"}},
+
+    {"note": "Camera bookmarks: 1 the island from the south beach, 2 the north east cliffs, 3 the path up the big hill."},
+    {"tool": "set_camera", "args": {"view": "3d", "position": [-5200, 3400, 9800], "look_at": [-300, 300, 500]}},
+    {"tool": "run_action", "args": {"action": "store_camera", "args": {"slot": 1}}},
+    {"tool": "set_camera", "args": {"view": "3d", "position": [2600, 700, -6800], "look_at": [2000, 300, -3500]}},
+    {"tool": "run_action", "args": {"action": "store_camera", "args": {"slot": 2}}},
+    {"tool": "set_camera", "args": {"view": "3d", "position": [-450, 700, 4300], "look_at": [-900, 300, 1800]}},
+    {"tool": "run_action", "args": {"action": "store_camera", "args": {"slot": 3}}},
+    {"tool": "run_action", "args": {"action": "select_none"}},
+    {"tool": "map_file", "args": {"op": "save", "path": "${save_dir}/sea_island.gtm"}}
+  ]
+}

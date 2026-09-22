@@ -2,10 +2,12 @@
 class_name GodotTrenchEnvironment extends RefCounted
 ## Builds a WorldEnvironment with a procedural sky, fog and a sun light from worldspawn keys, matching the
 ## GodotTrench editor's lit preview: sun_angles ("pitch yaw"), sun_color, sun_energy, ambient_color,
-## sky_top_color, sky_horizon_color, sky_ground_color, fog_color and fog_density (per meter).
-## Colors are "r g b" in 0..255 or 0..1. Set the worldspawn key "environment" to 0 to skip it.
+## sky_top_color, sky_horizon_color, sky_ground_color, fog_color and fog_density (per meter). For night maps
+## ambient_energy and sky_energy scale the ambient light and the sky, and glow_intensity above 0 turns on glow so
+## emissive materials and lamps bloom. Colors are "r g b" in 0..255 or 0..1. Set the worldspawn key "environment"
+## to 0 to skip it.
 
-const KEYS := ["sun_angles", "sky_top_color", "sky_horizon_color", "sky_ground_color", "fog_color", "fog_density"]
+const KEYS := ["sun_angles", "sky_top_color", "sky_horizon_color", "sky_ground_color", "fog_color", "fog_density", "ambient_energy", "sky_energy", "glow_intensity"]
 
 static func parse_color(text: String, fallback: Color) -> Color:
 	var parts := text.split_floats(" ", false)
@@ -32,6 +34,7 @@ static func build(map_node: Node3D, properties: Dictionary) -> Array[Node]:
 	sky_material.sky_horizon_color = parse_color(str(properties.get("sky_horizon_color", "")), Color(0.72, 0.8, 0.88))
 	sky_material.ground_bottom_color = parse_color(str(properties.get("sky_ground_color", "")), Color(0.42, 0.44, 0.46))
 	sky_material.ground_horizon_color = sky_material.sky_horizon_color
+	sky_material.energy_multiplier = maxf(str(properties.get("sky_energy", "1")).to_float(), 0.0)
 	var sky := Sky.new()
 	sky.sky_material = sky_material
 
@@ -42,7 +45,15 @@ static func build(map_node: Node3D, properties: Dictionary) -> Array[Node]:
 	if properties.has("ambient_color"):
 		env.ambient_light_color = parse_color(str(properties["ambient_color"]), Color(0.26, 0.28, 0.33))
 		env.ambient_light_sky_contribution = 0.5
+	env.ambient_light_energy = maxf(str(properties.get("ambient_energy", "1")).to_float(), 0.0)
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	var glow := str(properties.get("glow_intensity", "0")).to_float()
+	if glow > 0.0:
+		env.glow_enabled = true
+		env.glow_intensity = glow
+		env.glow_bloom = 0.05
+		env.glow_hdr_threshold = 0.9
+		env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
 	var density := str(properties.get("fog_density", "0")).to_float()
 	if density > 0.0:
 		env.fog_enabled = true
