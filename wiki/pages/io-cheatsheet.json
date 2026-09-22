@@ -116,7 +116,7 @@
       "h": 60,
       "z": 9,
       "format": "markdown",
-      "md": "## Parameters\n\nA plain value is tried as int, float, bool, then `x y z` as a `Vector3`, else it stays a string. `[a, b]` in JSON spreads into several arguments.\n\nPlaceholders `$activator`, `$self`, `$position` and `$caller_name` are filled in on the **receiving** entity.\n\nNo parameter: the activator goes into the first object argument."
+      "md": "## Parameters\n\nA plain value is tried as int, float, bool, then `x y z` as a `Vector3`, else it stays a string. `[a, b]` in JSON spreads into several arguments.\n\nPlaceholders `$activator`, `$self`, `$position` and `$caller_name` are filled in on the **receiving** entity.\n\nNo parameter: the activator goes into the first object argument, wherever it is, and any other values the output passed along fill the rest in order (`false` forwards too, so it can end up as `0`)."
     },
     {
       "id": "activator",

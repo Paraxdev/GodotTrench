@@ -11,8 +11,8 @@ the addon exports them to `godottrench_game.json`, which the editor reads when y
 The fork ships a ready entity library (`godot/addons/func_godot/fgd/godottrench`): `func_door`, `func_door_rotating`,
 `func_gate`, `func_platform`, `func_train` with `path_corner`, `func_button`, `trigger_once`, `trigger_multiple`,
 `trigger_call`, `trigger_spawn_area`, `trigger_hurt`, `trigger_teleport`, `trigger_push`, `info_spawner`,
-`info_teleport_destination`, `light`, `logic_call`, `logic_relay`, `logic_timer`, `logic_counter`, `logic_auto`
-and `logic_debug`.
+`info_teleport_destination`, `light`, `logic_call`, `logic_relay`, `logic_timer`, `logic_counter`, `logic_auto`,
+`logic_debug`, and `prop_model`.
 
 A second set covers scripted scenes and props with little setup, so a map can spawn a character, walk it a path,
 play animations, show text, break things and switch lights entirely through I/O:
@@ -23,7 +23,7 @@ play animations, show text, break things and switch lights entirely through I/O:
 * `logic_sequence`: a timeline that fires `step_1` up to `step_8` in order with a delay between them, so a scene is
   scripted by wiring each step. Inputs `start`, `stop`, `reset`.
 * `logic_animate`: plays animations on the `AnimationPlayer` under a target. Inputs `play(name)`, `stop`,
-  `queue(name)`, `seek(time)`. Output `finished(name)`.
+  `queue(name)`, `seek(time)`. Output `finished(anim)`.
 * `game_text`: shows a line in the world (a `Label3D`) and/or on the HUD. Inputs `show`, `hide`, `set_text(text)`,
   `flash(seconds)`. Outputs `shown`, `hidden`.
 * `prop_physics`: a throwable, breakable crate or barrel. Damage, a hard impact (`impact_speed`) or a `smash` input
@@ -50,9 +50,12 @@ GDScript that run at the map's own trust level, the same as the entity scripts a
 
 ## Inputs and outputs
 
-Outputs target entities by targetname (with `*` wildcards), `@group`, a node path (`/root/Game/Score`), `!player`, `!activator`
+Outputs target entities by targetname (with a trailing `*` for prefix matching), `@group`, a node path (`/root/Game/Score`), `!player`, `!activator`
 or `!self`. Inputs call any method on the target, GDScript or C# (`add_score` also finds `AddScore`), and a JSON array parameter
 is spread into arguments with `$activator`, `$self`, `$position` and `$caller_name` placeholders, converted to the declared types.
+With no parameter, the signal's own arguments after the activator are forwarded to the input in order, so `changed(value)` wired
+straight to a counter's `set_value` passes the value through; this forwards `false` too, so a bool output wired without a
+parameter to a numeric input still passes `0`, give the connection an explicit parameter to override it.
 `trigger_call` and `logic_call` call a method directly, for example `call_target = "/root/Game"`, `method = "give_item"`,
 `arguments = ["key_red", "$activator"]`. `GodotTrenchIO.events()` reports every fired output, and
 `GodotTrenchDebugOverlay` shows them in game (F3) together with the trigger volumes.

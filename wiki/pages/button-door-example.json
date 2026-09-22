@@ -12,7 +12,7 @@
       "id": "b2",
       "type": "text",
       "format": "markdown",
-      "md": "## Build it\n\n1. Draw a door sized brush in a doorway, right click it and choose *Create Brush Entity > func_door*. In the Inspector, set its targetname to `main_door`. Its default `travel` of `0 64 0` slides it up 64 units, 2 m, when it opens.\n2. Draw a small brush on the wall next to it and turn it into a `func_button` the same way.\n3. Select the button and the door together and choose *Gameplay > Logic > Link Two Selected Entities...*. Make sure the button is the source and press ⇄ if it is not. Choose `pressed` under *When* and `open` under *call*, then press **Link**.\n\nThe button now has one output, written `pressed -> main_door.open`: when the button is pressed, call `open` on everything named `main_door`. The Logic panel shows the same line if you fire the button's `pressed` output there."
+      "md": "## Build it\n\n1. Draw a door sized brush in a doorway, right click it and choose *Create Brush Entity > func_door*. In the Inspector, set its targetname to `main_door`. Its default `travel` of `0 64 0` slides it up 64 units, 2 m, when it opens.\n2. Draw a small brush on the wall next to it and turn it into a `func_button` the same way.\n3. Select the button and the door together and choose *Gameplay > Logic > Link Two Selected Entities...*. Make sure the button is the source and press ⇄ if it is not. Choose `pressed` under *When* and `open` under *call*, then press **Link**.\n\nThe button now has one output, written `pressed > main_door.open`: when the button is pressed, call `open` on everything named `main_door`. The Logic panel shows this with arrows, like `button.pressed → main_door.open`."
     },
     {
       "id": "b3",
@@ -48,7 +48,7 @@
       "id": "b8",
       "type": "code",
       "lang": "gdscript",
-      "code": "# pressed(activator) -> main_door.open\nbutton.pressed.connect(func(activator):\n\tfor door in GodotTrenchIO.find_targets(button, \"main_door\", activator):\n\t\tGodotTrenchIO.invoke(door, &\"open\", \"\", activator))"
+      "code": "# pressed(activator) > main_door.open\nbutton.pressed.connect(func(activator):\n\tfor door in GodotTrenchIO.find_targets(button, \"main_door\", activator):\n\t\tGodotTrenchIO.invoke(door, &\"open\", \"\", activator))"
     },
     {
       "id": "b9",

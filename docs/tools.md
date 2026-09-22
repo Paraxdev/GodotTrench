@@ -17,13 +17,17 @@
 * Shift+click selects faces, Shift+drag a face resizes the brush, Ctrl+Shift+drag extrudes. In 2D views drag selection edges to resize.
 * Tools: `C` clip (Tab changes kept side, Enter applies), `V` vertex, `R` rotate, `T` scale, `G` sculpt, `P` paint,
   `B` scatter, `Shift+G` blend, `Shift+E` volume, `M` measure, `Shift+P` path, `Shift+T` texture, `Tab` edit mesh,
-  `Q`/`Esc` back to select. Ctrl+wheel resizes the scatter, blend and sculpt brushes.
+  `Q`/`Esc` back to select. Esc also cancels a drag or brush stroke in progress without changing tool. Ctrl+wheel resizes the
+  scatter, blend, sculpt and paint brushes instead of zooming the camera while one of those tools is active.
 * `[` / `]` grid, `Ctrl+D` duplicate, `Ctrl+G` group, `Ctrl+K` subtract, `Ctrl+M` merge, `Ctrl+H` hide, `Ctrl+J` isolate, `F` focus.
-* `Ctrl+Shift+E` convert to mesh, `Ctrl+Shift+J` join meshes, `Ctrl+Shift+N` new tab, `Ctrl+Tab` next tab, `Ctrl+W` close tab.
+* `Ctrl+Shift+E` convert to mesh, `Ctrl+Shift+J` join meshes, `Ctrl+Shift+N` new tab, `Ctrl+Tab` next tab, `Ctrl+W` close tab
+  (also a × on each tab). Closing or quitting with unsaved changes asks to save or discard, quitting lists every modified
+  tab with *Save All* / *Discard All*.
 * `Ctrl+=` / `Ctrl+-` / `Ctrl+0` scale the interface. The scale is saved and also set in Preferences or *View > Interface Scale*.
   It multiplies the monitor's display scaling, turn that off in Preferences if your monitor reports the wrong scaling.
-* Autosaves are written next to the map as `level.gtm.autosave`, so Godot does not import them. Opening one (pick the
-  *Autosave* filter in the Open dialog) recovers the map it belongs to, and saving writes the real `level.gtm`.
+* Autosaves are written next to the map as `level.gtm.autosave`, so Godot does not import them, one per modified tab, not
+  just the active one. Opening one (pick the *Autosave* filter in the Open dialog) recovers the map it belongs to, and saving
+  writes the real `level.gtm`. An untitled map autosaves to its own temp file, listed under *File > Open Recent* for recovery.
 * Every binding can be changed in the *Keyboard Shortcuts* window, starting from the TrenchBroom, Hammer or Blender preset
   chosen in Preferences.
 

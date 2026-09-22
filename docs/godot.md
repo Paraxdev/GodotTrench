@@ -57,8 +57,8 @@ editor shows a scene with a `FuncGodotMap` using the current map, edits appear i
 
 The preview is close to a full build but not always identical: faces covered by coplanar faces of brush entities or of
 chunks that were not rebuilt may show until the next full build, and rebuilt nodes move to the end of their parent in
-Godot's Scene dock (putting them back in place trips a Scene dock bug in Godot 4.7). Saving always does a full build. When you throw away
-unsaved changes (Discard on quit, or New and Open replacing a modified map) Godot goes back to the saved file.
+Godot's Scene dock (putting them back in place trips a Scene dock bug in Godot 4.7). Saving always does a full build. When you throw away unsaved changes
+(Discard on quit) Godot goes back to the saved file. New and Open never replace a modified map, they open in a new tab instead.
 
 Edits only go out when Godot has taken the previous batch, and a drag sends small `translate` messages instead of the
 geometry, so a slow Godot editor never piles up work.
