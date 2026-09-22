@@ -173,12 +173,133 @@ fn geometry() -> Map {
     m
 }
 
+/// A small playable cutscene wired entirely through I/O: walk into the trigger and a guide spawns and walks a path,
+/// text appears, an explosive barrel goes off and hurts the player, a light switches on and the exit opens.
+fn scripted_scene() -> Map {
+    let mut m = Map::new();
+    m.properties.insert("classname".into(), "worldspawn".into());
+    for (k, v) in
+        [("message", "Scripted Scene"), ("sun_angles", "-40 -55"), ("sun_energy", "0.6"), ("ambient_color", "60 66 82"), ("sky_top_color", "40 54 92")]
+    {
+        m.properties.insert(k.into(), v.into());
+    }
+
+    let layer = m.default_layer();
+    m.insert(layer, NodeKind::Brush(boxb([-320.0, -16.0, -320.0], [320.0, 0.0, 320.0], "base/floor")));
+    m.insert(layer, NodeKind::Brush(boxb([-320.0, 0.0, 312.0], [320.0, 248.0, 320.0], "base/wall")));
+    m.insert(layer, NodeKind::Brush(boxb([-320.0, 0.0, -320.0], [320.0, 248.0, -312.0], "base/wall")));
+    m.insert(layer, NodeKind::Brush(boxb([-320.0, 0.0, -320.0], [-312.0, 248.0, 320.0], "base/wall")));
+    m.insert(layer, NodeKind::Brush(boxb([312.0, 0.0, -320.0], [320.0, 248.0, 320.0], "base/wall")));
+
+    let mut start = Entity::new("info_player_start");
+    start.origin = DVec3::new(0.0, 0.0, 260.0);
+    start.angles = DVec3::new(0.0, 180.0, 0.0);
+    m.insert(layer, NodeKind::Entity(start));
+
+    let mut corner_a = Entity::new("path_corner");
+    corner_a.origin = DVec3::new(0.0, 8.0, 64.0);
+    corner_a.properties.insert("targetname".into(), "corner_a".into());
+    corner_a.properties.insert("target".into(), "corner_b".into());
+    m.insert(layer, NodeKind::Entity(corner_a));
+
+    let mut corner_b = Entity::new("path_corner");
+    corner_b.origin = DVec3::new(-176.0, 8.0, -176.0);
+    corner_b.properties.insert("targetname".into(), "corner_b".into());
+    m.insert(layer, NodeKind::Entity(corner_b));
+
+    let mut guide = Entity::new("npc_walker");
+    guide.origin = DVec3::new(0.0, 8.0, 176.0);
+    guide.properties.insert("targetname".into(), "guide".into());
+    guide.properties.insert("target".into(), "corner_a".into());
+    guide.properties.insert("model".into(), "res://demo/scenes/npc.tscn".into());
+    guide.properties.insert("speed".into(), "2.5".into());
+    m.insert(layer, NodeKind::Entity(guide));
+
+    let mut hint = Entity::new("game_text");
+    hint.origin = DVec3::new(0.0, 96.0, 0.0);
+    hint.properties.insert("targetname".into(), "hint".into());
+    hint.properties.insert("text".into(), "Follow the guide".into());
+    hint.properties.insert("world_size".into(), "0.03".into());
+    m.insert(layer, NodeKind::Entity(hint));
+
+    let mut hud = Entity::new("game_text");
+    hud.origin = DVec3::new(0.0, 8.0, 240.0);
+    hud.properties.insert("targetname".into(), "hpmsg".into());
+    hud.properties.insert("place".into(), "hud".into());
+    m.insert(layer, NodeKind::Entity(hud));
+
+    let mut lamp = Entity::new("light");
+    lamp.origin = DVec3::new(0.0, 200.0, -40.0);
+    lamp.properties.insert("targetname".into(), "lamp".into());
+    lamp.properties.insert("start_on".into(), "0".into());
+    lamp.properties.insert("light_energy".into(), "3.0".into());
+    lamp.properties.insert("omni_range".into(), "16".into());
+    m.insert(layer, NodeKind::Entity(lamp));
+
+    let mut barrel = Entity::new("prop_physics");
+    barrel.origin = DVec3::new(0.0, 24.0, 176.0);
+    barrel.properties.insert("targetname".into(), "barrel".into());
+    barrel.properties.insert("model".into(), "res://demo/scenes/barrel.tscn".into());
+    barrel.properties.insert("explosive".into(), "1".into());
+    barrel.properties.insert("explosion_radius".into(), "256".into());
+    barrel.properties.insert("explosion_damage".into(), "25".into());
+    barrel.properties.insert("health".into(), "5".into());
+    barrel.properties.insert("size".into(), "16 24 16".into());
+    barrel.outputs.push(io("broken", "hp_readout", "run", 0.0));
+    m.insert(layer, NodeKind::Entity(barrel));
+
+    let mut readout = Entity::new("logic_script");
+    readout.origin = DVec3::new(0.0, 8.0, 288.0);
+    readout.properties.insert("targetname".into(), "hp_readout".into());
+    readout.properties.insert(
+        "source".into(),
+        "var players = io.find_targets(this, \"!player\", null)\nif players.is_empty():\n\treturn\nvar hp = int(players[0].health)\nfor label in io.find_targets(this, \"hpmsg\", null):\n\tlabel.set_text(\"HP \" + str(hp))\n\tlabel.show()".into(),
+    );
+    m.insert(layer, NodeKind::Entity(readout));
+
+    let mut cutscene = Entity::new("logic_sequence");
+    cutscene.origin = DVec3::new(0.0, 8.0, 296.0);
+    cutscene.properties.insert("targetname".into(), "cutscene".into());
+    cutscene.properties.insert("steps".into(), "5".into());
+    cutscene.properties.insert("interval".into(), "1.5".into());
+    for (output, target, input) in [
+        ("step_1", "hint", "show"),
+        ("step_2", "guide", "start"),
+        ("step_3", "barrel", "ignite"),
+        ("step_4", "lamp", "turn_on"),
+        ("step_5", "exit_door", "open"),
+    ] {
+        cutscene.outputs.push(io(output, target, input, 0.0));
+    }
+
+    m.insert(layer, NodeKind::Entity(cutscene));
+
+    let mut door = Entity::new("func_door");
+    door.properties.insert("targetname".into(), "exit_door".into());
+    door.properties.insert("travel".into(), "0 168 0".into());
+    door.properties.insert("speed".into(), "2".into());
+    door.properties.insert("wait".into(), "-1".into());
+    let door = m.insert(layer, NodeKind::Entity(door));
+    m.insert(door, NodeKind::Brush(boxb([-32.0, 8.0, -318.0], [32.0, 176.0, -312.0], "base/metal")));
+
+    let mut trigger = Entity::new("trigger_once");
+    trigger.properties.insert("targetname".into(), "start_zone".into());
+    trigger.outputs.push(io("triggered", "cutscene", "start", 0.0));
+    let trigger = m.insert(layer, NodeKind::Entity(trigger));
+    m.insert(trigger, NodeKind::Brush(boxb([-160.0, 8.0, 120.0], [160.0, 200.0, 232.0], "special/trigger")));
+    m
+}
+
 fn main() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../godot");
     for dir in ["tests/maps", "demo/maps"] {
         let dir = root.join(dir);
         std::fs::create_dir_all(&dir).unwrap();
         format::save(&demo(), &dir.join(if dir.ends_with("tests/maps") { "basic.gtm" } else { "demo.gtm" })).unwrap();
+        if dir.ends_with("demo/maps") {
+            format::save(&scripted_scene(), &dir.join("scripted_scene.gtm")).unwrap();
+        }
+
         format::save(&prefab(), &dir.join("prefab.gtm")).unwrap();
         format::save(&terrain(), &dir.join("terrain.gtm")).unwrap();
         format::save(&geometry(), &dir.join("geometry.gtm")).unwrap();

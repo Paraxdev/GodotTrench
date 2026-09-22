@@ -70,6 +70,7 @@ func _initialize() -> void:
 	await test_logic_script()
 	await test_more_entities()
 	await test_scripted_scene()
+	await test_scripted_scene_map()
 	test_scatter_and_blend()
 	test_face_cull()
 	test_interior_face_culling()
@@ -1276,6 +1277,41 @@ func test_more_entities() -> void:
 	check(near(sound.volume_db, -6.0) and sound.loop_sound and near(sound.max_distance, 20.0), "env_sound applies its properties")
 	sound.toggle()
 
+	map.queue_free()
+	await process_frame
+
+func test_scripted_scene_map() -> void:
+	print("- scripted scene demo map builds and wires")
+	var map := FuncGodotMap.new()
+	map.name = "ScriptedSceneMap"
+	map.map_settings = load(SETTINGS)
+	map.local_map_file = "res://demo/maps/scripted_scene.gtm"
+	root.add_child(map)
+	map.build()
+	await process_frame
+	var guide := find_targetname(map, "guide")
+	var lamp := find_targetname(map, "lamp")
+	var door := find_targetname(map, "exit_door")
+	var cutscene := find_targetname(map, "cutscene")
+	var barrel := find_targetname(map, "barrel")
+	var hint := find_targetname(map, "hint")
+	check(guide is GTNpc and barrel is GTPropPhysics, "npc and barrel built with their scripts from the .gtm")
+	check(door != null and cutscene is GTSequence and hint is GTText and lamp != null, "door, cutscene, text and light built from the .gtm")
+	var steps := 0
+	for c in cutscene.get_children():
+		if c is GodotTrenchOutput and str(c.output).begins_with("step_"):
+			steps += 1
+	check(steps == 5, "cutscene has its five steps wired, got %s" % steps)
+	GodotTrenchIO.invoke(lamp, &"turn_on", "", null)
+	check(lamp.is_on(), "the built light switches on through I/O")
+
+	var player: DemoPlayer = load("res://demo/player.tscn").instantiate()
+	map.add_child(player)
+	await process_frame
+	player.global_position = barrel.global_position
+	barrel.smash()
+	await process_frame
+	check(player.health < player.max_health, "the explosive barrel blast hurt the player, health %s" % player.health)
 	map.queue_free()
 	await process_frame
 
