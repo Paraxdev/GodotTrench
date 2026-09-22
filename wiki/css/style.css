@@ -1769,6 +1769,12 @@ a.chip:hover {
   display: flex;
   flex-direction: column;
   transition: box-shadow 0.2s ease, transform 0.2s var(--ease);
+  /* Chromium can drop a card's content while panning the will-change:transform surface and
+     paint only its backdrop-filter region, a dark box. The canvas behind cards is flat, so a
+     solid glass tint looks the same without the blur. */
+  background: var(--glass-light), rgba(20, 26, 40, 0.97);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .card .md {

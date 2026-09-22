@@ -40,6 +40,10 @@ const state = {
   editingId: null,
   // Slugs whose page files should be removed from the repo on the next Save.
   deletedPages: [],
+  // The repo's pages/index.json as last fetched, before any local edits. Save diffs against
+  // this to tell "we changed this entry" from "we just carried it over", so a page published
+  // by someone else since is merged in rather than dropped.
+  indexBase: [],
   // Hash of the repo version the open page was loaded from, stored with its draft.
   baseHash: null,
   // Set when a draft was started from an older repo version: { board, hash }.
@@ -169,6 +173,7 @@ async function loadIndex() {
   } catch (err) {
     setStatus("Could not load the page index: " + err.message, "error");
   }
+  if (serverPages) state.indexBase = serverPages.map((p) => Object.assign({}, p));
 
   const pending = loadPending("index");
   if (pending && serverPages) {
@@ -201,6 +206,31 @@ function saveIndex() {
   saveIndexDraft(state.pages, state.deletedPages);
   searchIndex.setPages(state.pages);
   updateDirtyUi();
+}
+
+// Build the index to publish from a freshly fetched repo copy, so a page someone else added or
+// edited since this tab loaded is kept: an entry only wins locally when it actually differs from
+// state.indexBase (the repo version this session started from), meaning it was renamed, moved to
+// another category, or newly created here. Untouched entries and pages this tab never learned
+// about both come from the fresh copy.
+function mergeIndexForSave(freshServer) {
+  const baseBySlug = new Map(state.indexBase.map((p) => [p.slug, p]));
+  const localBySlug = new Map(state.pages.map((p) => [p.slug, p]));
+  const freshSlugs = new Set(freshServer.map((p) => p.slug));
+  const deleted = new Set(state.deletedPages);
+
+  const merged = freshServer
+    .filter((p) => !deleted.has(p.slug))
+    .map((p) => {
+      const local = localBySlug.get(p.slug);
+      if (!local) return p;
+      const based = baseBySlug.get(p.slug);
+      if (based && JSON.stringify(local) === JSON.stringify(based)) return p;
+      return local;
+    });
+
+  const additions = state.pages.filter((p) => !freshSlugs.has(p.slug) && !deleted.has(p.slug));
+  return merged.concat(additions);
 }
 
 // ----- Sidebar -----
@@ -1320,51 +1350,126 @@ async function save() {
     return;
   }
 
-  const slugs = listDraftSlugs().filter((s) => state.pages.some((p) => p.slug === s));
-  const boards = new Map();
-  slugs.forEach((s) => {
-    if (s === state.slug) {
-      if (layout() === "canvas") normalizeZ(state.board.cards);
-      boards.set(s, serializeBoard(state.board));
-    } else {
-      const d = loadDraft(s);
-      if (d) boards.set(s, serializeBoard(normalizeBoard(d.board, s)));
-    }
-  });
-  const files = Array.from(boards.entries()).map(([s, b]) => ({ path: "pages/" + s + ".json", content: JSON.stringify(b, null, 2) + "\n" }));
-  files.push({ path: "pages/index.json", content: JSON.stringify(state.pages, null, 2) + "\n" });
-  const deletes = state.deletedPages.filter((s) => !state.pages.some((p) => p.slug === s)).map((s) => "pages/" + s + ".json");
-
-  const names = Array.from(boards.keys()).map((s) => (pageInfo(s) || {}).title || s);
-  const parts = [];
-  if (names.length === 1) parts.push("update " + names[0]);
-  else if (names.length > 1 && names.length <= 3) parts.push("update " + names.join(", "));
-  else if (names.length) parts.push("update " + names.length + " pages");
-  if (deletes.length) parts.push("delete " + deletes.length + (deletes.length === 1 ? " page" : " pages"));
-  const message = "wiki: " + (parts.length ? parts.join(", ") : "update the page index");
-
   saving = true;
   el.saveBtn.disabled = true;
   setButton(el.saveBtn, "save", "Saving", "Saving");
-  setStatus("Committing to " + GH.owner + "/" + GH.repo + "...", "info");
+  setStatus("Checking the repo for changes...", "info");
+
   try {
+    const allDraftSlugs = listDraftSlugs().filter((s) => state.pages.some((p) => p.slug === s));
+
+    // Every drafted page is checked against what's actually on the repo right now, not just the
+    // page that happens to be open, so a draft for a page nobody reopened this session still gets
+    // a chance to conflict instead of silently overwriting someone else's change.
+    const remote = new Map();
+    await Promise.all(
+      allDraftSlugs.map(async (s) => {
+        try {
+          const loaded = await fetchJSON("pages/" + s + ".json");
+          if (!loaded) {
+            remote.set(s, { hash: null, board: null });
+            return;
+          }
+          const info = pageInfo(s);
+          const board = normalizeBoard(loaded, info ? info.title : s, info && info.layout);
+          remote.set(s, { hash: boardHash(board), board });
+        } catch (err) {
+          remote.set(s, { hash: undefined, board: null }); // Could not check; save rather than block on a network blip.
+        }
+      })
+    );
+
+    const toSave = [];
+    const conflicted = [];
+    allDraftSlugs.forEach((s) => {
+      const base = s === state.slug ? state.baseHash : (loadDraft(s) || {}).base;
+      const r = remote.get(s);
+      if (!r || r.hash === undefined || (base || null) === (r.hash || null)) toSave.push(s);
+      else conflicted.push(s);
+    });
+
+    if (conflicted.length) {
+      conflicted.forEach((s) => {
+        const title = (pageInfo(s) || {}).title || s;
+        const keepMine = window.confirm(
+          '"' + title + '" changed on the repo since your local draft started.\n\n' +
+            "OK keeps your local version and overwrites the repo.\nCancel discards your local draft and takes the repo version."
+        );
+        if (keepMine) {
+          toSave.push(s);
+          return;
+        }
+        clearDraft(s);
+        const r = remote.get(s);
+        if (s === state.slug && r && r.board) {
+          state.board = r.board;
+          state.baseHash = r.hash;
+          state.conflict = null;
+          resetHistory();
+          searchIndex.update(s, state.board);
+          renderView();
+        }
+      });
+      renderSidebar();
+    }
+
+    let freshIndex = null;
+    try {
+      const fetched = await fetchJSON("pages/index.json");
+      freshIndex = Array.isArray(fetched) ? fetched : [];
+    } catch (err) {
+      // Could not verify the live index; fall back to publishing the local one as-is.
+    }
+    const mergedIndex = freshIndex ? mergeIndexForSave(freshIndex) : state.pages;
+
+    const boards = new Map();
+    toSave.forEach((s) => {
+      if (s === state.slug) {
+        if (layout() === "canvas") normalizeZ(state.board.cards);
+        boards.set(s, serializeBoard(state.board));
+      } else {
+        const d = loadDraft(s);
+        if (d) boards.set(s, serializeBoard(normalizeBoard(d.board, s)));
+      }
+    });
+    const files = Array.from(boards.entries()).map(([s, b]) => ({ path: "pages/" + s + ".json", content: JSON.stringify(b, null, 2) + "\n" }));
+    files.push({ path: "pages/index.json", content: JSON.stringify(mergedIndex, null, 2) + "\n" });
+    const deletes = state.deletedPages.filter((s) => !state.pages.some((p) => p.slug === s)).map((s) => "pages/" + s + ".json");
+
+    const names = Array.from(boards.keys()).map((s) => (pageInfo(s) || {}).title || s);
+    const parts = [];
+    if (names.length === 1) parts.push("update " + names[0]);
+    else if (names.length > 1 && names.length <= 3) parts.push("update " + names.join(", "));
+    else if (names.length) parts.push("update " + names.length + " pages");
+    if (deletes.length) parts.push("delete " + deletes.length + (deletes.length === 1 ? " page" : " pages"));
+    const message = "wiki: " + (parts.length ? parts.join(", ") : "update the page index");
+
+    setStatus("Committing to " + GH.owner + "/" + GH.repo + "...", "info");
     const res = await commitFiles(files, deletes, message, token);
     boards.forEach((b, s) => {
       savePending("page_" + s, b, hashString(JSON.stringify(b)));
-      clearDraft(s);
+      // Someone may have kept typing while the commit was in flight; only clear the draft if it
+      // still matches what was actually published, so those in-flight edits are not dropped.
+      const draftNow = loadDraft(s);
+      if (draftNow && JSON.stringify(draftNow.board) === JSON.stringify(b)) clearDraft(s);
+      if (s === state.slug) {
+        state.baseHash = hashString(JSON.stringify(b));
+        state.conflict = null;
+        state.publishing = true;
+      }
     });
-    savePending("index", state.pages, null);
+    savePending("index", mergedIndex, null);
     deletes.forEach((d) => clearPending("page_" + d.replace(/^pages\/|\.json$/g, "")));
+    state.pages = mergedIndex;
+    state.indexBase = mergedIndex.map((p) => Object.assign({}, p));
     clearIndexDraft();
     state.deletedPages = [];
-    if (boards.has(state.slug)) {
-      state.baseHash = hashString(JSON.stringify(boards.get(state.slug)));
-      state.conflict = null;
-      state.publishing = true;
-    }
+    searchIndex.setPages(state.pages);
     renderChrome();
     renderSidebar();
-    setStatus(res.unchanged ? "The repo already had these changes." : "Published. GitHub Pages redeploys in a minute or so.", "success");
+    const base = res.unchanged ? "The repo already had these changes." : "Published. GitHub Pages redeploys in a minute or so.";
+    const skipped = conflicted.filter((s) => !toSave.includes(s)).map((s) => (pageInfo(s) || {}).title || s);
+    setStatus(skipped.length ? base + " Took the repo version for: " + skipped.join(", ") + "." : base, "success");
   } catch (err) {
     setStatus("Save failed: " + err.message, "error");
   } finally {

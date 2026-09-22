@@ -12,7 +12,7 @@
       "id": "b2",
       "type": "text",
       "format": "markdown",
-      "md": "## Tools\n\nPressing a tool's key again goes back to Select. Esc also returns to Select, and in Select it clears the selection.\n\n| Key | Tool |\n| --- | --- |\n| Q | Select, the default for drawing, selecting and moving |\n| C | Clip |\n| V | Vertex |\n| R | Rotate |\n| T | Scale |\n| Tab | Mesh edit, converting selected brushes |\n| Shift+T | Texture |\n| P | Paint vertex colours |\n| G | Sculpt terrain and displacements |\n| Shift+G | Blend materials |\n| B | Scatter |\n| Shift+E | Volume |\n| Shift+P | Path |\n| M | Measure |"
+      "md": "## Tools\n\nPressing a tool's key again goes back to Select. Esc cancels a drag or brush stroke in progress and keeps the current tool; otherwise it returns to Select, and in Select it clears the selection.\n\n| Key | Tool |\n| --- | --- |\n| Q | Select, the default for drawing, selecting and moving |\n| C | Clip |\n| V | Vertex |\n| R | Rotate |\n| T | Scale |\n| Tab | Mesh edit, converting selected brushes |\n| Shift+T | Texture |\n| P | Paint vertex colours |\n| G | Sculpt terrain and displacements |\n| Shift+G | Blend materials |\n| B | Scatter |\n| Shift+E | Volume |\n| Shift+P | Path |\n| M | Measure |"
     },
     {
       "id": "b3",
@@ -42,7 +42,7 @@
       "id": "b7",
       "type": "text",
       "format": "markdown",
-      "md": "## Other presets\n\nThe Hammer preset moves the tools to Shift+S (select), Shift+X (clip), Shift+V (vertex) and Shift+A (texture), and uses H to hide, Ctrl+H to isolate and U to show everything. The Blender preset uses A to select all, X to delete, Shift+D to duplicate, S to scale, H and Alt+H to hide and show, and Ctrl+J to join meshes. Anything you rebind yourself sits on top of whichever preset is active, and *Reset overrides* in the shortcuts window clears your changes."
+      "md": "## Other presets\n\nThe Hammer preset moves the tools to Shift+S (select), Shift+X (clip), Shift+V (vertex) and Shift+A (texture), and uses H to hide, Ctrl+H to isolate and U to show everything. Because Ctrl+W now moves brushes to world, Ctrl+M opens the shape dialog and Ctrl+L rotates 90°, Close Tab moves to Ctrl+F4, CSG Merge to Ctrl+Shift+M and CSG Intersect to Ctrl+Shift+L. The Blender preset uses A to select all, X to delete, Shift+D to duplicate, S to scale, H and Alt+H to hide and show, and Ctrl+J to join meshes. Because Ctrl+J, Alt+H and F3 are taken this way, Isolate moves to /, Hotspot Fit to Alt+Shift+H and Lit Preview to F4. Every other default binding stays, presets only take over the chords listed here. Anything you rebind yourself sits on top of whichever preset is active, and *Reset overrides* in the shortcuts window clears your changes."
     }
   ]
 }
