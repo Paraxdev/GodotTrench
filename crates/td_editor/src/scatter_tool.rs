@@ -338,6 +338,18 @@ pub struct ScatterTool {
 }
 
 impl ScatterTool {
+    pub fn stroking(&self) -> bool {
+        self.stroking
+    }
+
+    /// Ends a stroke without touching the document, the caller owns its transaction.
+    pub fn reset(&mut self) {
+        self.hover = None;
+        self.last = None;
+        self.stroking = false;
+        self.erasing = false;
+    }
+
     pub fn input(&mut self, ui: &Ui, response: &Response, cam: &Camera, rect: Rect, hover: Option<Pos2>, state: &mut EditorState) {
         let pointer = if self.stroking { ui.input(|i| i.pointer.interact_pos()) } else { hover };
         self.hover = pointer.and_then(|p| {
