@@ -11,10 +11,23 @@ var spawn_group := "enemies"
 var snap_to_ground := true
 var alive: Array[Node] = []
 var spawned_total := 0
+var _exhausted_sent := false
 
 signal spawned(node: Node)
 signal all_dead
 signal exhausted
+
+## The spawn settings of a host entity (info_spawner, trigger_spawn_area), read from its exported members so a
+## saved scene configures the same as a fresh build.
+static func settings_of(from: Node) -> Dictionary:
+	return {
+		"scene": from.get("scene"),
+		"count": from.get("count"),
+		"max_alive": from.get("max_alive"),
+		"total": from.get("total"),
+		"spawn_group": from.get("spawn_group"),
+		"snap_to_ground": from.get("snap_to_ground"),
+	}
 
 func configure(from: Node3D, props: Dictionary) -> void:
 	host = from
@@ -55,7 +68,8 @@ func spawn(point_at: Callable) -> Array[Node]:
 		spawned_total += 1
 		out.append(node)
 		spawned.emit(node)
-	if is_exhausted():
+	if is_exhausted() and not _exhausted_sent:
+		_exhausted_sent = true
 		exhausted.emit()
 	return out
 

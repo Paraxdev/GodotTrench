@@ -58,20 +58,27 @@ func reset() -> void:
 
 ## [param run_id] ends a timeline whose timer is still pending when stop and start happen within one wait.
 func _run(run_id: int) -> void:
-	while _running and run_id == _run_id and _index < steps:
-		var wait := _delay_for(_index)
-		if wait > 0.0:
-			await get_tree().create_timer(wait).timeout
-		if not _running or run_id != _run_id or not is_inside_tree():
+	while true:
+		var waited := false
+		while _running and run_id == _run_id and _index < steps:
+			var wait := _delay_for(_index)
+			if wait > 0.0:
+				waited = true
+				await get_tree().create_timer(wait).timeout
+			if not _running or run_id != _run_id or not is_inside_tree():
+				return
+			_index += 1
+			_fire(_index)
+		if not _running or run_id != _run_id:
 			return
-		_index += 1
-		_fire(_index)
-	if not _running or run_id != _run_id:
-		return
-	if loop:
+		if not loop:
+			break
 		_index = 0
-		_run(run_id)
-		return
+		# A loop whose steps all wait 0 would otherwise run forever within one frame.
+		if not waited:
+			await get_tree().process_frame
+			if not _running or run_id != _run_id or not is_inside_tree():
+				return
 	_running = false
 	finished.emit()
 

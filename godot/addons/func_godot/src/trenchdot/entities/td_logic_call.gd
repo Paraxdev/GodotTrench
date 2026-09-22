@@ -38,6 +38,6 @@ static func call_targets(from: Node, target: String, method_name: String, args_j
 		if TrenchDotIO.resolve_method(node, method_name) == &"":
 			push_warning("[TD] %s has no method %s (or %s)" % [node.name, method_name, method_name.to_pascal_case()])
 			continue
-		result = TrenchDotIO.call_method(node, method_name, TrenchDotIO.build_arguments(args_json, activator, from))
+		result = TrenchDotIO.call_method(node, method_name, TrenchDotIO.build_arguments(args_json, activator, from), from)
 	TrenchDotIO.events().fired.emit(from, &"call", target, StringName(method_name), args_json)
 	return result

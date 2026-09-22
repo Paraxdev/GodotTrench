@@ -19,7 +19,7 @@ class_properties = Dictionary[String, Variant]({
 class_property_descriptions = Dictionary[String, Variant]({
 "targetname": "Name",
 "filter_group": "Only bodies in this group, empty accepts any body",
-"cooldown": "Seconds between firings",
+"cooldown": "Seconds before the same body fires it again",
 "start_disabled": "Needs an enable input first"
 })
 meta_properties = Dictionary[String, Variant]({

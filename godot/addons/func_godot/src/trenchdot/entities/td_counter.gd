@@ -19,6 +19,9 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	start_value = int(props.get("start_value", start_value))
 	value = start_value
 
+func _ready() -> void:
+	value = start_value
+
 func add(amount: Variant = 1) -> void:
 	set_value(value + _to_int(amount, 1))
 

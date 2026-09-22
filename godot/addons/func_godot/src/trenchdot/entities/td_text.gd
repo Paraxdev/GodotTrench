@@ -19,6 +19,8 @@ signal hidden
 var _label3d: Label3D
 var _canvas: CanvasLayer
 var _hud: Label
+## Bumped by every show and hide, so a hide timer from an earlier showing does nothing.
+var _cycle := 0
 
 func _func_godot_apply_properties(props: Dictionary) -> void:
 	text = str(props.get("text", text))
@@ -78,11 +80,13 @@ func flash(seconds: Variant = null) -> void:
 	if seconds != null and str(seconds).is_valid_float():
 		secs = float(seconds)
 	_set_shown(true)
+	var cycle := _cycle
 	await get_tree().create_timer(maxf(secs, 0.01)).timeout
-	if is_inside_tree():
+	if is_inside_tree() and cycle == _cycle:
 		_set_shown(false)
 
 func _set_shown(value: bool) -> void:
+	_cycle += 1
 	if _label3d:
 		_label3d.visible = value
 	if _canvas:
@@ -95,7 +99,8 @@ func _set_shown(value: bool) -> void:
 		hidden.emit()
 
 func _arm_hide(secs: float) -> void:
+	var cycle := _cycle
 	var timer := get_tree().create_timer(secs)
 	timer.timeout.connect(func() -> void:
-		if is_inside_tree():
+		if is_inside_tree() and cycle == _cycle:
 			_set_shown(false))

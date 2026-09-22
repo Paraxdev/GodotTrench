@@ -40,6 +40,7 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	_hp = health
 
 func _ready() -> void:
+	_hp = health
 	if Engine.is_editor_hint():
 		return
 	_build_body()

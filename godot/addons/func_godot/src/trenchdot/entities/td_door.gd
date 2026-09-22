@@ -24,6 +24,8 @@ signal locked_use(activator: Node)
 var is_open := false
 var _closed_position: Vector3
 var _tween: Tween
+## Bumped by every open and close, so an auto close timer from an earlier opening does nothing.
+var _cycle := 0
 
 func _func_godot_apply_properties(props: Dictionary) -> void:
 	if props.has("travel"):
@@ -53,6 +55,7 @@ func open() -> void:
 		locked_use.emit(null)
 		return
 	is_open = true
+	_cycle += 1
 	started_opening.emit()
 	_move_to(open_position(), opened)
 
@@ -60,6 +63,7 @@ func close() -> void:
 	if not is_open:
 		return
 	is_open = false
+	_cycle += 1
 	started_closing.emit()
 	_move_to(_closed_position, closed)
 
@@ -89,7 +93,10 @@ func _move_to(target: Vector3, done: Signal) -> void:
 	var duration := position.distance_to(target) / maxf(speed, 0.001)
 	_tween = create_tween()
 	_tween.tween_property(self, "position", target, duration)
+	var cycle := _cycle
 	_tween.finished.connect(func():
 		done.emit()
 		if is_open and wait >= 0.0 and is_inside_tree():
-			get_tree().create_timer(wait).timeout.connect(close))
+			get_tree().create_timer(wait).timeout.connect(func():
+				if cycle == _cycle:
+					close()))

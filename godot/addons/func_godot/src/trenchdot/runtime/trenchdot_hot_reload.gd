@@ -55,6 +55,16 @@ func _process(_delta: float) -> void:
 			peer.put_data((JSON.stringify(reply) + "\n").to_utf8_buffer())
 		_buffers[peer] = buffer
 
+## The absolute, lowercased file [param map] builds from, with uid:// resolved, for comparing against saved paths.
+static func map_path_key(map: FuncGodotMap) -> String:
+	var file: String = map.global_map_file if map.global_map_file != "" else map.local_map_file
+	if file.begins_with("uid://"):
+		var id := ResourceUID.text_to_id(file)
+		file = ResourceUID.get_id_path(id) if ResourceUID.has_id(id) else ""
+	if file == "":
+		return ""
+	return ProjectSettings.globalize_path(file).replace("\\", "/").to_lower()
+
 ## Rebuilds every map in the running scene tree that uses [param path]. Returns how many were rebuilt.
 func reload(path: String) -> int:
 	var target := path.replace("\\", "/").to_lower()
@@ -64,8 +74,8 @@ func reload(path: String) -> int:
 		var n: Node = stack.pop_back()
 		stack.append_array(n.get_children())
 		if n is FuncGodotMap:
-			var file: String = n.global_map_file if n.global_map_file != "" else n.local_map_file
-			if ProjectSettings.globalize_path(file).replace("\\", "/").to_lower() == target:
+			var key := map_path_key(n)
+			if key != "" and key == target:
 				n.build()
 				count += 1
 				map_reloaded.emit(n)
