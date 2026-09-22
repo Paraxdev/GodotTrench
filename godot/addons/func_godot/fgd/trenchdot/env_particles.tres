@@ -13,14 +13,21 @@ class_properties = Dictionary[String, Variant]({
 "amount": 32,
 "lifetime": 2.0,
 "one_shot": false,
-"start_emitting": false
+"start_emitting": false,
+"effect": {
+"rise": "rise",
+"rain": "rain"
+},
+"area": "10 1 10"
 })
 class_property_descriptions = Dictionary[String, Variant]({
 "targetname": "Name",
 "amount": "Particles alive at once",
 "lifetime": "Seconds each particle lives",
 "one_shot": "Emits one burst instead of continuously",
-"start_emitting": "Emits from map load"
+"start_emitting": "Emits from map load",
+"effect": ["Built in look: puffs rising, or rain falling from a box above the entity", "rise"],
+"area": "Rain: width, height and depth in meters of the box the drops start in"
 })
 meta_properties = Dictionary[String, Variant]({
 "color": Color(0.7019608, 0.4, 1, 1),

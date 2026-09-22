@@ -112,8 +112,9 @@ one fades into a dither. The editor previews both.
 
 For a night map the worldspawn keys cover the sky and the ambient light: a low `sun_energy` with a pale blue
 `sun_color` makes the sun a moon, `ambient_energy` and `sky_energy` scale the ambient light and the sky down, and
-`glow_intensity` above zero turns on Godot's glow so lamps and emissive materials bloom. The editor's lit view
-previews the same keys (glow excepted), fog and up to 64 point and spot lights, the brightest first. Lights that
+`glow_intensity` above zero turns on Godot's glow so lamps and emissive materials bloom. `ssr` set to 1 turns on
+screen space reflections, so glossy floors, wet streets and puddles mirror the lamps and signs. The editor's lit view
+previews the same keys (glow and reflections excepted), fog and up to 64 point and spot lights, the brightest first. Lights that
 start switched off stay out of the preview. `light` and `light_spot` take a `shadows` key for the lamps that should
 cast shadows. A lamp fixture can follow its light: give the glowing brush a `func_illusionary` entity with a
 targetname and put that name in the light's `fixture` key. The fixture hides while the light is off, or with

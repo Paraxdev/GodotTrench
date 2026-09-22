@@ -38,11 +38,14 @@ in a running editor, read as a reference for the tools, or copy as a starting po
 * `lighthouse_forest.json`: an island with a striped lighthouse (lathe bands with carved openings, spiral stairs, rotating beacon),
   a keeper's cottage, a ring wall arrayed around the tower, gates opened through a relay, a boat on a `func_train` path,
   wisps spawning along the forest path and a `trigger_call` that calls a Godot method on the beacon.
-* `withered_city.json`: an abandoned city block at night. Glowing block letters spelling STILL HERE lie on a cracked plaza
-  (one `create_brush` call with `shape: text`), towers are stacked storeys with repeated window openings and array
-  duplicates, broken with plane clips, vertex moves and CSG cutters. A shutter opens from a button, a lift climbs to the
-  roof that overlooks the letters, timers flicker the lights, and weeds, scrub and dead trees are painted only where the
-  ground terrain shows through.
+* `withered_city.json`: an abandoned city in a storm where only the neon still burns. The way in is a wet street between
+  ruined row houses hung with blade signs (round tops, logo discs and double tube frames) and box signs over the doors,
+  all block letters from `create_brush` with `shape: text` turned to face the street, with paper lanterns, cables and
+  debris frozen in mid air. A timer throws lightning whose bolt is the light's `fixture`, one sign flickers, one hangs
+  askew and one has a dead letter. Glowing letters spelling STILL HERE lie on a cracked plaza, towers are stacked storeys
+  with repeated window openings, broken with plane clips, vertex moves and CSG cutters, a shutter opens from a button and
+  a lift climbs to a roof that looks out over the signs. Weeds, scrub and dead trees are painted only where the ground
+  terrain shows through, and the worldspawn turns on glow and `ssr` so the street mirrors the neon in Godot.
 * `night_district.json`: an industrial street at night under sodium lamps, apartment blocks with emissive facades, a corner
   shop with a neon sign and an automatic door, an alley lamp flickering from a random timer with its bulb following through
   `switched`, a warehouse roller door on a switch with a beacon, hall lights and courtyard lamps switched on by triggers,

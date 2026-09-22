@@ -274,13 +274,13 @@
       "type": "text",
       "variant": "entry",
       "format": "markdown",
-      "md": "### env_particles\n\nA particle effect for smoke, fire, sparks and dust. `burst` fires one shot.\n\nInputs\n: `start`, `stop`, `toggle`, `burst`\nKeys\n: `amount` 32, `lifetime` 2.0, `one_shot` 0, `start_emitting` 0"
+      "md": "### env_particles\n\nA particle effect for smoke, fire, sparks and dust. `burst` fires one shot. Without a process material of its own it builds one from `effect`: `rise` sends puffs upward, `rain` drops thin streaks from a box `area` meters wide, high and deep centered on the entity, like the storm over the withered city's neon street.\n\nInputs\n: `start`, `stop`, `toggle`, `burst`\nKeys\n: `amount` 32, `lifetime` 2.0, `one_shot` 0, `start_emitting` 0, `effect` rise, `area` 10 1 10"
     },
     {
       "id": "b6",
       "type": "text",
       "format": "markdown",
-      "md": "## Not in the library\n\nThe plain FuncGodot classes, `worldspawn`, `func_geo`, `func_detail`, `func_detail_illusionary` and `func_illusionary`, come from the base definition file. Worldspawn holds the map's sun, ambient light, sky, fog and streaming settings, and the Inspector shows it when nothing is selected. For night maps, `ambient_energy` and `sky_energy` dim the ambient light and the sky, and `glow_intensity` makes lamps and emissive surfaces bloom, see [[building-in-godot]].\n\n`info_player_start` and `trigger_area` are known to the editor but only defined by the demo project. If you use them in your own project, add definitions for them, or they build as plain nodes with a warning.\n\nThe player is not an entity either. The library expects it to be in the `player` group, on collision layer 1, and to have a `take_damage(amount, source)` method. `godot/demo/player.gd` is a complete example."
+      "md": "## Not in the library\n\nThe plain FuncGodot classes, `worldspawn`, `func_geo`, `func_detail`, `func_detail_illusionary` and `func_illusionary`, come from the base definition file. Worldspawn holds the map's sun, ambient light, sky, fog and streaming settings, and the Inspector shows it when nothing is selected. For night maps, `ambient_energy` and `sky_energy` dim the ambient light and the sky, `glow_intensity` makes lamps and emissive surfaces bloom, and `ssr` makes glossy floors reflect them, see [[building-in-godot]].\n\n`info_player_start` and `trigger_area` are known to the editor but only defined by the demo project. If you use them in your own project, add definitions for them, or they build as plain nodes with a warning.\n\nThe player is not an entity either. The library expects it to be in the `player` group, on collision layer 1, and to have a `take_damage(amount, source)` method. `godot/demo/player.gd` is a complete example."
     }
   ]
 }
