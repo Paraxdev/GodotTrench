@@ -140,8 +140,46 @@ export class BoardView {
       el.appendChild(handle);
       this._attachResize(handle, el, card);
       if (card.type === "draw") this._attachDraw(body, card);
+    } else {
+      // A gentle pointer tracking tilt, view mode only.
+      this._attachTilt(el);
     }
     return el;
+  }
+
+  _prefersReducedMotion() {
+    try {
+      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  // A subtle 3D tilt that follows the pointer over a card in view mode. It only sets the
+  // element transform, so it never interferes with selection, drag, resize or the inspector,
+  // none of which run in view mode.
+  _attachTilt(el) {
+    if (this._prefersReducedMotion()) return;
+    const maxDeg = 5;
+    const onMove = (e) => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      const px = (e.clientX - r.left) / r.width;
+      const py = (e.clientY - r.top) / r.height;
+      const ry = (px - 0.5) * 2 * maxDeg;
+      const rx = -(py - 0.5) * 2 * maxDeg;
+      el.style.transform =
+        "perspective(900px) rotateX(" + rx.toFixed(2) + "deg) rotateY(" + ry.toFixed(2) + "deg) translate3d(0, -4px, 0)";
+    };
+    const onLeave = () => {
+      el.style.transform = "";
+    };
+    el.addEventListener("pointerenter", () => {
+      el.style.willChange = "transform";
+    });
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerleave", onLeave);
+    el.addEventListener("pointercancel", onLeave);
   }
 
   // A small header control button. Its pointerdown is stopped so it does not start a drag.
