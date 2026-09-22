@@ -1,0 +1,40 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_npc.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "npc_walker"
+description = "A scripted actor that walks a chain of path_corner entities playing animations, for in game cutscenes."
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"model": "",
+"target": "",
+"speed": 2.0,
+"loop": false,
+"start_active": false,
+"walk_anim": "walk",
+"idle_anim": "idle",
+"face_travel": true
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"model": "res:// scene giving the actor its mesh and AnimationPlayer",
+"target": "First path_corner to walk to",
+"speed": "Meters per second",
+"loop": "Returns to the first corner after the last",
+"start_active": "Walks from map load",
+"walk_anim": "Animation played while walking",
+"idle_anim": "Animation played while stopped",
+"face_travel": "Turns to face its direction of travel"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(1, 0.3019608, 0.42745098, 1),
+"size": AABB(-16, -16, 0, 16, 16, 64),
+"property_types": {"model": "resource"},
+"inputs": ["start", "stop", "walk_to", "play_anim", "face"],
+"outputs": ["arrived", "reached_goal", "finished"]
+})
+node_class = "CharacterBody3D"

@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_sequence.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "logic_sequence"
+description = "Cutscene timeline. On start it fires step_1 up to step_8 in order with a delay between them, so a scene can be scripted by wiring each step."
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"steps": 3,
+"interval": 1.0,
+"times": "",
+"start_active": false,
+"loop": false
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"steps": "How many steps to fire, 1 to 8",
+"interval": "Seconds between steps without a time of their own",
+"times": "Space separated per step delays, e.g. 0 1 0.5, overriding interval where present",
+"start_active": "Runs from map load",
+"loop": "Restarts after the last step"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7529412, 0.7529412, 0.7529412, 1),
+"size": AABB(-8, -8, 0, 8, 8, 16),
+"inputs": ["start", "stop", "reset"],
+"outputs": ["step_1", "step_2", "step_3", "step_4", "step_5", "step_6", "step_7", "step_8", "step", "finished"]
+})
+node_class = "Node3D"

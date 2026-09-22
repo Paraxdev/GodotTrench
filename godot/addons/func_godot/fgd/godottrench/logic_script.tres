@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_script.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "logic_script"
+description = "Runs an inline GDScript snippet when fired, for logic the built-in inputs cannot express. Its snippet can read and change data like a player's health. Author provided code, runs at the map's trust level."
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"source": "",
+"expression": ""
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"source": "GDScript body. In scope: this, activator, parameter, io (GodotTrenchIO), tree (SceneTree). Example: activator.take_damage(25, this)",
+"expression": "A single expression used when source is empty, same names in scope"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(1, 0.36078432, 0.5411765, 1),
+"size": AABB(-8, -8, 0, 8, 8, 16),
+"inputs": ["run", "run_with"],
+"outputs": ["ran"]
+})
+node_class = "Node3D"

@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/entities/gt_explosion.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "env_explosion"
+description = "On explode it pushes rigid bodies away and calls take_damage on nodes within radius, then spawns an optional effect."
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"radius": 256.0,
+"damage": 50.0,
+"force": 8.0,
+"damage_method": "take_damage",
+"effect_scene": ""
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"radius": "Blast radius in map units",
+"damage": "Damage at the center, falling off to the edge",
+"force": "Impulse at the center in meters per second, scaled by mass",
+"damage_method": "Method called on bodies with (amount, source)",
+"effect_scene": "res:// scene spawned at the blast for particles or sound"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(1, 0.47843137, 0.2, 1),
+"size": AABB(-8, -8, 0, 8, 8, 16),
+"property_types": {"effect_scene": "resource"},
+"gizmos": [{"type": "radius", "property": "radius", "scale": 1.0}],
+"inputs": ["explode"],
+"outputs": ["exploded"]
+})
+node_class = "Node3D"

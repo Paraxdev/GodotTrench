@@ -61,6 +61,14 @@ func _initialize() -> void:
 	await test_io_targets()
 	await test_gameplay_entities()
 	await test_spawner()
+	await test_light()
+	await test_text()
+	await test_animate()
+	await test_prop_and_explosion()
+	await test_npc_path()
+	await test_sequence()
+	await test_logic_script()
+	await test_scripted_scene()
 	test_scatter_and_blend()
 	test_face_cull()
 	test_interior_face_culling()
@@ -1035,6 +1043,242 @@ func test_live_link_lines() -> void:
 	var split := GodotTrenchEditorIntegration.take_lines(rest)
 	check(split[0] == PackedStringArray(["{\"a\":\"ü\"}", "{\"b\":1}"]), "complete lines decode whole, got %s" % [split[0]])
 	check(split[1].get_string_from_utf8() == "{\"c\"", "the unfinished line stays buffered")
+
+func test_light() -> void:
+	print("- light switching")
+	var light := GTLight.new()
+	light._func_godot_apply_properties({ "light_energy": 2.0, "omni_range": 8.0, "start_on": false })
+	root.add_child(light)
+	await process_frame
+	check(not light.visible and not light.is_on(), "light starts off")
+	var switched: Array = []
+	light.switched.connect(func(on): switched.append(on))
+	GodotTrenchIO.invoke(light, &"turn_on", "", null)
+	check(light.visible and light.is_on() and switched.back() == true, "turn_on switches it on and fires switched(true)")
+	GodotTrenchIO.invoke(light, &"toggle", "", null)
+	check(not light.is_on() and switched.back() == false, "toggle switches it off, got %s" % [switched])
+	light.queue_free()
+	await process_frame
+
+func test_text() -> void:
+	print("- game_text in world and hud")
+	var text := GTText.new()
+	text._func_godot_apply_properties({ "text": "Follow me", "place": "both", "start_visible": false })
+	root.add_child(text)
+	await process_frame
+	check(text._label3d != null and text._hud != null, "both world and hud labels built")
+	check(text._label3d.text == "Follow me" and not text._label3d.visible, "world label set and hidden at start")
+	var shown: Array = []
+	text.shown.connect(func(): shown.append(true))
+	GodotTrenchIO.invoke(text, &"show", "", null)
+	check(text._label3d.visible and text._hud.visible and shown.size() == 1, "show reveals both labels and fires shown")
+	GodotTrenchIO.invoke(text, &"set_text", "Go left", null)
+	check(text._label3d.text == "Go left" and text._hud.text == "Go left", "set_text updates both labels, got '%s'" % text._label3d.text)
+	GodotTrenchIO.invoke(text, &"hide", "", null)
+	check(not text._label3d.visible, "hide hides it")
+	text.queue_free()
+	await process_frame
+
+func test_animate() -> void:
+	print("- logic_animate drives an AnimationPlayer")
+	var map := Node3D.new()
+	root.add_child(map)
+	var actor := Node3D.new()
+	actor.set_meta(GodotTrenchIO.TARGETNAME_META, "actor")
+	var player := AnimationPlayer.new()
+	var lib := AnimationLibrary.new()
+	var clip := Animation.new()
+	clip.length = 0.1
+	lib.add_animation(&"wave", clip)
+	player.add_animation_library(&"", lib)
+	actor.add_child(player)
+	map.add_child(actor)
+	var driver := GTAnimate.new()
+	driver._func_godot_apply_properties({ "target": "actor", "animation": "wave" })
+	map.add_child(driver)
+	await process_frame
+	GodotTrenchIO.invoke(driver, &"play", "", null)
+	check(player.current_animation == "wave", "logic_animate played the target's animation, got '%s'" % player.current_animation)
+	map.queue_free()
+	await process_frame
+
+func test_prop_and_explosion() -> void:
+	print("- prop_physics and env_explosion")
+	var map := Node3D.new()
+	root.add_child(map)
+	var victim: Node3D = load("res://tests/helpers/io_receiver.gd").new()
+	victim.name = "Victim"
+	map.add_child(victim)
+	victim.global_position = Vector3(1, 0, 0)
+	var far: Node3D = load("res://tests/helpers/io_receiver.gd").new()
+	far.name = "Far"
+	map.add_child(far)
+	far.global_position = Vector3(1000, 0, 0)
+	var boom := GTExplosion.new()
+	boom._func_godot_apply_properties({ "radius": 128.0, "damage": 40.0, "force": 0.0 })
+	map.add_child(boom)
+	boom.global_position = Vector3.ZERO
+	await process_frame
+	var exploded: Array = []
+	boom.exploded.connect(func(): exploded.append(true))
+	boom.explode(null)
+	check(exploded.size() == 1, "explosion fires exploded")
+	check(victim.health < 100.0, "explosion damaged a node in radius, health %s" % victim.health)
+	check(far.health == 100.0, "explosion ignores nodes outside radius, health %s" % far.health)
+
+	var barrel := GTPropPhysics.new()
+	barrel._func_godot_apply_properties({ "health": 10.0, "explosive": true, "explosion_radius": 128.0, "explosion_damage": 25.0, "size": "16 16 16" })
+	map.add_child(barrel)
+	barrel.global_position = Vector3.ZERO
+	await process_frame
+	var near_hp: Node3D = load("res://tests/helpers/io_receiver.gd").new()
+	near_hp.name = "Bystander"
+	map.add_child(near_hp)
+	near_hp.global_position = Vector3(1, 0, 0)
+	var broke: Array = []
+	barrel.broken.connect(func(): broke.append(true))
+	barrel.take_damage(25.0, null)
+	check(broke.size() == 1, "barrel breaks when its health runs out")
+	await process_frame
+	check(near_hp.health < 100.0, "an explosive barrel blasts nearby nodes when broken, health %s" % near_hp.health)
+	map.queue_free()
+	await process_frame
+
+func test_npc_path() -> void:
+	print("- npc_walker follows a path")
+	var map := Node3D.new()
+	root.add_child(map)
+	var c1 := GTPathCorner.new()
+	c1.set_meta(GodotTrenchIO.TARGETNAME_META, "npc_corner_1")
+	c1._func_godot_apply_properties({ "target": "npc_corner_2" })
+	c1.position = Vector3(4, 0, 0)
+	map.add_child(c1)
+	var c2 := GTPathCorner.new()
+	c2.set_meta(GodotTrenchIO.TARGETNAME_META, "npc_corner_2")
+	c2.position = Vector3(4, 0, 4)
+	map.add_child(c2)
+	var npc := GTNpc.new()
+	npc._func_godot_apply_properties({ "target": "npc_corner_1", "speed": 100.0 })
+	map.add_child(npc)
+	await process_frame
+	var arrived: Array = []
+	var finished: Array = []
+	npc.arrived.connect(func(c): arrived.append(c))
+	npc.finished.connect(func(): finished.append(true))
+	npc.start()
+	var deadline := Time.get_ticks_msec() + 3000
+	while finished.is_empty() and Time.get_ticks_msec() < deadline:
+		await process_frame
+	check(arrived.size() == 2, "npc reached both corners, got %s" % arrived.size())
+	check(finished.size() == 1 and npc.global_position.distance_to(Vector3(4, 0, 4)) < 0.2, "npc finished at the last corner, at %s" % npc.global_position)
+	map.queue_free()
+	await process_frame
+
+func test_sequence() -> void:
+	print("- logic_sequence timeline")
+	var seq := GTSequence.new()
+	seq._func_godot_apply_properties({ "steps": 3, "interval": 0.05 })
+	root.add_child(seq)
+	await process_frame
+	var fired: Array = []
+	var order: Array = []
+	seq.step.connect(func(i): order.append(i))
+	seq.step_1.connect(func(): fired.append(1))
+	seq.step_2.connect(func(): fired.append(2))
+	seq.step_3.connect(func(): fired.append(3))
+	var done: Array = []
+	seq.finished.connect(func(): done.append(true))
+	seq.start()
+	var deadline := Time.get_ticks_msec() + 2000
+	while done.is_empty() and Time.get_ticks_msec() < deadline:
+		await process_frame
+	check(fired == [1, 2, 3] and order == [1, 2, 3], "sequence fires steps in order, got %s" % [fired])
+	check(done.size() == 1, "sequence fires finished once")
+	seq.queue_free()
+	await process_frame
+
+func test_logic_script() -> void:
+	print("- logic_script runs inline GDScript")
+	var map := Node3D.new()
+	root.add_child(map)
+	var receiver: Node3D = load("res://tests/helpers/io_receiver.gd").new()
+	receiver.name = "ScriptPlayer"
+	receiver.add_to_group(&"player")
+	map.add_child(receiver)
+	await process_frame
+	var scripted := GTScript.new()
+	scripted._func_godot_apply_properties({ "source": "activator.take_damage(30, this)\nreturn activator.health" })
+	map.add_child(scripted)
+	await process_frame
+	var results: Array = []
+	scripted.ran.connect(func(r): results.append(r))
+	scripted.run(receiver)
+	check(near(receiver.health, 70.0), "logic_script read and lowered the activator's health, got %s" % receiver.health)
+	check(results.size() == 1 and near(results.back(), 70.0), "logic_script returns its result, got %s" % [results])
+
+	var expr := GTScript.new()
+	expr._func_godot_apply_properties({ "expression": "activator.health" })
+	map.add_child(expr)
+	await process_frame
+	var read: Array = []
+	expr.ran.connect(func(r): read.append(r))
+	expr.run(receiver)
+	check(read.size() == 1 and near(read.back(), 70.0), "logic_script expression reads data, got %s" % [read])
+	map.queue_free()
+	await process_frame
+
+## Adds a Hammer style output connection from [param source] to a named target, like the map builder does.
+func _wire(source: Node, output: StringName, target: String, input: StringName, parameter := "") -> void:
+	var out := GodotTrenchOutput.new()
+	out.output = output
+	out.target = target
+	out.input = input
+	out.parameter = parameter
+	source.add_child(out)
+
+func test_scripted_scene() -> void:
+	print("- scripted scene playthrough")
+	var map := Node3D.new()
+	root.add_child(map)
+	var player: Node3D = load("res://tests/helpers/io_receiver.gd").new()
+	player.name = "ScenePlayer"
+	player.add_to_group(&"player")
+	map.add_child(player)
+	player.global_position = Vector3(0, 0, 6)
+
+	var seq := GTSequence.new()
+	seq.set_meta(GodotTrenchIO.TARGETNAME_META, "cutscene")
+	seq._func_godot_apply_properties({ "steps": 3, "interval": 0.03 })
+	map.add_child(seq)
+	var hint := GTText.new()
+	hint.set_meta(GodotTrenchIO.TARGETNAME_META, "hint")
+	hint._func_godot_apply_properties({ "text": "Follow me", "place": "world" })
+	map.add_child(hint)
+	var barrel := GTPropPhysics.new()
+	barrel.set_meta(GodotTrenchIO.TARGETNAME_META, "barrel")
+	barrel._func_godot_apply_properties({ "health": 5.0, "explosive": true, "explosion_radius": 384.0, "explosion_damage": 20.0, "size": "16 16 16" })
+	map.add_child(barrel)
+	barrel.global_position = Vector3(0, 0, 6)
+	var lamp := GTLight.new()
+	lamp.set_meta(GodotTrenchIO.TARGETNAME_META, "lamp")
+	lamp._func_godot_apply_properties({ "start_on": false })
+	map.add_child(lamp)
+
+	_wire(seq, &"step_1", "hint", &"show")
+	_wire(seq, &"step_2", "barrel", &"smash")
+	_wire(seq, &"step_3", "lamp", &"turn_on")
+	await process_frame
+
+	seq.start()
+	var deadline := Time.get_ticks_msec() + 2000
+	while not lamp.is_on() and Time.get_ticks_msec() < deadline:
+		await process_frame
+	await process_frame
+	check(hint._label3d != null and hint._label3d.visible, "step 1 output showed the hint text")
+	check(player.health < 100.0, "step 2 smashed the barrel and its blast hurt the player through I/O, health %s" % player.health)
+	check(lamp.is_on(), "step 3 output turned the light on")
+	map.queue_free()
+	await process_frame
 
 func find_targetname(root: Node, targetname: String) -> Node:
 	for n in collect(root, func(n): return str(n.get_meta(GodotTrenchIO.TARGETNAME_META, "")) == targetname):

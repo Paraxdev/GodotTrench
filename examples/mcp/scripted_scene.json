@@ -1,0 +1,54 @@
+{
+  "format": "godottrench-mcp-script",
+  "vars": { "save_dir": "${project}/demo/maps" },
+  "steps": [
+    { "note": "A small scripted scene: walk into the trigger and a cutscene spawns a guide, shows text, blows up a barrel that hurts the player, then switches a light on and opens the exit. Everything is wired through entity I/O and one logic_script that reads the player's health." },
+    { "tool": "map_file", "args": { "op": "new" } },
+    { "tool": "set_map_properties", "args": { "properties": { "message": "Scripted Scene", "sun_angles": "-40 -55", "sun_energy": "0.6", "ambient_color": "60 66 82", "sky_top_color": "40 54 92", "sky_horizon_color": "120 130 150", "sky_ground_color": "60 62 70" } } },
+
+    { "tool": "create_brush", "args": { "min": [-320, 0, -320], "max": [320, 8, 320], "material": "showcase/cobble" }, "save": "floor" },
+    { "tool": "create_brush", "args": { "min": [-320, 248, -320], "max": [320, 256, 320], "material": "showcase/planks_dark" }, "save": "ceiling" },
+    { "tool": "create_brush", "args": { "min": [-320, 8, 312], "max": [320, 248, 320], "material": "showcase/stone_bricks" }, "save": "wall_south" },
+    { "tool": "create_brush", "args": { "min": [-320, 8, -320], "max": [-136, 248, -312], "material": "showcase/stone_bricks" }, "save": "wall_north_left" },
+    { "tool": "create_brush", "args": { "min": [136, 8, -320], "max": [320, 248, -312], "material": "showcase/stone_bricks" }, "save": "wall_north_right" },
+    { "tool": "create_brush", "args": { "min": [-136, 176, -320], "max": [136, 248, -312], "material": "showcase/stone_bricks" }, "save": "wall_north_top" },
+    { "tool": "create_brush", "args": { "min": [-320, 8, -320], "max": [-312, 248, 320], "material": "showcase/stone_bricks" }, "save": "wall_west" },
+    { "tool": "create_brush", "args": { "min": [312, 8, -320], "max": [320, 248, 320], "material": "showcase/stone_bricks" }, "save": "wall_east" },
+
+    { "tool": "create_entity", "args": { "classname": "info_player_start", "origin": [0, 8, 260], "angles": [0, 180, 0] } },
+
+    { "tool": "create_entity", "args": { "classname": "path_corner", "origin": [0, 8, 64], "properties": { "targetname": "corner_a", "target": "corner_b" } } },
+    { "tool": "create_entity", "args": { "classname": "path_corner", "origin": [-176, 8, -176], "properties": { "targetname": "corner_b" } } },
+
+    { "tool": "create_entity", "args": { "classname": "npc_walker", "origin": [0, 8, 176], "properties": { "targetname": "guide", "target": "corner_a", "speed": "2.5" } } },
+
+    { "tool": "create_entity", "args": { "classname": "game_text", "origin": [0, 96, 0], "properties": { "targetname": "hint", "text": "Follow the guide", "place": "world", "world_size": "0.03" } } },
+    { "tool": "create_entity", "args": { "classname": "game_text", "origin": [0, 8, 240], "properties": { "targetname": "hpmsg", "place": "hud" } } },
+
+    { "tool": "create_entity", "args": { "classname": "light", "origin": [0, 200, -40], "properties": { "targetname": "lamp", "start_on": "0", "light_energy": "3.0", "light_color": "255 220 170", "omni_range": "16" } } },
+
+    { "tool": "create_entity", "args": { "classname": "prop_physics", "origin": [0, 24, 176], "properties": { "targetname": "barrel", "health": "5", "explosive": "1", "explosion_radius": "256", "explosion_damage": "25", "size": "16 24 16" }, "outputs": [ { "output": "broken", "target": "hp_readout", "input": "run" } ] } },
+
+    { "tool": "create_entity", "args": { "classname": "logic_script", "origin": [0, 8, 288], "properties": { "targetname": "hp_readout", "source": "var players = io.find_targets(this, \"!player\", null)\nif players.is_empty():\n\treturn\nvar hp = int(players[0].health)\nfor label in io.find_targets(this, \"hpmsg\", null):\n\tlabel.set_text(\"HP \" + str(hp))\n\tlabel.show()" } } },
+
+    { "tool": "create_brush", "args": { "min": [-32, 8, -318], "max": [32, 176, -312], "material": "showcase/planks" }, "save": "door_leaf" },
+    { "tool": "gameplay", "args": { "op": "make_door", "ids": ["$door_leaf.ids.0"], "kind": "sliding", "direction": "up", "properties": { "targetname": "exit_door", "speed": "2", "wait": "-1" } }, "save": "exit_door" },
+
+    { "tool": "gameplay", "args": { "op": "place", "classname": "logic_sequence", "origin": [0, 8, 296], "properties": { "targetname": "cutscene", "steps": "5", "interval": "1.5" }, "outputs": [
+      { "output": "step_1", "target": "hint", "input": "show" },
+      { "output": "step_2", "target": "guide", "input": "start" },
+      { "output": "step_3", "target": "barrel", "input": "ignite" },
+      { "output": "step_4", "target": "lamp", "input": "turn_on" },
+      { "output": "step_5", "target": "exit_door", "input": "open" }
+    ] } },
+
+    { "tool": "gameplay", "args": { "op": "volume", "classname": "trigger_once", "min": [-160, 8, 120], "max": [160, 200, 232], "properties": { "targetname": "start_zone", "filter_group": "player" }, "outputs": [ { "output": "triggered", "target": "cutscene", "input": "start" } ] } },
+
+    { "tool": "set_camera", "args": { "view": "3d", "position": [360, 320, 520], "look_at": [0, 60, 0] } },
+    { "tool": "set_camera", "args": { "view": "3d", "position": [0, 120, 300], "look_at": [0, 60, -120] } },
+    { "tool": "set_camera", "args": { "view": "3d", "position": [520, 480, 520], "look_at": [0, 40, -40] } },
+
+    { "tool": "validate_map", "args": {} },
+    { "tool": "map_file", "args": { "op": "save", "path": "${save_dir}/scripted_scene.gtm" } }
+  ]
+}

@@ -11,7 +11,37 @@ the addon exports them to `godottrench_game.json`, which the editor reads when y
 The fork ships a ready entity library (`godot/addons/func_godot/fgd/godottrench`): `func_door`, `func_door_rotating`,
 `func_gate`, `func_platform`, `func_train` with `path_corner`, `func_button`, `trigger_once`, `trigger_multiple`,
 `trigger_call`, `trigger_spawn_area`, `trigger_hurt`, `trigger_teleport`, `trigger_push`, `info_spawner`,
-`info_teleport_destination`, `logic_call`, `logic_relay`, `logic_timer`, `logic_counter`, `logic_auto` and `logic_debug`.
+`info_teleport_destination`, `light`, `logic_call`, `logic_relay`, `logic_timer`, `logic_counter`, `logic_auto`
+and `logic_debug`.
+
+A second set covers scripted scenes and props with little setup, so a map can spawn a character, walk it a path,
+play animations, show text, break things and switch lights entirely through I/O:
+
+* `npc_walker`: a character that walks a chain of `path_corner` entities playing animations, for cutscenes.
+  Inputs `start`, `stop`, `walk_to(corner)`, `play_anim(name)`, `face(target)`. Outputs `arrived(corner)`,
+  `reached_goal`, `finished`.
+* `logic_sequence`: a timeline that fires `step_1` up to `step_8` in order with a delay between them, so a scene is
+  scripted by wiring each step. Inputs `start`, `stop`, `reset`.
+* `logic_animate`: plays animations on the `AnimationPlayer` under a target. Inputs `play(name)`, `stop`,
+  `queue(name)`, `seek(time)`. Output `finished(name)`.
+* `game_text`: shows a line in the world (a `Label3D`) and/or on the HUD. Inputs `show`, `hide`, `set_text(text)`,
+  `flash(seconds)`. Outputs `shown`, `hidden`.
+* `prop_physics`: a throwable, breakable crate or barrel. Damage, a hard impact (`impact_speed`) or a `smash` input
+  breaks it, and an `explosive` prop blasts when broken. Inputs `smash`, `ignite`, `push(direction)`,
+  `take_damage(amount, source)`. Outputs `damaged(hp)`, `broken`.
+* `env_explosion`: on `explode` it pushes rigid bodies away and calls `take_damage` on nodes within `radius`, then
+  optionally spawns an effect. Output `exploded`.
+* `light`: a switchable omni light. Inputs `turn_on`, `turn_off`, `toggle`. Output `switched(on)`.
+
+## Running a script when the built-in inputs are not enough
+
+`logic_script` runs an inline GDScript snippet when fired, the deeper route for logic that reaching data like a
+player's health needs. Its `source` is a function body with these names in scope: `this` (the node), `activator`
+(the firing or `!activator` node), `parameter` (the incoming value), `io` (the `GodotTrenchIO` helpers) and `tree`
+(the `SceneTree`). For a one liner set `expression` instead. It has inputs `run(activator)` and `run_with(parameter)`
+and an output `ran(result)`. For example, `source = "activator.take_damage(25, this)\nreturn activator.health"` reads
+and lowers the activator's health and passes the remaining value out through `ran`. Snippets are author provided
+GDScript that run at the map's own trust level, the same as the entity scripts a map already ships.
 
 ## Inputs and outputs
 

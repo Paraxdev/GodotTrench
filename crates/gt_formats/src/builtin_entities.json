@@ -43,6 +43,7 @@
     },
     {
       "classname": "light", "type": "point", "description": "Switchable omni light", "color": "#ffe64dff", "node_class": "OmniLight3D",
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_light.gd",
       "properties": [
         { "name": "targetname", "type": "target_source", "description": "Name" },
         { "name": "light_energy", "type": "float", "default": "1.0", "description": "Brightness" },
@@ -343,6 +344,115 @@
       ],
       "outputs": [{ "name": "printed", "parameter": "text" }],
       "inputs": [{ "name": "write", "parameter": "parameter" }, { "name": "show" }, { "name": "hide" }, { "name": "toggle" }]
+    },
+    {
+      "classname": "logic_script", "type": "point", "description": "Runs an inline GDScript snippet when fired, for logic the built-in inputs cannot express. Its snippet can read and change data like a player's health. Author provided code, runs at the map's trust level.", "color": "#ff5c8aff", "node_class": "Node3D",
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_script.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "source", "type": "string", "default": "", "description": "GDScript body. In scope: this, activator, parameter, io (GodotTrenchIO), tree (SceneTree). Example: activator.take_damage(25, this)" },
+        { "name": "expression", "type": "string", "default": "", "description": "A single expression used when source is empty, same names in scope" }
+      ],
+      "outputs": [{ "name": "ran", "parameter": "result" }],
+      "inputs": [{ "name": "run", "parameter": "activator" }, { "name": "run_with", "parameter": "parameter" }]
+    },
+    {
+      "classname": "logic_sequence", "type": "point", "description": "Cutscene timeline. On start it fires step_1 up to step_8 in order with a delay between them, so a scene can be scripted by wiring each step.", "color": "#c0c0c0ff", "node_class": "Node3D",
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_sequence.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "steps", "type": "int", "default": "3", "description": "How many steps to fire, 1 to 8" },
+        { "name": "interval", "type": "float", "default": "1.0", "description": "Seconds between steps without a time of their own" },
+        { "name": "times", "type": "string", "default": "", "description": "Space separated per step delays, e.g. 0 1 0.5, overriding interval where present" },
+        { "name": "start_active", "type": "bool", "default": "0", "description": "Runs from map load" },
+        { "name": "loop", "type": "bool", "default": "0", "description": "Restarts after the last step" }
+      ],
+      "outputs": [{ "name": "step_1" }, { "name": "step_2" }, { "name": "step_3" }, { "name": "step_4" }, { "name": "step_5" }, { "name": "step_6" }, { "name": "step_7" }, { "name": "step_8" }, { "name": "step", "parameter": "index" }, { "name": "finished" }],
+      "inputs": [{ "name": "start" }, { "name": "stop" }, { "name": "reset" }]
+    },
+    {
+      "classname": "logic_animate", "type": "point", "description": "Plays animations on the AnimationPlayer under a target entity, so I/O can drive animated doors, props or characters.", "color": "#8a7cffff", "node_class": "Node3D",
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_animate.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "target", "type": "string", "default": "!self", "description": "Entity whose AnimationPlayer to play: targetname, !self, !activator, @group or a node path" },
+        { "name": "animation", "type": "string", "default": "", "description": "Animation played when play has no name" },
+        { "name": "speed", "type": "float", "default": "1.0", "description": "Playback speed scale" }
+      ],
+      "outputs": [{ "name": "finished", "parameter": "anim" }],
+      "inputs": [{ "name": "play", "parameter": "name" }, { "name": "stop" }, { "name": "queue", "parameter": "name" }, { "name": "seek", "parameter": "time" }]
+    },
+    {
+      "classname": "game_text", "type": "point", "description": "Shows a line of text in the world and/or on the HUD.", "color": "#66d9c2ff", "node_class": "Node3D",
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_text.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "text", "type": "string", "default": "", "description": "Text to display" },
+        { "name": "place", "type": "choices", "default": "world", "description": "Where to show it", "options": [["world", "world"], ["hud", "hud"], ["both", "both"]] },
+        { "name": "start_visible", "type": "bool", "default": "0", "description": "Visible from map load" },
+        { "name": "duration", "type": "float", "default": "0", "description": "Seconds to stay up before hiding on its own, 0 stays until hide" },
+        { "name": "text_color", "type": "color", "default": "255 255 255", "description": "Text color" },
+        { "name": "world_size", "type": "float", "default": "0.01", "description": "World label size in meters per pixel" }
+      ],
+      "outputs": [{ "name": "shown" }, { "name": "hidden" }],
+      "inputs": [{ "name": "show" }, { "name": "hide" }, { "name": "set_text", "parameter": "text" }, { "name": "flash", "parameter": "seconds" }]
+    },
+    {
+      "classname": "env_explosion", "type": "point", "description": "On explode it pushes rigid bodies away and calls take_damage on nodes within radius, then spawns an optional effect.", "color": "#ff7a33ff", "node_class": "Node3D",
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_explosion.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "radius", "type": "float", "default": "256", "description": "Blast radius in map units" },
+        { "name": "damage", "type": "float", "default": "50", "description": "Damage at the center, falling off to the edge" },
+        { "name": "force", "type": "float", "default": "8", "description": "Impulse at the center in meters per second, scaled by mass" },
+        { "name": "damage_method", "type": "string", "default": "take_damage", "description": "Method called on bodies with (amount, source)" },
+        { "name": "effect_scene", "type": "resource", "description": "res:// scene spawned at the blast for particles or sound" }
+      ],
+      "outputs": [{ "name": "exploded" }],
+      "inputs": [{ "name": "explode", "parameter": "activator" }],
+      "gizmos": [{ "type": "radius", "property": "radius" }]
+    },
+    {
+      "classname": "prop_physics", "type": "point", "description": "A throwable, breakable physics prop such as a crate or barrel. Damage, a hard impact or a smash breaks it, and an explosive prop blasts when broken.", "color": "#b9803dff", "node_class": "RigidBody3D",
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_prop_physics.gd",
+      "size": [[-16, 0, -16], [16, 32, 16]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "model", "type": "resource", "description": "res:// scene for the visual, a box collision is built from size" },
+        { "name": "size", "type": "vector3", "default": "16 16 16", "description": "Half extents of the box collision in map units" },
+        { "name": "mass", "type": "float", "default": "5.0", "description": "Mass in kilograms" },
+        { "name": "health", "type": "float", "default": "30", "description": "Damage it takes before breaking" },
+        { "name": "explosive", "type": "bool", "default": "0", "description": "Fires a blast when it breaks" },
+        { "name": "explosion_radius", "type": "float", "default": "192", "description": "Blast radius in map units when explosive" },
+        { "name": "explosion_damage", "type": "float", "default": "40", "description": "Blast damage when explosive" },
+        { "name": "impact_speed", "type": "float", "default": "0", "description": "Breaks when it hits something faster than this in m/s, 0 never breaks on impact" },
+        { "name": "debris_scene", "type": "resource", "description": "res:// scene spawned where it broke" }
+      ],
+      "outputs": [{ "name": "damaged", "parameter": "hp" }, { "name": "broken" }],
+      "inputs": [{ "name": "smash" }, { "name": "ignite", "parameter": "activator" }, { "name": "push", "parameter": "direction" }, { "name": "take_damage", "parameter": "amount" }]
+    },
+    {
+      "classname": "npc_walker", "type": "point", "description": "A scripted actor that walks a chain of path_corner entities playing animations, for in game cutscenes.", "color": "#ff4d6dff", "node_class": "CharacterBody3D",
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_npc.gd",
+      "size": [[-16, 0, -16], [16, 64, 16]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "model", "type": "resource", "description": "res:// scene giving the actor its mesh and AnimationPlayer" },
+        { "name": "target", "type": "target_destination", "description": "First path_corner to walk to" },
+        { "name": "speed", "type": "float", "default": "2.0", "description": "Meters per second" },
+        { "name": "loop", "type": "bool", "default": "0", "description": "Returns to the first corner after the last" },
+        { "name": "start_active", "type": "bool", "default": "0", "description": "Walks from map load" },
+        { "name": "walk_anim", "type": "string", "default": "walk", "description": "Animation played while walking" },
+        { "name": "idle_anim", "type": "string", "default": "idle", "description": "Animation played while stopped" },
+        { "name": "face_travel", "type": "bool", "default": "1", "description": "Turns to face its direction of travel" }
+      ],
+      "outputs": [{ "name": "arrived", "parameter": "corner" }, { "name": "reached_goal" }, { "name": "finished" }],
+      "inputs": [{ "name": "start" }, { "name": "stop" }, { "name": "walk_to", "parameter": "corner" }, { "name": "play_anim", "parameter": "name" }, { "name": "face", "parameter": "target" }]
     }
   ]
 }
