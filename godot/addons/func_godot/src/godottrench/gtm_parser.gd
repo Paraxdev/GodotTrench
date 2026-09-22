@@ -12,6 +12,8 @@ const _FaceData := FuncGodotData.FaceData
 const _ParseData := FuncGodotData.ParseData
 
 const FORMAT_NAME := "godottrench-map"
+## Newest map version this importer understands, the same as FORMAT_VERSION in crates/gt_doc/src/format.rs.
+const FORMAT_VERSION := 1
 const MAX_INSTANCE_DEPTH := 8
 
 ## Godot space (map units, Y-up) to FuncGodot's id space.
@@ -63,8 +65,7 @@ static func parse(text: String, map_settings: FuncGodotMapSettings, parse_data: 
 
 ## Like [method parse] for a map that is already parsed JSON, e.g. the live model of the GodotTrench editor.
 static func parse_dict(json: Variant, map_settings: FuncGodotMapSettings, parse_data: _ParseData, map_path: String = "") -> _ParseData:
-	if not json is Dictionary or json.get("format", "") != FORMAT_NAME:
-		push_error("[GTM] %s is not a GodotTrench map" % map_path)
+	if not _readable(json, map_path):
 		return null
 	var ctx := Context.new()
 	ctx.map_settings = map_settings
@@ -81,10 +82,25 @@ static func parse_dict(json: Variant, map_settings: FuncGodotMapSettings, parse_
 	parse_data.entities.append(world)
 
 	for layer in json.get("layers", []):
-		_parse_node(ctx, layer, null)
+		if _is_layer(layer):
+			_parse_node(ctx, layer, null)
 	_convert_geometry(ctx)
 	return parse_data
 
+
+## Refuses what the editor refuses to open: another format, or a version newer than this importer knows.
+static func _readable(json: Variant, path: String) -> bool:
+	if not json is Dictionary or json.get("format", "") != FORMAT_NAME:
+		push_error("[GTM] %s is not a GodotTrench map" % path)
+		return false
+	if int(json.get("version", 0)) > FORMAT_VERSION:
+		push_error("[GTM] %s is map version %s, newer than this addon supports (%s), update the addon" % [path, json.get("version"), FORMAT_VERSION])
+		return false
+	return true
+
+## The editor only keeps layers at the top of a map, so anything else there is ignored here too.
+static func _is_layer(node: Variant) -> bool:
+	return node is Dictionary and node.get("type", "") == "layer"
 
 ## Leaves a slot for a brush or mesh node in [param entity], filled by [method _convert_geometry].
 static func _queue_geometry(ctx: Context, node: Dictionary, entity: _EntityData) -> void:
@@ -357,8 +373,7 @@ static func _parse_instance(ctx: Context, node: Dictionary, group: _GroupData) -
 		push_error("[GTM] cannot read instance map %s" % path)
 		return
 	var json = JSON.parse_string(text)
-	if not json is Dictionary or json.get("format", "") != FORMAT_NAME:
-		push_error("[GTM] instance %s is not a GodotTrench map" % path)
+	if not _readable(json, path):
 		return
 
 	var saved_xform := ctx.xform
@@ -373,7 +388,7 @@ static func _parse_instance(ctx: Context, node: Dictionary, group: _GroupData) -
 	ctx.instance_depth += 1
 
 	for layer in json.get("layers", []):
-		if bool(layer.get("omit_from_export", false)):
+		if not _is_layer(layer) or bool(layer.get("omit_from_export", false)):
 			continue
 		for child in layer.get("children", []):
 			_parse_node(ctx, child, group)

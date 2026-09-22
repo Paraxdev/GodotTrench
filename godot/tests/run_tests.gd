@@ -92,6 +92,11 @@ func test_parser() -> void:
 	var text := FileAccess.get_file_as_string(MAP)
 	var result := GodotTrenchParser.parse(text, load(SETTINGS), parse_data, MAP)
 	check(result != null, "parse returns data")
+	var newer := { "format": "godottrench-map", "version": GodotTrenchParser.FORMAT_VERSION + 1, "layers": [] }
+	check(GodotTrenchParser.parse_dict(newer, load(SETTINGS), FuncGodotData.ParseData.new(), "newer.gtm") == null, "a newer map version is refused")
+	var stray := { "format": "godottrench-map", "version": 1, "layers": [{ "id": 5, "type": "entity", "classname": "light", "properties": {} }] }
+	var stray_data := GodotTrenchParser.parse_dict(stray, load(SETTINGS), FuncGodotData.ParseData.new(), "stray.gtm")
+	check(stray_data != null and stray_data.entities.size() == 1, "top level nodes that are not layers are ignored like in the editor")
 	var world: FuncGodotData.EntityData = result.entities[0]
 	check(world.properties["classname"] == "worldspawn", "entity 0 is worldspawn")
 	# floor + 3 wall pieces + 2 props + prefab pillar. The omitted layer brush must not be there.

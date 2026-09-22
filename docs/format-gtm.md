@@ -26,7 +26,8 @@ array sizes. A file that fails is refused with the node id and the reason, for e
 `node 12: face 3 uses vertex 9, but there are only 8 vertices`, rather than opening half broken. Pasted nodes go through
 the same check.
 
-The Godot importer checks `format` but not `version`.
+The Godot importer applies the same two checks, to maps and to the prefabs they instance, and reports a newer version
+as a build error that asks for an addon update.
 
 Saving writes `<name>.gtm.tmp` first and renames it over the map, so a crash never leaves a truncated file.
 
@@ -94,7 +95,7 @@ offsets them by one million per level of instance nesting.
 The file does not enforce a schema for which node can sit where, but the editor produces and the importer expects this
 shape:
 
-* layers only at the top level
+* layers only at the top level, anything else there is dropped by the editor and ignored by the importer
 * groups under layers or other groups
 * brushes, meshes, terrains, scatter sets, point entities and instances under layers or groups
 * an entity with children is a brush entity, its geometry is its brush and mesh children
