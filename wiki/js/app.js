@@ -9,6 +9,7 @@ import {
   loadIndexDraft,
   saveIndexDraft,
   clearIndexDraft,
+  clearAllDrafts,
   fetchJSON,
 } from "./storage.js";
 import {
@@ -102,17 +103,34 @@ function pickStartSlug() {
 }
 
 async function loadIndex() {
-  const draft = loadIndexDraft();
-  if (draft && draft.pages.length) {
-    state.pages = draft.pages;
-    return;
-  }
+  // The repo index is the source of truth for which pages exist and their titles and
+  // categories, so freshly published pages always appear. A local draft only contributes
+  // pages the user created but has not saved yet (slugs the server does not have), so unsaved
+  // new pages are not lost. This prevents a stale draft from hiding published content.
+  let serverPages = [];
+  let serverOk = false;
   try {
     const fromServer = await fetchJSON("pages/index.json");
-    state.pages = Array.isArray(fromServer) ? fromServer : [];
+    serverPages = Array.isArray(fromServer) ? fromServer : [];
+    serverOk = true;
   } catch (err) {
-    state.pages = [];
     setStatus("Could not load the page index: " + err.message, "error");
+  }
+
+  const draft = loadIndexDraft();
+  if (draft && draft.pages.length) {
+    if (serverOk) {
+      const serverSlugs = new Set(serverPages.map((p) => p.slug));
+      const draftOnly = draft.pages.filter((p) => !serverSlugs.has(p.slug));
+      state.pages = serverPages.concat(draftOnly);
+      // The index draft has served its purpose; drop it unless it carries unsaved new pages.
+      if (!draftOnly.length) clearIndexDraft();
+    } else {
+      // Offline: fall back to the draft so the app still works.
+      state.pages = draft.pages;
+    }
+  } else {
+    state.pages = serverPages;
   }
 }
 
@@ -295,6 +313,7 @@ function setupToolbarIcons() {
   setButton($("rename-page"), "pencil-line", "Rename", "Rename page");
   setButton($("delete-page"), "trash-2", "Delete page", "Delete page");
   setButton(el.saveBtn, "save", "Save", "Save to GitHub");
+  setButton($("refresh-btn"), "refresh", "Refresh", "Discard local drafts and reload from the repo");
 }
 
 // ----- Add card context menu (edit mode only) -----
@@ -516,12 +535,24 @@ function wireToolbar() {
   $("rename-page").addEventListener("click", renamePage);
   $("delete-page").addEventListener("click", deletePage);
   $("token-btn").addEventListener("click", () => openTokenModal());
+  $("refresh-btn").addEventListener("click", refreshFromRepo);
   window.addEventListener("hashchange", () => {
     const slug = decodeURIComponent((location.hash || "").replace(/^#/, "")).trim();
     if (slug && slug !== state.slug && state.pages.some((p) => p.slug === slug)) {
       openPage(slug);
     }
   });
+}
+
+// Discard every local draft and reload straight from the repo. This is the escape hatch when
+// a browser is showing stale local content instead of what was published.
+function refreshFromRepo() {
+  const ok = window.confirm(
+    "Discard local drafts and reload the wiki from the repo? Unsaved edits on this device will be lost."
+  );
+  if (!ok) return;
+  clearAllDrafts();
+  location.reload();
 }
 
 function wireKeyboard() {
@@ -727,9 +758,10 @@ function refreshInspector() {
 
 // ----- Autosave -----
 
+// Card edits only change the current board, not the page index, so only the board draft is
+// written here. Page add/rename/category/delete save the index draft themselves.
 function markDirty() {
   if (state.slug) saveDraft(state.slug, state.board);
-  saveIndexDraft(state.pages);
 }
 
 // ----- Page management -----
@@ -791,8 +823,9 @@ function renamePageSlug(slug) {
   if (slug === state.slug) {
     state.board.title = clean;
     renderBoardChrome();
+    markDirty();
   }
-  markDirty();
+  saveIndexDraft(state.pages);
   renderSidebar();
   setStatus("Renamed. Save to publish the change.", "info");
 }
@@ -804,7 +837,7 @@ function setCategorySlug(slug) {
   if (cat == null) return;
   entry.category = cat.trim() || DEFAULT_CATEGORY;
   lastCategory = entry.category === DEFAULT_CATEGORY ? "" : entry.category;
-  markDirty();
+  saveIndexDraft(state.pages);
   renderSidebar();
   setStatus('Moved to ' + entry.category + ". Save to publish the change.", "info");
 }
