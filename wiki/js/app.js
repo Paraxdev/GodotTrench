@@ -563,7 +563,6 @@ function setupToolbarIcons() {
   setButton(el.saveBtn, "save", "Save", "Publish all changes to GitHub (Ctrl+S)");
   setButton($("token-btn"), "key-round", "", "GitHub token");
   setButton($("refresh-btn"), "refresh", "", "Discard local drafts and reload from the repo");
-  setButton($("help-btn"), "circle-help", "", "How to use this wiki");
   setButton($("mobile-add"), "plus", "", "Add a card");
 }
 
@@ -776,7 +775,6 @@ function wireToolbar() {
   $("search-btn").addEventListener("click", () => openSearch());
   $("token-btn").addEventListener("click", () => openTokenModal());
   $("refresh-btn").addEventListener("click", refreshFromRepo);
-  $("help-btn").addEventListener("click", () => openPage("using-this-wiki"));
   const onNav = () => {
     const slug = parseHash();
     if (slug && slug !== state.slug && state.pages.some((p) => p.slug === slug)) openPage(slug);
@@ -1338,12 +1336,12 @@ async function save() {
   const deletes = state.deletedPages.filter((s) => !state.pages.some((p) => p.slug === s)).map((s) => "pages/" + s + ".json");
 
   const names = Array.from(boards.keys()).map((s) => (pageInfo(s) || {}).title || s);
-  let message = "wiki: ";
-  if (names.length === 1) message += "update " + names[0];
-  else if (names.length > 1 && names.length <= 3) message += "update " + names.join(", ");
-  else if (names.length) message += "update " + names.length + " pages";
-  else message += "update the page index";
-  if (deletes.length) message += (names.length ? ", " : "") + "delete " + deletes.length + (deletes.length === 1 ? " page" : " pages");
+  const parts = [];
+  if (names.length === 1) parts.push("update " + names[0]);
+  else if (names.length > 1 && names.length <= 3) parts.push("update " + names.join(", "));
+  else if (names.length) parts.push("update " + names.length + " pages");
+  if (deletes.length) parts.push("delete " + deletes.length + (deletes.length === 1 ? " page" : " pages"));
+  const message = "wiki: " + (parts.length ? parts.join(", ") : "update the page index");
 
   saving = true;
   el.saveBtn.disabled = true;
