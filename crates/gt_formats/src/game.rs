@@ -8,9 +8,16 @@ use gt_core::{Aabb, Color, DVec3};
 use serde::{Deserialize, Serialize};
 
 pub const GAME_FILE_NAME: &str = "godottrench_game.json";
+pub const GAME_FORMAT: &str = "godottrench-game";
+pub const GAME_FORMAT_VERSION: u32 = 1;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GameConfig {
+    /// Empty on files written before the field existed, which are treated as compatible.
+    #[serde(default)]
+    pub format: String,
+    #[serde(default)]
+    pub version: u32,
     #[serde(default = "default_name")]
     pub name: String,
     /// Map units per Godot meter (FuncGodot's inverse scale factor).
@@ -302,6 +309,10 @@ pub enum GameError {
     Io(#[from] std::io::Error),
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("not a GodotTrench game config (format = {0:?})")]
+    WrongFormat(String),
+    #[error("game config version {0} is newer than this editor supports ({GAME_FORMAT_VERSION})")]
+    TooNew(u32),
 }
 
 impl Default for GameConfig {
@@ -311,8 +322,22 @@ impl Default for GameConfig {
 }
 
 impl GameConfig {
+    /// Missing format/version fields mean a file written before they existed, and are accepted.
+    fn check_version(&self) -> Result<(), GameError> {
+        if !self.format.is_empty() && self.format != GAME_FORMAT {
+            return Err(GameError::WrongFormat(self.format.clone()));
+        }
+
+        if self.version > GAME_FORMAT_VERSION {
+            return Err(GameError::TooNew(self.version));
+        }
+
+        Ok(())
+    }
+
     pub fn load(path: &Path) -> Result<Self, GameError> {
         let mut cfg: GameConfig = serde_json::from_str(&std::fs::read_to_string(path)?)?;
+        cfg.check_version()?;
         cfg.source = Some(path.to_path_buf());
         cfg.project_root = find_project_root(path);
         Ok(cfg)
@@ -408,6 +433,22 @@ pub type PropertyValues = BTreeMap<String, String>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accepts_current_format_and_a_config_missing_the_fields() {
+        let current: GameConfig = serde_json::from_str(r#"{"format":"godottrench-game","version":1}"#).unwrap();
+        assert!(current.check_version().is_ok());
+        let legacy: GameConfig = serde_json::from_str(r#"{"name":"Test"}"#).unwrap();
+        assert!(legacy.check_version().is_ok());
+    }
+
+    #[test]
+    fn rejects_wrong_format_and_a_newer_version() {
+        let wrong: GameConfig = serde_json::from_str(r#"{"format":"something-else","version":1}"#).unwrap();
+        assert!(matches!(wrong.check_version(), Err(GameError::WrongFormat(f)) if f == "something-else"));
+        let newer: GameConfig = serde_json::from_str(r#"{"format":"godottrench-game","version":99}"#).unwrap();
+        assert!(matches!(newer.check_version(), Err(GameError::TooNew(99))));
+    }
 
     #[test]
     fn builtin_round_trips_through_json() {

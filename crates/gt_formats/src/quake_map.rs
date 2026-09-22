@@ -35,12 +35,25 @@ pub fn angles_to_quake(a: DVec3) -> DVec3 {
     DVec3::new(-a.x, a.y - 180.0, -a.z)
 }
 
+fn wrap_deg(d: f64) -> f64 {
+    let r = (d + 180.0).rem_euclid(360.0) - 180.0;
+    if (r + 180.0).abs() < 1e-9 { 180.0 } else { r }
+}
+
 pub fn angles_from_quake(q: DVec3) -> DVec3 {
-    let wrap = |d: f64| {
-        let r = (d + 180.0).rem_euclid(360.0) - 180.0;
-        if (r + 180.0).abs() < 1e-9 { 180.0 } else { r }
-    };
-    DVec3::new(wrap(-q.x), wrap(q.y + 180.0), wrap(-q.z))
+    DVec3::new(wrap_deg(-q.x), wrap_deg(q.y + 180.0), wrap_deg(-q.z))
+}
+
+/// `mangle` is yaw/pitch/roll on `light*` classes and unnegated pitch on `info_intermission`,
+/// matching entity_assembler.gd's special cases; everything else reads it the same as `angles`.
+fn mangle_from_quake(classname: &str, q: DVec3) -> DVec3 {
+    if classname.starts_with("light") {
+        DVec3::new(wrap_deg(q.y), wrap_deg(q.x + 180.0), wrap_deg(-q.z))
+    } else if classname == "info_intermission" {
+        DVec3::new(wrap_deg(q.x), wrap_deg(q.y + 180.0), wrap_deg(-q.z))
+    } else {
+        angles_from_quake(q)
+    }
 }
 
 fn write_brush(out: &mut String, brush: &Brush) {
@@ -75,7 +88,8 @@ fn write_brush(out: &mut String, brush: &Brush) {
 
 fn write_props(out: &mut String, props: &[(String, String)]) {
     for (k, v) in props {
-        let _ = writeln!(out, "\"{}\" \"{}\"", k, v.replace('"', "'"));
+        // The lexer only unescapes `\"`, so that's the one thing worth escaping here.
+        let _ = writeln!(out, "\"{}\" \"{}\"", k, v.replace('"', "\\\""));
     }
 }
 
@@ -207,12 +221,15 @@ pub fn export_with(map: &Map, options: ExportOptions) -> String {
                 let mut props = vec![("classname".to_string(), e.classname.clone())];
                 if node.children.is_empty() {
                     props.push(("origin".into(), vec_str(to_id(e.origin))));
-                    if e.angles != DVec3::ZERO || !e.properties.contains_key("angles") {
+                    // FuncGodot prefers an explicit angles/mangle/angle property over the node's own
+                    // angles (gtm_parser.gd does the same), so don't emit a competing "angles" here.
+                    let has_angle_prop = e.properties.contains_key("angles") || e.properties.contains_key("angle") || e.properties.contains_key("mangle");
+                    if !has_angle_prop {
                         props.push(("angles".into(), vec_str(angles_to_quake(e.angles))));
                     }
                 }
 
-                props.extend(e.properties.iter().filter(|(k, _)| k.as_str() != "origin" && k.as_str() != "angles").map(|(k, v)| (k.clone(), v.clone())));
+                props.extend(e.properties.iter().filter(|(k, _)| k.as_str() != "origin").map(|(k, v)| (k.clone(), v.clone())));
                 props.extend(container(id));
                 let _ = writeln!(out, "// entity {entity_index}\n{{");
                 write_props(&mut out, &props);
@@ -553,22 +570,34 @@ pub fn import(src: &str) -> Result<Map, MapError> {
             continue;
         }
 
-        let mut e = Entity::new(classname);
+        let has_brushes = !ent.brushes.is_empty();
+        // entity_assembler.gd prefers "angles", then "mangle", then "angle" regardless of file order.
+        let angle_priority = if ent.props.iter().any(|(k, _)| k == "angles") {
+            "angles"
+        } else if ent.props.iter().any(|(k, _)| k == "mangle") {
+            "mangle"
+        } else {
+            "angle"
+        };
+
+        let mut e = Entity::new(classname.clone());
         for (k, v) in &ent.props {
             match k.as_str() {
                 "classname" | "_tb_group" | "_tb_layer" => {}
-                "origin" if ent.brushes.is_empty() => e.origin = vec_prop(v).map(from_id).unwrap_or_default(),
-                "angles" | "mangle" if ent.brushes.is_empty() => e.angles = vec_prop(v).map(angles_from_quake).unwrap_or_default(),
-                "angle" if ent.brushes.is_empty() => {
+                "origin" if !has_brushes => e.origin = vec_prop(v).map(from_id).unwrap_or_default(),
+                "angles" if !has_brushes && angle_priority == "angles" => e.angles = vec_prop(v).map(angles_from_quake).unwrap_or_default(),
+                "mangle" if !has_brushes && angle_priority == "mangle" => e.angles = vec_prop(v).map(|q| mangle_from_quake(&classname, q)).unwrap_or_default(),
+                "angle" if !has_brushes && angle_priority == "angle" => {
                     let a: f64 = v.parse().unwrap_or(0.0);
                     e.angles = if a == -1.0 {
-                        DVec3::new(90.0, 0.0, 0.0)
+                        DVec3::new(90.0, 180.0, 0.0)
                     } else if a == -2.0 {
-                        DVec3::new(-90.0, 0.0, 0.0)
+                        DVec3::new(-90.0, 180.0, 0.0)
                     } else {
                         angles_from_quake(DVec3::new(0.0, a, 0.0))
                     };
                 }
+                "angles" | "mangle" | "angle" if !has_brushes => {} // lower priority duplicate, drop
                 _ => {
                     e.properties.insert(k.clone(), v.clone());
                 }
@@ -680,5 +709,122 @@ mod tests {
         // Quake angle 90 faces +Y (id), which is +X in GodotTrench.
         let facing = start.rotation() * DVec3::NEG_Z;
         assert!(gt_core::vec_approx_eq(facing, DVec3::X), "{facing}");
+    }
+
+    #[test]
+    fn export_escapes_quotes_in_property_values_instead_of_replacing_them() {
+        let mut m = Map::new();
+        let layer = m.default_layer();
+        let mut e = Entity::new("target_speak");
+        e.properties.insert("message".into(), "say \"hi\" to the guard".into());
+        m.insert(layer, NodeKind::Entity(e));
+        let text = export(&m);
+        let back = import(&text).unwrap();
+        let (_, e) = back.entities().next().unwrap();
+        assert_eq!(e.property("message"), Some("say \"hi\" to the guard"));
+    }
+
+    #[test]
+    fn export_keeps_an_explicit_angle_property_instead_of_node_angles() {
+        let mut m = Map::new();
+        let layer = m.default_layer();
+        let mut e = Entity::new("info_player_start");
+        e.angles = DVec3::ZERO;
+        e.properties.insert("angle".into(), "90".into());
+        m.insert(layer, NodeKind::Entity(e));
+        let text = export(&m);
+        assert!(text.contains("\"angle\" \"90\""), "{text}");
+        assert!(!text.contains("\"angles\""), "{text}");
+    }
+
+    #[test]
+    fn export_keeps_an_explicit_angles_property_even_with_zero_node_angles() {
+        let mut m = Map::new();
+        let layer = m.default_layer();
+        let mut e = Entity::new("info_player_start");
+        e.angles = DVec3::ZERO;
+        e.properties.insert("angles".into(), "0 90 0".into());
+        m.insert(layer, NodeKind::Entity(e));
+        let text = export(&m);
+        assert!(text.contains("\"angles\" \"0 90 0\""), "{text}");
+    }
+
+    #[test]
+    fn imports_angle_minus_one_and_minus_two_matching_funcgodots_yaw_offset() {
+        let src = r#"
+{
+"classname" "worldspawn"
+}
+{
+"classname" "info_player_start"
+"origin" "0 0 0"
+"angle" "-1"
+}
+{
+"classname" "info_player_start"
+"origin" "0 0 0"
+"angle" "-2"
+}
+"#;
+        let m = import(src).unwrap();
+        let mut ents = m.entities();
+        let (_, up) = ents.next().unwrap();
+        assert!((up.angles - DVec3::new(90.0, 180.0, 0.0)).length() < 1e-9, "{:?}", up.angles);
+        let (_, down) = ents.next().unwrap();
+        assert!((down.angles - DVec3::new(-90.0, 180.0, 0.0)).length() < 1e-9, "{:?}", down.angles);
+    }
+
+    #[test]
+    fn imports_mangle_as_yaw_pitch_roll_on_light_and_unnegated_on_info_intermission() {
+        let src = r#"
+{
+"classname" "worldspawn"
+}
+{
+"classname" "misc_thing"
+"origin" "0 0 0"
+"mangle" "20 50 0"
+}
+{
+"classname" "info_intermission"
+"origin" "0 0 0"
+"mangle" "20 50 0"
+}
+{
+"classname" "light"
+"origin" "0 0 0"
+"mangle" "20 50 0"
+}
+"#;
+        let m = import(src).unwrap();
+        let mut ents = m.entities();
+        // A generic classname reads mangle the same as "angles" (pitch yaw roll).
+        let (_, generic) = ents.next().unwrap();
+        assert!((generic.angles - DVec3::new(-20.0, -130.0, 0.0)).length() < 1e-9, "{:?}", generic.angles);
+        // info_intermission doesn't negate pitch.
+        let (_, intermission) = ents.next().unwrap();
+        assert!((intermission.angles - DVec3::new(20.0, -130.0, 0.0)).length() < 1e-9, "{:?}", intermission.angles);
+        // light* reads mangle as yaw pitch roll instead of pitch yaw roll.
+        let (_, light) = ents.next().unwrap();
+        assert!((light.angles - DVec3::new(50.0, -160.0, 0.0)).length() < 1e-9, "{:?}", light.angles);
+    }
+
+    #[test]
+    fn angle_property_priority_matches_funcgodot_regardless_of_file_order() {
+        let src = r#"
+{
+"classname" "worldspawn"
+}
+{
+"classname" "info_player_start"
+"origin" "0 0 0"
+"angle" "45"
+"mangle" "20 50 0"
+"angles" "0 90 0"
+}
+"#;
+        let m = import(src).unwrap();
+        let (_, e) = m.entities().next().unwrap();
+        assert!((e.angles - angles_from_quake(DVec3::new(0.0, 90.0, 0.0))).length() < 1e-9, "{:?}", e.angles);
     }
 }

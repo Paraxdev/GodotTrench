@@ -181,7 +181,10 @@ fn parse_solid(solid: &Block) -> Option<Brush> {
             let face_normal = plane.normal;
             for r in 0..n {
                 for c in 0..n {
-                    let k = r * n + c;
+                    // VMF's row axis runs corner0->corner1 (our grid()'s u), column runs corner0->corner3
+                    // (its v): confirmed against vbsp's GenerateDispSurf, which walks points[0]->points[1]
+                    // as the outer (row) loop. grid() stores heights v-major, so row and column swap here.
+                    let k = c * n + r;
                     let get3 = |rows: &Vec<Vec<f64>>| {
                         rows.get(r).and_then(|row| (row.len() >= (c + 1) * 3).then(|| from_id(DVec3::new(row[c * 3], row[c * 3 + 1], row[c * 3 + 2]))))
                     };
@@ -399,5 +402,32 @@ entity
         let grid = gt_geom::displacement::grid(map.brush(id).unwrap(), fi).unwrap();
         let top = grid.positions.iter().map(|p| p.y).fold(f64::MIN, f64::max);
         assert!((top - 96.0).abs() < 1e-6, "center raised by 32, got {top}");
+    }
+
+    #[test]
+    fn displacement_rows_and_columns_are_not_transposed() {
+        // Only row0/col4 is raised: an asymmetric spot a plain diagonal or center test can't catch.
+        let disp = SAMPLE.replace(
+            r#""vaxis" "[0 -1 0 0] 0.25" }
+        side { "id" "2""#,
+            r#""vaxis" "[0 -1 0 0] 0.25"
+            dispinfo
+            {
+                "power" "2" "startposition" "[-64 -64 64]" "elevation" "0"
+                normals { "row0" "0 0 1 0 0 1 0 0 1 0 0 1 0 0 1" "row1" "0 0 1 0 0 1 0 0 1 0 0 1 0 0 1" "row2" "0 0 1 0 0 1 0 0 1 0 0 1 0 0 1" "row3" "0 0 1 0 0 1 0 0 1 0 0 1 0 0 1" "row4" "0 0 1 0 0 1 0 0 1 0 0 1 0 0 1" }
+                distances { "row0" "0 0 0 0 32" "row1" "0 0 0 0 0" "row2" "0 0 0 0 0" "row3" "0 0 0 0 0" "row4" "0 0 0 0 0" }
+            }
+        }
+        side { "id" "2""#,
+        );
+        let map = import(&disp).unwrap();
+        let (id, b) = map.brushes().next().unwrap();
+        let fi = b.faces.iter().position(|f| f.data.disp.is_some()).expect("displacement face");
+        let grid = gt_geom::displacement::grid(map.brush(id).unwrap(), fi).unwrap();
+        // VMF row 0, column 4 belongs at grid index col*n+row = 20 (n=5): grid() stores heights
+        // v-major (col) by u (row), per vbsp's GenerateDispSurf which walks corner0->corner1 as rows.
+        // A transposed reader would instead raise index row*n+col = 4.
+        assert!((grid.positions[20] - grid.base[20]).length() > 16.0, "row0 col4 should be raised at index 20");
+        assert!((grid.positions[4] - grid.base[4]).length() < 1e-6, "index 4 (transposed slot) must stay flat");
     }
 }
