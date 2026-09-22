@@ -169,8 +169,8 @@ static func _parse_entity(ctx: Context, node: Dictionary, group: _GroupData) -> 
 	ent.node_id = int(node.get("id", 0)) + ctx.instance_depth * 1000000
 
 	for key in ["targetname", "target"]:
-		if ent.properties.has(key) and ctx.name_prefix != "" and not str(ent.properties[key]).begins_with("!"):
-			ent.properties[key] = ctx.name_prefix + ent.properties[key]
+		if ent.properties.has(key):
+			ent.properties[key] = _fixup(ctx, ent.properties[key])
 
 	var children: Array = node.get("children", [])
 	if children.is_empty():
@@ -192,9 +192,8 @@ static func _parse_entity(ctx: Context, node: Dictionary, group: _GroupData) -> 
 	var outputs: Array = node.get("outputs", [])
 	for o in outputs:
 		var conn: Dictionary = o.duplicate()
-		var target := str(conn.get("target", ""))
-		if ctx.name_prefix != "" and target != "" and not target.begins_with("!"):
-			conn["target"] = ctx.name_prefix + target
+		if conn.has("target"):
+			conn["target"] = _fixup(ctx, str(conn["target"]))
 		ent.outputs.append(conn)
 	ctx.parse_data.entities.append(ent)
 
@@ -316,6 +315,13 @@ static func _resolve_instance_path(ctx: Context, path: String) -> String:
 		return path
 	return ctx.map_path.get_base_dir().path_join(path)
 
+
+## [param name] as named inside the instance being parsed. Special (!self), group (@doors) and node path targets are
+## left alone, the same rule as Instance::fixup_name in the editor.
+static func _fixup(ctx: Context, name: String) -> String:
+	if ctx.name_prefix == "" or name == "" or name[0] in ["!", "@", "/"]:
+		return name
+	return ctx.name_prefix + name
 
 static func _parse_instance(ctx: Context, node: Dictionary, group: _GroupData) -> void:
 	if ctx.instance_depth >= MAX_INSTANCE_DEPTH:

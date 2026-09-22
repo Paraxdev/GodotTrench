@@ -26,6 +26,7 @@ signal finished
 
 var _running := false
 var _index := 0
+var _run_id := 0
 
 func _func_godot_apply_properties(props: Dictionary) -> void:
 	steps = clampi(int(props.get("steps", steps)), 1, 8)
@@ -45,7 +46,8 @@ func start() -> void:
 		return
 	_running = true
 	_index = 0
-	_run()
+	_run_id += 1
+	_run(_run_id)
 
 func stop() -> void:
 	_running = false
@@ -54,20 +56,21 @@ func reset() -> void:
 	stop()
 	_index = 0
 
-func _run() -> void:
-	while _running and _index < steps:
+## [param run_id] ends a timeline whose timer is still pending when stop and start happen within one wait.
+func _run(run_id: int) -> void:
+	while _running and run_id == _run_id and _index < steps:
 		var wait := _delay_for(_index)
 		if wait > 0.0:
 			await get_tree().create_timer(wait).timeout
-		if not _running or not is_inside_tree():
+		if not _running or run_id != _run_id or not is_inside_tree():
 			return
 		_index += 1
 		_fire(_index)
-	if not _running:
+	if not _running or run_id != _run_id:
 		return
 	if loop:
 		_index = 0
-		_run()
+		_run(run_id)
 		return
 	_running = false
 	finished.emit()

@@ -17,6 +17,7 @@ Upstream class names are kept so the fork stays a drop-in replacement and upstre
 | `src/trenchdot/runtime/trenchdot_build.gd` | `TrenchDotBuild`: owner rule for generated nodes, the `_td_id` / `_td_group` / `_td_source_hash` metadata and the `trenchdot/threaded_build` setting. |
 | `src/trenchdot/export_game_config_cli.gd` | Headless export: `godot --headless --path <project> --script res://addons/func_godot/src/trenchdot/export_game_config_cli.gd` |
 | `game_config/trenchdot/trenchdot_game_config.tres` | Default game config resource. |
+| `fgd/trenchdot_default_fgd.tres` | Base FuncGodot classes plus the TrenchDot entity library, used by the default map settings and game config so a fresh project builds `func_door` and the rest without extra setup. |
 | `src/trenchdot/trenchdot_displacement.gd` | Displacement grids (same triangulation as the editor), surface arrays with blend weights in vertex color alpha, trimesh collision triangles. |
 | `src/trenchdot/runtime/trenchdot_decal.gd` | `TrenchDotDecal`: decal entities with `texture`, `size` (map units) and `modulate` properties. |
 | `src/trenchdot/runtime/td_blend.gdshader` | Two texture blend shader driven by vertex color alpha, for displacements and vertex paint. |

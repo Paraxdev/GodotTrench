@@ -23,3 +23,6 @@ func toggle() -> void:
 		turn_off()
 	else:
 		turn_on()
+
+func is_on() -> bool:
+	return visible

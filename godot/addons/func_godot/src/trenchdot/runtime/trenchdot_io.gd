@@ -186,6 +186,14 @@ static func activator_arguments(node: Object, method: StringName, activator: Nod
 		return []
 	return []
 
+## True when the argument right after the parameter values is named activator, as in play(anim, activator).
+static func _declares_activator_at(node: Object, method: StringName, index: int) -> bool:
+	for m in node.get_method_list():
+		if m["name"] == method:
+			var declared: Array = m["args"]
+			return index < declared.size() and str(declared[index].get("name", "")) == "activator"
+	return false
+
 ## Arguments for a call: a JSON array parameter spreads into several arguments, placeholders are replaced.
 static func build_arguments(parameter: String, activator: Node, caller: Node) -> Array:
 	var text := parameter.strip_edges()
@@ -255,6 +263,8 @@ static func invoke(node: Node, input: StringName, parameter: String, activator: 
 		var args := build_arguments(parameter, activator, node)
 		if args.is_empty():
 			args = activator_arguments(node, method, activator)
+		elif _declares_activator_at(node, method, args.size()):
+			args.append(activator)
 		call_method(node, method, args)
 		return
 	var value: Variant = parse_parameter(parameter)
