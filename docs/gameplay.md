@@ -31,7 +31,12 @@ play animations, show text, break things and switch lights entirely through I/O:
   `take_damage(amount, source)`. Outputs `damaged(hp)`, `broken`.
 * `env_explosion`: on `explode` it pushes rigid bodies away and calls `take_damage` on nodes within `radius`, then
   optionally spawns an effect. Output `exploded`.
-* `light`: a switchable omni light. Inputs `turn_on`, `turn_off`, `toggle`. Output `switched(on)`.
+* `light` and `light_spot`: switchable omni and spot lights. Inputs `turn_on`, `turn_off`, `toggle`. Output
+  `switched(on)`.
+* `env_sound`: a positional sound. Inputs `play`, `stop`, `toggle`. Output `finished`.
+* `env_particles`: a particle effect for smoke, fire, sparks or dust. Inputs `start`, `stop`, `toggle`, `burst`.
+* `logic_branch`: stores a boolean and, on `test`, fires `on_true` or `on_false`, for conditional wiring. Inputs
+  `set_true`, `set_false`, `toggle`, `test`, `set_and_test(value)`.
 
 ## Running a script when the built-in inputs are not enough
 

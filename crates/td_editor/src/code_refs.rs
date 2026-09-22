@@ -396,7 +396,7 @@ pub fn fgd_resource(def: &EntityDef) -> String {
 }
 
 /// Classnames whose definitions ship with the FuncGodot fork in `addons/func_godot/fgd/trenchdot/`.
-pub const ADDON_ENTITIES: [&str; 31] = [
+pub const ADDON_ENTITIES: [&str; 35] = [
     "info_teleport_destination",
     "path_corner",
     "light",
@@ -428,6 +428,10 @@ pub const ADDON_ENTITIES: [&str; 31] = [
     "env_explosion",
     "prop_physics",
     "npc_walker",
+    "light_spot",
+    "env_sound",
+    "env_particles",
+    "logic_branch",
 ];
 
 /// Every addon FGD file as (file name, text): one resource per entity plus the FuncGodotFGDFile listing them.
