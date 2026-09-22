@@ -482,3 +482,35 @@ fn history_panel_undoes_to_clicked_step() {
     assert_eq!(harness.state().state.doc.map.entity_count(), 1);
     assert_eq!(harness.state().state.doc.history.redo_labels().count(), 2);
 }
+
+#[test]
+fn logic_panel_fires_cascade_and_flags_broken_links() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    f.state.doc.edit("wire", |m, _| {
+        let relay = ops::create_point_entity(m, layer, "logic_relay", DVec3::ZERO);
+        let e = m.entity_mut(relay).unwrap();
+        e.properties.insert("targetname".into(), "aaa".into());
+        e.outputs = vec![
+            gt_doc::IoConnection {
+                output: "triggered".into(),
+                target: "light1".into(),
+                input: "turn_on".into(),
+                parameter: String::new(),
+                delay: 0.0,
+                times: -1,
+            },
+            gt_doc::IoConnection { output: "triggered".into(), target: "ghost".into(), input: "kill".into(), parameter: String::new(), delay: 0.0, times: -1 },
+        ];
+        let light = ops::create_point_entity(m, layer, "light", DVec3::new(64.0, 0.0, 0.0));
+        m.entity_mut(light).unwrap().properties.insert("targetname".into(), "light1".into());
+    });
+
+    let mut harness =
+        Harness::builder().with_size(egui::vec2(520.0, 800.0)).build_ui_state(|ui, f: &mut Fixture| panels::logic_panel(ui, &mut f.state, &mut f.panels), f);
+    harness.run();
+    harness.get_by_label("Fire").click();
+    harness.run();
+    assert!(harness.query_by_label("2 steps").is_some(), "both wired outputs are listed");
+    assert!(harness.query_by_label("1 broken").is_some(), "the missing target is flagged");
+}

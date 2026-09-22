@@ -57,6 +57,11 @@ is spread into arguments with `$activator`, `$self`, `$position` and `$caller_na
 `arguments = ["key_red", "$activator"]`. `GodotTrenchIO.events()` reports every fired output, and
 `GodotTrenchDebugOverlay` shows them in game (F3) together with the trigger volumes.
 
+The editor's **Logic** panel previews this wiring without launching Godot: pick a named entity and one of its outputs,
+press *Fire*, and it follows the connections across the map, listing each `output > target.input` step in order and
+flagging any target that resolves to nothing. Runtime targets like `!player` or `@group` are shown but not resolved,
+since they only exist while the map plays.
+
 ## C# entities
 
 C# classes can be entities without any `.tres` file. Add the helper from the Reference tab (it defines the attributes) and list your
