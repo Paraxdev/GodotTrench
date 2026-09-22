@@ -5,13 +5,12 @@
 *.gtm.autosave
 *.gtm.bak*
 godot/.godot/
-# FuncGodot writes generated materials next to textures on build.
-godot/demo/textures/base/*.tres
-# The nature trees are .glb with their textures embedded. Godot's glTF importer extracts those next to the
-# model on import, so the sibling images and every .import here are regenerated, never authored.
-godot/godottrench/nature/trees/*.png
-godot/godottrench/nature/trees/*.png.import
-godot/godottrench/nature/trees/*.glb.import
+# The generated nature trees and bushes share the images in nature/textures. Godot writes the .import
+# files for them on the first import, they are regenerated, never authored.
+godot/godottrench/nature/trees/*.import
+godot/godottrench/nature/trees_detailed/*.import
+godot/godottrench/nature/bushes/*.import
+godot/godottrench/nature/textures/*.import
 /.worktrees
 __pycache__/
 

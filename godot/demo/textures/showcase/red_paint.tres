@@ -1,8 +1,10 @@
-[gd_resource type="StandardMaterial3D" format=3]
+[gd_resource type="StandardMaterial3D" load_steps=3 format=3]
 
-[ext_resource type="Texture2D" path="res://demo/textures/showcase/red_paint.png" id="1_72ipl"]
+[ext_resource type="Texture2D" path="res://demo/textures/showcase/red_paint.jpg" id="1_albedo"]
+[ext_resource type="Texture2D" path="res://demo/textures/showcase/red_paint_normal.jpg" id="2_normal"]
 
 [resource]
-albedo_texture = ExtResource("1_72ipl")
-metallic_specular = 0.0
-texture_filter = 2
+albedo_texture = ExtResource("1_albedo")
+normal_enabled = true
+normal_texture = ExtResource("2_normal")
+metadata/texture_size = Vector2(48, 48)

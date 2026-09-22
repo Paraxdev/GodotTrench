@@ -1,0 +1,226 @@
+{
+  "name": "Poly Haven",
+  "short": "Poly Haven",
+  "author": "Poly Haven contributors",
+  "license": "CC0",
+  "url": "https://polyhaven.com",
+  "credits": [
+    {
+      "asset": "wine_barrel_01",
+      "category": "containers",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/wine_barrel_01"
+    },
+    {
+      "asset": "wooden_crate_01",
+      "category": "containers",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/wooden_crate_01"
+    },
+    {
+      "asset": "old_military_crate",
+      "category": "containers",
+      "author": "Jack Mava",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/old_military_crate"
+    },
+    {
+      "asset": "wooden_bucket_01",
+      "category": "containers",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/wooden_bucket_01"
+    },
+    {
+      "asset": "WoodenChair_01",
+      "category": "furniture",
+      "author": "Jake Mobley",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/WoodenChair_01"
+    },
+    {
+      "asset": "SchoolChair_01",
+      "category": "furniture",
+      "author": "Ethan Place",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/SchoolChair_01"
+    },
+    {
+      "asset": "WoodenTable_02",
+      "category": "furniture",
+      "author": "Fran Calvente",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/WoodenTable_02"
+    },
+    {
+      "asset": "wooden_bookshelf_worn",
+      "category": "furniture",
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/wooden_bookshelf_worn"
+    },
+    {
+      "asset": "SchoolDesk_01",
+      "category": "furniture",
+      "author": "Ethan Place",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/SchoolDesk_01"
+    },
+    {
+      "asset": "painted_wooden_bench",
+      "category": "furniture",
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/painted_wooden_bench"
+    },
+    {
+      "asset": "metal_stool_01",
+      "category": "furniture",
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/metal_stool_01"
+    },
+    {
+      "asset": "wooden_lantern_01",
+      "category": "lighting",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/wooden_lantern_01"
+    },
+    {
+      "asset": "street_lamp_02",
+      "category": "lighting",
+      "author": "Josh Dean",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/street_lamp_02"
+    },
+    {
+      "asset": "vintage_oil_lamp",
+      "category": "lighting",
+      "author": "Monsta3D",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/vintage_oil_lamp"
+    },
+    {
+      "asset": "ceramic_pot",
+      "category": "decorative",
+      "author": "Aron \u0141yczek",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/ceramic_pot"
+    },
+    {
+      "asset": "wooden_ladder",
+      "category": "tools",
+      "author": "Miroslav Turura",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/wooden_ladder"
+    },
+    {
+      "asset": "ocean_buoy",
+      "category": "nautical",
+      "author": "Mateusz Sadek",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/ocean_buoy"
+    },
+    {
+      "asset": "lifebuoy",
+      "category": "nautical",
+      "author": "Hank Kaamura",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/lifebuoy"
+    },
+    {
+      "asset": "covered_car",
+      "category": "vehicles",
+      "author": "MP",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/covered_car"
+    },
+    {
+      "asset": "Barrel_01",
+      "category": "containers",
+      "author": "Jorge Camacho",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/Barrel_01"
+    },
+    {
+      "asset": "barrel_03",
+      "category": "containers",
+      "author": "Serhii Khromov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/barrel_03"
+    },
+    {
+      "asset": "barrel_stove",
+      "category": "containers",
+      "author": "MP",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/barrel_stove"
+    },
+    {
+      "asset": "old_tyre",
+      "category": "industrial",
+      "author": "MP",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/old_tyre"
+    },
+    {
+      "asset": "utility_box_01",
+      "category": "industrial",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/utility_box_01"
+    },
+    {
+      "asset": "Sofa_01",
+      "category": "furniture",
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/Sofa_01"
+    },
+    {
+      "asset": "plastic_monobloc_chair_01",
+      "category": "furniture",
+      "author": "Kuutti Siitonen",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/plastic_monobloc_chair_01"
+    },
+    {
+      "asset": "security_light",
+      "category": "lighting",
+      "author": "Maximilian Schuster",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/security_light"
+    },
+    {
+      "asset": "trashbag",
+      "category": "containers",
+      "author": "Benny Weimer",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/trashbag"
+    },
+    {
+      "asset": "cardboard_box_01",
+      "category": "containers",
+      "author": "Rahul Chaudhary",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/cardboard_box_01"
+    },
+    {
+      "asset": "water_manhole_cover",
+      "category": "industrial",
+      "author": "Raunox",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/water_manhole_cover"
+    },
+    {
+      "asset": "security_camera_01",
+      "category": "industrial",
+      "author": "Alexander Otterbeck, Yann Kervran",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/security_camera_01"
+    }
+  ]
+}

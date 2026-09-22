@@ -1,10 +1,10 @@
 [gd_resource type="StandardMaterial3D" load_steps=2 format=3]
 
-[ext_resource type="Texture2D" path="res://demo/textures/showcase/pine.png" id="1_tex"]
+[ext_resource type="Texture2D" path="res://demo/textures/showcase/pine.png" id="1_albedo"]
 
 [resource]
-albedo_texture = ExtResource("1_tex")
-texture_filter = 2
+albedo_texture = ExtResource("1_albedo")
 transparency = 2
 alpha_scissor_threshold = 0.5
 cull_mode = 2
+metadata/texture_size = Vector2(32, 32)

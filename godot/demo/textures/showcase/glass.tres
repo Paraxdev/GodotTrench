@@ -1,11 +1,11 @@
 [gd_resource type="StandardMaterial3D" load_steps=2 format=3]
 
-[ext_resource type="Texture2D" path="res://demo/textures/showcase/glass.png" id="1_tex"]
+[ext_resource type="Texture2D" path="res://demo/textures/showcase/glass.png" id="1_albedo"]
 
 [resource]
-albedo_texture = ExtResource("1_tex")
-texture_filter = 2
+albedo_texture = ExtResource("1_albedo")
 transparency = 1
 albedo_color = Color(1, 1, 1, 0.35)
 roughness = 0.1
 metallic_specular = 0.9
+metadata/texture_size = Vector2(64, 64)
