@@ -174,7 +174,7 @@ kbd {
 .modal-card,
 .search-panel,
 .canvas-controls,
-.doc-sheet,
+.doc-paper,
 .card {
   background: var(--glass-light), var(--glass);
   -webkit-backdrop-filter: var(--blur);
@@ -192,7 +192,7 @@ kbd {
   .modal-card,
   .search-panel,
   .canvas-controls,
-  .doc-sheet,
+  .doc-paper,
   .card {
     background: var(--glass-light), rgba(20, 26, 40, 0.97);
   }
@@ -239,27 +239,13 @@ kbd {
   letter-spacing: 0.1px;
 }
 
-/* A small raised glass tile with a lit brush corner, standing in for a logo. */
 .brand-mark {
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   flex: none;
-  border-radius: 9px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 45%),
-    linear-gradient(160deg, rgba(var(--blue-rgb), 0.95), rgba(var(--green-rgb), 0.75));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), inset 0 -2px 3px rgba(0, 0, 0, 0.25), 0 4px 12px -4px rgba(var(--blue-rgb), 0.6);
-  position: relative;
-}
-
-.brand-mark::after {
-  content: "";
-  position: absolute;
-  inset: 7px;
-  border-radius: 3px;
-  border: 2px solid rgba(8, 20, 30, 0.75);
-  border-right-color: transparent;
-  border-bottom-color: transparent;
+  margin: -3px -2px -3px -4px;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.45));
 }
 
 .brand-sub {
@@ -709,16 +695,24 @@ a.chip:hover {
   min-height: 100%;
 }
 
-/* ----- The document sheet ----- */
+/* ----- The document: a stack of papers, one per section ----- */
 
 .doc-sheet {
   width: 100%;
   max-width: 840px;
   min-width: 0;
   align-self: flex-start;
-  border-radius: var(--r-sheet);
-  padding: 44px 72px 56px;
   position: relative;
+}
+
+.doc-paper {
+  position: relative;
+  border-radius: var(--r-sheet);
+  padding: 40px 72px 44px;
+}
+
+.doc-paper + .doc-paper {
+  margin-top: 22px;
 }
 
 .doc-kicker {
@@ -728,6 +722,36 @@ a.chip:hover {
   font-weight: 700;
   letter-spacing: 0.9px;
   text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* A section paper opens on its heading, sized up and set off by a hairline. */
+.doc-paper > .block:first-child .md > h2:first-child {
+  font-size: 1.6em;
+  margin: 0 0 0.6em;
+  padding-bottom: 0.45em;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Entry panels (the "Entry panel" block, variant "entry"): a raised slab with a lit title. */
+.block.block-entry {
+  margin-top: 14px;
+  padding: 16px 20px 14px;
+  border-radius: var(--r-panel);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+}
+
+.block.block-entry + .block.block-entry {
+  margin-top: 12px;
+}
+
+.block.block-entry .md > h3:first-child,
+.card[data-variant="entry"] .md > h3:first-child {
+  margin: 0 0 0.35em;
+  font-family: var(--font-mono);
+  font-size: 1.12em;
+  letter-spacing: 0;
   color: var(--accent);
 }
 
@@ -745,7 +769,7 @@ a.chip:hover {
   margin-top: 12px;
 }
 
-.block[data-type="text"] + .block[data-type="text"] {
+.block[data-type="text"] + .block[data-type="text"]:not(.block-entry) {
   margin-top: 4px;
 }
 
@@ -937,24 +961,92 @@ a.chip:hover {
   gap: 8px;
 }
 
-/* ----- Outline ----- */
+/* ----- Outline: a sticky column when there is room, a collapsible list otherwise ----- */
+
+.doc-scroll {
+  container-type: inline-size;
+}
 
 .doc-outline {
   position: sticky;
   top: 12px;
   align-self: flex-start;
-  width: 220px;
+  width: 208px;
   flex: none;
-  padding: 16px 4px 16px 0;
+  padding: 18px 4px 16px 0;
   display: none;
-  max-height: calc(100vh - 120px);
+  max-height: calc(100vh - 110px);
+  max-height: calc(100dvh - 110px);
   overflow-y: auto;
+  scrollbar-width: thin;
 }
 
-@media (min-width: 1360px) {
-  .doc-outline {
+.doc-toc {
+  margin-top: 22px;
+  border-radius: var(--r-well);
+  background: var(--well-bg);
+  box-shadow: var(--well);
+}
+
+@container (min-width: 1000px) {
+  .doc-outline:not([hidden]) {
     display: block;
   }
+  .doc-toc {
+    display: none;
+  }
+}
+
+.doc-toc-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  user-select: none;
+}
+
+.doc-toc-summary::-webkit-details-marker {
+  display: none;
+}
+
+.doc-toc-summary > span {
+  flex: 1;
+}
+
+.doc-toc-chevron {
+  transition: transform 0.18s var(--ease);
+}
+
+.doc-toc[open] .doc-toc-chevron {
+  transform: rotate(180deg);
+}
+
+.doc-toc-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0 6px 8px;
+}
+
+.doc-toc-item {
+  text-align: left;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text-dim);
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.doc-toc-item:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .doc-outline-title {
@@ -981,12 +1073,20 @@ a.chip:hover {
   cursor: pointer;
 }
 
-.outline-item.lvl-1 {
+.outline-sub {
   display: none;
 }
 
+.outline-group.open > .outline-sub {
+  display: block;
+}
+
+.outline-group.open > .lvl-2 {
+  color: var(--text-dim);
+}
+
 .outline-item.lvl-3 {
-  padding-left: 24px;
+  padding: 3px 10px 3px 24px;
   font-size: 12.5px;
 }
 
@@ -994,7 +1094,8 @@ a.chip:hover {
   color: var(--text);
 }
 
-.outline-item.active {
+.outline-item.active,
+.outline-group.open > .outline-item.active {
   color: var(--text);
   border-left-color: var(--accent);
 }
@@ -1189,7 +1290,9 @@ a.chip:hover {
   border-radius: var(--r-well);
 }
 
-/* Tables sit in a well with a raised header row. */
+/* Tables sit in a well with a raised header row that stays in view while the page scrolls.
+   overflow: clip keeps the rounded corners without making the table a scroll container, which
+   would stop the sticky header. */
 .md table {
   width: 100%;
   margin: 1em 0;
@@ -1200,7 +1303,7 @@ a.chip:hover {
   border-radius: var(--r-well);
   background: rgba(5, 8, 14, 0.35);
   box-shadow: var(--well);
-  overflow: hidden;
+  overflow: clip;
 }
 
 .md th,
@@ -1215,15 +1318,77 @@ a.chip:hover {
   border-bottom: 0;
 }
 
+.md tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.028);
+}
+
 .md th {
   font-weight: 700;
   font-size: 12.5px;
   letter-spacing: 0.3px;
   color: var(--text);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03)), rgb(21, 27, 40);
+}
+
+.doc-paper .md th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .md td code {
+  white-space: nowrap;
+}
+
+.table-scroll {
+  margin: 1em 0;
+}
+
+.table-scroll > table {
+  margin: 0;
+}
+
+/* Definition lists ("Term" then ": value"), shown as label and value rows. */
+.md dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0;
+  margin: 0.7em 0 0.2em;
+  border-radius: var(--r-well);
+  background: var(--well-bg);
+  box-shadow: var(--well);
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.md dl > dt,
+.md dl > dd {
+  margin: 0;
+  padding: 7px 14px;
+  border-top: 1px solid var(--line);
+}
+
+.md dl > dt:first-of-type,
+.md dl > dt:first-of-type + dd {
+  border-top: 0;
+}
+
+.md dl > dt {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding-top: 9px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.md dl > dd {
+  color: var(--text-dim);
+}
+
+.md dl code {
   white-space: nowrap;
 }
 
@@ -1722,7 +1887,7 @@ a.chip:hover {
   box-shadow: var(--well);
 }
 
-/* ----- Canvas ----- */
+/* ----- Canvas: an open board ----- */
 
 .board-viewport {
   flex: 1;
@@ -1731,15 +1896,55 @@ a.chip:hover {
   border-radius: var(--r-panel);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
   touch-action: none;
+  overscroll-behavior: contain;
   background-color: rgba(5, 8, 14, 0.25);
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
-.board-viewport.is-edit {
-  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1.5px);
+/* A scroll box inside a card, like a wide code block, would otherwise claim touch pans and
+   cancel the board gesture. */
+.board-viewport * {
+  touch-action: none;
 }
 
-.board-viewport.panning {
-  cursor: grabbing;
+/* The dot grid is its own layer, shifted by the pan modulo one cell, so panning only moves a
+   composited layer and never repaints the background. */
+.board-grid {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.055) 1px, transparent 1.6px);
+  will-change: transform;
+}
+
+.board-viewport.is-edit .board-grid {
+  background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.1) 1px, transparent 1.6px);
+}
+
+.board-viewport[data-tool="hand"],
+.board-viewport.space-pan,
+.board-viewport[data-tool="hand"] .card,
+.board-viewport.space-pan .card {
+  cursor: grab;
+}
+
+.board-viewport.panning,
+.board-viewport.panning .card {
+  cursor: grabbing !important;
+}
+
+.board-viewport.is-edit[data-tool="note"],
+.board-viewport.is-edit[data-tool="text"],
+.board-viewport.is-edit[data-tool="connect"],
+.board-viewport.is-edit[data-tool="note"] .card,
+.board-viewport.is-edit[data-tool="text"] .card,
+.board-viewport.is-edit[data-tool="connect"] .card,
+.board-viewport.connecting {
+  cursor: crosshair;
 }
 
 .board-surface {
@@ -1754,7 +1959,10 @@ a.chip:hover {
 
 .board-empty {
   position: absolute;
-  inset: 0;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1768,13 +1976,35 @@ a.chip:hover {
   border-radius: var(--r-card);
   display: flex;
   flex-direction: column;
-  transition: box-shadow 0.2s ease, transform 0.2s var(--ease);
+  transition: box-shadow 0.2s ease;
   /* Chromium can drop a card's content while panning the will-change:transform surface and
      paint only its backdrop-filter region, a dark box. The canvas behind cards is flat, so a
      solid glass tint looks the same without the blur. */
   background: var(--glass-light), rgba(20, 26, 40, 0.97);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+}
+
+.board-viewport[data-tool="select"]:not(.space-pan) .card:not(.editing) {
+  cursor: grab;
+}
+
+.board-viewport[data-tool="select"] .card:not(.editing) .md a {
+  cursor: pointer;
+}
+
+/* Text on the board is picked up by dragging, not selected. Inside the card being edited it
+   selects normally. */
+.card img,
+.card a {
+  -webkit-user-drag: none;
+}
+
+.card.editing,
+.card.editing .card-body {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: auto;
 }
 
 .card .md {
@@ -1796,13 +2026,17 @@ a.chip:hover {
   margin-top: 0.1em;
 }
 
-.board-viewport:not(.is-edit) .card:hover,
-.board-viewport.is-edit .card:hover:not(.dragging):not(.resizing):not(.editing) {
-  box-shadow: var(--rim), var(--lift-3);
+.card .md > :first-child {
+  margin-top: 0;
 }
 
-.board-viewport.is-edit .card:not(.editing) .card-body {
-  user-select: none;
+.card .md > :last-child {
+  margin-bottom: 0;
+}
+
+.board-viewport:not(.is-edit) .card:hover,
+.board-viewport.is-edit .card:hover:not(.dragging):not(.resizing):not(.editing):not(.selected) {
+  box-shadow: var(--rim), var(--lift-3);
 }
 
 .card.selected {
@@ -1810,13 +2044,23 @@ a.chip:hover {
 }
 
 .card.editing {
-  box-shadow: var(--rim), 0 0 0 2px rgba(var(--accent-rgb), 0.9), var(--lift-3);
+  box-shadow: var(--rim), 0 0 0 2px rgba(var(--accent-rgb), 0.9), 0 0 0 6px rgba(var(--accent-rgb), 0.18), var(--lift-3);
 }
 
 .card.dragging,
 .card.resizing {
   transition: none;
   box-shadow: var(--rim), 0 0 0 2px rgba(var(--accent-rgb), 0.9), var(--lift-3);
+}
+
+.card.dragging {
+  cursor: grabbing !important;
+}
+
+/* A dashed ring as well as the colour, so the drop target reads without hue. */
+.card.connect-target {
+  outline: 2px dashed rgba(var(--green-rgb), 0.95);
+  outline-offset: 5px;
 }
 
 .card.is-hidden {
@@ -1865,6 +2109,28 @@ a.chip:hover {
   padding: 8px;
 }
 
+/* Notes: a warm tinted sheet. Plain text: no panel at all, just words on the board. */
+.card[data-variant="note"] {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 60%),
+    linear-gradient(180deg, rgba(var(--orange-rgb), 0.2), rgba(var(--orange-rgb), 0.13)),
+    rgb(24, 26, 32);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 1px rgba(var(--orange-rgb), 0.28), var(--lift-2);
+}
+
+.card[data-variant="plain"] {
+  background: none;
+  box-shadow: none;
+}
+
+.card[data-variant="plain"] .card-body {
+  padding: 6px 10px;
+}
+
+.board-viewport .card[data-variant="plain"]:hover:not(.selected):not(.editing) {
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+
 /* Shapes are diagram strokes, not panels, so they float without a card behind them. */
 .card[data-type="shape"] {
   background: none;
@@ -1883,7 +2149,7 @@ a.chip:hover {
 
 .card-actions {
   position: absolute;
-  top: -14px;
+  top: -16px;
   right: 10px;
   z-index: 8;
   display: flex;
@@ -1891,7 +2157,7 @@ a.chip:hover {
   gap: 1px;
   padding: 3px;
   border-radius: var(--r-btn);
-  background: var(--glass-light), var(--glass-strong);
+  background: var(--glass-light), rgba(28, 36, 54, 0.98);
   box-shadow: var(--rim), var(--lift-1);
   opacity: 0;
   transform: translateY(3px);
@@ -1899,12 +2165,15 @@ a.chip:hover {
   pointer-events: none;
 }
 
-.card:hover .card-actions,
-.card.selected .card-actions,
+.board-surface.single-sel .card.selected .card-actions,
 .card.editing .card-actions {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
+}
+
+.card.dragging .card-actions {
+  opacity: 0;
 }
 
 .card-grip {
@@ -1941,93 +2210,347 @@ a.chip:hover {
   color: var(--danger);
 }
 
+/* Resize handles: only on a single selected card, square knobs on the corners and invisible
+   strips along the sides. */
 .card-handle {
   position: absolute;
-  z-index: 2;
+  z-index: 3;
   touch-action: none;
+  display: none;
+}
+
+.board-surface.single-sel .card.selected:not(.editing) > .card-handle {
+  display: block;
 }
 
 .handle-n,
 .handle-s {
-  left: 0;
-  right: 0;
-  height: 7px;
+  left: 10px;
+  right: 10px;
+  height: 10px;
+  cursor: ns-resize;
 }
 
 .handle-n {
-  top: -3px;
+  top: -5px;
 }
 
 .handle-s {
-  bottom: -3px;
+  bottom: -5px;
 }
 
 .handle-e,
 .handle-w {
-  top: 0;
-  bottom: 0;
-  width: 7px;
+  top: 10px;
+  bottom: 10px;
+  width: 10px;
+  cursor: ew-resize;
 }
 
 .handle-e {
-  right: -3px;
+  right: -5px;
 }
 
 .handle-w {
-  left: -3px;
+  left: -5px;
 }
 
 .handle-nw,
 .handle-ne,
 .handle-se,
 .handle-sw {
-  width: 16px;
-  height: 16px;
-  z-index: 3;
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  background: var(--bg);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.95), 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 
 .handle-nw {
-  top: -4px;
-  left: -4px;
+  top: -6px;
+  left: -6px;
+  cursor: nwse-resize;
 }
 
 .handle-ne {
-  top: -4px;
-  right: -4px;
+  top: -6px;
+  right: -6px;
+  cursor: nesw-resize;
 }
 
 .handle-se {
-  bottom: -4px;
-  right: -4px;
+  bottom: -6px;
+  right: -6px;
+  cursor: nwse-resize;
 }
 
 .handle-sw {
-  bottom: -4px;
-  left: -4px;
+  bottom: -6px;
+  left: -6px;
+  cursor: nesw-resize;
 }
 
-.handle-se::after {
+/* Connector handles: small rings just outside each side, dragged onto another card. */
+.connect-dot {
+  position: absolute;
+  z-index: 4;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--bg);
+  box-shadow: 0 0 0 2px rgba(var(--blue-rgb), 0.9), 0 2px 6px rgba(0, 0, 0, 0.5);
+  cursor: crosshair;
+  touch-action: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.connect-dot::after {
   content: "";
   position: absolute;
-  right: 7px;
-  bottom: 7px;
-  width: 10px;
-  height: 10px;
-  border-right: 2px solid var(--text-faint);
-  border-bottom: 2px solid var(--text-faint);
-  border-bottom-right-radius: 4px;
-  opacity: 0;
-  transition: opacity 0.14s ease;
+  inset: -8px;
+  border-radius: 50%;
+}
+
+.connect-dot:hover {
+  transform: scale(1.3);
+  background: rgba(var(--blue-rgb), 0.9);
+}
+
+.dot-n {
+  left: 50%;
+  top: -16px;
+}
+
+.dot-s {
+  left: 50%;
+  top: calc(100% + 16px);
+}
+
+.dot-e {
+  left: calc(100% + 16px);
+  top: 50%;
+}
+
+.dot-w {
+  left: -16px;
+  top: 50%;
+}
+
+.board-viewport.is-edit:not(.panning):not(.connecting) .card:hover:not(.dragging):not(.editing) > .connect-dot,
+.board-surface.single-sel .card.selected:not(.dragging):not(.editing) > .connect-dot {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ----- Connectors ----- */
+
+.board-edges {
+  position: absolute;
+  z-index: 0;
+  overflow: visible;
   pointer-events: none;
 }
 
-.card:hover .handle-se::after,
-.card.selected .handle-se::after {
-  opacity: 1;
+.edge-line {
+  fill: none;
+  stroke: rgba(var(--blue-rgb), 0.85);
+  stroke-width: 2.25;
+  stroke-linecap: round;
 }
 
-.card.selected .handle-se::after {
-  border-color: var(--accent);
+.edge-head {
+  fill: rgba(var(--blue-rgb), 0.95);
+  stroke: rgba(var(--blue-rgb), 0.95);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+}
+
+.board-viewport.is-edit .edge-hit {
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.board-viewport.is-edit .edge:hover .edge-line {
+  stroke-width: 3;
+}
+
+/* Selected: thicker, brighter and dashed, so it does not depend on the hue change alone. */
+.edge.selected .edge-line {
+  stroke: var(--yellow);
+  stroke-width: 3;
+  stroke-dasharray: 8 5;
+}
+
+.edge.selected .edge-head {
+  fill: var(--yellow);
+  stroke: var(--yellow);
+}
+
+.board-edge-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 100000;
+  pointer-events: none;
+}
+
+.edge-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  max-width: 220px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+  background: rgb(22, 29, 44);
+  box-shadow: inset 0 0 0 1px rgba(var(--blue-rgb), 0.45), var(--lift-1);
+}
+
+.board-viewport.is-edit .edge-label {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.edge-label.selected {
+  box-shadow: inset 0 0 0 2px var(--yellow), var(--lift-1);
+}
+
+.edge-menu.card-actions {
+  top: auto;
+  right: auto;
+  transform: translate(-50%, calc(-100% - 18px));
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.edge-menu[hidden] {
+  display: none !important;
+}
+
+.edge-label-input {
+  position: absolute;
+  z-index: 30;
+  transform: translate(-50%, -50%);
+  width: 200px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  text-align: center;
+  color: var(--text);
+  background: rgb(28, 36, 54);
+  box-shadow: inset 0 0 0 2px rgba(var(--accent-rgb), 0.9), var(--lift-2);
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.board-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9;
+}
+
+.connect-draft {
+  fill: none;
+  stroke: rgba(var(--blue-rgb), 0.95);
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+}
+
+.board-marquee {
+  position: absolute;
+  z-index: 9;
+  pointer-events: none;
+  border-radius: 4px;
+  border: 1px dashed rgba(var(--accent-rgb), 0.9);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+/* ----- Canvas tools and zoom ----- */
+
+.board-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--r-menu);
+  background: var(--glass-light), var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--rim), var(--lift-2);
+}
+
+.board-tool {
+  position: relative;
+  width: 36px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.board-tool:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* The active tool is a pressed key with a lit underline, readable without colour. */
+.board-tool.active {
+  color: var(--text);
+  background: rgba(var(--accent-rgb), 0.2);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.55), inset 0 -2px 0 rgba(var(--accent-rgb), 0.9);
+}
+
+.board-tool-key {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  padding: 0;
+  font-size: 8.5px;
+  line-height: 1;
+  background: none;
+  box-shadow: none;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.board-tool-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--line-strong);
 }
 
 .canvas-controls {
@@ -2066,12 +2589,20 @@ body.layout-doc .canvas-controls {
 }
 
 .zoom-label {
-  min-width: 44px;
+  min-width: 48px;
   text-align: center;
   font-size: 12px;
   color: var(--text-dim);
   font-variant-numeric: tabular-nums;
   user-select: none;
+  cursor: pointer;
+  padding: 6px 0;
+  border-radius: 8px;
+}
+
+.zoom-label:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 /* ----- Menus: add card, card actions, page actions, suggestions ----- */
@@ -2198,6 +2729,23 @@ body.layout-doc .canvas-controls {
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
+}
+
+.bubble-btn.table-bar-btn {
+  width: auto;
+  gap: 4px;
+  padding: 0 9px 0 7px;
+  font: inherit;
+  font-size: 12.5px;
+}
+
+/* Empty definition rows and table cells keep a visible height while they are edited. */
+.editing-md dl > dt,
+.editing-md dl > dd,
+.editing-md td,
+.editing-md th {
+  min-height: 1.5em;
+  min-width: 3em;
 }
 
 .bubble-btn:hover {
@@ -2670,8 +3218,8 @@ body.layout-doc .canvas-controls {
 /* ----- Medium screens: the sheet loses some of its margin ----- */
 
 @media (max-width: 1100px) {
-  .doc-sheet {
-    padding: 36px 48px 48px 64px;
+  .doc-paper {
+    padding: 34px 44px 40px 64px;
   }
   .block-gutter {
     left: -58px;
@@ -2736,9 +3284,17 @@ body.layout-doc .canvas-controls {
     padding: 0 0 90px;
   }
 
-  .doc-sheet {
-    padding: 26px 18px 36px;
+  .doc-paper {
+    padding: 24px 18px 28px;
     border-radius: var(--r-panel);
+  }
+
+  .doc-paper + .doc-paper {
+    margin-top: 14px;
+  }
+
+  .block.block-entry {
+    padding: 14px 14px 12px;
   }
 
   .md {
@@ -2761,9 +3317,41 @@ body.layout-doc .canvas-controls {
     opacity: 0.85;
   }
 
-  .md table {
+  .doc-paper .md table {
     display: block;
     overflow-x: auto;
+  }
+
+  .doc-paper .table-scroll {
+    overflow-x: auto;
+    border-radius: var(--r-well);
+    box-shadow: var(--well);
+  }
+
+  .doc-paper .md .table-scroll > table {
+    display: table;
+    width: max-content;
+    min-width: 100%;
+    box-shadow: none;
+  }
+
+  /* Canvas cards keep one layout at every width, or their heights would change and overlap. */
+  .doc-paper .md dl {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .doc-paper .md dl > dt {
+    padding-bottom: 0;
+    background: none;
+  }
+
+  .doc-paper .md dl > dd {
+    border-top: 0;
+    padding-top: 2px;
+  }
+
+  .doc-paper .md dl > dd code {
+    white-space: normal;
   }
 
   body.mode-edit .mobile-add {
@@ -2772,20 +3360,46 @@ body.layout-doc .canvas-controls {
 
   .handle-n,
   .handle-s {
-    height: 14px;
+    height: 16px;
+  }
+
+  .handle-n {
+    top: -8px;
+  }
+
+  .handle-s {
+    bottom: -8px;
   }
 
   .handle-e,
   .handle-w {
-    width: 14px;
+    width: 16px;
   }
 
   .handle-nw,
   .handle-ne,
   .handle-se,
   .handle-sw {
-    width: 24px;
-    height: 24px;
+    width: 18px;
+    height: 18px;
+  }
+
+  .board-tool {
+    width: 40px;
+    height: 38px;
+  }
+
+  .board-tool-key {
+    display: none;
+  }
+
+  .canvas-controls {
+    right: 10px;
+    bottom: 10px;
+  }
+
+  #zoom-reset {
+    display: none;
   }
 
   .layout-pick {

@@ -17,27 +17,38 @@ import { htmlToMarkdown, renderMarkdownInto, buildCallout } from "./markdown.js"
 
 // ----- Block catalogue, shared by the slash menu, the + menus and the canvas add menu -----
 
+// desc is the tooltip, so what a block does is explained where it is picked.
 export const BLOCKS = [
   { id: "text", label: "Text", icon: "text", hint: "Plain paragraph" },
-  { id: "h1", label: "Heading 1", icon: "heading-1", hint: "#" },
-  { id: "h2", label: "Heading 2", icon: "heading-2", hint: "##" },
+  { id: "h1", label: "Heading 1", icon: "heading-1", hint: "#", desc: "Page title. In a document, a block that starts with it starts a new paper" },
+  { id: "h2", label: "Heading 2", icon: "heading-2", hint: "##", desc: "Section heading. In a document, a block that starts with it starts a new paper" },
   { id: "h3", label: "Heading 3", icon: "heading-3", hint: "###" },
+  { id: "entry", label: "Entry panel", icon: "square", hint: "###", desc: "A new block on a raised panel with a Heading 3 title, one per item of a reference list", card: "text", variant: "entry", then: "h3" },
   { id: "bullet", label: "Bulleted list", icon: "list", hint: "-" },
   { id: "number", label: "Numbered list", icon: "list-ordered", hint: "1." },
   { id: "todo", label: "To-do list", icon: "list-todo", hint: "[]" },
+  { id: "deflist", label: "Definition list", icon: "table-properties", hint: ": ", desc: "Label and value rows. Enter goes from a label to its value and on to the next row" },
+  { id: "table", label: "Table", icon: "table", hint: "|", desc: "A table in the text. The bar above it adds and removes rows and columns, Tab moves between cells" },
   { id: "quote", label: "Quote", icon: "quote", hint: ">" },
-  { id: "note", label: "Note callout", icon: "info" },
-  { id: "tip", label: "Tip callout", icon: "lightbulb" },
-  { id: "warning", label: "Warning callout", icon: "triangle-alert" },
+  { id: "note", label: "Note callout", icon: "info", desc: "Click the label to give the callout its own title" },
+  { id: "tip", label: "Tip callout", icon: "lightbulb", desc: "Click the label to give the callout its own title" },
+  { id: "warning", label: "Warning callout", icon: "triangle-alert", desc: "Click the label to give the callout its own title" },
+  { id: "danger", label: "Danger callout", icon: "octagon-alert", desc: "Click the label to give the callout its own title" },
+  { id: "example", label: "Example callout", icon: "flask", desc: "Click the label to give the callout its own title" },
   { id: "divider", label: "Divider", icon: "separator", hint: "---" },
   { id: "pagelink", label: "Link to page", icon: "file-link", hint: "[[" },
   { id: "code", label: "Code block", icon: "square-code", hint: "```", card: "code" },
-  { id: "table", label: "Table", icon: "table", card: "table" },
-  { id: "image", label: "Image", icon: "image", card: "image" },
+  { id: "image", label: "Image", icon: "image", card: "image", desc: "An image with an optional caption, from a file, a pasted image or a URL" },
   { id: "video", label: "Video", icon: "video", card: "video" },
   { id: "draw", label: "Drawing", icon: "pen-tool", card: "draw" },
   { id: "shape", label: "Shape", icon: "shapes", card: "shape" },
 ];
+
+// Starter Markdown for the text cards the canvas add menu offers directly.
+export const STARTERS = {
+  table: "| Column | Column |\n| --- | --- |\n|  |  |",
+  deflist: "Label\n: Value",
+};
 
 export function blockById(id) {
   return BLOCKS.find((b) => b.id === id);
@@ -90,6 +101,7 @@ export function setSuggestItems(items) {
           type: "button",
           class: "suggest-item" + (i === 0 ? " active" : ""),
           role: "option",
+          title: item.desc || null,
           on: {
             click: () => pickSuggest(i),
             mousemove: () => highlightSuggest(i),
@@ -177,7 +189,7 @@ document.addEventListener("pointerdown", (e) => {
 });
 
 export function blockMenuItems(filter) {
-  return BLOCKS.filter((b) => !filter || filter(b)).map((b) => ({ label: b.label, icon: b.icon, hint: b.hint, value: b }));
+  return BLOCKS.filter((b) => !filter || filter(b)).map((b) => ({ label: b.label, icon: b.icon, hint: b.hint, desc: b.desc, value: b }));
 }
 
 function filterBlocks(query) {
@@ -557,7 +569,7 @@ export function mountTextEditor(root, card, ctx, opts) {
 
   function applyBlock(b) {
     if (b.card) {
-      ctx.insertBlock(b.card, { from: root });
+      ctx.insertBlock(b.card, { from: root, block: b });
       return;
     }
     switch (b.id) {
@@ -584,8 +596,22 @@ export function mountTextEditor(root, card, ctx, opts) {
       case "note":
       case "tip":
       case "warning":
+      case "danger":
+      case "example":
         insertCallout(b.id);
         break;
+      case "deflist":
+        insertAtBlock(el("dl", {}, [el("dt", {}, el("br")), el("dd", {}, el("br"))]), "dt");
+        break;
+      case "table": {
+        const cell = (tag) => el(tag, {}, el("br"));
+        const table = el("table", {}, [
+          el("thead", {}, el("tr", {}, [cell("th"), cell("th")])),
+          el("tbody", {}, el("tr", {}, [cell("td"), cell("td")])),
+        ]);
+        insertAtBlock(table, "th");
+        break;
+      }
       case "divider":
         exec("insertHTML", "<hr><p><br></p>");
         break;
@@ -625,6 +651,19 @@ export function mountTextEditor(root, card, ctx, opts) {
       li.insertBefore(document.createTextNode(" "), li.firstChild.nextSibling);
       placeCaretAtEnd(li);
     }
+  }
+
+  // Put a structure in place of the empty line the caret is on, or after the current line,
+  // with a paragraph after it so there is always somewhere to keep typing.
+  function insertAtBlock(node, focusSel) {
+    const block = currentBlock(root);
+    const inRoot = block && block !== root && block.parentNode === root;
+    if (inRoot && !block.textContent.trim() && !block.querySelector("img")) block.replaceWith(node);
+    else if (inRoot) block.after(node);
+    else root.appendChild(node);
+    if (!node.nextElementSibling) node.after(el("p", {}, el("br")));
+    placeCaretIn(node.querySelector(focusSel));
+    ctx.markDirty();
   }
 
   function insertCallout(kind) {
@@ -743,6 +782,7 @@ export function mountTextEditor(root, card, ctx, opts) {
       else ctx.requestCommit();
       return;
     }
+    if (structureKey(e)) return;
     if (e.key === "Tab") {
       const li = closestIn(root, window.getSelection().anchorNode, (n) => n.tagName === "LI");
       if (li) {
@@ -765,6 +805,78 @@ export function mountTextEditor(root, card, ctx, opts) {
       e.preventDefault();
       ctx.removeEmpty();
     }
+  }
+
+  // Tables and definition lists: Tab and Enter move between cells, and add rows at the end.
+  function structureKey(e) {
+    if ((e.key !== "Enter" && e.key !== "Tab") || e.ctrlKey || e.metaKey || e.altKey) return false;
+    const anchor = window.getSelection().anchorNode;
+    const cell = closestIn(root, anchor, (n) => n.tagName === "TD" || n.tagName === "TH");
+    if (cell) {
+      if (e.key === "Enter" && e.shiftKey) return false;
+      e.preventDefault();
+      const table = cell.closest("table");
+      const rows = Array.from(table.querySelectorAll("tr"));
+      const tr = cell.parentNode;
+      const r = rows.indexOf(tr);
+      const c = Array.prototype.indexOf.call(tr.children, cell);
+      if (e.key === "Enter") {
+        let next = rows[r + 1];
+        if (!next) next = tableOp(table, "addRow", tr);
+        placeCaretIn(next.children[c] || next.lastElementChild);
+      } else {
+        const cells = Array.from(table.querySelectorAll("th, td"));
+        const i = cells.indexOf(cell) + (e.shiftKey ? -1 : 1);
+        if (i >= cells.length) placeCaretIn(tableOp(table, "addRow", tr).firstElementChild);
+        else if (i >= 0) placeCaretIn(cells[i]);
+      }
+      save();
+      return true;
+    }
+    const item = closestIn(root, anchor, (n) => n.tagName === "DT" || n.tagName === "DD");
+    if (!item) return false;
+    if (e.key === "Enter" && e.shiftKey) return false;
+    e.preventDefault();
+    const dl = item.parentNode;
+    if (item.tagName === "DT") {
+      if (e.key === "Tab" && e.shiftKey) {
+        const prev = item.previousElementSibling;
+        if (prev) placeCaretIn(prev);
+        return true;
+      }
+      if (e.key === "Enter" && !item.textContent.trim() && item.previousElementSibling) {
+        const dd = item.nextElementSibling && item.nextElementSibling.tagName === "DD" ? item.nextElementSibling : null;
+        if (dd && !dd.textContent.trim()) dd.remove();
+        item.remove();
+        const p = el("p", {}, el("br"));
+        dl.after(p);
+        placeCaretIn(p);
+        save();
+        return true;
+      }
+      let dd = item.nextElementSibling;
+      if (!dd || dd.tagName !== "DD") {
+        dd = el("dd", {}, el("br"));
+        item.after(dd);
+      }
+      placeCaretIn(dd);
+      return true;
+    }
+    if (e.key === "Tab" && e.shiftKey) {
+      if (item.previousElementSibling) placeCaretIn(item.previousElementSibling);
+      return true;
+    }
+    const next = item.nextElementSibling;
+    if (e.key === "Tab" && next) {
+      placeCaretIn(next);
+      return true;
+    }
+    const dt = el("dt", {}, el("br"));
+    const dd = el("dd", {}, el("br"));
+    item.after(dt, dd);
+    placeCaretIn(dt);
+    save();
+    return true;
   }
 
   // Enter on an empty last line of a quote or callout steps out of it.
@@ -848,6 +960,7 @@ export function mountTextEditor(root, card, ctx, opts) {
   const onSelect = () => {
     bubbleEditor = root;
     positionBubble(root);
+    positionTableBar(root, save);
   };
   const onFocus = () => {
     bubbleEditor = root;
@@ -857,6 +970,9 @@ export function mountTextEditor(root, card, ctx, opts) {
   const onBlur = () => {
     root.classList.remove("focused");
     closeSlash();
+    setTimeout(() => {
+      if (tableBar && !tableBar.contains(document.activeElement) && document.activeElement !== root) tableBar.hidden = true;
+    }, 0);
     if (persistent) {
       save();
       setTimeout(() => {
@@ -955,7 +1071,126 @@ export function mountTextEditor(root, card, ctx, opts) {
     root.classList.remove("editing-md", "is-empty", "focused");
     editors.delete(root);
     hideBubble();
+    if (tableBar) tableBar.hidden = true;
   }
+}
+
+// ----- Table bar: row and column controls for the table the caret is in -----
+
+let tableBar = null;
+let tableBarTarget = null;
+
+function positionTableBar(root, save) {
+  const sel = window.getSelection();
+  const cell = sel && sel.anchorNode ? closestIn(root, sel.anchorNode, (n) => n.tagName === "TD" || n.tagName === "TH") : null;
+  if (!cell) {
+    if (tableBar) tableBar.hidden = true;
+    return;
+  }
+  if (!tableBar) {
+    tableBar = el("div", { class: "bubble-toolbar table-bar", role: "toolbar", "aria-label": "Table", hidden: true });
+    tableBar.addEventListener("mousedown", (e) => e.preventDefault());
+    document.body.appendChild(tableBar);
+  }
+  tableBarTarget = { cell, save };
+  if (tableBar.hidden) {
+    tableBar.innerHTML = "";
+    const btn = (op, iconName, label, title) =>
+      el(
+        "button",
+        {
+          type: "button",
+          class: "bubble-btn table-bar-btn",
+          title,
+          "aria-label": title,
+          dataset: { op },
+          on: {
+            click: (e) => {
+              e.preventDefault();
+              const t = tableBarTarget;
+              if (!t || !t.cell.isConnected) return;
+              const table = t.cell.closest("table");
+              const next = tableOp(table, op, t.cell.parentNode, t.cell);
+              if (next) placeCaretIn(next.nodeName === "TR" ? next.children[Math.min(cellIndex(t.cell), next.children.length - 1)] : next);
+              t.save();
+              positionTableBar(root, t.save);
+            },
+          },
+        },
+        [icon(iconName, { size: 14 }), el("span", { text: label })]
+      );
+    tableBar.append(
+      btn("addRow", "plus", "Row", "Add a row below"),
+      btn("addCol", "plus", "Column", "Add a column to the right"),
+      el("span", { class: "bubble-sep" }),
+      btn("delRow", "minus", "Row", "Remove this row"),
+      btn("delCol", "minus", "Column", "Remove this column")
+    );
+  }
+  tableBar.hidden = false;
+  const r = cell.closest("table").getBoundingClientRect();
+  const bw = tableBar.offsetWidth || 300;
+  let top = r.top - (tableBar.offsetHeight || 36) - 8;
+  if (top < 8) top = r.bottom + 8;
+  tableBar.style.left = Math.max(8, Math.min(r.left, window.innerWidth - bw - 8)) + "px";
+  tableBar.style.top = top + "px";
+}
+
+function cellIndex(cell) {
+  return Array.prototype.indexOf.call(cell.parentNode.children, cell);
+}
+
+// Returns the row or cell the caret should go to after the change.
+function tableOp(table, op, tr, cell) {
+  const rows = Array.from(table.querySelectorAll("tr"));
+  const cols = Math.max(...rows.map((r) => r.children.length));
+  const blank = (tag) => el(tag, {}, el("br"));
+  if (op === "addRow") {
+    const row = el("tr", {}, Array.from({ length: cols }, () => blank("td")));
+    if (tr.parentNode.tagName === "THEAD") {
+      let body = table.querySelector("tbody");
+      if (!body) {
+        body = el("tbody");
+        table.appendChild(body);
+      }
+      body.insertBefore(row, body.firstChild);
+    } else {
+      tr.after(row);
+    }
+    return row;
+  }
+  const c = cell ? cellIndex(cell) : 0;
+  if (op === "addCol") {
+    rows.forEach((row) => {
+      const ref = row.children[c];
+      const n = blank(row.parentNode.tagName === "THEAD" ? "th" : "td");
+      if (ref) ref.after(n);
+      else row.appendChild(n);
+    });
+    return tr.children[c + 1];
+  }
+  if (op === "delRow") {
+    if (tr.parentNode.tagName === "THEAD" || rows.length < 3) return cell;
+    const next = tr.nextElementSibling || tr.previousElementSibling;
+    tr.remove();
+    return next;
+  }
+  if (op === "delCol") {
+    if (cols < 2) return cell;
+    rows.forEach((row) => row.children[c] && row.children[c].remove());
+    return tr.children[Math.max(0, c - 1)];
+  }
+  return null;
+}
+
+function placeCaretIn(node) {
+  if (!node) return;
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  range.collapse(false);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
 }
 
 function isEmpty(root) {

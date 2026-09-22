@@ -64,5 +64,17 @@
     "title": "Scripted cutscene",
     "category": "Examples",
     "layout": "doc"
+  },
+  {
+    "slug": "terrain-painting",
+    "title": "How terrain painting works",
+    "category": "Practical uses",
+    "layout": "doc"
+  },
+  {
+    "slug": "sea-island",
+    "title": "Building a sea island",
+    "category": "Practical uses",
+    "layout": "doc"
   }
 ]

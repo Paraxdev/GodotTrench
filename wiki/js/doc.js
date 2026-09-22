@@ -15,6 +15,7 @@ import {
   attachDrawing,
   openSuggest,
   blockMenuItems,
+  blockById,
   editorFor,
 } from "./edit.js";
 
@@ -64,16 +65,24 @@ export class DocView {
     this.scroller.innerHTML = "";
 
     const sheet = el("article", { class: "doc-sheet" + (editing ? " is-edit" : "") });
-    if (info.category) sheet.appendChild(el("div", { class: "doc-kicker", text: info.category }));
 
+    // Every level one or two heading starts a new paper, so each section reads as its own sheet.
     const list = el("div", { class: "doc-blocks" });
     const cards = this.cards().filter((c) => editing || !c.hidden);
-    cards.forEach((card) => list.appendChild(this._block(card, editing)));
+    let paper = null;
+    cards.forEach((card) => {
+      if (!paper || startsSection(card)) {
+        paper = el("section", { class: "doc-paper" });
+        if (!list.firstChild && info.category) paper.appendChild(el("div", { class: "doc-kicker", text: info.category }));
+        list.appendChild(paper);
+      }
+      paper.appendChild(this._block(card, editing));
+    });
     sheet.appendChild(list);
 
     if (!cards.length) {
       sheet.appendChild(
-        el("div", { class: "doc-empty" }, [
+        el("section", { class: "doc-paper doc-empty" }, [
           el("p", { text: editing ? "This page is empty." : "This page is empty. Press Edit to start writing." }),
         ])
       );
@@ -118,6 +127,9 @@ export class DocView {
     });
 
     this.outline = el("nav", { class: "doc-outline", "aria-label": "On this page" });
+    this.toc = el("details", { class: "doc-toc" });
+    const first = list.querySelector(".doc-paper");
+    if (first) first.appendChild(this.toc);
     this.scroller.appendChild(el("div", { class: "doc-layout" }, [sheet, this.outline]));
     this._buildOutline();
     if (keepScroll) this.scroller.scrollTop = top;
@@ -128,8 +140,10 @@ export class DocView {
   _block(card, editing) {
     const block = el("div", { class: "block", dataset: { id: card.id, type: card.type } });
     if (card.hidden) block.classList.add("is-hidden");
+    if (card.variant) block.dataset.variant = card.variant;
+    if (card.variant === "entry") block.classList.add("block-entry");
     const body = el("div", { class: "block-body" });
-    body.appendChild(renderContent(card));
+    body.appendChild(renderContent(card, { rich: !editing }));
     if (RESIZABLE[card.type]) body.style.height = (card.h || 200) + "px";
     block.appendChild(body);
 
@@ -271,7 +285,7 @@ export class DocView {
         marker = el("div", { class: "drop-marker" });
         this.scroller.querySelector(".doc-blocks").appendChild(marker);
       }
-      const blocks = Array.from(this.scroller.querySelectorAll(".doc-blocks > .block"));
+      const blocks = Array.from(this.scroller.querySelectorAll(".doc-blocks .block"));
       let idx = blocks.length;
       for (let i = 0; i < blocks.length; i += 1) {
         const r = blocks[i].getBoundingClientRect();
@@ -335,7 +349,14 @@ export class DocView {
     const cards = this.cards();
     const i = cards.findIndex((c) => c.id === card.id);
     const items = [];
-    if (card.type === "text") items.push({ label: "Edit Markdown source", icon: "hash", value: () => this._sourceFor(card) });
+    if (card.type === "text") {
+      items.push({ label: "Edit Markdown source", icon: "hash", value: () => this._sourceFor(card) });
+      items.push(
+        card.variant === "entry"
+          ? { label: "Show as a plain block", icon: "text", value: () => this._setVariant(card, null) }
+          : { label: "Show as an entry panel", icon: "square", desc: "A raised panel, like each entity in the entity reference", value: () => this._setVariant(card, "entry") }
+      );
+    }
     items.push({ label: "Duplicate", icon: "copy", value: () => this.opts.onCardMenuAction("duplicate", card.id) });
     if (i > 0) items.push({ label: "Move up", icon: "arrow-up", value: () => this._moveTo(card.id, i - 1) });
     if (i < cards.length - 1) items.push({ label: "Move down", icon: "arrow-down", value: () => this._moveTo(card.id, i + 2) });
@@ -346,6 +367,14 @@ export class DocView {
     );
     items.push({ label: "Delete", icon: "trash-2", hint: "Del", value: () => this.opts.onCardMenuAction("delete", card.id) });
     openSuggest(rect, items, (fn) => fn(), { title: "Block" });
+  }
+
+  _setVariant(card, variant) {
+    this.commitAll();
+    if (variant) card.variant = variant;
+    else delete card.variant;
+    this.opts.onMutate();
+    this.render({ keepScroll: true });
   }
 
   _sourceFor(card) {
@@ -398,6 +427,7 @@ export class DocView {
     const cards = this.cards();
     const type = blockSpec.card || "text";
     const card = newCard(type, { x: 0, y: 0 }, []);
+    if (blockSpec.variant) card.variant = blockSpec.variant;
     if (type === "draw" || type === "shape") card.h = 220;
     const i = afterId ? cards.findIndex((c) => c.id === afterId) : cards.length - 1;
     cards.splice(i + 1, 0, card);
@@ -414,6 +444,8 @@ export class DocView {
     const cards = this.cards();
     const i = cards.findIndex((c) => c.id === card.id);
     const fresh = newCard(type, { x: 0, y: 0 }, []);
+    const spec = (extra && extra.block) || { card: type };
+    if (spec.variant) fresh.variant = spec.variant;
     if (type === "draw" || type === "shape") fresh.h = 220;
     const add = [fresh];
     if (tail.trim()) {
@@ -426,7 +458,7 @@ export class DocView {
     if (!(card.md || "").trim() && card.type === "text") cards.splice(i, 1);
     this.opts.onMutate();
     this.render({ keepScroll: true });
-    this._afterInsert(fresh, { card: type });
+    this._afterInsert(fresh, spec);
   }
 
   _afterInsert(card, blockSpec) {
@@ -439,7 +471,8 @@ export class DocView {
       const ed = root && editorFor(root);
       if (ed) {
         ed.focus();
-        if (blockSpec && !blockSpec.card && blockSpec.id !== "text") ed.applyBlock(blockSpec);
+        if (blockSpec && blockSpec.then) ed.applyBlock(blockById(blockSpec.then));
+        else if (blockSpec && !blockSpec.card && blockSpec.id !== "text") ed.applyBlock(blockSpec);
       }
     } else if (card.type === "code") {
       this._openEditor(card, block, body, mountCodeEditor);
@@ -483,43 +516,101 @@ export class DocView {
 
   // ----- Outline -----
 
+  // Level two headings, with the level three entries of the section being read folded out
+  // under it. Wide layouts show it as a sticky column, narrow ones as a collapsible list at the
+  // end of the first paper.
   _buildOutline() {
     const nav = this.outline;
     if (!nav) return;
     nav.innerHTML = "";
-    const heads = Array.from(this.scroller.querySelectorAll(".doc-blocks .md h1, .doc-blocks .md h2, .doc-blocks .md h3"));
-    this._heads = heads;
-    if (heads.length < 3) {
-      nav.hidden = true;
-      return;
-    }
-    nav.hidden = false;
-    nav.appendChild(el("div", { class: "doc-outline-title", text: "On this page" }));
-    heads.forEach((h, i) => {
-      nav.appendChild(
-        el("button", {
-          type: "button",
-          class: "outline-item lvl-" + h.tagName[1],
-          text: h.textContent,
-          on: {
-            click: () => h.scrollIntoView({ block: "start", behavior: "smooth" }),
-          },
-          dataset: { i: String(i) },
-        })
-      );
+    if (this.toc) this.toc.innerHTML = "";
+    const heads = Array.from(this.scroller.querySelectorAll(".doc-blocks .md h2, .doc-blocks .md h3"));
+    const sections = [];
+    heads.forEach((h) => {
+      if (h.tagName === "H2" || !sections.length) sections.push({ head: h, subs: [] });
+      else sections[sections.length - 1].subs.push(h);
     });
+    this._heads = heads;
+    this._sections = sections;
+    const enough = sections.filter((s) => s.head.tagName === "H2").length >= 2;
+    nav.hidden = !enough;
+    if (this.toc) this.toc.hidden = !enough;
+    if (!enough) return;
+
+    const go = (h) => {
+      const paper = h.closest(".doc-paper");
+      const firstInPaper = paper && paper.querySelector(".md h1, .md h2, .md h3") === h;
+      (firstInPaper ? paper : h).scrollIntoView({ block: "start", behavior: "smooth" });
+    };
+    const item = (h, cls) =>
+      el("button", { type: "button", class: "outline-item " + cls, text: h.textContent, on: { click: () => go(h) } });
+
+    nav.appendChild(el("div", { class: "doc-outline-title", text: "On this page" }));
+    sections.forEach((sec) => {
+      const group = el("div", { class: "outline-group" }, item(sec.head, "lvl-" + sec.head.tagName[1]));
+      if (sec.subs.length) group.appendChild(el("div", { class: "outline-sub" }, sec.subs.map((h) => item(h, "lvl-3"))));
+      nav.appendChild(group);
+    });
+
+    if (this.toc) {
+      this.toc.appendChild(
+        el("summary", { class: "doc-toc-summary" }, [icon("list", { size: 16 }), el("span", { text: "On this page" }), icon("chevron-down", { size: 16, cls: "doc-toc-chevron" })])
+      );
+      this.toc.appendChild(
+        el(
+          "div",
+          { class: "doc-toc-list" },
+          sections
+            .filter((sec) => sec.head.tagName === "H2")
+            .map((sec) =>
+              el("button", {
+                type: "button",
+                class: "doc-toc-item",
+                text: sec.head.textContent,
+                on: {
+                  click: () => {
+                    this.toc.open = false;
+                    requestAnimationFrame(() => go(sec.head));
+                  },
+                },
+              })
+            )
+        )
+      );
+    }
     this._spy();
   }
 
   _spy() {
-    if (!this._heads || !this._heads.length || !this.outline || this.outline.hidden) return;
-    const top = this.scroller.getBoundingClientRect().top + 90;
-    let current = 0;
-    this._heads.forEach((h, i) => {
-      if (h.getBoundingClientRect().top <= top) current = i;
+    if (this._spyQueued) return;
+    this._spyQueued = true;
+    requestAnimationFrame(() => {
+      this._spyQueued = false;
+      if (!this._heads || !this._heads.length || !this.outline || this.outline.hidden) return;
+      const top = this.scroller.getBoundingClientRect().top + 90;
+      let current = 0;
+      const tops = this._heads.map((h) => h.getBoundingClientRect().top);
+      tops.forEach((t, i) => {
+        if (t <= top) current = i;
+      });
+      const active = this._heads[current];
+      const groups = this.outline.querySelectorAll(".outline-group");
+      this._sections.forEach((sec, i) => {
+        const g = groups[i];
+        if (!g) return;
+        const inside = sec.head === active || sec.subs.includes(active);
+        g.classList.toggle("open", inside);
+        g.querySelectorAll(".outline-item").forEach((b, j) => {
+          const h = j === 0 ? sec.head : sec.subs[j - 1];
+          b.classList.toggle("active", h === active);
+        });
+      });
     });
-    this.outline.querySelectorAll(".outline-item").forEach((b, i) => b.classList.toggle("active", i === current));
   }
+}
+
+function startsSection(card) {
+  return card.type === "text" && (card.format || "markdown") === "markdown" && /^\s*#{1,2}\s/.test(card.md || "");
 }
 
 function cssEscape(value) {
