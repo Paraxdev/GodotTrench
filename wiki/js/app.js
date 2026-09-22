@@ -30,6 +30,7 @@ import {
 import { BoardView } from "./board.js";
 import { renderInspector } from "./inspector.js";
 import { registerGdscript } from "./highlight-gdscript.js";
+import { icon, TYPE_ICON } from "./icons.js";
 
 const state = {
   pages: [],
@@ -51,13 +52,13 @@ async function init() {
 
   el.pageList = $("page-list");
   el.pageTitle = $("page-title");
-  el.addTools = $("add-tools");
   el.inspector = $("inspector");
   el.status = $("status");
   el.modeToggle = $("mode-toggle");
   el.saveBtn = $("save-btn");
+  el.board = $("board");
 
-  boardView = new BoardView($("board"), {
+  boardView = new BoardView(el.board, {
     getMode: () => state.mode,
     getBoard: () => state.board,
     getSelectedId: () => state.selectedId,
@@ -69,7 +70,8 @@ async function init() {
     grid: 8,
   });
 
-  buildAddTools();
+  setupToolbarIcons();
+  setupCardMenu();
   wireToolbar();
   wireKeyboard();
 
@@ -179,8 +181,13 @@ function renderBoardChrome() {
 function applyMode() {
   const editing = state.mode === "edit";
   document.body.classList.toggle("mode-edit", editing);
-  el.modeToggle.textContent = editing ? "Done" : "Edit";
+  if (editing) {
+    setButton(el.modeToggle, "check", "Done", "Switch to view mode");
+  } else {
+    setButton(el.modeToggle, "pencil", "Edit", "Switch to edit mode");
+  }
   el.modeToggle.classList.toggle("is-active", editing);
+  if (!editing) closeCardMenu();
   boardView.render();
   refreshInspector();
 }
@@ -193,21 +200,123 @@ function setMode(mode) {
 
 // ----- Toolbar -----
 
-function buildAddTools() {
-  el.addTools.innerHTML = "";
-  const label = document.createElement("span");
-  label.className = "add-tools-label";
-  label.textContent = "Add";
-  el.addTools.appendChild(label);
+// Set a button's content to an icon plus an optional text label.
+function setButton(btn, iconName, label, ariaLabel) {
+  btn.innerHTML = "";
+  btn.appendChild(icon(iconName));
+  if (label) {
+    const span = document.createElement("span");
+    span.className = "btn-label";
+    span.textContent = label;
+    btn.appendChild(span);
+  }
+  if (ariaLabel) btn.setAttribute("aria-label", ariaLabel);
+}
+
+function setupToolbarIcons() {
+  setButton($("add-page"), "plus", "Page", "Add page");
+  setButton($("rename-page"), "pencil-line", "Rename", "Rename page");
+  setButton($("delete-page"), "trash-2", "Delete page", "Delete page");
+  setButton(el.saveBtn, "save", "Save", "Save to GitHub");
+}
+
+// ----- Add card context menu (edit mode only) -----
+
+let menuEl = null;
+let menuBoardPoint = { x: 0, y: 0 };
+const lastPointer = { x: 0, y: 0, overBoard: false };
+
+function setupCardMenu() {
+  menuEl = document.createElement("div");
+  menuEl.className = "card-menu";
+  menuEl.setAttribute("role", "menu");
+  menuEl.setAttribute("aria-label", "Add a card");
+  menuEl.hidden = true;
+
   CARD_TYPES.forEach((type) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn btn-small add-card-btn";
-    btn.dataset.type = type;
-    btn.textContent = "+ " + TYPE_LABELS[type];
-    btn.addEventListener("click", () => addCard(type));
-    el.addTools.appendChild(btn);
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "menu-item";
+    item.dataset.type = type;
+    item.setAttribute("role", "menuitem");
+    item.setAttribute("aria-label", "Add " + TYPE_LABELS[type] + " card");
+    item.appendChild(icon(TYPE_ICON[type]));
+    const label = document.createElement("span");
+    label.textContent = TYPE_LABELS[type];
+    item.appendChild(label);
+    item.addEventListener("click", () => {
+      const at = menuBoardPoint;
+      closeCardMenu();
+      addCardAt(type, at);
+    });
+    menuEl.appendChild(item);
   });
+  document.body.appendChild(menuEl);
+
+  // Track the pointer over the board so Shift+A can place a card under the cursor.
+  el.board.addEventListener("pointermove", (e) => {
+    lastPointer.x = e.clientX;
+    lastPointer.y = e.clientY;
+    lastPointer.overBoard = true;
+  });
+  el.board.addEventListener("pointerleave", () => {
+    lastPointer.overBoard = false;
+  });
+
+  // Right click opens the menu in edit mode and suppresses the browser menu. View mode is
+  // left untouched.
+  el.board.addEventListener("contextmenu", (e) => {
+    if (state.mode !== "edit") return;
+    e.preventDefault();
+    openCardMenu(e.clientX, e.clientY);
+  });
+
+  // Close on an outside pointerdown or Escape.
+  document.addEventListener("pointerdown", (e) => {
+    if (!menuEl.hidden && !menuEl.contains(e.target)) closeCardMenu();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (!menuEl.hidden && e.key === "Escape") {
+      e.preventDefault();
+      closeCardMenu();
+      return;
+    }
+    if (state.mode !== "edit") return;
+    const tag = (document.activeElement && document.activeElement.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    // Shift+A opens the add menu at the cursor, Blender style.
+    if (e.shiftKey && (e.code === "KeyA" || e.key === "A" || e.key === "a")) {
+      e.preventDefault();
+      let cx;
+      let cy;
+      if (lastPointer.overBoard) {
+        cx = lastPointer.x;
+        cy = lastPointer.y;
+      } else {
+        const r = el.board.getBoundingClientRect();
+        cx = r.left + r.width / 2;
+        cy = r.top + r.height / 2;
+      }
+      openCardMenu(cx, cy);
+    }
+  });
+}
+
+function openCardMenu(clientX, clientY) {
+  menuBoardPoint = boardView.clientToBoard(clientX, clientY);
+  menuEl.hidden = false;
+  const mw = menuEl.offsetWidth || 190;
+  const mh = menuEl.offsetHeight || 280;
+  let left = clientX;
+  let top = clientY;
+  if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+  if (top + mh > window.innerHeight - 8) top = window.innerHeight - mh - 8;
+  menuEl.style.left = Math.max(8, left) + "px";
+  menuEl.style.top = Math.max(8, top) + "px";
+}
+
+function closeCardMenu() {
+  if (menuEl) menuEl.hidden = true;
 }
 
 function wireToolbar() {
@@ -239,13 +348,20 @@ function wireKeyboard() {
 
 // ----- Card actions -----
 
-function addCard(type) {
+// Add a card at a specific board coordinate (from the context menu or Shift+A).
+function addCardAt(type, at) {
   if (state.mode !== "edit") setMode("edit");
-  const card = newCard(type, boardView.spawnPoint(), state.board.cards);
+  const card = newCard(type, at, state.board.cards);
   state.board.cards.push(card);
   markDirty();
   boardView.render();
   selectCard(card.id);
+  return card;
+}
+
+// Add a card near the top left of the viewport (used by the test hook).
+function addCard(type) {
+  return addCardAt(type, boardView.spawnPoint());
 }
 
 function selectCard(id) {
@@ -413,7 +529,7 @@ async function save() {
   boardView.updateSelection();
 
   el.saveBtn.disabled = true;
-  el.saveBtn.textContent = "Saving...";
+  setButton(el.saveBtn, "save", "Saving...", "Saving");
   setStatus("Committing to " + GH.owner + "/" + GH.repo + " ...", "info");
   try {
     await commitPage(state.slug, state.board, state.pages, token);
@@ -424,7 +540,7 @@ async function save() {
     setStatus("Save failed: " + err.message, "error");
   } finally {
     el.saveBtn.disabled = false;
-    el.saveBtn.textContent = "Save";
+    setButton(el.saveBtn, "save", "Save", "Save to GitHub");
   }
 }
 
@@ -519,6 +635,7 @@ window.__wiki = {
   }),
   setMode,
   addCard,
+  addCardAt,
   selectCard,
 };
 

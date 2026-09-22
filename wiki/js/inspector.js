@@ -3,6 +3,7 @@
 // which re-renders the card and autosaves a draft.
 
 import { TYPE_LABELS } from "./cards.js";
+import { icon } from "./icons.js";
 
 // ctx: { card, update(), bringToFront(), sendToBack(), remove(), uploadAsset(file) }
 export function renderInspector(container, ctx) {
@@ -25,9 +26,9 @@ export function renderInspector(container, ctx) {
 
   const actions = document.createElement("div");
   actions.className = "inspector-actions";
-  actions.appendChild(iconButton("To front", () => ctx.bringToFront()));
-  actions.appendChild(iconButton("To back", () => ctx.sendToBack()));
-  const del = iconButton("Delete", () => ctx.remove());
+  actions.appendChild(iconButton("To front", () => ctx.bringToFront(), "bring-to-front"));
+  actions.appendChild(iconButton("To back", () => ctx.sendToBack(), "send-to-back"));
+  const del = iconButton("Delete", () => ctx.remove(), "x");
   del.classList.add("danger");
   actions.appendChild(del);
   head.appendChild(actions);
@@ -88,12 +89,40 @@ function textInput(value, onInput, attrs) {
   return input;
 }
 
-function iconButton(label, onClick) {
+function iconButton(label, onClick, iconName) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "btn btn-small";
-  btn.textContent = label;
+  if (iconName) {
+    btn.appendChild(icon(iconName));
+    const span = document.createElement("span");
+    span.className = "btn-label";
+    span.textContent = label;
+    btn.appendChild(span);
+    btn.setAttribute("aria-label", label);
+  } else {
+    btn.textContent = label;
+  }
   btn.addEventListener("click", onClick);
+  return btn;
+}
+
+// An upload button whose label can change (for example to "Uploading...") without losing
+// the icon.
+function uploadButton(label, onClick) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn btn-small";
+  btn.appendChild(icon("upload"));
+  const span = document.createElement("span");
+  span.className = "btn-label";
+  span.textContent = label;
+  btn.appendChild(span);
+  btn.setAttribute("aria-label", label);
+  btn.addEventListener("click", onClick);
+  btn.setLabel = (text) => {
+    span.textContent = text;
+  };
   return btn;
 }
 
@@ -158,12 +187,12 @@ function imageInspector(body, ctx) {
   fileInput.type = "file";
   fileInput.accept = "image/*";
   fileInput.style.display = "none";
-  const uploadBtn = iconButton("Upload image", () => fileInput.click());
+  const uploadBtn = uploadButton("Upload image", () => fileInput.click());
   fileInput.addEventListener("change", async () => {
     const file = fileInput.files && fileInput.files[0];
     if (!file) return;
     uploadBtn.disabled = true;
-    uploadBtn.textContent = "Uploading...";
+    uploadBtn.setLabel("Uploading...");
     try {
       const relPath = await ctx.uploadAsset(file);
       if (relPath) {
@@ -173,7 +202,7 @@ function imageInspector(body, ctx) {
       }
     } finally {
       uploadBtn.disabled = false;
-      uploadBtn.textContent = "Upload image";
+      uploadBtn.setLabel("Upload image");
       fileInput.value = "";
     }
   });
@@ -215,12 +244,12 @@ function videoInspector(body, ctx) {
   fileInput.type = "file";
   fileInput.accept = "video/*";
   fileInput.style.display = "none";
-  const uploadBtn = iconButton("Upload video", () => fileInput.click());
+  const uploadBtn = uploadButton("Upload video", () => fileInput.click());
   fileInput.addEventListener("change", async () => {
     const file = fileInput.files && fileInput.files[0];
     if (!file) return;
     uploadBtn.disabled = true;
-    uploadBtn.textContent = "Uploading...";
+    uploadBtn.setLabel("Uploading...");
     try {
       const relPath = await ctx.uploadAsset(file);
       if (relPath) {
@@ -231,7 +260,7 @@ function videoInspector(body, ctx) {
       }
     } finally {
       uploadBtn.disabled = false;
-      uploadBtn.textContent = "Upload video";
+      uploadBtn.setLabel("Upload video");
       fileInput.value = "";
     }
   });

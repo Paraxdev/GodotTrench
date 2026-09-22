@@ -2,9 +2,23 @@
 // dragging, resizing, selection, z stacking, and freehand drawing with pointer events.
 
 import { renderContent } from "./cards.js";
+import { icon } from "./icons.js";
 
 const MIN_W = 90;
 const MIN_H = 70;
+
+// The eight resize directions, with their cursors. Corners are listed after edges so they
+// paint on top and take priority where they overlap.
+const RESIZE_DIRS = [
+  { dir: "n", cursor: "ns-resize" },
+  { dir: "e", cursor: "ew-resize" },
+  { dir: "s", cursor: "ns-resize" },
+  { dir: "w", cursor: "ew-resize" },
+  { dir: "nw", cursor: "nwse-resize" },
+  { dir: "ne", cursor: "nesw-resize" },
+  { dir: "se", cursor: "nwse-resize" },
+  { dir: "sw", cursor: "nesw-resize" },
+];
 
 export class BoardView {
   // opts: { getMode, getBoard, getSelectedId, onSelect, onMutate, grid }
@@ -33,6 +47,15 @@ export class BoardView {
     };
   }
 
+  // Convert a client (viewport) point to a board surface coordinate, accounting for scroll.
+  clientToBoard(clientX, clientY) {
+    const rect = this.surface.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.round(clientX - rect.left)),
+      y: Math.max(0, Math.round(clientY - rect.top)),
+    };
+  }
+
   snap(value) {
     return Math.round(value / this.grid) * this.grid;
   }
@@ -48,7 +71,8 @@ export class BoardView {
     if (!cards.length) {
       const hint = document.createElement("div");
       hint.className = "board-empty";
-      hint.textContent = mode === "edit" ? "Add cards from the toolbar" : "This page is empty";
+      hint.textContent =
+        mode === "edit" ? "Right click or press Shift A to add a card" : "This page is empty";
       this.surface.appendChild(hint);
       return;
     }
@@ -111,10 +135,10 @@ export class BoardView {
       const controls = document.createElement("div");
       controls.className = "card-controls";
       controls.appendChild(
-        this._ctrlButton("^", "Bring to front", () => this.opts.onBringToFront(card.id))
+        this._ctrlButton("bring-to-front", "Bring to front", () => this.opts.onBringToFront(card.id))
       );
       controls.appendChild(
-        this._ctrlButton("v", "Send to back", () => this.opts.onSendToBack(card.id))
+        this._ctrlButton("send-to-back", "Send to back", () => this.opts.onSendToBack(card.id))
       );
       const del = this._ctrlButton("x", "Delete card", () => this.opts.onDelete(card.id));
       del.classList.add("danger");
@@ -134,17 +158,30 @@ export class BoardView {
     el.appendChild(body);
 
     if (mode === "edit") {
-      const handle = document.createElement("div");
-      handle.className = "card-resize";
-      handle.title = "Drag to resize";
-      el.appendChild(handle);
-      this._attachResize(handle, el, card);
+      this._addResizeHandles(el, card);
       if (card.type === "draw") this._attachDraw(body, card);
     } else {
       // A gentle pointer tracking tilt, view mode only.
       this._attachTilt(el);
     }
+
+    // The specular sheen overlay tracks the pointer. It never blocks clicks.
+    const sheen = document.createElement("div");
+    sheen.className = "card-sheen";
+    el.appendChild(sheen);
+    this._attachSheen(el);
+
     return el;
+  }
+
+  _addResizeHandles(el, card) {
+    RESIZE_DIRS.forEach((spec) => {
+      const handle = document.createElement("div");
+      handle.className = "card-handle handle-" + spec.dir;
+      handle.style.cursor = spec.cursor;
+      el.appendChild(handle);
+      this._attachResize(handle, el, card, spec.dir);
+    });
   }
 
   _prefersReducedMotion() {
@@ -182,19 +219,37 @@ export class BoardView {
     el.addEventListener("pointercancel", onLeave);
   }
 
-  // A small header control button. Its pointerdown is stopped so it does not start a drag.
-  _ctrlButton(label, title, onClick) {
+  // A small header control button with an inline icon. Its pointerdown is stopped so it does
+  // not start a drag.
+  _ctrlButton(iconName, title, onClick) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "card-ctrl";
-    btn.textContent = label;
     btn.title = title;
+    btn.setAttribute("aria-label", title);
+    btn.appendChild(icon(iconName, { size: 15 }));
     btn.addEventListener("pointerdown", (e) => e.stopPropagation());
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       onClick();
     });
     return btn;
+  }
+
+  // Cursor tracking specular highlight. Only sets CSS custom properties, so it never
+  // interferes with selection, drag, resize or the inspector. Disabled under reduced motion.
+  _attachSheen(el) {
+    if (this._prefersReducedMotion()) return;
+    const sheen = el.querySelector(".card-sheen");
+    if (!sheen) return;
+    el.addEventListener("pointermove", (e) => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      const mx = ((e.clientX - r.left) / r.width) * 100;
+      const my = ((e.clientY - r.top) / r.height) * 100;
+      el.style.setProperty("--mx", mx.toFixed(1) + "%");
+      el.style.setProperty("--my", my.toFixed(1) + "%");
+    });
   }
 
   _attachDrag(header, el, card) {
@@ -242,9 +297,14 @@ export class BoardView {
     header.addEventListener("pointercancel", end);
   }
 
-  _attachResize(handle, el, card) {
+  // Resize from any of the eight zones. Handles on the top or left move the card origin
+  // (x/y) while changing w/h, keeping the opposite edge anchored. Snaps to the grid and
+  // enforces the minimum size.
+  _attachResize(handle, el, card, dir) {
     let startX = 0;
     let startY = 0;
+    let originX = 0;
+    let originY = 0;
     let originW = 0;
     let originH = 0;
     let resizing = false;
@@ -256,6 +316,8 @@ export class BoardView {
       handle.setPointerCapture(e.pointerId);
       startX = e.clientX;
       startY = e.clientY;
+      originX = card.x;
+      originY = card.y;
       originW = card.w;
       originH = card.h;
       el.classList.add("resizing");
@@ -264,12 +326,44 @@ export class BoardView {
     });
     handle.addEventListener("pointermove", (e) => {
       if (!resizing) return;
-      const nw = Math.max(MIN_W, this.snap(originW + (e.clientX - startX)));
-      const nh = Math.max(MIN_H, this.snap(originH + (e.clientY - startY)));
-      card.w = nw;
-      card.h = nh;
-      el.style.width = nw + "px";
-      el.style.height = nh + "px";
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const rightEdge = originX + originW;
+      const bottomEdge = originY + originH;
+      let x = originX;
+      let y = originY;
+      let w = originW;
+      let h = originH;
+
+      if (dir.indexOf("e") !== -1) {
+        const right = this.snap(rightEdge + dx);
+        w = Math.max(MIN_W, right - originX);
+      }
+      if (dir.indexOf("s") !== -1) {
+        const bottom = this.snap(bottomEdge + dy);
+        h = Math.max(MIN_H, bottom - originY);
+      }
+      if (dir.indexOf("w") !== -1) {
+        let left = Math.max(0, this.snap(originX + dx));
+        left = Math.min(left, rightEdge - MIN_W);
+        x = left;
+        w = rightEdge - left;
+      }
+      if (dir.indexOf("n") !== -1) {
+        let top = Math.max(0, this.snap(originY + dy));
+        top = Math.min(top, bottomEdge - MIN_H);
+        y = top;
+        h = bottomEdge - top;
+      }
+
+      card.x = x;
+      card.y = y;
+      card.w = w;
+      card.h = h;
+      el.style.left = x + "px";
+      el.style.top = y + "px";
+      el.style.width = w + "px";
+      el.style.height = h + "px";
     });
     const end = (e) => {
       if (!resizing) return;
