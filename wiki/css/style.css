@@ -54,8 +54,11 @@
   --inspector-w: 306px;
   --toolbar-h: 60px;
 
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --mono: "SFMono-Regular", ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-ui: "Ubuntu", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Ubuntu Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  /* Aliases for older references. */
+  --font: var(--font-ui);
+  --mono: var(--font-mono);
 }
 
 * {
@@ -71,7 +74,7 @@ body {
 body {
   background-color: var(--bg);
   color: var(--text);
-  font-family: var(--font);
+  font-family: var(--font-ui);
   font-size: 14px;
   line-height: 1.5;
   overflow: hidden;
@@ -116,7 +119,7 @@ body::before {
 .sidebar,
 .toolbar,
 .inspector,
-.add-tools,
+.card-menu,
 .status,
 .modal-card,
 .card {
@@ -131,7 +134,7 @@ body::before {
   .sidebar,
   .toolbar,
   .inspector,
-  .add-tools,
+  .card-menu,
   .status,
   .modal-card,
   .card {
@@ -268,25 +271,6 @@ body::before {
   text-shadow: var(--text-shadow);
 }
 
-.add-tools {
-  display: none;
-  align-items: center;
-  gap: 6px;
-  overflow-x: auto;
-  padding: 5px 12px;
-  border-radius: var(--radius-pill);
-  box-shadow: var(--edge-hi);
-}
-
-.add-tools-label {
-  font-size: 11px;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  padding-right: 2px;
-  flex-shrink: 0;
-}
-
 .toolbar-right {
   display: flex;
   align-items: center;
@@ -294,34 +278,98 @@ body::before {
   margin-left: auto;
 }
 
-.edit-only {
+/* Higher specificity than .btn so these stay hidden in view mode. */
+.toolbar .edit-only {
   display: none;
 }
 
-body.mode-edit .edit-only {
+body.mode-edit .toolbar .edit-only {
   display: inline-flex;
 }
 
-body.mode-edit .add-tools {
+/* ----- Add card context menu ----- */
+
+.card-menu {
+  position: fixed;
+  z-index: 1200;
+  min-width: 176px;
+  padding: 6px;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-glass), var(--edge-hi);
   display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.card-menu[hidden] {
+  display: none;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.menu-item:hover {
+  background: var(--accent-soft);
+  border-color: rgba(var(--accent-rgb), 0.4);
+}
+
+.menu-item .icon {
+  color: var(--text-dim);
+}
+
+.menu-item:hover .icon {
+  color: var(--accent);
 }
 
 /* ----- Buttons as glass pills ----- */
 
 .btn {
   appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   border: 1px solid var(--glass-border);
   background: var(--glass-bg);
   -webkit-backdrop-filter: blur(10px) saturate(150%);
   backdrop-filter: blur(10px) saturate(150%);
   color: var(--text);
   font: inherit;
+  line-height: 1;
   padding: 8px 14px;
   border-radius: var(--radius-pill);
   cursor: pointer;
   white-space: nowrap;
   box-shadow: var(--edge-hi);
   transition: background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, transform 0.1s ease;
+}
+
+/* Inline icons. */
+.icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  flex: none;
+}
+
+.btn .icon {
+  margin: -1px 0;
+}
+
+.btn-label {
+  display: inline-block;
 }
 
 .btn:hover {
@@ -513,6 +561,8 @@ body.mode-edit .inspector {
   align-items: center;
   gap: 2px;
   margin-left: auto;
+  position: relative;
+  z-index: 6;
 }
 
 .card-ctrl {
@@ -559,21 +609,108 @@ body.mode-edit .inspector {
   overflow: hidden;
 }
 
-.card-resize {
+/* Eight resize zones as thin bands around the card border. Corners sit above edges. */
+.card-handle {
   position: absolute;
-  right: 4px;
-  bottom: 4px;
-  width: 14px;
-  height: 14px;
-  cursor: nwse-resize;
+  z-index: 2;
   touch-action: none;
+}
+
+.handle-n {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+}
+
+.handle-s {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+}
+
+.handle-e {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 6px;
+}
+
+.handle-w {
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 6px;
+}
+
+.handle-nw,
+.handle-ne,
+.handle-se,
+.handle-sw {
+  width: 15px;
+  height: 15px;
+  z-index: 3;
+}
+
+.handle-nw {
+  top: 0;
+  left: 0;
+}
+
+.handle-ne {
+  top: 0;
+  right: 0;
+}
+
+.handle-se {
+  bottom: 0;
+  right: 0;
+}
+
+.handle-sw {
+  bottom: 0;
+  left: 0;
+}
+
+/* A visible grip in the bottom right corner. */
+.handle-se::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 12px;
+  height: 12px;
   border-radius: 4px;
   background: repeating-linear-gradient(135deg, transparent 0 2.5px, var(--text-faint) 2.5px 3.6px);
   opacity: 0.85;
+  pointer-events: none;
 }
 
-.card-resize:hover {
+.card.selected .handle-se::after,
+.handle-se:hover::after {
   background: repeating-linear-gradient(135deg, transparent 0 2.5px, var(--accent) 2.5px 3.6px);
+  opacity: 1;
+}
+
+/* Cursor tracking specular sheen. Set by board.js via --mx and --my. */
+.card-sheen {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  background: radial-gradient(
+    240px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, 0.18),
+    rgba(255, 255, 255, 0) 62%
+  );
+  mix-blend-mode: soft-light;
+}
+
+.card:hover .card-sheen {
   opacity: 1;
 }
 
@@ -624,7 +761,7 @@ body.mode-edit .inspector {
   background: var(--glass-inner);
   padding: 1px 5px;
   border-radius: 6px;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 0.9em;
 }
 
@@ -661,7 +798,7 @@ body.mode-edit .inspector {
 .code-block code,
 .code-block code.hljs {
   background: transparent;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 12.5px;
   display: block;
   padding: 10px 12px;
@@ -837,7 +974,7 @@ body.mode-edit .inspector {
 }
 
 .inspector-textarea.mono {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 12.5px;
 }
 
@@ -961,7 +1098,7 @@ body.mode-edit .inspector {
 }
 
 .modal-input {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   margin-bottom: 14px;
 }
 
@@ -1006,6 +1143,9 @@ body.mode-edit .inspector {
   .page-item,
   .status {
     transition: none;
+  }
+  .card-sheen {
+    display: none;
   }
 }
 
