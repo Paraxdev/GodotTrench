@@ -863,7 +863,7 @@ pub fn untitled_autosaves(dir: &Path) -> Vec<PathBuf> {
         })
         .map(|e| (e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH), e.path()))
         .collect();
-    found.sort_by(|a, b| b.0.cmp(&a.0));
+    found.sort_by_key(|e| std::cmp::Reverse(e.0));
     found.into_iter().map(|(_, p)| p).collect()
 }
 
