@@ -159,11 +159,12 @@ pub enum Action {
     ReloadMaterials,
     /// Makes a scatter set the one the scatter tool paints into.
     ActivateScatter(NodeId),
-    /// The next scatter stroke starts a new set on a new layer.
+    /// An empty scatter set on a new layer, to drop models into.
     NewScatterSet,
     ScatterFill,
+    /// A new scatter set holding a built-in preset.
     ScatterPreset(String),
-    ShowScatterPalette,
+    ShowScatterPanel,
     InstallNatureModels,
     /// Replaces the selected scatter sets with prop entities.
     ScatterToEntities,
@@ -469,7 +470,7 @@ pub fn bindable_actions() -> Vec<Action> {
         Action::ReloadMaterials,
         Action::NewScatterSet,
         Action::ScatterFill,
-        Action::ShowScatterPalette,
+        Action::ShowScatterPanel,
         Action::SetBlendMaterial,
         Action::MakePlatform,
         Action::ShowLinkDialog,
@@ -988,12 +989,11 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         }
         Action::TerrainAutoPaint => {
             let ids = state.doc.selection.terrains(&state.doc.map);
+            let base = state.auto_paint_base;
             state.doc.edit("Auto Paint Terrain", |m, _| {
                 for id in &ids {
                     if let Some(t) = m.terrain_mut(*id) {
-                        let b = t.bounds();
-                        let span = (b.max.y - b.min.y).max(1.0);
-                        t.auto_paint(0.35, b.min.y - t.origin.y + span * 0.8, b.min.y - t.origin.y + span * 0.08);
+                        t.auto_paint_from(base);
                     }
                 }
             });
@@ -1037,6 +1037,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         }
         Action::ReloadModels => {
             state.models.clear();
+            state.model_thumbs.clear();
             let game = state.game.clone();
             state.model_library.rescan(&game);
             state.set_status("Models reloaded");
@@ -1149,27 +1150,20 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             }
         }
         Action::NewScatterSet => {
-            state.active_scatter = None;
-            state.set_status("The next scatter stroke starts a new set on its own layer");
+            crate::scatter_tool::new_empty_set(state);
+            state.set_status("New scatter set, drag models into it from the Models panel");
         }
         Action::ScatterFill => {
-            let mut rng = gt_doc::scatter::Rng::new(time_seed());
+            let seed = state.prefs.scatter.seed;
+            let mut rng = gt_doc::scatter::Rng::new(if seed == 0 { time_seed() } else { seed });
             match crate::scatter_tool::fill(state, &mut rng) {
                 Ok(n) => state.set_status(format!("Filled the scatter targets with {n} instances")),
                 Err(e) => state.set_status(e),
             }
         }
         Action::ScatterPreset(name) => {
-            if crate::scatter_tool::apply_preset(state, &name) {
-                let missing = state.game.resolve_res(gt_doc::scatter::NATURE_DIR).is_some_and(|d| !d.join("pine.bbmodel").is_file());
-                if missing {
-                    let _ = crate::scatter_tool::install_nature(state, false);
-                }
-
-                // A different preset is a different kind of set, so paint it onto its own layer instead of merging it
-                // into whatever set was active.
-                state.active_scatter = None;
-                state.set_status(format!("Scatter palette: {name}. The next stroke starts a new layer."));
+            if crate::scatter_tool::new_set_from_preset(state, &name).is_some() {
+                state.set_status(format!("New scatter set from the {name} preset on its own layer"));
             }
         }
         Action::InstallNatureModels => match crate::scatter_tool::install_nature(state, false) {
@@ -1221,7 +1215,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 state.set_status(e);
             }
         }
-        Action::ShowScatterPalette | Action::ShowLinkDialog | Action::ShowReference | Action::ShowPreferences => {}
+        Action::ShowScatterPanel | Action::ShowLinkDialog | Action::ShowReference | Action::ShowPreferences => {}
         Action::CreateBrushFromBounds => {
             let b = state.last_bounds;
             let mat = state.current_material.clone();
@@ -1728,6 +1722,15 @@ pub fn hotspot_rects(state: &EditorState, material: &str) -> Vec<[f64; 4]> {
         .collect()
 }
 
+/// Hotspot rectangles in the units face UVs are measured in, which differ from pixels when the material sets
+/// `metadata/texture_size`.
+pub fn hotspot_rects_uv(state: &EditorState, material: &str) -> Vec<[f64; 4]> {
+    let rects = hotspot_rects(state, material);
+    let (Some(world), Some(px)) = (state.materials.world_size(material), state.materials.pixel_size(material)) else { return rects };
+    let (sx, sy) = (world[0] / px[0].max(1) as f64, world[1] / px[1].max(1) as f64);
+    rects.into_iter().map(|[x, y, w, h]| [x * sx, y * sy, w * sx, h * sy]).collect()
+}
+
 /// Fits selected brush faces (or every face of selected brushes) to the best matching hotspot rectangle.
 fn hotspot_texture(state: &mut EditorState) -> usize {
     let targets: Vec<(NodeId, usize)> = if state.doc.selection.has_faces() {
@@ -1748,7 +1751,7 @@ fn hotspot_texture(state: &mut EditorState) -> usize {
     let mut plans = Vec::new();
     for (id, f) in targets {
         let Some(info) = crate::texture_ops::face_info(&state.doc.map, id, f) else { continue };
-        let rects = hotspot_rects(state, &info.material);
+        let rects = hotspot_rects_uv(state, &info.material);
         if rects.is_empty() {
             continue;
         }
@@ -1942,11 +1945,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn switching_preset_starts_a_new_scatter_layer() {
+    fn a_preset_starts_a_new_scatter_set_on_its_own_layer() {
         let mut state = EditorState::new(Default::default());
-        state.active_scatter = Some(NodeId(1));
-        execute(&mut state, Action::ScatterPreset("forest".into()), &egui::Context::default());
-        assert_eq!(state.active_scatter, None, "a preset switch clears the active set so the next stroke makes its own layer");
+        let layers = state.doc.map.layers.len();
+        execute(&mut state, Action::ScatterPreset("rocks".into()), &egui::Context::default());
+        let id = state.active_scatter.expect("the new set is active");
+        let set = state.doc.map.scatter(id).unwrap();
+        assert_eq!(set.name, "rocks");
+        assert_eq!(set.items, gt_doc::scatter::preset("rocks").unwrap().1);
+        assert_eq!(state.doc.map.layers.len(), layers + 1);
+        execute(&mut state, Action::ScatterPreset("rocks".into()), &egui::Context::default());
+        assert_eq!(state.doc.map.scatter(state.active_scatter.unwrap()).unwrap().name, "rocks 2", "a second one gets its own name");
     }
 
     #[test]

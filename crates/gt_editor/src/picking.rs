@@ -1,4 +1,4 @@
-use gt_core::{Aabb, DVec3, NodeId, Ray};
+use gt_core::{Aabb, DMat4, DVec3, NodeId, Ray};
 use gt_doc::NodeKind;
 
 use crate::scene::entity_box;
@@ -102,39 +102,90 @@ enum Surface<'a> {
     Brush(&'a gt_geom::Brush),
     Mesh(&'a gt_geom::Mesh),
     Terrain(&'a gt_geom::Terrain),
-    /// Instances of another set, so foliage can be painted onto scattered rocks and props. Each instance
-    /// stands in as a sphere sized from its palette entry, which is enough to drop grass on top of a rock
-    /// without loading and ray casting every instanced model.
-    Scatter(&'a gt_doc::Scatter),
+    /// Instances of another set, so foliage can be painted onto scattered rocks and props.
+    Scatter(Vec<InstanceSurface>),
 }
 
-/// Radius an instance of `item` stands in as, in map units. Spacing is the room the entry keeps around
-/// itself, so half of it is close to the model's own footprint.
-fn instance_radius(set: &gt_doc::Scatter, inst: &gt_doc::scatter::ScatterInstance) -> f64 {
-    let spacing = set.items.get(inst.item as usize).map(|i| i.spacing).unwrap_or(32.0);
-    (spacing * 0.5).clamp(4.0, 512.0) * inst.scale.max(0.05)
+/// One scattered instance as ground: the triangles of its model when that is loaded, else a sphere the size
+/// `Scatter::bounds` gives an instance.
+struct InstanceSurface {
+    bounds: Aabb,
+    inverse: DMat4,
+    model: Option<std::sync::Arc<crate::models::Model>>,
+    position: DVec3,
+    scale: f64,
 }
 
-/// Nearest hit of `ray` on the instances of `set`: the distance, the point's normal on the standin sphere.
-fn cast_scatter(set: &gt_doc::Scatter, ray: &Ray) -> Option<(f64, DVec3)> {
-    let mut best: Option<(f64, DVec3)> = None;
-    for inst in &set.instances {
-        let r = instance_radius(set, inst);
-        let center = inst.position + DVec3::Y * r;
-        let (d, t) = ray.distance_to_point(center);
-        if d > r || t <= 0.0 {
-            continue;
+/// Where the file of a scatter entry lives, None for classnames and unresolved res:// paths.
+pub fn item_model_path(game: &gt_formats::GameConfig, source: &str) -> Option<std::path::PathBuf> {
+    let path = if source.starts_with("res://") { game.resolve_res(source) } else { Some(std::path::PathBuf::from(source)) };
+    path.filter(|p| crate::models::is_model_path(&p.to_string_lossy()))
+}
+
+fn instance_surfaces(state: &EditorState, set: &gt_doc::Scatter, region: &Aabb) -> Vec<InstanceSurface> {
+    let models: Vec<_> = set.items.iter().map(|i| item_model_path(&state.game, &i.source).and_then(|p| state.models.peek(&p))).collect();
+    set.instances
+        .iter()
+        .filter_map(|inst| {
+            let model = models.get(inst.item as usize).cloned().flatten();
+            let xform = inst.transform();
+            let bounds = match &model {
+                Some(m) if !m.bounds.is_empty() => {
+                    let mut b = Aabb::EMPTY;
+                    for c in m.bounds.corners() {
+                        b.include_point(xform.transform_point3(c));
+                    }
+
+                    b
+                }
+                _ => Aabb::from_center_size(inst.position + DVec3::Y * 16.0 * inst.scale, DVec3::splat(32.0 * inst.scale.max(0.1))),
+            };
+            bounds.intersects(region).then(|| InstanceSurface { bounds, inverse: xform.inverse(), model, position: inst.position, scale: inst.scale })
+        })
+        .collect()
+}
+
+impl InstanceSurface {
+    fn cast(&self, ray: &Ray) -> Option<(f64, DVec3)> {
+        if !self.bounds.contains_point(ray.origin) && ray.intersect_aabb(&self.bounds).is_none() {
+            return None;
         }
 
-        // Step back from the closest approach onto the sphere itself, so grass lands on the surface rather
-        // than at the middle of the rock.
-        let t = (t - (r * r - d * d).max(0.0).sqrt()).max(0.0);
-        if best.is_none_or(|(bt, _)| t < bt) {
-            best = Some((t, (ray.at(t) - center).normalize_or(DVec3::Y)));
+        let Some(model) = &self.model else {
+            let r = 16.0 * self.scale.max(0.1);
+            let center = self.position + DVec3::Y * r;
+            let (d, t) = ray.distance_to_point(center);
+            if d > r || t <= 0.0 {
+                return None;
+            }
+
+            let t = (t - (r * r - d * d).max(0.0).sqrt()).max(0.0);
+            return Some((t, (ray.at(t) - center).normalize_or(DVec3::Y)));
+        };
+
+        // Not normalised, so a hit's t along the local ray is the same distance as along the world ray.
+        let local = Ray { origin: self.inverse.transform_point3(ray.origin), dir: self.inverse.transform_vector3(ray.dir) };
+        if !model.bounds.contains_point(local.origin) && local.intersect_aabb(&model.bounds).is_none() {
+            return None;
         }
+
+        let mut best: Option<(f64, DVec3)> = None;
+        for part in &model.parts {
+            for tri in part.indices.chunks_exact(3) {
+                let [a, b, c] = [tri[0], tri[1], tri[2]].map(|k| part.vertices.get(k as usize).map(|v| v.pos.as_dvec3()).unwrap_or_default());
+                if let Some(t) = local.intersect_triangle(a, b, c)
+                    && best.is_none_or(|(bt, _)| t < bt)
+                {
+                    best = Some((t, (b - a).cross(c - a)));
+                }
+            }
+        }
+
+        best.map(|(t, n)| {
+            let n = self.inverse.transpose().transform_vector3(n).normalize_or(DVec3::Y);
+            (t, if n.dot(ray.dir) > 0.0 { -n } else { n })
+        })
     }
-
-    best
 }
 
 /// Ray casts against the solid surfaces (brushes, meshes, terrains) overlapping a region, collected once so that
@@ -160,7 +211,7 @@ impl<'a> SurfaceCaster<'a> {
                 NodeKind::Terrain(t) => Surface::Terrain(t),
                 // Only sets that were picked as targets: otherwise every set would catch the samples meant
                 // for the ground it stands on.
-                NodeKind::Scatter(s) if !s.instances.is_empty() && targets.contains(id) => Surface::Scatter(s),
+                NodeKind::Scatter(s) if !s.instances.is_empty() && targets.contains(id) => Surface::Scatter(instance_surfaces(state, s, region)),
                 _ => continue,
             };
             if map.is_hidden(*id) || !map.in_cordon(*id) {
@@ -174,7 +225,14 @@ impl<'a> SurfaceCaster<'a> {
                 continue;
             }
 
-            let b = map.bounds(*id).expanded(1.0);
+            let b = match &surface {
+                Surface::Scatter(list) => list.iter().fold(Aabb::EMPTY, |mut b, i| {
+                    b.include(&i.bounds);
+                    b
+                }),
+                _ => map.bounds(*id),
+            }
+            .expanded(1.0);
             if b.intersects(region) {
                 surfaces.push((*id, b, surface));
             }
@@ -185,6 +243,18 @@ impl<'a> SurfaceCaster<'a> {
 
     pub fn is_empty(&self) -> bool {
         self.surfaces.is_empty()
+    }
+
+    /// Combined bounds of the surfaces of `ids`, for scatter sets the bounds of their models.
+    pub fn bounds_of(&self, ids: &[NodeId]) -> Aabb {
+        let mut b = Aabb::EMPTY;
+        for (id, bounds, _) in &self.surfaces {
+            if ids.contains(id) {
+                b.include(bounds);
+            }
+        }
+
+        b
     }
 
     pub fn cast(&self, origin: DVec3, dir: DVec3) -> Option<gt_doc::scatter::SurfaceHit> {
@@ -207,7 +277,7 @@ impl<'a> SurfaceCaster<'a> {
                     let j = (local.z.round().max(0.0) as u32).min(t.resolution[1] - 1);
                     (dist, t.normal(i, j))
                 }),
-                Surface::Scatter(s) => cast_scatter(s, &ray),
+                Surface::Scatter(list) => list.iter().filter_map(|i| i.cast(&ray)).min_by(|a, b| a.0.total_cmp(&b.0)),
             };
             if let Some((t, normal)) = hit
                 && t >= 0.0

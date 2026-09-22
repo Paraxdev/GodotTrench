@@ -85,18 +85,25 @@ fn outputs(v: &Value) -> Result<Vec<IoConnection>, String> {
     serde_json::from_value(v.clone()).map_err(|e| format!("outputs must be objects with output, target and input: {e}"))
 }
 
-fn scatter_item(v: &Value) -> Option<ScatterItem> {
+fn scatter_item(v: &Value) -> Result<ScatterItem, String> {
     match v {
-        Value::String(s) => Some(ScatterItem::new(s.clone())),
+        Value::String(s) => Ok(ScatterItem::new(s.clone())),
         Value::Object(_) => {
-            let mut item: ScatterItem = serde_json::from_value(v.clone()).ok()?;
-            if let Some(s) = v.get("scale").and_then(|s| s.as_f64()) {
+            let mut fields = v.clone();
+            // A single number scales uniformly, which the [min, max] field cannot parse on its own.
+            let uniform = v.get("scale").and_then(|s| s.as_f64());
+            if uniform.is_some() {
+                fields["scale"] = json!([1.0, 1.0]);
+            }
+
+            let mut item: ScatterItem = serde_json::from_value(fields).map_err(|e| e.to_string())?;
+            if let Some(s) = uniform {
                 item.scale = [s, s];
             }
 
-            Some(item)
+            Ok(item)
         }
-        _ => None,
+        other => Err(format!("expected a model path or an object, got {other}")),
     }
 }
 
@@ -130,7 +137,7 @@ impl App {
 
         let s = &mut self.state.prefs.scatter;
         if let Some(items) = a["items"].as_array() {
-            s.palette = items.iter().filter_map(scatter_item).collect();
+            s.palette = items.iter().enumerate().map(|(i, v)| scatter_item(v).map_err(|e| format!("items[{i}]: {e}"))).collect::<Result<_, _>>()?;
             s.preset.clear();
         }
 
@@ -184,7 +191,7 @@ impl App {
         json!({
             "id": id.0, "name": s.name, "kind": s.kind.label(), "instances": s.instances.len(),
             "targets": s.targets.iter().map(|t| t.0).collect::<Vec<_>>(),
-            "items": s.items.iter().zip(counts).map(|(i, c)| json!({ "source": i.source, "weight": i.weight, "spacing": i.spacing, "count": c })).collect::<Vec<_>>(),
+            "items": s.items.iter().zip(counts).map(|(i, c)| json!({ "source": i.source, "weight": i.weight, "spacing": i.spacing, "enabled": i.enabled, "count": c })).collect::<Vec<_>>(),
             "layer": self.state.doc.map.layer_of(id).0,
             "bounds": bounds_json(&s.bounds()),
         })
@@ -214,8 +221,35 @@ impl App {
         let mut rng = Rng::new(args["seed"].as_u64().unwrap_or_else(crate::commands::time_seed));
         // Settings passed for one call apply to that call only, the palette and preset stay for later calls.
         let persistent = matches!(op, "palette" | "preset");
+        let items_given = args.get("items").is_some() || args.get("preset").is_some();
+        // Models passed to an op that paints into an existing set become that set's enabled models, the set is the
+        // palette. Without an active set they are the template the painted set starts from.
+        if items_given
+            && matches!(op, "palette" | "preset" | "paint" | "stroke" | "fill")
+            && let Some(id) = crate::scatter_tool::active_set(&self.state)
+        {
+            let palette = self.state.prefs.scatter.palette.clone();
+            crate::scatter_tool::set_palette(&mut self.state, id, &palette);
+        }
+
         let result = match op {
-            "palette" | "preset" => ok(json!({ "palette": self.state.prefs.scatter.palette, "kind": self.state.prefs.scatter.kind.label() })),
+            "palette" | "preset" => {
+                let set = match crate::scatter_tool::active_set(&self.state) {
+                    Some(id) => Some(id),
+                    None if items_given => Some(crate::scatter_tool::new_set(&mut self.state, args["name"].as_str())),
+                    None => None,
+                };
+                if let (Some(id), Some(kind)) = (set, args["kind"].as_str().and_then(|k| serde_json::from_value::<gt_doc::ScatterKind>(json!(k)).ok())) {
+                    self.state.doc.edit("Scatter Kind", |m, _| {
+                        if let Some(s) = m.scatter_mut(id) {
+                            s.kind = kind;
+                        }
+                    });
+                }
+
+                let palette = crate::scatter_tool::brush_items(&self.state);
+                ok(json!({ "palette": palette, "kind": self.state.prefs.scatter.kind.label(), "set": set.map(|id| self.scatter_summary(id)) }))
+            }
             "install_models" => match crate::scatter_tool::install_nature(&mut self.state, args["overwrite"].as_bool().unwrap_or(false)) {
                 Ok(n) => ok(json!({ "written": n, "dir": gt_doc::scatter::NATURE_DIR, "models": gt_formats::nature::names() })),
                 Err(e) => err(e),
@@ -288,8 +322,8 @@ impl App {
                 }
 
                 let erase = op == "erase" || args["erase"].as_bool().unwrap_or(false);
-                if !erase && self.state.prefs.scatter.palette.is_empty() {
-                    break 'paint err("the scatter palette is empty, pass items or a preset (or set them with scatter palette first)");
+                if !erase && crate::scatter_tool::brush_items(&self.state).is_empty() {
+                    break 'paint err("nothing to paint: the active set has no enabled models, pass items or a preset (or start a set with new_set)");
                 }
 
                 let normal = vec3(&args["normal"]).unwrap_or(DVec3::Y);
@@ -297,19 +331,22 @@ impl App {
                 let mut changed = 0;
                 self.state.doc.begin(if erase { "Erase Scatter" } else { "Scatter" });
                 for p in resample(&points, spacing) {
-                    // Points without a height are dropped onto the ground below.
-                    let center = if args["center"].as_array().is_some_and(|a| a.len() == 2)
+                    // Points without a height are dropped onto what the brush would sit on there, scattered props
+                    // included, like the tool under the mouse.
+                    let (center, under) = if args["center"].as_array().is_some_and(|a| a.len() == 2)
                         || args["points"].as_array().is_some_and(|a| a.first().and_then(|f| f.as_array()).is_some_and(|f| f.len() == 2))
                     {
-                        let caster = crate::picking::SurfaceCaster::new(&self.state, &Aabb::from_center_size(p, DVec3::new(2.0, 1.0e6, 2.0)));
-                        caster.cast(DVec3::new(p.x, 1.0e5, p.z), DVec3::NEG_Y).map(|h| h.point).unwrap_or(p)
+                        match crate::scatter_tool::cursor_hit(&self.state, &gt_core::Ray::new(DVec3::new(p.x, 1.0e5, p.z), DVec3::NEG_Y)) {
+                            Some(h) => (h.point, Some(h.node)),
+                            None => (p, None),
+                        }
                     } else {
-                        p
+                        (p, None)
                     };
                     changed += if erase {
                         crate::scatter_tool::erase(&mut self.state, center, &mut rng)
                     } else {
-                        crate::scatter_tool::paint(&mut self.state, center, normal, &mut rng)
+                        crate::scatter_tool::paint(&mut self.state, center, normal, under, &mut rng)
                     };
                 }
 
@@ -360,7 +397,7 @@ impl App {
                     Some(id) => vec![self.scatter_summary(id)],
                     None => self.state.doc.map.scatters().map(|(id, _)| id).collect::<Vec<_>>().into_iter().map(|id| self.scatter_summary(id)).collect(),
                 };
-                ok(json!({ "sets": sets, "active": self.state.active_scatter.map(|i| i.0), "palette": self.state.prefs.scatter.palette }))
+                ok(json!({ "sets": sets, "active": self.state.active_scatter.map(|i| i.0), "palette": crate::scatter_tool::brush_items(&self.state) }))
             }
             "to_entities" => match crate::scatter_tool::active_set(&self.state) {
                 Some(id) => ok(json!({ "entities": crate::scatter_tool::bake_to_entities(&mut self.state, id) })),
@@ -374,7 +411,6 @@ impl App {
             let palette = self.state.prefs.scatter.palette.clone();
             let kind = self.state.prefs.scatter.kind;
             let preset = self.state.prefs.scatter.preset.clone();
-            let items_given = args.get("items").is_some() || args.get("preset").is_some();
             self.state.prefs.scatter = saved;
             if items_given {
                 self.state.prefs.scatter.palette = palette;
@@ -499,9 +535,54 @@ impl App {
         }
     }
 
+    /// Extra keys for an entity a gameplay wizard just made. Outputs other entities aim at it follow a new targetname.
+    fn apply_wizard_properties(&mut self, id: NodeId, props: &Value, label: &str) {
+        let Some(props) = props.as_object() else { return };
+        let props = string_map(&Value::Object(props.clone()));
+        let old_name = self.state.doc.map.entity(id).and_then(|e| e.targetname()).map(str::to_string);
+        self.state.doc.edit(label, |m, _| {
+            if let Some(e) = m.entity_mut(id) {
+                e.properties.extend(props);
+            }
+
+            let new_name = m.entity(id).and_then(|e| e.targetname()).map(str::to_string);
+            if let (Some(old), Some(new)) = (old_name, new_name)
+                && old != new
+            {
+                let ids: Vec<NodeId> = m.entities().map(|(eid, _)| eid).collect();
+                for eid in ids {
+                    if let Some(e) = m.entity_mut(eid) {
+                        e.outputs.iter_mut().filter(|o| o.target == old).for_each(|o| o.target = new.clone());
+                    }
+                }
+            }
+        });
+    }
+
+    /// Adds `outputs` to an entity a wizard made, after the connections the wizard wired itself.
+    fn apply_wizard_outputs(&mut self, id: NodeId, extra: &[IoConnection]) {
+        if extra.is_empty() {
+            return;
+        }
+
+        self.state.doc.edit("Entity Outputs", |m, _| {
+            if let Some(e) = m.entity_mut(id) {
+                e.outputs.extend(extra.iter().cloned());
+            }
+        });
+    }
+
     pub(crate) fn tool_gameplay(&mut self, args: &Value) -> ToolResult {
         use crate::entity_wizards as wiz;
         let op = args["op"].as_str().unwrap_or_default();
+        let wizard_outputs = if matches!(op, "make_door" | "make_platform" | "make_button") {
+            match outputs(&args["outputs"]) {
+                Ok(o) => o,
+                Err(e) => return err(e),
+            }
+        } else {
+            Vec::new()
+        };
         let given = match id_list(args, "ids").and_then(|i| editable_ids(&self.state, &i)) {
             Ok(i) => i,
             Err(e) => return err(e),
@@ -530,39 +611,27 @@ impl App {
                     other => return err(format!("kind must be hinged or sliding, got {other}")),
                 };
                 wiz::make_door(&mut self.state, &target_ids, &kind, args["trigger"].as_bool().unwrap_or(false)).map(|id| {
-                    if let Some(props) = args["properties"].as_object() {
-                        let props = string_map(&Value::Object(props.clone()));
-                        let old_name = self.state.doc.map.entity(id).and_then(|e| e.targetname()).map(str::to_string);
-                        self.state.doc.edit("Door Properties", |m, _| {
-                            if let Some(e) = m.entity_mut(id) {
-                                e.properties.extend(props);
-                            }
-
-                            // Outputs created for the door follow a new targetname.
-                            let new_name = m.entity(id).and_then(|e| e.targetname()).map(str::to_string);
-                            if let (Some(old), Some(new)) = (old_name, new_name)
-                                && old != new
-                            {
-                                let ids: Vec<NodeId> = m.entities().map(|(eid, _)| eid).collect();
-                                for eid in ids {
-                                    if let Some(e) = m.entity_mut(eid) {
-                                        e.outputs.iter_mut().filter(|o| o.target == old).for_each(|o| o.target = new.clone());
-                                    }
-                                }
-                            }
-                        });
-                    }
-
+                    self.apply_wizard_properties(id, &args["properties"], "Door Properties");
+                    self.apply_wizard_outputs(id, &wizard_outputs);
                     entity_json(self, id)
                 })
             }
             "make_platform" => {
                 let travel = vec3(&args["travel"]).unwrap_or(DVec3::new(0.0, 128.0, 0.0));
-                wiz::make_platform(&mut self.state, &target_ids, travel, args["mode"].as_u64().unwrap_or(0) as u8).map(|id| entity_json(self, id))
+                wiz::make_platform(&mut self.state, &target_ids, travel, args["mode"].as_u64().unwrap_or(0) as u8).map(|id| {
+                    self.apply_wizard_properties(id, &args["properties"], "Platform Properties");
+                    self.apply_wizard_outputs(id, &wizard_outputs);
+                    entity_json(self, id)
+                })
             }
             "make_button" => {
-                wiz::make_button(&mut self.state, &target_ids, args["target"].as_str().unwrap_or_default(), args["input"].as_str().unwrap_or("toggle"))
-                    .map(|id| entity_json(self, id))
+                wiz::make_button(&mut self.state, &target_ids, args["target"].as_str().unwrap_or_default(), args["input"].as_str().unwrap_or("toggle")).map(
+                    |id| {
+                        self.apply_wizard_properties(id, &args["properties"], "Button Properties");
+                        self.apply_wizard_outputs(id, &wizard_outputs);
+                        entity_json(self, id)
+                    },
+                )
             }
             "brush_entity" => {
                 let classname = args["classname"].as_str().unwrap_or("func_detail").to_string();
@@ -908,16 +977,19 @@ impl App {
                         return Err(if op == "sculpt" { "center [x, z] required" } else { "points [[x, z], ...] required" }.to_string());
                     }
 
-                    let brush = SculptBrush {
+                    let mut brush = SculptBrush {
                         mode,
                         radius,
                         strength,
                         flatten_height: a["height"].as_f64().unwrap_or(0.0),
                         terrace_step: a["step"].as_f64().unwrap_or(32.0),
                         layer: a["layer"].as_u64().unwrap_or(1) as u8,
+                        seed: 0,
                     };
+                    let seed = a["seed"].as_u64().unwrap_or(7) as u32;
                     let mut any = false;
-                    for p in resample(&points, a["spacing"].as_f64().unwrap_or(radius * 0.5)) {
+                    for (k, p) in resample(&points, a["spacing"].as_f64().unwrap_or(radius * 0.5)).into_iter().enumerate() {
+                        brush.seed = seed.wrapping_add(k as u32);
                         any |= gt_doc::terrain::sculpt_terrains_single(t, p, &brush);
                     }
 
@@ -956,10 +1028,16 @@ impl App {
                     true
                 }
                 "auto_paint" => {
-                    let rock = a["rock_slope"].as_f64().unwrap_or(0.35);
-                    let top = a["top_height"].as_f64().unwrap_or(1.0e6) - t.origin.y;
-                    let low = a["low_height"].as_f64().unwrap_or(-1.0e6) - t.origin.y;
-                    t.auto_paint(rock, top, low);
+                    let custom = ["rock_slope", "top_height", "low_height"].iter().any(|k| !a[*k].is_null());
+                    if custom {
+                        let rock = a["rock_slope"].as_f64().unwrap_or(0.35);
+                        let top = a["top_height"].as_f64().unwrap_or(1.0e6) - t.origin.y;
+                        let low = a["low_height"].as_f64().unwrap_or(-1.0e6) - t.origin.y;
+                        t.auto_paint(rock, top, low);
+                    } else {
+                        t.auto_paint_from(a["sea_level"].as_f64());
+                    }
+
                     true
                 }
                 "set_layers" => {
@@ -1203,5 +1281,17 @@ mod tests {
         assert_eq!(next_layer_name(&map), "Layer 2");
         map.add_layer("x");
         assert_eq!(next_layer_name(&map), "Layer 3");
+    }
+
+    #[test]
+    fn scatter_items_parse_or_say_why() {
+        let item = scatter_item(&json!({ "source": "res://a.glb", "scale": 1.5, "align": 1 })).unwrap();
+        assert_eq!(item.scale, [1.5, 1.5], "a single number scales uniformly");
+        assert_eq!(item.align, 1.0);
+        assert_eq!(scatter_item(&json!({ "source": "res://a.glb", "scale": [0.5, 2] })).unwrap().scale, [0.5, 2.0]);
+        assert_eq!(scatter_item(&json!("res://b.glb")).unwrap().source, "res://b.glb");
+        let e = scatter_item(&json!({ "source": "res://a.glb", "align": true })).unwrap_err();
+        assert!(e.contains("align") || e.contains("bool"), "a wrong field type is reported, not dropped: {e}");
+        assert!(scatter_item(&json!(3)).is_err());
     }
 }

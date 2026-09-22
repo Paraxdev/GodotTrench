@@ -162,19 +162,22 @@ pub fn parse(text: &str) -> Result<BbModel, BbError> {
         }
     };
 
-    // Group transforms from the outliner, applied to every element below them.
+    // Group transforms from the outliner, applied to every element below them. Blockbench 5 keeps group data in a
+    // separate "groups" list and the outliner only names the group's uuid.
+    let groups: BTreeMap<&str, &Value> =
+        root.get("groups").and_then(|g| g.as_array()).into_iter().flatten().filter_map(|g| Some((g.get("uuid")?.as_str()?, g))).collect();
     let mut element_xform: BTreeMap<String, DMat4> = BTreeMap::new();
-    fn walk(node: &Value, parent: DMat4, out: &mut BTreeMap<String, DMat4>) {
+    fn walk(node: &Value, parent: DMat4, groups: &BTreeMap<&str, &Value>, out: &mut BTreeMap<String, DMat4>) {
         match node {
             Value::String(uuid) => {
                 out.insert(uuid.clone(), parent);
             }
             Value::Object(group) => {
-                let origin = vec3(group.get("origin"));
-                let rotation = vec3(group.get("rotation"));
-                let m = parent * pivot_rotation(origin, rotation);
+                let data = group.get("uuid").and_then(|u| u.as_str()).and_then(|u| groups.get(u)).copied();
+                let field = |key: &str| group.get(key).or_else(|| data.and_then(|d| d.get(key)));
+                let m = parent * pivot_rotation(vec3(field("origin")), vec3(field("rotation")));
                 for c in group.get("children").and_then(|c| c.as_array()).into_iter().flatten() {
-                    walk(c, m, out);
+                    walk(c, m, groups, out);
                 }
             }
             _ => {}
@@ -182,7 +185,7 @@ pub fn parse(text: &str) -> Result<BbModel, BbError> {
     }
 
     for node in root.get("outliner").and_then(|o| o.as_array()).into_iter().flatten() {
-        walk(node, DMat4::IDENTITY, &mut element_xform);
+        walk(node, DMat4::IDENTITY, &groups, &mut element_xform);
     }
 
     for el in elements {
@@ -452,6 +455,20 @@ mod tests {
         assert_eq!(&m.textures[0].png[..4], &[0x89, b'P', b'N', b'G']);
         let b = m.bounds();
         assert!((b.max.y - 24.0).abs() < 1e-9 && b.min.y.abs() < 1e-9);
+    }
+
+    #[test]
+    fn blockbench5_group_transforms_come_from_the_groups_list() {
+        let text = r#"{
+            "meta": {"format_version": "5.0", "model_format": "free", "box_uv": false},
+            "elements": [{"name": "c", "type": "cube", "uuid": "c", "from": [4, 0, -1], "to": [6, 2, 1], "origin": [5, 1, 0],
+                          "faces": {"up": {"uv": [0, 0, 2, 2], "texture": 0}}}],
+            "groups": [{"name": "g", "uuid": "g", "origin": [0, 0, 0], "rotation": [0, 90, 0]}],
+            "outliner": [{"uuid": "g", "isOpen": false, "children": ["c"]}]
+        }"#;
+        let b = parse(text).unwrap().bounds();
+        // Turning 90 degrees about Y carries +X to -Z.
+        assert!((b.min.z + 6.0).abs() < 1e-9 && (b.max.z + 4.0).abs() < 1e-9 && b.max.x.abs() < 1.0 + 1e-9, "{b:?}");
     }
 
     #[test]

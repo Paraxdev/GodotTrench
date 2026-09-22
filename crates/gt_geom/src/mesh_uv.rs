@@ -1,4 +1,4 @@
-//! Explicit UV layouts for mesh faces: box, cylinder, sphere and view projections, unfolding and normalizing.
+//! Explicit UV layouts for mesh faces: planar, world, box, cylinder, sphere and view projections, unfolding and normalizing.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -11,8 +11,14 @@ use crate::uv::{FaceUv, paraxial_axes};
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum UvProjection {
+    /// Every face projected along one direction with the paraxial axes of `normal`, so the faces form one island.
+    Planar {
+        normal: DVec3,
+    },
     /// Each face projected along its dominant axis.
     Box,
+    /// Each face in its own plane with the axes a reset brush face gets, like brushes with a fresh texture.
+    World,
     /// Around an axis through the selection center, u follows the circumference.
     Cylinder {
         axis: DVec3,
@@ -30,7 +36,9 @@ pub enum UvProjection {
 impl UvProjection {
     pub fn label(&self) -> &'static str {
         match self {
+            UvProjection::Planar { .. } => "Planar",
             UvProjection::Box => "Box",
+            UvProjection::World => "World",
             UvProjection::Cylinder { .. } => "Cylinder",
             UvProjection::Sphere => "Sphere",
             UvProjection::View { .. } => "View",
@@ -71,6 +79,20 @@ impl Mesh {
         let points: Vec<DVec3> = faces.iter().flat_map(|f| self.face_points(*f)).collect();
         let center = points.iter().copied().sum::<DVec3>() / points.len() as f64;
         match projection {
+            UvProjection::Planar { normal } => {
+                let (u, v) = paraxial_axes(normal.normalize_or(DVec3::Y));
+                for &fi in &faces {
+                    let uvs = self.face_points(fi).iter().map(|p| to_f32(DVec2::new(p.dot(u), p.dot(v)) / repeat)).collect();
+                    self.faces[fi].uvs = uvs;
+                }
+            }
+            UvProjection::World => {
+                for &fi in &faces {
+                    let uv = FaceUv::face_aligned(self.face_normal(fi), DVec2::ONE);
+                    let uvs = self.face_points(fi).iter().map(|p| to_f32(DVec2::new(p.dot(uv.u_axis), p.dot(uv.v_axis)) / repeat)).collect();
+                    self.faces[fi].uvs = uvs;
+                }
+            }
             UvProjection::Box => {
                 for &fi in &faces {
                     let (u, v) = paraxial_axes(self.face_normal(fi));
@@ -114,6 +136,15 @@ impl Mesh {
                 }
             }
             UvProjection::Unfold => self.unfold_uvs(&faces, repeat),
+        }
+    }
+
+    /// Writes each face's own planar projection as explicit UVs, so it looks the same but can be edited per corner.
+    pub fn bake_uvs(&mut self, faces: &[usize], tex_size: DVec2) {
+        let count = self.faces.len();
+        for &fi in faces.iter().filter(|f| **f < count) {
+            let uvs = (0..self.faces[fi].indices.len()).map(|k| to_f32(self.corner_uv(fi, k, tex_size))).collect();
+            self.faces[fi].uvs = uvs;
         }
     }
 
@@ -428,5 +459,120 @@ mod tests {
         c.normalize_uvs(&sides, false);
         let all: Vec<[f32; 2]> = sides.iter().flat_map(|f| c.faces[*f].uvs.clone()).collect();
         assert!(all.iter().all(|u| (-1e-4..=1.0001).contains(&u[0]) && (-1e-4..=1.0001).contains(&u[1])));
+    }
+
+    fn uv(m: &Mesh, f: usize, k: usize) -> DVec2 {
+        DVec2::new(m.faces[f].uvs[k][0] as f64, m.faces[f].uvs[k][1] as f64)
+    }
+
+    #[test]
+    fn box_and_world_match_brush_planar_on_a_cube() {
+        let bounds = Aabb::new(DVec3::new(-32.0, 0.0, 16.0), DVec3::new(96.0, 64.0, 80.0));
+        let tex = DVec2::new(64.0, 32.0);
+        for projection in [UvProjection::Box, UvProjection::World] {
+            let mut cube = mesh_shapes::cuboid(&bounds, "m");
+            cube.project_uvs(&[], projection, tex);
+            for f in 0..cube.faces.len() {
+                let brush = FaceUv::face_aligned(cube.face_normal(f), DVec2::ONE);
+                for (k, p) in cube.face_points(f).iter().enumerate() {
+                    let want = brush.uv(*p, tex);
+                    assert!((uv(&cube, f, k) - want).length() < 1e-5, "{projection:?} face {f} corner {k}: {:?} vs {want:?}", uv(&cube, f, k));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn planar_projects_every_face_along_one_axis() {
+        let mut cube = mesh_shapes::cuboid(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "m");
+        cube.project_uvs(&[], UvProjection::Planar { normal: DVec3::Y }, DVec2::splat(32.0));
+        for f in 0..cube.faces.len() {
+            for (k, p) in cube.face_points(f).iter().enumerate() {
+                assert!((uv(&cube, f, k) - DVec2::new(p.x, p.z) / 32.0).length() < 1e-6);
+            }
+        }
+
+        // Along X the side faces facing X get the brush projection of an X facing wall.
+        cube.project_uvs(&[], UvProjection::Planar { normal: DVec3::X }, DVec2::splat(32.0));
+        let (u, v) = paraxial_axes(DVec3::X);
+        let p = cube.face_points(0)[0];
+        assert!((uv(&cube, 0, 0) - DVec2::new(p.dot(u), p.dot(v)) / 32.0).length() < 1e-6);
+    }
+
+    #[test]
+    fn cylinder_wraps_continuously_with_one_seam() {
+        for (axis, bounds) in [
+            (DVec3::Y, Aabb::new(DVec3::new(-32.0, 0.0, -32.0), DVec3::new(32.0, 64.0, 32.0))),
+            (DVec3::X, Aabb::new(DVec3::new(0.0, -32.0, -32.0), DVec3::new(64.0, 32.0, 32.0))),
+        ] {
+            let mut c = mesh_shapes::cylinder(&Aabb::new(DVec3::new(-32.0, 0.0, -32.0), DVec3::new(32.0, 64.0, 32.0)), 12, "m");
+            if axis == DVec3::X {
+                // Lay the cylinder on its side so it runs along X.
+                let m = gt_core::DMat4::from_rotation_z(-std::f64::consts::FRAC_PI_2);
+                c = c.transformed(&m, false);
+                let shift = bounds.min - c.bounds().min;
+                c = c.translated(shift, false);
+            }
+
+            let sides: Vec<usize> = (0..c.faces.len()).filter(|f| c.face_normal(*f).dot(axis).abs() < 0.5).collect();
+            let repeat = DVec2::new(64.0, 64.0);
+            c.project_uvs(&sides, UvProjection::Cylinder { axis }, repeat);
+            let period = (std::f64::consts::TAU * 32.0 / repeat.x) as f32;
+            let side_set: BTreeSet<usize> = sides.iter().copied().collect();
+            let (mut joined, mut seams) = (0, 0);
+            for faces in c.edge_faces().values().filter(|f| f.len() == 2 && side_set.contains(&f[0]) && side_set.contains(&f[1])) {
+                let pairs = shared_corner_uvs(&c, faces[0], faces[1]);
+                let du: Vec<f32> = pairs.iter().map(|(a, b)| a[0] - b[0]).collect();
+                assert!(pairs.iter().all(|(a, b)| (a[1] - b[1]).abs() < 1e-4), "v matches along {axis}");
+                if du.iter().all(|d| d.abs() < 1e-4) {
+                    joined += 1;
+                } else {
+                    assert!(du.iter().all(|d| (d.abs() - period).abs() < 1e-3), "a seam jumps by one full turn, got {du:?}");
+                    seams += 1;
+                }
+            }
+
+            assert_eq!(seams, 1, "exactly one seam around {axis}");
+            assert_eq!(joined, sides.len() - 1);
+        }
+    }
+
+    #[test]
+    fn sphere_keeps_neighbours_together_away_from_the_seam() {
+        let mut s = mesh_shapes::sphere(&Aabb::new(DVec3::splat(-32.0), DVec3::splat(32.0)), 12, 8, "m");
+        s.project_uvs(&[], UvProjection::Sphere, DVec2::splat(64.0));
+        let period = (std::f64::consts::TAU * 32.0 / 64.0) as f32;
+        let mut joined = 0;
+        for faces in s.edge_faces().values().filter(|f| f.len() == 2) {
+            for (k1, v1) in s.faces[faces[0]].indices.iter().enumerate() {
+                let Some(k2) = s.faces[faces[1]].indices.iter().position(|v| v == v1) else { continue };
+                if (s.vertices[*v1 as usize].y.abs() - 32.0).abs() < 1e-3 {
+                    continue;
+                }
+
+                let (a, b) = (s.faces[faces[0]].uvs[k1], s.faces[faces[1]].uvs[k2]);
+                assert!((a[1] - b[1]).abs() < 1e-3);
+                let du = (a[0] - b[0]).abs();
+                assert!(du < 1e-3 || (du - period).abs() < 1e-2, "{du}");
+                joined += usize::from(du < 1e-3);
+            }
+        }
+
+        assert!(joined > 100, "{joined}");
+    }
+
+    #[test]
+    fn baking_keeps_the_planar_look() {
+        let mut cube = mesh_shapes::cuboid(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "m");
+        cube.faces[2].data.uv.offset = DVec2::new(7.0, -3.0);
+        cube.faces[2].data.uv.rotate(30.0);
+        let tex = DVec2::new(128.0, 64.0);
+        let before: Vec<DVec2> = (0..4).map(|k| cube.corner_uv(2, k, tex)).collect();
+        cube.bake_uvs(&[2], tex);
+        assert_eq!(cube.faces[2].uvs.len(), 4);
+        assert!(cube.faces[3].uvs.is_empty(), "only the listed faces");
+        for (k, b) in before.iter().enumerate() {
+            assert!((cube.corner_uv(2, k, tex) - *b).length() < 1e-5);
+        }
     }
 }

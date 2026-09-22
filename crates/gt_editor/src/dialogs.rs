@@ -137,9 +137,9 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("Terrain: Create Terrain".into(), Action::ShowTerrainDialog),
         ("Terrain: Flatten".into(), Action::TerrainFlatten),
         ("Terrain: Auto Paint Layers".into(), Action::TerrainAutoPaint),
-        ("Scatter: New Set on a New Layer".into(), Action::NewScatterSet),
+        ("Scatter: New Empty Set".into(), Action::NewScatterSet),
         ("Scatter: Fill Targets".into(), Action::ScatterFill),
-        ("Scatter: Palette".into(), Action::ShowScatterPalette),
+        ("Scatter: Panel".into(), Action::ShowScatterPanel),
         ("Scatter: Install Nature Models".into(), Action::InstallNatureModels),
         ("Scatter: Convert Selected Sets to Entities".into(), Action::ScatterToEntities),
         ("Texture: Set Blend Material".into(), Action::SetBlendMaterial),
@@ -499,6 +499,8 @@ pub struct TerrainDialog {
     tiles: [f64; 4],
     auto_paint: bool,
     heightmap: Option<std::path::PathBuf>,
+    /// Center of the new terrain, its y is the height of the terrain's zero. None places it at the 3D cursor.
+    center: Option<[f64; 3]>,
 }
 
 impl Default for TerrainDialog {
@@ -512,11 +514,31 @@ impl Default for TerrainDialog {
             tiles: [256.0; 4],
             auto_paint: true,
             heightmap: None,
+            center: None,
         }
     }
 }
 
+/// The base Auto Paint measures its height bands from: the lowest point, or a sea level the user sets.
+pub fn auto_paint_base_ui(ui: &mut egui::Ui, base: &mut Option<f64>) {
+    ui.horizontal(|ui| {
+        let mut sea = base.is_some();
+        if ui
+            .checkbox(&mut sea, "Bands from sea level")
+            .on_hover_text("Measure the peak and low bands from this height instead of from the lowest point, which on an island is the sea floor")
+            .changed()
+        {
+            *base = sea.then_some(0.0);
+        }
+
+        if let Some(h) = base {
+            ui.add(egui::DragValue::new(h).speed(1.0).prefix("y "));
+        }
+    });
+}
+
 /// Builds a terrain from dialog style parameters. `heightmap` values are 0..1.
+#[allow(clippy::too_many_arguments)]
 pub fn make_terrain(
     origin: DVec3,
     resolution: u32,
@@ -525,6 +547,7 @@ pub fn make_terrain(
     layers: &[(String, f64)],
     heightmap: Option<(&[f32], [u32; 2])>,
     auto_paint: bool,
+    sea_level: Option<f64>,
 ) -> Terrain {
     let mut t = Terrain::new(origin, [resolution, resolution], cell_size, "");
     t.layers = layers.iter().filter(|(m, _)| !m.is_empty()).map(|(m, tile)| TerrainLayer::new(m.clone(), *tile)).collect();
@@ -537,9 +560,7 @@ pub fn make_terrain(
     }
 
     if auto_paint && t.layers.len() > 1 {
-        let b = t.bounds();
-        let span = (b.max.y - b.min.y).max(1.0);
-        t.auto_paint(0.35, b.min.y - origin.y + span * 0.78, b.min.y - origin.y + span * 0.06);
+        t.auto_paint_from(sea_level);
     }
 
     t
@@ -603,6 +624,21 @@ impl TerrainDialog {
                     ui.end_row();
                 }
 
+                ui.label("Center");
+                ui.horizontal(|ui| {
+                    let mut at_cursor = self.center.is_none();
+                    if ui.checkbox(&mut at_cursor, "3D cursor").changed() {
+                        let cursor = state.cursor_world.map(|c| state.snap(c)).unwrap_or(DVec3::ZERO);
+                        self.center = (!at_cursor).then(|| cursor.to_array());
+                    }
+
+                    if let Some(c) = &mut self.center {
+                        for (v, axis) in c.iter_mut().zip(["x ", "y ", "z "]) {
+                            ui.add(egui::DragValue::new(v).speed(8.0).prefix(axis));
+                        }
+                    }
+                });
+                ui.end_row();
                 ui.label("Heightmap");
                 ui.horizontal(|ui| {
                     ui.label(
@@ -622,9 +658,14 @@ impl TerrainDialog {
                 ui.end_row();
             });
             ui.checkbox(&mut self.auto_paint, "Paint layers from slope and height");
+            if self.auto_paint {
+                auto_paint_base_ui(ui, &mut state.auto_paint_base);
+            }
+
             if ui.button("Create").clicked() {
                 let side = (self.resolution - 1) as f64 * self.cell_size;
-                let center = state.cursor_world.map(|c| state.snap(c)).unwrap_or(DVec3::ZERO);
+                let cursor = || state.cursor_world.map(|c| state.snap(c)).unwrap_or(DVec3::ZERO);
+                let center = self.center.map(DVec3::from_array).unwrap_or_else(cursor);
                 let origin = DVec3::new(center.x - side * 0.5, center.y, center.z - side * 0.5);
                 let image = self.heightmap.as_ref().and_then(|p| image::open(p).ok()).map(|img| {
                     let gray = img.to_luma16();
@@ -640,6 +681,7 @@ impl TerrainDialog {
                     &layers,
                     image.as_ref().map(|(v, s)| (v.as_slice(), *s)),
                     self.auto_paint,
+                    state.auto_paint_base,
                 );
                 let parent = state.insert_parent();
                 state.doc.edit("Create Terrain", |m, s| {
@@ -746,310 +788,6 @@ impl KeymapWindow {
         self.open = open;
     }
 }
-/// Scatter palette: weighted models with their spread, scale and alignment, plus the placement rules.
-#[derive(Default)]
-pub struct ScatterPaletteWindow {
-    pub open: bool,
-    new_source: String,
-}
-
-/// The active set's real contents: what actually scatters, with per-model counts and a remove that also drops the
-/// instances. Painting only ever adds models to a set, so this is the one place to prune one painted earlier that no
-/// longer belongs (the brush palette above is only a template for new strokes).
-fn scatter_active_set_section(ui: &mut egui::Ui, state: &mut EditorState) {
-    let Some(id) = crate::scatter_tool::active_set(state) else {
-        ui.label(RichText::new("No active set yet. Paint a stroke, or press \"New set on a new layer\".").weak());
-        return;
-    };
-    let Some(set) = state.doc.map.scatter(id).cloned() else { return };
-    ui.horizontal(|ui| {
-        ui.strong(format!("Active set '{}'", set.name));
-        ui.label(RichText::new(format!("{} instances, {} targets", set.instances.len(), set.targets.len())).weak());
-        if ui.small_button("Clear instances").on_hover_text("Remove every placed instance, keep the models").clicked() {
-            state.doc.edit("Clear Scatter", |m, _| {
-                if let Some(s) = m.scatter_mut(id) {
-                    s.instances.clear();
-                }
-            });
-        }
-    });
-    if set.items.is_empty() {
-        return;
-    }
-
-    let counts = set.counts();
-    let mut remove = None;
-    egui::Grid::new("scatter_active_items").num_columns(3).striped(true).spacing([16.0, 4.0]).show(ui, |ui| {
-        for h in ["model", "count", ""] {
-            ui.label(RichText::new(h).weak());
-        }
-
-        ui.end_row();
-        for (k, itm) in set.items.iter().enumerate() {
-            ui.label(itm.label()).on_hover_text(&itm.source);
-            ui.label(counts.get(k).copied().unwrap_or(0).to_string());
-            if ui.small_button("×").on_hover_text("Remove this model and its instances from the set").clicked() {
-                remove = Some(k);
-            }
-
-            ui.end_row();
-        }
-    });
-    if let Some(k) = remove {
-        state.doc.edit("Remove Scatter Model", |m, _| {
-            if let Some(s) = m.scatter_mut(id) {
-                s.remove_item(k);
-            }
-        });
-    }
-}
-
-impl ScatterPaletteWindow {
-    pub fn show(&mut self, ctx: &egui::Context, state: &mut EditorState, actions: &mut Vec<Action>) {
-        use crate::state::ScatterOutput;
-        if !self.open {
-            return;
-        }
-
-        let mut open = self.open;
-        egui::Window::new("Scatter Palette").open(&mut open).default_width(640.0).show(ctx, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                ui.label("Presets");
-                for preset in gt_doc::scatter::PRESETS {
-                    if ui.selectable_label(state.prefs.scatter.preset == preset, preset).clicked() {
-                        actions.push(Action::ScatterPreset(preset.to_string()));
-                    }
-                }
-
-                if ui.small_button("Install nature models").on_hover_text(gt_doc::scatter::NATURE_DIR).clicked() {
-                    actions.push(Action::InstallNatureModels);
-                }
-            });
-
-            ui.add_space(6.0);
-            ui.separator();
-            scatter_active_set_section(ui, state);
-
-            ui.add_space(6.0);
-            ui.separator();
-            ui.strong("Brush palette");
-            ui.label(RichText::new("Models a stroke drops. Painting merges them into the active set above.").weak());
-            let project = state.game.project_root.clone();
-            let s = &mut state.prefs.scatter;
-            ui.horizontal(|ui| {
-                ui.label("Kind");
-                for k in gt_doc::ScatterKind::ALL {
-                    ui.selectable_value(&mut s.kind, k, k.label());
-                }
-
-                ui.separator();
-                ui.label("Output");
-                ui.selectable_value(&mut s.output, ScatterOutput::Set, "scatter layer");
-                ui.selectable_value(&mut s.output, ScatterOutput::Entities, "entities");
-                if s.output == ScatterOutput::Entities {
-                    ui.add(egui::TextEdit::singleline(&mut s.prop_class).desired_width(90.0)).on_hover_text("Class used for models");
-                }
-            });
-            ui.separator();
-            let mut remove = None;
-            egui::ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
-                egui::Grid::new("palette_items").num_columns(10).striped(true).spacing([12.0, 6.0]).show(ui, |ui| {
-                    for h in ["model", "weight", "scale", "", "spread", "align", "tilt", "sink", "material", ""] {
-                        ui.label(RichText::new(h).strong());
-                    }
-
-                    ui.end_row();
-                    for (k, item) in s.palette.iter_mut().enumerate() {
-                        let exists = project.as_ref().is_none_or(|root| {
-                            crate::scatter_tool::is_classname(&item.source) || item.source.strip_prefix("res://").is_none_or(|rel| root.join(rel).is_file())
-                        });
-                        let label = if exists { RichText::new(item.label()) } else { RichText::new(item.label()).color(crate::theme::ERROR) };
-                        ui.label(label).on_hover_text(if exists {
-                            item.source.clone()
-                        } else {
-                            format!("{} is missing, install the nature models or fix the path", item.source)
-                        });
-                        ui.add(egui::DragValue::new(&mut item.weight).range(0.0..=100.0).speed(0.05));
-                        ui.add(egui::DragValue::new(&mut item.scale[0]).range(0.01..=50.0).speed(0.01));
-                        ui.add(egui::DragValue::new(&mut item.scale[1]).range(0.01..=50.0).speed(0.01));
-                        ui.add(egui::DragValue::new(&mut item.spacing).range(0.0..=4096.0)).on_hover_text("Minimum distance to other instances");
-                        ui.add(egui::Slider::new(&mut item.align, 0.0..=1.0).show_value(false)).on_hover_text("Upright to aligned with the surface");
-                        ui.add(egui::DragValue::new(&mut item.tilt).range(0.0..=90.0).suffix("°"));
-                        ui.add(egui::DragValue::new(&mut item.sink).range(-256.0..=256.0));
-                        let mut material = item.material.clone().unwrap_or_default();
-                        if ui
-                            .add(egui::TextEdit::singleline(&mut material).hint_text("model's").desired_width(90.0))
-                            .on_hover_text("Material drawn instead of the model's own, empty keeps it")
-                            .changed()
-                        {
-                            item.material = (!material.trim().is_empty()).then(|| material.trim().to_string());
-                        }
-
-                        if ui.small_button("×").clicked() {
-                            remove = Some(k);
-                        }
-
-                        ui.end_row();
-                    }
-                });
-            });
-            if let Some(k) = remove {
-                s.palette.remove(k);
-                s.preset.clear();
-            }
-
-            ui.horizontal(|ui| {
-                if ui.button("Add models…").on_hover_text("Pick several .bbmodel, .glb, .gltf or .tscn files at once").clicked() {
-                    let mut dialog = rfd::FileDialog::new().add_filter("Models and scenes", &["bbmodel", "glb", "gltf", "tscn", "scn"]);
-                    if let Some(root) = &project {
-                        dialog = dialog.set_directory(root);
-                    }
-
-                    if let Some(paths) = dialog.pick_files() {
-                        let items = crate::scatter_tool::items_from_paths(state, &paths);
-                        let s = &mut state.prefs.scatter;
-                        for item in items {
-                            if !s.palette.iter().any(|p| p.source == item.source) {
-                                s.palette.push(item);
-                            }
-                        }
-
-                        s.preset.clear();
-                    }
-                }
-
-                ui.add(egui::TextEdit::singleline(&mut self.new_source).hint_text("res:// model or classname").desired_width(200.0));
-                if ui.button("Add").clicked() && !self.new_source.trim().is_empty() {
-                    let s = &mut state.prefs.scatter;
-                    s.palette.push(gt_doc::ScatterItem::new(self.new_source.trim()));
-                    s.preset.clear();
-                    self.new_source.clear();
-                }
-
-                if ui.button("Add selected props").clicked() {
-                    let sources: Vec<String> = state
-                        .doc
-                        .selection
-                        .nodes
-                        .iter()
-                        .filter_map(|id| state.doc.map.entity(*id))
-                        .map(|e| e.property("model").map(str::to_string).unwrap_or_else(|| e.classname.clone()))
-                        .collect();
-                    let s = &mut state.prefs.scatter;
-                    for src in sources {
-                        if !s.palette.iter().any(|p| p.source == src) {
-                            s.palette.push(gt_doc::ScatterItem::new(src));
-                        }
-                    }
-                }
-            });
-
-            ui.add_space(6.0);
-            ui.separator();
-            ui.strong("Placement");
-            let s = &mut state.prefs.scatter;
-            egui::Grid::new("scatter_rules").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
-                ui.label("Brush radius");
-                ui.add(egui::DragValue::new(&mut s.radius).range(8.0..=16384.0));
-                ui.end_row();
-                ui.label("Density");
-                ui.add(egui::DragValue::new(&mut s.rules.density).range(0.01..=64.0).speed(0.05))
-                    .on_hover_text("Attempts per 64 x 64 units, spread limits how many fit");
-                ui.end_row();
-                ui.label("Slope");
-                ui.horizontal(|ui| {
-                    ui.add(egui::DragValue::new(&mut s.rules.slope[0]).range(0.0..=90.0).suffix("°"));
-                    ui.add(egui::DragValue::new(&mut s.rules.slope[1]).range(0.0..=90.0).suffix("°"));
-                });
-                ui.end_row();
-                ui.label("Height");
-                ui.horizontal(|ui| {
-                    let mut limited = s.rules.height.is_some();
-                    if ui.checkbox(&mut limited, "limit").changed() {
-                        s.rules.height = limited.then_some([-1024.0, 4096.0]);
-                    }
-
-                    if let Some(h) = &mut s.rules.height {
-                        ui.add(egui::DragValue::new(&mut h[0]));
-                        ui.add(egui::DragValue::new(&mut h[1]));
-                    }
-                });
-                ui.end_row();
-                ui.label("Edge falloff");
-                ui.add(egui::Slider::new(&mut s.rules.falloff, 0.0..=1.0));
-                ui.end_row();
-                ui.label("Erase amount");
-                ui.add(egui::Slider::new(&mut s.erase_amount, 0.05..=1.0));
-                ui.end_row();
-                ui.label("");
-                ui.checkbox(&mut s.rules.only_targets, "only paint on the set's target surfaces");
-                ui.end_row();
-                ui.label("");
-                ui.checkbox(&mut s.avoid_other_sets, "keep spread against other scatter sets");
-                ui.end_row();
-                ui.label("");
-                ui.checkbox(&mut s.erase_palette_only, "erase only the palette entries above");
-                ui.end_row();
-            });
-            ui.separator();
-            ui.label(RichText::new("Optimization").strong()).on_hover_text("Applied to new sets, each set keeps its own values in the inspector");
-            egui::Grid::new("scatter_optimization").num_columns(2).show(ui, |ui| {
-                ui.label("Chunk size");
-                ui.horizontal(|ui| {
-                    let mut chunked = s.chunk_size > 0.0;
-                    if ui.checkbox(&mut chunked, "").changed() {
-                        s.chunk_size = if chunked { gt_doc::scatter::DEFAULT_CHUNK_SIZE } else { 0.0 };
-                    }
-
-                    if s.chunk_size > 0.0 {
-                        ui.add(egui::DragValue::new(&mut s.chunk_size).range(64.0..=65536.0).suffix(" u"));
-                    }
-                })
-                .response
-                .on_hover_text("Splits the set into cells, each drawn as its own MultiMesh so Godot culls the ones off screen");
-                ui.end_row();
-                ui.label("Visibility range");
-                ui.horizontal(|ui| {
-                    let mut limited = s.visibility_range.is_some();
-                    if ui.checkbox(&mut limited, "").changed() {
-                        s.visibility_range = limited.then_some(2400.0);
-                    }
-
-                    match &mut s.visibility_range {
-                        Some(range) => {
-                            ui.add(egui::DragValue::new(range).range(0.0..=100_000.0).suffix(" u"));
-                        }
-                        None => {
-                            ui.label(RichText::new("from the kind").weak());
-                        }
-                    }
-                })
-                .response
-                .on_hover_text("Distance instances fade out at. Unset lets foliage fade and keeps props visible");
-                ui.end_row();
-                ui.label("");
-                ui.checkbox(&mut s.static_props_multimesh, "draw prop scenes as MultiMesh")
-                    .on_hover_text("Much cheaper for many props, but scripts on those scenes are dropped");
-                ui.end_row();
-            });
-            ui.horizontal(|ui| {
-                if ui.button("New set on a new layer").clicked() {
-                    actions.push(Action::NewScatterSet);
-                }
-
-                if ui.button("Fill targets").clicked() {
-                    actions.push(Action::ScatterFill);
-                }
-
-                if ui.button("Scatter tool").clicked() {
-                    actions.push(Action::SetTool(ToolKind::Scatter));
-                }
-            });
-        });
-        self.open = open;
-    }
-}
-
 /// Connects an output of one selected entity to an input of the other.
 #[derive(Default)]
 pub struct LinkDialog {
@@ -1229,11 +967,11 @@ mod tests {
     fn terrain_from_parameters() {
         let params = TerrainGen { shape: TerrainShape::Island, height: 300.0, ..Default::default() };
         let layers = vec![("grass".to_string(), 256.0), ("rock".to_string(), 128.0)];
-        let t = make_terrain(DVec3::ZERO, 33, 32.0, &params, &layers, None, true);
+        let t = make_terrain(DVec3::ZERO, 33, 32.0, &params, &layers, None, true, None);
         assert_eq!(t.layers.len(), 2);
         assert_eq!(t.splat.len(), 33 * 33 * 4);
         let hm: Vec<f32> = (0..16).map(|i| i as f32 / 15.0).collect();
-        let from_image = make_terrain(DVec3::ZERO, 17, 32.0, &TerrainGen { erosion_iterations: 0, ..params }, &layers, Some((&hm, [4, 4])), false);
+        let from_image = make_terrain(DVec3::ZERO, 17, 32.0, &TerrainGen { erosion_iterations: 0, ..params }, &layers, Some((&hm, [4, 4])), false, None);
         assert!((from_image.height(16, 16) - 300.0).abs() < 1e-3);
     }
 }

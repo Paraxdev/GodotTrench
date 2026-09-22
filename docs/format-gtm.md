@@ -46,8 +46,8 @@ Saving writes `<name>.gtm.tmp` first and renames it over the map, so a crash nev
 `properties` are the worldspawn entity's keys. Values are always strings, like in a `.map` file, and keys are written in
 sorted order. The Godot importer copies them onto the worldspawn and then forces `classname` to `worldspawn`. The
 environment keys (`sun_angles`, `sun_color`, `sun_energy`, `ambient_color`, `sky_top_color`, `sky_horizon_color`,
-`sky_ground_color`, `fog_color`, `fog_density`, and `environment = 0` to switch it off) are read by both the editor's lit
-preview and `GodotTrenchEnvironment`.
+`sky_ground_color`, `fog_color`, `fog_density`, `ambient_energy`, `sky_energy`, `glow_intensity`, and `environment = 0`
+to switch it off) are read by `GodotTrenchEnvironment`, and all of them but `glow_intensity` by the editor's lit preview.
 
 Only nodes of type `layer` are taken from `layers`, anything else at that level is skipped by the editor. A file with no
 layers gets a `Default` layer on load.
@@ -211,7 +211,8 @@ have picked for it:
 | `rotation` | number | degrees, optional, defaults to `0` |
 
 A point `p` on the face lands on texel `dot(p, u_axis) / scale.x + offset.x` (the same for v), and the texel is divided
-by the texture's pixel size for the final UV. `rotation` is informational only, the axes already contain it. When `uv`
+by the texture's size for the final UV. That is the `metadata/texture_size` of the material when it sets one, see
+[Materials and texture size](godot.md#materials-and-texture-size), otherwise the albedo's pixel size. `rotation` is informational only, the axes already contain it. When `uv`
 is missing the projection is the axis aligned one for an upward facing face (`u_axis = [1, 0, 0]`,
 `v_axis = [0, 0, 1]`), and when `uv` is present all fields except `rotation` are required.
 
@@ -288,7 +289,7 @@ A scatter set stores many model instances (trees, rocks, grass) painted onto sur
 | `name` | string | required | |
 | `kind` | string | `props` | `props` for scene instances that keep scripts and collision, `foliage` for MultiMesh instances without collision |
 | `targets` | array of node ids | empty, omitted | surfaces the set is painted on |
-| `items` | array | required | the palette, see below |
+| `items` | array | required | the models the set scatters, see below |
 | `collision` | string | `none` for foliage, else `convex` | `none`, `convex` or `trimesh` |
 | `cast_shadows` | bool | `true` | |
 | `visibility_range` | number | `0` | map units beyond which instances are hidden, 0 shows them at any distance |
@@ -302,7 +303,7 @@ Except for `targets` and `material` every field is always written.
 `targets` are node ids, so they only hold within one map. When a set is duplicated or pasted together with a surface it
 targets, the copy targets the copied surface; targets that were not copied keep pointing at the originals.
 
-Each palette item:
+Each item:
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
@@ -315,6 +316,9 @@ Each palette item:
 | `tilt` | number | `0` | largest random lean in degrees |
 | `sink` | number | `0` | map units pushed into the surface |
 | `material` | string | none, omitted | material override for this item, wins over the set's |
+| `enabled` | bool | `true`, omitted | whether the scatter brush paints this item; a disabled item keeps the instances it already has |
+
+Older files have no `enabled` key and load with every item switched on.
 
 Instances are stored as one flat array each, `[item, x, y, z, pitch, yaw, roll, scale]`, rather than as objects, so a set
 with thousands of trees stays small and diffs line by line. `item` indexes into `items`, the position is in map units,

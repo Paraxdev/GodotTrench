@@ -268,6 +268,12 @@ impl Terrain {
         Aabb::new(self.origin + DVec3::new(0.0, lo as f64, 0.0), self.origin + DVec3::new(s.x, hi as f64, s.y))
     }
 
+    /// The slot a paint request for `layer` writes to. Weight never goes into a slot past the last layer, which would
+    /// render as the first layer: a request for one is redirected to the last layer the terrain has.
+    pub fn layer_slot(&self, layer: usize) -> usize {
+        layer.min(self.layers.len().clamp(1, MAX_LAYERS) - 1)
+    }
+
     pub fn is_hole(&self, ci: u32, cj: u32) -> bool {
         let k = (cj * self.cells()[0] + ci) as usize;
         self.holes.get(k).is_some_and(|h| *h != 0)
@@ -485,6 +491,8 @@ impl Terrain {
         changed
     }
 
+    /// Bumps from a noise field picked by `seed`. Callers vary the seed per dab, the same seed on every dab would grow
+    /// the same bumps into spikes.
     pub fn add_noise(&mut self, center: DVec3, radius: f64, amount: f64, seed: u32) -> bool {
         let Some((x0, x1, z0, z1)) = self.affected(center, radius) else { return false };
         let mut changed = false;
@@ -503,18 +511,33 @@ impl Terrain {
         changed
     }
 
-    /// Quantizes heights into steps of `step` units, blended by `t`.
+    /// Quantizes heights into steps of `step` units, blended by `t`. The step a vertex snaps to is chosen from the
+    /// average of its neighbourhood, so a vertex sitting near a step edge follows its neighbours instead of flipping
+    /// on its own into a one cell spike.
     pub fn terrace(&mut self, center: DVec3, radius: f64, step: f64, t: f64) -> bool {
         let Some((x0, x1, z0, z1)) = self.affected(center, radius) else { return false };
         let step = step.max(1e-3);
+        let old = self.heights.clone();
+        let [w_res, d_res] = self.resolution;
         let mut changed = false;
         for j in z0..=z1 {
             for i in x0..=x1 {
                 let w = self.weight_at(i, j, center, radius) * t.clamp(0.0, 1.0);
                 if w > 0.0 {
                     let k = self.index(i, j);
-                    let h = self.heights[k] as f64;
-                    let q = (h / step).round() * step;
+                    let h = old[k] as f64;
+                    let (mut sum, mut n) = (0.0, 0.0);
+                    for dz in -1i64..=1 {
+                        for dx in -1i64..=1 {
+                            let (x, z) = (i as i64 + dx, j as i64 + dz);
+                            if x >= 0 && z >= 0 && x < w_res as i64 && z < d_res as i64 {
+                                sum += old[(z as u32 * w_res + x as u32) as usize] as f64;
+                                n += 1.0;
+                            }
+                        }
+                    }
+
+                    let q = (sum / n / step).round() * step;
                     self.heights[k] = (h + (q - h) * w) as f32;
                     changed = true;
                 }
@@ -593,9 +616,10 @@ impl Terrain {
         changed
     }
 
-    /// Adds weight to a blend layer (0..3) by `amount` (0..1 per application).
+    /// Adds weight to a blend layer by `amount` (0..1 per application). See `layer_slot` for a layer the terrain lacks.
     pub fn paint_layer(&mut self, center: DVec3, radius: f64, layer: usize, amount: f64) -> bool {
-        let layer = layer.min(MAX_LAYERS - 1);
+        let layer = self.layer_slot(layer);
+        let slots = self.layers.len().clamp(1, MAX_LAYERS);
         let Some((x0, x1, z0, z1)) = self.affected(center, radius) else { return false };
         let n = self.heights.len();
         if self.splat.len() != n * 4 {
@@ -612,9 +636,15 @@ impl Terrain {
 
                 let k = self.index(i, j) * 4;
                 let mut weights = self.weights(i, j);
+                weights.iter_mut().skip(slots).for_each(|wl| *wl = 0.0);
                 for (l, wl) in weights.iter_mut().enumerate() {
                     let target = if l == layer { 1.0 } else { 0.0 };
                     *wl += (target - *wl) * w as f32;
+                }
+
+                let sum: f32 = weights.iter().sum();
+                if sum > 0.0 {
+                    weights.iter_mut().for_each(|wl| *wl /= sum);
                 }
 
                 for (dst, wl) in self.splat[k..k + 4].iter_mut().zip(weights) {
@@ -724,7 +754,18 @@ impl Terrain {
         }
     }
 
-    /// Paints layers from the shape of the terrain: `rock` on steep slopes, `top` above `top_height`, `low` below `low_height`.
+    /// Auto Paint with the default bands: slope layer on slopes steeper than about 50 degrees, peak layer above 80 percent
+    /// of the height range and low layer below 8 percent of it. The range runs from `base` (a world height such as sea
+    /// level) to the highest point, or from the lowest point when `base` is None.
+    pub fn auto_paint_from(&mut self, base: Option<f64>) {
+        let b = self.bounds();
+        let bottom = base.unwrap_or(b.min.y);
+        let span = (b.max.y - bottom).max(1.0);
+        self.auto_paint(0.35, bottom - self.origin.y + span * 0.8, bottom - self.origin.y + span * 0.08);
+    }
+
+    /// Paints layers from the shape of the terrain: layer 1 on steep slopes, layer 2 above `top_height` and layer 3 below
+    /// `low_height` (heights relative to the origin). A band whose layer the terrain lacks goes to its last layer.
     pub fn auto_paint(&mut self, rock_slope: f64, top_height: f64, low_height: f64) {
         let n = self.heights.len();
         self.splat = vec![0; n * 4];
@@ -734,14 +775,15 @@ impl Terrain {
                 let normal = self.normal(i, j);
                 let h = self.height(i, j);
                 let slope = 1.0 - normal.y;
-                let mut weights = [1.0f64, 0.0, 0.0, 0.0];
+                let mut weights = [0.0f64; 4];
                 let rock = ((slope - rock_slope) / 0.08).clamp(0.0, 1.0);
                 let top = ((h - top_height) / (self.cell_size * 2.0)).clamp(0.0, 1.0) * (1.0 - rock * 0.7);
                 let low = ((low_height - h) / (self.cell_size * 1.5)).clamp(0.0, 1.0) * (1.0 - rock);
-                weights[1] = rock;
-                weights[2] = top;
-                weights[3] = low;
                 weights[0] = (1.0 - rock - top - low).max(0.0);
+                for (band, amount) in [(1, rock), (2, top), (3, low)] {
+                    weights[self.layer_slot(band)] += amount;
+                }
+
                 let sum: f64 = weights.iter().sum::<f64>().max(1e-6);
                 let k = self.index(i, j) * 4;
                 for (dst, wl) in self.splat[k..k + 4].iter_mut().zip(weights) {
@@ -924,6 +966,78 @@ mod tests {
         assert!(t.ray_cast(&Ray::new(DVec3::new(5.0, 100.0, 5.0), DVec3::NEG_Y)).is_none());
         t.set_holes(DVec3::ZERO, 15.0, false);
         assert!(t.holes.is_empty());
+    }
+
+    #[test]
+    fn paint_never_fills_a_slot_past_the_last_layer() {
+        let mut t = flat();
+        t.layers.push(TerrainLayer::new("rock", 128.0));
+        assert!(t.paint_layer(DVec3::ZERO, 50.0, 3, 1.0));
+        let w = t.weights(16, 16);
+        assert!(w[1] > 0.99 && w[2] == 0.0 && w[3] == 0.0, "layer 3 goes to the last layer, 1: {w:?}");
+
+        t.raise(DVec3::new(200.0, 0.0, 0.0), 120.0, 400.0);
+        t.auto_paint(0.35, 150.0, -50.0);
+        for j in 0..t.resolution[1] {
+            for i in 0..t.resolution[0] {
+                let w = t.weights(i, j);
+                assert!(w[2] == 0.0 && w[3] == 0.0, "auto paint wrote a missing slot at {i} {j}: {w:?}");
+            }
+        }
+
+        assert!(t.weights(26, 16)[1] > 0.5, "the peak band lands on the last layer");
+    }
+
+    #[test]
+    fn auto_paint_bands_start_at_the_base_height() {
+        let mut t = flat();
+        for l in ["rock", "dirt", "sand"] {
+            t.layers.push(TerrainLayer::new(l, 128.0));
+        }
+
+        for j in 0..33 {
+            for i in 0..33 {
+                let k = t.index(i, j);
+                t.heights[k] = (i as f32 - 8.0) * 10.0;
+            }
+        }
+
+        t.auto_paint_from(None);
+        assert!(t.weights(0, 16)[3] > 0.5 && t.weights(7, 16)[3] < 0.1, "from the lowest point only the bottom is low");
+        t.auto_paint_from(Some(0.0));
+        assert!(t.weights(7, 16)[3] > 0.9, "just below sea level is the low band");
+        assert!(t.weights(20, 16)[3] < 0.1, "higher ground is not");
+    }
+
+    #[test]
+    fn noise_seeds_differ_and_terrace_leaves_no_single_cell_spikes() {
+        let mut a = flat();
+        let mut b = flat();
+        a.add_noise(DVec3::ZERO, 300.0, 10.0, 1);
+        b.add_noise(DVec3::ZERO, 300.0, 10.0, 2);
+        assert_ne!(a.heights, b.heights);
+
+        let mut t = flat();
+        for j in 0..33 {
+            for i in 0..33 {
+                let k = t.index(i, j);
+                t.heights[k] = i as f32 * 12.0 + ((i * 7 + j * 13) % 5) as f32 * 8.0;
+            }
+        }
+
+        t.terrace(DVec3::ZERO, 1.0e6, 64.0, 1.0);
+        let mut spikes = 0;
+        for j in 1..32 {
+            for i in 1..32 {
+                let h = t.height(i, j);
+                let (l, r) = (t.height(i - 1, j), t.height(i + 1, j));
+                if (h - l).abs() > 1.0 && (h - r).abs() > 1.0 && (h - l).signum() == (h - r).signum() {
+                    spikes += 1;
+                }
+            }
+        }
+
+        assert_eq!(spikes, 0, "one cell ridges left by terrace");
     }
 
     #[test]

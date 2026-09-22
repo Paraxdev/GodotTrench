@@ -451,6 +451,14 @@ impl App {
                 let target = args["target"].as_str().unwrap_or("window");
                 let Some(kind) = view_kind(target) else { return err("unknown target, or window screenshots, which cannot run inside scripts") };
                 let Some(vp) = self.viewports.iter().find(|v| v.kind() == kind) else { return err("view not open") };
+                if let (Some(w), Some(h)) = (args["width"].as_u64(), args["height"].as_u64()) {
+                    let size = [w.clamp(16, 4096) as u32, h.clamp(16, 4096) as u32];
+                    return match vp.render_offscreen(&mut self.renderer, &self.scene, &self.state, size) {
+                        Some(img) => ToolResult::Image { png: png(&img), note: format!("{} view {}x{}", kind.label(), img.width(), img.height()) },
+                        None => err("readback failed"),
+                    };
+                }
+
                 let Some(t) = vp.target() else { return err("view has not rendered yet, is its tab visible?") };
                 match self.renderer.read_target(t) {
                     Some(img) => ToolResult::Image { png: png(&img), note: format!("{} view {}x{}", kind.label(), img.width(), img.height()) },
@@ -628,7 +636,11 @@ impl App {
             "delete" => Action::Delete,
             "duplicate" => Action::Duplicate,
             "select_all" => Action::SelectAll,
-            "select_none" => Action::SelectNone,
+            // Escape's Select None first leaves a tool, over MCP it always means an empty selection.
+            "select_none" => {
+                self.state.doc.select(|_, s| s.clear());
+                return ok(json!({ "ok": true, "selected": 0 }));
+            }
             "select_inverse" => Action::SelectInverse,
             "select_touching" => Action::SelectTouching,
             "select_inside" => Action::SelectInside,
@@ -721,6 +733,7 @@ impl App {
                     flatten_height: a["height"].as_f64().unwrap_or(center.y),
                     terrace_step: a["step"].as_f64().unwrap_or(self.state.sculpt.terrace_step),
                     layer: a["layer"].as_u64().unwrap_or(self.state.sculpt.layer as u64) as u8,
+                    seed: a["seed"].as_u64().unwrap_or(7) as u32,
                 };
                 let scope = crate::blend_tool::StrokeScope::of(&self.state);
                 let faces = scope.displacements(&self.state);
@@ -737,20 +750,17 @@ impl App {
                 let items: Vec<gt_doc::ScatterItem> = a["items"]
                     .as_array()
                     .map(|i| i.iter().filter_map(|v| v.as_str()).map(|s| gt_doc::ScatterItem { spacing, ..gt_doc::ScatterItem::new(s) }).collect())
-                    .unwrap_or_else(|| self.state.prefs.scatter.palette.clone());
+                    .unwrap_or_else(|| crate::scatter_tool::brush_items(&self.state));
                 if items.is_empty() {
-                    return err("sprinkle needs items, or a scatter palette set with set_editor scatter_items");
+                    return err("sprinkle needs items, or an active scatter set with models (or set_editor scatter_items)");
                 }
 
-                let saved = self.state.prefs.scatter.clone();
-                self.state.prefs.scatter.palette = items;
-                let radius = a["radius"].as_f64().unwrap_or(saved.radius);
+                let radius = a["radius"].as_f64().unwrap_or(self.state.prefs.scatter.radius);
                 let rules =
                     gt_doc::scatter::ScatterRules { density: a["density"].as_f64().unwrap_or(1.0), slope: [0.0, 90.0], falloff: 0.0, ..Default::default() };
                 let mut rng = gt_doc::scatter::Rng::new(a["seed"].as_u64().unwrap_or(1));
                 let normal = vec3(&a["normal"]).unwrap_or(DVec3::Y);
-                let ids = crate::scatter_tool::paint_entities(&mut self.state, center, normal, radius, &rules, &mut rng);
-                self.state.prefs.scatter = saved;
+                let ids = crate::scatter_tool::paint_entities(&mut self.state, &items, center, normal, radius, &rules, &mut rng);
                 return ok(json!({ "ids": ids.iter().map(|i| i.0).collect::<Vec<_>>() }));
             }
             "mesh_op" => {
@@ -803,7 +813,13 @@ impl App {
                 Action::CloseTab
             }
             "hotspot_texture" => Action::HotspotTexture,
-            "terrain_auto_paint" => Action::TerrainAutoPaint,
+            "terrain_auto_paint" => {
+                if let Some(base) = a["sea_level"].as_f64() {
+                    self.state.auto_paint_base = Some(base);
+                }
+
+                Action::TerrainAutoPaint
+            }
             "reload_models" => Action::ReloadModels,
             "open_godot_editor" => Action::OpenGodotEditor,
             "run_godot_project" => Action::RunGodotProject,
@@ -829,11 +845,53 @@ impl App {
                 });
                 return ok(json!({ "id": id.0, "path": reference }));
             }
+            "move_vertices" => {
+                let verts: Vec<DVec3> = a["vertices"].as_array().into_iter().flatten().filter_map(vec3).collect();
+                let (Some(offset), false) = (vec3(&a["offset"]), verts.is_empty()) else {
+                    return err("move_vertices needs vertices [[x, y, z], ...] and an offset");
+                };
+                if self.state.doc.selection.brushes(&self.state.doc.map).is_empty() {
+                    return err("select the brushes whose vertices to move first");
+                }
+
+                if !crate::toolset::move_vertices(&mut self.state, &verts, offset) {
+                    return err("no selected brush has those vertices, or moving them would make it concave");
+                }
+
+                return ok(json!({ "ok": true, "selection": self.state.doc.selection.nodes.iter().map(|i| i.0).collect::<Vec<_>>() }));
+            }
             "clip_apply" => {
-                self.tools.sync(&self.state);
                 let before = self.state.doc.map.brush_count();
-                self.tools.apply_clip_public(&mut self.state);
-                return ok(json!({ "brushes_before": before, "brushes_after": self.state.doc.map.brush_count() }));
+                let plane = match (vec3(&a["point"]), vec3(&a["normal"]), a["points"].as_array()) {
+                    (Some(p), Some(n), _) if n.length() > 1e-9 => Some(gt_core::Plane::from_point_normal(p, n.normalize())),
+                    (_, _, Some(pts)) => match pts.iter().filter_map(vec3).collect::<Vec<_>>()[..] {
+                        [p0, p1, p2] => match gt_core::Plane::from_points(p0, p1, p2) {
+                            Some(plane) => Some(plane),
+                            None => return err("the three clip points lie on one line"),
+                        },
+                        _ => return err("points needs three [x, y, z] points"),
+                    },
+                    (Some(_), _, _) | (_, Some(_), _) => return err("clip by plane needs both point and a non zero normal"),
+                    _ => None,
+                };
+                let Some(plane) = plane else {
+                    self.tools.sync(&self.state);
+                    self.tools.apply_clip_public(&mut self.state);
+                    return ok(json!({ "brushes_before": before, "brushes_after": self.state.doc.map.brush_count() }));
+                };
+                if self.state.doc.selection.brushes(&self.state.doc.map).is_empty() {
+                    return err("select the brushes to clip first");
+                }
+
+                let side = match a["keep"].as_str().unwrap_or("front") {
+                    "front" => crate::toolset::ClipSide::Front,
+                    "back" => crate::toolset::ClipSide::Back,
+                    "both" => crate::toolset::ClipSide::Both,
+                    other => return err(format!("keep is front, back or both, not {other}")),
+                };
+                crate::toolset::clip_selection(&mut self.state, &plane, side);
+                let selection: Vec<u64> = self.state.doc.selection.nodes.iter().map(|i| i.0).collect();
+                return ok(json!({ "brushes_before": before, "brushes_after": self.state.doc.map.brush_count(), "ids": selection }));
             }
             other => return err(format!("unknown action {other}")),
         };
@@ -1114,6 +1172,10 @@ impl App {
         if let Some(items) = args["scatter_items"].as_array().or(args["sprinkle_items"].as_array()) {
             self.state.prefs.scatter.palette = items.iter().filter_map(|i| i.as_str().map(gt_doc::ScatterItem::new)).collect();
             self.state.prefs.scatter.preset.clear();
+            if let Some(id) = crate::scatter_tool::active_set(&self.state) {
+                let palette = self.state.prefs.scatter.palette.clone();
+                crate::scatter_tool::set_palette(&mut self.state, id, &palette);
+            }
         }
 
         if let Some(r) = args["brush_radius"].as_f64() {
@@ -1181,6 +1243,7 @@ impl App {
                 Some(ent)
             }
         };
+        let mut letter_bounds: Vec<Aabb> = Vec::new();
         let brushes: Vec<Brush> = match args["shape"].as_str().unwrap_or("box") {
             "box" => Brush::from_aabb(&bounds, &material).into_iter().collect(),
             "cylinder" => shapes::cylinder(&bounds, sides, &material).into_iter().collect(),
@@ -1219,6 +1282,16 @@ impl App {
                 };
                 Brush::from_points(&pts, &[], &material).into_iter().collect()
             }
+            "text" => {
+                let Some(text) = args["text"].as_str() else { return err("text shape needs text") };
+                match gt_geom::block_text::layout(text, &bounds, args["standing"].as_bool().unwrap_or(false), args["spacing"].as_f64().unwrap_or(1.0)) {
+                    Ok(letters) => {
+                        letter_bounds = letters.iter().map(|boxes| boxes.iter().fold(Aabb::EMPTY, |acc, b| acc.union(b))).collect();
+                        letters.iter().flatten().filter_map(|b| Brush::from_aabb(b, &material).ok()).collect()
+                    }
+                    Err(e) => return err(e),
+                }
+            }
             other => return err(format!("unknown shape {other}")),
         };
         if brushes.is_empty() {
@@ -1230,15 +1303,31 @@ impl App {
             brushes = brushes.iter().flat_map(|b| gt_geom::csg::hollow(b, t)).collect();
         }
 
+        let mut cutters = Vec::new();
         for opening in args["openings"].as_array().into_iter().flatten() {
             let (min, max) = match opening {
                 Value::Array(pair) if pair.len() == 2 => (vec3(&pair[0]), vec3(&pair[1])),
                 Value::Object(_) => (vec3(&opening["min"]), vec3(&opening["max"])),
                 _ => (None, None),
             };
-            let (Some(min), Some(max)) = (min, max) else { return err("openings are [[min], [max]] pairs") };
-            let Ok(cutter) = Brush::from_aabb(&Aabb::new(min, max), &material) else { return err("opening has no volume") };
-            brushes = brushes.iter().flat_map(|b| if b.intersects(&cutter) { gt_geom::csg::subtract(b, &cutter) } else { vec![b.clone()] }).collect();
+            let (Some(min), Some(max)) = (min, max) else { return err("openings are [[min], [max]] pairs or {min, max, count, step, rows, row_step}") };
+            let (count, rows) = (opening["count"].as_u64().unwrap_or(1).max(1), opening["rows"].as_u64().unwrap_or(1).max(1));
+            if count * rows > 1024 {
+                return err("an opening repeats at most 1024 times");
+            }
+
+            let (step, row_step) = (vec3(&opening["step"]).unwrap_or_default(), vec3(&opening["row_step"]).unwrap_or_default());
+            for r in 0..rows {
+                for c in 0..count {
+                    let offset = step * c as f64 + row_step * r as f64;
+                    let Ok(cutter) = Brush::from_aabb(&Aabb::new(min + offset, max + offset), &material) else { return err("opening has no volume") };
+                    cutters.push(cutter);
+                }
+            }
+        }
+
+        for cutter in &cutters {
+            brushes = brushes.iter().flat_map(|b| if b.intersects(cutter) { gt_geom::csg::subtract(b, cutter) } else { vec![b.clone()] }).collect();
         }
 
         if let Some(s) = args["uv_scale"].as_f64() {
@@ -1276,7 +1365,19 @@ impl App {
             (ids, entity_id)
         });
         self.state.last_bounds = bounds;
-        ok(json!({ "ids": ids, "entity": entity_id.map(|e| e.0) }))
+        if letter_bounds.is_empty() {
+            return ok(json!({ "ids": ids, "entity": entity_id.map(|e| e.0) }));
+        }
+
+        let map = &self.state.doc.map;
+        let letters: Vec<Vec<u64>> = letter_bounds
+            .iter()
+            .map(|lb| {
+                let inside = |id: &&u64| map.brush(NodeId(**id)).is_some_and(|b| lb.expanded(1e-6).contains_point(b.bounds().center()));
+                ids.iter().filter(inside).copied().collect()
+            })
+            .collect();
+        ok(json!({ "ids": ids, "entity": entity_id.map(|e| e.0), "letters": letters }))
     }
 
     fn tool_update_entity(&mut self, args: &Value) -> ToolResult {
@@ -1445,12 +1546,7 @@ impl App {
         let rotate = args["rotate_by"].as_f64();
         let fit = args["fit"].as_bool().unwrap_or(false);
         let mat_name = material.clone().unwrap_or_else(|| brush.faces[face].data.material.clone());
-        let size = self
-            .state
-            .materials
-            .size(&mat_name)
-            .map(|s| DVec2::new(s[0] as f64, s[1] as f64))
-            .unwrap_or(DVec2::splat(self.state.game.textures.fallback_size as f64));
+        let size = crate::texture_ops::tex_size(&self.state, &mat_name);
         self.state.doc.edit("Set Face", |m, _| {
             let Some(b) = m.brush_mut(id) else { return };
             let pts: Vec<DVec3> = b.faces[face].indices.iter().map(|i| b.vertices[*i as usize]).collect();

@@ -60,11 +60,13 @@ pub struct SculptBrush {
     pub terrace_step: f64,
     /// Terrain blend layer painted by `PaintLayer`.
     pub layer: u8,
+    /// Picks the `Noise` pattern. Strokes change it per dab, so dabs in one place do not pile the same bumps into spikes.
+    pub seed: u32,
 }
 
 impl Default for SculptBrush {
     fn default() -> Self {
-        Self { mode: SculptMode::Raise, radius: 48.0, strength: 4.0, flatten_height: 0.0, terrace_step: 32.0, layer: 1 }
+        Self { mode: SculptMode::Raise, radius: 48.0, strength: 4.0, flatten_height: 0.0, terrace_step: 32.0, layer: 1, seed: 0 }
     }
 }
 
@@ -146,8 +148,8 @@ pub fn ray_cast(map: &Map, faces: &[(NodeId, usize)], ray: &Ray) -> Option<(f64,
     best
 }
 
-fn hash_noise(p: DVec3) -> f64 {
-    let v = (p.x * 12.9898 + p.y * 78.233 + p.z * 37.719).sin() * 43758.5453;
+fn hash_noise(p: DVec3, seed: u32) -> f64 {
+    let v = (p.x * 12.9898 + p.y * 78.233 + p.z * 37.719 + seed as f64 * 7.137).sin() * 43758.5453;
     v.fract() * 2.0 - 1.0
 }
 
@@ -201,7 +203,7 @@ pub fn sculpt(map: &mut Map, faces: &[(NodeId, usize)], center: DVec3, brush: &S
                     let t = (w * brush.strength.clamp(0.0, 16.0) / 16.0).clamp(0.0, 1.0);
                     disp.heights[k] = (old_heights[k] as f64 * (1.0 - t) + target * t) as f32;
                 }
-                SculptMode::Noise => disp.heights[k] += (hash_noise(grid.base[k]) * brush.strength * w) as f32,
+                SculptMode::Noise => disp.heights[k] += (hash_noise(grid.base[k], brush.seed) * brush.strength * w) as f32,
                 SculptMode::PaintAlpha | SculptMode::PaintLayer => disp.alphas[k] = (disp.alphas[k] as f64 + brush.strength * w).clamp(0.0, 1.0) as f32,
                 SculptMode::EraseAlpha => disp.alphas[k] = (disp.alphas[k] as f64 - brush.strength * w).clamp(0.0, 1.0) as f32,
                 SculptMode::Terrace => {
@@ -252,7 +254,7 @@ pub fn sculpt_terrains_single(t: &mut gt_geom::Terrain, center: DVec3, brush: &S
         SculptMode::Lower => t.raise(center, r, -brush.strength),
         SculptMode::Smooth => t.smooth(center, r, soft),
         SculptMode::Flatten => t.flatten(center, r, brush.flatten_height, soft),
-        SculptMode::Noise => t.add_noise(center, r, brush.strength, 7),
+        SculptMode::Noise => t.add_noise(center, r, brush.strength, brush.seed),
         SculptMode::Terrace => t.terrace(center, r, brush.terrace_step, soft),
         SculptMode::PaintLayer | SculptMode::PaintAlpha => t.paint_layer(center, r, brush.layer as usize, brush.strength.min(1.0)),
         SculptMode::EraseAlpha => t.paint_layer(center, r, 0, brush.strength.min(1.0)),

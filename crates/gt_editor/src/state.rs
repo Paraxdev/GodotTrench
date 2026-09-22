@@ -60,16 +60,18 @@ pub enum ScatterOutput {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ScatterSettings {
-    /// Weighted palette: models, scenes or (for entity output) classnames.
+    /// Models a set starts with when a stroke has no set to paint into, or when a script makes one: models,
+    /// scenes or (for entity output) classnames. Sets carry their own models once created.
     pub palette: Vec<gt_doc::ScatterItem>,
-    /// Built-in preset the palette came from, empty for custom palettes.
+    /// Built-in preset the template came from, empty for custom ones.
     pub preset: String,
+    /// Kind of the sets made from the template.
     pub kind: gt_doc::ScatterKind,
     pub radius: f64,
     pub rules: gt_doc::scatter::ScatterRules,
     /// Fraction of the instances under the brush removed per erase dab.
     pub erase_amount: f64,
-    /// Erasing only removes instances of the current palette entries.
+    /// Erasing only removes instances of the active set's enabled models.
     pub erase_palette_only: bool,
     /// Keeps spacing against every other scatter set, not only the active one.
     pub avoid_other_sets: bool,
@@ -82,6 +84,8 @@ pub struct ScatterSettings {
     pub visibility_range: Option<f64>,
     /// Seeds `Scatter::static_props_multimesh` on new sets.
     pub static_props_multimesh: bool,
+    /// Random seed every stroke and fill starts from, 0 for a new pattern each time.
+    pub seed: u64,
 }
 
 impl Default for ScatterSettings {
@@ -101,6 +105,7 @@ impl Default for ScatterSettings {
             chunk_size: gt_doc::scatter::DEFAULT_CHUNK_SIZE,
             visibility_range: None,
             static_props_multimesh: false,
+            seed: 0,
         }
     }
 }
@@ -313,11 +318,14 @@ pub struct EditorState {
     pub link_state: crate::live_link::LinkState,
     live: LiveTick,
     pub sculpt: gt_doc::terrain::SculptBrush,
+    /// World height Auto Paint measures its bands from, such as sea level. None measures from the lowest point.
+    pub auto_paint_base: Option<f64>,
     pub paint_color: [f32; 4],
     pub prefabs: crate::prefabs::PrefabCache,
     /// World bounds of every instance node, refreshed by the scene cache.
     pub instance_bounds: std::collections::HashMap<NodeId, Aabb>,
     pub models: crate::models::ModelCache,
+    pub model_thumbs: crate::model_thumbs::ModelThumbnails,
     /// World bounds of point entities drawn with a model.
     pub model_bounds: std::collections::HashMap<NodeId, Aabb>,
     /// Maps open in other tabs. The active map lives in `doc`.
@@ -337,6 +345,10 @@ pub struct EditorState {
     pub last_repeatable: Option<crate::commands::Action>,
     /// Scatter set the scatter tool paints into. A new one is created on its own layer when unset.
     pub active_scatter: Option<NodeId>,
+    /// The next click in a view with the scatter tool adds or removes the surface under it as a target.
+    pub scatter_eyedropper: bool,
+    /// A plain scatter stroke erases, Shift paints.
+    pub scatter_erase: bool,
     pub blend: gt_doc::blend::BlendBrush,
     /// Live move in progress: the dragged nodes and their offset from the drag start. The scene renders
     /// these from their pre-drag geometry translated on the GPU, skipping the per-frame rebuild.
@@ -385,10 +397,12 @@ impl EditorState {
             link_state: Default::default(),
             live: LiveTick::default(),
             sculpt: gt_doc::terrain::SculptBrush::default(),
+            auto_paint_base: None,
             paint_color: [0.55, 0.45, 0.35, 1.0],
             prefabs: Default::default(),
             instance_bounds: Default::default(),
             models: Default::default(),
+            model_thumbs: Default::default(),
             model_bounds: Default::default(),
             tabs: Vec::new(),
             active_tab: 0,
@@ -399,6 +413,8 @@ impl EditorState {
             uv_panel_open: false,
             last_repeatable: None,
             active_scatter: None,
+            scatter_eyedropper: false,
+            scatter_erase: false,
             blend: Default::default(),
             drag_preview: None,
         }

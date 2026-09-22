@@ -33,13 +33,19 @@
 
 ## Tools
 
-* **Scatter** (`B`): paints trees, rocks or foliage into a scatter set that lives on its own layer. A set only lands on its
-  target surfaces (Alt+click a brush, mesh or terrain to add or remove it as a target), so painting a forest on a terrain never
-  covers the house on top of it. The palette window has presets (forest, pines, undergrowth, rocks, grass) and takes your own
-  models (`.bbmodel`, `.glb`, `.gltf`, `.tscn`), each with a weight, spacing (spread), scale range, normal alignment, tilt and sink.
-  LMB paints, Shift+LMB erases (optionally only chosen items), Ctrl+wheel resizes the brush, *Fill* covers the targets with slope
-  and height limits. Foliage sets skip collision and shadows and fade out by distance. In Godot every set becomes MultiMeshes with
-  shared collision shapes, or instanced scenes when the model has scripts. *Scatter Sets to Entities* (Terrain menu) turns a set into `prop_model` entities.
+* **Scatter** (`B`): paints trees, rocks or foliage into a scatter set that lives on its own layer. Each set is its own
+  palette: the Scatter panel, which comes up when you pick the tool, shows the active set's models as cards, and you drag
+  more in from the Models panel (or use *Add models…*). A card's switch decides whether the brush paints that model without
+  touching what it already placed, and its details hold the weight, spacing, scale range, normal alignment, tilt, sink and a
+  material override. *+* starts an empty set and *Preset* starts one from the built-in presets (forest, pines, low-poly trees,
+  undergrowth, rocks, boulders, grass). A set only lands on its targets, so painting a forest on a terrain never covers the
+  house on top of it. The first stroke of a set without targets takes the surface it starts on, which can also be the
+  instances of another set, so grass painted over scattered boulders grows on the boulders. The eyedropper in the panel
+  (or Alt+click in a view) adds or removes a brush, mesh, terrain or another set as a target, and *Follow cursor* paints on
+  whatever is under the brush instead. LMB paints, Shift+LMB erases (the panel can swap the two), Ctrl+wheel resizes the brush,
+  *Fill targets* covers the targets with slope and height limits. Foliage sets skip collision and shadows and fade out by
+  distance. In Godot every set becomes MultiMeshes with shared collision shapes, or instanced scenes when the model has
+  scripts. *Bake to entities* in the panel turns a set into `prop_model` entities.
 * **Blend** (`Shift+G`): paints terrain splat layers, displacement alpha and a second material on brush and mesh faces
   (Terrain > Blend, *Set Blend Material*). Modes: paint, erase, smooth, sharpen, noise, slope and height masks, with smooth, linear,
   constant and spray falloffs. Godot uses the same blend through `gt_blend.gdshader`.

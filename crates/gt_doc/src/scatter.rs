@@ -55,6 +55,10 @@ fn yes() -> bool {
     true
 }
 
+fn is_true(b: &bool) -> bool {
+    *b
+}
+
 fn default_scale() -> [f64; 2] {
     [0.8, 1.2]
 }
@@ -67,7 +71,7 @@ fn default_spacing() -> f64 {
 /// usually sees a handful of cells and large enough that the draw call count stays low.
 pub const DEFAULT_CHUNK_SIZE: f64 = 2048.0;
 
-/// One entry of a scatter palette.
+/// One model of a scatter set, with how it is placed.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ScatterItem {
     /// res:// model or scene (.bbmodel, .glb, .gltf, .tscn).
@@ -94,6 +98,9 @@ pub struct ScatterItem {
     /// Material drawn instead of the ones the model ships with. Wins over the set's own override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub material: Option<String>,
+    /// Whether the brush paints this model. Disabled entries keep the instances they already have.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub enabled: bool,
 }
 
 impl ScatterItem {
@@ -108,6 +115,7 @@ impl ScatterItem {
             tilt: 0.0,
             sink: 0.0,
             material: None,
+            enabled: true,
         }
     }
 
@@ -298,6 +306,11 @@ impl Scatter {
                 i.item -= 1;
             }
         }
+    }
+
+    /// Indices of the entries the brush paints.
+    pub fn enabled_items(&self) -> Vec<usize> {
+        (0..self.items.len()).filter(|k| self.items[*k].enabled).collect()
     }
 
     /// Adds palette entries that are not present yet. Returns the index of every source.
@@ -623,6 +636,7 @@ pub fn preset(name: &str) -> Option<(ScatterKind, Vec<ScatterItem>)> {
         tilt,
         sink,
         material: None,
+        enabled: true,
     };
     // The procedural rock and tree packs ship as glTF in their own subfolders.
     let glb = |file: &str, weight: f64, scale: [f64; 2], spacing: f64, align: f64, tilt: f64, sink: f64| ScatterItem {
@@ -635,37 +649,124 @@ pub fn preset(name: &str) -> Option<(ScatterKind, Vec<ScatterItem>)> {
         tilt,
         sink,
         material: None,
+        enabled: true,
     };
     Some(match name {
         // The procedural glTF trees are authored larger than the map scale, so they sit around 0.5 (see the pack readme).
         "forest" => (
             ScatterKind::Props,
             vec![
-                glb("trees/pine", 3.0, [0.45, 0.7], 120.0, 0.0, 3.0, 6.0),
-                glb("trees/oak", 2.0, [0.5, 0.7], 150.0, 0.0, 2.0, 4.0),
-                glb("trees/birch", 1.0, [0.45, 0.65], 100.0, 0.0, 4.0, 4.0),
-                glb("trees/beech", 1.0, [0.45, 0.7], 130.0, 0.0, 2.0, 4.0),
+                glb("trees/pine", 2.0, [0.45, 0.7], 120.0, 0.0, 3.0, 6.0),
+                glb("trees/oak", 1.2, [0.5, 0.7], 150.0, 0.0, 2.0, 4.0),
+                glb("trees/birch", 0.6, [0.45, 0.65], 100.0, 0.0, 4.0, 4.0),
+                glb("trees/beech", 0.7, [0.45, 0.7], 130.0, 0.0, 2.0, 4.0),
+                glb("trees/pine_b", 1.2, [0.45, 0.65], 120.0, 0.0, 3.0, 6.0),
+                glb("trees/pine_young", 0.6, [0.5, 0.75], 70.0, 0.0, 4.0, 3.0),
+                glb("trees/oak_b", 0.8, [0.5, 0.7], 150.0, 0.0, 2.0, 4.0),
+                glb("trees/oak_young", 0.4, [0.5, 0.7], 80.0, 0.0, 3.0, 3.0),
+                glb("trees/birch_b", 0.4, [0.45, 0.65], 100.0, 0.0, 4.0, 4.0),
+                glb("trees/beech_b", 0.5, [0.45, 0.7], 130.0, 0.0, 2.0, 4.0),
+                glb("trees/beech_young", 0.3, [0.5, 0.7], 80.0, 0.0, 3.0, 3.0),
+                glb("trees/maple", 0.4, [0.45, 0.7], 130.0, 0.0, 2.0, 4.0),
             ],
         ),
-        "pines" => (ScatterKind::Props, vec![glb("trees/pine", 1.0, [0.4, 0.75], 110.0, 0.0, 3.0, 6.0)]),
+        "pines" => (
+            ScatterKind::Props,
+            vec![
+                glb("trees/pine", 1.0, [0.4, 0.75], 110.0, 0.0, 3.0, 6.0),
+                glb("trees/pine_b", 0.8, [0.4, 0.7], 110.0, 0.0, 3.0, 6.0),
+                glb("trees/pine_young", 0.5, [0.5, 0.8], 60.0, 0.0, 4.0, 3.0),
+            ],
+        ),
+        // Broadleaf mix with autumn maples and the odd dead oak, no conifers.
+        "mixed woodland" => (
+            ScatterKind::Props,
+            vec![
+                glb("trees/oak", 1.2, [0.5, 0.7], 150.0, 0.0, 2.0, 4.0),
+                glb("trees/oak_b", 0.8, [0.5, 0.7], 150.0, 0.0, 2.0, 4.0),
+                glb("trees/beech", 1.0, [0.45, 0.7], 130.0, 0.0, 2.0, 4.0),
+                glb("trees/beech_b", 0.7, [0.45, 0.7], 130.0, 0.0, 2.0, 4.0),
+                glb("trees/maple", 0.8, [0.45, 0.7], 130.0, 0.0, 2.0, 4.0),
+                glb("trees/maple_b", 0.6, [0.45, 0.7], 130.0, 0.0, 2.0, 4.0),
+                glb("trees/maple_autumn", 0.5, [0.45, 0.7], 130.0, 0.0, 2.0, 4.0),
+                glb("trees/birch", 0.6, [0.45, 0.65], 100.0, 0.0, 4.0, 4.0),
+                glb("trees/birch_young", 0.4, [0.5, 0.7], 70.0, 0.0, 4.0, 3.0),
+                glb("trees/poplar", 0.3, [0.45, 0.65], 110.0, 0.0, 2.0, 4.0),
+                glb("trees/willow", 0.2, [0.5, 0.7], 160.0, 0.0, 2.0, 4.0),
+                glb("trees/dead_oak", 0.15, [0.5, 0.75], 120.0, 0.0, 6.0, 4.0),
+            ],
+        ),
+        // Hero trees with about three to four times the triangles of the forest set, for close up placement.
+        "detailed forest" => (
+            ScatterKind::Props,
+            vec![
+                glb("trees_detailed/oak", 1.0, [0.5, 0.7], 170.0, 0.0, 2.0, 4.0),
+                glb("trees_detailed/beech", 1.0, [0.45, 0.7], 150.0, 0.0, 2.0, 4.0),
+                glb("trees_detailed/pine", 1.2, [0.45, 0.7], 130.0, 0.0, 3.0, 6.0),
+                glb("trees_detailed/maple", 0.7, [0.45, 0.7], 150.0, 0.0, 2.0, 4.0),
+                glb("trees_detailed/birch", 0.6, [0.45, 0.65], 110.0, 0.0, 4.0, 4.0),
+                glb("trees_detailed/maple_autumn", 0.3, [0.45, 0.7], 150.0, 0.0, 2.0, 4.0),
+            ],
+        ),
+        // The procedural glTF bushes and fern clumps, textured with photographed CC0 leaves.
+        "bushes" => (
+            ScatterKind::Props,
+            vec![
+                glb("bushes/bush_round", 2.0, [0.5, 0.8], 50.0, 0.3, 0.0, 2.0),
+                glb("bushes/bush_round_b", 1.5, [0.5, 0.8], 40.0, 0.3, 0.0, 2.0),
+                glb("bushes/bush_flowering", 0.8, [0.5, 0.75], 50.0, 0.3, 0.0, 2.0),
+                glb("bushes/bush_red", 0.6, [0.5, 0.75], 50.0, 0.3, 0.0, 2.0),
+                glb("bushes/fern_clump", 1.5, [0.6, 0.9], 30.0, 0.7, 5.0, 1.0),
+                glb("bushes/fern_clump_b", 1.2, [0.6, 0.9], 24.0, 0.7, 5.0, 1.0),
+            ],
+        ),
         // The original Blockbench trees, kept as a low poly option.
         "low-poly trees" => (
             ScatterKind::Props,
             vec![
                 item("pine", 3.0, [0.8, 1.35], 120.0, 0.0, 3.0, 6.0),
                 item("oak", 2.0, [0.85, 1.3], 150.0, 0.0, 2.0, 4.0),
-                item("birch", 1.0, [0.8, 1.2], 100.0, 0.0, 4.0, 4.0),
+                item("birch", 1.5, [0.8, 1.2], 100.0, 0.0, 4.0, 4.0),
+                item("stump", 0.4, [0.8, 1.2], 70.0, 0.6, 3.0, 1.0),
             ],
         ),
-        "undergrowth" => (ScatterKind::Props, vec![item("bush", 3.0, [0.7, 1.4], 60.0, 0.4, 0.0, 2.0), item("fern", 2.0, [0.8, 1.3], 40.0, 0.7, 6.0, 1.0)]),
-        // The two Blockbench stones (the boulder is mossy) split into a small and a large size set.
-        "rocks" => (ScatterKind::Props, vec![item("rock", 3.0, [0.8, 1.8], 80.0, 0.8, 12.0, 5.0), item("boulder", 1.0, [0.8, 1.3], 130.0, 0.6, 8.0, 8.0)]),
-        "boulders" => (ScatterKind::Props, vec![item("boulder", 3.0, [1.6, 2.8], 240.0, 0.5, 8.0, 14.0), item("rock", 1.0, [1.4, 2.2], 150.0, 0.7, 10.0, 8.0)]),
+        "undergrowth" => (
+            ScatterKind::Props,
+            vec![
+                item("bush", 3.0, [0.7, 1.4], 60.0, 0.4, 0.0, 2.0),
+                item("bush_round", 1.5, [0.7, 1.2], 60.0, 0.4, 0.0, 2.0),
+                item("bush_berries", 1.0, [0.7, 1.2], 60.0, 0.4, 0.0, 2.0),
+                item("fern", 2.0, [0.8, 1.3], 40.0, 0.7, 6.0, 1.0),
+                item("mushrooms", 0.6, [0.8, 1.4], 24.0, 0.8, 4.0, 0.5),
+                item("log", 0.3, [0.7, 1.1], 140.0, 0.9, 2.0, 3.0),
+            ],
+        ),
+        // The Blockbench stones split into a small and a large size set, the mossy boulder shows up in both.
+        "rocks" => (
+            ScatterKind::Props,
+            vec![
+                item("rock", 3.0, [0.8, 1.8], 80.0, 0.8, 12.0, 5.0),
+                item("rock_flat", 2.0, [0.8, 1.5], 90.0, 0.9, 6.0, 3.0),
+                item("boulder", 1.0, [0.8, 1.3], 130.0, 0.6, 8.0, 8.0),
+                item("boulder_mossy", 0.7, [0.8, 1.2], 130.0, 0.6, 8.0, 8.0),
+            ],
+        ),
+        "boulders" => (
+            ScatterKind::Props,
+            vec![
+                item("boulder", 3.0, [1.6, 2.8], 240.0, 0.5, 8.0, 14.0),
+                item("boulder_mossy", 2.0, [1.6, 2.6], 240.0, 0.5, 8.0, 14.0),
+                item("rock", 1.0, [1.4, 2.2], 150.0, 0.7, 10.0, 8.0),
+                item("rock_flat", 1.0, [1.6, 2.4], 160.0, 0.8, 6.0, 6.0),
+            ],
+        ),
         "grass" => (
             ScatterKind::Foliage,
             vec![
                 item("grass", 6.0, [0.7, 1.3], 14.0, 0.8, 8.0, 0.5),
+                item("grass_tall", 2.0, [0.7, 1.2], 20.0, 0.6, 6.0, 0.5),
                 item("flowers", 1.0, [0.8, 1.2], 24.0, 0.8, 6.0, 0.5),
+                item("flowers_yellow", 1.0, [0.8, 1.2], 24.0, 0.8, 6.0, 0.5),
                 item("fern", 1.0, [0.5, 0.9], 30.0, 0.8, 6.0, 0.5),
             ],
         ),
@@ -674,7 +775,8 @@ pub fn preset(name: &str) -> Option<(ScatterKind, Vec<ScatterItem>)> {
 }
 
 pub const NATURE_DIR: &str = "res://godottrench/nature";
-pub const PRESETS: [&str; 7] = ["forest", "pines", "low-poly trees", "undergrowth", "rocks", "boulders", "grass"];
+pub const PRESETS: [&str; 10] =
+    ["forest", "pines", "mixed woodland", "detailed forest", "low-poly trees", "bushes", "undergrowth", "rocks", "boulders", "grass"];
 
 #[cfg(test)]
 mod tests {
@@ -723,11 +825,12 @@ mod tests {
         let mut rng = Rng::new(9);
         let rules = ScatterRules { density: 6.0, slope: [0.0, 90.0], ..Default::default() };
         set.fill(&Aabb::new(DVec3::new(-1000.0, 0.0, -1000.0), DVec3::new(1000.0, 0.0, 1000.0)), &rules, &mut rng, &[], flat(NodeId(1), 0.0));
-        let boulders = set.counts()[1];
-        assert!(set.counts()[0] > 0 && boulders > 0, "{:?}", set.counts());
+        let mut expected = set.counts();
+        assert!(expected[0] > 0 && expected[1..].iter().any(|n| *n > 0), "{expected:?}");
         let removed = set.erase(DVec3::ZERO, 5000.0, Some(&[0]), 1.0, &mut rng);
         assert!(removed > 0);
-        assert_eq!(set.counts(), vec![0, boulders]);
+        expected[0] = 0;
+        assert_eq!(set.counts(), expected);
 
         let text = serde_json::to_string(&set).unwrap();
         let back: Scatter = serde_json::from_str(&text).unwrap();
@@ -745,6 +848,24 @@ mod tests {
         let (_, low) = preset("low-poly trees").unwrap();
         assert!(low.iter().all(|i| i.source.ends_with(".bbmodel")), "{low:?}");
         assert!(PRESETS.contains(&"low-poly trees"));
+    }
+
+    #[test]
+    fn every_preset_resolves_and_glb_sources_exist() {
+        let nature = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../godot/godottrench/nature");
+        for name in PRESETS {
+            let (_, items) = preset(name).unwrap_or_else(|| panic!("{name} is listed but has no palette"));
+            assert!(!items.is_empty(), "{name}");
+            for i in items.iter().filter(|i| i.source.ends_with(".glb")) {
+                let rel = i.source.strip_prefix(&format!("{NATURE_DIR}/")).unwrap();
+                assert!(nature.join(rel).is_file(), "{name}: {} is not shipped", i.source);
+            }
+        }
+
+        let (_, hero) = preset("detailed forest").unwrap();
+        assert!(hero.iter().all(|i| i.source.contains("/trees_detailed/")), "{hero:?}");
+        let (_, bushes) = preset("bushes").unwrap();
+        assert!(bushes.iter().all(|i| i.source.contains("/bushes/")), "{bushes:?}");
     }
 
     #[test]
@@ -821,6 +942,20 @@ mod tests {
         let back: Scatter = serde_json::from_str(&text).unwrap();
         assert_eq!(back.material.as_deref(), Some("moss"));
         assert_eq!(back.items[1].material.as_deref(), Some("snow"));
+    }
+
+    #[test]
+    fn switched_off_entries_are_saved_and_older_files_load_them_on() {
+        let old: ScatterItem = serde_json::from_str(r#"{"source": "res://a.glb"}"#).unwrap();
+        assert!(old.enabled, "files from before the switch paint every entry");
+        let on = serde_json::to_string(&ScatterItem::new("res://a.glb")).unwrap();
+        assert!(!on.contains("enabled"), "the default stays out of the file: {on}");
+
+        let mut set = Scatter::new("s", ScatterKind::Props, vec![ScatterItem::new("res://a.glb"), ScatterItem::new("res://b.glb")]);
+        set.items[0].enabled = false;
+        let back: Scatter = serde_json::from_str(&serde_json::to_string(&set).unwrap()).unwrap();
+        assert!(!back.items[0].enabled && back.items[1].enabled);
+        assert_eq!(back.enabled_items(), vec![1]);
     }
 
     #[test]

@@ -45,6 +45,9 @@ const COMPANION_SUFFIXES: [&str; 24] = [
     "_e",
 ];
 
+/// Companion map that FuncGodot's generated materials use as the emission texture (`emission_map_pattern`).
+pub const EMISSION_SUFFIX: &str = "_emission";
+
 /// The normal-map suffix a lowercased texture name ends with, if any.
 pub fn normal_suffix(name_lower: &str) -> Option<&'static str> {
     NORMAL_SUFFIXES.iter().copied().find(|s| name_lower.ends_with(s) && name_lower.len() > s.len())
@@ -89,6 +92,8 @@ pub struct MaterialEntry {
     /// Companion PBR maps (normal, spec, roughness, height, ao, emission) were found for this
     /// texture, so it forms a full material set. Shown with a PBR badge, its companions are hidden.
     pub is_pbr: bool,
+    /// Glows: its material file enables emission, or without one an `_emission` companion map sits next to it.
+    pub is_emissive: bool,
 }
 
 /// Images and settings of one material, ready for the renderer.
@@ -108,6 +113,8 @@ pub struct MaterialLibrary {
     image_exts: Vec<String>,
     thumbnails: HashMap<String, Option<egui::TextureHandle>>,
     sizes: HashMap<String, [u32; 2]>,
+    /// `metadata/texture_size` of every material file, keyed by lowercased material name.
+    world_sizes: HashMap<String, [f64; 2]>,
     infos: HashMap<String, Option<GodotMaterial>>,
 }
 
@@ -122,6 +129,7 @@ impl MaterialLibrary {
             image_exts: Vec::new(),
             thumbnails: HashMap::new(),
             sizes: HashMap::new(),
+            world_sizes: HashMap::new(),
             infos: HashMap::new(),
         };
         lib.rescan(game);
@@ -132,6 +140,7 @@ impl MaterialLibrary {
         self.entries.clear();
         self.thumbnails.clear();
         self.sizes.clear();
+        self.world_sizes.clear();
         self.infos.clear();
         self.root = game.texture_root().filter(|p| p.is_dir());
         self.project_root = game.project_root.clone();
@@ -150,15 +159,19 @@ impl MaterialLibrary {
             scan_dir(&mat_root, &mat_root, &[self.material_ext.clone(), "material".into()], &mut files);
             for f in files {
                 let file = f.path.clone();
+                let parsed = file.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| godot_material::parse(&t));
+                if let Some([w, h]) = parsed.as_ref().and_then(|m| m.texture_size) {
+                    self.world_sizes.insert(f.name.to_ascii_lowercase(), [w as f64, h as f64]);
+                }
+
+                let emissive = parsed.as_ref().is_some_and(|m| m.is_emissive());
                 match found.iter_mut().find(|e| e.name.eq_ignore_ascii_case(&f.name)) {
-                    Some(e) => e.material_file = file,
+                    Some(e) => {
+                        e.material_file = file;
+                        e.is_emissive = emissive;
+                    }
                     None => {
-                        let albedo = file
-                            .as_ref()
-                            .and_then(|p| std::fs::read_to_string(p).ok())
-                            .and_then(|t| godot_material::parse(&t))
-                            .and_then(|m| m.albedo_texture)
-                            .and_then(|res| self.resolve_res(&res));
+                        let albedo = parsed.and_then(|m| m.albedo_texture).and_then(|res| self.resolve_res(&res));
                         if albedo.is_some() {
                             found.push(MaterialEntry {
                                 name: f.name,
@@ -168,6 +181,7 @@ impl MaterialLibrary {
                                 has_normal: false,
                                 missing_albedo: false,
                                 is_pbr: false,
+                                is_emissive: emissive,
                             });
                         }
                     }
@@ -188,6 +202,7 @@ impl MaterialLibrary {
                     has_normal: false,
                     missing_albedo: false,
                     is_pbr: false,
+                    is_emissive: false,
                 });
             }
         }
@@ -276,8 +291,14 @@ impl MaterialLibrary {
 
         let albedo = self.load_image(name)?;
         let normal = self.normal_companion(name).and_then(|p| open(&p));
-        let emission = self.companion(name, "_emission").and_then(|p| open(&p));
-        let info = GodotMaterial { emission: emission.is_some().then_some([1.0; 3]), ..Default::default() };
+        let emission_path = self.companion(name, EMISSION_SUFFIX);
+        let emission = emission_path.as_deref().and_then(open);
+        // What FuncGodot generates: the default black emission color plus the texture.
+        let info = GodotMaterial {
+            emission: emission.is_some().then_some([0.0; 3]),
+            emission_texture: emission.as_ref().and(emission_path).map(|p| p.to_string_lossy().replace('\\', "/")),
+            ..Default::default()
+        };
         Some(LoadedMaterial { albedo, normal, emission, info })
     }
 
@@ -285,8 +306,35 @@ impl MaterialLibrary {
         self.sizes.insert(name.to_string(), size);
     }
 
-    pub fn size(&self, name: &str) -> Option<[u32; 2]> {
-        self.sizes.get(name).copied()
+    /// Pixel size of the albedo image, read from the file header when no texture has been loaded yet.
+    pub fn pixel_size(&self, name: &str) -> Option<[u32; 2]> {
+        if let Some(s) = self.sizes.get(name) {
+            return Some(*s);
+        }
+
+        let path = self.find(name)?.path.as_ref()?;
+        image::image_dimensions(path).ok().map(|(w, h)| [w, h])
+    }
+
+    /// The `metadata/texture_size` world size of a material, when its material file sets one.
+    pub fn world_size(&self, name: &str) -> Option<[f64; 2]> {
+        self.world_sizes.get(&name.to_ascii_lowercase()).copied()
+    }
+
+    /// Size in map units that one repeat of the texture covers, which is what face UVs divide by: the
+    /// material's world size when set, else the albedo's pixel size.
+    pub fn size(&self, name: &str) -> Option<[f64; 2]> {
+        self.world_size(name).or_else(|| self.pixel_size(name).map(|[w, h]| [w as f64, h as f64]))
+    }
+
+    /// "1024 x 1024 px, 64 x 64 units a repeat" for the inspector, just the pixels without an override.
+    pub fn size_label(&self, name: &str) -> Option<String> {
+        let px = self.pixel_size(name).map(|[w, h]| format!("{w} x {h} px"));
+        let world = self.world_size(name).map(|[w, h]| format!("{w} x {h} units a repeat"));
+        match (px, world) {
+            (Some(p), Some(w)) => Some(format!("{p}, {w}")),
+            (p, w) => p.or(w),
+        }
     }
 
     /// Lazily creates a small egui thumbnail. `budget` limits decoding work per frame.
@@ -357,6 +405,11 @@ fn pair_pbr_maps(entries: &mut Vec<MaterialEntry>) {
                     entries[ai].has_normal = true;
                 }
 
+                // FuncGodot only generates emission from this suffix, and a material file is used as it is.
+                if lower.ends_with(EMISSION_SUFFIX) && entries[ai].material_file.is_none() {
+                    entries[ai].is_emissive = true;
+                }
+
                 remove.push(i);
             }
             None if normal_suffix(&lower).is_some() => entries[i].missing_albedo = true,
@@ -386,7 +439,16 @@ fn scan_dir(root: &Path, dir: &Path, exts: &[String], out: &mut Vec<MaterialEntr
         let Ok(rel) = path.strip_prefix(root) else { continue };
         let name = rel.with_extension("").to_string_lossy().replace('\\', "/");
         let folder = rel.parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
-        out.push(MaterialEntry { name, folder, path: Some(path), material_file: None, has_normal: false, missing_albedo: false, is_pbr: false });
+        out.push(MaterialEntry {
+            name,
+            folder,
+            path: Some(path),
+            material_file: None,
+            has_normal: false,
+            missing_albedo: false,
+            is_pbr: false,
+            is_emissive: false,
+        });
     }
 }
 
@@ -463,6 +525,33 @@ mod tests {
     }
 
     #[test]
+    fn texture_size_metadata_overrides_the_pixel_size() {
+        let dir = std::env::temp_dir().join(format!("gt_texture_size_{}", std::process::id()));
+        let tex = dir.join("textures");
+        std::fs::create_dir_all(&tex).unwrap();
+        std::fs::write(dir.join("project.godot"), "").unwrap();
+        image::RgbaImage::from_pixel(64, 32, image::Rgba([90, 60, 40, 255])).save(tex.join("photo.png")).unwrap();
+        image::RgbaImage::from_pixel(16, 16, image::Rgba([90, 60, 40, 255])).save(tex.join("plain.png")).unwrap();
+        std::fs::write(
+            tex.join("photo.tres"),
+            "[gd_resource type=\"StandardMaterial3D\" format=3]\n[ext_resource type=\"Texture2D\" path=\"res://textures/photo.png\" id=\"1\"]\n[resource]\nalbedo_texture = ExtResource(\"1\")\nmetadata/texture_size = Vector2(128, 48)\n",
+        )
+        .unwrap();
+        let mut game = GameConfig::builtin();
+        game.project_root = Some(dir.clone());
+        game.textures.base_dir = "res://textures".into();
+        let mut lib = MaterialLibrary::new(&game);
+        assert_eq!(lib.size("photo"), Some([128.0, 48.0]), "the world size wins before anything is loaded");
+        assert_eq!(lib.size("Photo"), Some([128.0, 48.0]), "names match without case, like everywhere else");
+        assert_eq!(lib.pixel_size("photo"), Some([64, 32]), "the pixel size is still known");
+        assert_eq!(lib.size("plain"), Some([16.0, 16.0]), "without metadata UVs follow the pixel size");
+        lib.remember_size("photo", [64, 32]);
+        assert_eq!(lib.size("photo"), Some([128.0, 48.0]), "loading the texture does not undo the override");
+        assert_eq!(lib.info("photo").and_then(|m| m.texture_size), Some([128.0, 48.0]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn pbr_sets_hide_companions_and_flag_the_albedo() {
         let dir = std::env::temp_dir().join(format!("gt_pbr_{}", std::process::id()));
         let tex = dir.join("textures");
@@ -500,6 +589,53 @@ mod tests {
         let b = lib.find("moss_d").unwrap();
         assert!(b.is_pbr && b.has_normal, "diffuse-suffixed albedo is flagged from its base-named companions");
         assert!(lib.find("orphan_normal").unwrap().missing_albedo);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn emissive_materials_are_flagged_and_companions_picked_up() {
+        let dir = std::env::temp_dir().join(format!("gt_emissive_{}", std::process::id()));
+        let tex = dir.join("textures");
+        std::fs::create_dir_all(&tex).unwrap();
+        std::fs::write(dir.join("project.godot"), "").unwrap();
+        let px = |c: [u8; 4]| image::RgbaImage::from_pixel(4, 4, image::Rgba(c));
+        px([90, 70, 60, 255]).save(tex.join("facade.png")).unwrap();
+        px([255, 200, 120, 255]).save(tex.join("facade_emission.png")).unwrap();
+        px([90, 90, 90, 255]).save(tex.join("wall.png")).unwrap();
+        px([200, 40, 40, 255]).save(tex.join("sign.png")).unwrap();
+        std::fs::write(
+            tex.join("sign.tres"),
+            "[gd_resource type=\"StandardMaterial3D\" format=3]\n[ext_resource type=\"Texture2D\" path=\"res://textures/sign.png\" id=\"1\"]\n[resource]\nalbedo_texture = ExtResource(\"1\")\nemission_enabled = true\nemission = Color(1, 0.3, 0.2, 1)\nemission_energy_multiplier = 4.0\n",
+        )
+        .unwrap();
+        // A material file wins over companions: this one does not enable emission, so it does not glow.
+        px([60, 60, 60, 255]).save(tex.join("vent.png")).unwrap();
+        px([255, 255, 255, 255]).save(tex.join("vent_emission.png")).unwrap();
+        std::fs::write(
+            tex.join("vent.tres"),
+            "[gd_resource type=\"StandardMaterial3D\" format=3]\n[ext_resource type=\"Texture2D\" path=\"res://textures/vent.png\" id=\"1\"]\n[resource]\nalbedo_texture = ExtResource(\"1\")\n",
+        )
+        .unwrap();
+        let mut game = GameConfig::builtin();
+        game.project_root = Some(dir.clone());
+        game.textures.base_dir = "res://textures".into();
+        let mut lib = MaterialLibrary::new(&game);
+        assert!(lib.find("facade_emission").is_none(), "the emission map is a companion, not a material");
+        assert!(lib.find("facade").unwrap().is_emissive);
+        assert!(lib.find("sign").unwrap().is_emissive);
+        assert!(!lib.find("wall").unwrap().is_emissive);
+        assert!(!lib.find("vent").unwrap().is_emissive);
+
+        let facade = lib.load_material("facade").unwrap();
+        assert_eq!(facade.emission.as_ref().map(|e| e.dimensions()), Some((4, 4)));
+        assert!(facade.info.is_emissive() && !facade.info.emission_multiply);
+        assert_eq!(facade.info.emission, Some([0.0; 3]), "like FuncGodot: black color, texture added");
+        let sign = lib.load_material("sign").unwrap();
+        assert!(sign.emission.is_none() && sign.info.is_emissive());
+        assert_eq!(sign.info.emission_energy, 4.0);
+        let vent = lib.load_material("vent").unwrap();
+        assert!(vent.emission.is_none() && !vent.info.is_emissive());
+        assert!(lib.load_material("wall").unwrap().emission.is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

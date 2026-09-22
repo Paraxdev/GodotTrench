@@ -1,10 +1,11 @@
 //! Blender style mesh editing: vertex, edge and face selection with modal grab, rotate and scale,
-//! extrude, inset, bevel, loop cut, knife and the usual topology operations.
+//! extrude, inset, bevel, loop cut, knife and the usual topology operations. Double clicking a vertex, edge or face
+//! selects it and puts the transform gizmo on it, Escape or a click on empty space hides the gizmo again.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use egui::{Align2, Color32, FontId, Key, Modifiers, PointerButton, Pos2, Rect, Response, Stroke, Ui, Vec2};
-use gt_core::{DMat4, DQuat, DVec3, NodeId, Plane};
+use gt_core::{Aabb, DMat4, DQuat, DVec3, NodeId, Plane};
 use gt_geom::Mesh;
 use gt_render::LineVertex;
 
@@ -86,6 +87,10 @@ pub struct MeshTool {
     pub modal: Option<Modal>,
     box_start: Option<Pos2>,
     drag_grab: bool,
+    /// The transform gizmo on the selection, shown by double clicking a component.
+    pub gizmo: bool,
+    /// A gizmo drag and the view it started in.
+    gizmo_drag: Option<(crate::transform_gizmo::GizmoDrag, ViewKind)>,
     /// Wheel movement not yet turned into a loop cut step, for wheels and touchpads that report fractions of a notch.
     wheel: f32,
 }
@@ -112,11 +117,54 @@ impl MeshTool {
         self.box_start = None;
         self.drag_grab = false;
         self.wheel = 0.0;
+        self.gizmo = false;
+        self.gizmo_drag = None;
     }
 
-    /// A modal that edits inside an open undo transaction.
+    /// A modal or gizmo drag that edits inside an open undo transaction.
     pub fn holds_transaction(&self) -> bool {
-        matches!(self.modal, Some(Modal::Transform { .. } | Modal::Inset { .. } | Modal::Bevel { .. }))
+        matches!(self.modal, Some(Modal::Transform { .. } | Modal::Inset { .. } | Modal::Bevel { .. })) || self.gizmo_drag.is_some()
+    }
+
+    /// Bounds of the vertices the gizmo moves, None while it is hidden.
+    pub fn gizmo_bounds(&self, state: &EditorState) -> Option<Aabb> {
+        if !self.gizmo || self.modal.is_some() {
+            return None;
+        }
+
+        let points: Vec<DVec3> = self
+            .selection
+            .iter()
+            .filter_map(|(id, sel)| state.doc.map.mesh(*id).map(|m| sel.moved_vertices(m).into_iter().map(|v| m.vertices[v as usize]).collect::<Vec<_>>()))
+            .flatten()
+            .collect();
+        (!points.is_empty()).then(|| Aabb::from_points(points))
+    }
+
+    fn on_gizmo(&self, cam: &Camera, rect: Rect, pos: Pos2, state: &EditorState) -> bool {
+        self.gizmo_bounds(state).and_then(|b| crate::transform_gizmo::hit_on(cam, rect, &b, pos)).is_some()
+    }
+
+    fn drag_gizmo(&mut self, cam: &Camera, rect: Rect, pos: Pos2, modifiers: Modifiers, state: &mut EditorState) {
+        let Some((drag, _)) = &self.gizmo_drag else { return };
+        let Some((motion, status)) = crate::transform_gizmo::motion(state, drag, cam, rect, pos, modifiers) else { return };
+        state.doc.reset_transaction();
+        if let Some(motion) = motion {
+            let m = motion.matrix();
+            let selection = self.selection.clone();
+            state.doc.edit("Transform", |map, _| {
+                for (id, sel) in &selection {
+                    if let Some(mesh) = map.mesh_mut(*id) {
+                        let verts = sel.moved_vertices(mesh);
+                        mesh.transform_vertices(&verts, &m);
+                    }
+                }
+            });
+        }
+
+        if let Some(status) = status {
+            state.set_status(status);
+        }
     }
 
     /// The loop cut modal steps its cut count with the wheel, so the views must not dolly meanwhile.
@@ -134,6 +182,10 @@ impl MeshTool {
             sel.verts.retain(|v| *v < nv);
             sel.edges.retain(|(a, b)| *a < nv && *b < nv);
             sel.faces.retain(|f| *f < m.faces.len());
+        }
+
+        if !self.has_selection() {
+            self.gizmo = false;
         }
     }
 
@@ -258,6 +310,11 @@ impl MeshTool {
         let shift = Modifiers::SHIFT;
         let alt = Modifiers::ALT;
         let ctrl_shift = Modifiers { shift: true, ..Modifiers::COMMAND };
+        if self.gizmo && self.gizmo_drag.is_none() && pressed(ctx, none, Key::Escape) {
+            self.gizmo = false;
+            return true;
+        }
+
         if pressed(ctx, none, Key::Num1) {
             self.component = Component::Vertex;
             return true;
@@ -618,8 +675,24 @@ impl MeshTool {
             return;
         }
 
+        if let Some((_, view)) = &self.gizmo_drag {
+            if *view == cam.kind {
+                if ui.input(|i| i.pointer.primary_down()) {
+                    if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
+                        self.drag_gizmo(cam, rect, pos, modifiers, state);
+                    }
+                } else {
+                    state.doc.commit();
+                    self.gizmo_drag = None;
+                }
+            }
+
+            return;
+        }
+
         if response.clicked_by(PointerButton::Primary)
             && let Some(pos) = response.interact_pointer_pos()
+            && !self.on_gizmo(cam, rect, pos, state)
         {
             let extend = modifiers.shift || modifiers.command;
             if modifiers.alt {
@@ -627,6 +700,41 @@ impl MeshTool {
             } else {
                 self.click_select(cam, rect, pos, extend, state);
             }
+        }
+
+        if response.double_clicked_by(PointerButton::Primary)
+            && !modifiers.alt
+            && let Some(pos) = response.interact_pointer_pos()
+            && !self.on_gizmo(cam, rect, pos, state)
+            && let Some((id, c)) = self.component_at(cam, rect, pos, state)
+        {
+            if !(modifiers.shift || modifiers.command) {
+                self.selection.values_mut().for_each(|s| *s = MeshSel::default());
+            }
+
+            let sel = self.selection.entry(id).or_default();
+            match c {
+                Picked::Vertex(v) => _ = sel.verts.insert(v),
+                Picked::Edge((a, b)) => _ = sel.edges.insert(gt_geom::mesh::edge_key(a, b)),
+                Picked::Face(f) => _ = sel.faces.insert(f),
+            }
+
+            self.gizmo = true;
+            state.set_status("Gizmo: drag an arrow to move along one axis, a square for a plane, a ring rotates, a box scales. Esc hides it");
+        }
+
+        if response.drag_started_by(PointerButton::Primary)
+            && let Some(origin) = ui.input(|i| i.pointer.press_origin())
+            && let Some(bounds) = self.gizmo_bounds(state)
+            && let Some(drag) = crate::transform_gizmo::begin_on(cam, rect, bounds, origin)
+        {
+            state.doc.begin(match drag.part {
+                crate::transform_gizmo::Part::Rotate(_) => "Rotate Vertices",
+                crate::transform_gizmo::Part::Scale(_) => "Scale Vertices",
+                _ => "Move Vertices",
+            });
+            self.gizmo_drag = Some((drag, cam.kind));
+            return;
         }
 
         if response.drag_started_by(PointerButton::Primary)
@@ -918,6 +1026,10 @@ impl MeshTool {
         }
 
         let Some((id, c)) = picked else {
+            if !extend {
+                self.gizmo = false;
+            }
+
             // Clicking another object switches the edited mesh, like Blender's multi object edit.
             if !extend
                 && let Some(h) = crate::picking::pick(state, &cam.ray(rect, pos))
@@ -1124,6 +1236,11 @@ impl MeshTool {
             }
         }
 
+        if let Some(bounds) = self.gizmo_bounds(state) {
+            let active = self.gizmo_drag.as_ref().filter(|(_, view)| *view == cam.kind).map(|(d, _)| d.part);
+            crate::transform_gizmo::paint_on(ui, cam, rect, &bounds, active);
+        }
+
         if let (Some(start), Some(end)) = (self.box_start, ui.input(|i| i.pointer.hover_pos())) {
             let r = Rect::from_two_pos(start, end);
             painter.rect_filled(r, 0.0, Color32::from_rgba_unmultiplied(255, 160, 60, 20));
@@ -1145,7 +1262,7 @@ impl MeshTool {
             Some(Modal::Knife { .. }) => "Knife: click the start and end of the cut".to_string(),
             None if meshes.is_empty() => "Mesh edit: select a mesh (or brushes and press Tab to convert them)".to_string(),
             None => format!(
-                "Mesh edit ({}): 1/2/3 mode, click/box select, Alt+click loop, G/R/S transform, E extrude, I inset, Ctrl+B bevel, Ctrl+R loop cut, K knife, M merge, F fill, X delete, Shift+D duplicate, P separate",
+                "Mesh edit ({}): 1/2/3 mode, click/box select, double click for a gizmo, Alt+click loop, G/R/S transform, E extrude, I inset, Ctrl+B bevel, Ctrl+R loop cut, K knife, M merge, F fill, X delete, Shift+D duplicate, P separate",
                 self.component.label()
             ),
         };
@@ -1386,5 +1503,95 @@ mod tests {
             let out = m.face_center(f) - a.center();
             assert!(m.face_normal(f).dot(out) > 0.0, "face {f} points into the mirrored box");
         }
+    }
+
+    struct GizmoFixture {
+        state: EditorState,
+        tool: MeshTool,
+        cam: Camera,
+        rect: Rect,
+    }
+
+    fn step_pointer(h: &mut egui_kittest::Harness<GizmoFixture>, pos: Pos2, pressed: Option<bool>) {
+        h.event(egui::Event::PointerMoved(pos));
+        if let Some(pressed) = pressed {
+            h.event(egui::Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+        }
+
+        h.step();
+    }
+
+    #[test]
+    fn double_clicking_a_vertex_shows_the_transform_gizmo_in_a_2d_view() {
+        let mut state = EditorState::new(Default::default());
+        let layer = state.doc.map.default_layer();
+        let cube = gt_geom::mesh_shapes::cuboid(&gt_core::Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "m");
+        let id = state.doc.edit("mesh", |m, s| {
+            let id = m.insert(layer, gt_doc::NodeKind::Mesh(cube));
+            s.select_node(id);
+            id
+        });
+        let mut cam = Camera::new(ViewKind::Front);
+        cam.center = DVec3::new(32.0, 32.0, 0.0);
+        cam.zoom = 2.0;
+        let fixture = GizmoFixture { state, tool: MeshTool::default(), cam, rect: Rect::NOTHING };
+        let mut h = egui_kittest::Harness::builder().with_size(Vec2::new(800.0, 600.0)).with_step_dt(1.0 / 60.0).build_ui_state(
+            |ui, f: &mut GizmoFixture| {
+                let rect = ui.available_rect_before_wrap();
+                let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
+                f.rect = rect;
+                f.tool.viewport_input(ui, &response, &f.cam, rect, response.hover_pos(), &mut f.state);
+                f.tool.paint_overlay(ui, &f.cam, rect, &f.state);
+            },
+            fixture,
+        );
+        h.run();
+
+        // The top right corner, where a front and a back vertex overlap in this view.
+        let at = h.state().cam.project(h.state().rect, DVec3::new(64.0, 64.0, 64.0)).unwrap();
+        for _ in 0..2 {
+            step_pointer(&mut h, at, Some(true));
+            step_pointer(&mut h, at, Some(false));
+        }
+
+        h.run();
+        let f = h.state();
+        assert!(f.tool.gizmo, "a double click shows the gizmo");
+        assert_eq!(f.tool.selection[&id].verts.len(), 1, "on just that vertex");
+        let v = *f.tool.selection[&id].verts.first().unwrap();
+        let start = f.state.doc.map.mesh(id).unwrap().vertices[v as usize];
+        assert_eq!((start.x, start.y), (64.0, 64.0));
+        let bounds = f.tool.gizmo_bounds(&f.state).unwrap();
+        assert_eq!(bounds.center(), start);
+
+        // The Z arrow points at the camera in the front view, so only X and Y offer handles.
+        let hit = |p: Pos2| crate::transform_gizmo::hit_on(&f.cam, f.rect, &bounds, p);
+        let x_arrow = (10..200).map(|d| at + Vec2::new(d as f32, 0.0)).find(|p| hit(*p) == Some(crate::transform_gizmo::Part::Move(0))).unwrap();
+        assert!((0..200).all(|d| hit(at + Vec2::new(-(d as f32), 0.0)) != Some(crate::transform_gizmo::Part::Move(2))));
+
+        let undo = f.state.doc.history.undo_labels().count();
+        step_pointer(&mut h, x_arrow, Some(true));
+        for i in 1..=6 {
+            step_pointer(&mut h, x_arrow + Vec2::new(10.0 * i as f32, -8.0 * i as f32), None);
+        }
+
+        step_pointer(&mut h, x_arrow + Vec2::new(60.0, -48.0), Some(false));
+        h.run();
+        let f = h.state();
+        let moved = f.state.doc.map.mesh(id).unwrap().vertices[v as usize];
+        assert!(moved.x > 64.0, "moved along X: {moved:?}");
+        assert_eq!((moved.y, moved.z), (start.y, start.z), "and only along X");
+        assert_eq!(f.state.doc.history.undo_labels().count(), undo + 1, "one undo step");
+        assert_eq!(f.state.doc.history.undo_labels().next(), Some("Move Vertices"));
+        assert!(f.tool.gizmo, "the gizmo stays for the next drag");
+
+        // Escape hides the gizmo and keeps the selection.
+        let ctx = egui::Context::default();
+        let mut input = egui::RawInput::default();
+        input.events.push(egui::Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE });
+        let f = h.state_mut();
+        ctx.run_ui(input, |ui| assert!(f.tool.keys(ui.ctx(), &mut f.state))).textures_delta.clear();
+        assert!(!f.tool.gizmo);
+        assert_eq!(f.tool.selection[&id].verts.len(), 1);
     }
 }

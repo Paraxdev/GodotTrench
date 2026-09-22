@@ -201,9 +201,9 @@ fn face_inspector_texture_tools() {
         s.select_face(mesh_id, 2);
     });
     harness.run();
-    harness.get_by_label("Cylinder").click();
+    harness.get_by_label("Cylinder Y").click();
     harness.run();
-    assert_eq!(harness.state().actions, vec![Action::MeshUv(gt_editor::texture_ops::MeshUvKind::Cylinder)]);
+    assert_eq!(harness.state().actions, vec![Action::MeshUv(gt_editor::texture_ops::MeshUvKind::Cylinder(1))]);
 }
 
 #[test]
@@ -277,9 +277,51 @@ fn scatter_inspector_edits_palette_and_activates() {
     harness.get_by_label("foliage").click();
     harness.run();
     assert_eq!(harness.state().state.doc.map.scatter(id).unwrap().kind, gt_doc::ScatterKind::Foliage);
-    harness.get_by_label("Paint Into This Set").click();
+    harness.get_by_label("Edit in Scatter Panel").click();
     harness.run();
-    assert_eq!(harness.state().actions, vec![Action::ActivateScatter(id)]);
+    assert_eq!(harness.state().actions, vec![Action::ActivateScatter(id), Action::ShowScatterPanel]);
+}
+
+#[test]
+fn scatter_panel_switches_models_picks_targets_and_takes_dropped_models() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    let (kind, items) = gt_doc::scatter::preset("rocks").unwrap();
+    let first = items[0].label().to_string();
+    let count = items.len();
+    let id = f.state.doc.edit("add", |m, _| m.insert(layer, NodeKind::Scatter(gt_doc::Scatter::new("stones", kind, items))));
+    f.state.active_scatter = Some(id);
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(420.0, 1400.0))
+        .build_ui_state(|ui, f: &mut Fixture| gt_editor::scatter_panel::scatter_panel(ui, &mut f.state, &mut f.actions, None), f);
+    harness.run();
+    assert!(harness.query_by_label("Rename").is_some() && harness.query_by_label("Delete set").is_some(), "the active set can be renamed and deleted");
+    assert!(harness.query_by_label(&first).is_some(), "each model has a card");
+    assert_eq!(harness.get_all_by_label("paint").count(), count, "and a switch per card");
+
+    harness.get_all_by_label("paint").next().unwrap().click();
+    harness.run();
+    let set = harness.state().state.doc.map.scatter(id).unwrap().clone();
+    assert!(!set.items[0].enabled && set.items[1..].iter().all(|i| i.enabled), "the first card is switched off");
+
+    harness.get_by_label("Pick target").click();
+    harness.run();
+    assert!(harness.state().state.scatter_eyedropper, "the eyedropper waits for a click in a view");
+    assert_eq!(harness.state().actions, vec![Action::SetTool(gt_editor::tools::ToolKind::Scatter)]);
+
+    harness.get_by_label("Preset").click();
+    harness.run();
+    harness.get_by_label("grass").click();
+    harness.run();
+    assert_eq!(harness.state().actions.last(), Some(&Action::ScatterPreset("grass".into())));
+
+    let f = harness.state_mut();
+    gt_editor::scatter_panel::drop_payload(&mut f.state, &panels::DndPayload::Model("C:/models/fir.glb".into()));
+    let set = f.state.doc.map.scatter(id).unwrap();
+    assert_eq!(set.items.len(), count + 1, "a model dropped on the panel joins the active set");
+    assert_eq!(set.items.last().unwrap().label(), "fir");
+    harness.run();
+    assert!(harness.query_by_label("fir").is_some(), "and gets its own card");
 }
 
 #[test]
@@ -451,4 +493,36 @@ fn logic_panel_fires_cascade_and_flags_broken_links() {
     harness.run();
     assert!(harness.query_by_label("2 steps").is_some(), "both wired outputs are listed");
     assert!(harness.query_by_label("1 broken").is_some(), "the missing target is flagged");
+}
+
+#[test]
+fn model_browser_groups_by_source_with_a_header_per_pack() {
+    use gt_editor::models::{ModelEntry, PackInfo};
+    use std::sync::Arc;
+
+    let mut f = Fixture::new();
+    let pack_a = Arc::new(PackInfo { name: "Pack A".into(), license: Some("CC0".into()), ..Default::default() });
+    let pack_b = Arc::new(PackInfo { name: "Pack B".into(), license: Some("CC-BY".into()), ..Default::default() });
+    f.state.model_library.entries = vec![
+        ModelEntry { name: "one".into(), folder: String::new(), path: "one.glb".into(), ext: "glb".into(), source: pack_a, credit: None, mtime: None },
+        ModelEntry { name: "two".into(), folder: String::new(), path: "two.glb".into(), ext: "glb".into(), source: pack_b, credit: None, mtime: None },
+    ];
+
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(700.0, 500.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::model_browser(ui, &mut f.state, &mut f.panels, &mut f.actions, None), f);
+    harness.run();
+
+    // Sort defaults to Name, no group headers yet.
+    assert!(harness.query_by_label("Pack A").is_none(), "grouped headers only show once Source sort is picked");
+
+    harness.get_by_value("Folder").click();
+    harness.run();
+    harness.get_by_label("Source").click();
+    harness.run();
+
+    assert!(harness.query_by_label("Pack A").is_some(), "a header names each pack");
+    assert!(harness.query_by_label("Pack B").is_some());
+    assert!(harness.query_by_label("CC0").is_some(), "the header shows the pack's license");
+    assert_eq!(harness.query_all_by_label("1 model").count(), 2, "each header shows its model count");
 }

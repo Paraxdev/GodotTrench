@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Showcase content for GodotTrench: textures and Blockbench models"
+description = "Showcase content for GodotTrench: Blockbench models"
 
 [dependencies]
 gt_core.workspace = true

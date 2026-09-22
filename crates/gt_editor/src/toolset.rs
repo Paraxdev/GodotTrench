@@ -19,6 +19,32 @@ pub enum ClipSide {
     Both,
 }
 
+/// Splits the selected brushes by `plane` as one undo step, keeping the part in front of it (where the normal points),
+/// behind it or both, and selects what is left.
+pub fn clip_selection(state: &mut EditorState, plane: &Plane, side: ClipSide) {
+    let brushes = state.doc.selection.brushes(&state.doc.map);
+    state.doc.edit("Clip", |m, s| {
+        s.clear();
+        for id in brushes {
+            let Some(b) = m.brush(id).cloned() else { continue };
+            let template = b.planes();
+            let cap = gt_geom::brush::best_face_data(&plane.flipped(), &template).cloned().unwrap_or_default();
+            let (front, back) = b.split(plane, &cap);
+            let parent = m.get(id).and_then(|n| n.parent).unwrap_or(m.default_layer());
+            m.remove(id);
+            let keep: Vec<Brush> = match side {
+                ClipSide::Front => front.into_iter().collect(),
+                ClipSide::Back => back.into_iter().collect(),
+                ClipSide::Both => front.into_iter().chain(back).collect(),
+            };
+            for k in keep {
+                let nid = m.insert(parent, gt_doc::NodeKind::Brush(k));
+                s.nodes.insert(nid);
+            }
+        }
+    });
+}
+
 #[derive(Default)]
 pub struct ClipTool {
     pub points: Vec<DVec3>,
@@ -82,6 +108,7 @@ pub struct BrushStrokeTool {
     pub hover: Option<(DVec3, DVec3)>,
     stroking: bool,
     last_dab: Option<DVec3>,
+    dabs: u32,
 }
 
 #[derive(Default)]
@@ -339,6 +366,8 @@ impl ToolSet {
 
                     // Continuous brushes scale with frame time so the result does not depend on frame rate.
                     let is_alpha = brush.mode.is_paint();
+                    self.stroke.dabs = self.stroke.dabs.wrapping_add(1);
+                    brush.seed = self.stroke.dabs;
                     brush.strength = if is_alpha { (brush.strength * dt * 2.0).min(1.0) } else { brush.strength * dt * 8.0 };
                     let color = state.paint_color;
                     let radius = state.sculpt.radius;
@@ -439,28 +468,7 @@ impl ToolSet {
             state.set_status("Place two or three clip points first");
             return;
         };
-        let side = self.clip.side.unwrap_or(ClipSide::Front);
-        let brushes = state.doc.selection.brushes(&state.doc.map);
-        state.doc.edit("Clip", |m, s| {
-            s.clear();
-            for id in brushes {
-                let Some(b) = m.brush(id).cloned() else { continue };
-                let template = b.planes();
-                let cap = gt_geom::brush::best_face_data(&plane.flipped(), &template).cloned().unwrap_or_default();
-                let (front, back) = b.split(&plane, &cap);
-                let parent = m.get(id).and_then(|n| n.parent).unwrap_or(m.default_layer());
-                m.remove(id);
-                let keep: Vec<Brush> = match side {
-                    ClipSide::Front => front.into_iter().collect(),
-                    ClipSide::Back => back.into_iter().collect(),
-                    ClipSide::Both => front.into_iter().chain(back).collect(),
-                };
-                for k in keep {
-                    let nid = m.insert(parent, gt_doc::NodeKind::Brush(k));
-                    s.nodes.insert(nid);
-                }
-            }
-        });
+        clip_selection(state, &plane, self.clip.side.unwrap_or(ClipSide::Front));
         self.clip.points.clear();
         state.set_status("Clipped");
     }
@@ -1138,7 +1146,9 @@ fn axis_drag_plane(cam: &Camera, i: usize, center: DVec3) -> Plane {
     Plane::from_point_normal(center, if n.length_squared() < 1e-9 { f } else { n.normalize() })
 }
 
-fn move_vertices(state: &mut EditorState, base: &[DVec3], delta: DVec3) -> bool {
+/// Moves the selected brushes' vertices at `base` (or new ones on an edge or face) by `delta`, like the vertex tool.
+/// Brushes that would turn concave or lose a moved vertex are left alone.
+pub(crate) fn move_vertices(state: &mut EditorState, base: &[DVec3], delta: DVec3) -> bool {
     let brushes: Vec<NodeId> = state.doc.selection.brushes(&state.doc.map);
     let mut any = false;
     state.doc.edit("Move Vertices", |m, _| {
@@ -1229,6 +1239,32 @@ mod tests {
         let m = ops::rotation_about(DVec3::splat(32.0), DVec3::Y, 90.0);
         let opts = state.opts();
         state.doc.edit("Rotate", |map, s| ops::transform_selection(map, s, &m, opts));
+    }
+
+    #[test]
+    fn clip_selection_keeps_the_side_the_normal_points_to() {
+        let (mut state, _) = state_with_brush();
+        let slanted = Plane::from_point_normal(DVec3::new(32.0, 32.0, 32.0), DVec3::new(1.0, 1.0, 0.0).normalize());
+        let undo_before = state.doc.history.undo_labels().count();
+        clip_selection(&mut state, &slanted, ClipSide::Front);
+        let kept = state.doc.selection.brushes(&state.doc.map);
+        assert_eq!(kept.len(), 1);
+        let b = state.doc.map.brush(kept[0]).unwrap().bounds();
+        assert_eq!((b.min.x, b.min.y, b.max.x, b.max.y), (0.0, 0.0, 64.0, 64.0), "a diagonal cut keeps the corner's full reach");
+        assert!(state.doc.map.brush(kept[0]).unwrap().vertices.iter().all(|v| v.x + v.y >= 64.0 - 1e-6), "only the +x+y half is left");
+        assert_eq!(state.doc.history.undo_labels().count(), undo_before + 1);
+
+        clip_selection(&mut state, &Plane::from_point_normal(DVec3::splat(48.0), DVec3::Z), ClipSide::Both);
+        assert_eq!(state.doc.selection.brushes(&state.doc.map).len(), 2, "both halves stay and are selected");
+    }
+
+    #[test]
+    fn move_vertices_sags_a_corner_and_refuses_concave_results() {
+        let (mut state, id) = state_with_brush();
+        assert!(move_vertices(&mut state, &[DVec3::new(64.0, 64.0, 64.0)], DVec3::new(0.0, -24.0, 0.0)));
+        let b = state.doc.map.brush(id).unwrap();
+        assert!(b.vertices.iter().any(|v| (*v - DVec3::new(64.0, 40.0, 64.0)).length() < 1e-6));
+        assert!(!move_vertices(&mut state, &[DVec3::new(1.0, 2.0, 3.0)], DVec3::X), "a point off the brush moves nothing");
     }
 
     #[test]

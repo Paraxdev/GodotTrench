@@ -160,6 +160,12 @@ impl BlendTool {
                 return;
             }
 
+            let layer = state.blend.layer;
+            let short = targets(state).terrains.iter().filter_map(|id| state.doc.map.terrain(*id)).map(|t| t.layer_slot(layer)).find(|slot| *slot != layer);
+            if let Some(slot) = short.filter(|_| !matches!(state.blend.mode, BlendMode::Erase | BlendMode::Smooth | BlendMode::Sharpen)) {
+                state.set_status(format!("The terrain has no layer {layer}, painting its last layer, {slot}. Add a layer in the Inspector first"));
+            }
+
             self.stroking = true;
             self.last = None;
             state.doc.begin("Blend");

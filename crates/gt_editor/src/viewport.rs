@@ -787,17 +787,18 @@ impl Viewport {
                     }
                     Some(Hit { node, face: None, .. }) if cx.state.doc.map.terrain(node).is_some() => {
                         // Dropping on a terrain assigns the material to the layer being painted.
-                        let layer = if cx.state.tool == ToolKind::Blend { cx.state.blend.layer } else { cx.state.sculpt.layer as usize };
-                        cx.state.doc.edit("Set Terrain Layer", |m, _| {
-                            if let Some(t) = m.terrain_mut(node) {
-                                while t.layers.len() <= layer.min(3) {
-                                    let tile = t.layers.last().map(|l| l.tile).unwrap_or(256.0);
-                                    t.layers.push(gt_geom::TerrainLayer::new(name.clone(), tile));
-                                }
-
-                                t.layers[layer.min(3)].material = name.clone();
+                        let blend = cx.state.tool == ToolKind::Blend;
+                        let layer = if blend { cx.state.blend.layer } else { cx.state.sculpt.layer as usize };
+                        let slot = cx.state.doc.edit("Set Terrain Layer", |m, _| m.terrain_mut(node).map(|t| set_terrain_layer(t, layer, &name)));
+                        if let Some(slot) = slot.filter(|s| *s != layer) {
+                            if blend {
+                                cx.state.blend.layer = slot;
+                            } else {
+                                cx.state.sculpt.layer = slot as u8;
                             }
-                        });
+
+                            cx.state.set_status(format!("The terrain had no layer {layer}, {name} was added as layer {slot}"));
+                        }
                     }
                     _ => {}
                 }
@@ -824,13 +825,32 @@ impl Viewport {
         }
     }
 
-    fn render(&mut self, cx: &mut ViewCtx, tool_lines: &[LineVertex]) {
-        let Some(target) = &self.target else { return };
-        let rect = self.rect;
-        let state = &cx.state;
+    /// Renders this view's camera into a throwaway target of `size` pixels, for screenshots larger than the docked view.
+    pub fn render_offscreen(&self, renderer: &mut Renderer, scene: &SceneCache, state: &EditorState, size: [u32; 2]) -> Option<image::RgbaImage> {
+        let mut target = None;
+        renderer.ensure_target(&mut target, size);
+        let target = target?;
+        let mut params = self.frame_params(Vec2::new(size[0] as f32, size[1] as f32), state, 1.0);
+        params.grid_size = 0.0;
+        let lit = state.prefs.shade == crate::state::Shade::Lit;
         let is_2d = self.camera.kind.is_2d();
-        let params = FrameParams {
-            view_proj: self.camera.view_proj(rect.size()).as_mat4(),
+        let mut frame = Frame::default();
+        scene.fill_frame(&mut frame, is_2d, lit);
+        frame.sky = !is_2d && lit;
+        // Only the surfaces: edges, I/O links and handles would clutter a picture of the level.
+        frame.lines.clear();
+        frame.overlay_lines.clear();
+        frame.overlay_meshes.clear();
+        renderer.render(&target, &params, &frame);
+        let image = renderer.read_target(&target);
+        renderer.free_target(target);
+        image
+    }
+
+    fn frame_params(&self, size: Vec2, state: &EditorState, line_width: f32) -> FrameParams {
+        let is_2d = self.camera.kind.is_2d();
+        FrameParams {
+            view_proj: self.camera.view_proj(size).as_mat4(),
             eye: self.camera.eye().as_vec3(),
             grid_size: if is_2d { 0.0 } else { state.grid as f32 },
             grid_alpha: state.prefs.grid_alpha,
@@ -843,8 +863,16 @@ impl Viewport {
             } else {
                 crate::theme::linear(crate::theme::GRAY_1)
             },
-            line_width: self.pixels_per_point,
-        };
+            line_width,
+        }
+    }
+
+    fn render(&mut self, cx: &mut ViewCtx, tool_lines: &[LineVertex]) {
+        let Some(target) = &self.target else { return };
+        let rect = self.rect;
+        let state = &cx.state;
+        let is_2d = self.camera.kind.is_2d();
+        let params = self.frame_params(rect.size(), state, self.pixels_per_point);
         let grid = if is_2d { cx.renderer.upload_lines(&grid_lines(&self.camera, rect, state.grid)) } else { None };
         let tools = cx.renderer.upload_lines(tool_lines);
         let scene = cx.scene;
@@ -1088,9 +1116,43 @@ fn context_menu(ui: &mut Ui, cx: &mut ViewCtx) {
     cx.actions.extend(out);
 }
 
+/// Puts `material` into terrain layer `layer`. A layer past the last one adds a single new layer instead of filling
+/// the gap. Returns the slot that was set.
+pub fn set_terrain_layer(t: &mut gt_geom::Terrain, layer: usize, material: &str) -> usize {
+    if layer < t.layers.len() {
+        t.layers[layer].material = material.to_string();
+        return layer;
+    }
+
+    if t.layers.len() >= gt_geom::heightfield::MAX_LAYERS {
+        let last = t.layers.len() - 1;
+        t.layers[last].material = material.to_string();
+        return last;
+    }
+
+    let tile = t.layers.last().map(|l| l.tile).unwrap_or(256.0);
+    t.layers.push(gt_geom::TerrainLayer::new(material, tile));
+    t.layers.len() - 1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dropping_past_the_last_terrain_layer_adds_one_layer() {
+        let mut t = gt_geom::Terrain::new(DVec3::ZERO, [3, 3], 32.0, "grass");
+        assert_eq!(set_terrain_layer(&mut t, 3, "sand"), 1);
+        assert_eq!(t.layers.iter().map(|l| l.material.as_str()).collect::<Vec<_>>(), ["grass", "sand"]);
+        assert_eq!(set_terrain_layer(&mut t, 0, "moss"), 0);
+        assert_eq!(t.layers[0].material, "moss");
+        for m in ["a", "b", "c"] {
+            set_terrain_layer(&mut t, 9, m);
+        }
+
+        assert_eq!(t.layers.len(), 4, "never more than four layers");
+        assert_eq!(t.layers[3].material, "c", "a drop past four replaces the last layer");
+    }
 
     #[test]
     fn a_drawn_brush_covers_the_cells_under_both_ends() {

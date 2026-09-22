@@ -5,7 +5,7 @@ use gt_render::Renderer;
 use crate::CliArgs;
 use crate::camera::ViewKind;
 use crate::commands::{self, Action, ModelImport};
-use crate::dialogs::{CommandPalette, KeymapWindow, LinkDialog, ScatterPaletteWindow, ShapeDialog, TerrainDialog};
+use crate::dialogs::{CommandPalette, KeymapWindow, LinkDialog, ShapeDialog, TerrainDialog};
 use crate::icons;
 use crate::mcp::tools::{Deferred, InputScript};
 use crate::mcp::{McpHost, ToolExecutor, transport};
@@ -30,6 +30,7 @@ enum Tab {
     Logic,
     Uv,
     Reference,
+    Scatter,
 }
 
 /// A dockable side panel, used to map panels to tabs and to show a hover tooltip on each tab.
@@ -43,11 +44,12 @@ pub enum Panel {
     Issues,
     Uv,
     Reference,
+    Scatter,
 }
 
 impl Panel {
-    pub const ALL: [Panel; 8] =
-        [Panel::Outliner, Panel::Inspector, Panel::Materials, Panel::Entities, Panel::History, Panel::Issues, Panel::Uv, Panel::Reference];
+    pub const ALL: [Panel; 9] =
+        [Panel::Outliner, Panel::Inspector, Panel::Materials, Panel::Entities, Panel::History, Panel::Issues, Panel::Uv, Panel::Reference, Panel::Scatter];
 
     /// One or two sentences on what the panel is for, shown as the panel tab tooltip.
     pub fn help(self) -> &'static str {
@@ -69,6 +71,9 @@ impl Panel {
                 "Problems found in the map, like invalid brushes, missing materials or outputs pointing at nothing. Click one to select the object, most offer a fix."
             }
             Panel::Uv => "Edits the UVs of selected mesh faces directly, like the UV editor of a 3D modelling program.",
+            Panel::Scatter => {
+                "The active scatter set as model cards: drag models in from the Models panel, switch them on or off and weigh them. Below are the surfaces the set paints onto, with an eyedropper, and the brush."
+            }
             Panel::Reference => {
                 "How to use the selected entity from code: GDScript and C# snippets, the FGD resource, and buttons that create the script in your project. Drag the divider to resize the class list, double click it to fit the names."
             }
@@ -101,7 +106,6 @@ pub struct App {
     terrain_dialog: TerrainDialog,
     keymap: KeymapWindow,
     pub(crate) hotspot_editor: crate::hotspot_editor::HotspotEditor,
-    scatter_palette: ScatterPaletteWindow,
     link_dialog: LinkDialog,
     keep_prefs: bool,
     window_fitted: bool,
@@ -114,13 +118,15 @@ pub struct App {
     logo: egui::TextureHandle,
     /// Last single scatter set the selection settled on, so selecting one activates it for painting only on change.
     last_selected_scatter: Option<gt_core::NodeId>,
+    /// Tool of the last frame, so picking the scatter tool can bring up the Scatter panel once.
+    last_tool: ToolKind,
 }
 
 const PREFS_LABEL_WIDTH: f32 = 180.0;
 const UI_SCALE_PRESETS: [f32; 6] = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
-const PANEL_TABS: [Tab; 10] =
-    [Tab::Outliner, Tab::Inspector, Tab::Materials, Tab::Models, Tab::Entities, Tab::History, Tab::Issues, Tab::Logic, Tab::Uv, Tab::Reference];
+const PANEL_TABS: [Tab; 11] =
+    [Tab::Outliner, Tab::Inspector, Tab::Materials, Tab::Models, Tab::Entities, Tab::History, Tab::Issues, Tab::Logic, Tab::Uv, Tab::Reference, Tab::Scatter];
 
 fn tab_title(tab: Tab) -> &'static str {
     match tab {
@@ -135,6 +141,7 @@ fn tab_title(tab: Tab) -> &'static str {
         Tab::Logic => "Logic",
         Tab::Uv => "UV Editor",
         Tab::Reference => "Reference",
+        Tab::Scatter => "Scatter",
     }
 }
 
@@ -148,6 +155,7 @@ fn panel_tab(panel: Panel) -> Tab {
         Panel::Issues => Tab::Issues,
         Panel::Uv => Tab::Uv,
         Panel::Reference => Tab::Reference,
+        Panel::Scatter => Tab::Scatter,
     }
 }
 
@@ -281,6 +289,12 @@ fn view_grid_corner(ui: &mut Ui, dock: &mut DockState<Tab>) {
     }
 
     ui.ctx().request_repaint();
+}
+
+/// Focuses a panel tab, reopening it next to `beside` when it was closed.
+fn reveal_tab(dock: &mut DockState<Tab>, tab: Tab, beside: Tab) {
+    ensure_tab(dock, tab, beside);
+    show_tab(dock, tab);
 }
 
 /// Focuses a panel tab, reopening it in the focused dock leaf when it was closed.
@@ -423,7 +437,7 @@ fn ensure_tab(dock: &mut DockState<Tab>, tab: Tab, beside: Tab) {
 fn default_dock() -> DockState<Tab> {
     let mut dock = DockState::new(vec![Tab::View(0)]);
     let surface = dock.main_surface_mut();
-    let [center, _right] = surface.split_right(NodeIndex::root(), 0.78, vec![Tab::Inspector, Tab::Entities, Tab::Uv]);
+    let [center, _right] = surface.split_right(NodeIndex::root(), 0.78, vec![Tab::Inspector, Tab::Entities, Tab::Uv, Tab::Scatter]);
     let [center, _left] = surface.split_left(center, 0.2, vec![Tab::Outliner, Tab::History, Tab::Issues]);
     let [views, _bottom] = surface.split_below(center, 0.72, vec![Tab::Materials, Tab::Models]);
     let [left_col, right_col] = surface.split_right(views, 0.5, vec![Tab::View(1)]);
@@ -504,6 +518,7 @@ impl App {
 
         let mut dock = dock.unwrap_or_else(default_dock);
         ensure_tab(&mut dock, Tab::Models, Tab::Materials);
+        ensure_tab(&mut dock, Tab::Scatter, Tab::Inspector);
         Self {
             state,
             renderer: Renderer::new(render_state),
@@ -528,7 +543,6 @@ impl App {
             terrain_dialog: TerrainDialog::default(),
             keymap: KeymapWindow::default(),
             hotspot_editor: Default::default(),
-            scatter_palette: Default::default(),
             link_dialog: Default::default(),
             keep_prefs,
             window_fitted: false,
@@ -537,6 +551,7 @@ impl App {
             ui_scale_draft: None,
             logo: crate::brand::texture(&cc.egui_ctx),
             last_selected_scatter: None,
+            last_tool: ToolKind::Select,
         }
     }
 
@@ -563,7 +578,7 @@ impl App {
 
         // While a view flies with WASD, Q and E, ToolSet::keys swallows plain keys so no single key shortcut fires.
         self.tools.flying |= self.viewports.iter().any(|v| v.is_flying());
-        if self.tools.keys(ctx, &mut self.state) {
+        if self.panels.uv.take_escape(ctx) || self.tools.keys(ctx, &mut self.state) {
             return;
         }
 
@@ -594,7 +609,7 @@ impl App {
             Action::ShowShapeDialog => self.shape_dialog.open = true,
             Action::ShowTerrainDialog => self.terrain_dialog.open = true,
             Action::ShowKeymap => self.keymap.open = true,
-            Action::ShowScatterPalette => self.scatter_palette.open = true,
+            Action::ShowScatterPanel => reveal_tab(&mut self.dock, Tab::Scatter, Tab::Inspector),
             Action::ShowLinkDialog => {
                 self.link_dialog.open_for(&self.state);
                 if !self.link_dialog.open {
@@ -926,19 +941,21 @@ impl App {
                     m.item(ui, Some(icons::BLEND), "Blend Tool", Action::SetTool(ToolKind::Blend));
                     ui.separator();
                     m.item(ui, None, "Auto Paint Layers", Action::TerrainAutoPaint);
+                    crate::dialogs::auto_paint_base_ui(ui, &mut self.state.auto_paint_base);
+                    ui.separator();
                     m.item(ui, None, "Set Blend Material (current)", Action::SetBlendMaterial);
                     m.item(ui, None, "Clear Blend Material", Action::ClearBlendMaterial);
                 });
                 sub_menu(ui, Some(icons::SCATTER), "Scatter", |ui| {
                     m.item(ui, Some(icons::SCATTER), "Scatter Tool", Action::SetTool(ToolKind::Scatter));
-                    m.item(ui, None, "Scatter Palette…", Action::ShowScatterPalette);
-                    sub_menu(ui, None, "Preset", |ui| {
+                    m.item(ui, None, "Scatter Panel", Action::ShowScatterPanel);
+                    ui.separator();
+                    m.item(ui, Some(icons::PLUS), "New Empty Scatter Set", Action::NewScatterSet);
+                    sub_menu(ui, None, "New Set from Preset", |ui| {
                         for preset in gt_doc::scatter::PRESETS {
                             m.item(ui, None, preset, Action::ScatterPreset(preset.to_string()));
                         }
                     });
-                    ui.separator();
-                    m.item(ui, Some(icons::PLUS), "New Scatter Set (new layer)", Action::NewScatterSet);
                     m.item(ui, None, "Fill Scatter Targets", Action::ScatterFill);
                     m.item(ui, None, "Scatter Sets to Entities", Action::ScatterToEntities);
                     ui.separator();
@@ -1386,36 +1403,52 @@ impl App {
                     let sets: Vec<(gt_core::NodeId, String)> =
                         self.state.doc.map.scatters().map(|(id, s)| (id, format!("{} ({})", s.name, s.instances.len()))).collect();
                     let active = crate::scatter_tool::active_set(&self.state);
-                    let current = active.and_then(|a| sets.iter().find(|(id, _)| *id == a)).map(|(_, n)| n.clone()).unwrap_or_else(|| "new layer".into());
+                    let current = active.and_then(|a| sets.iter().find(|(id, _)| *id == a)).map(|(_, n)| n.clone()).unwrap_or_else(|| "none".into());
                     ui.label("Set");
                     egui::ComboBox::from_id_salt("scatter_set").selected_text(current).width(140.0).show_ui(ui, |ui| {
-                        if ui.selectable_label(active.is_none(), "new set on a new layer").clicked() {
-                            self.actions.push(Action::NewScatterSet);
-                        }
-
                         for (id, name) in &sets {
                             if ui.selectable_label(active == Some(*id), name).clicked() {
                                 self.actions.push(Action::ActivateScatter(*id));
                             }
                         }
-                    });
-                    let preset = if self.state.prefs.scatter.preset.is_empty() { "custom".to_string() } else { self.state.prefs.scatter.preset.clone() };
-                    ui.label("Preset");
-                    egui::ComboBox::from_id_salt("scatter_preset").selected_text(preset).width(90.0).show_ui(ui, |ui| {
-                        for p in gt_doc::scatter::PRESETS {
-                            if ui.selectable_label(self.state.prefs.scatter.preset == p, p).clicked() {
-                                self.actions.push(Action::ScatterPreset(p.to_string()));
-                            }
+
+                        ui.separator();
+                        if ui.selectable_label(false, "New empty set").clicked() {
+                            self.actions.push(Action::NewScatterSet);
                         }
                     });
+                    let erase = self.state.scatter_erase;
+                    if ui.selectable_label(!erase, "Paint").clicked() {
+                        self.state.scatter_erase = false;
+                    }
+
+                    if ui.selectable_label(erase, "Erase").clicked() {
+                        self.state.scatter_erase = true;
+                    }
+
                     let s = &mut self.state.prefs.scatter;
                     ui.add(egui::DragValue::new(&mut s.radius).range(8.0..=16384.0).prefix("radius "));
                     ui.add(egui::DragValue::new(&mut s.rules.density).range(0.01..=64.0).speed(0.05).prefix("density "));
                     ui.add(egui::DragValue::new(&mut s.rules.slope[1]).range(0.0..=90.0).prefix("max slope ").suffix("°"));
-                    ui.checkbox(&mut s.rules.only_targets, "Targets only");
+                    let mut follow = !s.rules.only_targets;
+                    if ui
+                        .checkbox(&mut follow, "Follow cursor")
+                        .on_hover_text("Paint on any surface or scattered prop under the brush instead of the set's targets")
+                        .changed()
+                    {
+                        s.rules.only_targets = !follow;
+                    }
+
+                    let picking = self.state.scatter_eyedropper;
+                    if icons::toggle(ui, icons::EYEDROPPER, 16.0, picking, "Pick target", "The next click in a view adds or removes a target, like Alt+click")
+                        .clicked()
+                    {
+                        self.state.scatter_eyedropper = !picking;
+                    }
+
                     ui.separator();
-                    if ui.small_button("Palette…").clicked() {
-                        self.actions.push(Action::ShowScatterPalette);
+                    if ui.small_button("Scatter panel").on_hover_text("Models, targets and brush of the active set").clicked() {
+                        self.actions.push(Action::ShowScatterPanel);
                     }
 
                     if ui.small_button("Fill").on_hover_text("Fill the set's target surfaces").clicked() {
@@ -1854,13 +1887,14 @@ impl TabViewer for Tabs<'_> {
             Tab::Outliner => panels::outliner(ui, self.state, self.panels, self.actions),
             Tab::Inspector => panels::inspector(ui, self.state, self.panels, self.actions),
             Tab::Materials => panels::material_browser(ui, self.state, self.panels, self.actions),
-            Tab::Models => panels::model_browser(ui, self.state, self.panels, self.actions),
+            Tab::Models => panels::model_browser(ui, self.state, self.panels, self.actions, Some(&mut *self.renderer)),
             Tab::Entities => panels::entity_browser(ui, self.state, self.panels, self.actions),
             Tab::History => panels::history(ui, self.state),
             Tab::Issues => panels::issues(ui, self.state, self.panels, self.actions),
             Tab::Logic => panels::logic_panel(ui, self.state, self.panels),
             Tab::Uv => panels::uv_editor(ui, self.state, self.panels, self.actions),
             Tab::Reference => panels::reference(ui, self.state, self.panels, self.actions),
+            Tab::Scatter => crate::scatter_panel::scatter_panel(ui, self.state, self.actions, Some(&mut *self.renderer)),
         }
     }
 
@@ -1960,7 +1994,6 @@ impl eframe::App for App {
         self.terrain_dialog.show(&ctx, &mut self.state);
         self.keymap.show(&ctx, &mut self.state);
         self.hotspot_editor.show(&ctx, &mut self.state, &mut self.actions);
-        self.scatter_palette.show(&ctx, &mut self.state, &mut self.actions);
         self.link_dialog.show(&ctx, &mut self.state);
         panels::dnd_preview(&ctx, &mut self.state);
 
@@ -1974,6 +2007,15 @@ impl eframe::App for App {
         }
 
         self.sync_active_scatter();
+        if self.state.tool != self.last_tool {
+            if self.state.tool == ToolKind::Scatter {
+                reveal_tab(&mut self.dock, Tab::Scatter, Tab::Inspector);
+            } else {
+                self.state.scatter_eyedropper = false;
+            }
+
+            self.last_tool = self.state.tool;
+        }
 
         if let Some(bounds) = self.state.focus_request.take() {
             for v in &mut self.viewports {

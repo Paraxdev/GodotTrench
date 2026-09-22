@@ -54,6 +54,8 @@ pub enum AlphaMode {
     Opaque,
     Blend,
     Scissor(f32),
+    /// Cut against screen space noise, like Godot's alpha hash.
+    Hash,
 }
 
 /// Everything needed to preview a material. Colors are linear.
@@ -63,12 +65,18 @@ pub struct MaterialDesc<'a> {
     pub normal: Option<&'a image::RgbaImage>,
     pub emission_texture: Option<&'a image::RgbaImage>,
     pub tint: [f32; 4],
+    /// Linear emission color, before `emission_energy`.
     pub emission: [f32; 3],
+    pub emission_energy: f32,
+    /// Godot's emission operator: false adds the emission texture to the color, true multiplies them.
+    pub emission_multiply: bool,
     pub alpha: AlphaMode,
     pub nearest: bool,
     pub unshaded: bool,
     pub double_sided: bool,
     pub normal_scale: f32,
+    /// World size in map units one repeat covers, when the material overrides the albedo's pixel size.
+    pub world_size: Option<[f32; 2]>,
 }
 
 impl<'a> MaterialDesc<'a> {
@@ -79,11 +87,14 @@ impl<'a> MaterialDesc<'a> {
             emission_texture: None,
             tint: [1.0; 4],
             emission: [0.0; 3],
+            emission_energy: 1.0,
+            emission_multiply: false,
             alpha: AlphaMode::Opaque,
             nearest,
             unshaded: false,
             double_sided: false,
             normal_scale: 1.0,
+            world_size: None,
         }
     }
 }
@@ -101,6 +112,34 @@ struct MaterialUniform {
     emission: [f32; 4],
     flags: [f32; 4],
     extra: [f32; 4],
+    glow: [f32; 4],
+}
+
+impl MaterialUniform {
+    fn new(desc: &MaterialDesc, has_normal: bool, has_emission: bool) -> Self {
+        let (alpha_mode, threshold) = match desc.alpha {
+            AlphaMode::Opaque => (0.0, 0.0),
+            AlphaMode::Blend => (1.0, 0.0),
+            AlphaMode::Scissor(t) => (2.0, t),
+            AlphaMode::Hash => (3.0, 0.5),
+        };
+        let flag = |b: bool| if b { 1.0 } else { 0.0 };
+        Self {
+            tint: desc.tint,
+            emission: [desc.emission[0], desc.emission[1], desc.emission[2], desc.emission_energy],
+            flags: [flag(has_normal), alpha_mode, threshold, flag(desc.unshaded)],
+            extra: [desc.normal_scale, 0.0, 0.0, 0.0],
+            glow: [flag(has_emission), flag(desc.emission_multiply), 0.0, 0.0],
+        }
+    }
+
+    /// Whether the shader ends up adding any light of its own, mirroring Godot's `(color op texture) * energy`.
+    #[cfg(test)]
+    fn glows(&self) -> bool {
+        let lit = self.emission[..3].iter().any(|c| *c > 0.0);
+        let textured = self.glow[0] > 0.5;
+        self.emission[3] > 0.0 && if self.glow[1] > 0.5 { lit && textured } else { lit || textured }
+    }
 }
 
 pub fn srgb_to_linear(c: f32) -> f32 {
@@ -255,7 +294,8 @@ pub struct Material {
     normal: Option<wgpu::TextureView>,
     uniform: MaterialUniform,
     nearest: bool,
-    pub size: [u32; 2],
+    /// Size in map units that one repeat of the texture covers, the albedo's pixel size unless overridden.
+    pub size: [f32; 2],
     pub flags: MaterialFlags,
 }
 
@@ -696,7 +736,7 @@ impl Renderer {
         self.materials.contains_key(name)
     }
 
-    pub fn material_size(&self, name: &str) -> Option<[u32; 2]> {
+    pub fn material_size(&self, name: &str) -> Option<[f32; 2]> {
         self.materials.get(name).map(|m| m.size)
     }
 
@@ -708,6 +748,10 @@ impl Renderer {
     pub fn clear_materials(&mut self) {
         self.materials.retain(|k, _| k == WHITE_MATERIAL || k == MISSING_MATERIAL);
         self.terrain_materials.clear();
+    }
+
+    pub fn clear_materials_with_prefix(&mut self, prefix: &str) {
+        self.materials.retain(|k, _| !k.starts_with(prefix));
     }
 
     pub fn set_material(&mut self, name: &str, image: &image::RgbaImage) {
@@ -732,18 +776,14 @@ impl Renderer {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
-        let mut level = image.clone();
-        for mip in 0..mip_count {
+        for (mip, level) in mip_chain(image, mip_count).iter().enumerate() {
             let (lw, lh) = level.dimensions();
             self.queue.write_texture(
-                wgpu::TexelCopyTextureInfo { texture: &texture, mip_level: mip, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+                wgpu::TexelCopyTextureInfo { texture: &texture, mip_level: mip as u32, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
                 level.as_raw(),
                 wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(4 * lw), rows_per_image: Some(lh) },
                 wgpu::Extent3d { width: lw, height: lh, depth_or_array_layers: 1 },
             );
-            if mip + 1 < mip_count {
-                level = image::imageops::resize(&level, (lw / 2).max(1), (lh / 2).max(1), image::imageops::FilterType::Triangle);
-            }
         }
 
         texture.create_view(&Default::default())
@@ -759,8 +799,16 @@ impl Renderer {
 
         let (Some(a), Some(b)) = (self.materials.get(base), self.materials.get(blend)) else { return base.to_string() };
         let mut uniform = a.uniform;
-        uniform.emission = [0.0; 4];
+        // The emission slot carries the second albedo, so only an untextured glow of the base survives the blend.
+        if uniform.glow[0] > 0.5 {
+            uniform.emission = [0.0; 4];
+        }
+
+        uniform.glow = [0.0; 4];
         uniform.extra[1] = 1.0;
+        // Face UVs follow the base's world size, the blend texture is rescaled to keep its own.
+        uniform.extra[2] = a.size[0] / b.size[0].max(1e-3);
+        uniform.extra[3] = a.size[1] / b.size[1].max(1e-3);
         let params = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("blend material params"),
             contents: bytemuck::bytes_of(&uniform),
@@ -797,17 +845,7 @@ impl Renderer {
         let view = self.upload_texture(name, desc.albedo, true);
         let normal = desc.normal.map(|n| self.upload_texture(name, n, false));
         let emission = desc.emission_texture.map(|e| self.upload_texture(name, e, true));
-        let (alpha_mode, threshold) = match desc.alpha {
-            AlphaMode::Opaque => (0.0, 0.0),
-            AlphaMode::Blend => (1.0, 0.0),
-            AlphaMode::Scissor(t) => (2.0, t),
-        };
-        let uniform = MaterialUniform {
-            tint: desc.tint,
-            emission: [desc.emission[0], desc.emission[1], desc.emission[2], if emission.is_some() { 1.0 } else { 0.0 }],
-            flags: [if normal.is_some() { 1.0 } else { 0.0 }, alpha_mode, threshold, if desc.unshaded { 1.0 } else { 0.0 }],
-            extra: [desc.normal_scale, 0.0, 0.0, 0.0],
-        };
+        let uniform = MaterialUniform::new(desc, normal.is_some(), emission.is_some());
         let params = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("material params"),
             contents: bytemuck::bytes_of(&uniform),
@@ -825,7 +863,10 @@ impl Renderer {
             ],
         });
         let flags = MaterialFlags { transparent: desc.alpha == AlphaMode::Blend || desc.tint[3] < 0.999, double_sided: desc.double_sided };
-        self.materials.insert(name.to_string(), Material { bind_group, view, normal, uniform, nearest: desc.nearest, size: [w, h], flags });
+        self.materials.insert(
+            name.to_string(),
+            Material { bind_group, view, normal, uniform, nearest: desc.nearest, size: desc.world_size.unwrap_or([w as f32, h as f32]), flags },
+        );
     }
 
     /// Key for a terrain draw with up to four layers `(material, world units per repeat)`. Creates the bind group once.
@@ -1214,6 +1255,129 @@ impl Renderer {
 
         self.queue.submit([encoder.finish()]);
     }
+
+    /// Renders `frame` into `target` under `lighting` instead of the lighting currently set for the main
+    /// scene, then restores it. For a one-off render (a model thumbnail) that must not leak into whatever
+    /// a viewport renders later in the same pass, since lighting is shared renderer-wide, not per-target.
+    pub fn render_isolated(&mut self, target: &ViewTarget, params: &FrameParams, frame: &Frame, lighting: &Lighting) {
+        let previous = self.lights;
+        self.set_lighting(lighting, None);
+        self.render(target, params, frame);
+        self.lights = previous;
+        self.queue.write_buffer(&self.lights_buffer, 0, bytemuck::bytes_of(&previous));
+    }
+}
+
+/// Mip levels for `image`, `count` of them starting with the image itself. Cutout textures (some texels under
+/// half alpha, some over) are downsampled alpha weighted, so the arbitrary colour of empty texels never
+/// bleeds into the leaves, get the leaf colour pushed into their empty texels (bilinear filtering at the cut
+/// samples those), and keep the top level's coverage at the 0.5 cut on every level, otherwise alpha tested
+/// foliage thins out and disappears with distance.
+pub fn mip_chain(image: &image::RgbaImage, count: u32) -> Vec<image::RgbaImage> {
+    let alphas = || image.pixels().map(|p| p.0[3]);
+    let cutout = alphas().any(|a| a < 128) && alphas().any(|a| a >= 128);
+    let mut out = vec![image.clone()];
+    if !cutout {
+        for _ in 1..count {
+            let prev = out.last().unwrap();
+            let (w, h) = prev.dimensions();
+            out.push(image::imageops::resize(prev, (w / 2).max(1), (h / 2).max(1), image::imageops::FilterType::Triangle));
+        }
+
+        return out;
+    }
+
+    // Premultiplied linear-in-bytes levels: [r*a, g*a, b*a, a] with a in 0..1.
+    let (w0, h0) = image.dimensions();
+    let mut levels: Vec<(u32, u32, Vec<[f32; 4]>)> = vec![(
+        w0,
+        h0,
+        image
+            .pixels()
+            .map(|p| {
+                let a = p.0[3] as f32 / 255.0;
+                [p.0[0] as f32 * a, p.0[1] as f32 * a, p.0[2] as f32 * a, a]
+            })
+            .collect(),
+    )];
+    // Pull: build the whole pyramid down to 1x1 so every level can borrow a colour from its parent.
+    while levels.last().is_some_and(|(w, h, _)| *w > 1 || *h > 1) {
+        let (w, h, px) = levels.last().unwrap();
+        let (nw, nh) = ((w / 2).max(1), (h / 2).max(1));
+        let mut next = vec![[0.0f32; 4]; (nw * nh) as usize];
+        for y in 0..nh {
+            for x in 0..nw {
+                let mut sum = [0.0f32; 4];
+                for (dx, dy) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                    let (sx, sy) = ((x * 2 + dx).min(w - 1), (y * 2 + dy).min(h - 1));
+                    let p = px[(sy * w + sx) as usize];
+                    for c in 0..4 {
+                        sum[c] += p[c] * 0.25;
+                    }
+                }
+
+                next[(y * nw + x) as usize] = sum;
+            }
+        }
+
+        levels.push((nw, nh, next));
+    }
+
+    // Push: straight colour per level, texels without enough alpha take their parent's colour.
+    let mut colours: Vec<Vec<[f32; 3]>> = vec![Vec::new(); levels.len()];
+    for k in (0..levels.len()).rev() {
+        let (w, h, px) = &levels[k];
+        let mut col = Vec::with_capacity(px.len());
+        for y in 0..*h {
+            for x in 0..*w {
+                let p = px[(y * w + x) as usize];
+                let own = [p[0] / p[3].max(1e-6), p[1] / p[3].max(1e-6), p[2] / p[3].max(1e-6)];
+                let parent = || {
+                    let (pw, ph, _) = &levels[k + 1];
+                    colours[k + 1][((y / 2).min(ph - 1) * pw + (x / 2).min(pw - 1)) as usize]
+                };
+                col.push(if p[3] >= 0.5 || k + 1 == levels.len() || (p[3] > 0.0 && k == 0) { own } else { parent() });
+            }
+        }
+
+        colours[k] = col;
+    }
+
+    let coverage = |alpha: &mut dyn Iterator<Item = f32>, n: usize| alpha.filter(|a| *a >= 0.5).count() as f32 / n.max(1) as f32;
+    let target = coverage(&mut levels[0].2.iter().map(|p| p[3]), levels[0].2.len());
+    for k in 0..(count as usize).min(levels.len()) {
+        let (w, h, px) = &levels[k];
+        // Scale this level's alpha so the share of texels passing the cut matches the top level.
+        let mut scale = 1.0f32;
+        if k > 0 {
+            let (mut lo, mut hi) = (0.0f32, 8.0f32);
+            for _ in 0..16 {
+                let mid = (lo + hi) / 2.0;
+                if coverage(&mut px.iter().map(|p| (p[3] * mid).min(1.0)), px.len()) < target {
+                    lo = mid;
+                } else {
+                    hi = mid;
+                }
+            }
+
+            let at = |s: f32| (coverage(&mut px.iter().map(|p| (p[3] * s).min(1.0)), px.len()) - target).abs();
+            scale = if at(lo) < at(hi) { lo } else { hi };
+        }
+
+        let img = image::RgbaImage::from_fn(*w, *h, |x, y| {
+            let i = (y * w + x) as usize;
+            let c = colours[k][i];
+            let a = if k == 0 { image.get_pixel(x, y).0[3] } else { ((px[i][3] * scale).min(1.0) * 255.0).round() as u8 };
+            image::Rgba([c[0].round().clamp(0.0, 255.0) as u8, c[1].round().clamp(0.0, 255.0) as u8, c[2].round().clamp(0.0, 255.0) as u8, a])
+        });
+        if k == 0 {
+            out[0] = img;
+        } else {
+            out.push(img);
+        }
+    }
+
+    out
 }
 
 #[cfg(test)]
@@ -1237,9 +1401,82 @@ mod tests {
     }
 
     #[test]
+    fn emission_packs_color_energy_operator_and_texture() {
+        use super::{MaterialDesc, MaterialUniform};
+        let img = image::RgbaImage::new(1, 1);
+        let mut desc = MaterialDesc::plain(&img, false);
+        assert!(!MaterialUniform::new(&desc, false, false).glows(), "plain materials do not glow");
+        assert!(MaterialUniform::new(&desc, false, true).glows(), "Godot adds the texture to the black default color");
+
+        desc.emission = [1.0, 0.5, 0.25];
+        desc.emission_energy = 3.0;
+        let u = MaterialUniform::new(&desc, true, false);
+        assert_eq!(u.emission, [1.0, 0.5, 0.25, 3.0]);
+        assert_eq!(u.glow, [0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(u.flags[0], 1.0);
+        assert!(u.glows());
+
+        desc.emission_multiply = true;
+        assert!(!MaterialUniform::new(&desc, false, false).glows(), "multiplying by Godot's black default texture is dark");
+        let u = MaterialUniform::new(&desc, false, true);
+        assert_eq!(u.glow, [1.0, 1.0, 0.0, 0.0]);
+        assert!(u.glows());
+
+        desc.emission_energy = 0.0;
+        assert!(!MaterialUniform::new(&desc, false, true).glows());
+    }
+
+    #[test]
     fn uniform_sizes_match_shaders() {
         assert_eq!(std::mem::size_of::<super::CameraUniform>(), 176);
-        assert_eq!(std::mem::size_of::<super::MaterialUniform>(), 64);
+        assert_eq!(std::mem::size_of::<super::MaterialUniform>(), 80);
         assert_eq!(std::mem::size_of::<super::LightsUniform>(), 28 * 4 + 64 + super::MAX_LIGHTS * 48);
+    }
+
+    #[test]
+    fn cutout_mips_never_pick_up_the_colour_of_empty_texels() {
+        // Left half opaque green leaf, right half empty texels that carry white, like a scan on white paper.
+        let img = image::RgbaImage::from_fn(64, 64, |x, _| if x < 32 { image::Rgba([40, 120, 30, 255]) } else { image::Rgba([255, 255, 255, 0]) });
+        let mips = super::mip_chain(&img, 7);
+        assert_eq!(mips.len(), 7);
+        assert_eq!(mips[0].get_pixel(10, 10).0, [40, 120, 30, 255], "opaque texels keep their colour");
+        assert_eq!(mips[0].get_pixel(50, 10).0[3], 0, "alpha of the top level is untouched");
+        for (k, level) in mips.iter().enumerate() {
+            for p in level.pixels() {
+                assert!(p.0[0] < 60 && p.0[2] < 60, "level {k} bled white into {:?}", p.0);
+            }
+        }
+    }
+
+    #[test]
+    fn cutout_mips_keep_their_coverage() {
+        // Small leaves, discs of varied size scattered over about a third of the card. Plain averaging drops them
+        // under the cut a few levels down and the card goes bare.
+        let mut seed = 12345u32;
+        let mut rand = || {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345);
+            (seed >> 8) as f32 / (1u32 << 24) as f32
+        };
+        let discs: Vec<(f32, f32, f32)> = (0..150).map(|_| (rand() * 128.0, rand() * 128.0, 1.5 + rand() * 2.5)).collect();
+        let img = image::RgbaImage::from_fn(128, 128, |x, y| {
+            let on = discs.iter().any(|(cx, cy, r)| (x as f32 - cx).powi(2) + (y as f32 - cy).powi(2) < r * r);
+            image::Rgba([30, 90, 20, if on { 255 } else { 0 }])
+        });
+        let mips = super::mip_chain(&img, 8);
+        let cover = |m: &image::RgbaImage| m.pixels().filter(|p| p.0[3] >= 128).count() as f32 / (m.width() * m.height()) as f32;
+        let top = cover(&mips[0]);
+        let plain = image::imageops::resize(&img, 16, 16, image::imageops::FilterType::Triangle);
+        assert!(cover(&plain) < top * 0.5, "the pattern really thins out without coverage keeping");
+        for (k, mip) in mips.iter().enumerate().take(5).skip(1) {
+            assert!((cover(mip) - top).abs() < 0.15, "level {k} coverage {} vs {top}", cover(mip));
+        }
+    }
+
+    #[test]
+    fn opaque_textures_mip_as_before() {
+        let img = image::RgbaImage::from_fn(16, 8, |x, y| image::Rgba([(x * 16) as u8, (y * 32) as u8, 7, 255]));
+        let mips = super::mip_chain(&img, 5);
+        assert_eq!(mips[0], img);
+        assert_eq!(mips.iter().map(|m| m.dimensions()).collect::<Vec<_>>(), vec![(16, 8), (8, 4), (4, 2), (2, 1), (1, 1)]);
     }
 }

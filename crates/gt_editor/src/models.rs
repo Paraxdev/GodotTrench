@@ -37,6 +37,8 @@ pub struct ModelCache {
     entries: HashMap<PathBuf, (Option<SystemTime>, Option<Arc<Model>>)>,
     /// Bumped whenever a model is (re)loaded, so the scene rebuilds.
     pub generation: u64,
+    /// Bumped only when an already loaded model is dropped or replaced, so its uploaded textures go stale.
+    pub reloads: u64,
 }
 
 pub fn is_model_path(path: &str) -> bool {
@@ -51,10 +53,10 @@ pub const MODEL_EXTS: [&str; 7] = ["glb", "gltf", "obj", "bbmodel", "stl", "md2"
 impl ModelCache {
     pub fn get(&mut self, path: &Path, units_per_meter: f64) -> Option<Arc<Model>> {
         let mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
-        if let Some((cached_time, model)) = self.entries.get(path)
-            && *cached_time == mtime
-        {
-            return model.clone();
+        match self.entries.get(path) {
+            Some((cached_time, model)) if *cached_time == mtime => return model.clone(),
+            Some(_) => self.reloads += 1,
+            None => {}
         }
 
         let model = load(path, units_per_meter).map(Arc::new);
@@ -71,6 +73,18 @@ impl ModelCache {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
+        self.reloads += 1;
+    }
+
+    /// The source file's mtime as of the last load, for callers that key their own cache on it (the
+    /// renderer's uploaded textures, thumbnails) without re-reading the model themselves.
+    pub fn mtime(&self, path: &Path) -> Option<SystemTime> {
+        self.entries.get(path).and_then(|(m, _)| *m)
+    }
+
+    /// The model loaded earlier for `path`, without touching the file system.
+    pub fn peek(&self, path: &Path) -> Option<Arc<Model>> {
+        self.entries.get(path).and_then(|(_, m)| m.clone())
     }
 }
 
@@ -470,6 +484,38 @@ pub fn model_to_mesh(model: &Model, offset: DVec3, scale: f64, material_of: impl
     mesh
 }
 
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+pub struct PackCredit {
+    pub asset: String,
+    pub author: Option<String>,
+    pub license: Option<String>,
+    pub url: Option<String>,
+}
+
+/// A model pack's provenance, read from a `pack.json` in a model folder, or synthesized from the folder
+/// name when none exists. Every `ModelEntry` carries one, shared with an `Arc` so a whole pack's models
+/// clone cheaply.
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+pub struct PackInfo {
+    pub name: String,
+    /// A short display name for tight spaces like a thumbnail slug, e.g. "Poly Haven" for a pack whose
+    /// full `name` is longer, or a name sharing a prefix with every other pack ("GodotTrench low poly").
+    /// Falls back to an abbreviation of `name` when absent.
+    pub short: Option<String>,
+    pub author: Option<String>,
+    pub license: Option<String>,
+    pub url: Option<String>,
+    #[serde(default)]
+    pub credits: Vec<PackCredit>,
+}
+
+impl PackInfo {
+    /// Per-model author/url override, matched by the model file's stem (its name without extension).
+    fn credit_for(&self, stem: &str) -> Option<&PackCredit> {
+        self.credits.iter().find(|c| c.asset == stem)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ModelEntry {
     /// Path relative to the models root without extension, shown in the panel.
@@ -477,6 +523,9 @@ pub struct ModelEntry {
     pub folder: String,
     pub path: PathBuf,
     pub ext: String,
+    pub source: Arc<PackInfo>,
+    pub credit: Option<PackCredit>,
+    pub mtime: Option<SystemTime>,
 }
 
 /// The placeable models under `res://models`, listed in the Models panel.
@@ -495,15 +544,16 @@ impl ModelLibrary {
 
     pub fn rescan(&mut self, game: &gt_formats::GameConfig) {
         self.entries.clear();
+        let mut packs = HashMap::new();
         self.root = game.resolve_res("res://models").filter(|p| p.is_dir());
         if let Some(root) = self.root.clone() {
-            scan_models(&root, &root, "", &mut self.entries);
+            scan_models(&root, &root, "", "Project", &mut packs, &mut self.entries);
         }
 
         // The nature models the scatter presets install live outside res://models. They are listed under a
         // "nature" folder too, so trees and rocks can be placed by hand as props, not only scattered.
         if let Some(nature) = game.resolve_res(gt_doc::scatter::NATURE_DIR).filter(|p| p.is_dir()) {
-            scan_models(&nature, &nature, "nature", &mut self.entries);
+            scan_models(&nature, &nature, "nature", "Nature", &mut packs, &mut self.entries);
         }
 
         self.entries.sort_by(|a, b| a.name.cmp(&b.name));
@@ -516,16 +566,25 @@ impl ModelLibrary {
         f.dedup();
         f
     }
+
+    pub fn sources(&self) -> Vec<String> {
+        let mut s: Vec<String> = self.entries.iter().map(|e| e.source.name.clone()).collect();
+        s.sort();
+        s.dedup();
+        s
+    }
 }
 
 /// Collects the models under `dir`. `prefix` is put in front of their names and folders, for roots that are
-/// not the models root itself.
-fn scan_models(root: &Path, dir: &Path, prefix: &str, out: &mut Vec<ModelEntry>) {
+/// not the models root itself. `root_fallback` names the pack a loose file at the scan root falls back to
+/// when nothing provides a `pack.json`.
+fn scan_models(root: &Path, dir: &Path, prefix: &str, root_fallback: &str, packs: &mut HashMap<PathBuf, Option<Arc<PackInfo>>>, out: &mut Vec<ModelEntry>) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let source = resolve_pack(root, dir, packs).unwrap_or_else(|| Arc::new(fallback_pack(root, dir, root_fallback)));
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            scan_models(root, &path, prefix, out);
+            scan_models(root, &path, prefix, root_fallback, packs, out);
             continue;
         }
 
@@ -538,8 +597,35 @@ fn scan_models(root: &Path, dir: &Path, prefix: &str, out: &mut Vec<ModelEntry>)
         let join = |part: String| if prefix.is_empty() || part.is_empty() { format!("{prefix}{part}") } else { format!("{prefix}/{part}") };
         let name = join(rel.with_extension("").to_string_lossy().replace('\\', "/"));
         let folder = join(rel.parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default());
-        out.push(ModelEntry { name, folder, path: path.clone(), ext });
+        let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        let credit = source.credit_for(&stem).cloned();
+        let mtime = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+        out.push(ModelEntry { name, folder, path: path.clone(), ext, source: source.clone(), credit, mtime });
     }
+}
+
+/// Finds the nearest `pack.json` from `dir` up to (and including) `root`, memoized per directory since a
+/// folder with many models would otherwise re-read and re-parse the same file for each of them.
+fn resolve_pack(root: &Path, dir: &Path, cache: &mut HashMap<PathBuf, Option<Arc<PackInfo>>>) -> Option<Arc<PackInfo>> {
+    if let Some(hit) = cache.get(dir) {
+        return hit.clone();
+    }
+
+    let here = std::fs::read_to_string(dir.join("pack.json")).ok().and_then(|s| serde_json::from_str::<PackInfo>(&s).ok()).map(Arc::new);
+    let result = here.or_else(|| if dir == root { None } else { dir.parent().and_then(|p| resolve_pack(root, p, cache)) });
+    cache.insert(dir.to_path_buf(), result.clone());
+    result
+}
+
+/// A synthesized pack for a folder with no `pack.json` anywhere from it up to the scan root: the top
+/// folder under the root, or `root_fallback` for files loose in the root itself.
+fn fallback_pack(root: &Path, dir: &Path, root_fallback: &str) -> PackInfo {
+    let rel = dir.strip_prefix(root).ok().filter(|p| !p.as_os_str().is_empty());
+    let name = match rel.and_then(|p| p.components().next()) {
+        Some(c) => c.as_os_str().to_string_lossy().into_owned(),
+        None => root_fallback.to_string(),
+    };
+    PackInfo { name, ..Default::default() }
 }
 
 #[cfg(test)]
@@ -554,11 +640,24 @@ mod tests {
     fn shipped_nature_gltf_assets_load() {
         // The scatter presets reference these, so a broken export must fail here, not silently scatter nothing.
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../godot/godottrench/nature");
-        for rel in ["trees/pine.glb", "trees/oak.glb", "trees/birch.glb", "trees/beech.glb", "trees/willow.glb"] {
-            let path = root.join(rel);
-            let model = load(&path, 16.0).unwrap_or_else(|e| panic!("{rel}: {e}"));
-            assert!(model.parts.iter().any(|p| !p.indices.is_empty()), "{rel} has no geometry");
+        let mut count = 0;
+        for dir in ["trees", "trees_detailed", "bushes"] {
+            for entry in std::fs::read_dir(root.join(dir)).unwrap_or_else(|e| panic!("{dir}: {e}")) {
+                let path = entry.unwrap().path();
+                if path.extension().is_none_or(|e| e != "glb") {
+                    continue;
+                }
+
+                let rel = path.display().to_string();
+                let model = load(&path, 16.0).unwrap_or_else(|e| panic!("{rel}: {e}"));
+                assert!(model.parts.iter().any(|p| !p.indices.is_empty()), "{rel} has no geometry");
+                // The textures live in the shared nature/textures folder, referenced by relative URI.
+                assert!(model.parts.iter().all(|p| p.material.contains("#img")), "{rel} lost a texture");
+                count += 1;
+            }
         }
+
+        assert!(count >= 30, "only {count} nature glTF models");
     }
 
     #[test]
@@ -575,6 +674,94 @@ mod tests {
         assert_eq!(tree.folder, "nature/trees", "subfolders keep their place under the prefix");
         assert!(tree.path.is_file(), "the entry points at the real file so it can be placed");
         assert!(lib.folders().contains(&"nature/trees".to_string()));
+    }
+
+    /// Builds `root/pack.json` plus a `packA` subfolder with its own `pack.json`, a nested `sub` folder
+    /// under it with no `pack.json` of its own, and a loose file at the root.
+    fn pack_fixture(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("gt_models_{name}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("packA/sub")).unwrap();
+        std::fs::write(root.join("pack.json"), r#"{"name": "Root Pack", "license": "CC0"}"#).unwrap();
+        std::fs::write(
+            root.join("packA/pack.json"),
+            r#"{"name": "Pack A", "author": "Alice", "license": "CC-BY", "url": "https://a.example",
+                "credits": [{"asset": "widget", "author": "Bob", "url": "https://a.example/widget"}]}"#,
+        )
+        .unwrap();
+        std::fs::write(root.join("loose.glb"), "").unwrap();
+        std::fs::write(root.join("packA/widget.glb"), "").unwrap();
+        std::fs::write(root.join("packA/sub/gadget.glb"), "").unwrap();
+        root
+    }
+
+    #[test]
+    fn nearest_ancestor_pack_json_wins() {
+        let root = pack_fixture("nearest");
+        let mut packs = HashMap::new();
+        let mut out = Vec::new();
+        scan_models(&root, &root, "", "Project", &mut packs, &mut out);
+
+        let loose = out.iter().find(|e| e.name == "loose").unwrap();
+        assert_eq!(loose.source.name, "Root Pack", "the root's own pack.json applies to loose files");
+
+        let widget = out.iter().find(|e| e.name == "packA/widget").unwrap();
+        assert_eq!(widget.source.name, "Pack A", "packA's pack.json overrides the root's");
+        assert_eq!(widget.source.author.as_deref(), Some("Alice"));
+
+        let gadget = out.iter().find(|e| e.name == "packA/sub/gadget").unwrap();
+        assert_eq!(gadget.source.name, "Pack A", "sub has no pack.json of its own, so packA's nearer one wins over root's");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn credits_match_by_asset_stem() {
+        let root = pack_fixture("credits");
+        let mut packs = HashMap::new();
+        let mut out = Vec::new();
+        scan_models(&root, &root, "", "Project", &mut packs, &mut out);
+
+        let widget = out.iter().find(|e| e.name == "packA/widget").unwrap();
+        let credit = widget.credit.as_ref().unwrap_or_else(|| panic!("widget's asset stem matches the pack's credits entry"));
+        assert_eq!(credit.author.as_deref(), Some("Bob"));
+        assert_eq!(credit.url.as_deref(), Some("https://a.example/widget"));
+
+        let gadget = out.iter().find(|e| e.name == "packA/sub/gadget").unwrap();
+        assert!(gadget.credit.is_none(), "gadget has no matching credits entry");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn no_pack_json_falls_back_to_folder_name_or_root_fallback() {
+        let root = std::env::temp_dir().join(format!("gt_models_fallback_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("crates")).unwrap();
+        std::fs::write(root.join("loose.glb"), "").unwrap();
+        std::fs::write(root.join("crates/wood.glb"), "").unwrap();
+
+        let mut packs = HashMap::new();
+        let mut out = Vec::new();
+        scan_models(&root, &root, "", "Project", &mut packs, &mut out);
+
+        let loose = out.iter().find(|e| e.name == "loose").unwrap();
+        assert_eq!(loose.source.name, "Project", "loose files at the scan root fall back to root_fallback");
+        let wood = out.iter().find(|e| e.name == "crates/wood").unwrap();
+        assert_eq!(wood.source.name, "crates", "a subfolder with no pack.json falls back to its own name");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn library_sources_are_sorted_and_deduped() {
+        let root = pack_fixture("sources");
+        let mut lib = ModelLibrary { root: Some(root.clone()), ..Default::default() };
+        let mut packs = HashMap::new();
+        scan_models(&root, &root, "", "Project", &mut packs, &mut lib.entries);
+
+        assert_eq!(lib.sources(), vec!["Pack A".to_string(), "Root Pack".to_string()]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

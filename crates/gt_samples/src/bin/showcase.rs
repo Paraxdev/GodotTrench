@@ -1,4 +1,5 @@
-//! Regenerates the showcase textures and Blockbench models in the Godot demo project. The maps come from examples/mcp.
+//! Regenerates the Blockbench models in the Godot demo project. The maps come from examples/mcp, the textures from
+//! tools/fetch_demo_textures.py.
 //! cargo run -p gt_samples --bin showcase --release
 
 fn main() {

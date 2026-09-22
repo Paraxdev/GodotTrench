@@ -5,6 +5,7 @@ use gt_core::{DVec2, DVec3, NodeId};
 use gt_doc::{IoConnection, NodeKind};
 use gt_formats::{EntityDef, PropertyType};
 use gt_geom::FaceUv;
+use gt_render::Renderer;
 
 use crate::commands::Action;
 use crate::icons;
@@ -28,6 +29,9 @@ pub struct PanelState {
     material_favorites_only: bool,
     model_filter: String,
     model_folder: Option<String>,
+    model_source_filter: Option<String>,
+    model_sort: ModelSort,
+    model_show_slugs: bool,
     thumb_size: f32,
     entity_filter: String,
     pub entity_selection: Vec<String>,
@@ -59,6 +63,9 @@ impl Default for PanelState {
             material_favorites_only: false,
             model_filter: String::new(),
             model_folder: None,
+            model_source_filter: None,
+            model_sort: ModelSort::Folder,
+            model_show_slugs: true,
             thumb_size: 72.0,
             entity_filter: String::new(),
             entity_selection: Vec::new(),
@@ -500,8 +507,9 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
     let Some(set) = state.doc.map.scatter(id).cloned() else { return };
     ui.heading(format!("Scatter set '{}'", set.name));
     let active = state.active_scatter == Some(id);
+    let enabled = set.items.iter().filter(|i| i.enabled).count();
     ui.label(format!(
-        "{} instances, {} palette entries, {} target surfaces{}",
+        "{} instances of {} models ({enabled} painted), {} targets{}",
         set.instances.len(),
         set.items.len(),
         set.targets.len(),
@@ -580,50 +588,6 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
         });
         ui.end_row();
     });
-    ui.separator();
-    ui.label(RichText::new("Palette").strong());
-    let counts = set.counts();
-    let mut remove = None;
-    let current_material = state.current_material.clone();
-    egui::Grid::new("scatter_items").num_columns(6).striped(true).show(ui, |ui| {
-        for h in ["model", "count", "weight", "spread", "material", ""] {
-            ui.label(h);
-        }
-
-        ui.end_row();
-        for (k, item) in edited.items.iter_mut().enumerate() {
-            ui.label(item.label()).on_hover_text(&item.source);
-            ui.label(counts.get(k).copied().unwrap_or(0).to_string());
-            changed |= ui.add(egui::DragValue::new(&mut item.weight).range(0.0..=100.0).speed(0.05)).changed();
-            changed |= ui.add(egui::DragValue::new(&mut item.spacing).range(0.0..=4096.0)).changed();
-            ui.horizontal(|ui| {
-                let mut material = item.material.clone().unwrap_or_default();
-                if ui
-                    .add(egui::TextEdit::singleline(&mut material).hint_text("set's").desired_width(90.0))
-                    .on_hover_text("Material for this entry only, empty falls back to the set's material")
-                    .changed()
-                {
-                    item.material = (!material.trim().is_empty()).then(|| material.trim().to_string());
-                    changed = true;
-                }
-
-                if ui.small_button("←").on_hover_text(format!("Use {current_material}")).clicked() {
-                    item.material = Some(current_material.clone());
-                    changed = true;
-                }
-            });
-            if ui.small_button("×").on_hover_text("Remove the entry and its instances").clicked() {
-                remove = Some(k);
-            }
-
-            ui.end_row();
-        }
-    });
-    if let Some(k) = remove {
-        edited.remove_item(k);
-        changed = true;
-    }
-
     if changed {
         state.doc.edit_coalesced("Edit Scatter Set", |m, _| {
             if let Some(slot) = m.scatter_mut(id) {
@@ -633,12 +597,12 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
     }
 
     ui.horizontal_wrapped(|ui| {
-        for (label, action) in [
-            ("Paint Into This Set", Action::ActivateScatter(id)),
-            ("Fill Targets", Action::ScatterFill),
-            ("To Entities", Action::ScatterToEntities),
-            ("Palette…", Action::ShowScatterPalette),
-        ] {
+        if ui.button("Edit in Scatter Panel").on_hover_text("Models, targets and brush of this set, ready to paint").clicked() {
+            actions.push(Action::ActivateScatter(id));
+            actions.push(Action::ShowScatterPanel);
+        }
+
+        for (label, action) in [("Fill Targets", Action::ScatterFill), ("To Entities", Action::ScatterToEntities)] {
             if ui.small_button(label).clicked() {
                 if matches!(action, Action::ScatterFill) {
                     actions.push(Action::ActivateScatter(id));
@@ -657,7 +621,8 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
         }
     });
     if !set.targets.is_empty() {
-        ui.label(RichText::new(format!("Targets: {}", set.targets.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", "))).weak());
+        let names: Vec<String> = set.targets.iter().map(|t| crate::scatter_tool::target_label(state, *t)).collect();
+        ui.label(RichText::new(format!("Targets: {}", names.join(", "))).weak());
     }
 }
 
@@ -746,7 +711,16 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
             }
         }
     });
-    ui.label(RichText::new("Drop a material from the browser on the terrain to set the layer chosen in the sculpt toolbar.").weak());
+    crate::dialogs::auto_paint_base_ui(ui, &mut state.auto_paint_base);
+    let hint = if state.tool == crate::tools::ToolKind::Blend {
+        format!("Drop a material from the browser on the terrain to put it in layer {}, the layer the Blend tool paints.", state.blend.layer)
+    } else {
+        format!(
+            "Drop a material from the browser on the terrain to put it in layer {}, the layer the Sculpt tool's PaintLayer mode paints. With the Blend tool active it goes to the Blend layer.",
+            state.sculpt.layer
+        )
+    };
+    ui.label(RichText::new(hint).weak());
 }
 
 fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>) {
@@ -1305,9 +1279,9 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
             actions.push(Action::ApplyMaterial(material.clone()));
         }
     });
-    if let Some(size) = state.materials.size(&info.material) {
+    if let Some(size) = state.materials.size_label(&info.material) {
         let details = state.materials.info(&info.material).map(|m| material_summary(&m)).unwrap_or_default();
-        ui.label(RichText::new(format!("{} x {} px{details}", size[0], size[1])).weak());
+        ui.label(RichText::new(format!("{size}{details}")).weak());
     }
 
     section(ui, "Alignment", true, |ui| {
@@ -1434,8 +1408,8 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
         if is_mesh {
             ui.horizontal_wrapped(|ui| {
                 ui.label("Mesh UVs");
-                for k in crate::texture_ops::MeshUvKind::ALL {
-                    if ui.small_button(k.label()).clicked() {
+                for k in crate::texture_ops::MeshUvKind::COMMON {
+                    if ui.small_button(k.label()).on_hover_text(k.hint()).clicked() {
                         actions.push(Action::MeshUv(k));
                     }
                 }
@@ -1499,6 +1473,7 @@ pub fn material_summary(m: &gt_formats::godot_material::GodotMaterial) -> String
     match m.transparency {
         Transparency::Alpha => parts.push("transparent".to_string()),
         Transparency::Scissor(t) => parts.push(format!("alpha scissor {t}")),
+        Transparency::Hash => parts.push("alpha hash".into()),
         Transparency::Opaque => {}
     }
 
@@ -1601,7 +1576,8 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
     let cell = if label { Vec2::new(size + 8.0, size + 22.0) } else { Vec2::splat(size + 4.0) };
     let (rect, resp) = ui.allocate_exact_size(cell, Sense::click_and_drag());
     let selected = name == state.current_material;
-    let (has_normal, missing_albedo, is_pbr) = state.materials.find(name).map(|e| (e.has_normal, e.missing_albedo, e.is_pbr)).unwrap_or((false, false, false));
+    let (has_normal, missing_albedo, is_pbr, is_emissive) =
+        state.materials.find(name).map(|e| (e.has_normal, e.missing_albedo, e.is_pbr, e.is_emissive)).unwrap_or((false, false, false, false));
     if selected {
         ui.painter().rect_filled(rect, 3.0, theme::selected_fill());
     } else if resp.hovered() {
@@ -1633,6 +1609,10 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
         } else if has_normal {
             badge(ui.painter(), corner, "normal", theme::INFO);
         }
+
+        if is_emissive {
+            badge(ui.painter(), img_rect.left_bottom() + Vec2::new(2.0, -15.0), "glow", theme::YELLOW);
+        }
     }
 
     if label {
@@ -1645,7 +1625,7 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
 
 fn material_interactions(resp: egui::Response, state: &mut EditorState, name: &str, actions: &mut Vec<Action>) {
     let tooltip = {
-        let size = state.materials.size(name).map(|s| format!("\n{} x {} px", s[0], s[1])).unwrap_or_default();
+        let size = state.materials.size_label(name).map(|s| format!("\n{s}")).unwrap_or_default();
         let info = state.materials.info(name).map(|m| material_summary(&m).trim_start_matches(", ").to_string()).filter(|s| !s.is_empty());
         let note = state
             .materials
@@ -1662,7 +1642,12 @@ fn material_interactions(resp: egui::Response, state: &mut EditorState, name: &s
                 }
             })
             .unwrap_or("");
-        format!("{name}{size}{}{note}", info.map(|i| format!("\n{i}")).unwrap_or_default())
+        let glow = if state.materials.find(name).is_some_and(|e| e.is_emissive && e.material_file.is_none()) {
+            "\nemissive: its _emission map glows in Godot and in the lit view"
+        } else {
+            ""
+        };
+        format!("{name}{size}{}{note}{glow}", info.map(|i| format!("\n{i}")).unwrap_or_default())
     };
     let resp = resp.on_hover_text(tooltip);
     if resp.clicked() {
@@ -1787,7 +1772,7 @@ pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
 // -------------------------------------------------------------------- models
 
 /// A tint per model format so the cards read apart at a glance.
-fn model_ext_color(ext: &str) -> Color32 {
+pub(crate) fn model_ext_color(ext: &str) -> Color32 {
     match ext {
         "glb" | "gltf" => theme::TEAL,
         "obj" => theme::CYAN,
@@ -1799,7 +1784,53 @@ fn model_ext_color(ext: &str) -> Color32 {
     }
 }
 
-fn model_cell(ui: &mut Ui, selected: bool, entry: &crate::models::ModelEntry, size: f32) -> egui::Response {
+/// The CVD-safe accent palette (see theme.rs), picked stably per pack name so the same pack always
+/// gets the same slug color without a color table to maintain.
+const PACK_ACCENTS: [Color32; 8] = [theme::MAGENTA, theme::GREEN, theme::YELLOW, theme::BLUE, theme::CYAN, theme::PINK, theme::RED, theme::TEAL];
+
+pub(crate) fn pack_color(name: &str) -> Color32 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in name.bytes() {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+
+    PACK_ACCENTS[(hash % PACK_ACCENTS.len() as u64) as usize]
+}
+
+pub(crate) fn truncate_slug(s: &str, max_chars: usize) -> std::borrow::Cow<'_, str> {
+    if s.chars().count() <= max_chars {
+        std::borrow::Cow::Borrowed(s)
+    } else {
+        std::borrow::Cow::Owned(format!("{}…", s.chars().take(max_chars.saturating_sub(1)).collect::<String>()))
+    }
+}
+
+/// Fits a pack label to `max_width` by measuring it with the panel's own font rather than guessing a
+/// character count: the label as given, then with a leading shared word dropped (packs sharing a
+/// prefix like "GodotTrench low poly" otherwise all say the same thing on every card), then
+/// character-truncated with an ellipsis.
+fn fit_slug(painter: &egui::Painter, text: &str, max_width: f32) -> String {
+    let font = egui::FontId::proportional(9.0);
+    let width = |s: &str| painter.layout_no_wrap(s.to_string(), font.clone(), Color32::WHITE).size().x;
+    if width(text) <= max_width {
+        return text.to_string();
+    }
+
+    let candidate = text.split_once(' ').map_or(text, |(_, rest)| rest);
+    if width(candidate) <= max_width {
+        return candidate.to_string();
+    }
+
+    let mut s = candidate.to_string();
+    while !s.is_empty() && width(&format!("{s}…")) > max_width {
+        s.pop();
+    }
+
+    if s.is_empty() { "…".to_string() } else { format!("{s}…") }
+}
+
+fn model_cell(ui: &mut Ui, selected: bool, entry: &crate::models::ModelEntry, size: f32, show_slug: bool, thumb: Option<egui::TextureId>) -> egui::Response {
     let cell = Vec2::new(size + 8.0, size + 22.0);
     let (rect, resp) = ui.allocate_exact_size(cell, Sense::click_and_drag());
     if selected {
@@ -1810,15 +1841,168 @@ fn model_cell(ui: &mut Ui, selected: bool, entry: &crate::models::ModelEntry, si
 
     let img_rect = egui::Rect::from_min_size(rect.min + Vec2::splat(4.0), Vec2::splat(size));
     ui.painter().rect_filled(img_rect, 2.0, theme::GRAY_1);
-    let icon = icons::MESH.image((size * 0.55).min(48.0)).tint(model_ext_color(&entry.ext));
-    ui.put(img_rect, icon);
+    match thumb {
+        Some(id) => {
+            ui.painter().image(id, img_rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
+        }
+        None => {
+            ui.put(img_rect, icons::MESH.image((size * 0.55).min(48.0)).tint(model_ext_color(&entry.ext)));
+        }
+    }
+
     badge(ui.painter(), img_rect.left_top() + Vec2::new(2.0, 2.0), &entry.ext, model_ext_color(&entry.ext));
+    if show_slug {
+        let text = entry.source.short.as_deref().unwrap_or(entry.source.name.as_str());
+        let fitted = fit_slug(ui.painter(), text, (size - 10.0).max(10.0));
+        let slug_pos = egui::pos2(img_rect.min.x + 2.0, img_rect.max.y - 15.0);
+        badge(ui.painter(), slug_pos, &fitted, pack_color(&entry.source.name));
+    }
+
     let short = entry.name.rsplit('/').next().unwrap_or(&entry.name);
     ui.painter().text(egui::pos2(rect.center().x, rect.max.y - 9.0), egui::Align2::CENTER_CENTER, short, egui::FontId::proportional(11.0), theme::GRAY_6);
     resp
 }
 
-pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
+fn model_hover_text(entry: &crate::models::ModelEntry) -> String {
+    let mut text = format!("{}\n{}", entry.name, entry.path.display());
+    let src = &entry.source;
+    text.push_str(&format!("\n\nPack: {}", src.name));
+    if let Some(author) = &src.author {
+        text.push_str(&format!("\nAuthor: {author}"));
+    }
+
+    if let Some(license) = &src.license {
+        text.push_str(&format!("\nLicense: {license}"));
+    }
+
+    if let Some(url) = &src.url {
+        text.push_str(&format!("\n{url}"));
+    }
+
+    if let Some(credit) = &entry.credit {
+        text.push_str("\n\nModel credit:");
+        if let Some(author) = &credit.author {
+            text.push_str(&format!(" {author}"));
+        }
+
+        if let Some(url) = &credit.url {
+            text.push_str(&format!(" ({url})"));
+        }
+    }
+
+    text.push_str("\n\nDrag into a view to place it as an editable mesh");
+    text
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+enum ModelSort {
+    Name,
+    Source,
+    #[default]
+    Folder,
+    Recent,
+}
+
+impl ModelSort {
+    const ALL: [ModelSort; 4] = [ModelSort::Name, ModelSort::Source, ModelSort::Folder, ModelSort::Recent];
+
+    fn label(self) -> &'static str {
+        match self {
+            ModelSort::Name => "Name",
+            ModelSort::Source => "Source",
+            ModelSort::Folder => "Folder",
+            ModelSort::Recent => "Recent",
+        }
+    }
+}
+
+fn sort_entries(entries: &mut [crate::models::ModelEntry], sort: ModelSort) {
+    match sort {
+        ModelSort::Name => entries.sort_by(|a, b| a.name.cmp(&b.name)),
+        ModelSort::Folder => entries.sort_by(|a, b| (a.folder.as_str(), a.name.as_str()).cmp(&(b.folder.as_str(), b.name.as_str()))),
+        ModelSort::Source => entries.sort_by(|a, b| (a.source.name.as_str(), a.name.as_str()).cmp(&(b.source.name.as_str(), b.name.as_str()))),
+        ModelSort::Recent => entries.sort_by_key(|e| std::cmp::Reverse(e.mtime)),
+    }
+}
+
+/// A row of the virtualised model grid: either a grid's worth of cells, or, in a grouped view, a header
+/// naming the group. Headers are shorter than a row of thumbnails, so the grid lays itself out with
+/// `show_viewport` and manually computed row offsets rather than egui's fixed-row-height `show_rows`.
+enum ModelRow {
+    /// `compact` headers (the folder view) are just the path, no dot, license or count: a folder is its
+    /// own explanation, unlike a pack, which needs the extra context to mean anything.
+    Header {
+        name: String,
+        license: Option<String>,
+        count: usize,
+        compact: bool,
+    },
+    Cells(std::ops::Range<usize>),
+}
+
+/// A header only needs one line of text, unlike a cell row which is as tall as the current thumbnail size.
+const MODEL_HEADER_H: f32 = 22.0;
+
+fn model_row_height(row: &ModelRow, cell_h: f32) -> f32 {
+    match row {
+        ModelRow::Header { .. } => MODEL_HEADER_H,
+        ModelRow::Cells(_) => cell_h,
+    }
+}
+
+/// Splits sorted `entries` into grid rows, grouping by pack or folder with a header row per group when the
+/// sort calls for it. `entries` must already be sorted by `sort_entries` with the same `sort`.
+fn model_rows(entries: &[crate::models::ModelEntry], sort: ModelSort, cols: usize) -> Vec<ModelRow> {
+    let mut rows = Vec::new();
+    let grouped = matches!(sort, ModelSort::Source | ModelSort::Folder);
+    if !grouped {
+        let mut i = 0;
+        while i < entries.len() {
+            let end = (i + cols).min(entries.len());
+            rows.push(ModelRow::Cells(i..end));
+            i = end;
+        }
+
+        return rows;
+    }
+
+    fn group_key(e: &crate::models::ModelEntry, sort: ModelSort) -> &str {
+        if sort == ModelSort::Source { &e.source.name } else { &e.folder }
+    }
+
+    let mut start = 0;
+    while start < entries.len() {
+        let group = group_key(&entries[start], sort);
+        let mut end = start;
+        while end < entries.len() && group_key(&entries[end], sort) == group {
+            end += 1;
+        }
+
+        let compact = sort == ModelSort::Folder;
+        let name = if group.is_empty() {
+            "(root)".to_string()
+        } else if compact {
+            format!("{group}/")
+        } else {
+            group.to_string()
+        };
+        let license = if sort == ModelSort::Source { entries[start].source.license.clone() } else { None };
+        rows.push(ModelRow::Header { name, license, count: end - start, compact });
+        let mut i = start;
+        while i < end {
+            let chunk_end = (i + cols).min(end);
+            rows.push(ModelRow::Cells(i..chunk_end));
+            i = chunk_end;
+        }
+
+        start = end;
+    }
+
+    rows
+}
+
+pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>, mut renderer: Option<&mut Renderer>) {
+    let ctx = ui.ctx().clone();
     ui.horizontal_wrapped(|ui| {
         ui.add(egui::TextEdit::singleline(&mut ps.model_filter).hint_text("Search models").desired_width(160.0));
         let folders = state.model_library.folders();
@@ -1828,6 +2012,22 @@ pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, 
                 ui.selectable_value(&mut ps.model_folder, Some(f.clone()), if f.is_empty() { "(root)".to_string() } else { f });
             }
         });
+        let sources = state.model_library.sources();
+        egui::ComboBox::from_id_salt("model_source").selected_text(ps.model_source_filter.clone().unwrap_or_else(|| "All sources".into())).show_ui(ui, |ui| {
+            ui.selectable_value(&mut ps.model_source_filter, None, "All sources");
+            for s in sources {
+                ui.selectable_value(&mut ps.model_source_filter, Some(s.clone()), s);
+            }
+        });
+        ui.separator();
+        ui.label("Sort");
+        egui::ComboBox::from_id_salt("model_sort").selected_text(ps.model_sort.label()).show_ui(ui, |ui| {
+            for s in ModelSort::ALL {
+                ui.selectable_value(&mut ps.model_sort, s, s.label());
+            }
+        });
+        ui.checkbox(&mut ps.model_show_slugs, "Slugs").on_hover_text("Show a small pack label on each thumbnail");
+        ui.separator();
         ui.add(egui::Slider::new(&mut ps.thumb_size, 40.0..=160.0).show_value(false));
         ui.checkbox(&mut state.prefs.model_import.autofit, "Fit")
             .on_hover_text("Scale tiny or huge models to a usable size when placed. Real-world-scale assets are otherwise sub-grid specks.");
@@ -1844,14 +2044,16 @@ pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, 
     ui.separator();
 
     let filter = ps.model_filter.to_lowercase();
-    let entries: Vec<crate::models::ModelEntry> = state
+    let mut entries: Vec<crate::models::ModelEntry> = state
         .model_library
         .entries
         .iter()
         .filter(|e| filter.is_empty() || e.name.to_lowercase().contains(&filter))
         .filter(|e| ps.model_folder.as_ref().is_none_or(|f| &e.folder == f))
+        .filter(|e| ps.model_source_filter.as_ref().is_none_or(|s| &e.source.name == s))
         .cloned()
         .collect();
+    sort_entries(&mut entries, ps.model_sort);
 
     if state.model_library.entries.is_empty() {
         ui.label(
@@ -1867,28 +2069,95 @@ pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, 
     let size = ps.thumb_size;
     let cell = Vec2::new(size + 8.0, size + 22.0);
     let cols = ((ui.available_width() / cell.x).floor() as usize).max(1);
-    let rows = entries.len().div_ceil(cols);
-    let cursor = state.cursor_world;
-    ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, cell.y, rows, |ui, range| {
-        for row in range {
-            ui.horizontal(|ui| {
-                for entry in entries.iter().skip(row * cols).take(cols) {
-                    let resp = model_cell(ui, false, entry, size);
-                    let resp = resp.on_hover_text(format!("{}\n{}\nDrag into a view to place it as an editable mesh", entry.name, entry.path.display()));
-                    if resp.drag_started() {
-                        resp.dnd_set_drag_payload(DndPayload::Model(entry.path.clone()));
-                    }
+    let rows = model_rows(&entries, ps.model_sort, cols);
+    let heights: Vec<f32> = rows.iter().map(|r| model_row_height(r, cell.y)).collect();
+    let gap = ui.spacing().item_spacing.y;
+    let mut offsets = Vec::with_capacity(heights.len());
+    let mut y = 0.0;
+    for h in &heights {
+        offsets.push(y);
+        y += h + gap;
+    }
 
-                    resp.context_menu(|ui| {
-                        if ui.button("Place at cursor").clicked() {
-                            let at = state.snap(cursor.unwrap_or(DVec3::ZERO));
-                            actions.push(Action::PlaceModel { path: entry.path.clone(), at });
-                            ui.close();
+    let total_h = (y - gap).max(0.0);
+    let cursor = state.cursor_world;
+    let show_slugs = ps.model_show_slugs;
+    ScrollArea::vertical().auto_shrink([false, false]).show_viewport(ui, |ui, viewport| {
+        ui.set_height(total_h);
+        ui.set_width(ui.available_width());
+
+        // Only the rows whose span overlaps the visible viewport are laid out, so a grouped view with
+        // many packs stays as cheap to scroll as the flat grid.
+        let mut first = rows.len();
+        for (i, (&o, &h)) in offsets.iter().zip(&heights).enumerate() {
+            if o + h > viewport.min.y {
+                first = i;
+                break;
+            }
+        }
+
+        let mut last = first;
+        for (i, &o) in offsets.iter().enumerate().skip(first) {
+            if o >= viewport.max.y {
+                break;
+            }
+
+            last = i + 1;
+        }
+
+        let top = ui.max_rect().top();
+        for (i, (&o, &h)) in offsets.iter().zip(&heights).enumerate().take(last).skip(first) {
+            let row_rect = egui::Rect::from_x_y_ranges(ui.max_rect().x_range(), (top + o)..=(top + o + h));
+            ui.scope_builder(egui::UiBuilder::new().max_rect(row_rect).id_salt(i), |ui| match &rows[i] {
+                ModelRow::Header { name, compact: true, .. } => {
+                    ui.horizontal(|ui| {
+                        ui.add_space(4.0);
+                        ui.label(RichText::new(name).weak().small());
+                    });
+                }
+                ModelRow::Header { name, license, count, .. } => {
+                    ui.horizontal(|ui| {
+                        ui.add_space(4.0);
+                        let dot = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover()).0;
+                        ui.painter().circle_filled(dot.center(), 4.0, pack_color(name));
+                        ui.label(RichText::new(name).strong());
+                        if let Some(license) = license {
+                            ui.label(RichText::new(license).weak());
                         }
 
-                        if ui.button("Copy path").clicked() {
-                            ui.ctx().copy_text(entry.path.display().to_string());
-                            ui.close();
+                        ui.label(RichText::new(format!("{count} model{}", if *count == 1 { "" } else { "s" })).weak());
+                    });
+                }
+                ModelRow::Cells(range) => {
+                    ui.horizontal(|ui| {
+                        for entry in &entries[range.clone()] {
+                            let units = state.game.units_per_meter;
+                            let thumb = state.model_thumbs.thumbnail(&ctx, renderer.as_deref_mut(), &mut state.models, units, &entry.path);
+                            let resp = model_cell(ui, false, entry, size, show_slugs, thumb);
+                            let resp = resp.on_hover_text(model_hover_text(entry));
+                            if resp.drag_started() {
+                                resp.dnd_set_drag_payload(DndPayload::Model(entry.path.clone()));
+                            }
+
+                            resp.context_menu(|ui| {
+                                if ui.button("Place at cursor").clicked() {
+                                    let at = state.snap(cursor.unwrap_or(DVec3::ZERO));
+                                    actions.push(Action::PlaceModel { path: entry.path.clone(), at });
+                                    ui.close();
+                                }
+
+                                if ui.button("Copy path").clicked() {
+                                    ui.ctx().copy_text(entry.path.display().to_string());
+                                    ui.close();
+                                }
+
+                                if let Some(url) = &entry.source.url
+                                    && ui.button("Open pack page").clicked()
+                                {
+                                    ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                                    ui.close();
+                                }
+                            });
                         }
                     });
                 }
@@ -2279,13 +2548,13 @@ pub const TOOL_HELP: [(&str, &str); 14] = [
     ("Vertex", "Drag brush vertices, edge and face midpoints split. Del removes vertices."),
     ("Rotate", "Drag a ring, snaps to 15 degrees, Shift for 1 degree."),
     ("Scale", "Drag bounds handles, Alt scales symmetrically."),
-    ("Mesh", "Blender style: 1/2/3 component modes, G/R/S, E extrude, I inset, Ctrl+R loop cut, K knife."),
+    ("Mesh", "Blender style: 1/2/3 component modes, G/R/S, E extrude, I inset, Ctrl+R loop cut, K knife, double click a vertex for the gizmo."),
     ("Sculpt", "Raise, lower, smooth, flatten, noise and terrace terrains and displacements. Shift inverts, Ctrl smooths, Ctrl+wheel radius."),
     ("Blend", "Paint, erase, smooth, sharpen, noise, slope and height blends on terrain layers, displacement alpha and faces with a blend material."),
     ("Paint", "Vertex colors on brush faces."),
     (
         "Scatter",
-        "Paints trees, rocks and foliage from a weighted palette into a scatter layer. Shift erases, Alt+click toggles target surfaces, Ctrl+wheel radius.",
+        "Paints the enabled models of the active scatter set, listed in the Scatter panel. Shift erases, Alt+click or the eyedropper toggles a target, Ctrl+wheel radius.",
     ),
     ("Volume", "Drag out trigger, spawn, hurt, teleport and push volumes as brush entities."),
     ("Path", "Click to chain path_corner entities, Enter finishes."),

@@ -37,7 +37,9 @@ The `example_mcp_scripts_replay` end to end test replays every script in `exampl
 
 ## Generated content
 
-* `cargo run -p gt_samples --bin showcase --release` regenerates the showcase textures and the demo Blockbench models.
+* `python tools/fetch_demo_textures.py` downloads the CC0 photo textures of the demo project and writes their materials,
+  see [Materials and texture size](godot.md#materials-and-texture-size).
+* `cargo run -p gt_samples --bin showcase --release` regenerates the demo Blockbench models.
 * `cargo run -p gt_editor --example export_addon_fgd` regenerates the addon's FGD resources from the built in entity definitions.
 * `python tools/gen_licenses.py` regenerates the Rust crate table in [LICENSES.md](../LICENSES.md).
 

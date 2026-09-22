@@ -147,6 +147,7 @@ pub struct SceneCache {
     project_generation: u64,
     prefab_generation: u64,
     model_generation: u64,
+    model_reloads: u64,
     lit: bool,
     wireframe: bool,
     buckets: Vec<Bucket>,
@@ -214,17 +215,20 @@ pub fn material_desc(m: &crate::materials::LoadedMaterial, filter: crate::state:
     use gt_render::AlphaMode;
     let i = &m.info;
     let tint = linear(Vec3::new(i.albedo_color[0], i.albedo_color[1], i.albedo_color[2]));
-    let emission = i.emission.map(|e| linear(Vec3::from_array(e)) * i.emission_energy).unwrap_or(Vec3::ZERO);
+    let emission = i.emission.map(|e| linear(Vec3::from_array(e))).unwrap_or(Vec3::ZERO);
     gt_render::MaterialDesc {
         albedo: &m.albedo,
         normal: m.normal.as_ref(),
         emission_texture: m.emission.as_ref(),
         tint: [tint.x, tint.y, tint.z, i.albedo_color[3]],
         emission: emission.to_array(),
+        emission_energy: if i.emission.is_some() { i.emission_energy } else { 0.0 },
+        emission_multiply: i.emission_multiply,
         alpha: match i.transparency {
             Transparency::Opaque => AlphaMode::Opaque,
             Transparency::Alpha => AlphaMode::Blend,
             Transparency::Scissor(t) => AlphaMode::Scissor(t),
+            Transparency::Hash => AlphaMode::Hash,
         },
         nearest: match filter {
             crate::state::TextureFilter::Auto => i.nearest.unwrap_or(false),
@@ -234,6 +238,7 @@ pub fn material_desc(m: &crate::materials::LoadedMaterial, filter: crate::state:
         unshaded: i.unshaded,
         double_sided: i.double_sided,
         normal_scale: i.normal_scale,
+        world_size: i.texture_size,
     }
 }
 
@@ -1122,6 +1127,17 @@ pub fn compute_lighting(map: &Map, game: &GameConfig) -> Lighting {
         }
     }
 
+    let energy = |key: &str| props.get(key).and_then(|s| s.parse::<f32>().ok()).map(|e| e.max(0.0));
+    if let Some(e) = energy("ambient_energy") {
+        lighting.ambient *= e;
+    }
+
+    if let Some(e) = energy("sky_energy") {
+        lighting.sky_top *= e;
+        lighting.sky_horizon *= e;
+        lighting.sky_ground *= e;
+    }
+
     // Godot fog density is per meter.
     if let Some(d) = props.get("fog_density").and_then(|s| s.parse::<f32>().ok()) {
         lighting.fog_density = d.max(0.0) / upm.max(1.0);
@@ -1289,6 +1305,13 @@ impl SceneCache {
 
         if self.project_generation != project_generation {
             renderer.clear_materials();
+        }
+
+        if self.model_reloads != state.models.reloads {
+            // A changed model file keeps the same "model:{path}#N" texture keys, so without this a
+            // reload picks up the new geometry but leaves the old texture bound under that key.
+            renderer.clear_materials_with_prefix("model:");
+            self.model_reloads = state.models.reloads;
         }
 
         let map = state.doc.map.clone();
@@ -1847,5 +1870,36 @@ impl SceneCache {
 
         frame.overlay_lines.extend(self.links.as_ref());
         frame.lines.extend(self.cordon.as_ref());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn night_worldspawn_keys_dim_the_lit_preview() {
+        let game = GameConfig::builtin();
+        let mut map = Map::new();
+        let day = compute_lighting(&map, &game);
+        for (k, v) in [("ambient_color", "40 48 72"), ("ambient_energy", "0.5"), ("sky_energy", "0.25"), ("sun_energy", "0.1")] {
+            map.properties.insert(k.into(), v.into());
+        }
+
+        let layer = map.default_layer();
+        let mut lamp = gt_doc::entity::Entity::new("light");
+        lamp.origin = DVec3::new(0.0, 96.0, 0.0);
+        lamp.properties.insert("omni_range".into(), "8".into());
+        map.insert(layer, NodeKind::Entity(lamp));
+        let mut off = gt_doc::entity::Entity::new("light");
+        off.properties.insert("start_on".into(), "0".into());
+        map.insert(layer, NodeKind::Entity(off));
+
+        let night = compute_lighting(&map, &game);
+        assert!((night.ambient - parse_color("40 48 72").unwrap() * 0.5).length() < 1e-5, "ambient scaled by ambient_energy");
+        assert!((night.sky_top - day.sky_top * 0.25).length() < 1e-5, "sky scaled by sky_energy");
+        assert_eq!(night.sun_energy, 0.1);
+        assert_eq!(night.lights.len(), 1, "lights that start off are left out of the preview");
+        assert_eq!(night.lights[0].range, 8.0 * game.units_per_meter as f32);
     }
 }

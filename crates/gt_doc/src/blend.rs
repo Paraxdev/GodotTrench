@@ -205,6 +205,7 @@ fn apply(brush: &BlendBrush, influence: f64, p: DVec3, normal: DVec3, current: &
         }
         _ => {
             let amount = influence * brush.mask(p, normal);
+            // `w` holds only the slots that have a layer, so a missing layer goes to the last one, like Terrain::layer_slot.
             let layer = brush.target_layer().min(w.len() - 1);
             for (i, v) in w.iter_mut().enumerate() {
                 let target = if i == layer { 1.0 } else { 0.0 };

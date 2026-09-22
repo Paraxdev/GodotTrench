@@ -1,33 +1,14 @@
-//! Demo assets for the Godot project: pixel art textures with material overrides and Blockbench models.
-//! The showcase maps themselves are MCP scripts in examples/mcp, replayed inside the editor.
+//! Demo Blockbench models for the Godot project. The showcase maps themselves are MCP scripts in examples/mcp,
+//! replayed inside the editor, and their photo textures come from tools/fetch_demo_textures.py.
 
 pub mod models;
-pub mod textures;
+pub mod noise;
 
 use std::path::Path;
 
-/// Writes textures, material overrides and models into a Godot project folder.
+/// Writes the demo models into a Godot project folder.
 pub fn write_all(godot: &Path) -> std::io::Result<Vec<String>> {
     let mut written = Vec::new();
-    let textures = godot.join("demo/textures");
-    for (name, img) in textures::all() {
-        let path = textures.join(format!("{name}.png"));
-        std::fs::create_dir_all(path.parent().unwrap())?;
-        img.save(&path).map_err(std::io::Error::other)?;
-        written.push(path.display().to_string());
-        if textures::NORMAL_MAPPED.contains(&name) {
-            let normal = textures.join(format!("{name}_normal.png"));
-            textures::normal_map(&img, 6.0).save(&normal).map_err(std::io::Error::other)?;
-            written.push(normal.display().to_string());
-        }
-    }
-
-    for (name, text) in textures::material_overrides() {
-        let path = textures.join(format!("{name}.tres"));
-        std::fs::write(&path, text)?;
-        written.push(path.display().to_string());
-    }
-
     let models = godot.join("demo/models");
     std::fs::create_dir_all(&models)?;
     for (file, text) in models::all() {
@@ -54,14 +35,19 @@ mod tests {
     }
 
     #[test]
-    fn every_showcase_material_has_a_texture() {
-        let names: std::collections::HashSet<&str> = textures::all().into_iter().map(|(n, _)| n).collect();
-        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/mcp");
-        for entry in std::fs::read_dir(&root).unwrap() {
+    fn every_showcase_material_has_a_texture_with_a_world_size() {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let textures = root.join("godot/demo/textures");
+        for entry in std::fs::read_dir(root.join("examples/mcp")).unwrap() {
             let path = entry.unwrap().path();
             let text = std::fs::read_to_string(&path).unwrap();
-            for part in text.split('"').filter(|s| s.starts_with("showcase/")) {
-                assert!(names.contains(part), "{}: {part} is not generated", path.display());
+            for part in text.split('"').filter(|s| s.starts_with("showcase/") || s.starts_with("withered/")) {
+                let tres = std::fs::read_to_string(textures.join(format!("{part}.tres")))
+                    .unwrap_or_else(|_| panic!("{}: {part} has no material, run tools/fetch_demo_textures.py", path.display()));
+                let material = gt_formats::godot_material::parse(&tres).unwrap_or_else(|| panic!("{part}.tres is not a material"));
+                let albedo = material.albedo_texture.unwrap_or_else(|| panic!("{part}.tres has no albedo"));
+                assert!(root.join("godot").join(albedo.trim_start_matches("res://")).is_file(), "{part}: {albedo} is missing");
+                assert!(material.texture_size.is_some(), "{part}.tres needs metadata/texture_size, its photo would tile by pixels");
             }
         }
     }

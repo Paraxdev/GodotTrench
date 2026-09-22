@@ -8,6 +8,9 @@ pub enum Transparency {
     Alpha,
     /// Alpha scissor with its threshold.
     Scissor(f32),
+    /// Alpha hash: each pixel is cut against a noise threshold, so thin cutouts like wire fences fade out with
+    /// distance instead of vanishing once their mipmaps average below a fixed threshold.
+    Hash,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -20,6 +23,8 @@ pub struct GodotMaterial {
     pub emission: Option<[f32; 3]>,
     pub emission_energy: f32,
     pub emission_texture: Option<String>,
+    /// `emission_operator = 1`: the emission texture is multiplied with the emission color instead of added to it.
+    pub emission_multiply: bool,
     pub transparency: Transparency,
     pub double_sided: bool,
     pub unshaded: bool,
@@ -29,6 +34,9 @@ pub struct GodotMaterial {
     pub metallic: f32,
     /// UV1 scale, applied on top of the face projection.
     pub uv_scale: [f32; 2],
+    /// World size in map units that one repeat of the texture covers, from `metadata/texture_size`. Face UVs
+    /// use it in place of the albedo's pixel size, so a high resolution photo keeps a believable scale.
+    pub texture_size: Option<[f32; 2]>,
 }
 
 impl Default for GodotMaterial {
@@ -41,6 +49,7 @@ impl Default for GodotMaterial {
             emission: None,
             emission_energy: 1.0,
             emission_texture: None,
+            emission_multiply: false,
             transparency: Transparency::Opaque,
             double_sided: false,
             unshaded: false,
@@ -48,6 +57,7 @@ impl Default for GodotMaterial {
             roughness: 1.0,
             metallic: 0.0,
             uv_scale: [1.0, 1.0],
+            texture_size: None,
         }
     }
 }
@@ -55,6 +65,14 @@ impl Default for GodotMaterial {
 impl GodotMaterial {
     pub fn is_transparent(&self) -> bool {
         matches!(self.transparency, Transparency::Alpha)
+    }
+
+    /// Whether the material glows at all. Godot adds the emission texture to the color by default, so a black color
+    /// with a texture still glows, while multiplying needs both.
+    pub fn is_emissive(&self) -> bool {
+        let Some(c) = self.emission else { return false };
+        let lit = c.iter().any(|v| *v > 0.0);
+        self.emission_energy > 0.0 && if self.emission_multiply { lit && self.emission_texture.is_some() } else { lit || self.emission_texture.is_some() }
     }
 }
 
@@ -67,6 +85,17 @@ fn quoted(s: &str) -> Option<&str> {
     let a = s.find('"')?;
     let b = s[a + 1..].find('"')?;
     Some(&s[a + 1..a + 1 + b])
+}
+
+/// A `Vector2(w, h)`, `Vector2i(w, h)` or single number world size, positive and finite only.
+fn parse_texture_size(v: &str) -> Option<[f32; 2]> {
+    let n = numbers(v);
+    let size = match n.as_slice() {
+        [s] => [*s, *s],
+        [w, h, ..] => [*w, *h],
+        _ => return None,
+    };
+    size.iter().all(|s| s.is_finite() && *s > 0.0).then_some(size)
 }
 
 /// Parses a `.tres` or `.material` text resource. Returns None for other resource types.
@@ -134,11 +163,13 @@ pub fn parse(text: &str) -> Option<GodotMaterial> {
         m.emission = Some([c[0], c[1], c[2]]);
         m.emission_energy = float("emission_energy_multiplier").or(float("emission_energy")).unwrap_or(1.0);
         m.emission_texture = texture("emission_texture");
+        m.emission_multiply = values.get("emission_operator").is_some_and(|v| v == "1");
     }
 
     m.transparency = match values.get("transparency").map(String::as_str) {
         Some("1") | Some("4") => Transparency::Alpha,
-        Some("2") | Some("3") => Transparency::Scissor(float("alpha_scissor_threshold").unwrap_or(0.5)),
+        Some("2") => Transparency::Scissor(float("alpha_scissor_threshold").unwrap_or(0.5)),
+        Some("3") => Transparency::Hash,
         _ => Transparency::Opaque,
     };
     m.double_sided = values.get("cull_mode").is_some_and(|v| v == "2");
@@ -150,6 +181,7 @@ pub fn parse(text: &str) -> Option<GodotMaterial> {
         m.uv_scale = [s[0], s[1]];
     }
 
+    m.texture_size = values.get("metadata/texture_size").and_then(|v| parse_texture_size(v));
     Some(m)
 }
 
@@ -180,7 +212,49 @@ mod tests {
         assert_eq!(lamp.transparency, Transparency::Scissor(0.4));
         assert_eq!(lamp.nearest, Some(false));
         assert!(!lamp.is_transparent());
+        assert!(lamp.is_emissive() && !lamp.emission_multiply);
+        assert!(!glass.is_emissive());
 
         assert!(parse("[gd_resource type=\"ShaderMaterial\" format=3]\n[resource]\n").is_none());
+        let fence = parse("[gd_resource type=\"StandardMaterial3D\" format=3]\n[resource]\ntransparency = 3\n").unwrap();
+        assert_eq!(fence.transparency, Transparency::Hash);
+        assert!(!fence.is_transparent(), "hashed pixels are opaque or cut, never blended");
+    }
+
+    #[test]
+    fn reads_the_texture_size_override() {
+        let text = |value: &str| format!("[gd_resource type=\"StandardMaterial3D\" format=3]\n[resource]\nmetadata/texture_size = {value}\n");
+        assert_eq!(parse(&text("Vector2(128, 64)")).unwrap().texture_size, Some([128.0, 64.0]));
+        assert_eq!(parse(&text("Vector2i(96, 96)")).unwrap().texture_size, Some([96.0, 96.0]));
+        assert_eq!(parse(&text("48")).unwrap().texture_size, Some([48.0, 48.0]));
+        assert_eq!(parse(&text("Vector2(0, 64)")).unwrap().texture_size, None, "a zero size would divide by zero");
+        assert_eq!(parse(&text("Vector2(-8, 64)")).unwrap().texture_size, None);
+        assert_eq!(parse("[gd_resource type=\"StandardMaterial3D\" format=3]\n[resource]\n").unwrap().texture_size, None);
+    }
+
+    #[test]
+    fn reads_the_emission_texture_and_operator() {
+        let text = |body: &str| {
+            format!(
+                "[gd_resource type=\"StandardMaterial3D\" format=3]\n[ext_resource type=\"Texture2D\" path=\"res://w.png\" id=\"1\"]\n[ext_resource type=\"Texture2D\" path=\"res://w_emission.png\" id=\"2\"]\n[resource]\n{body}"
+            )
+        };
+        let added = parse(&text("emission_enabled = true\nemission_texture = ExtResource(\"2\")\nemission_energy_multiplier = 2.5\n")).unwrap();
+        assert_eq!(added.emission, Some([0.0, 0.0, 0.0]), "Godot's default emission color is black");
+        assert_eq!(added.emission_texture.as_deref(), Some("res://w_emission.png"));
+        assert!(!added.emission_multiply);
+        assert!(added.is_emissive(), "a black color plus a texture still glows with the add operator");
+
+        let multiplied =
+            parse(&text("emission_enabled = true\nemission = Color(1, 0.8, 0.5, 1)\nemission_operator = 1\nemission_texture = ExtResource(\"2\")\n")).unwrap();
+        assert!(multiplied.emission_multiply && multiplied.is_emissive());
+        let black_multiplied = parse(&text("emission_enabled = true\nemission_operator = 1\nemission_texture = ExtResource(\"2\")\n")).unwrap();
+        assert!(!black_multiplied.is_emissive(), "black times anything is dark");
+
+        let disabled = parse(&text("emission = Color(1, 1, 1, 1)\nemission_texture = ExtResource(\"2\")\n")).unwrap();
+        assert_eq!(disabled.emission, None, "emission values without emission_enabled are ignored, like in Godot");
+        assert!(!disabled.is_emissive());
+        let zero_energy = parse(&text("emission_enabled = true\nemission = Color(1, 1, 1, 1)\nemission_energy_multiplier = 0.0\n")).unwrap();
+        assert!(!zero_energy.is_emissive());
     }
 }

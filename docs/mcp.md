@@ -18,11 +18,15 @@ Tools: `get_state`, `list_nodes`, `get_node`, `run_action`, `create_brush`, `cre
 ```sh
 python tools/mcp_client.py call create_brush '{"min":[0,0,0],"max":[64,64,64],"shape":"cylinder"}'
 python tools/mcp_client.py call screenshot '{"target":"3d"}' --out view.png
+python tools/mcp_client.py call screenshot '{"target":"3d","width":1280,"height":720}' --out big.png
 ```
+
+A viewport screenshot is as large as the docked view. With `width` and `height` the view's camera renders offscreen at
+that size instead, surfaces only, without grid, edges, I/O links or handles.
 
 ## Showcase map scripts
 
-The three showcase maps are built entirely from MCP tool calls. Each one is a script in `examples/mcp/` that you can replay
+The showcase maps are built entirely from MCP tool calls. Each one is a script in `examples/mcp/` that you can replay
 in a running editor, read as a reference for the tools, or copy as a starting point:
 
 * `mountain_house.json`: a mountain terrain with a flattened plateau, a cabin hanging off the cliff on cantilevers and chains,
@@ -32,6 +36,19 @@ in a running editor, read as a reference for the tools, or copy as a starting po
 * `lighthouse_forest.json`: an island with a striped lighthouse (lathe bands with carved openings, spiral stairs, rotating beacon),
   a keeper's cottage, a ring wall arrayed around the tower, gates opened through a relay, a boat on a `func_train` path,
   wisps spawning along the forest path and a `trigger_call` that calls a Godot method on the beacon.
+* `withered_city.json`: an abandoned city block at night. Glowing block letters spelling STILL HERE lie on a cracked plaza
+  (one `create_brush` call with `shape: text`), towers are stacked storeys with repeated window openings and array
+  duplicates, broken with plane clips, vertex moves and CSG cutters. A shutter opens from a button, a lift climbs to the
+  roof that overlooks the letters, timers flicker the lights, and weeds, scrub and dead trees are painted only where the
+  ground terrain shows through.
+* `night_district.json`: an industrial street at night under sodium lamps, apartment blocks with emissive facades, a corner
+  shop with a neon sign and an automatic door, an alley lamp flickering from a random timer with its bulb following through
+  `switched`, a warehouse roller door on a switch with a beacon, hall lights and courtyard lamps switched on by triggers,
+  a chain-link yard and a train shuttling along a viaduct over scattered waste ground.
+
+`sea_island.json` is not one of the built showcase scenes. It replays the terrain of the wiki's sea island tutorial step for
+step: the generated island lowered into a water brush, sculpted hills, terraced cliffs, a flattened beach, sand, rock and
+dirt paths painted with the `blend` tool's height, slope and paint modes, and de-tiled layers.
 
 ```sh
 godottrench --mcp-http --project godot                                        # editor with the demo project
@@ -74,3 +91,10 @@ to an hour per call (`--timeout` changes that) and prints the editor's error tex
   selection center at that point.
 * `mesh_edit` checks every face, vertex and edge index against the mesh first.
 * `terrain_edit` with only `probe [x, z]` reads the height without editing.
+* `create_brush` with `shape: text` lays `text` out as block letter brushes that fill the bounds, lying with their tops
+  towards -Z or `standing`, and returns each character's brush ids under `letters` so single letters can be moved or broken.
+  An entry of `openings` can be `{min, max, count, step, rows, row_step}` to cut a whole grid of windows.
+* `run_action clip_apply` takes a plane (`point` and `normal`, or three `points`) and `keep: front|back|both`, and
+  `move_vertices {vertices, offset}` runs the vertex tool on the selected brushes, so scripts can break edges without mouse input.
+* CSG ops (`csg_subtract`, `csg_hollow`) replace the brushes they touch, so ids saved before them no longer exist. Clip or
+  select those brushes before cutting.

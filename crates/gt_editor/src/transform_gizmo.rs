@@ -1,10 +1,11 @@
-//! Move, rotate and scale handles on the selection in the 3D view while the select tool is active.
+//! Move, rotate and scale handles on the selection in the 3D view while the select tool is active. The mesh tool puts
+//! the same handles on double clicked vertices, edges or faces in every view.
 //!
 //! Every drag frame undoes the previous frame and applies the transform from the drag start again, so snapping never
 //! accumulates rounding.
 
 use egui::{Color32, CursorIcon, Pos2, Rect, Shape, Stroke, Ui, Vec2};
-use gt_core::{Aabb, DVec3, Plane};
+use gt_core::{Aabb, DMat4, DVec3, Plane};
 use gt_doc::ops;
 
 use crate::camera::{Camera, ViewKind};
@@ -150,6 +151,23 @@ fn inside_convex(points: &[Pos2], p: Pos2) -> bool {
     signs.iter().all(|s| *s >= 0.0) || signs.iter().all(|s| *s <= 0.0)
 }
 
+/// Axes pointing almost straight at the camera, as in a 2D view. Handles that depend on them would be slivers.
+fn edge_on(cam: &Camera, rect: Rect, l: &Layout) -> [bool; 3] {
+    let c = cam.project(rect, l.center);
+    std::array::from_fn(|i| match (c, cam.project(rect, l.along(i, 1.0))) {
+        (Some(c), Some(tip)) => (tip - c).length() < 12.0,
+        _ => false,
+    })
+}
+
+fn usable(part: Part, edge: [bool; 3]) -> bool {
+    match part {
+        Part::Move(i) | Part::Scale(i) => !edge[i],
+        Part::Plane(i) | Part::Rotate(i) => (0..3).all(|j| j == i || !edge[j]),
+        Part::Free => true,
+    }
+}
+
 fn part_at(cam: &Camera, rect: Rect, bounds: &Aabb, pos: Pos2) -> Option<Part> {
     let l = Layout::new(cam, rect, bounds);
     let screen = |p: DVec3| cam.project(rect, p);
@@ -157,8 +175,10 @@ fn part_at(cam: &Camera, rect: Rect, bounds: &Aabb, pos: Pos2) -> Option<Part> {
         return Some(Part::Free);
     }
 
-    let closest =
-        |candidates: Vec<(f32, Part)>, limit: f32| candidates.into_iter().filter(|(d, _)| *d < limit).min_by(|a, b| a.0.total_cmp(&b.0)).map(|(_, p)| p);
+    let edge = edge_on(cam, rect, &l);
+    let closest = |candidates: Vec<(f32, Part)>, limit: f32| {
+        candidates.into_iter().filter(|(d, p)| *d < limit && usable(*p, edge)).min_by(|a, b| a.0.total_cmp(&b.0)).map(|(_, p)| p)
+    };
     let scale = (0..3).filter_map(|i| screen(l.along(i, SCALE_AT)).map(|s| (s.distance(pos), Part::Scale(i)))).collect();
     if let Some(part) = closest(scale, GRAB) {
         return Some(part);
@@ -169,7 +189,7 @@ fn part_at(cam: &Camera, rect: Rect, bounds: &Aabb, pos: Pos2) -> Option<Part> {
         return Some(part);
     }
 
-    if let Some(i) = (0..3).find(|i| project_all(cam, rect, &l.plane_quad(*i)).is_some_and(|q| inside_convex(&q, pos))) {
+    if let Some(i) = (0..3).find(|i| usable(Part::Plane(*i), edge) && project_all(cam, rect, &l.plane_quad(*i)).is_some_and(|q| inside_convex(&q, pos))) {
         return Some(Part::Plane(i));
     }
 
@@ -185,6 +205,11 @@ fn part_at(cam: &Camera, rect: Rect, bounds: &Aabb, pos: Pos2) -> Option<Part> {
 /// The gizmo part under `pos`, if the gizmo is shown.
 pub fn hit(state: &EditorState, cam: &Camera, rect: Rect, pos: Pos2) -> Option<Part> {
     part_at(cam, rect, &target(state, cam)?, pos)
+}
+
+/// The part under `pos` of a gizmo drawn on `bounds`.
+pub fn hit_on(cam: &Camera, rect: Rect, bounds: &Aabb, pos: Pos2) -> Option<Part> {
+    part_at(cam, rect, bounds, pos)
 }
 
 fn drag_plane(cam: &Camera, part: Part, center: DVec3) -> Plane {
@@ -203,22 +228,50 @@ fn drag_plane(cam: &Camera, part: Part, center: DVec3) -> Plane {
 }
 
 pub fn begin(state: &mut EditorState, cam: &Camera, rect: Rect, pos: Pos2) -> Option<GizmoDrag> {
-    let base = target(state, cam)?;
+    let drag = begin_on(cam, rect, target(state, cam)?, pos)?;
+    state.doc.begin(drag.part.label());
+    Some(drag)
+}
+
+/// Starts a drag on a gizmo drawn on `base` without opening an undo transaction.
+pub fn begin_on(cam: &Camera, rect: Rect, base: Aabb, pos: Pos2) -> Option<GizmoDrag> {
     let part = part_at(cam, rect, &base, pos)?;
     let center = base.center();
     let plane = drag_plane(cam, part, center);
     let ray = cam.ray(rect, pos);
     let start = ray.at(ray.intersect_plane(&plane)?);
-    state.doc.begin(part.label());
     Some(GizmoDrag { part, center, base, plane, start })
 }
 
-/// Applies the drag for the pointer at `pos`. Returns a status line.
-pub fn drag(state: &mut EditorState, drag: &GizmoDrag, cam: &Camera, rect: Rect, pos: Pos2, modifiers: egui::Modifiers) -> Option<String> {
+/// The transform a gizmo drag stands for, from the drag start.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Motion {
+    Translate(DVec3),
+    Rotate(DMat4),
+    Scale(DMat4),
+}
+
+impl Motion {
+    pub fn matrix(&self) -> DMat4 {
+        match self {
+            Motion::Translate(d) => DMat4::from_translation(*d),
+            Motion::Rotate(m) | Motion::Scale(m) => *m,
+        }
+    }
+}
+
+/// The motion and status line for the pointer at `pos`, None when the pointer ray misses the drag plane. The motion is
+/// None when nothing moves, for example a scale that would flatten the selection.
+pub fn motion(
+    state: &EditorState,
+    drag: &GizmoDrag,
+    cam: &Camera,
+    rect: Rect,
+    pos: Pos2,
+    modifiers: egui::Modifiers,
+) -> Option<(Option<Motion>, Option<String>)> {
     let ray = cam.ray(rect, pos);
     let point = ray.at(ray.intersect_plane(&drag.plane)?);
-    let opts = state.opts();
-    state.doc.reset_transaction();
     let offset = point - drag.start;
     let moved = match drag.part {
         Part::Move(i) => Some(axis(i) * offset[i]),
@@ -228,32 +281,23 @@ pub fn drag(state: &mut EditorState, drag: &GizmoDrag, cam: &Camera, rect: Rect,
     };
     if let Some(delta) = moved {
         let delta = state.snap(delta);
-        if delta != DVec3::ZERO {
-            state.doc.edit("Move", |m, s| ops::translate_selection(m, s, delta, opts));
-        }
-
-        return Some(format!("Move {} {} {}", delta.x, delta.y, delta.z));
+        return Some(((delta != DVec3::ZERO).then_some(Motion::Translate(delta)), Some(format!("Move {} {} {}", delta.x, delta.y, delta.z))));
     }
 
-    match drag.part {
-        Part::Move(_) | Part::Plane(_) | Part::Free => None,
+    Some(match drag.part {
+        Part::Move(_) | Part::Plane(_) | Part::Free => (None, None),
         Part::Rotate(i) => {
             let (from, to) = ((drag.start - drag.center).normalize_or_zero(), (point - drag.center).normalize_or_zero());
             let raw = from.cross(to).dot(axis(i)).atan2(from.dot(to)).to_degrees();
             let step = if modifiers.shift { 1.0 } else { ROTATE_SNAP_DEGREES };
             let angle = (raw / step).round() * step;
-            if angle != 0.0 {
-                let m = ops::rotation_about(drag.center, axis(i), angle);
-                state.doc.edit("Rotate", |map, s| ops::transform_selection(map, s, &m, opts));
-            }
-
-            Some(format!("Rotate {} {angle}°", axis_name(i)))
+            ((angle != 0.0).then(|| Motion::Rotate(ops::rotation_about(drag.center, axis(i), angle))), Some(format!("Rotate {} {angle}°", axis_name(i))))
         }
         Part::Scale(i) => {
             let reach = (drag.start - drag.center)[i];
             let size = drag.base.size()[i];
             if reach.abs() < 1e-6 || size < 1e-6 {
-                return None;
+                return Some((None, None));
             }
 
             let grow = (size * (point - drag.center)[i] / reach - size) * 0.5;
@@ -262,31 +306,52 @@ pub fn drag(state: &mut EditorState, drag: &GizmoDrag, cam: &Camera, rect: Rect,
             scaled.max[i] = state.snap_scalar(drag.base.max[i] + grow);
             let new_size = scaled.size()[i];
             if new_size < 1e-3 {
-                return None;
+                return Some((None, None));
             }
 
-            if scaled != drag.base {
-                let m = ops::scale_bounds(&drag.base, &scaled);
-                state.doc.edit("Scale", |map, s| ops::transform_selection(map, s, &m, opts));
-            }
-
-            Some(format!("Scale {} to {new_size}", axis_name(i)))
+            ((scaled != drag.base).then(|| Motion::Scale(ops::scale_bounds(&drag.base, &scaled))), Some(format!("Scale {} to {new_size}", axis_name(i))))
         }
+    })
+}
+
+/// Applies the drag for the pointer at `pos`. Returns a status line.
+pub fn drag(state: &mut EditorState, drag: &GizmoDrag, cam: &Camera, rect: Rect, pos: Pos2, modifiers: egui::Modifiers) -> Option<String> {
+    let (motion, status) = motion(state, drag, cam, rect, pos, modifiers)?;
+    let opts = state.opts();
+    state.doc.reset_transaction();
+    match motion {
+        Some(Motion::Translate(delta)) => state.doc.edit("Move", |m, s| ops::translate_selection(m, s, delta, opts)),
+        Some(Motion::Rotate(m)) => state.doc.edit("Rotate", |map, s| ops::transform_selection(map, s, &m, opts)),
+        Some(Motion::Scale(m)) => state.doc.edit("Scale", |map, s| ops::transform_selection(map, s, &m, opts)),
+        None => {}
     }
+
+    status
 }
 
 pub fn paint(ui: &Ui, cam: &Camera, rect: Rect, state: &EditorState, active: Option<Part>) {
-    let Some(bounds) = target(state, cam) else { return };
-    let hovered = active.or_else(|| ui.input(|i| i.pointer.hover_pos()).filter(|p| rect.contains(*p)).and_then(|p| part_at(cam, rect, &bounds, p)));
+    if let Some(bounds) = target(state, cam) {
+        paint_on(ui, cam, rect, &bounds, active);
+    }
+}
+
+/// Draws the gizmo on `bounds`, `active` is the part being dragged.
+pub fn paint_on(ui: &Ui, cam: &Camera, rect: Rect, bounds: &Aabb, active: Option<Part>) {
+    let hovered = active.or_else(|| ui.input(|i| i.pointer.hover_pos()).filter(|p| rect.contains(*p)).and_then(|p| part_at(cam, rect, bounds, p)));
     if hovered.is_some() {
         ui.ctx().set_cursor_icon(if active.is_some() { CursorIcon::Grabbing } else { CursorIcon::Grab });
     }
 
-    let l = Layout::new(cam, rect, &bounds);
+    let l = Layout::new(cam, rect, bounds);
+    let edge = edge_on(cam, rect, &l);
     let painter = ui.painter_at(rect);
     let color = |part: Part, base: Color32| if hovered == Some(part) { HOT } else { base };
 
     for (i, axis_color) in AXIS_COLORS.into_iter().enumerate() {
+        if !usable(Part::Rotate(i), edge) {
+            continue;
+        }
+
         if let Some(points) = project_all(cam, rect, &l.ring(i)) {
             let hot = hovered == Some(Part::Rotate(i));
             painter.add(Shape::line(points, Stroke::new(if hot { 3.0 } else { 1.5 }, color(Part::Rotate(i), axis_color.gamma_multiply(0.8)))));
@@ -294,6 +359,10 @@ pub fn paint(ui: &Ui, cam: &Camera, rect: Rect, state: &EditorState, active: Opt
     }
 
     for (i, axis_color) in AXIS_COLORS.into_iter().enumerate() {
+        if !usable(Part::Plane(i), edge) {
+            continue;
+        }
+
         if let Some(quad) = project_all(cam, rect, &l.plane_quad(i)) {
             let c = color(Part::Plane(i), axis_color);
             painter.add(Shape::convex_polygon(quad, c.gamma_multiply(if hovered == Some(Part::Plane(i)) { 0.55 } else { 0.3 }), Stroke::new(1.0, c)));
@@ -301,6 +370,10 @@ pub fn paint(ui: &Ui, cam: &Camera, rect: Rect, state: &EditorState, active: Opt
     }
 
     for (i, axis_color) in AXIS_COLORS.into_iter().enumerate() {
+        if edge[i] {
+            continue;
+        }
+
         let c = color(Part::Move(i), axis_color);
         let (Some(from), Some(head), Some(tip)) =
             (cam.project(rect, l.along(i, SHAFT_START)), cam.project(rect, l.along(i, HEAD_START)), cam.project(rect, l.along(i, 1.0)))
