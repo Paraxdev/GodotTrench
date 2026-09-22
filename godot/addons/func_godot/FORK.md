@@ -20,6 +20,7 @@ Upstream class names are kept so the fork stays a drop-in replacement and upstre
 | `fgd/trenchdot_default_fgd.tres` | Base FuncGodot classes plus the TrenchDot entity library, used by the default map settings and game config so a fresh project builds `func_door` and the rest without extra setup. |
 | `src/trenchdot/trenchdot_displacement.gd` | Displacement grids (same triangulation as the editor), surface arrays with blend weights in vertex color alpha, trimesh collision triangles. |
 | `src/trenchdot/runtime/trenchdot_decal.gd` | `TrenchDotDecal`: decal entities with `texture`, `size` (map units) and `modulate` properties. |
+| `src/trenchdot/runtime/trenchdot_decal_mesh.gd` | `TrenchDotDecalMesh`: the `\|decal\|` texture suffix of decal mesh faces and their alpha scissor, double sided material, matching the editor's decal tool. |
 | `src/trenchdot/runtime/td_blend.gdshader` | Two texture blend shader driven by vertex color alpha, for displacements and vertex paint. |
 | `src/trenchdot/trenchdot_mesh.gd` | `TrenchDotMesh`: polygon mesh nodes (ear clipping triangulation matching the editor, explicit UVs, smoothing angle) as brush data that skips convex clipping. |
 | `src/trenchdot/runtime/trenchdot_terrain.gd` | `TrenchDotTerrain`: heightmap terrain nodes as chunked meshes with a `HeightMapShape3D` collider, holes and a splat material. |
@@ -62,6 +63,7 @@ All changes are small and marked with `TrenchDot` comments.
 * `src/func_godot_plugin.gd`: creates the TrenchDot integration node, the *TrenchDot: Export Game Config* tool menu entry and the `.bbmodel` import plugin.
 * `src/core/parser.gd` and `src/core/entity_assembler.gd`: merge C# entity definitions and apply their properties.
 * `src/util/func_godot_util.gd` (`build_texture_map`) and `src/core/geometry_generator.gd`: blend texture keys build blend materials and force a color array.
+* `src/util/func_godot_util.gd` (`build_texture_map`, `filter_face`): decal mesh faces (`|decal|` texture suffix) get an alpha scissor, double sided copy of their base material and are filtered by their base texture.
 * `src/map/func_godot_map.gd`: builds scatter sets after terrains.
 
 TrenchDot files changed alongside: `tdm_parser.gd` converts brushes and meshes on the WorkerThreadPool (data only, in

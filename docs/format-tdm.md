@@ -234,7 +234,7 @@ Editable polygon meshes. Unlike brushes they may be concave, open or non-planar.
 | `vertices` | array of `[x, y, z]` | required | positions in map units |
 | `faces` | array of faces | required | |
 | `smooth_angle` | number | `0`, omitted | faces meeting at less than this many degrees share normals, 0 is flat shading |
-| `decal` | bool | `false`, omitted | a decal sheet made by the decal tool |
+| `decal` | bool | `false`, omitted | a decal sheet made by the decal tool, drawn with its texture's alpha cut out at 0.5 and both sides visible, in the editor and in Godot |
 
 Mesh faces have the same keys as brush faces (`indices`, `material`, `uv`, `props`, `disp`, `colors`), with `indices`
 counter-clockwise seen from the front, plus one more:
@@ -284,7 +284,7 @@ A scatter set stores many model instances (trees, rocks, grass) painted onto sur
 | `kind` | string | `props` | `props` for scene instances that keep scripts and collision, `foliage` for MultiMesh instances without collision |
 | `targets` | array of node ids | empty, omitted | surfaces the set is painted on |
 | `items` | array | required | the palette, see below |
-| `collision` | string | `convex` | `none`, `convex` or `trimesh` |
+| `collision` | string | `none` for foliage, else `convex` | `none`, `convex` or `trimesh` |
 | `cast_shadows` | bool | `true` | |
 | `visibility_range` | number | `0` | map units beyond which instances are hidden, 0 shows them at any distance |
 | `chunk_size` | number | `0` | grid cell in map units the instances are split into so Godot culls each cell, 0 keeps one MultiMesh (new sets use 2048) |
@@ -293,6 +293,9 @@ A scatter set stores many model instances (trees, rocks, grass) painted onto sur
 | `instances` | array | empty | the placed instances |
 
 Except for `targets` and `material` every field is always written.
+
+`targets` are node ids, so they only hold within one map. When a set is duplicated or pasted together with a surface it
+targets, the copy targets the copied surface; targets that were not copied keep pointing at the originals.
 
 Each palette item:
 
@@ -330,8 +333,9 @@ used. Brush and mesh texture projections are transformed along with the geometry
 Instances may nest up to eight levels deep.
 
 A prefab placed twice would otherwise produce two entities with the same targetname, and a button in one copy would
-open the door in both. `fixup` avoids that: with a fixup of `p1`, the `targetname` and `target` properties and the
-`target` of every output inside the instance get `p1-` prepended, so `door` becomes `p1-door` and the copy's own wiring
+open the door in both. `fixup` avoids that: with a fixup of `p1`, the `targetname`, `target`, `destination` and
+`call_target` properties, any property the entity's definition declares as `target_source` or `target_destination`, and
+the `target` of every output inside the instance get `p1-` prepended, so `door` becomes `p1-door` and the copy's own wiring
 still connects. Empty values and values starting with `!` (`!player`, `!activator`, `!self`), `@` (groups) or `/` (node
 paths) are left alone, a `*` wildcard is prefixed like any name. Nested instances add their prefixes outside in, so a
 fixup of `b` inside `a` gives `a-b-door`, and an inner instance without a fixup uses the outer one.
