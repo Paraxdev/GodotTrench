@@ -27,6 +27,9 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          # Create the Pages site automatically on the first run, so no manual repo setting is needed.
+          enablement: true
 
       - name: Upload wiki artifact
         uses: actions/upload-pages-artifact@v3
