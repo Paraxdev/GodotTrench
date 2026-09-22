@@ -82,6 +82,7 @@ const PATHS = {
   square: '<rect width="18" height="18" x="3" y="3" rx="2"/>',
   circle: '<circle cx="12" cy="12" r="10"/>',
   "move-right": '<path d="M18 8 22 12 18 16"/><path d="M2 12h20"/>',
+  menu: '<line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/>',
 };
 
 // Build an SVG icon element. Parsed as image/svg+xml so the SVG namespace is always correct.
