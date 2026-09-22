@@ -7,13 +7,54 @@ class_name DemoPlayer extends CharacterBody3D
 @export var jump_velocity := 4.8
 @export var look_sensitivity := 0.0025
 @export var use_distance := 2.5
+@export var max_health := 100.0
+
+## Emitted whenever health changes, so a HUD can follow it.
+signal health_changed(health: float)
+## Emitted once when health reaches zero.
+signal died
+
+var health := 100.0
 
 @onready var head: Node3D = $Head
 @onready var camera: Camera3D = $Head/Camera
 
+var _health_label: Label
+
 func _ready() -> void:
 	add_to_group(&"player")
+	health = max_health
+	_build_hud()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+func _build_hud() -> void:
+	var canvas := CanvasLayer.new()
+	_health_label = Label.new()
+	_health_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	_health_label.offset_left = 16.0
+	_health_label.offset_top = 12.0
+	canvas.add_child(_health_label)
+	add_child(canvas)
+	_refresh_hud()
+
+func _refresh_hud() -> void:
+	if _health_label:
+		_health_label.text = "HP %d" % int(round(health))
+
+## I/O damage entities call this: trigger_hurt, env_explosion and prop_physics all send (amount, source).
+func take_damage(amount: float, _source: Node = null) -> void:
+	if health <= 0.0:
+		return
+	health = maxf(health - amount, 0.0)
+	_refresh_hud()
+	health_changed.emit(health)
+	if health <= 0.0:
+		died.emit()
+
+func heal(amount: float) -> void:
+	health = minf(health + amount, max_health)
+	_refresh_hud()
+	health_changed.emit(health)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
