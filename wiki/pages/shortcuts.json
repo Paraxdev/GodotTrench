@@ -1,0 +1,48 @@
+{
+  "title": "Shortcuts",
+  "layout": "doc",
+  "cards": [
+    {
+      "id": "b1",
+      "type": "text",
+      "format": "markdown",
+      "md": "# Shortcuts\n\nThese are the defaults of the TrenchBroom preset, which is what a fresh install uses. *File > Preferences > Keymap preset* switches to the Hammer or Blender presets, and *Help > Keyboard Shortcuts...* lists every binding and lets you change any of them."
+    },
+    {
+      "id": "b2",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Tools\n\nPressing a tool's key again goes back to Select. Esc also returns to Select, and in Select it clears the selection.\n\n| Key | Tool |\n| --- | --- |\n| Q | Select, the default for drawing, selecting and moving |\n| C | Clip |\n| V | Vertex |\n| R | Rotate |\n| T | Scale |\n| Tab | Mesh edit, converting selected brushes |\n| Shift+T | Texture |\n| P | Paint vertex colours |\n| G | Sculpt terrain and displacements |\n| Shift+G | Blend materials |\n| B | Scatter |\n| Shift+E | Volume |\n| Shift+P | Path |\n| M | Measure |"
+    },
+    {
+      "id": "b3",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Mouse in the views\n\n| Action | Result |\n| --- | --- |\n| Drag on empty space | Draw a brush |\n| Drag the selection | Move it. Ctrl leaves a copy, Alt moves vertically in 3D, Shift locks to the main axis |\n| Click | Select. Inside a group this selects the object, double click selects the group |\n| Ctrl+click | Add to or remove from the selection |\n| Shift+click | Select one face |\n| Ctrl+Shift+click | Add or remove a face |\n| Shift+drag a face (3D) | Push or pull the selected faces |\n| Ctrl+Shift+drag a face (3D) | Extrude a new brush outwards |\n| Right drag (3D) | Look, with WASD to move and Q/E for down and up |\n| Middle drag | Pan |\n| Alt+left drag (3D, nothing selected) | Orbit |\n\n> [!NOTE] Ctrl+click and the UV Editor\n> While the UV Editor is the tab showing in its panel, Ctrl+click on a brush or mesh selects all of its faces, so every side can be textured at once. Switch that panel to another tab, such as the Inspector, and Ctrl+click toggles objects again."
+    },
+    {
+      "id": "b4",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Editing\n\n| Key | Action |\n| --- | --- |\n| Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y | Undo, redo |\n| Ctrl+X, Ctrl+C, Ctrl+V | Cut, copy, paste at the cursor |\n| Ctrl+D | Duplicate |\n| Ctrl+Shift+D | Duplicate linked |\n| Ctrl+R | Repeat the last rotate, flip, nudge or duplicate. In mesh editing it adds a loop cut instead |\n| Delete | Delete |\n| Ctrl+A, Esc, Ctrl+I | Select all, none, inverse |\n| Ctrl+T, Ctrl+Shift+T | Select touching, select inside |\n| Ctrl+G, Ctrl+Shift+G | Group, ungroup |\n| Ctrl+H, Ctrl+J, Ctrl+Shift+H | Hide, isolate, show all |\n| Arrows, Page Up, Page Down | Nudge by one grid step |"
+    },
+    {
+      "id": "b5",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Brushes, meshes and textures\n\n| Key | Action |\n| --- | --- |\n| Ctrl+K | CSG subtract |\n| Ctrl+M | CSG convex merge |\n| Ctrl+L | CSG intersect |\n| Ctrl+Shift+K | Hollow |\n| Ctrl+Shift+B | Shape generator |\n| Ctrl+Shift+E | Convert brushes to mesh |\n| Ctrl+Shift+J | Join meshes |\n| Ctrl+Shift+W | Move brushes to world |\n| Ctrl+Shift+U | Toggle UV lock |\n| Alt+H | Hotspot fit |"
+    },
+    {
+      "id": "b6",
+      "type": "text",
+      "format": "markdown",
+      "md": "## View and files\n\n| Key | Action |\n| --- | --- |\n| F or Ctrl+U | Frame the selection, or the whole map |\n| `[` and `]`, or `-` and `=` | Halve or double the grid |\n| F2 | Cycle shading |\n| F3 | Lit Preview |\n| Ctrl+Shift+1 to 9, Ctrl+1 to 9 | Store and recall camera bookmarks |\n| Ctrl+=, Ctrl+-, Ctrl+0 | Interface scale up, down, reset |\n| Ctrl+Shift+P or F1 | Command palette |\n| Ctrl+S, Ctrl+Shift+S | Save, save as |\n| Ctrl+O | Open map |\n| Ctrl+N | New map, in a new tab if the current one has unsaved changes |\n| Ctrl+Shift+N, Ctrl+Tab, Ctrl+W | New tab, next tab, close tab |\n| F5 | Run the Godot project |"
+    },
+    {
+      "id": "b7",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Other presets\n\nThe Hammer preset moves the tools to Shift+S (select), Shift+X (clip), Shift+V (vertex) and Shift+A (texture), and uses H to hide, Ctrl+H to isolate and U to show everything. The Blender preset uses A to select all, X to delete, Shift+D to duplicate, S to scale, H and Alt+H to hide and show, and Ctrl+J to join meshes. Anything you rebind yourself sits on top of whichever preset is active, and *Reset overrides* in the shortcuts window clears your changes."
+    }
+  ]
+}

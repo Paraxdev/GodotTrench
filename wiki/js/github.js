@@ -141,50 +141,76 @@ export async function putFile(relPath, contentBase64, message, token) {
   return res.json();
 }
 
-// DELETE a file from the repo. Returns true when removed, false when it did not exist.
-export async function deleteFile(relPath, message, token) {
-  const sha = await getFileSha(relPath, token);
-  if (!sha) return false;
-  const res = await fetch(contentsUrl(relPath), {
-    method: "DELETE",
+async function api(path, token, init) {
+  const opts = init || {};
+  const res = await fetch(API_BASE + "/repos/" + GH.owner + "/" + GH.repo + path, {
+    method: opts.method || "GET",
     headers: headers(token),
-    body: JSON.stringify({ message, sha, branch: GH.branch }),
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    cache: "no-store",
   });
-  if (!res.ok) throw new Error(await describeError(res));
-  return true;
-}
-
-// Delete the page files for a list of slugs. Missing files are skipped quietly.
-export async function deletePageFiles(slugs, token) {
-  for (const slug of slugs) {
-    await deleteFile("pages/" + slug + ".json", "wiki: delete page " + slug, token);
+  if (!res.ok) {
+    const err = new Error(await describeError(res));
+    err.status = res.status;
+    throw err;
   }
-  return true;
+  return res.status === 204 ? null : res.json();
 }
 
-// Commit a single page board and the page index in one Save action.
-export async function commitPage(slug, board, pages, token) {
-  const pageJson = JSON.stringify(board, null, 2) + "\n";
-  const indexJson = JSON.stringify(pages, null, 2) + "\n";
+// File names in a wiki folder on the branch, so deletions only name files that exist.
+async function listNames(relDir, token) {
+  try {
+    const items = await api("/contents/" + encodeURI(repoPath(relDir)) + "?ref=" + encodeURIComponent(GH.branch), token);
+    return new Set((Array.isArray(items) ? items : []).map((i) => i.name));
+  } catch (err) {
+    if (err.status === 404) return new Set();
+    throw err;
+  }
+}
 
-  await putFile(
-    "pages/" + slug + ".json",
-    base64FromString(pageJson),
-    "wiki: update page " + slug,
-    token
-  );
-  await putFile(
-    "pages/index.json",
-    base64FromString(indexJson),
-    "wiki: update page index",
-    token
-  );
-  return true;
+// Write several text files and delete others in a single commit, through the Git Data API:
+// read the branch head, build a tree on top of it, commit, and fast forward the branch. If the
+// branch moved in the meantime the ref update is rejected, and the whole thing is retried once
+// on top of the new head.
+//   files: [{ path, content }] with paths relative to the wiki root
+//   deletes: [path]
+export async function commitFiles(files, deletes, message, token) {
+  let removable = [];
+  if (deletes.length) {
+    const byDir = new Map();
+    for (const d of deletes) {
+      const dir = d.split("/").slice(0, -1).join("/");
+      if (!byDir.has(dir)) byDir.set(dir, await listNames(dir, token));
+    }
+    removable = deletes.filter((d) => byDir.get(d.split("/").slice(0, -1).join("/")).has(d.split("/").pop()));
+  }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const ref = await api("/git/ref/heads/" + encodeURIComponent(GH.branch), token);
+    const headSha = ref.object.sha;
+    const head = await api("/git/commits/" + headSha, token);
+    const entries = files
+      .map((f) => ({ path: repoPath(f.path), mode: "100644", type: "blob", content: f.content }))
+      .concat(removable.map((d) => ({ path: repoPath(d), mode: "100644", type: "blob", sha: null })));
+    const tree = await api("/git/trees", token, { method: "POST", body: { base_tree: head.tree.sha, tree: entries } });
+    if (tree.sha === head.tree.sha) return { unchanged: true };
+    const commit = await api("/git/commits", token, { method: "POST", body: { message, tree: tree.sha, parents: [headSha] } });
+    try {
+      await api("/git/refs/heads/" + encodeURIComponent(GH.branch), token, { method: "PATCH", body: { sha: commit.sha } });
+      return { sha: commit.sha };
+    } catch (err) {
+      if (err.status !== 422 || attempt === 1) throw err;
+    }
+  }
+  return { unchanged: true };
 }
 
 // Upload a media file to wiki/assets and return the site-root relative path for a card src.
 export async function uploadAsset(file, token) {
-  const safeName = sanitizeFilename(file.name);
+  // Pasted clipboard images are all called image.png, so every upload gets a unique suffix.
+  const clean = sanitizeFilename(file.name || "image.png");
+  const dot = clean.lastIndexOf(".");
+  const stamp = "-" + Date.now().toString(36);
+  const safeName = dot > 0 ? clean.slice(0, dot) + stamp + clean.slice(dot) : clean + stamp;
   const relPath = "assets/" + safeName;
   const contentBase64 = await base64FromFile(file);
   await putFile(relPath, contentBase64, "wiki: upload asset " + safeName, token);
