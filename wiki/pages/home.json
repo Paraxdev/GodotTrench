@@ -19,12 +19,6 @@
       "type": "text",
       "format": "markdown",
       "md": "## How the pieces fit\n\n> [!NOTE] Three parts, one file format\n> The **editor** writes `.gtm` map files, which are JSON. The **addon** reads them inside Godot and builds nodes. The **game config**, `godottrench_game.json`, flows the other way: the addon exports your project's entities and textures so the editor knows what it can place. When something looks wrong on one side, one of these three is usually out of date."
-    },
-    {
-      "id": "b4",
-      "type": "text",
-      "format": "markdown",
-      "md": "## About this wiki\n\nEvery page is a document you can edit right in the browser, and a few are free canvases for diagrams. [[using-this-wiki]] explains the editing, and [[how-this-wiki-works]] explains how saving writes back to the repo."
     }
   ]
 }
