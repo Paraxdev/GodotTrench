@@ -194,10 +194,6 @@ pub struct Prefs {
     pub ui_scale: f32,
     /// Multiply `ui_scale` by the monitor's scaling. When off, `ui_scale` is the exact pixels per point.
     pub follow_display_scaling: bool,
-    /// The first start welcome with the tour offer was answered.
-    pub guide_welcome_seen: bool,
-    /// Ids of guide chapters the tour went all the way through.
-    pub guide_done: Vec<String>,
     /// Move, rotate and scale handles on the selection in the 3D view.
     pub transform_gizmo: bool,
 }
@@ -261,8 +257,6 @@ impl Default for Prefs {
             blend_detile_sharpen: 0.5,
             ui_scale: 1.0,
             follow_display_scaling: true,
-            guide_welcome_seen: false,
-            guide_done: Vec::new(),
             transform_gizmo: true,
         }
     }

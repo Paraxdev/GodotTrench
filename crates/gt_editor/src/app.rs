@@ -6,7 +6,6 @@ use crate::CliArgs;
 use crate::camera::ViewKind;
 use crate::commands::{self, Action, ModelImport};
 use crate::dialogs::{CommandPalette, KeymapWindow, LinkDialog, ScatterPaletteWindow, ShapeDialog, TerrainDialog};
-use crate::guide::{self, Anchor, Guide, Panel};
 use crate::icons;
 use crate::mcp::tools::{Deferred, InputScript};
 use crate::mcp::{McpHost, ToolExecutor, transport};
@@ -31,6 +30,50 @@ enum Tab {
     Logic,
     Uv,
     Reference,
+}
+
+/// A dockable side panel, used to map panels to tabs and to show a hover tooltip on each tab.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Panel {
+    Outliner,
+    Inspector,
+    Materials,
+    Entities,
+    History,
+    Issues,
+    Uv,
+    Reference,
+}
+
+impl Panel {
+    pub const ALL: [Panel; 8] =
+        [Panel::Outliner, Panel::Inspector, Panel::Materials, Panel::Entities, Panel::History, Panel::Issues, Panel::Uv, Panel::Reference];
+
+    /// One or two sentences on what the panel is for, shown as the panel tab tooltip.
+    pub fn help(self) -> &'static str {
+        match self {
+            Panel::Outliner => {
+                "Every layer, group, brush, mesh and entity in the map as a tree. Click to select, the eye hides and the lock locks. Clicking a layer makes it the current layer new objects go into, right click it to rename or omit it from the build."
+            }
+            Panel::Inspector => {
+                "Edits whatever is selected: entity properties and outputs, face materials and UVs, scatter sets and terrains. With nothing selected it shows the map's own settings (worldspawn), like sun, sky and fog."
+            }
+            Panel::Materials => {
+                "The textures and materials of the Godot project. Click one to apply it to the selection, drag it onto a face, right click for favourites. Search and folders help in big projects."
+            }
+            Panel::Entities => {
+                "Entity classes from the game config as cards. Drag one into a view or double click to place it at the cursor, Ctrl or Shift click selects several to drag in together. Brush entities come with a box, or wrap the selected brushes on double click."
+            }
+            Panel::History => "Every edit in order. Click an older entry to undo back to it, click a later one to redo.",
+            Panel::Issues => {
+                "Problems found in the map, like invalid brushes, missing materials or outputs pointing at nothing. Click one to select the object, most offer a fix."
+            }
+            Panel::Uv => "Edits the UVs of selected mesh faces directly, like the UV editor of a 3D modelling program.",
+            Panel::Reference => {
+                "How to use the selected entity from code: GDScript and C# snippets, the FGD resource, and buttons that create the script in your project. Drag the divider to resize the class list, double click it to fit the names."
+            }
+        }
+    }
 }
 
 pub struct App {
@@ -58,7 +101,6 @@ pub struct App {
     pub(crate) hotspot_editor: crate::hotspot_editor::HotspotEditor,
     scatter_palette: ScatterPaletteWindow,
     link_dialog: LinkDialog,
-    pub(crate) guide: Guide,
     keep_prefs: bool,
     window_fitted: bool,
     toolbar_fit: ToolbarFit,
@@ -323,8 +365,7 @@ fn menu_button<'a>(icon: Option<icons::Icon>, label: &str, shortcut: Option<Stri
 }
 
 fn menu<R>(ui: &mut Ui, title: &'static str, add_contents: impl FnOnce(&mut Ui) -> R) {
-    let response = ui.menu_button(title, add_contents).response;
-    guide::mark(ui.ctx(), Anchor::Menu(title), response.rect);
+    ui.menu_button(title, add_contents);
 }
 
 fn sub_menu<R>(ui: &mut Ui, icon: Option<icons::Icon>, label: &str, add_contents: impl FnOnce(&mut Ui) -> R) {
@@ -386,7 +427,6 @@ impl App {
         let render_state = cc.wgpu_render_state.as_ref().expect("GodotTrench requires the wgpu renderer");
         let prefs: Prefs = if args.default_prefs { Prefs::default() } else { cc.storage.and_then(|s| eframe::get_value(s, "prefs")).unwrap_or_default() };
         let keep_prefs = !args.default_prefs;
-        let welcome = keep_prefs && !prefs.guide_welcome_seen;
         let mut state = EditorState::new(prefs);
         let project = args.project.clone().or_else(|| state.prefs.recent_projects.first().cloned());
         if let Some(root) = project.as_deref().and_then(gt_formats::game::find_project_root) {
@@ -473,7 +513,6 @@ impl App {
             hotspot_editor: Default::default(),
             scatter_palette: Default::default(),
             link_dialog: Default::default(),
-            guide: Guide::new(welcome),
             keep_prefs,
             window_fitted: false,
             toolbar_fit: ToolbarFit::default(),
@@ -544,8 +583,6 @@ impl App {
                 }
             }
             Action::ShowReference => show_tab(&mut self.dock, Tab::Reference),
-            Action::ShowGuide => self.guide.window_open = true,
-            Action::StartTour => self.guide.resume_tour(&self.state.prefs),
             Action::ShowPreferences => self.show_prefs = true,
             Action::ShowUvEditor => show_tab(&mut self.dock, Tab::Uv),
             Action::MeshOp(op) => {
@@ -610,7 +647,7 @@ impl App {
         use crate::entity_wizards::{DoorKind, HingeSide, SlideDirection};
         let mut m = MenuCx { ctx: ui.ctx().clone(), shortcuts: commands::shortcuts(&self.state.prefs), actions: &mut self.actions };
         let logo = self.logo.clone();
-        let bar = egui::MenuBar::new().ui(ui, |ui| {
+        egui::MenuBar::new().ui(ui, |ui| {
             // Product logo, scaled down to sit alongside the menus, with a left gutter so it does not
             // jam against the window edge and read as off-centre.
             ui.add_space(6.0);
@@ -1049,9 +1086,6 @@ impl App {
             });
             menu(ui, "Help", |ui| {
                 ui.set_min_width(MENU_WIDTH);
-                m.item(ui, Some(icons::HELP), "Guided Tour", Action::StartTour);
-                m.item(ui, Some(icons::REFERENCE), "Guide…", Action::ShowGuide);
-                ui.separator();
                 m.item(ui, Some(icons::COMMAND), "Command Palette", Action::ShowCommandPalette);
                 m.item(ui, Some(icons::KEYBOARD), "Keyboard Shortcuts…", Action::ShowKeymap);
                 m.item(ui, None, "Entity and Code Reference", Action::ShowReference);
@@ -1069,7 +1103,6 @@ impl App {
                 }
             });
         });
-        guide::mark(ui.ctx(), Anchor::MenuBar, bar.response.rect);
     }
 
     fn toolbar(&mut self, ui: &mut Ui, bar_height: f32) {
@@ -1102,7 +1135,7 @@ impl App {
             }
 
             tools_rect |= group;
-            guide::mark(ui.ctx(), Anchor::ToolbarFile, std::mem::replace(&mut group, egui::Rect::NOTHING));
+            group = egui::Rect::NOTHING;
             group_gap(ui);
             let history = [
                 (icons::UNDO, "Undo", Action::Undo, self.state.doc.history.can_undo()),
@@ -1118,7 +1151,7 @@ impl App {
             }
 
             tools_rect |= group;
-            guide::mark(ui.ctx(), Anchor::ToolbarHistory, std::mem::replace(&mut group, egui::Rect::NOTHING));
+            group = egui::Rect::NOTHING;
             group_gap(ui);
             for (i, tools) in ToolKind::GROUPS.iter().enumerate() {
                 if i > 0 {
@@ -1129,7 +1162,6 @@ impl App {
                     let action = if t == ToolKind::Mesh { Action::EditMesh } else { Action::SetTool(t) };
                     let tooltip = format!("{}\n{}", tip(&format!("{} tool", t.label()), &action), panels::tool_help(t));
                     let resp = icons::toggle(ui, icons::tool(t), size, self.state.tool == t, t.label(), tooltip);
-                    guide::mark(ui.ctx(), Anchor::Tool(t), resp.rect);
                     group |= resp.rect;
                     icon_count += 1;
                     if resp.clicked() {
@@ -1139,7 +1171,7 @@ impl App {
             }
 
             tools_rect |= group;
-            guide::mark(ui.ctx(), Anchor::ToolbarTools, std::mem::replace(&mut group, egui::Rect::NOTHING));
+            group = egui::Rect::NOTHING;
             group_gap(ui);
             icon_count += 1;
             group |= ui.add(icons::GRID.image(size).tint(ui.visuals().text_color())).on_hover_text("Grid size, [ and ] change it").rect;
@@ -1170,7 +1202,7 @@ impl App {
             }
 
             tools_rect |= group;
-            guide::mark(ui.ctx(), Anchor::ToolbarGrid, std::mem::replace(&mut group, egui::Rect::NOTHING));
+            group = egui::Rect::NOTHING;
             group_gap(ui);
             for (icon, label, help, action) in [
                 (icons::CSG_SUBTRACT, "CSG subtract", "Carve the selected brushes out of the brushes they touch", Action::CsgSubtract),
@@ -1187,7 +1219,7 @@ impl App {
             }
 
             tools_rect |= group;
-            guide::mark(ui.ctx(), Anchor::ToolbarCsg, std::mem::replace(&mut group, egui::Rect::NOTHING));
+            group = egui::Rect::NOTHING;
             group_gap(ui);
             for s in Shade::ALL {
                 let label = format!("{} shading", capitalize(s.label()));
@@ -1200,7 +1232,6 @@ impl App {
             }
 
             tools_rect |= group;
-            guide::mark(ui.ctx(), Anchor::ToolbarShading, group);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let godot_rect = self.godot_buttons(ui, size);
                 let project = match &self.state.game.project_root {
@@ -1210,7 +1241,6 @@ impl App {
                 let button = egui::Button::image_and_text(icons::OPEN.image(icons::SMALL), RichText::new(project).color(crate::theme::CYAN))
                     .image_tint_follows_text_color(true);
                 let resp = ui.add(button).on_hover_text("Open a Godot project folder");
-                guide::mark(ui.ctx(), Anchor::ToolbarProject, resp.rect);
                 self.toolbar_fit.project_width = (resp.rect | godot_rect).width();
                 if resp.clicked() {
                     self.actions.push(Action::OpenProject);
@@ -1734,18 +1764,6 @@ impl TabViewer for Tabs<'_> {
     }
 
     fn ui(&mut self, ui: &mut Ui, tab: &mut Tab) {
-        let anchor = match *tab {
-            Tab::View(i) => match self.viewports.get(i).map(|v| v.kind()) {
-                Some(ViewKind::Perspective) => Some(Anchor::View3d),
-                Some(_) => Some(Anchor::Views2d),
-                None => None,
-            },
-            other => tab_panel(other).map(Anchor::Panel),
-        };
-        if let Some(anchor) = anchor {
-            guide::mark(ui.ctx(), anchor, ui.clip_rect());
-        }
-
         match tab {
             Tab::View(i) => {
                 let Some(vp) = self.viewports.get_mut(*i) else { return };
@@ -1801,10 +1819,6 @@ impl eframe::App for App {
         self.tools.sync(&self.state);
         self.collect_input_actions(&ctx);
 
-        if let Some(Anchor::Panel(panel)) = self.guide.take_reveal() {
-            show_tab(&mut self.dock, panel_tab(panel));
-        }
-
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
         let margin = bar_margin(&ctx.global_style());
         let padding = ctx.global_style().spacing.button_padding.y * 2.0;
@@ -1816,13 +1830,11 @@ impl eframe::App for App {
         let options_max = TOOL_OPTIONS_MAX_HEIGHT.max(self.tool_options_height) + margin;
         let options = egui::Panel::top(TOOL_OPTIONS_ID).resizable(true).max_size(options_max).show(ui, |ui| bar_contents(ui, |ui| self.tool_options(ui)));
         self.tool_options_height = options.inner;
-        guide::mark(&ctx, Anchor::ToolOptions, options.response.rect);
         if !self.state.tabs.is_empty() {
             egui::Panel::top("map_tabs").show(ui, |ui| self.tab_bar(ui));
         }
 
-        let status = egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
-        guide::mark(&ctx, Anchor::StatusBar, status.response.rect);
+        egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
 
         if std::mem::take(&mut self.state.material_reload) {
             let game = self.state.game.clone();
@@ -1864,7 +1876,6 @@ impl eframe::App for App {
         self.scatter_palette.show(&ctx, &mut self.state, &mut self.actions);
         self.link_dialog.show(&ctx, &mut self.state);
         panels::dnd_preview(&ctx, &mut self.state);
-        self.guide.show(&ctx, &mut self.state, &mut self.actions);
 
         for action in std::mem::take(&mut self.actions) {
             let Some(action) = self.run_app_action(action) else { continue };

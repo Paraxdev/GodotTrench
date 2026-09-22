@@ -721,19 +721,6 @@ impl App {
                 });
                 return ok(json!({ "id": id.0, "path": reference }));
             }
-            "start_tour" => {
-                self.guide.start_tour(a["chapter"].as_u64().unwrap_or(0) as usize, a["step"].as_u64().unwrap_or(0) as usize);
-                let (chapter, step) = self.guide.tour().unwrap_or_default();
-                return ok(json!({ "chapter": self.guide.chapters[chapter].id, "step": self.guide.chapters[chapter].steps[step].title }));
-            }
-            "stop_tour" => {
-                self.guide.stop_tour();
-                return ok(json!({ "ok": true }));
-            }
-            "show_guide" => {
-                self.guide.open_page(a["chapter"].as_u64().unwrap_or(0) as usize);
-                return ok(json!({ "ok": true }));
-            }
             "clip_apply" => {
                 self.tools.sync(&self.state);
                 let before = self.state.doc.map.brush_count();

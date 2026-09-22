@@ -1,9 +1,5 @@
 # Level design tools and controls
 
-New to the editor? *Help > Guided Tour* walks through the interface, setting up a Godot project, building a first room,
-the tools, entities, terrain and getting the map into Godot. It highlights the real widgets, each chapter can be opened on
-its own, and *Help > Guide* shows the same chapters as searchable pages with tips.
-
 ## Controls (TrenchBroom style)
 
 * 3D: hold right mouse to look, WASD to fly (Q/E down/up while looking), middle mouse pans, wheel dollies, Alt+left drag orbits.
