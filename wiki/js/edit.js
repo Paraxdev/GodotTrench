@@ -10,6 +10,7 @@
 //   requestCommit()    ask the board to leave edit state for this card
 
 import { icon } from "./icons.js";
+import { el } from "./dom.js";
 
 // ----- Shared WYSIWYG selection toolbar -----
 
@@ -17,9 +18,7 @@ let bubble = null;
 
 function ensureBubble() {
   if (bubble) return bubble;
-  bubble = document.createElement("div");
-  bubble.className = "bubble-toolbar";
-  bubble.hidden = true;
+  bubble = el("div", { class: "bubble-toolbar", hidden: true });
   const buttons = [
     ["bold", "Bold", () => applyFormat("bold")],
     ["italic", "Italic", () => applyFormat("italic")],
@@ -33,19 +32,26 @@ function ensureBubble() {
     ["link", "Link", () => addLink()],
   ];
   buttons.forEach(([name, title, fn]) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "bubble-btn";
-    b.title = title;
-    b.setAttribute("aria-label", title);
-    b.appendChild(icon(name, { size: 16 }));
-    // Keep the selection: don't let the button take focus.
-    b.addEventListener("mousedown", (e) => e.preventDefault());
-    b.addEventListener("click", (e) => {
-      e.preventDefault();
-      fn();
-    });
-    bubble.appendChild(b);
+    bubble.appendChild(
+      el(
+        "button",
+        {
+          type: "button",
+          class: "bubble-btn",
+          title,
+          "aria-label": title,
+          on: {
+            // Keep the selection: don't let the button take focus.
+            mousedown: (e) => e.preventDefault(),
+            click: (e) => {
+              e.preventDefault();
+              fn();
+            },
+          },
+        },
+        icon(name, { size: 16 })
+      )
+    );
   });
   document.body.appendChild(bubble);
   return bubble;
@@ -134,11 +140,11 @@ const BLOCK_RULES = {
 };
 
 function currentBlock(editor, node) {
-  let el = node.nodeType === 1 ? node : node.parentNode;
-  while (el && el !== editor && !/^(P|DIV|H1|H2|H3|H4|LI|BLOCKQUOTE|PRE)$/.test(el.tagName)) {
-    el = el.parentNode;
+  let block = node.nodeType === 1 ? node : node.parentNode;
+  while (block && block !== editor && !/^(P|DIV|H1|H2|H3|H4|LI|BLOCKQUOTE|PRE)$/.test(block.tagName)) {
+    block = block.parentNode;
   }
-  return el && el !== editor ? el : editor;
+  return block && block !== editor ? block : editor;
 }
 
 function handleMarkdownSpace(editor, e) {
@@ -221,56 +227,59 @@ export function mountTextEditor(cardEl, bodyEl, card, ctx) {
 
 export function mountCodeEditor(cardEl, bodyEl, card, ctx) {
   bodyEl.innerHTML = "";
-  const wrap = document.createElement("div");
-  wrap.className = "code-edit-wrap";
 
-  const ta = document.createElement("textarea");
-  ta.className = "code-edit";
-  ta.spellcheck = false;
-  ta.value = card.code || "";
-  ta.addEventListener("input", () => {
-    card.code = ta.value;
+  const ta = el("textarea", {
+    class: "code-edit",
+    spellcheck: false,
+    value: card.code || "",
+    on: {
+      input: () => {
+        card.code = ta.value;
+      },
+      // Tab inserts a tab instead of leaving the field.
+      keydown: (e) => {
+        if (e.key !== "Tab") return;
+        e.preventDefault();
+        const s = ta.selectionStart;
+        const en = ta.selectionEnd;
+        ta.value = ta.value.slice(0, s) + "\t" + ta.value.slice(en);
+        ta.selectionStart = ta.selectionEnd = s + 1;
+        card.code = ta.value;
+      },
+    },
   });
-  // Tab inserts a tab instead of leaving the field.
-  ta.addEventListener("keydown", (e) => {
-    if (e.key === "Tab") {
-      e.preventDefault();
-      const s = ta.selectionStart;
-      const en = ta.selectionEnd;
-      ta.value = ta.value.slice(0, s) + "\t" + ta.value.slice(en);
-      ta.selectionStart = ta.selectionEnd = s + 1;
-      card.code = ta.value;
-    }
-  });
-  wrap.appendChild(ta);
 
-  const chip = document.createElement("button");
-  chip.type = "button";
-  chip.className = "code-lang";
-  chip.textContent = card.lang || "text";
-  chip.title = "Set language";
-  chip.addEventListener("mousedown", (e) => e.stopPropagation());
-  chip.addEventListener("click", () => {
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "code-lang-input";
-    input.value = card.lang || "";
-    input.placeholder = "gdscript, js, ...";
-    chip.replaceWith(input);
-    input.focus();
-    const done = () => {
-      card.lang = input.value.trim();
-      const back = chip;
-      back.textContent = card.lang || "text";
-      input.replaceWith(back);
-    };
-    input.addEventListener("blur", done);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") input.blur();
-    });
+  const chip = el("button", {
+    type: "button",
+    class: "code-lang",
+    text: card.lang || "text",
+    title: "Set language",
+    on: {
+      mousedown: (e) => e.stopPropagation(),
+      click: () => {
+        const input = el("input", {
+          type: "text",
+          class: "code-lang-input",
+          value: card.lang || "",
+          placeholder: "gdscript, js, ...",
+          on: {
+            blur: () => {
+              card.lang = input.value.trim();
+              chip.textContent = card.lang || "text";
+              input.replaceWith(chip);
+            },
+            keydown: (e) => {
+              if (e.key === "Enter") input.blur();
+            },
+          },
+        });
+        chip.replaceWith(input);
+        input.focus();
+      },
+    },
   });
-  wrap.appendChild(chip);
-  bodyEl.appendChild(wrap);
+
+  bodyEl.appendChild(el("div", { class: "code-edit-wrap" }, [ta, chip]));
   ta.focus();
 
   return {
@@ -304,8 +313,7 @@ export function mountTableEditor(cardEl, bodyEl, card, ctx) {
     if (cells.length) cells[0].focus();
   }
 
-  const bar = document.createElement("div");
-  bar.className = "tbl-adders";
+  const bar = el("div", { class: "tbl-adders" });
   bar.appendChild(
     adder("+ row", () => {
       const cols = (rows[0] || [""]).length;
@@ -335,13 +343,12 @@ export function mountTableEditor(cardEl, bodyEl, card, ctx) {
   bodyEl.appendChild(bar);
 
   function adder(label, fn) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "tbl-add";
-    b.textContent = label;
-    b.addEventListener("mousedown", (e) => e.stopPropagation());
-    b.addEventListener("click", fn);
-    return b;
+    return el("button", {
+      type: "button",
+      class: "tbl-add",
+      text: label,
+      on: { mousedown: (e) => e.stopPropagation(), click: fn },
+    });
   }
 
   return {
@@ -375,75 +382,80 @@ export function mountSelectionControls(cardEl, bodyEl, card, ctx) {
 }
 
 function labeledInput(type, value, placeholder, oninput) {
-  const input = document.createElement("input");
-  input.type = type;
-  if (value != null) input.value = value;
-  if (placeholder) input.placeholder = placeholder;
-  input.addEventListener("input", () => oninput(input.value));
+  const input = el("input", {
+    type,
+    value,
+    placeholder,
+    on: { input: () => oninput(input.value) },
+  });
   return input;
 }
 
 function ctrlButton(label, onClick) {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = "inline-btn";
-  b.textContent = label;
-  b.addEventListener("click", onClick);
-  return b;
+  return el("button", { type: "button", class: "inline-btn", text: label, on: { click: onClick } });
+}
+
+function colorInput(value, fallback, onPick) {
+  return el("input", {
+    type: "color",
+    class: "inline-color",
+    value: toHex(value, fallback),
+    title: "Stroke",
+    on: { input: (e) => onPick(e.target.value) },
+  });
 }
 
 function imageControls(card, ctx) {
-  const wrap = document.createElement("div");
-  const file = document.createElement("input");
-  file.type = "file";
-  file.accept = "image/*";
-  file.style.display = "none";
-  file.addEventListener("change", async () => {
-    const f = file.files && file.files[0];
-    if (!f) return;
-    const rel = await ctx.uploadAsset(f);
-    if (rel) {
-      card.src = rel;
-      card.svg = "";
-      ctx.rerenderContent();
-      ctx.markDirty();
-    }
-    file.value = "";
+  const file = el("input", {
+    type: "file",
+    accept: "image/*",
+    style: { display: "none" },
+    on: {
+      change: async () => {
+        const f = file.files && file.files[0];
+        if (!f) return;
+        const rel = await ctx.uploadAsset(f);
+        if (rel) {
+          card.src = rel;
+          card.svg = "";
+          ctx.rerenderContent();
+          ctx.markDirty();
+        }
+        file.value = "";
+      },
+    },
   });
-  wrap.appendChild(ctrlButton("Upload", () => file.click()));
-  wrap.appendChild(file);
-  wrap.appendChild(
+  return el("div", {}, [
+    ctrlButton("Upload", () => file.click()),
+    file,
     labeledInput("text", card.src || "", "image URL or assets/...", (v) => {
       card.src = v.trim();
       if (v.trim()) card.svg = "";
       ctx.rerenderContent();
       ctx.markDirty();
-    })
-  );
-  return wrap;
+    }),
+  ]);
 }
 
 function videoControls(card, ctx) {
-  const wrap = document.createElement("div");
   const toggle = ctrlButton(card.embed ? "Embed" : "File", () => {
     card.embed = !card.embed;
     toggle.textContent = card.embed ? "Embed" : "File";
     ctx.rerenderContent();
     ctx.markDirty();
   });
-  wrap.appendChild(toggle);
-  wrap.appendChild(
+  return el("div", {}, [
+    toggle,
     labeledInput("text", card.src || "", "mp4 URL or YouTube/Vimeo link", (v) => {
       card.src = v.trim();
       ctx.rerenderContent();
       ctx.markDirty();
-    })
-  );
-  return wrap;
+    }),
+  ]);
 }
 
 function shapeControls(card, ctx) {
-  const wrap = document.createElement("div");
+  const wrap = el("div");
   const kinds = [
     ["rect", "square"],
     ["ellipse", "circle"],
@@ -451,55 +463,49 @@ function shapeControls(card, ctx) {
     ["arrow", "move-right"],
   ];
   kinds.forEach(([kind, iconName]) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "inline-btn icon-btn" + ((card.shape || "rect") === kind ? " active" : "");
-    b.title = kind;
-    b.appendChild(icon(iconName, { size: 15 }));
-    b.addEventListener("click", () => {
-      card.shape = kind;
-      wrap.querySelectorAll(".icon-btn").forEach((x) => x.classList.remove("active"));
-      b.classList.add("active");
-      ctx.rerenderContent();
-      ctx.markDirty();
-    });
+    const b = el(
+      "button",
+      {
+        type: "button",
+        class: "inline-btn icon-btn" + ((card.shape || "rect") === kind ? " active" : ""),
+        title: kind,
+        on: {
+          click: () => {
+            card.shape = kind;
+            wrap.querySelectorAll(".icon-btn").forEach((x) => x.classList.remove("active"));
+            b.classList.add("active");
+            ctx.rerenderContent();
+            ctx.markDirty();
+          },
+        },
+      },
+      icon(iconName, { size: 15 })
+    );
     wrap.appendChild(b);
   });
-  const stroke = document.createElement("input");
-  stroke.type = "color";
-  stroke.className = "inline-color";
-  stroke.value = toHex(card.stroke, "#58b3e6");
-  stroke.title = "Stroke";
-  stroke.addEventListener("input", () => {
-    card.stroke = stroke.value;
-    ctx.rerenderContent();
-    ctx.markDirty();
-  });
-  wrap.appendChild(stroke);
-  return wrap;
-}
-
-function drawControls(card, ctx) {
-  const wrap = document.createElement("div");
   wrap.appendChild(
-    ctrlButton("Clear", () => {
-      card.path = "";
+    colorInput(card.stroke, "#58b3e6", (v) => {
+      card.stroke = v;
       ctx.rerenderContent();
       ctx.markDirty();
     })
   );
-  const stroke = document.createElement("input");
-  stroke.type = "color";
-  stroke.className = "inline-color";
-  stroke.value = toHex(card.stroke, "#f0d24a");
-  stroke.title = "Stroke";
-  stroke.addEventListener("input", () => {
-    card.stroke = stroke.value;
-    ctx.rerenderContent();
-    ctx.markDirty();
-  });
-  wrap.appendChild(stroke);
   return wrap;
+}
+
+function drawControls(card, ctx) {
+  return el("div", {}, [
+    ctrlButton("Clear", () => {
+      card.path = "";
+      ctx.rerenderContent();
+      ctx.markDirty();
+    }),
+    colorInput(card.stroke, "#f0d24a", (v) => {
+      card.stroke = v;
+      ctx.rerenderContent();
+      ctx.markDirty();
+    }),
+  ]);
 }
 
 function toHex(value, fallback) {

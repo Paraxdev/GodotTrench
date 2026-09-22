@@ -4,6 +4,8 @@
 
 import { renderContent } from "./cards.js";
 import { icon } from "./icons.js";
+// Imported as h because board.js uses el as a local variable name for card elements.
+import { el as h } from "./dom.js";
 import {
   mountTextEditor,
   mountCodeEditor,
@@ -56,8 +58,7 @@ export class BoardView {
     this._pan = null;
     this._pinch = null;
 
-    this.surface = document.createElement("div");
-    this.surface.className = "board-surface";
+    this.surface = h("div", { class: "board-surface" });
     this.viewport.innerHTML = "";
     this.viewport.appendChild(this.surface);
 
@@ -286,11 +287,12 @@ export class BoardView {
     let cards = board.cards.slice().sort((a, b) => (a.z || 0) - (b.z || 0));
     if (mode !== "edit") cards = cards.filter((c) => !c.hidden);
     if (!cards.length) {
-      const hint = document.createElement("div");
-      hint.className = "board-empty";
-      hint.textContent =
-        mode === "edit" ? "Right click or press Shift A to add a card" : "This page is empty";
-      this.surface.appendChild(hint);
+      this.surface.appendChild(
+        h("div", {
+          class: "board-empty",
+          text: mode === "edit" ? "Right click or press Shift A to add a card" : "This page is empty",
+        })
+      );
       return;
     }
     for (const card of cards) {
@@ -331,36 +333,31 @@ export class BoardView {
 
   _renderCard(card, mode, selId) {
     const collapsed = !!card.collapsed;
-    const el = document.createElement("div");
-    el.className = "card";
-    if (collapsed) el.classList.add("collapsed");
-    if (card.hidden) el.classList.add("is-hidden");
-    el.dataset.id = card.id;
-    el.dataset.type = card.type;
-    el.style.left = card.x + "px";
-    el.style.top = card.y + "px";
-    el.style.width = card.w + "px";
-    if (!collapsed) el.style.height = card.h + "px";
-    el.style.zIndex = String(card.z || 0);
-    if (mode === "edit" && card.id === selId) el.classList.add("selected");
+    const cardEl = h("div", {
+      class: "card",
+      dataset: { id: card.id, type: card.type },
+      style: { left: card.x + "px", top: card.y + "px", width: card.w + "px", zIndex: String(card.z || 0) },
+    });
+    if (collapsed) cardEl.classList.add("collapsed");
+    if (card.hidden) cardEl.classList.add("is-hidden");
+    if (!collapsed) cardEl.style.height = card.h + "px";
+    if (mode === "edit" && card.id === selId) cardEl.classList.add("selected");
 
     if (collapsed) {
-      const label = document.createElement("div");
-      label.className = "card-collapsed-label";
-      label.textContent = card.type + (card.hidden ? " · hidden" : "");
-      el.appendChild(label);
+      cardEl.appendChild(
+        h("div", { class: "card-collapsed-label", text: card.type + (card.hidden ? " · hidden" : "") })
+      );
     }
 
-    const body = document.createElement("div");
-    body.className = "card-body";
+    const body = h("div", { class: "card-body" });
     if (!collapsed) body.appendChild(renderContent(card));
-    el.appendChild(body);
+    cardEl.appendChild(body);
 
     if (mode === "edit") {
-      el.appendChild(this._actionsBar(card));
+      cardEl.appendChild(this._actionsBar(card));
 
       // Select on any pointerdown within the card (capture phase, before children stop it).
-      el.addEventListener(
+      cardEl.addEventListener(
         "pointerdown",
         (e) => {
           if (e.button !== 0) return;
@@ -371,14 +368,14 @@ export class BoardView {
       );
 
       // Double click enters inline editing for text-like cards.
-      el.addEventListener("dblclick", (e) => {
+      cardEl.addEventListener("dblclick", (e) => {
         if (!EDITABLE_TYPES[card.type]) return;
         if (e.target.closest(".card-actions, .inline-controls, .card-handle")) return;
         e.preventDefault();
         this.beginEdit(card);
       });
 
-      el.addEventListener("contextmenu", (e) => {
+      cardEl.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
         this.commitEdit();
@@ -387,15 +384,15 @@ export class BoardView {
       });
 
       if (!collapsed) {
-        this._addResizeHandles(el, card);
+        this._addResizeHandles(cardEl, card);
         // The whole body is the drag surface, except draw cards where the body draws.
         if (card.type === "draw") this._attachDraw(body, card);
-        else this._attachDrag(body, el, card, true);
-        mountSelectionControls(el, body, card, this._ctx(card, el, body));
+        else this._attachDrag(body, cardEl, card, true);
+        mountSelectionControls(cardEl, body, card, this._ctx(card, cardEl, body));
       }
     }
 
-    return el;
+    return cardEl;
   }
 
   _ctx(card, el, body) {
@@ -413,30 +410,28 @@ export class BoardView {
 
   // The floating action bar: move grip, collapse, layer, hide, delete. Shown on hover/selected.
   _actionsBar(card) {
-    const bar = document.createElement("div");
-    bar.className = "card-actions";
+    const grip = h("div", { class: "card-grip", title: "Drag to move" }, icon("grip-vertical", { size: 15 }));
+    const bar = h("div", { class: "card-actions" }, grip);
 
-    const grip = document.createElement("div");
-    grip.className = "card-grip";
-    grip.title = "Drag to move";
-    grip.appendChild(icon("grip-vertical", { size: 15 }));
-    bar.appendChild(grip);
-
-    const mkBtn = (name, title, fn, danger) => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "card-act" + (danger ? " danger" : "");
-      b.title = title;
-      b.setAttribute("aria-label", title);
-      b.appendChild(icon(name, { size: 15 }));
-      b.addEventListener("pointerdown", (e) => e.stopPropagation());
-      b.addEventListener("click", (e) => {
-        e.stopPropagation();
-        this.commitEdit();
-        fn();
-      });
-      return b;
-    };
+    const mkBtn = (name, title, fn, danger) =>
+      h(
+        "button",
+        {
+          type: "button",
+          class: "card-act" + (danger ? " danger" : ""),
+          title,
+          "aria-label": title,
+          on: {
+            pointerdown: (e) => e.stopPropagation(),
+            click: (e) => {
+              e.stopPropagation();
+              this.commitEdit();
+              fn();
+            },
+          },
+        },
+        icon(name, { size: 15 })
+      );
 
     bar.appendChild(
       mkBtn(card.collapsed ? "chevrons-up-down" : "chevrons-down-up", card.collapsed ? "Expand" : "Collapse", () =>
@@ -454,19 +449,17 @@ export class BoardView {
 
     // Wire the grip as a drag handle after the card element exists.
     setTimeout(() => {
-      const el = bar.closest(".card");
-      if (el) this._attachDrag(grip, el, card, false);
+      const cardEl = bar.closest(".card");
+      if (cardEl) this._attachDrag(grip, cardEl, card, false);
     }, 0);
     return bar;
   }
 
-  _addResizeHandles(el, card) {
+  _addResizeHandles(cardEl, card) {
     RESIZE_DIRS.forEach((spec) => {
-      const handle = document.createElement("div");
-      handle.className = "card-handle handle-" + spec.dir;
-      handle.style.cursor = spec.cursor;
-      el.appendChild(handle);
-      this._attachResize(handle, el, card, spec.dir);
+      const handle = h("div", { class: "card-handle handle-" + spec.dir, style: { cursor: spec.cursor } });
+      cardEl.appendChild(handle);
+      this._attachResize(handle, cardEl, card, spec.dir);
     });
   }
 

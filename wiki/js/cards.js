@@ -4,6 +4,8 @@
 // where the classic script tags in index.html place them. Every renderer degrades
 // gracefully if a library did not load.
 
+import { el } from "./dom.js";
+
 export const CARD_TYPES = ["text", "code", "image", "video", "table", "shape", "draw"];
 
 export const TYPE_LABELS = {
@@ -129,18 +131,14 @@ export function renderContent(card) {
 }
 
 function placeholder(text) {
-  const div = document.createElement("div");
-  div.className = "card-placeholder";
-  div.textContent = text;
-  return div;
+  return el("div", { class: "card-placeholder", text });
 }
 
 // Text cards render Markdown, BBCode, or raw HTML. Whatever the format, the final HTML
 // is always run through DOMPurify before it touches the DOM, so authored content, even raw
 // HTML, cannot inject script or event handlers on this public site.
 function renderText(card) {
-  const div = document.createElement("div");
-  div.className = "md";
+  const div = el("div", { class: "md" });
   const source = card.md || "";
   const format = card.format || "markdown";
 
@@ -166,9 +164,7 @@ function renderText(card) {
   } else {
     // No sanitizer available (offline without the vendored copy). Show the raw source safely
     // as plain text rather than risk injecting unsanitized markup.
-    const pre = document.createElement("pre");
-    pre.textContent = source;
-    div.appendChild(pre);
+    div.appendChild(el("pre", { text: source }));
   }
   return div;
 }
@@ -233,9 +229,8 @@ function bbcodeToHtml(src) {
 }
 
 function renderCode(card) {
-  const pre = document.createElement("pre");
-  pre.className = "code-block";
-  const code = document.createElement("code");
+  const pre = el("pre", { class: "code-block" });
+  const code = el("code");
   const lang = card.lang || "";
   const source = card.code || "";
   const hljs = window.hljs;
@@ -263,18 +258,14 @@ function renderCode(card) {
 }
 
 function renderImage(card) {
-  const wrap = document.createElement("div");
-  wrap.className = "card-media";
+  const wrap = el("div", { class: "card-media" });
 
   // Inline SVG markup takes precedence over a src. It is sanitized before it touches the DOM.
   const svg = (card.svg || "").trim();
   if (svg) {
     if (window.DOMPurify) {
       const clean = window.DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true } });
-      const holder = document.createElement("div");
-      holder.className = "card-svg";
-      holder.innerHTML = clean;
-      wrap.appendChild(holder);
+      wrap.appendChild(el("div", { class: "card-svg", html: clean }));
     } else {
       wrap.appendChild(placeholder("SVG needs the sanitizer to render."));
     }
@@ -286,16 +277,20 @@ function renderImage(card) {
     wrap.appendChild(placeholder("No image yet. Paste an image or SVG, set a src, or upload one."));
     return wrap;
   }
-  const img = document.createElement("img");
-  img.className = "card-img";
-  img.src = src;
-  img.alt = card.alt || "";
-  img.loading = "lazy";
-  img.addEventListener("error", () => {
-    wrap.innerHTML = "";
-    wrap.appendChild(placeholder("Image failed to load: " + src));
-  });
-  wrap.appendChild(img);
+  wrap.appendChild(
+    el("img", {
+      class: "card-img",
+      src,
+      alt: card.alt || "",
+      loading: "lazy",
+      on: {
+        error: () => {
+          wrap.innerHTML = "";
+          wrap.appendChild(placeholder("Image failed to load: " + src));
+        },
+      },
+    })
+  );
   return wrap;
 }
 
@@ -332,61 +327,47 @@ export function resolveVideo(card) {
 }
 
 function renderVideo(card) {
-  const wrap = document.createElement("div");
-  wrap.className = "card-media";
+  const wrap = el("div", { class: "card-media" });
   const info = resolveVideo(card);
   if (!info.src) {
     wrap.appendChild(placeholder("No video yet. Set an mp4 src, or a YouTube or Vimeo link."));
     return wrap;
   }
   if (info.kind === "iframe") {
-    const iframe = document.createElement("iframe");
-    iframe.className = "card-video";
-    iframe.src = info.src;
-    iframe.setAttribute("frameborder", "0");
-    iframe.setAttribute(
-      "allow",
-      "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+    wrap.appendChild(
+      el("iframe", {
+        class: "card-video",
+        src: info.src,
+        frameborder: "0",
+        allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
+        allowFullscreen: true,
+      })
     );
-    iframe.allowFullscreen = true;
-    wrap.appendChild(iframe);
   } else {
-    const video = document.createElement("video");
-    video.className = "card-video";
-    video.src = info.src;
-    video.controls = true;
-    wrap.appendChild(video);
+    wrap.appendChild(el("video", { class: "card-video", src: info.src, controls: true }));
   }
   return wrap;
 }
 
 function renderTable(card) {
   const rows = Array.isArray(card.rows) ? card.rows : [];
-  const table = document.createElement("table");
-  table.className = "card-table";
-  const tbody = document.createElement("tbody");
+  const tbody = el("tbody");
   rows.forEach((row, rowIndex) => {
-    const tr = document.createElement("tr");
+    const tr = el("tr");
     (row || []).forEach((cell) => {
-      const el = document.createElement(rowIndex === 0 ? "th" : "td");
-      el.textContent = cell == null ? "" : String(cell);
-      tr.appendChild(el);
+      tr.appendChild(el(rowIndex === 0 ? "th" : "td", { text: cell == null ? "" : String(cell) }));
     });
     tbody.appendChild(tr);
   });
-  table.appendChild(tbody);
-  const wrap = document.createElement("div");
-  wrap.className = "card-table-wrap";
-  wrap.appendChild(table);
-  return wrap;
+  return el("div", { class: "card-table-wrap" }, el("table", { class: "card-table" }, tbody));
 }
 
 function svgEl(name, attrs) {
-  const el = document.createElementNS("http://www.w3.org/2000/svg", name);
+  const node = document.createElementNS("http://www.w3.org/2000/svg", name);
   for (const key in attrs) {
-    el.setAttribute(key, attrs[key]);
+    node.setAttribute(key, attrs[key]);
   }
-  return el;
+  return node;
 }
 
 function renderShape(card) {
@@ -439,10 +420,7 @@ function renderShape(card) {
       })
     );
   }
-  const wrap = document.createElement("div");
-  wrap.className = "card-media";
-  wrap.appendChild(svg);
-  return wrap;
+  return el("div", { class: "card-media" }, svg);
 }
 
 function renderDraw(card) {
@@ -459,14 +437,9 @@ function renderDraw(card) {
     "stroke-linejoin": "round",
   });
   svg.appendChild(path);
-  const wrap = document.createElement("div");
-  wrap.className = "card-media card-draw-wrap";
-  wrap.appendChild(svg);
+  const wrap = el("div", { class: "card-media card-draw-wrap" }, svg);
   if (!card.path) {
-    const hint = document.createElement("div");
-    hint.className = "draw-hint";
-    hint.textContent = "Draw here in edit mode";
-    wrap.appendChild(hint);
+    wrap.appendChild(el("div", { class: "draw-hint", text: "Draw here in edit mode" }));
   }
   return wrap;
 }
