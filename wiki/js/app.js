@@ -1029,13 +1029,15 @@ function lastCardId() {
 function placeImage(src, extra) {
   if (layout() === "doc") {
     const card = docView.insertAfter(lastCardId(), { card: "image" });
-    Object.assign(card, { src: "", svg: "", alt: "" }, extra, src != null ? { src } : {});
+    Object.assign(card, extra, src != null ? { src } : {});
+    if (!card.svg) delete card.svg;
     markDirty();
     docView.render({ keepScroll: true });
     return card;
   }
   const card = addCardAt("image", pastePoint());
-  Object.assign(card, { src: "", svg: "" }, extra, src != null ? { src } : {});
+  Object.assign(card, extra, src != null ? { src } : {});
+  if (!card.svg) delete card.svg;
   markDirty();
   boardView.refreshCard(card);
   return card;
