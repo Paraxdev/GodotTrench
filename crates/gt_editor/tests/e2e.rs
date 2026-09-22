@@ -616,7 +616,7 @@ fn scatter_materials_and_scattering_onto_a_scatter() {
     assert_eq!(node["items"][0]["material"], "showcase/gold", "entry 0 is retextured");
     assert!(node["items"][1].get("material").is_none(), "entry 1 still follows the set");
     assert_eq!(node["material"], "showcase/snow", "the set keeps its own material");
-    assert_eq!(ed.call_err("scatter", json!({ "op": "material", "id": rocks_id, "item": 9 })), "the set has no palette entry 9");
+    assert_eq!(ed.call_err("scatter", json!({ "op": "material", "id": rocks_id, "item": 9 })), "the set has no palette entry 9, it has 2");
 
     // Grass that targets the rock set lands on the rocks, above the floor they stand on.
     let grass = ed.call("scatter", json!({ "op": "new_set", "preset": "grass", "name": "on_rocks", "targets": [rocks_id] }));
