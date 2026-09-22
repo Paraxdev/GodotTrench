@@ -339,12 +339,13 @@ impl Map {
         id
     }
 
-    pub fn insert_with_id(&mut self, id: NodeId, parent: NodeId, kind: NodeKind) {
+    /// Refuses, returning false, when `parent` does not exist, since an orphan would render but never be saved.
+    pub fn insert_with_id(&mut self, id: NodeId, parent: NodeId, kind: NodeKind) -> bool {
+        let Some(p) = self.nodes.get_mut(&parent) else { return false };
+        p.children.push(id);
         self.next_id = self.next_id.max(id.0 + 1);
         self.nodes.insert(id, Node { id, parent: Some(parent), children: Vec::new(), kind, hidden: false, locked: false });
-        if let Some(p) = self.nodes.get_mut(&parent) {
-            p.children.push(id);
-        }
+        true
     }
 
     /// Removes the node and all descendants. Empty layers are kept, layers themselves are removed only if not the last.
@@ -650,6 +651,15 @@ mod tests {
         m.remove(g);
         assert!(!m.contains(bid));
         assert!(m.get(layer).unwrap().children.is_empty());
+    }
+
+    #[test]
+    fn insert_refuses_a_missing_parent() {
+        let mut m = Map::new();
+        assert!(!m.insert_with_id(NodeId(50), NodeId(40), NodeKind::Group(Group::new("g"))));
+        assert!(!m.contains(NodeId(50)));
+        let id = m.insert(NodeId(40), NodeKind::Group(Group::new("g")));
+        assert!(!m.contains(id));
     }
 
     #[test]

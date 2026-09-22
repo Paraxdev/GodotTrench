@@ -27,6 +27,8 @@ pub enum FormatError {
     TooNew(u32),
     #[error("node {id}: {reason}")]
     Invalid { id: u64, reason: String },
+    #[error("paste target {0} does not exist")]
+    MissingParent(u64),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -142,6 +144,10 @@ pub fn paste_nodes(map: &mut Map, parent: NodeId, text: &str) -> Result<Vec<Node
     }
 
     clip.nodes.iter().try_for_each(validate)?;
+    if !map.contains(parent) {
+        return Err(FormatError::MissingParent(parent.0));
+    }
+
     let mut out = Vec::new();
     let mut copies = BTreeMap::new();
     for node in clip.nodes {
@@ -198,6 +204,11 @@ fn insert_fresh(map: &mut Map, parent: NodeId, node: FileNode, copies: &mut BTre
     id
 }
 
+fn max_file_id(node: &FileNode) -> u64 {
+    node.children.iter().map(max_file_id).fold(node.id, u64::max)
+}
+
+/// Expects `map.next_id` past every id in the file, so a repaired id never takes one a later node owns.
 fn insert_file_node(map: &mut Map, parent: Option<NodeId>, node: FileNode) {
     let id = NodeId(node.id);
     // Duplicate ids can only come from hand edited files, give those a fresh id.
@@ -205,7 +216,9 @@ fn insert_file_node(map: &mut Map, parent: Option<NodeId>, node: FileNode) {
     map.next_id = map.next_id.max(id.0 + 1);
     let kind = file_kind_to_node(node.kind);
     match parent {
-        Some(p) => map.insert_with_id(id, p, kind),
+        Some(p) => {
+            map.insert_with_id(id, p, kind);
+        }
         None => {
             map.nodes.insert(id, Node { id, parent: None, children: Vec::new(), kind, hidden: false, locked: false });
             map.layers.push(id);
@@ -261,7 +274,8 @@ pub fn from_str(text: &str) -> Result<Map, FormatError> {
     let file: FileMap = serde_json::from_value(value)?;
     file.layers.iter().try_for_each(validate)?;
 
-    let mut map = Map { nodes: imbl::OrdMap::new(), layers: Vec::new(), properties: file.properties, next_id: 1, editor: file.editor };
+    let next_id = file.layers.iter().map(max_file_id).max().unwrap_or(0) + 1;
+    let mut map = Map { nodes: imbl::OrdMap::new(), layers: Vec::new(), properties: file.properties, next_id, editor: file.editor };
     for layer in file.layers {
         if matches!(layer.kind, FileKind::Layer(_)) {
             insert_file_node(&mut map, None, layer);
@@ -349,6 +363,34 @@ mod tests {
         let mut v = to_value(&sample());
         v.as_object_mut().unwrap().remove("version");
         assert!(from_str(&v.to_string()).is_ok(), "a missing version reads as the oldest format");
+    }
+
+    #[test]
+    fn repaired_ids_do_not_take_later_ids() {
+        let mut v = to_value(&Map::new());
+        let brush = |id: u64| {
+            let mut b = serde_json::to_value(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(8.0)), "m").unwrap()).unwrap();
+            b["id"] = id.into();
+            b["type"] = "brush".into();
+            b
+        };
+        let scatter = serde_json::json!({ "id": 7, "type": "scatter", "name": "s", "kind": "props", "items": [], "targets": [6] });
+        v["layers"][0]["children"] = serde_json::json!([brush(5), brush(5), brush(6), scatter]);
+        let m = from_str(&v.to_string()).unwrap();
+        let ids: Vec<u64> = m.get(m.default_layer()).unwrap().children.iter().map(|c| c.0).collect();
+        assert_eq!(ids, [5, 8, 6, 7], "the duplicate gets an id past the file's highest");
+        assert_eq!(m.scatter(NodeId(7)).unwrap().targets, [NodeId(6)]);
+        assert_eq!(m.next_id, 9);
+    }
+
+    #[test]
+    fn paste_refuses_a_missing_parent() {
+        let mut m = sample();
+        let layer = m.default_layer();
+        let text = nodes_to_string(&m, &m.get(layer).unwrap().children.clone());
+        let before = m.nodes.len();
+        assert!(matches!(paste_nodes(&mut m, NodeId(9999), &text), Err(FormatError::MissingParent(9999))));
+        assert_eq!(m.nodes.len(), before);
     }
 
     #[test]

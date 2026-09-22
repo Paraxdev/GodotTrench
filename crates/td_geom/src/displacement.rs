@@ -8,7 +8,7 @@ use crate::brush::Brush;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Displacement {
-    /// 2, 3 or 4. Each side has 2^power + 1 vertices.
+    /// 1 to 4. Each side has 2^power + 1 vertices.
     pub power: u8,
     /// Offset along the face normal per grid vertex, row major (v rows of u columns).
     pub heights: Vec<f32>,
