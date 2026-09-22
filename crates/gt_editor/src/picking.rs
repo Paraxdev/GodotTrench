@@ -171,8 +171,8 @@ impl InstanceSurface {
 
         let mut best: Option<(f64, DVec3)> = None;
         for part in &model.parts {
-            for tri in part.indices.chunks_exact(3) {
-                let [a, b, c] = [tri[0], tri[1], tri[2]].map(|k| part.vertices.get(k as usize).map(|v| v.pos.as_dvec3()).unwrap_or_default());
+            for tri in part.indices.as_chunks::<3>().0 {
+                let [a, b, c] = tri.map(|k| part.vertices.get(k as usize).map(|v| v.pos.as_dvec3()).unwrap_or_default());
                 if let Some(t) = local.intersect_triangle(a, b, c)
                     && best.is_none_or(|(bt, _)| t < bt)
                 {
