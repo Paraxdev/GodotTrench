@@ -27,7 +27,7 @@ func explode(_activator: Node = null) -> void:
 	var meters := radius / GodotTrenchIO.units_per_meter(self)
 	var root := GodotTrenchIO.lookup_root(self)
 	var origin := global_position
-	for node in _nodes_in_radius(root, origin, meters):
+	for node in _nodes_in_radius(_blast_root(), origin, meters):
 		var falloff := clampf(1.0 - origin.distance_to(node.global_position) / maxf(meters, 0.001), 0.0, 1.0)
 		if node is RigidBody3D:
 			var body := node as RigidBody3D
@@ -38,6 +38,14 @@ func explode(_activator: Node = null) -> void:
 			GodotTrenchIO.call_method(node, damage_method, [damage * falloff, self])
 	_spawn_effect(root, origin)
 	exploded.emit()
+
+## The blast is spatial, so it reaches the whole scene rather than only the map that owns it. A player is usually
+## added next to the FuncGodotMap, not under it.
+func _blast_root() -> Node:
+	var tree := get_tree()
+	if tree.current_scene and tree.current_scene.is_ancestor_of(self):
+		return tree.current_scene
+	return tree.root
 
 func _spawn_effect(root: Node, origin: Vector3) -> void:
 	if effect_scene == "" or not ResourceLoader.exists(effect_scene):

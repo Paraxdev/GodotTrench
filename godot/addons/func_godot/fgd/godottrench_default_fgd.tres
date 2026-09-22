@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDFile" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_file.gd" id="1_fgd"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/func_godot_fgd.tres" id="2_base"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/godottrench/godottrench_fgd.tres" id="3_gt"]
+
+[resource]
+script = ExtResource("1_fgd")
+fgd_name = "GodotTrench"
+base_fgd_files = Array[Resource]([ExtResource("2_base"), ExtResource("3_gt")])

@@ -95,7 +95,6 @@ func smash() -> void:
 	if _broken:
 		return
 	_broken = true
-	broken.emit()
 	var parent := get_parent()
 	if explosive and parent:
 		var boom := GTExplosion.new()
@@ -112,6 +111,7 @@ func smash() -> void:
 			parent.add_child(debris)
 			if debris is Node3D:
 				(debris as Node3D).global_position = global_position
+	broken.emit()
 	queue_free()
 
 static func _to_float(v: Variant) -> float:

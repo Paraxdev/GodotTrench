@@ -17,6 +17,7 @@ Upstream class names are kept so the fork stays a drop-in replacement and upstre
 | `src/godottrench/runtime/godottrench_build.gd` | `GodotTrenchBuild`: owner rule for generated nodes, the `_gt_id` / `_gt_group` / `_gt_source_hash` metadata and the `godottrench/threaded_build` setting. |
 | `src/godottrench/export_game_config_cli.gd` | Headless export: `godot --headless --path <project> --script res://addons/func_godot/src/godottrench/export_game_config_cli.gd` |
 | `game_config/godottrench/godottrench_game_config.tres` | Default game config resource. |
+| `fgd/godottrench_default_fgd.tres` | Base FuncGodot classes plus the GodotTrench entity library, used by the default map settings and game config so a fresh project builds `func_door` and the rest without extra setup. |
 | `src/godottrench/godottrench_displacement.gd` | Displacement grids (same triangulation as the editor), surface arrays with blend weights in vertex color alpha, trimesh collision triangles. |
 | `src/godottrench/runtime/godottrench_decal.gd` | `GodotTrenchDecal`: decal entities with `texture`, `size` (map units) and `modulate` properties. |
 | `src/godottrench/runtime/gt_blend.gdshader` | Two texture blend shader driven by vertex color alpha, for displacements and vertex paint. |

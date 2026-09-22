@@ -55,6 +55,7 @@ func _ready() -> void:
 	ensure_setting(SETTING_PORT, DEFAULT_PORT, TYPE_INT)
 	ensure_setting(GodotTrenchBuild.SETTING_THREADED, true, TYPE_BOOL)
 	ensure_setting(GodotTrenchLiveSession.SETTING_CHUNK_SIZE, GodotTrenchLiveSession.DEFAULT_CHUNK_SIZE, TYPE_FLOAT, PROPERTY_HINT_RANGE, "2,256,1,suffix:m")
+	ensure_setting(GodotTrenchCSharp.SETTING, PackedStringArray(["res://"]), TYPE_PACKED_STRING_ARRAY, PROPERTY_HINT_TYPE_STRING, "%d/%d:" % [TYPE_STRING, PROPERTY_HINT_DIR])
 
 	_export_timer = Timer.new()
 	_export_timer.one_shot = true

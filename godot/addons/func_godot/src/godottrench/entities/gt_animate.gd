@@ -16,8 +16,8 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	animation = str(props.get("animation", animation))
 	speed = float(props.get("speed", speed))
 
-func _player_for() -> AnimationPlayer:
-	for node in GodotTrenchIO.find_targets(self, target, null):
+func _player_for(activator: Node) -> AnimationPlayer:
+	for node in GodotTrenchIO.find_targets(self, target, activator):
 		var found := _find_animation_player(node)
 		if found:
 			return found
@@ -33,8 +33,8 @@ static func _find_animation_player(node: Node) -> AnimationPlayer:
 			return found
 	return null
 
-func play(anim: Variant = null) -> void:
-	var player := _player_for()
+func play(anim: Variant = null, activator: Node = null) -> void:
+	var player := _player_for(activator)
 	if not player:
 		push_warning("[GT] logic_animate %s found no AnimationPlayer under '%s'" % [name, target])
 		return
@@ -49,21 +49,21 @@ func play(anim: Variant = null) -> void:
 	player.speed_scale = speed
 	player.play(clip)
 
-func queue(anim: Variant = null) -> void:
-	var player := _player_for()
+func queue(anim: Variant = null, activator: Node = null) -> void:
+	var player := _player_for(activator)
 	if player:
 		var clip := animation
 		if anim != null and str(anim) != "":
 			clip = str(anim)
 		player.queue(clip)
 
-func stop() -> void:
-	var player := _player_for()
+func stop(activator: Node = null) -> void:
+	var player := _player_for(activator)
 	if player:
 		player.stop()
 
-func seek(time: Variant = 0.0) -> void:
-	var player := _player_for()
+func seek(time: Variant = 0.0, activator: Node = null) -> void:
+	var player := _player_for(activator)
 	if player:
 		player.seek(float(time), true)
 

@@ -57,6 +57,7 @@ func _initialize() -> void:
 	await test_meshes_terrain_props()
 	test_bbmodel()
 	await test_map_export()
+	test_default_fgd()
 	await test_game_config()
 	await test_io_targets()
 	await test_gameplay_entities()
@@ -67,6 +68,7 @@ func _initialize() -> void:
 	await test_prop_and_explosion()
 	await test_npc_path()
 	await test_sequence()
+	await test_sequence_restart()
 	await test_logic_script()
 	await test_more_entities()
 	await test_scripted_scene()
@@ -103,6 +105,10 @@ func test_parser() -> void:
 	check(result.groups.any(func(g): return g.name.begins_with("group_") and g.name.ends_with("props")), "props group parsed")
 	var prefab_light = result.entities.filter(func(e): return e.properties.get("targetname", "") == "p1-plight")
 	check(prefab_light.size() == 1, "prefab targetname gets fixup prefix")
+	var fix_ctx := GodotTrenchParser.Context.new()
+	fix_ctx.name_prefix = "p1-"
+	var fixed := ["door", "door*", "@doors", "!activator", "/root/Game", ""].map(func(n): return GodotTrenchParser._fixup(fix_ctx, n))
+	check(fixed == ["p1-door", "p1-door*", "@doors", "!activator", "/root/Game", ""], "fixup leaves special, group and path targets alone, got %s" % [fixed])
 
 	# Face planes must point out of their brush.
 	var floor_brush: FuncGodotData.BrushData = world.brushes[0]
@@ -393,6 +399,14 @@ func test_map_export() -> void:
 	# The prefab is not part of the .map, it sits inside the floor bounds so the extents still match.
 	check(from_map.size.length() > 1.0, "exported .map builds world geometry")
 	check(near(from_map.position, from_gtm.position, 0.01) and near(from_map.end, from_gtm.end, 0.01), "world bounds match: map %s vs gtm %s" % [from_map, from_gtm])
+
+func test_default_fgd() -> void:
+	print("- addon defaults include the entity library")
+	var settings: FuncGodotMapSettings = load("res://addons/func_godot/func_godot_default_map_settings.tres")
+	var defs := settings.entity_fgd.get_entity_definitions()
+	check(defs.has("func_door") and defs.has("logic_relay") and defs.has("worldspawn"), "default map settings know func_door, logic_relay and worldspawn")
+	var config: GodotTrenchGameConfig = load(GodotTrenchEditorIntegration.DEFAULT_CONFIG)
+	check(config.fgd_file.get_entity_definitions().has("trigger_once"), "default game config exports trigger_once")
 
 func test_game_config() -> void:
 	print("- game config export")
@@ -1101,7 +1115,33 @@ func test_animate() -> void:
 	await process_frame
 	GodotTrenchIO.invoke(driver, &"play", "", null)
 	check(player.current_animation == "wave", "logic_animate played the target's animation, got '%s'" % player.current_animation)
+	player.stop()
+
+	driver.target = "!activator"
+	GodotTrenchIO.invoke(driver, &"play", "wave", actor)
+	check(player.current_animation == "wave", "logic_animate with a parameter resolves !activator, got '%s'" % player.current_animation)
+	player.stop()
+	GodotTrenchIO.invoke(driver, &"play", "", actor)
+	check(player.current_animation == "wave", "logic_animate without a parameter resolves !activator, got '%s'" % player.current_animation)
 	map.queue_free()
+	await process_frame
+
+func test_sequence_restart() -> void:
+	print("- logic_sequence stop and start within one wait")
+	var seq := GTSequence.new()
+	seq._func_godot_apply_properties({ "steps": 2, "interval": 0.05 })
+	root.add_child(seq)
+	var fired: Array[int] = []
+	seq.step.connect(func(i: int) -> void: fired.append(i))
+	seq.start()
+	seq.stop()
+	seq.start()
+	var deadline := Time.get_ticks_msec() + 1000
+	while fired.size() < 2 and Time.get_ticks_msec() < deadline:
+		await process_frame
+	await create_timer(0.15).timeout
+	check(fired == [1, 2], "restarted sequence fires each step once, got %s" % [fired])
+	seq.queue_free()
 	await process_frame
 
 func test_prop_and_explosion() -> void:
@@ -1306,12 +1346,16 @@ func test_scripted_scene_map() -> void:
 	check(lamp.is_on(), "the built light switches on through I/O")
 
 	var player: DemoPlayer = load("res://demo/player.tscn").instantiate()
-	map.add_child(player)
+	root.add_child(player)
 	await process_frame
 	player.global_position = barrel.global_position
+	var hp_at_broken := [-1.0]
+	barrel.broken.connect(func() -> void: hp_at_broken[0] = player.health)
 	barrel.smash()
 	await process_frame
-	check(player.health < player.max_health, "the explosive barrel blast hurt the player, health %s" % player.health)
+	check(player.health < player.max_health, "the barrel blast hurt a player placed next to the map, health %s" % player.health)
+	check(hp_at_broken[0] == player.health, "broken fires after the blast so a readout sees the damage, got %s" % hp_at_broken[0])
+	player.queue_free()
 	map.queue_free()
 	await process_frame
 
