@@ -1,64 +1,91 @@
-/* Canvas Wiki, a dark liquid glass theme.
-   Colors and material tokens are defined once as CSS variables on :root.
-   Panels are frosted glass floating over a deep, softly colored background. */
+/* Canvas Wiki, a calm dark note canvas in the spirit of Notion, OneNote and Obsidian.
+   Colors and material tokens are defined once as CSS variables on :root. Surfaces are
+   subtle frosted panels, cards are borderless containers that float on soft shadow, and
+   the accent palette is chosen from the Okabe-Ito set so it stays distinguishable for
+   colour vision deficiencies. Contrast is kept high for legibility. */
 
 :root {
-  /* Base */
-  --bg: #06080c;
-  --text: #eef1f7;
-  --text-dim: #b6bccd;
-  --text-faint: #7c8498;
+  /* Base. A deep neutral slate, calmer than a saturated backdrop. */
+  --bg: #0d1117;
+  --text: #f4f6fb;
+  --text-dim: #cad2df;
+  --text-faint: #97a1b2;
 
   --border-strong: #3a4256;
   --border-light: #4a5268;
 
-  /* The single accent. A calm cyan blue, kept sparing. */
-  --accent: #56b6d9;
-  --accent-rgb: 86, 182, 217;
-  --accent-strong: #3f9fc4;
-  --accent-soft: rgba(86, 182, 217, 0.16);
-  --accent-glow: rgba(86, 182, 217, 0.45);
-  --accent-ink: #eaf8ff;
+  /* Accent: Okabe-Ito sky blue. CVD safe and calm. */
+  --accent: #58b3e6;
+  --accent-rgb: 88, 179, 230;
+  --accent-strong: #3d97cf;
+  --accent-soft: rgba(88, 179, 230, 0.16);
+  --accent-glow: rgba(88, 179, 230, 0.34);
+  --accent-ink: #eaf6ff;
 
-  --danger: #f7869a;
-  --success: #86e0aa;
-  --warn: #e6b877;
-  --draw-stroke: #a6e06e;
+  /* Semantic colours from Okabe-Ito, so red/green are never the only signal and each stays
+     distinguishable under protanopia and deuteranopia. */
+  --danger: #ec7b3c; /* vermillion, not pure red */
+  --success: #35c79a; /* bluish green */
+  --warn: #e6a94a; /* orange */
+  --draw-stroke: #f0d24a; /* yellow */
 
-  /* Glass material */
-  --glass-bg: rgba(255, 255, 255, 0.07);
-  --glass-bg-strong: rgba(255, 255, 255, 0.11);
-  --glass-bg-soft: rgba(255, 255, 255, 0.05);
-  --glass-inner: rgba(8, 12, 20, 0.55);
-  --glass-inner-strong: rgba(8, 11, 18, 0.72);
-  --glass-border: rgba(255, 255, 255, 0.14);
-  --glass-border-strong: rgba(255, 255, 255, 0.22);
+  /* Frosted panel material. More opaque than liquid glass, so text contrast stays high. */
+  --glass-bg: rgba(28, 34, 46, 0.72);
+  --glass-bg-strong: rgba(38, 46, 62, 0.82);
+  --glass-bg-soft: rgba(255, 255, 255, 0.04);
+  --glass-inner: rgba(10, 14, 22, 0.6);
+  --glass-inner-strong: rgba(8, 11, 18, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-border-strong: rgba(255, 255, 255, 0.18);
   --glass-divider: rgba(255, 255, 255, 0.08);
-  --field-bg: rgba(255, 255, 255, 0.06);
-  --glass-blur: 22px;
-  --glass-sat: 160%;
+  --field-bg: rgba(255, 255, 255, 0.05);
+  --glass-blur: 16px;
+  --glass-sat: 120%;
 
-  --edge-hi: inset 0 1px 0 rgba(255, 255, 255, 0.22);
-  --shadow-glass: 0 22px 48px -16px rgba(0, 0, 0, 0.62), 0 8px 20px -10px rgba(0, 0, 0, 0.45);
-  --shadow-hover: 0 30px 62px -18px rgba(0, 0, 0, 0.7), 0 12px 26px -10px rgba(0, 0, 0, 0.5);
-  --text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --edge-hi: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --shadow-glass: 0 12px 30px -12px rgba(0, 0, 0, 0.55), 0 3px 10px -6px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 8px 22px -12px rgba(0, 0, 0, 0.6), 0 2px 6px -4px rgba(0, 0, 0, 0.45);
+  --shadow-hover: 0 18px 40px -14px rgba(0, 0, 0, 0.62), 0 6px 16px -8px rgba(0, 0, 0, 0.48);
+  --text-shadow: none;
 
-  /* Squircle radii */
-  --radius-card: 26px;
-  --radius-panel: 22px;
-  --radius-pill: 16px;
-  --radius-input: 12px;
-  --radius-sm: 10px;
+  /* Squircle radii. Softer than a hard rectangle, less aggressive than before. The
+     corner-shape rule below turns these into true squircles where the browser supports it. */
+  --radius-card: 14px;
+  --radius-panel: 14px;
+  --radius-pill: 10px;
+  --radius-input: 9px;
+  --radius-sm: 8px;
 
   --sidebar-w: 236px;
   --inspector-w: 306px;
-  --toolbar-h: 60px;
+  --toolbar-h: 58px;
 
   --font-ui: "Ubuntu", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Ubuntu Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   /* Aliases for older references. */
   --font: var(--font-ui);
   --mono: var(--font-mono);
+}
+
+/* True squircle corners where the browser supports corner-shape. Everywhere else the
+   border-radius above already gives a soft rounded rectangle, so this is purely additive. */
+@supports (corner-shape: superellipse(2)) {
+  .sidebar,
+  .toolbar,
+  .inspector,
+  .card-menu,
+  .status,
+  .modal-card,
+  .card,
+  .btn,
+  .page-item,
+  .menu-item,
+  .field input,
+  .field select,
+  .inspector-textarea,
+  .modal-input {
+    corner-shape: superellipse(2);
+  }
 }
 
 * {
@@ -80,28 +107,17 @@ body {
   overflow: hidden;
 }
 
-/* Soft, low saturation color blobs behind the frosted glass. */
+/* A very soft, dim wash behind the panels. Kept low key so the note surfaces and their
+   text stay the focus, closer to Obsidian or Notion than a vivid gradient. */
 body::before {
   content: "";
   position: fixed;
   inset: -25%;
   z-index: -1;
   background:
-    radial-gradient(38% 42% at 18% 20%, rgba(56, 116, 196, 0.32), transparent 70%),
-    radial-gradient(36% 40% at 84% 18%, rgba(38, 150, 150, 0.26), transparent 70%),
-    radial-gradient(44% 46% at 78% 82%, rgba(120, 92, 205, 0.26), transparent 72%),
-    radial-gradient(40% 44% at 22% 86%, rgba(40, 92, 172, 0.22), transparent 72%);
-  filter: saturate(112%);
-  animation: blob-drift 36s ease-in-out infinite alternate;
-}
-
-@keyframes blob-drift {
-  from {
-    transform: translate3d(-2%, -1%, 0) scale(1.02);
-  }
-  to {
-    transform: translate3d(2%, 2%, 0) scale(1.06);
-  }
+    radial-gradient(40% 44% at 16% 14%, rgba(58, 108, 168, 0.14), transparent 72%),
+    radial-gradient(42% 46% at 86% 88%, rgba(70, 96, 150, 0.12), transparent 74%);
+  filter: saturate(100%);
 }
 
 /* ----- App shell as floating glass panels ----- */
@@ -334,6 +350,24 @@ body.mode-edit .toolbar .edit-only {
   color: var(--accent);
 }
 
+.menu-item.danger {
+  color: var(--danger);
+}
+
+.menu-item.danger .icon {
+  color: var(--danger);
+}
+
+.menu-item.danger:hover {
+  background: rgba(236, 123, 60, 0.14);
+  border-color: rgba(236, 123, 60, 0.5);
+}
+
+/* A thin divider option can be added between groups if needed. */
+.card-ctx-menu {
+  min-width: 184px;
+}
+
 /* ----- Buttons as glass pills ----- */
 
 .btn {
@@ -497,17 +531,19 @@ body.mode-edit .inspector {
 
 .card {
   position: absolute;
+  border: 0;
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-glass), var(--edge-hi);
+  box-shadow: var(--shadow-card), var(--edge-hi);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   transform-style: preserve-3d;
-  transition: transform 0.16s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.16s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
-/* View mode cards lift on hover. The pointer tilt is applied inline by board.js. */
-.board-surface:not(.is-edit) .card:hover {
+/* Cards lift on hover in both modes, reading as free floating note containers. The pointer
+   tilt in view mode is applied inline by board.js. */
+.card:hover {
   box-shadow: var(--shadow-hover), var(--edge-hi);
 }
 
@@ -517,19 +553,38 @@ body.mode-edit .inspector {
 
 .card.selected {
   background: var(--glass-bg-strong);
-  border-color: rgba(var(--accent-rgb), 0.6);
-  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.72), 0 0 26px -2px var(--accent-glow),
-    var(--shadow-glass), var(--edge-hi);
-  transform: translateY(-2px);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.85), var(--shadow-card), var(--edge-hi);
+  transform: translateY(-1px);
 }
 
 .card.dragging,
 .card.resizing {
   transition: none;
-  box-shadow: 0 34px 66px -18px rgba(0, 0, 0, 0.72), 0 0 0 2px rgba(var(--accent-rgb), 0.72),
+  box-shadow: 0 24px 48px -16px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(var(--accent-rgb), 0.85),
     var(--edge-hi);
 }
 
+/* Hidden cards only appear in edit mode, shown faintly so they can be brought back. */
+.card.is-hidden {
+  opacity: 0.42;
+}
+
+.card.is-hidden:hover,
+.card.is-hidden.selected {
+  opacity: 0.78;
+}
+
+/* A collapsed card is just its header. */
+.card.collapsed {
+  height: auto;
+}
+
+.card.collapsed .card-header {
+  border-bottom: 0;
+}
+
+/* The header is the move anchor. It stays quiet until the card is hovered or selected, so
+   an idle board reads as clean floating notes, OneNote style. */
 .card-header {
   height: 30px;
   flex-shrink: 0;
@@ -537,11 +592,18 @@ body.mode-edit .inspector {
   align-items: center;
   gap: 6px;
   padding: 0 6px 0 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border-bottom: 1px solid var(--glass-divider);
+  background: transparent;
+  border-bottom: 1px solid transparent;
   cursor: grab;
   user-select: none;
   touch-action: none;
+  transition: background 0.14s ease, border-color 0.14s ease;
+}
+
+.card:hover .card-header,
+.card.selected .card-header {
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom-color: var(--glass-divider);
 }
 
 .card-header:active {
@@ -552,8 +614,15 @@ body.mode-edit .inspector {
   font-size: 10.5px;
   letter-spacing: 0.6px;
   text-transform: uppercase;
-  color: var(--text-dim);
+  color: var(--text-faint);
   font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+
+.card:hover .card-tag,
+.card.selected .card-tag {
+  opacity: 1;
 }
 
 .card-controls {
@@ -563,6 +632,13 @@ body.mode-edit .inspector {
   margin-left: auto;
   position: relative;
   z-index: 6;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+
+.card:hover .card-controls,
+.card.selected .card-controls {
+  opacity: 1;
 }
 
 .card-ctrl {
@@ -673,7 +749,7 @@ body.mode-edit .inspector {
   left: 0;
 }
 
-/* A visible grip in the bottom right corner. */
+/* A grip in the bottom right corner, revealed with the rest of the card chrome. */
 .handle-se::after {
   content: "";
   position: absolute;
@@ -683,8 +759,13 @@ body.mode-edit .inspector {
   height: 12px;
   border-radius: 4px;
   background: repeating-linear-gradient(135deg, transparent 0 2.5px, var(--text-faint) 2.5px 3.6px);
-  opacity: 0.85;
+  opacity: 0;
+  transition: opacity 0.14s ease;
   pointer-events: none;
+}
+
+.card:hover .handle-se::after {
+  opacity: 0.8;
 }
 
 .card.selected .handle-se::after,

@@ -19,7 +19,7 @@
       "w": 390,
       "h": 220,
       "z": 1,
-      "md": "## Editing\n\nToggle **Edit** in the toolbar to add and arrange cards. Click a card to select it, then edit its content in the inspector on the right. Toggle back to view mode to read the page."
+      "md": "## Editing\n\nToggle **Edit** in the toolbar. **Right click** the board or press **Shift + A** to add a card where you point. Click a card to select it, then edit it in the inspector. Select a card and press **Delete** to remove it. Toggle back to view mode to read the page."
     },
     {
       "id": "use-types",
@@ -29,7 +29,7 @@
       "w": 440,
       "h": 330,
       "z": 2,
-      "md": "## Card types\n\n- **Text**, written in Markdown\n- **Code**, with syntax highlighting\n- **Image**, including animated gifs\n- **Video**, an mp4 or a YouTube or Vimeo embed\n- **Table**, an editable cell grid\n- **Shape**, a rectangle, ellipse, line or arrow\n- **Draw**, a freehand sketch"
+      "md": "## Card types\n\n- **Text**, in **Markdown**, **BBCode** or **HTML** (pick the format in the inspector)\n- **Code**, with syntax highlighting\n- **Image**, including animated gifs\n- **Video**, an mp4 or a YouTube or Vimeo embed\n- **Table**, an editable cell grid\n- **Shape**, a rectangle, ellipse, line or arrow\n- **Draw**, a freehand sketch"
     },
     {
       "id": "use-arranging",
@@ -39,7 +39,7 @@
       "w": 390,
       "h": 220,
       "z": 3,
-      "md": "## Arranging\n\nDrag a card by its header to move it. Resize from the grip in the bottom right corner. Use bring to front and send to back, on the card header or in the inspector, to set the stacking order."
+      "md": "## Arranging\n\nDrag a card by its header to move it, and resize from any edge or corner. **Right click a card** to collapse it to its header, hide it from the published page, restack it, or delete it. Bring to front and send to back also live on the card header and in the inspector."
     },
     {
       "id": "use-saving",

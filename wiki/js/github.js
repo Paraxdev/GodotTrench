@@ -141,6 +141,27 @@ export async function putFile(relPath, contentBase64, message, token) {
   return res.json();
 }
 
+// DELETE a file from the repo. Returns true when removed, false when it did not exist.
+export async function deleteFile(relPath, message, token) {
+  const sha = await getFileSha(relPath, token);
+  if (!sha) return false;
+  const res = await fetch(contentsUrl(relPath), {
+    method: "DELETE",
+    headers: headers(token),
+    body: JSON.stringify({ message, sha, branch: GH.branch }),
+  });
+  if (!res.ok) throw new Error(await describeError(res));
+  return true;
+}
+
+// Delete the page files for a list of slugs. Missing files are skipped quietly.
+export async function deletePageFiles(slugs, token) {
+  for (const slug of slugs) {
+    await deleteFile("pages/" + slug + ".json", "wiki: delete page " + slug, token);
+  }
+  return true;
+}
+
 // Commit a single page board and the page index in one Save action.
 export async function commitPage(slug, board, pages, token) {
   const pageJson = JSON.stringify(board, null, 2) + "\n";

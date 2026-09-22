@@ -67,7 +67,10 @@ export class BoardView {
     const selId = this.opts.getSelectedId();
     this.surface.classList.toggle("is-edit", mode === "edit");
     this.surface.innerHTML = "";
-    const cards = board.cards.slice().sort((a, b) => (a.z || 0) - (b.z || 0));
+    let cards = board.cards.slice().sort((a, b) => (a.z || 0) - (b.z || 0));
+    // Hidden cards are dropped entirely in view mode, and shown faintly in edit mode so they
+    // can be brought back with the right click menu.
+    if (mode !== "edit") cards = cards.filter((c) => !c.hidden);
     if (!cards.length) {
       const hint = document.createElement("div");
       hint.className = "board-empty";
@@ -92,6 +95,11 @@ export class BoardView {
 
   // Re-render just one card, used when the inspector edits its content or geometry.
   refreshCard(card) {
+    // Collapsed or hidden cards change their whole structure, so rebuild rather than patch.
+    if (card.collapsed || card.hidden) {
+      this.render();
+      return;
+    }
     const el = this.surface.querySelector('.card[data-id="' + cssEscape(card.id) + '"]');
     if (!el) {
       this.render();
@@ -113,14 +121,18 @@ export class BoardView {
   }
 
   _renderCard(card, mode, selId) {
+    const collapsed = !!card.collapsed;
     const el = document.createElement("div");
     el.className = "card";
+    if (collapsed) el.classList.add("collapsed");
+    if (card.hidden) el.classList.add("is-hidden");
     el.dataset.id = card.id;
     el.dataset.type = card.type;
     el.style.left = card.x + "px";
     el.style.top = card.y + "px";
     el.style.width = card.w + "px";
-    el.style.height = card.h + "px";
+    // A collapsed card shrinks to just its header, so its height is left to the layout.
+    if (!collapsed) el.style.height = card.h + "px";
     el.style.zIndex = String(card.z || 0);
     if (mode === "edit" && card.id === selId) el.classList.add("selected");
 
@@ -129,11 +141,16 @@ export class BoardView {
       header.className = "card-header";
       const tag = document.createElement("span");
       tag.className = "card-tag";
-      tag.textContent = card.type;
+      tag.textContent = card.type + (card.hidden ? " · hidden" : "");
       header.appendChild(tag);
 
       const controls = document.createElement("div");
       controls.className = "card-controls";
+      controls.appendChild(
+        this._ctrlButton(collapsed ? "chevrons-up-down" : "chevrons-down-up", collapsed ? "Expand" : "Collapse", () =>
+          this.opts.onToggleCollapse(card.id)
+        )
+      );
       controls.appendChild(
         this._ctrlButton("bring-to-front", "Bring to front", () => this.opts.onBringToFront(card.id))
       );
@@ -150,19 +167,29 @@ export class BoardView {
 
       // Selecting on pointerdown makes the inspector and z buttons target this card.
       el.addEventListener("pointerdown", () => this.opts.onSelect(card.id));
+
+      // Right click on a card opens its own menu (hide, collapse, layering, delete).
+      el.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.opts.onSelect(card.id);
+        if (this.opts.onCardMenu) this.opts.onCardMenu(card.id, e.clientX, e.clientY);
+      });
     }
 
-    const body = document.createElement("div");
-    body.className = "card-body";
-    body.appendChild(renderContent(card));
-    el.appendChild(body);
+    if (!collapsed) {
+      const body = document.createElement("div");
+      body.className = "card-body";
+      body.appendChild(renderContent(card));
+      el.appendChild(body);
 
-    if (mode === "edit") {
-      this._addResizeHandles(el, card);
-      if (card.type === "draw") this._attachDraw(body, card);
-    } else {
-      // A gentle pointer tracking tilt, view mode only.
-      this._attachTilt(el);
+      if (mode === "edit") {
+        this._addResizeHandles(el, card);
+        if (card.type === "draw") this._attachDraw(body, card);
+      } else {
+        // A gentle pointer tracking tilt, view mode only.
+        this._attachTilt(el);
+      }
     }
 
     // The specular sheen overlay tracks the pointer. It never blocks clicks.
