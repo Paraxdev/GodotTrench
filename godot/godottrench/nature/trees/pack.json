@@ -1,0 +1,93 @@
+{
+  "name": "GodotTrench trees",
+  "short": "Trees",
+  "author": "GodotTrench",
+  "license": "MIT, textures CC0",
+  "url": "",
+  "credits": [
+    {
+      "asset": "chinese_hackberry_bark",
+      "author": "Charlotte Baglioni",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/chinese_hackberry_bark"
+    },
+    {
+      "asset": "japanese_sycamore",
+      "author": "Charlotte Baglioni",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/japanese_sycamore"
+    },
+    {
+      "asset": "Bark001",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=Bark001"
+    },
+    {
+      "asset": "bark_brown_02",
+      "author": "Rob Tuytel",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/bark_brown_02"
+    },
+    {
+      "asset": "pine_bark",
+      "author": "Dimitrios Savva",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/pine_bark"
+    },
+    {
+      "asset": "bark_willow_02",
+      "author": "Charlotte Baglioni",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/bark_willow_02"
+    },
+    {
+      "asset": "LeafSet014",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=LeafSet014"
+    },
+    {
+      "asset": "LeafSet024",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=LeafSet024"
+    },
+    {
+      "asset": "LeafSet010",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=LeafSet010"
+    },
+    {
+      "asset": "LeafSet027",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=LeafSet027"
+    },
+    {
+      "asset": "LeafSet016",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=LeafSet016"
+    },
+    {
+      "asset": "LeafSet019",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=LeafSet019"
+    },
+    {
+      "asset": "LeafSet004",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=LeafSet004"
+    },
+    {
+      "asset": "LeafSet013",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=LeafSet013"
+    }
+  ]
+}

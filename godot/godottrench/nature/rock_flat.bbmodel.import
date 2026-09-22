@@ -1,0 +1,17 @@
+[remap]
+
+importer="godottrench.bbmodel"
+type="PackedScene"
+uid="uid://ei2y11qbsun0"
+path="res://.godot/imported/rock_flat.bbmodel-774a2545cf3e857eb270352004a2cdbf.scn"
+
+[deps]
+
+source_file="res://godottrench/nature/rock_flat.bbmodel"
+dest_files=["res://.godot/imported/rock_flat.bbmodel-774a2545cf3e857eb270352004a2cdbf.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

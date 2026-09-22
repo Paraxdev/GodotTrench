@@ -1,0 +1,51 @@
+{
+  "name": "GodotTrench bushes",
+  "short": "Bushes",
+  "author": "GodotTrench",
+  "license": "MIT, textures CC0",
+  "url": "",
+  "credits": [
+    {
+      "asset": "bark_brown_02",
+      "author": "Rob Tuytel",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/bark_brown_02"
+    },
+    {
+      "asset": "LeafSet002",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=LeafSet002"
+    },
+    {
+      "asset": "Leaf003",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=Leaf003"
+    },
+    {
+      "asset": "LeafSet023",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=LeafSet023"
+    },
+    {
+      "asset": "FlowerSet001",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=FlowerSet001"
+    },
+    {
+      "asset": "LeafSet015",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=LeafSet015"
+    },
+    {
+      "asset": "LeafSet018",
+      "author": "ambientCG (Lennart Demes)",
+      "license": "CC0",
+      "url": "https://ambientcg.com/view?id=LeafSet018"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+[remap]
+
+importer="godottrench.bbmodel"
+type="PackedScene"
+uid="uid://ddvek6tojbys1"
+path="res://.godot/imported/flowers_yellow.bbmodel-2441ac8fd028ccb2625e6329fcb2fe3b.scn"
+
+[deps]
+
+source_file="res://godottrench/nature/flowers_yellow.bbmodel"
+dest_files=["res://.godot/imported/flowers_yellow.bbmodel-2441ac8fd028ccb2625e6329fcb2fe3b.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

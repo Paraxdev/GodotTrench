@@ -1,0 +1,17 @@
+[remap]
+
+importer="godottrench.bbmodel"
+type="PackedScene"
+uid="uid://delv84nhg2rj7"
+path="res://.godot/imported/grass_tall.bbmodel-d365e8e34534044f485fc4019d67f42a.scn"
+
+[deps]
+
+source_file="res://godottrench/nature/grass_tall.bbmodel"
+dest_files=["res://.godot/imported/grass_tall.bbmodel-d365e8e34534044f485fc4019d67f42a.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

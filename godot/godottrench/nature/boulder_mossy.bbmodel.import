@@ -1,0 +1,17 @@
+[remap]
+
+importer="godottrench.bbmodel"
+type="PackedScene"
+uid="uid://cwsc5c6puou2g"
+path="res://.godot/imported/boulder_mossy.bbmodel-56c3df799dcab8fc3468e3c94f1c04f8.scn"
+
+[deps]
+
+source_file="res://godottrench/nature/boulder_mossy.bbmodel"
+dest_files=["res://.godot/imported/boulder_mossy.bbmodel-56c3df799dcab8fc3468e3c94f1c04f8.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

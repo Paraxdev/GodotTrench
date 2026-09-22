@@ -1,0 +1,17 @@
+[remap]
+
+importer="godottrench.bbmodel"
+type="PackedScene"
+uid="uid://bao8hyw5fhd0y"
+path="res://.godot/imported/log.bbmodel-92683b15a46901aeb681e1041b172fc3.scn"
+
+[deps]
+
+source_file="res://godottrench/nature/log.bbmodel"
+dest_files=["res://.godot/imported/log.bbmodel-92683b15a46901aeb681e1041b172fc3.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true

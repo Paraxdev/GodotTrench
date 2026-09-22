@@ -1,0 +1,17 @@
+[remap]
+
+importer="godottrench.bbmodel"
+type="PackedScene"
+uid="uid://d2f07p3lj44k"
+path="res://.godot/imported/bush_round.bbmodel-0243ad1e85b6e488150a9c56f40c6d83.scn"
+
+[deps]
+
+source_file="res://godottrench/nature/bush_round.bbmodel"
+dest_files=["res://.godot/imported/bush_round.bbmodel-0243ad1e85b6e488150a9c56f40c6d83.scn"]
+
+[params]
+
+units_per_meter=16.0
+collision="none"
+nearest_filter=true
