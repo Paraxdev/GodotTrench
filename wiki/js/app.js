@@ -1,7 +1,9 @@
-// Application entry point. Wires the sidebar, toolbar, board, inspector, autosave,
+// Application entry point. Wires the sidebar, toolbar, board, inline editing, autosave,
 // and the GitHub Save flow together.
 
 import { GH } from "./config.js";
+// Imported as h because app.js uses el as the cache of toolbar and sidebar element references.
+import { el as h } from "./dom.js";
 import {
   loadDraft,
   saveDraft,
@@ -177,10 +179,7 @@ const collapsedCats = loadCollapsedCats();
 function renderSidebar() {
   el.pageList.innerHTML = "";
   if (!state.pages.length) {
-    const empty = document.createElement("div");
-    empty.className = "page-empty";
-    empty.textContent = "No pages yet. Add one to begin.";
-    el.pageList.appendChild(empty);
+    el.pageList.appendChild(h("div", { class: "page-empty", text: "No pages yet. Add one to begin." }));
     return;
   }
 
@@ -197,44 +196,49 @@ function renderSidebar() {
   });
 
   order.forEach((cat) => {
-    const group = document.createElement("div");
-    group.className = "page-group";
+    const group = h("div", { class: "page-group" });
     const isCollapsed = collapsedCats.has(cat);
 
-    const header = document.createElement("button");
-    header.type = "button";
-    header.className = "page-cat" + (isCollapsed ? " collapsed" : "");
-    header.appendChild(icon(isCollapsed ? "chevron-right" : "chevron-down", { size: 14 }));
-    const label = document.createElement("span");
-    label.className = "page-cat-label";
-    label.textContent = cat;
-    header.appendChild(label);
-    const count = document.createElement("span");
-    count.className = "page-cat-count";
-    count.textContent = String(groups.get(cat).length);
-    header.appendChild(count);
-    header.addEventListener("click", () => {
-      if (collapsedCats.has(cat)) collapsedCats.delete(cat);
-      else collapsedCats.add(cat);
-      saveCollapsedCats(collapsedCats);
-      renderSidebar();
-    });
-    group.appendChild(header);
+    group.appendChild(
+      h(
+        "button",
+        {
+          type: "button",
+          class: "page-cat" + (isCollapsed ? " collapsed" : ""),
+          on: {
+            click: () => {
+              if (collapsedCats.has(cat)) collapsedCats.delete(cat);
+              else collapsedCats.add(cat);
+              saveCollapsedCats(collapsedCats);
+              renderSidebar();
+            },
+          },
+        },
+        [
+          icon(isCollapsed ? "chevron-right" : "chevron-down", { size: 14 }),
+          h("span", { class: "page-cat-label", text: cat }),
+          h("span", { class: "page-cat-count", text: String(groups.get(cat).length) }),
+        ]
+      )
+    );
 
     if (!isCollapsed) {
       groups.get(cat).forEach((page) => {
-        const item = document.createElement("button");
-        item.type = "button";
-        item.className = "page-item";
-        if (page.slug === state.slug) item.classList.add("active");
-        item.textContent = page.title || page.slug;
-        item.title = page.slug;
-        item.addEventListener("click", () => openPage(page.slug));
-        item.addEventListener("contextmenu", (e) => {
-          e.preventDefault();
-          openPageMenu(page.slug, e.clientX, e.clientY);
-        });
-        group.appendChild(item);
+        group.appendChild(
+          h("button", {
+            type: "button",
+            class: "page-item" + (page.slug === state.slug ? " active" : ""),
+            title: page.slug,
+            text: page.title || page.slug,
+            on: {
+              click: () => openPage(page.slug),
+              contextmenu: (e) => {
+                e.preventDefault();
+                openPageMenu(page.slug, e.clientX, e.clientY);
+              },
+            },
+          })
+        );
       });
     }
     el.pageList.appendChild(group);
@@ -317,12 +321,7 @@ function setMode(mode) {
 function setButton(btn, iconName, label, ariaLabel) {
   btn.innerHTML = "";
   btn.appendChild(icon(iconName));
-  if (label) {
-    const span = document.createElement("span");
-    span.className = "btn-label";
-    span.textContent = label;
-    btn.appendChild(span);
-  }
+  if (label) btn.appendChild(h("span", { class: "btn-label", text: label }));
   if (ariaLabel) btn.setAttribute("aria-label", ariaLabel);
 }
 
@@ -375,29 +374,29 @@ let menuBoardPoint = { x: 0, y: 0 };
 const lastPointer = { x: 0, y: 0, overBoard: false };
 
 function setupCardMenu() {
-  menuEl = document.createElement("div");
-  menuEl.className = "card-menu";
-  menuEl.setAttribute("role", "menu");
-  menuEl.setAttribute("aria-label", "Add a card");
-  menuEl.hidden = true;
+  menuEl = h("div", { class: "card-menu", role: "menu", "aria-label": "Add a card", hidden: true });
 
   CARD_TYPES.forEach((type) => {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "menu-item";
-    item.dataset.type = type;
-    item.setAttribute("role", "menuitem");
-    item.setAttribute("aria-label", "Add " + TYPE_LABELS[type] + " card");
-    item.appendChild(icon(TYPE_ICON[type]));
-    const label = document.createElement("span");
-    label.textContent = TYPE_LABELS[type];
-    item.appendChild(label);
-    item.addEventListener("click", () => {
-      const at = menuBoardPoint;
-      closeCardMenu();
-      addCardAt(type, at);
-    });
-    menuEl.appendChild(item);
+    menuEl.appendChild(
+      h(
+        "button",
+        {
+          type: "button",
+          class: "menu-item",
+          dataset: { type },
+          role: "menuitem",
+          "aria-label": "Add " + TYPE_LABELS[type] + " card",
+          on: {
+            click: () => {
+              const at = menuBoardPoint;
+              closeCardMenu();
+              addCardAt(type, at);
+            },
+          },
+        },
+        [icon(TYPE_ICON[type]), h("span", { text: TYPE_LABELS[type] })]
+      )
+    );
   });
   document.body.appendChild(menuEl);
 
@@ -476,28 +475,26 @@ function closeCardMenu() {
 let cardCtxEl = null;
 
 function setupCardContextMenu() {
-  cardCtxEl = document.createElement("div");
-  cardCtxEl.className = "card-menu card-ctx-menu";
-  cardCtxEl.setAttribute("role", "menu");
-  cardCtxEl.setAttribute("aria-label", "Card actions");
-  cardCtxEl.hidden = true;
+  cardCtxEl = h("div", { class: "card-menu card-ctx-menu", role: "menu", "aria-label": "Card actions", hidden: true });
   document.body.appendChild(cardCtxEl);
 }
 
 function ctxItem(iconName, label, onClick, danger) {
-  const item = document.createElement("button");
-  item.type = "button";
-  item.className = "menu-item" + (danger ? " danger" : "");
-  item.setAttribute("role", "menuitem");
-  item.appendChild(icon(iconName));
-  const span = document.createElement("span");
-  span.textContent = label;
-  item.appendChild(span);
-  item.addEventListener("click", () => {
-    closeCardContextMenu();
-    onClick();
-  });
-  return item;
+  return h(
+    "button",
+    {
+      type: "button",
+      class: "menu-item" + (danger ? " danger" : ""),
+      role: "menuitem",
+      on: {
+        click: () => {
+          closeCardContextMenu();
+          onClick();
+        },
+      },
+    },
+    [icon(iconName), h("span", { text: label })]
+  );
 }
 
 // Build the menu fresh for the target card, so labels reflect its collapsed and hidden state.
@@ -548,11 +545,7 @@ let pageMenuEl = null;
 
 function ensurePageMenu() {
   if (pageMenuEl) return;
-  pageMenuEl = document.createElement("div");
-  pageMenuEl.className = "card-menu page-ctx-menu";
-  pageMenuEl.setAttribute("role", "menu");
-  pageMenuEl.setAttribute("aria-label", "Page actions");
-  pageMenuEl.hidden = true;
+  pageMenuEl = h("div", { class: "card-menu page-ctx-menu", role: "menu", "aria-label": "Page actions", hidden: true });
   document.body.appendChild(pageMenuEl);
 }
 
