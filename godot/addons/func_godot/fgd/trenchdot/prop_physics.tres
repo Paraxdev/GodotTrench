@@ -17,6 +17,7 @@ class_properties = Dictionary[String, Variant]({
 "explosive": false,
 "explosion_radius": 192.0,
 "explosion_damage": 40.0,
+"fuse": 0.6,
 "impact_speed": 0.0,
 "debris_scene": ""
 })
@@ -29,6 +30,7 @@ class_property_descriptions = Dictionary[String, Variant]({
 "explosive": "Fires a blast when it breaks",
 "explosion_radius": "Blast radius in map units when explosive",
 "explosion_damage": "Blast damage when explosive",
+"fuse": "Seconds an ignited prop burns before it breaks",
 "impact_speed": "Breaks when it hits something faster than this in m/s, 0 never breaks on impact",
 "debris_scene": "res:// scene spawned where it broke"
 })

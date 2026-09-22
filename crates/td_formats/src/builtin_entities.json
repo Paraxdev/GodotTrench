@@ -430,6 +430,7 @@
         { "name": "explosive", "type": "bool", "default": "0", "description": "Fires a blast when it breaks" },
         { "name": "explosion_radius", "type": "float", "default": "192", "description": "Blast radius in map units when explosive" },
         { "name": "explosion_damage", "type": "float", "default": "40", "description": "Blast damage when explosive" },
+        { "name": "fuse", "type": "float", "default": "0.6", "description": "Seconds an ignited prop burns before it breaks" },
         { "name": "impact_speed", "type": "float", "default": "0", "description": "Breaks when it hits something faster than this in m/s, 0 never breaks on impact" },
         { "name": "debris_scene", "type": "resource", "description": "res:// scene spawned where it broke" }
       ],
