@@ -1,0 +1,54 @@
+{
+  "title": "IO Cheatsheet",
+  "cards": [
+    {
+      "id": "io-heading",
+      "type": "text",
+      "x": 64,
+      "y": 48,
+      "w": 560,
+      "h": 96,
+      "z": 0,
+      "md": "# IO Cheatsheet\n\nQuick reference for common entity inputs and outputs, and how outputs choose their targets."
+    },
+    {
+      "id": "io-table",
+      "type": "table",
+      "x": 64,
+      "y": 176,
+      "w": 660,
+      "h": 300,
+      "z": 1,
+      "rows": [
+        ["Entity", "Inputs", "Outputs"],
+        ["logic_relay", "trigger", "triggered"],
+        ["logic_sequence", "start, stop, reset", "step_1..step_8, finished"],
+        ["prop_physics", "smash, ignite, push, take_damage", "damaged, broken"],
+        ["env_explosion", "explode", "exploded"],
+        ["game_text", "show, hide, set_text", "shown, hidden"],
+        ["light", "turn_on, turn_off, toggle", "switched"]
+      ]
+    },
+    {
+      "id": "io-targets",
+      "type": "text",
+      "x": 64,
+      "y": 508,
+      "w": 620,
+      "h": 250,
+      "z": 2,
+      "md": "## Target syntax\n\nOutputs pick their targets by:\n\n- a **targetname**, the name given to an entity\n- a trailing `*` wildcard, like `door_*`, to match many names\n- `!player`, the player node\n- `!activator`, whatever fired this output\n- `!self`, the entity itself\n- `@group`, every entity in a group\n- a node path like `/root/Game/Score`"
+    },
+    {
+      "id": "io-code",
+      "type": "code",
+      "x": 756,
+      "y": 176,
+      "w": 470,
+      "h": 200,
+      "z": 3,
+      "lang": "gdscript",
+      "code": "# logic_script source, run when the entity is fired.\n# In scope: this, activator, parameter, io, tree.\nactivator.take_damage(25, this)\nreturn activator.health"
+    }
+  ]
+}

@@ -11,14 +11,19 @@
 
   --border: #2a3040;
   --border-strong: #3a4256;
+  --border-light: #48516a;
 
   --text: #e6e9f0;
   --text-dim: #a4acc0;
   --text-faint: #6f7890;
 
-  --accent: #7aa2f7;
-  --accent-strong: #6c8ef5;
-  --accent-soft: rgba(122, 162, 247, 0.16);
+  /* The single accent. A calm cyan blue, used sparingly for selection,
+     the active page, and primary actions. Everything else stays neutral. */
+  --accent: #56b6d9;
+  --accent-strong: #3f9fc4;
+  --accent-soft: rgba(86, 182, 217, 0.14);
+  --accent-glow: rgba(86, 182, 217, 0.45);
+  --accent-ink: #07141a;
 
   --danger: #f7768e;
   --success: #7fdba1;
@@ -28,8 +33,9 @@
 
   --radius: 10px;
   --radius-sm: 7px;
-  --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --grid: rgba(255, 255, 255, 0.035);
+  --shadow: 0 6px 20px rgba(0, 0, 0, 0.38);
+  --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.28);
+  --dot-grid: rgba(255, 255, 255, 0.05);
 
   --sidebar-w: 232px;
   --inspector-w: 300px;
@@ -102,8 +108,9 @@ body {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 8px 10px;
+  padding: 8px 10px 8px 12px;
   border: 1px solid transparent;
+  border-left: 2px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-dim);
@@ -112,17 +119,21 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
 .page-item:hover {
   background: var(--bg-panel-2);
   color: var(--text);
+  border-left-color: var(--border-light);
 }
 
 .page-item.active {
   background: var(--accent-soft);
-  border-color: var(--accent);
+  border-color: transparent;
+  border-left: 2px solid var(--accent);
   color: var(--text);
+  font-weight: 600;
 }
 
 .page-empty {
@@ -190,9 +201,20 @@ body {
   display: none;
   align-items: center;
   gap: 6px;
-  flex: 1;
   overflow-x: auto;
-  padding: 4px 0;
+  padding: 5px 10px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.add-tools-label {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding-right: 2px;
+  flex-shrink: 0;
 }
 
 .toolbar-right {
@@ -232,7 +254,7 @@ body.mode-edit .add-tools {
 
 .btn:hover {
   background: var(--bg-card-header);
-  border-color: var(--accent);
+  border-color: var(--border-light);
 }
 
 .btn:disabled {
@@ -253,13 +275,22 @@ body.mode-edit .add-tools {
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #0d1017;
+  color: var(--accent-ink);
   font-weight: 600;
 }
 
 .btn-primary:hover {
   background: var(--accent-strong);
   border-color: var(--accent-strong);
+}
+
+/* The View/Edit toggle shows its active (editing) state clearly. */
+#mode-toggle.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .btn-ghost {
@@ -290,15 +321,31 @@ body.mode-edit .add-tools {
   position: relative;
   overflow: auto;
   background-color: var(--bg);
-  background-image: linear-gradient(var(--grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 24px 24px;
 }
 
 .board-surface {
   position: relative;
   width: 2400px;
   height: 1600px;
+}
+
+/* A faint dot grid only in edit mode, aligned with the 8px snap (16px dots). */
+.board-surface.is-edit {
+  background-image: radial-gradient(var(--dot-grid) 1.1px, transparent 1.4px);
+  background-size: 16px 16px;
+  background-position: 0 0;
+}
+
+.board-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  font-size: 15px;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* Inspector hidden in view mode, shown in edit mode. */
@@ -323,7 +370,7 @@ body.mode-edit .inspector {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -335,21 +382,22 @@ body.mode-edit .inspector {
 
 .card.selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), var(--shadow);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 14px var(--accent-glow), var(--shadow-card);
 }
 
 .card.dragging,
 .card.resizing {
-  opacity: 0.96;
+  opacity: 0.97;
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
 }
 
 .card-header {
-  height: 26px;
+  height: 28px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 0 8px;
+  gap: 6px;
+  padding: 0 6px 0 10px;
   background: var(--bg-card-header);
   border-bottom: 1px solid var(--border);
   cursor: grab;
@@ -363,9 +411,44 @@ body.mode-edit .inspector {
 
 .card-tag {
   font-size: 11px;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.5px;
   text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.card-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.card-ctrl {
+  width: 22px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
   color: var(--text-faint);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.card-ctrl:hover {
+  background: var(--bg-input);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.card-ctrl.danger:hover {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 .card-body {
@@ -386,18 +469,20 @@ body.mode-edit .inspector {
 
 .card-resize {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 16px;
-  height: 16px;
+  right: 3px;
+  bottom: 3px;
+  width: 14px;
+  height: 14px;
   cursor: nwse-resize;
   touch-action: none;
-  background: linear-gradient(135deg, transparent 50%, var(--border-strong) 50%);
-  border-bottom-right-radius: var(--radius);
+  border-radius: 3px;
+  background: repeating-linear-gradient(135deg, transparent 0 2.5px, var(--text-faint) 2.5px 3.6px);
+  opacity: 0.8;
 }
 
 .card-resize:hover {
-  background: linear-gradient(135deg, transparent 50%, var(--accent) 50%);
+  background: repeating-linear-gradient(135deg, transparent 0 2.5px, var(--accent) 2.5px 3.6px);
+  opacity: 1;
 }
 
 .card-placeholder {
