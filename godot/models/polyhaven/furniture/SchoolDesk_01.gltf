@@ -1,0 +1,155 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v1.6.16",
+    "version": "2.0"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "SchoolDesk_01"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "SchoolDesk_01",
+      "normalTexture": {
+        "index": 0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1
+        },
+        "metallicRoughnessTexture": {
+          "index": 2
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Mesh",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    },
+    {
+      "sampler": 0,
+      "source": 2
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/jpeg",
+      "name": "SchoolDesk_01_nor_gl",
+      "uri": "textures/SchoolDesk_01_nor_gl_1k.jpg"
+    },
+    {
+      "mimeType": "image/jpeg",
+      "name": "SchoolDesk_01_diff",
+      "uri": "textures/SchoolDesk_01_diff_1k.jpg"
+    },
+    {
+      "mimeType": "image/jpeg",
+      "name": "SchoolDesk_01_metallic-SchoolDesk_01_roughness",
+      "uri": "textures/SchoolDesk_01_arm_1k.jpg"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 3206,
+      "max": [
+        0.35588815808296204,
+        0.8821507096290588,
+        0.2683405578136444
+      ],
+      "min": [
+        -0.35588786005973816,
+        -0.00047916985931806266,
+        -0.27762702107429504
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 3206,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 3206,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 12486,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 38472,
+      "byteOffset": 0
+    },
+    {
+      "buffer": 0,
+      "byteLength": 38472,
+      "byteOffset": 38472
+    },
+    {
+      "buffer": 0,
+      "byteLength": 25648,
+      "byteOffset": 76944
+    },
+    {
+      "buffer": 0,
+      "byteLength": 24972,
+      "byteOffset": 102592
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 127564,
+      "uri": "SchoolDesk_01.bin"
+    }
+  ]
+}
