@@ -314,8 +314,10 @@ pub struct EditorState {
     pub uv_clipboard: Option<crate::texture_ops::UvClipboard>,
     /// Justify selected faces against their combined extent.
     pub treat_as_one: bool,
-    /// The UV editor panel is open, so a ctrl+click in a view selects all of a brush's faces.
+    /// The UV editor is the visible tab of its dock group, so a ctrl+click in a view selects all of a brush's faces.
     pub uv_panel_open: bool,
+    /// Last rotate, flip, nudge or duplicate, run again by Repeat Last.
+    pub last_repeatable: Option<crate::commands::Action>,
     /// Scatter set the scatter tool paints into. A new one is created on its own layer when unset.
     pub active_scatter: Option<NodeId>,
     pub blend: gt_doc::blend::BlendBrush,
@@ -377,6 +379,7 @@ impl EditorState {
             uv_clipboard: None,
             treat_as_one: false,
             uv_panel_open: false,
+            last_repeatable: None,
             active_scatter: None,
             blend: Default::default(),
             drag_preview: None,
@@ -687,7 +690,7 @@ impl EditorState {
             },
             None => {
                 self.set_status(format!(
-                    "No {} in project, using built-in entities. Export it from the FuncGodot dock in Godot.",
+                    "No {} in project, using built-in entities. Export it in Godot with Project > Tools > GodotTrench: Export Game Config.",
                     gt_formats::game::GAME_FILE_NAME
                 ));
                 GameConfig::builtin()

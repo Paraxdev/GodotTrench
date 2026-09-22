@@ -73,6 +73,25 @@ pub struct Instance {
     pub fixup: String,
 }
 
+impl Instance {
+    /// `name` as it is inside this instance. Special (`!self`), group (`@doors`) and node path targets are left
+    /// alone. The Godot importer applies the same rule in `gtm_parser.gd`.
+    pub fn fixup_name(&self, name: &str) -> Option<String> {
+        let special = name.is_empty() || name.starts_with(['!', '@', '/']);
+        (!self.fixup.is_empty() && !special).then(|| format!("{}-{name}", self.fixup))
+    }
+
+    /// The fixup of an instance nested in this one, so exploding the outer then the inner names things the way a
+    /// Godot build of the outer does.
+    pub fn nested_fixup(&self, inner: &str) -> String {
+        match (self.fixup.is_empty(), inner.is_empty()) {
+            (true, _) => inner.to_string(),
+            (false, true) => self.fixup.clone(),
+            (false, false) => format!("{}-{inner}", self.fixup),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeKind {
     Layer(Layer),
@@ -575,6 +594,18 @@ impl Map {
 mod tests {
     use super::*;
     use gt_geom::Brush;
+
+    #[test]
+    fn instance_fixups() {
+        let inst = |fixup: &str| Instance { path: "p.gtm".into(), origin: DVec3::ZERO, angles: DVec3::ZERO, fixup: fixup.into() };
+        let a = inst("a");
+        let names: Vec<Option<String>> = ["door", "door*", "@doors", "!self", "/root/Game", ""].iter().map(|n| a.fixup_name(n)).collect();
+        assert_eq!(names, [Some("a-door".into()), Some("a-door*".into()), None, None, None, None]);
+        assert_eq!(inst("").fixup_name("door"), None);
+        assert_eq!(a.nested_fixup("b"), "a-b");
+        assert_eq!(a.nested_fixup(""), "a");
+        assert_eq!(inst("").nested_fixup("b"), "b");
+    }
 
     #[test]
     fn insert_remove_subtree() {

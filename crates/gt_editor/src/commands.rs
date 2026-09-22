@@ -514,14 +514,23 @@ fn selection_bounds(state: &EditorState) -> Aabb {
 }
 
 pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
+    if matches!(action, Action::Rotate { .. } | Action::Flip { .. } | Action::Nudge(_) | Action::Duplicate) {
+        state.last_repeatable = Some(action.clone());
+    }
+
     let opts = state.opts();
     let parent = state.insert_parent();
     let open_groups = state.open_groups.clone();
     let grid = state.grid;
     match action {
         Action::NewMap => {
-            state.reset_document(Document::new());
-            state.set_status("New map");
+            if state.doc.is_modified() {
+                state.open_tab(Document::new());
+                state.set_status("New map opened in a tab, the current map has unsaved changes");
+            } else {
+                state.reset_document(Document::new());
+                state.set_status("New map");
+            }
         }
         Action::NewTab => {
             state.open_tab(Document::new());
@@ -593,7 +602,10 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 state.set_status(format!("Redo {l}"));
             }
         }
-        Action::RepeatLast => state.set_status("Repeat is available for transforms (nudge, rotate, flip)"),
+        Action::RepeatLast => match state.last_repeatable.clone() {
+            Some(last) => execute(state, last, ctx),
+            None => state.set_status("Nothing to repeat yet, Repeat Last runs the last rotate, flip, nudge or duplicate again"),
+        },
         Action::Delete => {
             if state.doc.selection.nodes.is_empty() {
                 return;
@@ -1363,12 +1375,18 @@ pub fn place_entities(state: &mut EditorState, classnames: &[String], at: Option
     });
 }
 
-/// Opens a Quake `.map` as a new, unsaved GodotTrench document.
+/// Opens a Quake `.map` as a new, unsaved GodotTrench document, in a tab when the current map has unsaved changes.
 pub fn import_quake_map(state: &mut EditorState, path: &std::path::Path) -> Result<(), String> {
     let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let map = gt_formats::quake_map::import(&text).map_err(|e| e.to_string())?;
-    state.reset_document(Document::from_map(map, None));
-    state.doc.revision += 1;
+    let mut doc = Document::from_map(map, None);
+    doc.revision += 1;
+    if state.doc.is_modified() {
+        state.open_tab(doc);
+    } else {
+        state.reset_document(doc);
+    }
+
     Ok(())
 }
 
@@ -1732,7 +1750,8 @@ fn explode_instances(state: &mut EditorState) {
             state.set_status(format!("Cannot load prefab {}", path.display()));
             return;
         };
-        let roots: Vec<NodeId> = prefab.layers.iter().flat_map(|l| prefab.get(*l).map(|n| n.children.clone()).unwrap_or_default()).collect();
+        let exported = prefab.layers.iter().filter_map(|l| prefab.get(*l)).filter(|n| !matches!(&n.kind, gt_doc::NodeKind::Layer(l) if l.omit_from_export));
+        let roots: Vec<NodeId> = exported.flat_map(|n| n.children.clone()).collect();
         contents.push((*id, inst.clone(), format::nodes_to_string(&prefab, &roots)));
     }
 
@@ -1745,20 +1764,25 @@ fn explode_instances(state: &mut EditorState) {
             sel.nodes.extend(ids.iter().copied());
             ops::transform_selection(m, &sel, &crate::prefabs::instance_transform(&inst), ops::EditOptions { uv_lock: true, grid: 0.0 });
             if !inst.fixup.is_empty() {
-                let prefix = format!("{}-", inst.fixup);
                 for new_id in sel.transformables(m) {
                     if let Some(e) = m.entity_mut(new_id) {
                         for key in ["targetname", "target"] {
-                            if let Some(v) = e.properties.get_mut(key).filter(|v| !v.is_empty() && !v.starts_with('!')) {
-                                *v = format!("{prefix}{v}");
+                            if let Some(v) = e.properties.get_mut(key)
+                                && let Some(fixed) = inst.fixup_name(v)
+                            {
+                                *v = fixed;
                             }
                         }
 
                         for o in &mut e.outputs {
-                            if !o.target.starts_with('!') {
-                                o.target = format!("{prefix}{}", o.target);
+                            if let Some(fixed) = inst.fixup_name(&o.target) {
+                                o.target = fixed;
                             }
                         }
+                    }
+
+                    if let Some(gt_doc::NodeKind::Instance(nested)) = m.get_mut(new_id).map(|n| &mut n.kind) {
+                        nested.fixup = inst.nested_fixup(&nested.fixup);
                     }
                 }
             }
@@ -1791,6 +1815,32 @@ mod tests {
         state.active_scatter = Some(NodeId(1));
         execute(&mut state, Action::ScatterPreset("forest".into()), &egui::Context::default());
         assert_eq!(state.active_scatter, None, "a preset switch clears the active set so the next stroke makes its own layer");
+    }
+
+    #[test]
+    fn repeat_last_runs_the_last_transform_again() {
+        let mut state = EditorState::new(Default::default());
+        let ctx = egui::Context::default();
+        execute(&mut state, Action::RepeatLast, &ctx);
+        execute(&mut state, Action::CreateBrushFromBounds, &ctx);
+        execute(&mut state, Action::Nudge(DVec3::new(16.0, 0.0, 0.0)), &ctx);
+        execute(&mut state, Action::SelectAll, &ctx);
+        execute(&mut state, Action::RepeatLast, &ctx);
+        let b = state.doc.map.bounds_of(state.doc.selection.nodes.iter().copied());
+        assert_eq!(b.min.x, 32.0, "nudged twice");
+    }
+
+    #[test]
+    fn new_map_keeps_unsaved_work_in_its_tab() {
+        let mut state = EditorState::new(Default::default());
+        let ctx = egui::Context::default();
+        execute(&mut state, Action::CreateBrushFromBounds, &ctx);
+        assert!(state.doc.is_modified());
+        execute(&mut state, Action::NewMap, &ctx);
+        assert_eq!(state.tabs.len(), 1, "the modified map stays open in a tab");
+        assert!(state.tabs[0].doc.is_modified() && !state.doc.is_modified());
+        execute(&mut state, Action::NewMap, &ctx);
+        assert_eq!(state.tabs.len(), 1, "an untouched map is simply replaced");
     }
 
     #[test]

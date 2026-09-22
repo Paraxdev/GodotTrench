@@ -178,6 +178,33 @@ pub fn fbm(p: DVec2, seed: u32, octaves: u32, roughness: f64) -> f64 {
 }
 
 impl Terrain {
+    pub fn check_data(&self) -> Result<(), String> {
+        let [w, d] = self.resolution;
+        if w < 2 || d < 2 {
+            return Err(format!("terrain resolution {w} x {d} is below 2 x 2"));
+        }
+
+        let verts = w as usize * d as usize;
+        if self.heights.len() != verts {
+            return Err(format!("terrain of {w} x {d} vertices needs {verts} heights, has {}", self.heights.len()));
+        }
+
+        if !self.splat.is_empty() && self.splat.len() != verts * 4 {
+            return Err(format!("terrain splat has {} bytes, expected {}", self.splat.len(), verts * 4));
+        }
+
+        let cells = (w as usize - 1) * (d as usize - 1);
+        if !self.holes.is_empty() && self.holes.len() != cells {
+            return Err(format!("terrain holes have {} cells, expected {cells}", self.holes.len()));
+        }
+
+        if self.cell_size.is_nan() || self.cell_size <= 0.0 {
+            return Err(format!("terrain cell size {} must be positive", self.cell_size));
+        }
+
+        Ok(())
+    }
+
     pub fn new(origin: DVec3, resolution: [u32; 2], cell_size: f64, material: &str) -> Self {
         let res = [resolution[0].max(2), resolution[1].max(2)];
         Self {

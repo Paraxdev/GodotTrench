@@ -121,6 +121,17 @@ fn face_from(indices: Vec<u32>, attrs: &[CornerAttr], data: &FaceData) -> MeshFa
 }
 
 impl Mesh {
+    pub fn check_data(&self) -> Result<(), String> {
+        crate::brush::check_faces(self.vertices.len(), self.faces.iter().map(|f| &f.indices))?;
+        for (i, f) in self.faces.iter().enumerate() {
+            if !f.uvs.is_empty() && f.uvs.len() != f.indices.len() {
+                return Err(format!("face {i} has {} UVs for {} corners", f.uvs.len(), f.indices.len()));
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn from_brush(brush: &Brush) -> Mesh {
         let has_disp = brush.faces.iter().any(|f| f.data.disp.is_some());
         if !has_disp {
