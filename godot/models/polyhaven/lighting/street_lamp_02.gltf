@@ -155,9 +155,9 @@
       "uri": "textures/street_lamp_02_arm_1k.jpg"
     },
     {
-      "mimeType": "image/jpeg",
+      "mimeType": "image/png",
       "name": "street_lamp_02_diff-street_lamp_02_opacity",
-      "uri": "textures/street_lamp_02_diff_1k.jpg"
+      "uri": "textures/street_lamp_02_diff_rgba_1k.png"
     }
   ],
   "accessors": [
@@ -173,7 +173,7 @@
       "min": [
         -0.19324660301208496,
         -0.394923597574234,
-        -2.31228973746056e-8
+        -2.31228973746056e-08
       ],
       "type": "VEC3"
     },

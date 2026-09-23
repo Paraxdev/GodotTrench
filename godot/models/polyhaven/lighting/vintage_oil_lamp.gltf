@@ -182,9 +182,9 @@
       "uri": "textures/vintage_oil_lamp_glass_nor_gl_1k.jpg"
     },
     {
-      "mimeType": "image/jpeg",
+      "mimeType": "image/png",
       "name": "vintage_oil_lamp_glass_diff-vintage_oil_lamp_glass_alpha",
-      "uri": "textures/vintage_oil_lamp_glass_diff_1k.jpg"
+      "uri": "textures/vintage_oil_lamp_glass_diff_rgba_1k.png"
     },
     {
       "mimeType": "image/jpeg",
@@ -212,9 +212,9 @@
       "uri": "textures/vintage_oil_lamp_flame_diff_1k.jpg"
     },
     {
-      "mimeType": "image/jpeg",
+      "mimeType": "image/png",
       "name": "vintage_oil_lamp_flame_diff-vintage_oil_lamp_flame_alpha",
-      "uri": "textures/vintage_oil_lamp_flame_diff_1k.jpg"
+      "uri": "textures/vintage_oil_lamp_flame_diff_rgba_1k.png"
     }
   ],
   "accessors": [
@@ -263,7 +263,7 @@
       ],
       "min": [
         -0.11000002920627594,
-        -1.822867901069003e-8,
+        -1.822867901069003e-08,
         -0.11000002175569534
       ],
       "type": "VEC3"

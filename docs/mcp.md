@@ -23,7 +23,7 @@ python tools/mcp_client.py call screenshot '{"target":"3d","width":1280,"height"
 
 A viewport screenshot is as large as the docked view and shows it as it is. With `width` and `height` the view's camera
 renders offscreen at that size instead, as a beauty shot: only what the game shows, without grid, entity boxes, trigger
-volumes, edges, selection outlines, I/O links or gizmos. Pass `"overlays": true` to keep the editor overlays in an
+volumes, edges, selection outlines, selection tint, I/O links or gizmos. Pass `"overlays": true` to keep the editor overlays in an
 offscreen capture, or `"overlays": false` without a size for a beauty shot at the docked size.
 
 ## Showcase map scripts

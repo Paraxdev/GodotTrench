@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dma74v2tavv7e"
-path="res://.godot/imported/tex0.png-38e95b1722f5fb20100d3c678ec42118.ctex"
+uid="uid://bp03m6olu74mo"
+path="res://.godot/imported/street_lamp_02_diff_rgba_1k.png-afbfc347966e9348480f315586ca1042.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://demo/textures/models/bush_flowering/tex0.png"
-dest_files=["res://.godot/imported/tex0.png-38e95b1722f5fb20100d3c678ec42118.ctex"]
+source_file="res://models/polyhaven/lighting/textures/street_lamp_02_diff_rgba_1k.png"
+dest_files=["res://.godot/imported/street_lamp_02_diff_rgba_1k.png-afbfc347966e9348480f315586ca1042.ctex"]
 
 [params]
 
