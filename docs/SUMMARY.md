@@ -59,7 +59,7 @@
     * [Sculpting](tutorials/sea-island-sculpt.md)
     * [Painting](tutorials/sea-island-painting.md)
     * [Scatter](tutorials/sea-island-scatter.md)
-    * [Jetty and Godot](tutorials/sea-island-finish.md)
+    * [Pier and Godot](tutorials/sea-island-finish.md)
 
 ## Reference
 

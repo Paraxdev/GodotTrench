@@ -48,4 +48,4 @@ hilltop (radius about 520) and a meadow behind the beach (about 700).
 
 ![Grass growing on a boulder](../assets/sea-island/scatter-boulder-grass.jpg)
 
-Next: [Sea island 5: jetty and Godot](sea-island-finish.md).
+Next: [Sea island 5: pier and Godot](sea-island-finish.md).

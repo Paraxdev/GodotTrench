@@ -1,6 +1,6 @@
 # Sea island 1: terrain
 
-A large island with two hills, cliffs, a beach, paths, woodland and a jetty, in five parts. The numbers are the ones
+A large island with two hills, cliffs, a beach, paths, woodland and a pier, in five parts. The numbers are the ones
 used for the pictures, in map units at 32 per meter.
 [examples/mcp/sea_island.json](https://github.com/Paraxdev/GodotTrench/blob/main/examples/mcp/sea_island.json)
 builds the same island, so you can replay it to check a value.
