@@ -1,0 +1,10 @@
+{
+  "name": "honkit-plugin-td",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The MCP switch, mcp blocks and glossary hover cards for the TrenchDot docs",
+  "main": "index.js",
+  "engines": {
+    "honkit": ">=4.0.0"
+  }
+}
