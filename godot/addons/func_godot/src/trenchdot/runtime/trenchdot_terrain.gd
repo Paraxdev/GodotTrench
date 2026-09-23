@@ -51,12 +51,28 @@ func height_at(local_x: float, local_z: float) -> float:
 
 static var _nearest_shader: Shader
 
-## Layer textures use nearest filtering when their material resource does (pixel art projects).
-static func _is_pixelated(texture_name: String, settings: FuncGodotMapSettings) -> bool:
+## The material resource a layer's texture name stands for, the one brushes with that texture get.
+static func _layer_material(texture_name: String, settings: FuncGodotMapSettings) -> Material:
 	var dir := settings.base_material_dir if settings.base_material_dir != "" else settings.base_texture_dir
 	var path := dir.path_join(texture_name + "." + settings.material_file_extension)
-	var material: Material = load(path) if ResourceLoader.exists(path) else settings.default_material
+	return load(path) if ResourceLoader.exists(path) else settings.default_material
+
+## Layer textures use nearest filtering when their material resource does (pixel art projects).
+static func _is_pixelated(texture_name: String, settings: FuncGodotMapSettings) -> bool:
+	var material := _layer_material(texture_name, settings)
 	return material is BaseMaterial3D and material.texture_filter in [BaseMaterial3D.TEXTURE_FILTER_NEAREST, BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS, BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS_ANISOTROPIC]
+
+## Passes an emissive layer material's emission on to the terrain shader's slot [param slot], so a glowing
+## material painted on the terrain glows like it does on a brush.
+static func _set_layer_glow(material: ShaderMaterial, slot: int, source: Material, energy: Vector4, textured: Vector4, multiply: Vector4) -> Array[Vector4]:
+	if source is BaseMaterial3D and source.emission_enabled:
+		material.set_shader_parameter("glow_color%d" % slot, source.emission)
+		energy[slot] = source.emission_energy_multiplier
+		multiply[slot] = 1.0 if source.emission_operator == BaseMaterial3D.EMISSION_OP_MULTIPLY else 0.0
+		if source.emission_texture:
+			material.set_shader_parameter("glow_texture%d" % slot, source.emission_texture)
+			textured[slot] = 1.0
+	return [energy, textured, multiply]
 
 static func _shader(pixelated: bool) -> Shader:
 	if not pixelated:
@@ -188,6 +204,7 @@ static func create(data: Dictionary, xform: Variant, settings: FuncGodotMapSetti
 	var tiles := Vector4(8, 8, 8, 8)
 	var detiles := Vector4.ZERO
 	var sharpens := Vector4(0.5, 0.5, 0.5, 0.5)
+	var glow := [Vector4.ZERO, Vector4.ZERO, Vector4.ZERO]
 	var pixelated := false
 	for l in 4:
 		# Weight in a slot without a layer shows the first layer, like the editor's prepare_terrain_material.
@@ -196,6 +213,7 @@ static func create(data: Dictionary, xform: Variant, settings: FuncGodotMapSetti
 		if texture_name != "":
 			material.set_shader_parameter("layer%d" % l, FuncGodotUtil.load_texture(texture_name, [], settings))
 			pixelated = pixelated or _is_pixelated(texture_name, settings)
+			glow = _set_layer_glow(material, l, _layer_material(texture_name, settings), glow[0], glow[1], glow[2])
 		tiles[l] = float(layer.get("tile", 256.0)) * scale
 		detiles[l] = clampf(float(layer.get("detile", 0.0)), 0.0, 1.0)
 		sharpens[l] = clampf(float(layer.get("detile_sharpen", 0.5)), 0.0, 1.0)
@@ -203,6 +221,9 @@ static func create(data: Dictionary, xform: Variant, settings: FuncGodotMapSetti
 	material.set_shader_parameter("tiles", tiles)
 	material.set_shader_parameter("detiles", detiles)
 	material.set_shader_parameter("sharpens", sharpens)
+	material.set_shader_parameter("glow_energy", glow[0])
+	material.set_shader_parameter("glow_textured", glow[1])
+	material.set_shader_parameter("glow_multiply", glow[2])
 	material.set_shader_parameter("map_offset", t.position)
 
 	var cells := Vector2i(res.x - 1, res.y - 1)
