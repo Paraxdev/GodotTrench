@@ -1,8 +1,8 @@
-# Sea island 5: jetty and Godot
+# Sea island 5: pier and Godot
 
-## The jetty
+## The pier
 
-Click **Add Layer** in the Outliner, so the jetty lands on its own layer, then draw plain brushes running out to sea
+Click **Add Layer** in the Outliner, so the pier lands on its own layer, then draw plain brushes running out to sea
 from the middle of the beach:
 
 | Part | Size | Material |
@@ -15,7 +15,7 @@ Add props from the demo project's `models/polyhaven` folder with *File > Import 
 two `wooden_crate_01` and a `wine_barrel_01` on the deck, a `lifebuoy` against a post and an `ocean_buoy` in the
 water. A prop references its model by `res://` path, so the file has to be inside the open Godot project.
 
-![The jetty from the sea](../assets/sea-island/jetty.jpg)
+![The pier from the sea](../assets/sea-island/pier.jpg)
 
 ## See it in Godot
 
@@ -30,4 +30,4 @@ Save the map inside your Godot project and build it with a `FuncGodotMap`, see [
 
 ![The finished island in Godot](../assets/sea-island/godot-overview.jpg)
 
-![The jetty in Godot](../assets/sea-island/godot-jetty.jpg)
+![The pier in Godot](../assets/sea-island/godot-pier.jpg)
