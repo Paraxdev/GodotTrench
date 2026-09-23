@@ -541,14 +541,21 @@ impl App {
             }
             "simulate_input" => err("simulate_input cannot run inside scripts"),
             "validate_map" => {
+                let path = self.state.doc.path.clone();
+                self.state.overlay_ghosts.refresh(path.as_deref());
+                let overlay_names = self.state.overlay_ghosts.targetnames();
                 let game = &self.state.game;
                 let inputs = class_inputs(game);
-                let found = issues::check_with(&self.state.doc.map, |class| {
-                    game.entity(class).map(|d| issues::ClassIo {
-                        outputs: d.outputs.iter().map(|o| o.name.as_str()).collect(),
-                        inputs: inputs.get(class).map(|list| list.iter().map(String::as_str).collect()).unwrap_or_default(),
-                    })
-                });
+                let found = issues::check_with_external(
+                    &self.state.doc.map,
+                    |class| {
+                        game.entity(class).map(|d| issues::ClassIo {
+                            outputs: d.outputs.iter().map(|o| o.name.as_str()).collect(),
+                            inputs: inputs.get(class).map(|list| list.iter().map(String::as_str).collect()).unwrap_or_default(),
+                        })
+                    },
+                    &overlay_names,
+                );
                 let mut list: Vec<Value> = found.into_iter().map(|i| serde_json::to_value(i).unwrap_or_default()).collect();
                 for (id, e) in self.state.doc.map.entities() {
                     if self.state.game.entity(&e.classname).is_none() {

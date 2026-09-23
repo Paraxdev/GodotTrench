@@ -16,6 +16,8 @@
 * Left drag on empty space draws a brush, drag the selection to move it (Alt: vertical, Ctrl: duplicate, Shift: lock axis).
 * The selection shows a gizmo in the 3D view: arrows move along an axis, squares move in a plane, the center dot moves freely,
   rings rotate (15° steps, Shift for 1°) and the boxes scale along an axis. *View > Transform Gizmo* hides it.
+* Content a Godot overlay puts on top of the map shows as dashed blue ghost boxes with their names, read from the map's
+  `.overlay.json` sidecar (see `docs/godot.md`). They cannot be selected, *View > Godot Overlays* hides them.
 * Shift+click selects faces, Shift+drag a face resizes the brush, Ctrl+Shift+drag extrudes. In 2D views drag selection edges to resize.
 * Tools: `C` clip (Tab changes kept side, Enter applies), `V` vertex, `R` rotate, `T` scale, `G` sculpt, `P` paint,
   `B` scatter, `Shift+G` blend, `Shift+E` volume, `M` measure, `Shift+P` path, `Shift+T` texture, `Tab` edit mesh,

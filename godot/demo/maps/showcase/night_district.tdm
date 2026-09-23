@@ -3266,7 +3266,9 @@
           "outputs": [
             {"output":"triggered","target":"court_lamp_3","input":"turn_on","delay":0.1},
             {"output":"triggered","target":"court_lamp_2","input":"turn_on","delay":0.6},
-            {"output":"triggered","target":"court_lamp_1","input":"turn_on","delay":1.1}
+            {"output":"triggered","target":"court_lamp_1","input":"turn_on","delay":1.1},
+            {"output":"triggered","target":"court_string_lights","input":"turn_on","delay":1.2},
+            {"output":"triggered","target":"court_fireflies","input":"emitting","parameter":"true"}
           ],
           "children": [
             {

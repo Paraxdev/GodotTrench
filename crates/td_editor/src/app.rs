@@ -1133,6 +1133,7 @@ impl App {
                 ui.set_min_width(MENU_WIDTH);
                 m.item(ui, Some(icons::FOCUS), "Focus Selection", Action::FocusSelection);
                 m.toggle(ui, "Transform Gizmo", self.state.prefs.transform_gizmo, Action::ToggleTransformGizmo);
+                m.toggle(ui, "Godot Overlays", self.state.prefs.godot_overlays, Action::ToggleGodotOverlays);
                 ui.separator();
                 sub_menu(ui, None, "Views", |ui| {
                     let open = open_views(&self.dock);

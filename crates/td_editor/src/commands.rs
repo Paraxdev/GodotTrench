@@ -48,6 +48,7 @@ pub enum Action {
     ToggleSnap,
     ToggleUvLock,
     ToggleTransformGizmo,
+    ToggleGodotOverlays,
     ToggleTextured,
     SetShade(Shade),
     CsgSubtract,
@@ -232,6 +233,7 @@ impl Action {
             Action::UiScaleReset => "Reset UI Scale".into(),
             Action::ShowPreferences => "Preferences".into(),
             Action::ToggleTransformGizmo => "Toggle Transform Gizmo".into(),
+            Action::ToggleGodotOverlays => "Toggle Godot Overlays".into(),
             Action::OpenGodotEditor => "Open Project in Godot".into(),
             Action::RunGodotProject => "Run Godot Project".into(),
             Action::FocusGodot => "Show Godot Editor".into(),
@@ -492,6 +494,7 @@ pub fn bindable_actions() -> Vec<Action> {
         Action::ViewLayout(2),
         Action::ViewLayout(4),
         Action::ToggleTransformGizmo,
+        Action::ToggleGodotOverlays,
         Action::OpenGodotEditor,
         Action::BuildInGodot,
         Action::ToggleLiveMode,
@@ -760,6 +763,10 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::ToggleTransformGizmo => {
             state.prefs.transform_gizmo = !state.prefs.transform_gizmo;
             state.set_status(if state.prefs.transform_gizmo { "Transform gizmo on" } else { "Transform gizmo off" });
+        }
+        Action::ToggleGodotOverlays => {
+            state.prefs.godot_overlays = !state.prefs.godot_overlays;
+            state.set_status(if state.prefs.godot_overlays { "Godot overlays shown" } else { "Godot overlays hidden" });
         }
         Action::ToggleTextured => {
             state.prefs.shade = match state.prefs.shade {

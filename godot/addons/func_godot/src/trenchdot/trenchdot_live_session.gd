@@ -470,6 +470,8 @@ func _rebuild_scatter(map: FuncGodotMap, id: int, old: Node) -> void:
 
 func _rebuild_environment(map: FuncGodotMap) -> void:
 	for child in map.get_children():
+		if TrenchDotOverlay.is_kept(child):
+			continue
 		if (child is WorldEnvironment and child.name == "environment") or (child is DirectionalLight3D and child.name == "sun"):
 			_free(child)
 	TrenchDotEnvironment.build(map, model.get("properties", {}))

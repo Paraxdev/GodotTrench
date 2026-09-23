@@ -365,7 +365,8 @@ func build(map_node: FuncGodotMap, entities: Array[_EntityData], groups: Array[_
 					parent = group.node
 		var entity_node := attach_entity(generate_entity_node(entity_data, entity_index), entity_data, parent, scene_root)
 		if entity_node and entity_index == 0 and parent == map_node:
-			map_node.move_child(entity_node, 0)
+			# TrenchDot: kept overlays stay in front, so no new node is inserted before an existing sibling.
+			map_node.move_child(entity_node, TrenchDotOverlay.leading_kept(map_node))
 	declare_step.emit("Entity assembly and property application complete")
 
 	TrenchDotIO.setup(entities, scene_root)

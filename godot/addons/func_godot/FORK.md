@@ -33,6 +33,10 @@ Upstream class names are kept so the fork stays a drop-in replacement and upstre
 | `src/trenchdot/runtime/trenchdot_scatter.gd` | `TrenchDotScatter`: scatter sets (trees, rocks, foliage) as one MultiMesh per model mesh, one static body per model with a shared shape, or instanced scenes for scripted models. Keeps a copy of the instance transforms when built headless, because the dummy renderer drops MultiMesh buffers. |
 | `src/trenchdot/trenchdot_face_cull.gd` | `TrenchDotFaceCull`: leaves faces out of the visual mesh when coplanar faces of other static solids fully cover them (same direction by priority, open meshes first, or back to back between closed solids), the rule the editor preview uses. Collision keeps every face. |
 | `src/trenchdot/runtime/trenchdot_blend.gd` | `TrenchDotBlend`: materials for faces with a blend material (`base\|blend` texture keys), mixed by vertex color alpha through `td_blend.gdshader`. |
+| `src/trenchdot/runtime/trenchdot_overlay.gd` | `TrenchDotOverlay`: Godot content on top of a map that every build, Clear Map, live session and hot reload keeps (same node instances, generated nodes go after it). Stays at the map origin, or follows a map elsewhere in the scene through `map_path`. Writes `<map>.overlay.json` (item names, bounds in map units, targetnames, anchors) on editor builds and scene saves for the level editor's ghost boxes. Nodes in the `trenchdot_keep` group directly under a map are kept too. |
+| `src/trenchdot/runtime/trenchdot_overlay_io.gd` | `TrenchDotOverlayIO`: gives its parent a targetname at runtime so map outputs reach overlay nodes, emits `input_received` for every input, and `fire(output)` for outputs without a signal. |
+| `src/trenchdot/runtime/trenchdot_anchor.gd` | `TrenchDotAnchor`: keeps its children on a map entity by targetname at a stored offset, through rebuilds, live edits and runtime movement. |
+| `icons/icon_overlay3d.svg`, `icons/icon_overlay_io.svg`, `icons/icon_anchor3d.svg` | Icons of the overlay nodes. |
 | `src/trenchdot/runtime/trenchdot_debug_overlay.gd` | `TrenchDotDebugOverlay`: in-game I/O event log and trigger volume display, toggled with F3. |
 | `src/trenchdot/trenchdot_csharp.gd` | `TrenchDotCSharp`: reads C# sources as text for `[TrenchDotEntity]` classes, their `[Export]` properties, `[Signal]` outputs and `[TrenchDotInput]` inputs, and applies map properties to the PascalCase members. |
 | `src/trenchdot/entities/td_*.gd` | Gameplay entity library: doors (sliding, hinged with `open_away`), gates, platforms, trains with path corners, buttons, triggers (`once`, `multiple`, `call`, `hurt`, `teleport`, `push`, `spawn_area`), spawners and logic (`call`, `relay`, `timer`, `counter`, `auto`, `debug`). |
@@ -66,6 +70,9 @@ All changes are small and marked with `TrenchDot` comments.
 * `src/util/func_godot_util.gd` (`build_texture_map`, `filter_face`): decal mesh faces (`|decal|` texture suffix) get an alpha scissor, double sided copy of their base material and are filtered by their base texture.
 * `src/util/func_godot_util.gd` (`material_texture_size`, `build_texture_map`): a material's `texture_size` metadata replaces the albedo's pixel size for UVs, so photo textures keep their world size. Blends rescale the painted texture to its own world size.
 * `src/map/func_godot_map.gd`: builds scatter sets after terrains.
+* `src/map/func_godot_map.gd` (`clear_children`, `_build`) and `src/core/entity_assembler.gd` (`build`): overlays and
+  `trenchdot_keep` nodes survive builds and Clear Map, the worldspawn goes after them instead of to index 0, the I/O
+  target cache is dropped on every build, and overlays are told when a build finished.
 
 TrenchDot files changed alongside: `tdm_parser.gd` converts brushes and meshes on the WorkerThreadPool (data only, in
 their original order), terrain chunk arrays are built on worker threads with the meshes created afterwards, and
@@ -73,7 +80,10 @@ their original order), terrain chunk arrays are built on worker threads with the
 coplanar face culling was measured slower and left out.
 
 The I/O runtime also gained `@group`, node path and `!player` targets, PascalCase fallbacks for C# methods and signals,
-JSON array arguments with placeholders and type coercion, and the `TrenchDotIO.events()` bus.
+JSON array arguments with placeholders and type coercion, and the `TrenchDotIO.events()` bus. For overlays, targetname
+lookups include overlays that point at their map from elsewhere, inputs reach `TrenchDotOverlayIO.input_received`, and
+the lookup cache is not stored as metadata while editing. `TrenchDotBuild.nodes_by_id`, the live session and the chunk
+streamer skip overlays, so they never replace, split or stream overlay content.
 
 ## Tests
 
@@ -81,8 +91,10 @@ JSON array arguments with placeholders and type coercion, and the `TrenchDotIO.e
 transforms, prefabs, omitted layers, I/O chains, displacements, meshes, terrains, model props, the Blockbench importer, the worldspawn environment and the
 game config export, the gameplay entities, spawners, scatter sets, blend materials, C# definitions, live sessions and threaded
 builds matching single threaded ones, and finishes with a
-playthrough of the lighthouse showcase map (gate relay and `trigger_call`). `res://tests/build_showcase.gd` builds the three
-showcase maps into scenes.
+playthrough of the lighthouse showcase map (gate relay and `trigger_call`). `res://tests/overlay_tests.gd` covers map
+overlays: surviving builds, Clear Map, live sessions and hot reload, I/O in both directions, anchors and the sidecar,
+ending with the night district demo overlay. `res://tests/build_showcase.gd` builds the showcase maps into scenes and
+puts `res://demo/overlays/<map>_overlay.tscn` on top of a map when that scene exists.
 
 ```sh
 godot --headless --path godot --import
