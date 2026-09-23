@@ -119,8 +119,16 @@ export class BoardView {
   // ----- Pan / zoom -----
 
   applyTransform() {
-    const { panX, panY, scale } = this.view;
+    const { scale } = this.view;
+    const dpr = window.devicePixelRatio || 1;
+    const panX = Math.round(this.view.panX * dpr) / dpr;
+    const panY = Math.round(this.view.panY * dpr) / dpr;
     this.surface.style.transform = "translate(" + panX + "px, " + panY + "px) scale(" + scale + ")";
+    // A layer that keeps will-change is rasterized once and then stretched, which blurs text at any
+    // zoom but the first. Promote it only while the view moves, so it repaints sharp once it settles.
+    this.surface.classList.add("moving");
+    clearTimeout(this._settle);
+    this._settle = setTimeout(() => this.surface.classList.remove("moving"), 160);
     let cell = DOT * scale;
     while (cell < 12) cell *= 2;
     if (cell !== this._cell) {
