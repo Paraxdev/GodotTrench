@@ -39,6 +39,7 @@ pub mod uv_editor;
 pub mod validate;
 pub mod viewport;
 pub mod volume_tool;
+pub mod walkable;
 pub mod widgets;
 pub mod zfight;
 

@@ -220,6 +220,8 @@ pub struct Prefs {
     pub transform_gizmo: bool,
     /// Ghost boxes of the Godot overlays built on top of the map, read from its overlay sidecar.
     pub godot_overlays: bool,
+    /// Agent the walkable area overlay is baked for.
+    pub walk_agent: crate::walkable::Agent,
 }
 
 pub const UI_SCALE_MIN: f32 = 0.5;
@@ -283,6 +285,7 @@ impl Default for Prefs {
             follow_display_scaling: true,
             transform_gizmo: true,
             godot_overlays: true,
+            walk_agent: Default::default(),
         }
     }
 }
@@ -335,6 +338,7 @@ pub struct EditorState {
     pub instance_bounds: std::collections::HashMap<NodeId, Aabb>,
     /// Godot overlay content of the open map, from its `.overlay.json` sidecar.
     pub overlay_ghosts: crate::overlays::OverlayGhosts,
+    pub walkable: crate::walkable::WalkableView,
     pub models: crate::models::ModelCache,
     pub model_thumbs: crate::model_thumbs::ModelThumbnails,
     /// World bounds of point entities drawn with a model.
@@ -467,6 +471,7 @@ impl EditorState {
             prefabs: Default::default(),
             instance_bounds: Default::default(),
             overlay_ghosts: Default::default(),
+            walkable: Default::default(),
             models: Default::default(),
             model_thumbs: Default::default(),
             model_bounds: Default::default(),

@@ -1142,6 +1142,25 @@ impl App {
                 m.item(ui, Some(icons::FOCUS), "Focus Selection", Action::FocusSelection);
                 m.toggle(ui, "Transform Gizmo", self.state.prefs.transform_gizmo, Action::ToggleTransformGizmo);
                 m.toggle(ui, "Godot Overlays", self.state.prefs.godot_overlays, Action::ToggleGodotOverlays);
+                sub_menu(ui, None, "Walkable Area", |ui| {
+                    m.toggle(ui, "Show Walkable Area", self.state.walkable.on, Action::ToggleWalkable);
+                    ui.separator();
+                    let a = &mut self.state.prefs.walk_agent;
+                    egui::Grid::new("walk_agent").num_columns(2).show(ui, |ui| {
+                        for (label, value, range, unit) in [
+                            ("Radius", &mut a.radius, 0.05..=10.0, " m"),
+                            ("Height", &mut a.height, 0.2..=20.0, " m"),
+                            ("Max climb", &mut a.max_climb, 0.0..=10.0, " m"),
+                            ("Max slope", &mut a.max_slope, 0.0..=89.0, "°"),
+                        ] {
+                            ui.label(label);
+                            ui.add(egui::DragValue::new(value).range(range).speed(0.05).suffix(unit));
+                            ui.end_row();
+                        }
+                    });
+                    ui.separator();
+                    empty_hint(ui, &self.state.walkable.describe());
+                });
                 ui.separator();
                 sub_menu(ui, None, "Views", |ui| {
                     let open = open_views(&self.dock);
@@ -2069,6 +2088,11 @@ impl eframe::App for App {
         self.fit_window_to_monitor(&ctx);
         self.tools.sync(&self.state);
         self.state.tick_godot(&ctx);
+        if crate::walkable::poll(&mut self.state, &ctx) {
+            // An MCP call below may render a view offscreen before the scene updates at the end of the frame.
+            self.scene.update(&mut self.renderer, &mut self.state, self.project_generation);
+        }
+
         self.process_mcp(&ctx);
         self.state.validate_insert_context();
         self.tools.sync(&self.state);
