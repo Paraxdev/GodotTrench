@@ -32,21 +32,14 @@ WAD, WAL)*, or `map_file {op: convert_textures, path}` over MCP.
 
 ## Quake textures
 
-* Names starting with `{` cut out their last palette color with alpha scissor.
-* Skies keep their back layer, unshaded.
-* `*water` loses the `*` in its file name.
-* Quake 2 translucency flags become alpha blending.
-* Animated textures (`+0lava`, multi frame VTFs) keep their first frame.
+Textures starting with `{` are cut out with alpha scissor, skies are unshaded, and `*water` is saved as `water`.
+Animated textures, including multi frame VTFs, keep their first frame.
 
 ## Skies
 
-Converting a map's textures also sets its sky, unless the map already has `sky_top_color`.
-
-| Map | Sky |
-| --- | --- |
-| Source, with the `skyname` skybox VTFs in `materials/skybox` | The six faces become one panorama, `skybox/<skyname>_panorama.png` in the texture folder, set as `sky_panorama`. Its zenith and horizon give the colors |
-| Quake and others, from the `sky_source` texture | The darker half of the texture, the back layer for Quake, becomes `sky_top_color` and the lighter half `sky_horizon_color` |
-
+Converting a map's textures also sets its sky, unless the map already has `sky_top_color`. A Source map with its
+`skyname` skybox in `materials/skybox` gets a panorama, `skybox/<skyname>_panorama.png` in the texture folder, set as
+`sky_panorama`. Other maps get `sky_top_color` and `sky_horizon_color` from the texture in `sky_source`.
 `GodotTrenchEnvironment` builds a WorldEnvironment from these keys when the scene has none of its own.
 
 ## VTF formats

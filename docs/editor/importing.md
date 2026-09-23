@@ -7,47 +7,32 @@ Godot builds it like any other map.
 
 1. Open the Godot project the map is for, converted textures go into its texture folder.
 2. *File > Import > .vmf (Hammer)* or *.map (TrenchBroom, Quake)* and pick the file.
-3. When textures for the map are found next to it, the editor offers to convert the ones the project lacks. Say yes.
-4. Check the Issues panel. `missing_material` lists every material the project still lacks, with how many faces use
-   it. Those faces keep the name, so adding the texture later fixes them.
+3. When textures for the map are found next to it, the editor offers to convert the ones the project lacks. Say yes,
+   see [Converting textures](importing-textures.md).
+4. Check the Issues panel. `missing_material` lists every material the project still lacks. Those faces keep the name,
+   so adding the texture later fixes them.
 5. *File > Save As* a `.gtm` inside the project.
 
-Textures are covered in [Converting textures](importing-textures.md).
+> **Note:** Units are kept as they are. Source maps are built for about 40 units per meter and Quake maps for about 32,
+> so a Source map comes out a little larger than in its game unless the project uses a different scale.
 
 ## What the import keeps
 
 | Hammer | In GodotTrench |
 | --- | --- |
 | Tool materials (`tools/toolsnodraw`, `toolsclip`, `toolsplayerclip`, `toolstrigger`, `toolsorigin`, ...) | The project's skip, clip and origin textures and `special/trigger` |
-| `tools/toolsskybox` and `toolsskybox2d` | The project's sky texture, `special/sky` by default |
+| Sky faces | The project's sky texture, `special/sky` by default |
 | Displacements | Displacements with their heights and blend alphas |
-| Displacements whose vertices move sideways | Smooth meshes with the exact positions, since a displacement here only moves along the face normal |
-| `func_instance` | A group with the instance's contents, placed, renamed by its fixup and with `$` and `#` replacements applied. `instance:name;Input` wiring is resolved |
+| `func_instance` | A group with the instance's contents, placed, renamed by its fixup, with `$` and `#` replacements and `instance:name;Input` wiring resolved |
 | Visgroups | Layers |
 | Hidden objects | Hidden nodes |
 | Entity keys and outputs | Entity properties and outputs |
 
-TrenchBroom layers and groups stay layers and groups. Quake tool textures (`skip`, `clip`, `hint`, `trigger`,
-`origin`, Quake 3 `common/caulk`) become the project's tool textures the same way.
+TrenchBroom layers and groups stay layers and groups, and Quake tool textures become the project's tool textures the
+same way.
 
-## Skies
-
-Quake and Source draw the sky wherever a sky face is, so a map is closed in by sky brushes. The import gives those
-faces the project's sky texture, which collides in Godot but draws nothing, and the editor's lit view leaves it out.
-
-| Game | Sky faces |
-| --- | --- |
-| Quake and Half-Life | textures whose names start with `sky` |
-| Quake 2 | faces with the `SURF_SKY` surface flag |
-| Quake 3 | shaders under `textures/skies/` |
-| Source | `tools/toolsskybox` and `toolsskybox2d` |
-
-The worldspawn key `sky_source` keeps the texture the sky faces had. Converting the map's textures then turns that
-texture into `sky_top_color` and `sky_horizon_color`, which Godot builds a procedural sky from, see
-[Converting textures](importing-textures.md#skies).
-
-> **Note:** Units are kept as they are. A Source map is built for about 40 units per meter and a Quake map for about
-> 32, so a Source map comes out a little larger than in its game unless the project uses a different scale.
+Sky faces collide in Godot but draw nothing. The worldspawn key `sky_source` keeps the texture they had, and converting
+the textures turns it into a procedural sky, see [Converting textures](importing-textures.md#skies).
 
 ## Known limitations
 
@@ -58,4 +43,4 @@ texture into `sky_top_color` and `sky_horizon_color`, which Godot builds a proce
 | Valve and Quake entity classes have no definitions in a new project | Add them to your FGD, or replace them, the Issues panel lists them |
 | `$basetexture2` blends, detail textures, env maps and proxies are left out | Set them up in Godot |
 | Quake 3 patches and brush primitives are skipped, the status bar counts them | Rebuild them as meshes |
-| A displacement turned into a mesh keeps no blend alphas and no longer sculpts | Edit it as a mesh |
+| Displacements whose vertices move sideways become meshes with no blend alphas | Edit them as meshes |

@@ -2,8 +2,7 @@
 
 ## Brush
 
-A convex solid stored as its exact corners and faces that index into them, so vertex edits round trip exactly and Godot
-builds what the editor shows. Face planes are recomputed on load.
+A convex solid stored as its exact corners and faces that index into them. Face planes are recomputed on load.
 
 | Key | Type | Meaning |
 | --- | --- | --- |

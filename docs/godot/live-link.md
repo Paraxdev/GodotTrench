@@ -1,7 +1,7 @@
 # Live link protocol
 
-The addon runs a small server in the Godot editor that GodotTrench uses for rebuilds, live mode and status. You only
-need this page to write your own client or debug the connection.
+The addon runs a server in the Godot editor that GodotTrench uses for rebuilds, live mode and status. You only need
+this page to write your own client or debug the connection.
 
 ## Transport
 
@@ -27,9 +27,9 @@ answers `map_saved`.
 | `live_end` | `path`, `revert` | With `revert`, rebuilds from the saved file |
 | `inspect` | `path`, `ids` | `nodes` with name, class, child count and position per map node id, plus `live` and `pending` |
 
-The editor sends absolute paths with forward slashes. Only `FuncGodotMap` nodes in the edited scene with *Auto Rebuild On Save* on take part. `text` is
-the whole map as JSON. `content` is the content id in the END chunk of the saved file, so a scene built from an
-unchanged file is not built again when a session starts.
+Paths are absolute with forward slashes, and only `FuncGodotMap` nodes in the edited scene with *Auto Rebuild On Save*
+on take part. `text` is the whole map as JSON. `content` is the content id in the END chunk of the saved file, so a
+scene built from an unchanged file is not built again when a session starts.
 
 ## Live ops
 
@@ -40,15 +40,15 @@ unchanged file is not built again when a session starts.
 | `translate` | `ids`, `offset` | Move nodes, sent while dragging instead of geometry |
 | `properties` | `properties` | Replace the worldspawn properties |
 
-A map's `epoch` goes up whenever it is built outside a live session or the `FuncGodotMap` nodes using it change. The
-editor sees the new epoch in the next `status` and starts over with `live_begin`.
+A map's `epoch` goes up whenever it is built outside a live session or the `FuncGodotMap` nodes using it change. When
+the next `status` shows a new epoch, start over with `live_begin`.
 
 Generated nodes carry their map node id in the `_gt_id` metadata, and layer and group nodes in `_gt_group`.
 
 ## Testing without a window
 
 Open a scene with a `FuncGodotMap` in a headless Godot editor and start GodotTrench with its MCP server on the same
-project. Edit the map through MCP, then send `inspect` to port 7842 to check what Godot built:
+project. Edit the map through MCP, then send `inspect` to port 7842 to see what Godot built:
 
 ```sh
 godot --headless --editor --path godot res://path/scene.tscn

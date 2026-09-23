@@ -1,8 +1,8 @@
 # Terrain layers
 
 A terrain has one to four layers, edited in the Inspector with the terrain selected. Each layer is a material, a
-**tile** size and two de-tiling settings. Paint is stored as one weight per layer on every vertex, and the weights
-always add up to one, so painting sand onto grass takes weight away from grass.
+**tile** size and two de-tiling settings. The layers share the ground between them, so painting sand onto grass takes
+weight away from grass.
 
 ![The sea island's four layers in the Inspector](../assets/terrain-painting/layers-inspector.png)
 
@@ -15,9 +15,8 @@ always add up to one, so painting sand onto grass takes weight away from grass.
 **Layer 0 is the base ground.** Unpainted ground shows layer 0 and erasing paints back to it, so put your most common
 ground there, usually grass.
 
-A new terrain gets the layers named in the *Create Terrain* dialog, four by default. Dropping a material for a layer the terrain
-lacks adds it as the next layer, and painting a missing layer paints the last one instead. The status bar says so in
-both cases.
+A new terrain gets the layers named in the *Create Terrain* dialog, four by default. Dropping a material for a layer the
+terrain lacks adds it as the next layer.
 
 ## Tile and de-tiling
 
@@ -27,21 +26,17 @@ both cases.
 | detile | 0 to 1. Turns and shifts every repeat randomly so the grid stops showing |
 | sharpen | 0 to 1, shown once detile is above 0. 0 mixes the repeats evenly and looks soft, 1 mixes only where they join |
 
-A small tile is sharp up close but repeats visibly from afar, a large one hides the repeat but blurs at your feet.
-Detile fixes the repeat without a bigger tile. It costs four texture reads per projection, so leave it at 0 where the
-repeat does not show.
+A small tile is sharp up close but repeats visibly from afar, a large one blurs at your feet. Detile hides the repeat
+without a bigger tile, but it costs extra texture reads, so leave it at 0 where the repeat does not show.
 
 ![Tile 256 with detile 0 on the left and 0.7 on the right](../assets/terrain-painting/detile-compare.jpg)
 
-The tile is independent of the texture's pixel size and of the material's `metadata/texture_size`, those only apply to brush
-and mesh faces.
+> **Note:** The material's `metadata/texture_size` does not apply to terrain, only **tile** does.
 
 ## How it looks in Godot
 
-Each layer is projected from above and from the two sides and blended by the surface angle (triplanar mapping), so
-cliffs show rock instead of a smear. The projection is anchored to the world and matches the editor.
-
-Only each material's colour texture and emission are used, normal and roughness maps are not. Pick textures with some
-light and shadow baked in.
+Each layer is projected from above and from the sides, so cliffs show rock instead of a smear, and it matches the
+editor. Only each material's colour texture and emission are used, not its normal or roughness maps, so pick textures
+with some light and shadow baked in.
 
 ![The painted cliffs of the sea island in Godot](../assets/terrain-painting/godot-cliffs.jpg)

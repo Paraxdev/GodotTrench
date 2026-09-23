@@ -35,15 +35,12 @@ skeleton for any entity.
 
 ## Calling I/O from code
 
-Use the same functions the map uses:
-
 ```gdscript
 for door in GodotTrenchIO.find_targets(self, "main_door", null):
 	GodotTrenchIO.invoke(door, &"open", "", null)
+
+GodotTrenchIO.fire_output(self, &"tripped", activator)
 ```
 
-Go through `invoke` rather than calling the method directly. It fits the parameter to the method's arguments the way
-map connections do, and handles the built-in inputs.
-
-To fire every connection on one of an entity's outputs by hand, use
-`GodotTrenchIO.fire_output(source, &"tripped", activator)`.
+Prefer `invoke` over calling the method directly, it fits the parameter to the arguments like a map connection and
+handles the built-in inputs. `fire_output` fires every connection on that output by hand.

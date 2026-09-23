@@ -4,10 +4,8 @@ GodotTrench follows TrenchBroom and Hammer, so most habits from either carry ove
 
 ## The window
 
-The menus are File, Edit, Brush, Mesh, Texture, Terrain, Gameplay, Tools, View, Godot and Help. A command sits under
-the kind of object it changes. The command palette (Ctrl+Shift+P or F1) finds any command by name.
-
-The **tool options bar** under the toolbar holds the settings of the active tool.
+A menu command sits under the kind of object it changes, and the command palette (Ctrl+Shift+P or F1) finds any
+command by name. The **tool options bar** under the toolbar holds the settings of the active tool.
 
 | Dock | Panels |
 | --- | --- |
@@ -27,10 +25,7 @@ beside it.
 | --- | --- |
 | Drag the point where the dividers cross | Resize all four views at once |
 | Shift+Space | Maximize the view under the pointer, again to restore |
-| Click × on a view tab | Close it, *View > Views* brings it back |
-| *View > Views* | Switch between one, two and four views |
-
-The layout is kept for the next start.
+| *View > Views* | Switch between one, two and four views, or bring back a closed view |
 
 ## Camera
 
@@ -49,11 +44,9 @@ undo does not touch them.
 ## Shading
 
 F2 cycles the 3D view through Textured, Flat, Lit Preview and Wireframe. F3 toggles **Lit Preview**, which shows the
-map's lights, sun shadows, sky and fog, so you can judge lighting before building in Godot. It draws at most 64 point
-and spot lights, the strongest first.
+map's lights, sun shadows, sky and fog before you build in Godot. It draws only the 64 strongest point and spot lights.
 
 ## Interface scale
 
-Ctrl+= and Ctrl+- scale the interface and Ctrl+0 resets it, also under *View > Interface Scale*. The scale multiplies
-the monitor's display scaling. If the monitor reports the wrong scaling, untick
+Ctrl+= and Ctrl+- scale the interface and Ctrl+0 resets it. If the monitor reports the wrong display scaling, untick
 *follow the monitor* in *File > Preferences*.

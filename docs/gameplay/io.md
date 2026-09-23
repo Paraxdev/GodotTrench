@@ -20,22 +20,16 @@ has `func open()`. Your own scripts take part the same way, see [Custom entities
 
 ## When an output fires
 
-The map build adds a `GodotTrenchOutput` child to the entity for each connection, listening to its signal. When the
-signal fires:
+After *Delay* seconds the input is called on every node the target finds. A target that finds nothing does nothing,
+without a warning. A delayed call is dropped if its entity left the tree in the meantime.
 
-1. The fire counts against *Times*. Once the limit is used up, nothing happens.
-2. It waits *Delay* seconds. The call is dropped if the entity left the tree in the meantime.
-3. The target resolves to a list of nodes. None found means nothing happens, without a warning.
-4. The input is called on each node.
-
-Without a delay all of this runs inside the signal's `emit`, so a chain of undelayed connections has finished before
-the code that emitted the signal carries on.
+Without a delay the whole chain runs inside the signal's `emit`, before the code that emitted it carries on.
 
 ## The activator
 
-The activator is whoever started the chain, usually the player. It is the first `Node` argument of the signal that
-fired: a player walking into a trigger fires `triggered(activator)` with the player's body, and `!activator` further
-down the chain means that player. It survives only while every signal in the chain passes a node along.
+The activator is whoever started the chain, usually the player, and `!activator` further down the chain means that
+node. It is the first `Node` argument of the signal that fired, so it only survives while every signal in the chain
+passes one along.
 
 | Signals | Activator |
 | --- | --- |

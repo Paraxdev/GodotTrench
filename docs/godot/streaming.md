@@ -11,8 +11,7 @@ it contains. Select nothing so the Inspector shows worldspawn, then set:
 
 Streaming only hides meshes. Collision and scripts keep running everywhere, so it saves rendering cost, not physics or
 logic. It follows the viewport's current camera, or an `info_player_start` while there is no camera, and only runs in
-the game, so the Godot editor always shows the whole map. Overlays and anything under a moving entity, like a door or a
-train, are never hidden.
+the game, so the Godot editor always shows the whole map.
 
 The streamer emits `area_loaded(key, bounds)` and `area_unloaded(key, bounds)` as cells come and go, so you can stream
 your own content alongside:

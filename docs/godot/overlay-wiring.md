@@ -11,14 +11,13 @@ Nodes in an [overlay](overlays.md) join the map's entity I/O in both directions.
 ## Receiving map outputs
 
 With `GodotTrenchOverlayIO`, an input calls the node's method of that name, sets its property of that name, or runs a
-built in input like `show`, `hide` or `toggle`. That covers nodes without a script: input `emitting` with parameter
-`true` starts a `GPUParticles3D`. The component also emits `input_received(input, parameter, activator)` for every
-input.
+built in input like `show`, `hide` or `toggle`, so nodes without a script work too: input `emitting` with parameter
+`true` starts a `GPUParticles3D`. Every input also emits `input_received(input, parameter, activator)`.
 
 ## Firing at the map
 
-A `GodotTrenchOutput` listens to any signal of its parent, so an `Area3D` fires on `body_entered` without code. Your own
-script can declare its own signals:
+A `GodotTrenchOutput` listens to any signal of its parent, so an `Area3D` fires on `body_entered` without code. A
+script can add its own signals:
 
 ```gdscript
 extends StaticBody3D
@@ -44,7 +43,6 @@ movement, so a warning sign goes up with its roller door.
 
 ## After a rebuild
 
-Targets are looked up by name when an output fires, so wiring survives rebuilds. State does not: map entities come back
-in their starting state while the overlay keeps its own. The overlay emits `map_rebuilt(map)` after every build, which
-is the moment to push your state back into the map. The demo's breaker box switches the lamps on again there if it was
-left on.
+Wiring survives rebuilds, state does not. Map entities come back in their starting state while the overlay keeps its
+own, so connect to the overlay's `map_rebuilt(map)` signal and push your state back into the map there. The demo's
+breaker box switches the lamps on again if it was left on.

@@ -12,8 +12,8 @@ addon are in the [latest release](https://github.com/Paraxdev/GodotTrench/releas
 Extract `func_godot-godottrench-addon.zip` into your project folder so the addon ends up in `addons/func_godot`, then
 enable **GodotTrench** under *Project > Project Settings > Plugins*.
 
-The addon's defaults include the GodotTrench entities, so doors, triggers and lights work without resources of your
-own. [Project setup](godot/project-setup.md) covers replacing them.
+Doors, triggers, lights and the other built in entities work out of the box. [Project setup](godot/project-setup.md)
+covers replacing them with your own.
 
 ## 2. Export the game config
 
@@ -25,11 +25,11 @@ how the editor learns your entities and textures. From then on the addon exports
 
 ## 3. Open the project in the editor
 
-Choose *Godot > Open Godot Project…*, or the **Open Godot project…** button at the right end of the toolbar, and pick the
-project folder or any folder inside it. The editor reopens it on the next start.
+Choose *Godot > Open Godot Project…*, or the **Open Godot project…** button in the toolbar, and pick the project
+folder or any folder inside it. The editor reopens it on the next start.
 
-The button then shows your game's name. If the status bar says there is no `godottrench_game.json` in the project,
-step 2 has not run and the editor falls back to its built in entities.
+If the status bar says there is no `godottrench_game.json` in the project, step 2 has not run and the editor falls back
+to its built in entities.
 
 ## 4. Build a room
 
@@ -46,8 +46,7 @@ The editor opens with four views: 3D, Top, Front and Side. The world is Y-up lik
 Add a `FuncGodotMap` node to a scene, set its *Local Map File* to your `.gtm` and press **Build Map** in the Inspector.
 Brushes become meshes with collision and entities become nodes with their scripts, saved with the scene.
 
-Leave that scene open in Godot. Every save in GodotTrench now rebuilds it, and the editor's status bar says how many map
-nodes were rebuilt. Save the scene in Godot to keep the result.
+Leave that scene open in Godot and every save in GodotTrench rebuilds it. Save the scene in Godot to keep the result.
 
 > **Warning:** A build deletes the children of the `FuncGodotMap` first. Put your own nodes next to the map node, or in
 > an [overlay](godot/overlays.md).

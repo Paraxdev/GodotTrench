@@ -25,9 +25,9 @@ dragging to smooth. The status bar shows the cursor position, its middle number 
 
 ## Beach
 
-**Flatten**, radius 900. Start the stroke right at the waterline on the south shore and drag along the coast, Flatten
-holds the height the stroke starts at. Then **Smooth** with a slightly larger brush, so the beach runs into the land
-without a step.
+1. **Flatten**, radius 900. Start the stroke right at the waterline on the south shore and drag along the coast.
+   Flatten holds the height the stroke starts at.
+2. **Smooth** with a slightly larger brush, so the beach runs into the land without a step.
 
 ![Flatten on the south shore](../assets/sea-island/beach-flatten.jpg)
 

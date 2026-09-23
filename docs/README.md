@@ -10,7 +10,7 @@ standalone app, and the GodotTrench addon inside your Godot project turns the sa
 
 | Part | Role |
 | --- | --- |
-| The editor | Writes `.gtm` maps, compressed binary files made of independent chunks, so a damaged byte costs a few objects instead of the whole map |
+| The editor | Writes `.gtm` map files |
 | The addon | Reads `.gtm` files in Godot and builds meshes, collision and working entities |
 | The game config | `godottrench_game.json`, written by the addon so the editor knows your entities and textures |
 

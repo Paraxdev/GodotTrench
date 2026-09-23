@@ -19,8 +19,7 @@ Click once in the middle of the island for each.
 
 ![Slope mode: everything steeper than 32° becomes rock](../assets/sea-island/rock-slope.jpg)
 
-The terraced faces turn to rock while their shelves stay green, which is what makes them read as cliffs. To widen the
-beach, paint layer 3 along the south shore in **paint** mode, falloff smooth, radius 700, strength 0.7.
+To widen the beach, paint layer 3 along the south shore in **paint** mode, falloff smooth, radius 700, strength 0.7.
 
 ## Paths
 
@@ -36,8 +35,8 @@ Mode **paint**, falloff smooth, layer 2, radius 140, strength 0.8. Drag:
 
 ## Break up the repeat
 
-Select the terrain and set each layer's **detile** in the Inspector. Detile turns and shifts every tile of the texture
-so large areas do not show a grid, and **sharpen** keeps the result crisp.
+Select the terrain and set each layer's **detile** and **sharpen** in the Inspector, so large areas do not show a
+grid.
 
 | Layer | Detile | Sharpen |
 | --- | --- | --- |

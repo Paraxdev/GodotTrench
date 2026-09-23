@@ -1,17 +1,14 @@
 # Triggers
 
-Triggers are invisible brush volumes that react to physics bodies entering them. Draw one quickly with the **Volume**
-tool (Shift+E).
+Invisible brush volumes that react to bodies entering them. Draw one with the **Volume** tool (Shift+E).
 
 ## Shared inputs, outputs and keys
 
-Every trigger below has these:
+Every trigger below has these. `filter_group` limits it to bodies in that Godot group, empty accepts any body.
 
 * **Inputs:** `enable`, `disable`, `toggle`
 * **Outputs:** `triggered(activator)`, `entered(activator)`, `exited(activator)`
 * **Keys:** `filter_group` player, `start_disabled` 0
-
-`filter_group` limits a trigger to bodies in that Godot group, empty accepts any body.
 
 | Output | Fires |
 | --- | --- |
@@ -23,9 +20,13 @@ Every trigger below has these:
 
 Fires once and disables itself. `enable` arms it again.
 
+* **Keys:** `once` 1
+
 ## trigger_multiple
 
-Fires on every entry, at most once per `cooldown` for each body, 0.5 seconds by default.
+Fires on every entry, at most once per `cooldown` for each body.
+
+* **Keys:** `cooldown` 0.5
 
 ## trigger_hurt
 
@@ -35,8 +36,8 @@ amount.
 * **Outputs:** `hurt(activator)`, per damaged body per tick
 * **Keys:** `damage` 10 (per second), `damage_method` take_damage, `interval` 0.5, `filter_group` empty
 
-`filter_group` is empty by default, so it hurts anything with that method, not just the player. With a `filter_group`
-set, `hurt` fires for every body of the group even without the method.
+With the default empty `filter_group` it hurts anything that has the method, not just the player. With a group set,
+`hurt` fires for every body of the group, even one without the method.
 
 ## trigger_teleport
 
@@ -66,7 +67,8 @@ Calls a method when triggered, on `!activator` by default, so a trigger can call
 ## trigger_spawn_area
 
 Spawns scenes at random spots inside its volume, by default when the player enters. It works like `info_spawner`, see
-[Spawners and paths](actors.md). `start` runs a spawn timer when `interval` is above 0.
+[Spawners and paths](actors.md). `start` runs a spawn timer when `interval` is above 0, and `toggle` here switches that
+timer rather than the trigger.
 
 * **Inputs:** `spawn`, `start`, `stop`, `toggle`, `kill_all`
 * **Outputs:** `spawned(node)`, `all_dead`, `exhausted` (once, the first time `total` is reached)

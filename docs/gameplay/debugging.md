@@ -7,9 +7,8 @@ Most wiring mistakes fail quietly. Check in this order.
 2. **Logic panel.** It fires an output on paper and shows the whole chain, see
    [Placing and wiring](placing.md#checking-wiring-without-godot).
 3. **F3 in game.** Add a `GodotTrenchDebugOverlay` node to your scene, or as an autoload. F3 lists outputs as they fire
-   and draws every `Area3D` volume with its targetname, which tells you whether a trigger never fired or fired at a
-   target that does not exist. Volumes are collected when the overlay turns on, so toggle it again after spawning
-   triggers.
+   and draws every `Area3D` volume with its targetname, so you see whether a trigger never fired or fired at nothing.
+   Toggle it again after spawning triggers, volumes are collected when it turns on.
 4. **Code.** `GodotTrenchIO.events()` emits `fired` for every output, including ones whose target resolved to nothing.
    A `logic_debug` entity with `trace_all` set to 1 logs the same without code.
 

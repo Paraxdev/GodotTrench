@@ -1,13 +1,25 @@
 # JSON layout
 
-Maps saved before the binary container are JSON text, and the same JSON is what `--dump`, `--to-json`, a `.json` save,
-the clipboard, the live link and the MCP tools use. Readers treat any file that does not start with `\x89GTM` as JSON,
-with or without a UTF-8 byte order mark. Old maps load as they are and are saved in the binary format from then on.
+The JSON form is what older editors saved, and what `--dump`, a `.json` save, the clipboard, the live link and the MCP
+tools use. Readers treat any file that does not start with `\x89GTM` as JSON, with or without a UTF-8 byte order mark.
+An old JSON map loads as it is and becomes binary on its next `.gtm` save.
 
-The printer in [`json_fmt.rs`](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_doc/src/json_fmt.rs) keeps
-diffs readable. It indents by two spaces, keeps keys in the order the tables in these pages list them, and puts short
-arrays and objects on one line. Every face is one line, and so is a `vertices` array of up to 64 entries, so moving one
-brush changes only that brush's lines. Any valid JSON with the same content loads the same.
+[`json_fmt.rs`](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_doc/src/json_fmt.rs) prints it for readable
+diffs. It indents by two spaces, keeps keys in the order the tables in these pages list them, and puts short arrays and
+objects on one line. Every face is one line, and so is a `vertices` array of up to 64 entries, so moving one brush
+changes only that brush's lines. Any valid JSON with the same content loads the same.
+
+## Converting
+
+| Command | Result |
+| --- | --- |
+| `godottrench --dump map.gtm` | Prints the map as JSON |
+| `godottrench --to-json map.gtm map.json` | Writes the map as JSON |
+| `godottrench --to-gtm map.json map.gtm` | Writes a binary map, refusing a file the editor could not open |
+
+The conversions copy the file content without loading it into the editor, so they keep keys the editor does not know.
+The editor also opens `.json` maps, and *Save As* with a `.json` name writes JSON. For JSON diffs in git, see
+[Map files in git](../development.md#map-files-in-git).
 
 ## Clipboard
 
@@ -88,6 +100,5 @@ an explosive barrel:
 }
 ```
 
-The floor is a 640 by 640 unit slab 8 units thick whose top sits at Y 8. Its first face, `[0,1,2,3]`, is the +X side,
-with corners that run counter-clockwise seen from +X. The barrel is a point entity 16 units above the floor, and when it
-breaks it calls `run` on `hp_readout`.
+The floor is a 640 by 640 unit slab 8 units thick with its top at Y 8. Its first face, `[0,1,2,3]`, is the +X side,
+wound counter-clockwise seen from +X.

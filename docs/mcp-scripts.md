@@ -1,8 +1,8 @@
 # MCP scripts
 
-An MCP script is a JSON list of tool calls that the editor replays with `run_script`. The showcase maps are built
-this way, so their scripts in [examples/mcp](https://github.com/Paraxdev/GodotTrench/tree/main/examples/mcp) double
-as examples for every tool.
+An MCP script is a JSON list of tool calls that the editor replays with `run_script`. The showcase maps in
+[examples/mcp](https://github.com/Paraxdev/GodotTrench/tree/main/examples/mcp) are built this way and double as
+examples for every tool.
 
 | Script | Builds |
 | --- | --- |
@@ -55,15 +55,14 @@ A step without `tool` is a comment. A step with `save` stores its result under t
 | `$script_dir` | The script file's folder |
 | `$$` | A literal `$`, so a node path is `"$$Player"` |
 
-An unknown name is an error, so typos never pass silently. A `$` that cannot start a name, like `"$5"`, stays as it
-is. Ids given as text, such as `"42"`, work wherever a node id is expected.
+An unknown name is an error. A `$` that cannot start a name, like `"$5"`, stays as it is. Ids given as text, such as
+`"42"`, work wherever a node id is expected.
 
 ## Ids after CSG
 
-CSG and clip steps replace brushes. The runner then rewrites the ids saved by earlier steps, so `"$wall.ids"` still
-means the wall after a window is cut into it. In a list, a replaced id gives way to all of its replacements, or drops
-out when the brush was removed. A single id becomes its replacement, a list of them, or null. Only values under `id`,
-`ids`, `selection`, `letters`, `copies`, `entity` and keys ending in `_id` or `_ids` change.
+CSG and clip steps replace brushes, and the runner rewrites ids saved by earlier steps to match. So `"$wall.ids"`
+still means the whole wall after a window is cut into it, and a removed brush drops out. Only values under `id`,
+`ids`, `selection`, `letters`, `copies`, `entity` and keys ending in `_id` or `_ids` are rewritten.
 
 > **Tip:** Spell out every brush setting in `scatter` and `blend` calls. Anything left out comes from the editor's
 > current Scatter panel or Blend tool settings.

@@ -30,8 +30,8 @@ UV lock (Ctrl+Shift+U) is on by default, so textures stay attached to a brush wh
 | Shift+right click | Paste the picked material and alignment |
 | Alt+right click | Apply the current material, continuing the selected face's alignment across the edge |
 
-Alt+right click is how a texture runs cleanly around a corner. The tool options bar adds justify buttons,
-*Treat as one* to justify several faces as a single area, and *Align to View*.
+Alt+right click is how a texture runs cleanly around a corner. In the tool options bar, *Treat as one* justifies
+several faces as a single area.
 
 For faces with explicit UVs, and for meshes, use the [UV Editor](uv-editor.md).
 

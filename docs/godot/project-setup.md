@@ -1,7 +1,7 @@
 # Project setup
 
-The addon's defaults are enough for a first map, but they live inside the addon folder and are replaced whenever you
-update it. Once you write your own entities or want another texture folder, give the project its own resources.
+The addon's defaults are enough for a first map, but updating the addon replaces them. Once you write your own
+entities or want another texture folder, give the project its own resources.
 
 ## Your own resources
 
@@ -18,15 +18,12 @@ Then point `func_godot/default_map_settings` and `godottrench/game_config` in *P
 and game config.
 
 > **Tip:** Set *Entity Name Property* in the map settings to `targetname`, as the demo does. Built nodes are then named
-> after their targetnames, which makes the scene tree much easier to read.
+> after their targetnames, which keeps the scene tree readable.
 
 ## The game config
 
-`godottrench_game.json` is how the editor learns about your project. It lists every class in the config's FGD with its
-properties, size, color and the inputs and outputs found in its script, plus C# entities, the texture folders and the
-unit scale.
-
-The addon exports it again 1.5 seconds after Godot notices files changing. You can also export by hand from
+The editor learns your entities, texture folders and unit scale from `res://godottrench_game.json`, written by the
+game config. The addon exports it again whenever Godot notices files changing. You can also export by hand from
 *Project > Tools*, or headless, for example in CI:
 
 ```sh

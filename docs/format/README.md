@@ -1,9 +1,9 @@
 # The .gtm map format
 
-A `.gtm` file is a GodotTrench map: worldspawn properties, some editor state and a tree of nodes. The editor saves it
-as a binary container of zstd compressed chunks. Maps from older editors are one UTF-8 JSON document instead, and every
-reader loads both. The two hold the same tree of objects, arrays, strings, numbers and booleans, and these pages
-describe it as the JSON that `godottrench --dump` prints.
+A `.gtm` file holds a map's worldspawn properties, some editor state and a tree of nodes. The editor saves it as a
+binary container of zstd compressed chunks. Maps from older editors are one UTF-8 JSON document instead, and every
+reader loads both. Both forms hold the same tree, and these pages describe it as the JSON that `godottrench --dump`
+prints.
 
 | Page | Covers |
 | --- | --- |
@@ -12,28 +12,14 @@ describe it as the JSON that `godottrench --dump` prints.
 | [Nodes](nodes.md) | Node shape, ids, layers, groups, entities, outputs, instances |
 | [Geometry](geometry.md) | Brushes, faces, texture projection, displacements, meshes |
 | [Terrain and scatter](terrain-scatter.md) | Heightmap terrains and scatter sets |
-| [JSON layout](json.md) | The readable form, the clipboard and an example |
+| [JSON layout](json.md) | The readable form, converting, the clipboard and an example |
 
-The editor reads and writes maps in
+The reference implementation is
 [`format.rs`](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_doc/src/format.rs), with the container in
 [`binary.rs`](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_doc/src/binary.rs) and
 [`variant.rs`](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_doc/src/variant.rs). The Godot addon reads
-files with
-[`gtm_file.gd`](https://github.com/Paraxdev/godottrench_func/blob/main/src/godottrench/gtm_file.gd)
-and builds them with
-[`gtm_parser.gd`](https://github.com/Paraxdev/godottrench_func/blob/main/src/godottrench/gtm_parser.gd).
-
-## Converting
-
-| Command | Result |
-| --- | --- |
-| `godottrench --dump map.gtm` | Prints the map as JSON |
-| `godottrench --to-json map.gtm map.json` | Writes the map as JSON |
-| `godottrench --to-gtm map.json map.gtm` | Writes a binary map, refusing a file the editor could not open |
-
-The conversions copy the file content without loading it into the editor, so they keep keys the editor does not know.
-The editor also opens `.json` maps directly, and *Save As* with a `.json` name writes JSON. To see map changes as JSON
-in `git diff`, see [Map files in git](../development.md#map-files-in-git).
+files with [`gtm_file.gd`](https://github.com/Paraxdev/godottrench_func/blob/main/src/godottrench/gtm_file.gd) and
+builds them with [`gtm_parser.gd`](https://github.com/Paraxdev/godottrench_func/blob/main/src/godottrench/gtm_parser.gd).
 
 ## Top level
 
@@ -45,13 +31,13 @@ in `git diff`, see [Map files in git](../development.md#map-files-in-git).
 | `editor` | object | when not all default | Editor state, never exported |
 | `layers` | array of nodes | always | [Layer nodes](nodes.md#layer), in order |
 
-Worldspawn values are strings, like in a `.map` file. `GodotTrenchEnvironment` builds a sky, fog and sun from `sun_angles`,
-`sun_color`, `sun_energy`, `ambient_color`, `ambient_energy`, `sky_top_color`, `sky_horizon_color`, `sky_ground_color`,
-`sky_energy`, `sky_panorama`, `fog_color`, `fog_density`, `glow_intensity` and `ssr`, and `environment` set to `0`
-turns it off. A scene that has a WorldEnvironment of its own keeps it. `sky_source` names the texture the sky faces
-of an imported map had.
-
 Only `layer` nodes are read from `layers`. A map with no layers gets a `Default` layer when it loads.
+
+Worldspawn values are strings, like in a `.map` file. `GodotTrenchEnvironment` builds a sky, fog and sun from
+`sun_angles`, `sun_color`, `sun_energy`, `ambient_color`, `ambient_energy`, `sky_top_color`, `sky_horizon_color`,
+`sky_ground_color`, `sky_energy`, `sky_panorama`, `fog_color`, `fog_density`, `glow_intensity` and `ssr`.
+`environment` set to `0` turns it off, and a scene with a WorldEnvironment of its own keeps that one. `sky_source` names
+the texture the sky faces of an imported map had.
 
 The `editor` object:
 
@@ -63,8 +49,8 @@ The `editor` object:
 
 ## Versions and compatibility
 
-The container version in the file header only changes with the chunk layout, see [Container layout](container.md).
-`format` and `version` describe the data inside.
+`format` and `version` describe the data. The container version in the file header only changes with the chunk
+layout.
 
 | Situation | Editor | Godot addon |
 | --- | --- | --- |
@@ -76,8 +62,8 @@ The container version in the file header only changes with the chunk layout, see
 | Face index out of range | Refuses the map, naming the node | Skips that brush |
 | Displacement `heights` of the wrong size | Refuses the map, naming the node | Builds the face flat |
 
-The editor holds a map as typed nodes, so it drops unknown keys on load. Data that an older editor must not lose needs a
-map version bump, which older editors refuse, or a chunk of its own, see [Other chunks](container.md#other-chunks).
+New data that an older editor must not lose needs a map version bump, which older editors refuse, or a chunk of its
+own, see [Other chunks](container.md#other-chunks).
 
 ## Coordinates and units
 

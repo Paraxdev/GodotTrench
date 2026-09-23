@@ -2,17 +2,16 @@
 
 A face's material is a path under the map settings' *Base Texture Dir* without an extension, for example
 `showcase/planks`. If `showcase/planks.tres` exists there, or in *Base Material Dir* when that is set, the build uses
-that material as it is. Otherwise the addon generates a plain material from the image. The editor previews the same `.tres`, including transparency, emission and normal maps, so both sides look
-alike.
+that material as it is. Otherwise the addon generates a plain material from the image. The editor previews the same
+`.tres`, so both sides look alike.
 
-New textures and materials show up in the editor on their own within a couple of seconds, no reload needed.
+New textures and materials show up in the editor within a couple of seconds, no reload needed.
 
 ## Texture size
 
-UVs count texels, and by default a texel is one pixel. A 64 pixel texture then repeats every 64 units, two meters. That
-suits pixel art, but a 1024 pixel photo of a two meter wall would stretch over 32 meters.
-
-Fix it by telling the material how many map units one repeat covers:
+By default one texture pixel covers one map unit, so a 64 pixel texture repeats every two meters. That suits pixel art,
+but a 1024 pixel photo of a two meter wall would stretch over 32 meters. Tell the material how many map units one
+repeat covers:
 
 ```
 [resource]
@@ -20,12 +19,8 @@ albedo_texture = ExtResource("1_albedo")
 metadata/texture_size = Vector2(64, 64)
 ```
 
-You can also add it in Godot's inspector under *Metadata*, as a `Vector2` or a single number. The editor and the build
-both use it for UVs, so swapping an image for a sharper one no longer changes the map. Terrain layers ignore it, their
-`tile` setting already measures the repeat in map units.
-
-> **Note:** `python tools/fetch_demo_textures.py` downloads the demo's CC0 scans from Poly Haven and ambientCG again and
-> writes each material with its real `texture_size`.
+You can also add it in Godot's inspector under *Metadata*, as a `Vector2` or a single number. Swapping in a sharper
+image then no longer changes the map. Terrain layers ignore it, their `tile` setting already sets the repeat.
 
 ## Glowing materials
 
@@ -42,8 +37,7 @@ emission_texture = ExtResource("2_emission")
 ```
 
 Without a material file, an image named like the albedo with `_emission` added, `night/sign_emission.png` next to
-`night/sign.png`, becomes the glow map. Emissive materials carry a glow badge in the Materials panel, and blends and
-terrain layers keep the glow of the materials they are made from.
+`night/sign.png`, becomes the glow map.
 
 ## Transparency
 
