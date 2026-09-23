@@ -420,6 +420,10 @@ impl App {
                 Ok(()) => Reply::Deferred,
                 Err(e) => Reply::Now(err(e)),
             },
+            "walkability" => match self.walkability(&args, reply.clone(), ctx) {
+                Ok(()) => Reply::Deferred,
+                Err(e) => Reply::Now(err(e)),
+            },
             "screenshot" if args["target"].as_str().unwrap_or("window") == "window" => {
                 let token = NEXT_SHOT.fetch_add(1, Ordering::Relaxed);
                 ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::new(ShotToken(token))));
@@ -500,6 +504,39 @@ impl App {
                 let _ = reply.send(godot_capture_result(result, &file, source));
             }),
         });
+        Ok(())
+    }
+
+    /// Bakes the walkable area in Godot for the agent in `args` and answers `reply` with its summary when it arrives.
+    fn walkability(&mut self, args: &Value, reply: Sender<ToolResult>, ctx: &egui::Context) -> Result<(), String> {
+        let agent = &mut self.state.prefs.walk_agent;
+        for (key, value, range) in [
+            ("radius", &mut agent.radius, 0.05..=10.0),
+            ("height", &mut agent.height, 0.2..=20.0),
+            ("max_climb", &mut agent.max_climb, 0.0..=10.0),
+            ("max_slope", &mut agent.max_slope, 0.0..=89.0),
+        ] {
+            if let Some(v) = args[key].as_f64() {
+                *value = v.clamp(*range.start(), *range.end());
+            }
+        }
+
+        let show = args["show"].as_bool().unwrap_or(true);
+        crate::walkable::request(
+            &mut self.state,
+            Some(ctx.clone()),
+            Some(Box::new(move |result| {
+                let _ = reply.send(match result {
+                    Ok(w) => ok(w.summary()),
+                    Err(e) => err(e.clone()),
+                });
+            })),
+        )?;
+        if show != self.state.walkable.on {
+            self.state.walkable.on = show;
+            self.state.walkable.generation += 1;
+        }
+
         Ok(())
     }
 
@@ -602,6 +639,7 @@ impl App {
                 ok(json!({ "ok": true }))
             }
             "screenshot" if args["source"].as_str() == Some("godot") => err("Godot captures cannot run inside scripts"),
+            "walkability" => err("walkability cannot run inside scripts, call it after the script"),
             "screenshot" => {
                 let target = args["target"].as_str().unwrap_or("window");
                 let Some(kind) = view_kind(target) else { return err("unknown target, or window screenshots, which cannot run inside scripts") };
@@ -1069,6 +1107,7 @@ impl App {
             "focus_godot" => Action::FocusGodot,
             "build_in_godot" => Action::BuildInGodot,
             "toggle_live_mode" => Action::ToggleLiveMode,
+            "toggle_walkable" => Action::ToggleWalkable,
             "insert_prefab" => {
                 let Some(path) = a["path"].as_str() else { return err("path required") };
                 let parent = match resolve_parent(&self.state, &a["parent"], Child::Other) {

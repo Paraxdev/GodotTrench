@@ -52,3 +52,20 @@ reachable but has an island of its own usually has a doorway blocked by somethin
 > **Warning:** Godot stops a path search after 4096 polygons and returns the path so far, which looks like an
 > unreachable spot on a big map. `GodotTrenchNav.path(node, from, to)` has no limit. For agents set
 > `path_search_max_polygons` on the `NavigationAgent3D` to 0.
+
+## Seeing it in GodotTrench
+
+GodotTrench can show where an agent walks without running the game. Open the project in the Godot editor with a scene
+whose `FuncGodotMap` builds the map, then turn on **View > Walkable Area > Show Walkable Area**. Godot bakes the scene
+over the [live link](live-link.md) and GodotTrench draws the result in the 3D and 2D views.
+
+| Colour | Meaning |
+| --- | --- |
+| Bluish green | The biggest connected area |
+| Vermillion | Islands cut off from it: behind a step higher than *Max climb*, a gap narrower than twice the *Radius* or a slope steeper than *Max slope* |
+
+The agent size is set in the same menu. The overlay bakes again a moment after each edit. Without
+[live mode](live.md) Godot builds the map as shown first, like *Build in Godot*. Agents call the `walkability` MCP tool,
+which returns the islands with their areas and bounds in map units.
+
+> **Tip:** Wall and roof tops show up as small vermillion islands. Look for vermillion floor next to green floor.

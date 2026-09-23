@@ -27,11 +27,16 @@ answers `map_saved`.
 | `live_end` | `path`, `revert` | With `revert`, rebuilds from the saved file |
 | `inspect` | `path`, `ids` | `nodes` with name, class, child count and position per map node id, plus `live` and `pending` |
 | `capture` | `path`, `camera`, `width`, `height`, `text` | `png` (base64), `width`, `height` and `warnings`, the errors and warnings logged while building |
+| `walkable` | `path`, `agent`, `text` | `vertices` (flat x, y, z list), `polygons`, `islands` (polygon indices, largest first), `units_per_meter`, `agent` and `msec` |
 
 `capture` renders the world of the first map node using `path`. `camera` holds `position` and `forward` in map units
 and axes and `fov`, the horizontal field of view in degrees. With `text` Godot builds that map first, otherwise it
 waits for a live session to catch up. The reply comes after about a dozen frames, and other messages are answered
 meanwhile.
+
+`walkable` bakes the navigation mesh of the whole edited scene with `GodotTrenchNav` for `agent` (`radius`, `height`,
+`max_climb`, `max_slope` in meters and degrees) and returns it in the map's units and axes. With `text` Godot builds
+that map first unless it was last built from the same text.
 
 Paths are absolute with forward slashes, and only `FuncGodotMap` nodes in the edited scene with *Auto Rebuild On Save*
 on take part. `text` is the whole map as JSON. `content` is the content id in the END chunk of the saved file, so a

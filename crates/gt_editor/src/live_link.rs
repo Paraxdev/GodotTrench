@@ -23,8 +23,8 @@ const CONNECT_TIMEOUT: Duration = Duration::from_millis(400);
 const QUICK_REPLY: Duration = Duration::from_secs(15);
 const BUILD_REPLY: Duration = Duration::from_secs(180);
 
-/// Called with Godot's reply to a capture, on the live link thread.
-pub type CaptureDone = Box<dyn FnOnce(Result<Value, String>) + Send>;
+/// Called with Godot's reply to a capture or walkable request, on the live link thread.
+pub type Done = Box<dyn FnOnce(Result<Value, String>) + Send>;
 
 pub fn send(port: u16, message: &Value) -> Result<Value, String> {
     send_timeout(port, message, Duration::from_secs(30))
@@ -144,7 +144,15 @@ pub enum Request {
         size: [u32; 2],
         build: Option<gt_doc::Map>,
         live: bool,
-        done: CaptureDone,
+        done: Done,
+    },
+    /// The navigation mesh of the scene Godot has open, for an `agent` of `radius`, `height`, `max_climb` and `max_slope`
+    /// in meters and degrees. With `build` Godot builds that map first, otherwise a live session catches up first.
+    Walkable {
+        path: String,
+        agent: Value,
+        build: Option<gt_doc::Map>,
+        done: Done,
     },
     LiveEnd {
         path: String,
@@ -433,7 +441,7 @@ impl Worker {
                     let message = saved_message(&path);
                     self.say(format!("Live link: Godot is not running with the GodotTrench addon{}", game_status(game_port, &message)));
                 }
-                Request::Capture { done, .. } => {
+                Request::Capture { done, .. } | Request::Walkable { done, .. } => {
                     done(Err(format!("Godot is not running with the GodotTrench addon on port {}, open the project in the Godot editor", self.port)))
                 }
                 Request::LiveEnd { .. } => {}
@@ -504,6 +512,25 @@ impl Worker {
                 if live && let Some(map) = build {
                     self.restart(&key, &path, map);
                 }
+            }
+            Request::Walkable { path, agent, build, done } => {
+                let mut message = json!({ "event": "walkable", "path": path, "agent": agent });
+                let pending = self.shared.0.lock().unwrap_or_else(|e| e.into_inner()).live.take();
+                if let Some(map) = &build {
+                    self.sessions.remove(&path_key(&path));
+                    message["text"] = json!(gt_doc::format::to_string(map));
+                } else if let Some(job) = pending {
+                    self.live(job);
+                }
+
+                done(match self.long_call(message) {
+                    Ok(reply) if reply["ok"].as_bool() == Some(true) => Ok(reply),
+                    Ok(reply) if reply["error"] == "unknown event" => {
+                        Err("the GodotTrench addon in Godot is too old to bake the walkable area, update it".into())
+                    }
+                    Ok(reply) => Err(reply["error"].as_str().unwrap_or("unexpected reply").to_string()),
+                    Err(e) => Err(format!("Godot did not answer the walkable request: {e}")),
+                });
             }
             Request::LiveEnd { path, revert } => {
                 self.sessions.remove(&path_key(&path));
@@ -740,6 +767,31 @@ mod tests {
         let dead = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
         link.configure(dead, true);
         let e = capture(&link, &map_path, None).unwrap_err();
+        assert!(e.contains("not running") && e.contains(&dead.to_string()), "{e}");
+    }
+
+    #[test]
+    fn walkable_sends_the_agent_and_the_map_to_build() {
+        let map_path = std::env::temp_dir().join("gt_live_link_test").join("walkable.gtm");
+        let (port, log) = fake_godot(godot_path(&map_path), Duration::ZERO);
+        let link = LiveLink::start(None);
+        link.configure(port, true);
+        let walkable = |link: &LiveLink, build: Option<gt_doc::Map>| {
+            let (tx, rx) = mpsc::channel();
+            let agent = json!({ "radius": 0.5, "height": 1.2, "max_climb": 0.2, "max_slope": 30 });
+            link.request(Request::Walkable { path: godot_path(&map_path), agent, build, done: Box::new(move |r| tx.send(r).unwrap()) });
+            rx.recv_timeout(Duration::from_secs(10)).expect("walkable answered")
+        };
+        assert!(walkable(&link, Some(gt_doc::Map::new())).is_ok());
+        assert!(walkable(&link, None).is_ok());
+        let sent: Vec<Value> = log.lock().unwrap().iter().filter(|m| m["event"] == "walkable").cloned().collect();
+        assert_eq!(sent.len(), 2);
+        assert!(sent[0]["text"].is_string() && sent[1]["text"].is_null(), "only the first request carries the map to build");
+        assert_eq!(sent[0]["agent"]["radius"], 0.5);
+
+        let dead = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        link.configure(dead, true);
+        let e = walkable(&link, None).unwrap_err();
         assert!(e.contains("not running") && e.contains(&dead.to_string()), "{e}");
     }
 

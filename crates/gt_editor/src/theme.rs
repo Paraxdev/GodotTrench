@@ -31,6 +31,9 @@ pub const ERROR: Color32 = RED;
 pub const WARNING: Color32 = YELLOW;
 pub const SUCCESS: Color32 = GREEN;
 pub const INFO: Color32 = CYAN;
+/// The walkable area overlay: the biggest connected area, and the islands cut off from it.
+pub const WALKABLE: Color32 = GREEN;
+pub const WALKABLE_CUT_OFF: Color32 = RED;
 
 /// Selected cards and rows: the accent sunk into the panel so text on top stays readable.
 pub fn selected_fill() -> Color32 {
@@ -151,13 +154,14 @@ mod tests {
     #[test]
     fn cvd_pairs_stay_distinguishable() {
         // Role pairs whose only difference is hue, so they must survive every common color blindness.
-        let pairs: [(Color32, Color32, &str); 6] = [
+        let pairs: [(Color32, Color32, &str); 7] = [
             (ERROR, SUCCESS, "error vs success"),
             (WARNING, SUCCESS, "warning vs success"),
             (WARNING, ERROR, "warning vs error"),
             (AXIS[0], AXIS[1], "axis x vs y"),
             (AXIS[0], AXIS[2], "axis x vs z"),
             (AXIS[1], AXIS[2], "axis y vs z"),
+            (WALKABLE, WALKABLE_CUT_OFF, "walkable vs cut off"),
         ];
         // Redmean threshold below which two swatches read as the same color to that viewer.
         const MIN: f32 = 40.0;

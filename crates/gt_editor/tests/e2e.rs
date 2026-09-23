@@ -1396,9 +1396,9 @@ fn imports_convert_valve_and_quake_textures() {
     assert!(colors > 2);
 }
 
-/// Answers the live link like a Godot editor with `map` open: status lists it and a capture returns a small red PNG.
-/// Every capture message is kept.
-fn fake_godot_capturing(project: &std::path::Path, map: &std::path::Path) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<Value>>>) {
+/// Answers the live link like a Godot editor with `map` open: status lists it, a capture returns a small red PNG and a
+/// walkable request a floor with a small island up on a wall. Every capture and walkable message is kept.
+fn fake_godot_editor(project: &std::path::Path, map: &std::path::Path) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<Value>>>) {
     use std::io::BufRead;
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -1423,6 +1423,15 @@ fn fake_godot_capturing(project: &std::path::Path, map: &std::path::Path) -> (u1
                         log.lock().unwrap().push(msg.clone());
                         json!({ "ok": true, "png": png, "width": 8, "height": 4, "warnings": ["warning: prop model res://gone.glb not found"] })
                     }
+                    Some("walkable") => {
+                        log.lock().unwrap().push(msg.clone());
+                        json!({
+                            "ok": true, "units_per_meter": 32.0, "agent": msg["agent"], "msec": 5,
+                            "vertices": [8, 16.5, 8, 8, 16.5, 248, 248, 16.5, 248, 248, 16.5, 8, 300, 128, 0, 300, 128, 32, 332, 128, 32, 332, 128, 0],
+                            "polygons": [[0, 1, 2, 3], [4, 5, 6, 7]],
+                            "islands": [[0], [1]]
+                        })
+                    }
                     _ => json!({ "ok": false, "error": "unknown event" }),
                 };
                 reply["seq"] = msg["seq"].clone();
@@ -1445,7 +1454,7 @@ fn godot_captures_come_over_the_live_link() {
     std::fs::create_dir_all(dir.join("maps")).unwrap();
     std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
     let map = dir.join("maps/yard.gtm");
-    let (godot, captures) = fake_godot_capturing(&dir, &map);
+    let (godot, captures) = fake_godot_editor(&dir, &map);
 
     let ed = Editor::launch("godot_capture");
     ed.call("set_editor", json!({ "live_link_port": godot }));
@@ -1478,4 +1487,68 @@ fn godot_captures_come_over_the_live_link() {
     ed.call("set_editor", json!({ "live_link_port": free_port() }));
     let e = ed.call_err("screenshot", json!({ "source": "godot" }));
     assert!(e.contains("not running"), "{e}");
+}
+
+/// The walkability tool asks the connected Godot editor for the walkable area, answers with the islands, draws them
+/// over the views and bakes again after an edit. Without Godot it says so.
+#[test]
+#[ignore]
+fn the_walkable_area_comes_from_godot() {
+    let dir = artifacts().join("godot_walkable");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("maps")).unwrap();
+    std::fs::write(
+        dir.join("project.godot"),
+        "config_version=5
+",
+    )
+    .unwrap();
+    let map = dir.join("maps/yard.gtm");
+    let (godot, sent) = fake_godot_editor(&dir, &map);
+
+    let ed = Editor::launch("walkable");
+    ed.call("set_editor", json!({ "live_link_port": godot }));
+    ed.call("create_brush", json!({ "min": [0, 0, 0], "max": [256, 16, 256] }));
+    assert!(ed.call_err("walkability", json!({})).contains("save the map"));
+    ed.call("open_project", json!({ "path": dir }));
+    ed.call("map_file", json!({ "op": "save", "path": map }));
+    ed.call("run_action", json!({ "action": "select_none" }));
+    ed.call("set_camera", json!({ "view": "3d", "position": [128, 400, 400], "look_at": [128, 16, 128] }));
+    let args = json!({ "target": "3d", "width": 320, "height": 200, "overlays": true });
+    let before = shot(&ed, args.clone(), "before");
+
+    let r = ed.call("walkability", json!({ "radius": 0.5 }));
+    assert_eq!(r["islands"], 2);
+    assert_eq!(r["area_m2"], 57.3, "{r}");
+    assert_eq!(r["main"]["bounds"]["min"], json!([8.0, 16.5, 8.0]));
+    assert_eq!(r["cut_off"][0]["center"], json!([316.0, 128.0, 16.0]));
+    let first = sent.lock().unwrap()[0].clone();
+    assert_eq!(first["agent"]["radius"], 0.5);
+    assert!(first["text"].as_str().is_some_and(|t| t.contains("godottrench-map")), "the map as shown goes along to build");
+
+    let greenish = |p: &image::Rgba<u8>, by: i32| p.0[1] as i32 > p.0[0] as i32 + by;
+    let shown = shot(&ed, args.clone(), "shown");
+    assert!(greenish(shown.get_pixel(160, 110), 20), "the connected floor is tinted bluish green, got {:?}", shown.get_pixel(160, 110));
+    assert!(image_difference(&shown, &before) > 1.0);
+    let top = shot(&ed, json!({ "target": "top", "width": 320, "height": 200, "overlays": true }), "top");
+    assert!(top.pixels().any(|p| greenish(p, 40)), "the top view shows the walkable area too");
+
+    ed.box_brush([64.0, 16.0, 64.0], [96.0, 64.0, 96.0]);
+    let start = Instant::now();
+    while sent.lock().unwrap().len() < 2 {
+        assert!(start.elapsed() < Duration::from_secs(10), "an edit bakes the overlay again");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    ed.call("run_action", json!({ "action": "toggle_walkable" }));
+    ed.call("run_action", json!({ "action": "select_none" }));
+    let hidden = shot(&ed, args, "hidden");
+    assert!(!greenish(hidden.get_pixel(160, 110), 20), "toggle_walkable hides the overlay, got {:?}", hidden.get_pixel(160, 110));
+
+    ed.call("set_editor", json!({ "live_link_port": free_port() }));
+    let e = ed.call_err("walkability", json!({}));
+    assert!(e.contains("not running"), "{e}");
+    std::thread::sleep(Duration::from_millis(1500));
+    let e = ed.call_err("run_action", json!({ "action": "toggle_walkable" }));
+    assert!(e.contains("Cannot show the walkable area") && e.contains("not running"), "{e}");
 }

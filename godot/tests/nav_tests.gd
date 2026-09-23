@@ -20,6 +20,7 @@ static func run(t) -> void:
 	level.add_child(map)
 	map.build()
 	await _test_bake(t, map)
+	_test_walkable(t, level, map)
 	await _test_region(t, map)
 	level.queue_free()
 	DirAccess.remove_absolute(path)
@@ -88,6 +89,28 @@ static func _test_region(t, map: FuncGodotMap) -> void:
 	var blocked := GodotTrenchNav.path(map, from, map.to_global(Vector3(7, 0, 0)))
 	t.check(blocked.size() == 0 or blocked[blocked.size() - 1].x < map.to_global(Vector3(5, 0, 0)).x, "no path crosses the clip wall")
 	t.check(await GodotTrenchNav.bake_region(map, agent) == region, "a second bake reuses the region")
+
+static func _test_walkable(t, level: Node3D, map: FuncGodotMap) -> void:
+	var report := GodotTrenchWalkable.report(level, map, { "radius": 0.25, "height": 1.8 })
+	t.check(report["ok"] and report["units_per_meter"] == 32.0, "the walkable report bakes the level, got %s" % report.get("error", ""))
+	if not report["ok"]:
+		return
+	var vertices: Array = report["vertices"]
+	var xs := range(0, vertices.size(), 3).map(func(i: int) -> float: return vertices[i])
+	t.check(xs.min() > -260.0 and xs.max() < 260.0, "vertices are in map units in the map's space, x spans %s to %s" % [xs.min(), xs.max()])
+	t.check(t.near(report["agent"]["radius"], 0.3) and report["agent"]["max_slope"] == 45.0, "the agent comes back as baked, got %s" % report["agent"])
+	var islands: Array = report["islands"]
+	var island_of := func(x: float, z: float) -> int:
+		for i in islands.size():
+			for p in islands[i]:
+				var outline := PackedVector2Array()
+				for v in report["polygons"][p]:
+					outline.append(Vector2(vertices[v * 3], vertices[v * 3 + 2]))
+				if Geometry2D.is_point_in_polygon(Vector2(x, z), outline):
+					return i
+		return -1
+	t.check(island_of.call(-192.0, 0.0) == 0 and island_of.call(96.0, 64.0) == 0, "both rooms are the biggest island")
+	t.check(island_of.call(224.0, 0.0) > 0, "the far end past the clip wall is an island of its own")
 
 static func _same_island(nav: NavigationMesh, a: Vector3, b: Vector3) -> bool:
 	for island in GodotTrenchNav.islands(nav):

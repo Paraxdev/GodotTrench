@@ -29,7 +29,7 @@ editor started on a different port than `.mcp.json` expects.
 | Create | `create_brush`, `create_mesh`, `create_terrain`, `create_entity`, `import_model` |
 | Edit | `update_entity`, `select`, `transform`, `duplicate`, `set_face`, `mesh_edit`, `texture`, `terrain_edit`, `hierarchy`, `set_map_properties` |
 | Paint and gameplay | `scatter`, `blend`, `gameplay` |
-| Editor | `run_action`, `map_file`, `open_project`, `set_editor`, `set_camera`, `screenshot`, `simulate_input` |
+| Editor | `run_action`, `map_file`, `open_project`, `set_editor`, `set_camera`, `screenshot`, `simulate_input`, `walkability` |
 | Scripts | `run_script`, see [MCP scripts](mcp-scripts.md) |
 
 Each tool's description lists its operations and arguments.

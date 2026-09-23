@@ -162,6 +162,9 @@ pub struct SceneCache {
     ghosts: Option<GpuLines>,
     ghost_generation: Option<u64>,
     show_ghosts: bool,
+    /// Fill and outlines of the walkable area overlay while it is on, see `crate::walkable`.
+    walkable: Option<(Option<GpuMesh>, Option<GpuLines>)>,
+    walkable_generation: Option<u64>,
     pub stats: SceneStats,
     pub lighting: Lighting,
     shadow_dirty: bool,
@@ -1330,6 +1333,7 @@ impl SceneCache {
         self.prev_map = None;
         self.revision = 0;
         self.ghost_generation = None;
+        self.walkable_generation = None;
     }
 
     fn bucket_of(id: NodeId) -> usize {
@@ -1348,6 +1352,13 @@ impl SceneCache {
         if self.ghost_generation != Some(state.overlay_ghosts.generation) {
             self.ghosts = renderer.upload_lines(&crate::overlays::ghost_lines(&state.overlay_ghosts.items));
             self.ghost_generation = Some(state.overlay_ghosts.generation);
+        }
+
+        let walkable = state.walkable.on.then_some(state.walkable.generation);
+        if self.walkable_generation != walkable {
+            self.walkable =
+                state.walkable.result.as_ref().filter(|_| state.walkable.on).map(|w| (renderer.upload_mesh(&w.mesh()), renderer.upload_lines(&w.outlines())));
+            self.walkable_generation = walkable;
         }
 
         let prefab_generation = state.prefabs.generation;
@@ -1979,6 +1990,16 @@ impl SceneCache {
                     frame.overlay_lines.extend(self.ghosts.as_ref());
                 } else {
                     frame.lines.extend(self.ghosts.as_ref());
+                }
+            }
+
+            if let Some((fill, outlines)) = &self.walkable {
+                if is_2d {
+                    frame.overlay_meshes.extend(fill.as_ref());
+                    frame.overlay_lines.extend(outlines.as_ref());
+                } else {
+                    frame.transparent.extend(fill.as_ref());
+                    frame.lines.extend(outlines.as_ref());
                 }
             }
         }

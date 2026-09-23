@@ -49,6 +49,8 @@ pub enum Action {
     ToggleUvLock,
     ToggleTransformGizmo,
     ToggleGodotOverlays,
+    /// Shows where an agent can walk, baked by the connected Godot editor.
+    ToggleWalkable,
     ToggleTextured,
     SetShade(Shade),
     CsgSubtract,
@@ -238,6 +240,7 @@ impl Action {
             Action::ShowPreferences => "Preferences".into(),
             Action::ToggleTransformGizmo => "Toggle Transform Gizmo".into(),
             Action::ToggleGodotOverlays => "Toggle Godot Overlays".into(),
+            Action::ToggleWalkable => "Toggle Walkable Area".into(),
             Action::OpenGodotEditor => "Open Project in Godot".into(),
             Action::RunGodotProject => "Run Godot Project".into(),
             Action::FocusGodot => "Show Godot Editor".into(),
@@ -500,6 +503,7 @@ pub fn bindable_actions() -> Vec<Action> {
         Action::ViewLayout(4),
         Action::ToggleTransformGizmo,
         Action::ToggleGodotOverlays,
+        Action::ToggleWalkable,
         Action::OpenGodotEditor,
         Action::BuildInGodot,
         Action::ToggleLiveMode,
@@ -776,6 +780,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             state.prefs.godot_overlays = !state.prefs.godot_overlays;
             state.set_status(if state.prefs.godot_overlays { "Godot overlays shown" } else { "Godot overlays hidden" });
         }
+        Action::ToggleWalkable => toggle_walkable(state),
         Action::ToggleTextured => {
             state.prefs.shade = match state.prefs.shade {
                 Shade::Textured => Shade::Flat,
@@ -1900,6 +1905,23 @@ fn launch_godot(state: &mut EditorState, editor: bool) {
 
 pub const GODOT_NOT_FOUND: &str = "Godot was not found, set the Godot executable in Preferences or the GODOT environment variable";
 pub const LIVE_LINK_OFF: &str = "Live mode needs the Godot live link, turn it on in Preferences first";
+
+fn toggle_walkable(state: &mut EditorState) {
+    if state.walkable.on {
+        state.walkable.set_on(false);
+        state.set_status("Walkable area hidden");
+        return;
+    }
+
+    let offline = || format!("Godot is not running with the GodotTrench addon on port {}, open the project in the Godot editor", state.prefs.live_link_port);
+    match crate::walkable::unavailable(state).or_else(|| (!state.link_state.connected).then(offline)) {
+        Some(why) => state.set_status(format!("Cannot show the walkable area: {why}")),
+        None => {
+            state.walkable.set_on(true);
+            state.set_status("Baking the walkable area in Godot");
+        }
+    }
+}
 
 fn build_in_godot(state: &mut EditorState) {
     let Some(path) = state.doc.path.clone() else {
