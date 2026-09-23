@@ -38,11 +38,23 @@ A positional sound.
 
 ## env_particles
 
-A particle effect for smoke, fire, sparks and dust. `burst` emits one shot, then a running effect carries on.
+A particle effect for fire, smoke, sparks and dust. `burst` emits one shot, then a running effect carries on.
 
 * **Inputs:** `start`, `stop`, `toggle`, `burst`
 * **Outputs:** `finished`
-* **Keys:** `amount` 32, `lifetime` 2.0, `one_shot` 0, `start_emitting` 0, `effect` rise, `area` 10 1 10
+* **Keys:** `amount` 32, `lifetime` 2.0, `one_shot` 0, `start_emitting` 0, `effect` rise, `color` white, `size` 0,
+  `blend` auto, `area` 10 1 10
 
-Without a process material of its own it builds one from `effect`: `rise` sends puffs upward, `rain` drops streaks
-from a box `area` meters wide, high and deep.
+Without a process material and draw pass of its own it builds them from `effect`. Particles are soft round sprites
+that fade in and out over their lifetime.
+
+| `effect` | Look | Blend | Size |
+| --- | --- | --- | --- |
+| `rise` | Glowing puffs drifting up, dust or embers | add | 0.25 m |
+| `fire` | A flame that shrinks as it climbs | add | 0.4 m |
+| `smoke` | Grey, lit puffs that grow as they rise | mix | 0.8 m |
+| `sparks` | Bright streaks that fall under gravity | add | 0.15 m long |
+| `rain` | Streaks falling from a box `area` meters wide, high and deep | mix | 0.6 m long |
+
+`color` tints the effect, so white keeps its own colors. `size` overrides the particle size in meters, and `blend`
+picks `add` for glow or `mix` for smoke. An unknown `effect` logs a warning and falls back to `rise`.

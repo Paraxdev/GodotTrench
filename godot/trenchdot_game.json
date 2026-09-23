@@ -3054,7 +3054,7 @@
     {
       "classname": "env_particles",
       "type": "point",
-      "description": "A particle effect toggled through I/O: smoke, fire, sparks or dust",
+      "description": "A particle effect toggled through I/O: fire, smoke, sparks, rising puffs or rain",
       "color": "#b366ffff",
       "node_class": "GPUParticles3D",
       "group": "env",
@@ -3105,15 +3105,59 @@
           "name": "effect",
           "type": "choices",
           "default": "rise",
-          "description": "Built in look: puffs rising, or rain falling from a box above the entity",
+          "description": "Built in look: glowing puffs rising, a flame, smoke, falling sparks, or rain from a box above the entity",
           "options": [
             [
               "rise",
               "rise"
             ],
             [
+              "fire",
+              "fire"
+            ],
+            [
+              "smoke",
+              "smoke"
+            ],
+            [
+              "sparks",
+              "sparks"
+            ],
+            [
               "rain",
               "rain"
+            ]
+          ]
+        },
+        {
+          "name": "color",
+          "type": "color",
+          "default": "255 255 255",
+          "description": "Tints the effect, white keeps its own colors"
+        },
+        {
+          "name": "size",
+          "type": "float",
+          "default": "0.0",
+          "description": "Particle size in meters, a spark's or raindrop's length. 0 uses the effect's own"
+        },
+        {
+          "name": "blend",
+          "type": "choices",
+          "default": "auto",
+          "description": "How particles mix with what is behind: additive glow, or mixed like smoke. auto uses the effect's own",
+          "options": [
+            [
+              "auto",
+              "auto"
+            ],
+            [
+              "add",
+              "add"
+            ],
+            [
+              "mix",
+              "mix"
             ]
           ]
         },
