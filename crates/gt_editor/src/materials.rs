@@ -566,27 +566,33 @@ impl MaterialLibrary {
 /// among them). Companion maps with no matching albedo stay visible; lone normals are flagged as
 /// missing their diffuse. The albedo keeps its own name so face material references never change.
 fn pair_pbr_maps(entries: &mut Vec<MaterialEntry>) {
-    use std::collections::HashMap;
-    // Anchors are the albedos: every texture that is not itself a companion map. Keyed by set base
-    // (a diffuse-suffixed name maps to the base its companions share), first anchor of a base wins.
-    let mut anchor: HashMap<String, usize> = HashMap::new();
-    for (i, e) in entries.iter().enumerate() {
-        let lower = e.name.to_ascii_lowercase();
-        if companion_base(&lower).is_some() {
-            continue;
-        }
+    let lowers: Vec<String> = entries.iter().map(|e| e.name.to_ascii_lowercase()).collect();
+    let owners: HashSet<String> = lowers.iter().filter_map(|l| companion_base(l)).collect();
+    // A name ending like a companion is still an albedo when it has a material file or maps of its own,
+    // so `rusty_metal` with `rusty_metal_normal` next to it is a set, not the metallic map of `rusty`.
+    let albedo: Vec<bool> =
+        entries.iter().zip(&lowers).map(|(e, l)| companion_base(l).is_none() || e.material_file.is_some() || owners.contains(&set_base(l))).collect();
 
-        anchor.entry(set_base(&lower)).or_insert(i);
+    // Keyed by set base (a diffuse-suffixed name maps to the base its companions share), first albedo of a base wins.
+    let mut anchor: HashMap<String, usize> = HashMap::new();
+    for (i, lower) in lowers.iter().enumerate() {
+        if albedo[i] {
+            anchor.entry(set_base(lower)).or_insert(i);
+        }
     }
 
     let mut remove: Vec<usize> = Vec::new();
     for i in 0..entries.len() {
-        let lower = entries[i].name.to_ascii_lowercase();
-        let Some(base) = companion_base(&lower) else { continue };
+        if albedo[i] {
+            continue;
+        }
+
+        let lower = &lowers[i];
+        let Some(base) = companion_base(lower) else { continue };
         match anchor.get(&base) {
             Some(&ai) => {
                 entries[ai].is_pbr = true;
-                if normal_suffix(&lower).is_some() {
+                if normal_suffix(lower).is_some() {
                     entries[ai].has_normal = true;
                 }
 
@@ -597,7 +603,7 @@ fn pair_pbr_maps(entries: &mut Vec<MaterialEntry>) {
 
                 remove.push(i);
             }
-            None if normal_suffix(&lower).is_some() => entries[i].missing_albedo = true,
+            None if normal_suffix(lower).is_some() => entries[i].missing_albedo = true,
             None => {}
         }
     }
@@ -852,6 +858,10 @@ metadata/texture_size = Vector2(80, 48)
         px([60, 60, 60, 255]).save(tex.join("moss_ao.png")).unwrap();
         // A lone normal map with no albedo stays, flagged.
         px([128, 128, 255, 255]).save(tex.join("orphan_normal.png")).unwrap();
+        // An albedo whose own name ends like a companion suffix.
+        px([120, 70, 40, 255]).save(tex.join("rusty_metal.png")).unwrap();
+        px([128, 128, 255, 255]).save(tex.join("rusty_metal_normal.png")).unwrap();
+        px([150, 150, 150, 255]).save(tex.join("rusty_metal_roughness.png")).unwrap();
 
         let mut game = GameConfig::builtin();
         game.project_root = Some(dir.clone());
@@ -870,6 +880,9 @@ metadata/texture_size = Vector2(80, 48)
         let b = lib.find("moss_d").unwrap();
         assert!(b.is_pbr && b.has_normal, "diffuse-suffixed albedo is flagged from its base-named companions");
         assert!(lib.find("orphan_normal").unwrap().missing_albedo);
+        assert!(!names.contains(&"rusty_metal_normal") && !names.contains(&"rusty_metal_roughness"), "{names:?}");
+        let rusty = lib.find("rusty_metal").unwrap();
+        assert!(rusty.is_pbr && rusty.has_normal, "a name ending in _metal still anchors its own set");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
