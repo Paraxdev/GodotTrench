@@ -1,5 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use gt_formats::GameConfig;
 use gt_formats::godot_material::{self, GodotMaterial};
@@ -104,6 +108,96 @@ pub struct LoadedMaterial {
     pub info: GodotMaterial,
 }
 
+/// How often the watcher looks at the texture folder for new or changed files.
+const WATCH_INTERVAL: Duration = Duration::from_secs(1);
+/// A material that was still missing after a look at the disk is looked for again at most this often.
+const MISS_RECHECK: Duration = Duration::from_millis(500);
+
+/// Polls the texture and material folders on a thread and wakes the UI once they changed and settled.
+struct Watch {
+    roots: Vec<PathBuf>,
+    stop: Arc<AtomicBool>,
+    /// Fingerprint two polls in a row agreed on, so a folder still being written is not picked up half done.
+    settled: Arc<AtomicU64>,
+}
+
+impl Watch {
+    fn start(roots: Vec<PathBuf>, exts: Vec<String>, scanned: u64, repaint: egui::Context) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let settled = Arc::new(AtomicU64::new(scanned));
+        let (stop_flag, seen, dirs) = (stop.clone(), settled.clone(), roots.clone());
+        let spawned = std::thread::Builder::new().name("texture-watch".into()).spawn(move || {
+            let mut last = scanned;
+            loop {
+                for _ in 0..10 {
+                    std::thread::sleep(WATCH_INTERVAL / 10);
+                    if stop_flag.load(Ordering::Relaxed) {
+                        return;
+                    }
+                }
+
+                let now = fingerprint(&dirs, &exts);
+                if now == last && now != seen.load(Ordering::Relaxed) {
+                    seen.store(now, Ordering::Relaxed);
+                    repaint.request_repaint();
+                }
+
+                last = now;
+            }
+        });
+        if spawned.is_err() {
+            stop.store(true, Ordering::Relaxed);
+        }
+
+        Self { roots, stop, settled }
+    }
+}
+
+impl Drop for Watch {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Order independent hash of the path, size and modification time of every file a scan reads, far cheaper
+/// than the scan itself, which parses every material file.
+fn fingerprint(roots: &[PathBuf], exts: &[String]) -> u64 {
+    fn walk(dir: &Path, exts: &[String], sum: &mut u64) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(mut meta) = entry.metadata() else { continue };
+            if meta.file_type().is_symlink() {
+                let Ok(target) = std::fs::metadata(&path) else { continue };
+                meta = target;
+            }
+
+            if meta.is_dir() {
+                walk(&path, exts, sum);
+                continue;
+            }
+
+            let Some(ext) = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()) else { continue };
+            if !exts.contains(&ext) {
+                continue;
+            }
+
+            let mut h = std::hash::DefaultHasher::new();
+            path.hash(&mut h);
+            meta.len().hash(&mut h);
+            meta.modified().ok().hash(&mut h);
+            *sum = sum.wrapping_add(h.finish());
+        }
+    }
+
+    let mut sum = 0;
+    for root in roots {
+        walk(root, exts, &mut sum);
+    }
+
+    sum
+}
+
 pub struct MaterialLibrary {
     pub entries: Vec<MaterialEntry>,
     pub root: Option<PathBuf>,
@@ -116,6 +210,15 @@ pub struct MaterialLibrary {
     /// `metadata/texture_size` of every material file, keyed by lowercased material name.
     world_sizes: HashMap<String, [f64; 2]>,
     infos: HashMap<String, Option<GodotMaterial>>,
+    /// Counts rescans, so caches built from the library know when to refresh.
+    pub generation: u64,
+    /// Fingerprint of the files at the last rescan.
+    scanned: u64,
+    /// Lowercased names that were still unknown after the last look at the disk, and when that was.
+    missed: HashSet<String>,
+    checked_at: Option<Instant>,
+    repaint: Option<egui::Context>,
+    watch: Option<Watch>,
 }
 
 impl MaterialLibrary {
@@ -131,6 +234,12 @@ impl MaterialLibrary {
             sizes: HashMap::new(),
             world_sizes: HashMap::new(),
             infos: HashMap::new(),
+            generation: 0,
+            scanned: 0,
+            missed: HashSet::new(),
+            checked_at: None,
+            repaint: None,
+            watch: None,
         };
         lib.rescan(game);
         lib
@@ -148,6 +257,10 @@ impl MaterialLibrary {
         self.material_root =
             if game.textures.material_dir.is_empty() { self.root.clone() } else { game.resolve_res(&game.textures.material_dir).filter(|p| p.is_dir()) };
         self.image_exts = game.textures.extensions.iter().map(|e| e.to_ascii_lowercase()).collect();
+        self.scanned = fingerprint(&self.scan_roots(), &self.scan_exts());
+        self.generation += 1;
+        self.missed.clear();
+        self.restart_watch();
         let mut found = Vec::new();
         if let Some(root) = self.root.clone() {
             scan_dir(&root, &root, &self.image_exts, &mut found);
@@ -216,6 +329,66 @@ impl MaterialLibrary {
         }
 
         self.entries.extend(found);
+    }
+
+    fn scan_roots(&self) -> Vec<PathBuf> {
+        let mut roots: Vec<PathBuf> = self.root.iter().cloned().collect();
+        roots.extend(self.material_root.clone().filter(|m| !roots.contains(m)));
+        roots
+    }
+
+    fn scan_exts(&self) -> Vec<String> {
+        let mut exts = self.image_exts.clone();
+        exts.extend([self.material_ext.clone(), "material".into()]);
+        exts
+    }
+
+    /// Watches the texture folders from now on, waking `repaint` when files change there.
+    pub fn watch(&mut self, repaint: egui::Context) {
+        self.repaint = Some(repaint);
+        self.restart_watch();
+    }
+
+    fn restart_watch(&mut self) {
+        let Some(repaint) = self.repaint.clone() else { return };
+        let roots = self.scan_roots();
+        match &self.watch {
+            Some(w) if w.roots == roots => w.settled.store(self.scanned, Ordering::Relaxed),
+            _ if roots.is_empty() => self.watch = None,
+            _ => self.watch = Some(Watch::start(roots, self.scan_exts(), self.scanned, repaint)),
+        }
+    }
+
+    /// The watcher saw texture or material files change since the last rescan, and they stopped changing.
+    pub fn changed_on_disk(&self) -> bool {
+        self.watch.as_ref().is_some_and(|w| w.settled.load(Ordering::Relaxed) != self.scanned)
+    }
+
+    /// Rescans when one of `names` is unknown and the files on disk changed since the last scan, so a material
+    /// written while the editor runs is found before it is reported missing. A name that stays missing is
+    /// looked for again only after [`MISS_RECHECK`], unless the watcher saw a change. Returns true when it rescanned.
+    pub fn find_new<'a>(&mut self, game: &GameConfig, names: impl IntoIterator<Item = &'a str>) -> bool {
+        let unknown: Vec<String> =
+            names.into_iter().filter(|n| !n.is_empty() && !game.is_tool_texture(n) && self.find(n).is_none()).map(str::to_ascii_lowercase).collect();
+        if unknown.is_empty() {
+            return false;
+        }
+
+        let fresh = unknown.iter().any(|n| !self.missed.contains(n));
+        let due = self.checked_at.is_none_or(|t| t.elapsed() >= MISS_RECHECK);
+        if !fresh && !due && !self.changed_on_disk() {
+            return false;
+        }
+
+        self.checked_at = Some(Instant::now());
+        let changed = fingerprint(&self.scan_roots(), &self.scan_exts()) != self.scanned;
+        if changed {
+            self.rescan(game);
+        }
+
+        let still: Vec<String> = unknown.into_iter().filter(|n| self.find(n).is_none()).collect();
+        self.missed.extend(still);
+        changed
     }
 
     fn resolve_res(&self, res: &str) -> Option<PathBuf> {
@@ -555,6 +728,80 @@ mod tests {
         assert_eq!(barks.len(), 1, "one entry per material name");
         assert_eq!(barks[0].path.as_ref().unwrap().extension().unwrap(), "png", "the first extension in the list wins, as in FuncGodot");
         assert!(barks[0].is_pbr && barks[0].has_normal);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn empty_project(name: &str) -> (PathBuf, GameConfig) {
+        let dir = std::env::temp_dir().join(format!("{name}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("textures")).unwrap();
+        std::fs::write(dir.join("project.godot"), "").unwrap();
+        let mut game = GameConfig::builtin();
+        game.project_root = Some(dir.clone());
+        game.textures.base_dir = "res://textures".into();
+        (dir, game)
+    }
+
+    fn write_decal(tex: &Path, name: &str) {
+        std::fs::create_dir_all(tex.join(name).parent().unwrap()).unwrap();
+        image::RgbaImage::from_pixel(64, 32, image::Rgba([90, 60, 40, 255])).save(tex.join(format!("{name}.png"))).unwrap();
+        std::fs::write(
+            tex.join(format!("{name}.tres")),
+            format!(
+                "[gd_resource type=\"StandardMaterial3D\" format=3]
+[ext_resource type=\"Texture2D\" path=\"res://textures/{name}.png\" id=\"1\"]
+[resource]
+albedo_texture = ExtResource(\"1\")
+metadata/texture_size = Vector2(80, 48)
+"
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn materials_written_later_are_found_when_looked_up() {
+        let (dir, game) = empty_project("gt_materials_later");
+        let tex = dir.join("textures");
+        let mut lib = MaterialLibrary::new(&game);
+        let generation = lib.generation;
+        write_decal(&tex, "megaplex/new");
+        assert!(lib.find("megaplex/new").is_none());
+        assert!(lib.find_new(&game, ["dev/grey", "megaplex/new"]), "an unknown name looks at the disk");
+        assert!(lib.find("megaplex/new").is_some() && lib.generation > generation);
+        assert_eq!(lib.size("megaplex/new"), Some([80.0, 48.0]), "fit uses the material's texture_size");
+        assert!(!lib.find_new(&game, ["megaplex/new", "special/clip"]), "known names and tool textures never rescan");
+
+        assert!(!lib.find_new(&game, ["ghost"]));
+        write_decal(&tex, "ghost");
+        assert!(!lib.find_new(&game, ["ghost"]), "a name that stayed missing waits before the disk is read again");
+        lib.checked_at = Some(Instant::now() - MISS_RECHECK);
+        assert!(lib.find_new(&game, ["ghost"]) && lib.find("ghost").is_some());
+
+        image::RgbImage::from_pixel(8, 8, image::Rgb([200, 10, 10])).save(tex.join("bark.jpg")).unwrap();
+        image::RgbaImage::from_pixel(4, 4, image::Rgba([10, 200, 10, 255])).save(tex.join("bark.png")).unwrap();
+        assert!(lib.find_new(&game, ["bark"]));
+        let barks: Vec<_> = lib.entries.iter().filter(|e| e.name == "bark").collect();
+        assert_eq!(barks.len(), 1, "a rescan keeps one entry per material name");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_watcher_notices_new_files() {
+        let (dir, game) = empty_project("gt_materials_watch");
+        let mut lib = MaterialLibrary::new(&game);
+        lib.watch(egui::Context::default());
+        assert!(!lib.changed_on_disk());
+        write_decal(&dir.join("textures"), "late");
+        let start = Instant::now();
+        while !lib.changed_on_disk() && start.elapsed() < Duration::from_secs(10) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
+        assert!(lib.changed_on_disk(), "the change shows once two polls agree");
+        lib.rescan(&game);
+        assert!(!lib.changed_on_disk() && lib.find("late").is_some());
+        drop(lib);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -1069,6 +1069,64 @@ fn tiny_wad(name: &str) -> Vec<u8> {
     b
 }
 
+fn write_material(textures: &std::path::Path, name: &str, size: [u32; 2]) {
+    let file = textures.join(name);
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    image::RgbaImage::from_pixel(64, 32, image::Rgba([200, 40, 40, 255])).save(file.with_extension("png")).unwrap();
+    std::fs::write(
+        file.with_extension("tres"),
+        format!(
+            "[gd_resource type=\"StandardMaterial3D\" format=3]
+[ext_resource type=\"Texture2D\" path=\"res://textures/{name}.png\" id=\"1\"]
+[resource]
+albedo_texture = ExtResource(\"1\")
+metadata/texture_size = Vector2({}, {})
+",
+            size[0], size[1]
+        ),
+    )
+    .unwrap();
+}
+
+/// Materials written into the project while the editor runs are found without a restart: validate_map does not
+/// report them missing and justify fit uses their texture_size.
+#[test]
+#[ignore]
+fn materials_added_while_running_are_found() {
+    let dir = artifacts().join("late_materials");
+    let _ = std::fs::remove_dir_all(&dir);
+    let textures = dir.join("textures");
+    std::fs::create_dir_all(&textures).unwrap();
+    std::fs::write(
+        dir.join("project.godot"),
+        "config_version=5
+",
+    )
+    .unwrap();
+    let ed = Editor::launch_with("late_materials", &["--project", dir.to_str().unwrap()]);
+    let codes = |ed: &Editor, code: &str| -> Vec<Value> {
+        ed.call("validate_map", json!({}))["issues"].as_array().unwrap().iter().filter(|i| i["code"] == code).cloned().collect()
+    };
+
+    write_material(&textures, "megaplex/word", [80, 48]);
+    let decal = ed.call("create_brush", json!({ "min": [0, 0, 0], "max": [80, 48, 4], "material": "megaplex/word" }))["ids"][0].as_u64().unwrap();
+    assert_eq!(codes(&ed, "missing_material"), Vec::<Value>::new(), "the new material is found");
+    let faces = ed.call("texture", json!({ "op": "get", "faces": (0..6).map(|f| json!([decal, f])).collect::<Vec<_>>() }));
+    let front = faces["faces"].as_array().unwrap().iter().find(|f| f["normal"][2].as_f64().unwrap() > 0.99).unwrap()["face"][1].as_u64().unwrap();
+    ed.call("texture", json!({ "op": "justify", "mode": "fit", "faces": [[decal, front]] }));
+    let uv = ed.call("texture", json!({ "op": "get", "faces": [[decal, front]] }))["faces"][0]["uv"].clone();
+    let corners: Vec<[f64; 2]> = [[0.0, 0.0, 4.0], [80.0, 48.0, 4.0]].iter().map(|p| texel(&uv, *p)).collect();
+    let span = [(corners[1][0] - corners[0][0]).abs(), (corners[1][1] - corners[0][1]).abs()];
+    assert!(approx(&span, &[80.0, 48.0]), "fit covers one 80 by 48 repeat, not the image's pixel size: {span:?}");
+
+    let before = ed.state()["game"]["materials"].as_u64().unwrap_or_default();
+    write_material(&textures, "megaplex/later", [64, 64]);
+    let reloaded = ed.call("run_action", json!({ "action": "reload_materials" }));
+    assert!(reloaded["materials"].as_u64().unwrap() > before, "{reloaded}");
+    ed.call("create_brush", json!({ "min": [0, 64, 0], "max": [64, 128, 16], "material": "megaplex/later" }));
+    assert_eq!(codes(&ed, "missing_material"), Vec::<Value>::new());
+}
+
 /// A Hammer map and a TrenchBroom map, imported as a user would, find their textures next to them and bring them into
 /// the project, after which no face is missing its material.
 #[test]

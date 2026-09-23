@@ -34,7 +34,8 @@ and every name inside it gets that prefix, so `door` becomes `p1-door` and each 
 
 The Issues panel checks the map as you work, for brushes with no volume, faces with no material, outputs aimed at
 targetnames nothing has and more. Click an issue to select and frame the object. Many have a **Fix** button, and
-*Fix all* sits in the header. A face only needs a material name to pass, the material itself is not checked.
+*Fix all* sits in the header. `missing_material` lists faces whose material the project's texture folder does not
+have. MCP's `validate_map` runs the same checks.
 
 ## History
 

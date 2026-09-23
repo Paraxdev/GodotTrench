@@ -344,6 +344,8 @@ pub struct EditorState {
     pub scene_reset: bool,
     /// Set when uploaded materials must be dropped and loaded again (filter change, reload).
     pub material_reload: bool,
+    /// Set when the material library found new files, so the scene loads the materials it lacked.
+    pub materials_rescanned: bool,
     /// Material and alignment picked with the texture tool's eyedropper.
     pub uv_clipboard: Option<crate::texture_ops::UvClipboard>,
     /// Justify selected faces against their combined extent.
@@ -420,6 +422,7 @@ impl EditorState {
             active_tab: 0,
             scene_reset: false,
             material_reload: false,
+            materials_rescanned: false,
             uv_clipboard: None,
             treat_as_one: false,
             uv_panel_open: false,
@@ -446,6 +449,14 @@ impl EditorState {
 
     pub fn snap_scalar(&self, v: f64) -> f64 {
         if self.snap { gt_core::snap_to_grid(v, self.grid) } else { v }
+    }
+
+    /// Picks up materials written into the project since the last scan when one of `names` is unknown, see
+    /// [`MaterialLibrary::find_new`]. Returns true when the library changed.
+    pub fn find_new_materials<'a>(&mut self, names: impl IntoIterator<Item = &'a str>) -> bool {
+        let found = self.materials.find_new(&self.game, names);
+        self.materials_rescanned |= found;
+        found
     }
 
     pub fn set_status(&mut self, msg: impl Into<String>) {

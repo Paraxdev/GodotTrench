@@ -44,6 +44,7 @@ pub struct PanelState {
     issues: Vec<gt_doc::issues::Issue>,
     issues_revision: u64,
     issues_overlays: u64,
+    issues_materials: u64,
     pub uv: crate::uv_editor::UvEditorState,
     pub reference_class: String,
     reference_filter: String,
@@ -79,6 +80,7 @@ impl Default for PanelState {
             issues: Vec::new(),
             issues_revision: 0,
             issues_overlays: 0,
+            issues_materials: 0,
             uv: Default::default(),
             reference_class: String::new(),
             reference_filter: String::new(),
@@ -2483,10 +2485,15 @@ fn collect_issues(state: &EditorState) -> Vec<gt_doc::issues::Issue> {
 
 pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
     use gt_doc::issues::{self, Severity};
-    if ps.issues_revision != state.doc.revision || ps.issues_overlays != state.overlay_ghosts.generation {
+    let stale =
+        ps.issues_revision != state.doc.revision || ps.issues_overlays != state.overlay_ghosts.generation || ps.issues_materials != state.materials.generation;
+    if stale && !state.doc.in_transaction() {
+        let missing: Vec<String> = crate::texture_convert::missing_materials(state).into_keys().collect();
+        state.find_new_materials(missing.iter().map(String::as_str));
         ps.issues = collect_issues(state);
         ps.issues_revision = state.doc.revision;
         ps.issues_overlays = state.overlay_ghosts.generation;
+        ps.issues_materials = state.materials.generation;
     }
 
     let errors = ps.issues.iter().filter(|i| i.severity == Severity::Error).count();

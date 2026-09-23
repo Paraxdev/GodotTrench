@@ -349,6 +349,10 @@ impl App {
             faces = tex::target_faces(&self.state);
         }
 
+        let mut materials: Vec<String> = faces.iter().filter_map(|(id, f)| tex::face_info(&self.state.doc.map, *id, *f)).map(|i| i.material).collect();
+        materials.extend(args["material"].as_str().map(str::to_string));
+        self.state.find_new_materials(materials.iter().map(String::as_str));
+
         let vec2 = |v: &Value| -> Option<DVec2> {
             match v {
                 Value::Number(n) => n.as_f64().map(DVec2::splat),

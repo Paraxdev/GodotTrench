@@ -425,6 +425,10 @@ impl App {
 
     /// Runs a tool that answers right away, as every tool inside run_script must.
     pub(crate) fn run_tool(&mut self, name: &str, args: Value, ctx: &egui::Context) -> ToolResult {
+        if std::mem::take(&mut self.state.materials_rescanned) {
+            self.project_generation += 1;
+        }
+
         match name {
             "get_state" => ok(self.state_summary()),
             "list_nodes" => ok(self.list_nodes(&args)),
@@ -542,6 +546,8 @@ impl App {
             }
             "simulate_input" => err("simulate_input cannot run inside scripts"),
             "validate_map" => {
+                let unknown: Vec<String> = crate::texture_convert::missing_materials(&self.state).into_keys().collect();
+                self.state.find_new_materials(unknown.iter().map(String::as_str));
                 let path = self.state.doc.path.clone();
                 self.state.overlay_ghosts.refresh(path.as_deref());
                 let overlay_names = self.state.overlay_ghosts.targetnames();
@@ -925,6 +931,12 @@ impl App {
                 Action::TerrainAutoPaint
             }
             "reload_models" => Action::ReloadModels,
+            "reload_materials" => {
+                let game = self.state.game.clone();
+                self.state.materials.rescan(&game);
+                self.project_generation += 1;
+                return ok(json!({ "ok": true, "materials": self.state.materials.entries.len() }));
+            }
             "open_godot_editor" => Action::OpenGodotEditor,
             "run_godot_project" => Action::RunGodotProject,
             "focus_godot" => Action::FocusGodot,
@@ -1699,6 +1711,7 @@ impl App {
         let rotate = args["rotate_by"].as_f64();
         let fit = args["fit"].as_bool().unwrap_or(false);
         let mat_name = material.clone().unwrap_or_else(|| brush.faces[face].data.material.clone());
+        self.state.find_new_materials([mat_name.as_str()]);
         let size = crate::texture_ops::tex_size(&self.state, &mat_name);
         self.state.doc.edit("Set Face", |m, _| {
             let Some(b) = m.brush_mut(id) else { return };

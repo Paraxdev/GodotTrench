@@ -336,6 +336,7 @@ fn centroid(uvs: &[[f32; 2]]) -> [f32; 2] {
 /// Justifies faces. With `treat_as_one` all faces are aligned against their combined extent.
 pub fn justify(state: &mut EditorState, faces: &[(NodeId, usize)], mode: Justify, treat_as_one: bool) -> usize {
     let list = infos(state, faces);
+    state.find_new_materials(list.iter().map(|i| i.material.as_str()));
     let all_points: Vec<DVec3> = list.iter().flat_map(|i| i.points.clone()).collect();
     let mut plans = Vec::new();
     for info in &list {
