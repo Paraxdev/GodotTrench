@@ -36,6 +36,7 @@ pub mod tools;
 pub mod toolset;
 pub mod transform_gizmo;
 pub mod uv_editor;
+pub mod validate;
 pub mod viewport;
 pub mod volume_tool;
 pub mod widgets;
