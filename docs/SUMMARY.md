@@ -52,7 +52,11 @@
 
 * [Button opens a door](tutorials/button-door.md)
 * [Scripted cutscene](tutorials/cutscene.md)
-* [Building a sea island](tutorials/sea-island.md)
+* [Sea island](tutorials/sea-island.md)
+    * [Sculpting](tutorials/sea-island-sculpt.md)
+    * [Painting](tutorials/sea-island-painting.md)
+    * [Scatter](tutorials/sea-island-scatter.md)
+    * [Jetty and Godot](tutorials/sea-island-finish.md)
 
 ## Reference
 
