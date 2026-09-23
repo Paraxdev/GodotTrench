@@ -397,7 +397,7 @@ pub fn fgd_resource(def: &EntityDef) -> String {
     out
 }
 
-/// Classnames whose definitions ship with the FuncGodot fork in `addons/func_godot/fgd/trenchdot/`.
+/// Classnames whose definitions ship with the Godot addon in `addons/func_godot/fgd/trenchdot/`.
 pub const ADDON_ENTITIES: [&str; 35] = [
     "info_teleport_destination",
     "path_corner",
@@ -453,7 +453,7 @@ pub fn addon_fgd_files() -> Vec<(String, String)> {
     }
 
     let refs: Vec<String> = ADDON_ENTITIES.iter().enumerate().map(|(i, class)| format!("ExtResource(\"{}_{class}\")", i + 2)).collect();
-    file += &format!("\n[resource]\nscript = ExtResource(\"1_fgd\")\nfgd_name = \"TrenchDot\"\nentity_definitions = Array[Resource]([{}])\n", refs.join(", "));
+    file += &format!("\n[resource]\nscript = ExtResource(\"1_fgd\")\nentity_definitions = Array[Resource]([{}])\n", refs.join(", "));
     out.push(("trenchdot_fgd.tres".into(), file));
     out
 }
@@ -462,7 +462,7 @@ pub fn addon_fgd_files() -> Vec<(String, String)> {
 pub const CSHARP_HELPER: &str = r#"using Godot;
 using Godot.Collections;
 
-/// <summary>Bridge from C# to the TrenchDot runtime of the FuncGodot fork.</summary>
+/// <summary>Bridge from C# to the TrenchDot runtime of the Godot addon.</summary>
 public static class TrenchDot
 {
     private static GDScript _io;
@@ -502,7 +502,7 @@ public static class TrenchDot
 }
 
 /// <summary>
-/// Declares a C# node class as a map entity without an FGD resource. The FuncGodot fork scans the source folders listed in
+/// Declares a C# node class as a map entity without an FGD resource. The Godot addon scans the source folders listed in
 /// TrenchDotGameConfig.csharp_source_dirs: [Export] members become properties, [Signal] delegates outputs and
 /// [TrenchDotInput] methods inputs. Size is "minX minY minZ maxX maxY maxZ" in map units.
 /// </summary>

@@ -1,7 +1,7 @@
 [remap]
 
-importer="func_godot.map"
-type="QuakeMapFile"
+importer="trenchdot.tdm"
+type="TrenchDotImportedMap"
 uid="uid://eetpfrf4lg03"
 path="res://.godot/imported/basic_json.tdm-a756b81a9d2a0c404e5dec78e20c65ec.tres"
 

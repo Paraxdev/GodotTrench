@@ -1,7 +1,7 @@
 [remap]
 
-importer="func_godot.map"
-type="QuakeMapFile"
+importer="trenchdot.tdm"
+type="TrenchDotImportedMap"
 uid="uid://civ00oppiux2u"
 path="res://.godot/imported/lighthouse_forest.tdm-886dd22594f560d6bc83c75397d77179.tres"
 

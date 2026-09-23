@@ -1,7 +1,7 @@
 [remap]
 
-importer="func_godot.map"
-type="QuakeMapFile"
+importer="trenchdot.tdm"
+type="TrenchDotImportedMap"
 uid="uid://240b4brfx1yg"
 path="res://.godot/imported/withered_city.tdm-892cf05a3f6d387ac147a872e9f6234f.tres"
 
