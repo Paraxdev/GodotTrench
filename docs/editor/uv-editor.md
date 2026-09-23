@@ -21,7 +21,7 @@ The UV Editor panel draws the selected brush and mesh faces over their tiled tex
 | Middle drag, Ctrl+wheel | Pan, zoom the canvas |
 
 With corners selected, the wheel and right drag scale and rotate them around their center. The U and V fields under the
-canvas place the selection to the pixel. Every drag is one undo step.
+canvas place the selection to the pixel.
 
 ## Mesh UV projections
 

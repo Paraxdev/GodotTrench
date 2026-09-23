@@ -1,10 +1,10 @@
 # Doors, movers and buttons
 
-These are brush entities. They are `AnimatableBody3D` nodes, so they carry whatever stands on them.
+Brush entities that carry whatever stands on them.
 
 > **Note:** Doors and buttons do not react to the player on their own. Your player script calls `use(activator)` on
-> them, see [Button opens a door](../../tutorials/button-door.md). Set `interact` to 0 for one that should only move
-> from I/O or a script.
+> them, see [Button opens a door](../../tutorials/button-door.md). Set `interact` to 0 for one that only I/O or a
+> script should move.
 
 ## func_door
 
@@ -17,8 +17,8 @@ door ignores `open` and `use` and fires `locked_use` instead.
 
 ## func_door_rotating
 
-Swings around a hinge, which you drag into place in the viewport. `open_away` swings it away from whoever opens it,
-which is why `open` takes the activator here.
+Swings around a hinge you drag into place in the viewport. `open` takes the activator so `open_away` can swing it
+away from them.
 
 * **Inputs:** `open(activator)`, `close`, `toggle(activator)`, `lock`, `unlock`, `use(activator)`
 * **Outputs:** same as `func_door`
@@ -43,8 +43,8 @@ A lift or moving platform between its start and `start + travel`.
 
 ## func_train
 
-Follows a chain of `path_corner` entities, starting at `target`. It moves from map load and loops, so set
-`start_active` or `loop` to 0 for a one off ride. Each corner's `wait` and `speed` apply on arrival.
+Follows a chain of `path_corner` entities from `target`. It starts moving on map load and loops, so set `start_active`
+or `loop` to 0 for a one off ride. Each corner's `wait` and `speed` apply on arrival.
 
 * **Inputs:** `start`, `stop`, `toggle`
 * **Outputs:** `arrived(corner)`, `finished` (only when not looping)

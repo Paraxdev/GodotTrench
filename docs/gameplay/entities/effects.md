@@ -1,7 +1,5 @@
 # Text, lights and effects
 
-These are point entities.
-
 ## game_text
 
 Shows a line of text in the world, on the HUD or both. `show` and `hide` switch the label, not the node.
@@ -13,7 +11,7 @@ Shows a line of text in the world, on the HUD or both. `show` and `hide` switch 
 
 `duration` hides it again after that many seconds, 0 keeps it up until `hide`. `flash` shows it for its parameter in
 seconds, else `duration`, else 2. With `billboard` on, the world label faces the camera and draws through walls. Turn
-it off for signs, the label then keeps the entity's angles and hides behind walls.
+it off for signs, which then keep the entity's angles and hide behind walls.
 
 ## light and light_spot
 
@@ -25,7 +23,7 @@ Switchable omni and spot lights. `switched` only fires when the state actually c
   `fixture_off` hide, and `omni_range` 10, or `spot_range` 15 and `spot_angle` 35
 
 **Fixtures:** give the lamp's glowing geometry a targetname and put it in `fixture`, a trailing `*` matches a prefix
-so `hall_tube_*` covers every tube. It follows the light with no wiring, shown while on and hidden while off. With
+so `hall_tube_*` covers every tube. It is shown while the light is on and hidden while off, with no wiring. With
 `fixture_off` set to `dark` it stays visible with its emission off.
 
 ## env_sound

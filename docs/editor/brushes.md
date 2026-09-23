@@ -13,8 +13,8 @@ Brushes are convex solids. These inputs belong to the **Select** tool (Q).
 | Arrow keys, Page Up, Page Down | Nudge by one grid step |
 | `[` and `]` | Halve and double the grid |
 
-In 3D the selection also gets a gizmo. Arrows move along an axis, squares move in a plane, rings rotate in 15° steps
-(Shift for 1°) and the boxes scale. *View > Transform Gizmo* hides it.
+In 3D the selection also gets a move, rotate and scale gizmo. Rotation snaps to 15°, or 1° with Shift.
+*View > Transform Gizmo* hides it.
 
 ## Reshape
 
@@ -32,8 +32,8 @@ for dents and overhangs convert it to a [mesh](meshes.md). Delete removes the se
 
 ## Shape Generator
 
-*Brush > Shape Generator* (Ctrl+Shift+B) builds cylinders, arches, stairs and other shapes that are tedious by hand.
-Its **Text** shape builds block letters from brushes, for signs and floor lettering.
+*Brush > Shape Generator* (Ctrl+Shift+B) builds cylinders, arches, stairs and other shapes. Its **Text** shape
+builds block letters from brushes, for signs and floor lettering.
 
 ## CSG
 

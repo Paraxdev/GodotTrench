@@ -5,8 +5,8 @@ them, and *File > Preferences > Keymap preset* switches to Hammer or Blender.
 
 ## Tools
 
-A tool's key pressed again goes back to Select. Esc cancels a drag or stroke in progress, otherwise it returns to
-Select, and in Select it clears the selection.
+Pressing a tool's key again goes back to Select. Esc cancels a drag or stroke, otherwise returns to Select, and in
+Select clears the selection.
 
 | Key | Tool |
 | --- | --- |
@@ -86,8 +86,8 @@ Select, and in Select it clears the selection.
 
 ## Other presets
 
-A preset only takes over the keys below, everything else keeps its default. Your own changes sit on top of whichever
-preset is active, and *Reset overrides* in the shortcuts window clears them.
+A preset only changes the keys below. Your own bindings sit on top of any preset, *Reset overrides* in the shortcuts
+window clears them.
 
 | Key | Hammer preset |
 | --- | --- |

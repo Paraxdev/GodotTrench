@@ -6,11 +6,10 @@ opens, all wired with I/O. It is the `scripted_scene` map in the demo project, b
 
 ## The timeline
 
-A `trigger_once` named `start_zone` covers the entrance. Its `triggered` output starts a `logic_sequence` named
-`cutscene` with `steps` 5 and `interval` 1.5.
-
-The sequence waits before every step, the first one included, so step 1 fires 1.5 s after the player walks in and
-step 5 at 7.5 s. For uneven timing, set `times` to one wait per step, such as `0.5 2 1 1 3`.
+1. Cover the entrance with a `trigger_once` named `start_zone`.
+2. Add a `logic_sequence` named `cutscene` with `steps` 5 and `interval` 1.5.
+3. Link `start_zone`'s `triggered` output to `cutscene.start`.
+4. Link each step output of `cutscene`:
 
 | Output | Target and input | What happens |
 | --- | --- | --- |
@@ -20,10 +19,13 @@ step 5 at 7.5 s. For uneven timing, set `times` to one wait per step, such as `0
 | `step_4` | `lamp.turn_on` | The lamp switches on |
 | `step_5` | `exit_door.open` | The exit door slides up |
 
+The sequence waits before every step, the first one included, so step 1 fires at 1.5 s and step 5 at 7.5 s. For
+uneven timing, set `times` to one wait per step, such as `0.5 2 1 1 3`.
+
 ## Reading the player's health
 
-The barrel's `broken` output calls `run` on a `logic_script` named `hp_readout`. Its `source` writes the player's
-health onto a HUD `game_text` named `hpmsg`:
+Link the barrel's `broken` output to `hp_readout.run`, a `logic_script` whose `source` writes the player's health onto
+a HUD `game_text` named `hpmsg`:
 
 ```gdscript
 var players = io.find_targets(this, "!player", null)
@@ -35,9 +37,8 @@ for label in io.find_targets(this, "hpmsg", null):
 	label.show()
 ```
 
-It looks the player up with `!player` because there is no activator to use: the sequence's step outputs and
-`broken` carry none. No delay is needed either, since `prop_physics` fires `broken` after the blast has done its
-damage.
+Use `!player` here, not `!activator`. The step outputs and `broken` carry no activator. `broken`
+fires after the blast has done its damage, so the health is already current.
 
 ## Playing it
 

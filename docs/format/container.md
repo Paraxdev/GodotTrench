@@ -55,8 +55,8 @@ tree by appending each node to the `children` of the node its parent id names.
 | `content` | integer | Content id |
 
 The content id is a 64 bit FNV-1a hash of the raw `HEAD` and `NODE` payloads in file order, cut to its low 52 bits so
-it survives as a JSON number. Godot stores it with a scene built from the file, and the editor sends it when a
-[live session](../godot/live-link.md) starts, so an unchanged map is not rebuilt.
+it survives as a JSON number. Godot keeps it with the built scene, so a [live session](../godot/live-link.md) skips
+rebuilding an unchanged map.
 
 ### Other chunks
 
@@ -65,9 +65,9 @@ chunks on save. An older editor may have deleted nodes it refers to, so a new ch
 
 ## Value encoding
 
-Payloads use Godot's binary Variant serialization, the format of `var_to_bytes`, limited to the types below, so the
-addon decodes each chunk with one `bytes_to_var` call. Every value starts with a u32 header whose low byte is the type.
-Bit 16 of the header marks a 64 bit integer or float.
+Each payload is one value in Godot's binary Variant serialization, the format of `var_to_bytes`, using only the types
+below. Every value starts with a u32 header whose low byte is the type. Bit 16 of the header marks a 64 bit integer or
+float.
 
 | Type | Header | Body |
 | --- | --- | --- |

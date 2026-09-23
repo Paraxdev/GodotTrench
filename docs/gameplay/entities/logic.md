@@ -1,12 +1,11 @@
 # Logic
 
-Logic entities are points with no body and no visuals. They shape the flow of signals. For entities that run code or
-drive animations, see [Scripts and calls](scripting.md).
+Invisible point entities that route signals. Entities that run code or animations are in
+[Scripts and calls](scripting.md).
 
 ## logic_relay
 
-Forwards whatever triggers it and can be switched off, the easiest way to make a chain that only works under some
-condition.
+Passes `trigger` on as `triggered` while enabled. Disable it to switch a chain off.
 
 * **Inputs:** `trigger(activator)`, `enable`, `disable`, `toggle`
 * **Outputs:** `triggered(activator)`
@@ -14,7 +13,7 @@ condition.
 
 ## logic_branch
 
-Remembers true or false and fires one of two outputs when tested, for checks like "only if the power is on".
+Holds true or false and fires one of two outputs on `test`, for checks like "only if the power is on".
 
 * **Inputs:** `set_true`, `set_false`, `toggle`, `test`, `set_and_test(value)`
 * **Outputs:** `on_true`, `on_false`
@@ -46,12 +45,12 @@ Fires `map_spawn` once, after every entity of the map is ready. Start anything t
 
 ## logic_sequence
 
-A timeline for cutscenes. It fires up to eight numbered steps in order, waiting before each one, the first included.
+A cutscene timeline. It fires up to eight numbered steps in order and waits before each one, the first included.
 
 * **Inputs:** `start`, `stop`, `reset`
 * **Outputs:** `step_1` to `step_8`, `step(index)`, `finished`
 * **Keys:** `steps` 3 (1 to 8), `interval` 1.0, `times` empty, `start_active` 0, `loop` 0
 
-`times` is a space separated list of waits, one per step, and steps without an entry use `interval`. With `loop` on it
-starts over and never fires `finished`. `start` is ignored while it runs, and `stop` then `start` begins again from
-step 1. See the [cutscene tutorial](../../tutorials/cutscene.md).
+`times` lists a wait per step, like `0 1 0.5`, and steps without one use `interval`. A looping sequence never fires
+`finished`. `start` is ignored while it runs, and after `stop` it begins again at step 1. See the
+[cutscene tutorial](../../tutorials/cutscene.md).

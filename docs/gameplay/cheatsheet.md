@@ -2,10 +2,8 @@
 
 ## When an output fires
 
-1. The entity emits a signal, like `pressed(activator)`.
-2. The fire counts against *Times*, then waits *Delay* seconds.
-3. The target becomes a list of nodes. None found means nothing happens.
-4. The input is called on each node.
+The signal fires, counts against *Times*, waits *Delay*, then calls the input on every node the target finds. None
+found means nothing happens, silently.
 
 ## Targets
 
@@ -39,8 +37,8 @@ Lost it? Target `!player`.
 
 ## Inputs every node has
 
-`kill`, `show`, `hide`, `enable`, `disable` and `toggle`, used when the entity has no method of that name. An unknown
-input with a parameter sets the property of that name.
+`kill`, `show`, `hide`, `enable`, `disable` and `toggle`, used when the entity has no method of that name. An input
+that matches a property sets it to the parameter.
 
 ## logic_script scope
 

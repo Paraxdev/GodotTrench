@@ -6,7 +6,7 @@ Drag a point entity from the **Entities** panel into a view, or double click its
 or Shift click selects several cards, and dragging them drops them all in a row.
 
 Doors, buttons and triggers are brush entities. Select the brushes, then pick a class from *Create Brush Entity* in the
-view's right click menu or from *Brush > Brush Entity*. These shortcuts build the common ones for you:
+view's right click menu or from *Brush > Brush Entity*. The common ones have shortcuts:
 
 | Tool or menu | Makes |
 | --- | --- |
@@ -38,5 +38,5 @@ every `source.output → target.input` step that would follow, with delays.
 
 ## Code for any entity
 
-The **Reference** panel (*View > Panels*) shows GDScript and C# snippets for using an entity class from code, a class
-skeleton for writing your own and its FGD resource. **Create in project** writes the file into `res://entities/`.
+The **Reference** panel (*View > Panels*) shows GDScript and C# snippets for any entity class, a skeleton for writing
+your own and its FGD resource. **Create in project** writes the file into `res://entities/`.

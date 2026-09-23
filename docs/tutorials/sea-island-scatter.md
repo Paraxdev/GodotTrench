@@ -1,8 +1,8 @@
 # Sea island 4: scatter
 
-Press **B** for the Scatter tool. Each set below starts from **Preset** in the Scatter panel. Then click the
-eyedropper next to **Targets** and click the terrain, so the set only grows on it. Leave **Follow cursor** unticked,
-since it ignores the targets, and **Keep spacing to other sets** ticked, so nothing grows through a trunk.
+Press **B** for the Scatter tool. Start each set below from **Preset** in the Scatter panel, then click the eyedropper
+next to **Targets** and click the terrain, so the set only grows on it. Leave **Follow cursor** unticked, it ignores
+the targets, and **Keep spacing to other sets** ticked, so nothing grows through a trunk.
 
 ## Woodland
 
@@ -10,8 +10,7 @@ since it ignores the targets, and **Keep spacing to other sets** ticked, so noth
 2. In the Brush section set **Density** 0.16, **Slope** 0 to 30 and tick **Height**, 120 to 2000.
 3. Click **Fill targets**.
 
-Height keeps trees off the sand and slope keeps them off the cliffs. Density counts attempts per 64 x 64 units, so
-0.16 is roughly one tree every 5 m.
+Density counts attempts per 64 x 64 units, so 0.16 is roughly one tree every 5 m.
 
 ![The woodland after Fill targets](../assets/sea-island/scatter-woodland.jpg)
 

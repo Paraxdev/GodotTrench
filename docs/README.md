@@ -10,7 +10,7 @@ standalone app, and the TrenchDot addon inside your Godot project turns the save
 
 | Part | Role |
 | --- | --- |
-| The editor | Writes `.tdm` maps, compressed binary files made of independent chunks, so a damaged byte costs a few objects instead of the whole map |
+| The editor | Writes `.tdm` map files |
 | The addon | Reads `.tdm` files in Godot and builds meshes, collision and working entities |
 | The game config | `trenchdot_game.json`, written by the addon so the editor knows your entities and textures |
 
