@@ -512,6 +512,7 @@ impl App {
         }
 
         state.materials.watch(cc.egui_ctx.clone());
+        state.watch_game_config(cc.egui_ctx.clone());
         let http_port = args.mcp_http.or(state.prefs.mcp_http.then_some(state.prefs.mcp_port));
         let mut mcp = None;
         let mut mcp_http_addr = None;
@@ -2089,6 +2090,10 @@ impl eframe::App for App {
         }
 
         egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
+
+        if self.state.game_config_changed() && self.state.reload_changed_game_config() {
+            self.project_generation += 1;
+        }
 
         if self.state.materials.changed_on_disk() {
             self.state.material_reload = true;

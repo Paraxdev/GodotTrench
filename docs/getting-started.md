@@ -18,10 +18,8 @@ covers replacing them with your own.
 ## 2. Export the game config
 
 Run *Project > Tools > TrenchDot: Export Game Config*. It writes `trenchdot_game.json` to the project root, which is
-how the editor learns your entities and textures. From then on the addon exports again whenever files change.
-
-> **Note:** The editor reads the game config when it opens the project and does not watch it. After adding an entity
-> while the editor is running, use *Godot > Reload > Game Config*.
+how the editor learns your entities and textures. From then on the addon exports again whenever files change, and the
+editor reloads the file within a second of each export.
 
 ## 3. Open the project in the editor
 

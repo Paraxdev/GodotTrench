@@ -413,6 +413,11 @@ impl App {
 
     /// Runs a tool call from a transport. Window screenshots and input scripts keep `reply` and answer in a later frame.
     pub(crate) fn call_tool(&mut self, name: &str, args: Value, ctx: &egui::Context, reply: &Sender<ToolResult>) -> Reply {
+        // The watcher only looks once a second, a call right after Godot exported the config must already see it.
+        if self.state.reload_changed_game_config() {
+            self.project_generation += 1;
+        }
+
         match name {
             "screenshot" if args["source"].as_str() == Some("godot") => match self.godot_capture(&args, reply.clone()) {
                 Ok(()) => Reply::Deferred,
@@ -1053,6 +1058,12 @@ impl App {
                 self.state.materials.rescan(&game);
                 self.project_generation += 1;
                 return ok(json!({ "ok": true, "materials": self.state.materials.entries.len() }));
+            }
+            "reload_game_config" => {
+                let Some(root) = self.state.game.project_root.clone() else { return err("no project is open, use open_project") };
+                self.state.load_project(&root);
+                self.project_generation += 1;
+                return ok(json!({ "ok": true, "entities": self.state.game.entities.len(), "status": self.state.status }));
             }
             "open_godot_editor" => Action::OpenGodotEditor,
             "run_godot_project" => Action::RunGodotProject,
