@@ -3,8 +3,10 @@ name: CI
 on:
   push:
     branches: [main]
+    # A version tag publishes a release, see the publish job.
+    tags: ["v*"]
     # The docs have their own build and deploy workflow (pages.yml). Without this, a docs only
-    # commit runs the full Rust/E2E/Godot suite, replaces the rolling alpha release, and pushes to itch.
+    # commit runs the full Rust/E2E/Godot suite, replaces the rolling beta release, and pushes to itch.
     paths-ignore:
       - "docs/**"
       - ".gitbook.yaml"
@@ -100,9 +102,9 @@ jobs:
         run: |
           "$GODOT" --headless --path godot --script res://tests/build_showcase.gd
 
-  alpha:
-    name: Rolling alpha (${{ matrix.name }})
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  package:
+    name: Package (${{ matrix.name }})
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     needs: [rust, e2e, godot]
     runs-on: ${{ matrix.os }}
     strategy:
@@ -147,13 +149,13 @@ jobs:
           path: dist/*
 
   publish:
-    name: Publish rolling alpha
-    needs: [alpha]
+    name: Publish
+    needs: [package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     concurrency:
-      group: alpha-release
+      group: release
       cancel-in-progress: false
     env:
       BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
@@ -168,25 +170,16 @@ jobs:
         run: |
           (cd godot && zip -qr "../dist/func_godot-godottrench-addon.zip" addons/func_godot)
           zip -qr dist/godottrench-demo-project.zip godot -x "godot/.godot/*"
-      - name: Replace the alpha release
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # GitHub refuses the workflow token a tag on an older commit whose workflow files differ from main, and a newer run publishes anyway.
-          head=$(git ls-remote origin refs/heads/main | cut -f1)
-          if [ "$head" != "$GITHUB_SHA" ]; then
-            echo "main moved on to ${head::7}, leaving the alpha to that run"
-            exit 0
-          fi
           if ls dist | grep -qiE '\.(png|jpe?g|gif|webp)$'; then
             echo "images belong in the release notes, not in the downloads"
             exit 1
           fi
-          short="${GITHUB_SHA::7}"
           shots="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/docs/screenshots"
-          notes="Rolling alpha built from ${short} on $(date -u +%Y-%m-%d). Expect bugs.
-
-          * godottrench-*: the editor for Linux, Windows and macOS.
+          downloads="* godottrench-*: the editor for Linux, Windows and macOS.
           * func_godot-godottrench-addon.zip: the forked FuncGodot addon, extract into your Godot project so it becomes res://addons/func_godot.
           * godottrench-demo-project.zip: the demo Godot project with the showcase maps.
 
@@ -194,8 +187,27 @@ jobs:
           ![Lighthouse and Forest in Godot](${shots}/lighthouse_forest.png)
           ![Church and School in Godot](${shots}/church_school.png)
           ![Mountain Hanging House in Godot](${shots}/mountain_house.png)"
-          gh release delete alpha --yes --cleanup-tag || true
-          gh release create alpha dist/* --prerelease --target "$GITHUB_SHA" --title "GodotTrench rolling alpha" --notes "$notes"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            notes=".github/release-notes/${GITHUB_REF_NAME}.md"
+            if [ ! -f "$notes" ]; then
+              echo "add $notes before tagging"
+              exit 1
+            fi
+            { cat "$notes"; printf '\n## Downloads\n\n%s\n' "$downloads"; } > notes.md
+            gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "GodotTrench ${GITHUB_REF_NAME}" --notes-file notes.md
+            exit 0
+          fi
+          # GitHub refuses the workflow token a tag on an older commit whose workflow files differ from main, and a newer run publishes anyway.
+          head=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "main moved on to ${head::7}, leaving the beta to that run"
+            exit 0
+          fi
+          notes="Rolling beta built from ${GITHUB_SHA::7} on $(date -u +%Y-%m-%d), ahead of the latest release. It passed every test, but may still have rough edges.
+
+          ${downloads}"
+          gh release delete beta --yes --cleanup-tag || true
+          gh release create beta dist/* --prerelease --target "$GITHUB_SHA" --title "GodotTrench rolling beta" --notes "$notes"
       - name: Push to itch.io
         # Skips cleanly on forks and until the BUTLER_API_KEY secret is added.
         if: ${{ env.BUTLER_API_KEY != '' }}
@@ -204,7 +216,12 @@ jobs:
           unzip -q butler.zip -d butler-bin && chmod +x butler-bin/butler
           butler=butler-bin/butler
           "$butler" -V
-          version="alpha-$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
+          # Releases fill the plain channels, the rolling beta its -beta twins, so itch's default downloads stay on a release.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"; suffix=""
+          else
+            version="beta-$(date -u +%Y%m%d)-${GITHUB_SHA::7}"; suffix="-beta"
+          fi
           push() {
             archive="$1"; channel="$2"; out="itch/$channel"
             rm -rf "$out" && mkdir -p "$out"
@@ -215,11 +232,11 @@ jobs:
             # butler wants the build root, so drop the single wrapping folder the archives carry.
             inner=$(find "$out" -mindepth 1 -maxdepth 1 -type d | head -n1)
             [ -n "$inner" ] && out="$inner"
-            "$butler" push "$out" "paraxdev/godottrench:$channel" --userversion "$version"
+            "$butler" push "$out" "paraxdev/godottrench:$channel$suffix" --userversion "$version"
           }
           push dist/godottrench-linux-x86_64.tar.gz linux
           push dist/godottrench-windows-x86_64.zip windows
           push dist/godottrench-macos-arm64.tar.gz mac
           # The addon and demo project ship as their own zips so their folder layout (addons/func_godot, the project) survives.
-          "$butler" push dist/func_godot-godottrench-addon.zip "paraxdev/godottrench:addon" --userversion "$version"
-          "$butler" push dist/godottrench-demo-project.zip "paraxdev/godottrench:demo-project" --userversion "$version"
+          "$butler" push dist/func_godot-godottrench-addon.zip "paraxdev/godottrench:addon$suffix" --userversion "$version"
+          "$butler" push dist/godottrench-demo-project.zip "paraxdev/godottrench:demo-project$suffix" --userversion "$version"

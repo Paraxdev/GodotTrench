@@ -5,7 +5,7 @@ Steps 1 to 3 are done once per project.
 ## What you need
 
 Godot 4.7, CI tests the addon on 4.7.2. Use the .NET build if you want to write entities in C#. The editor and the
-addon are in the [rolling alpha](https://github.com/Paraxdev/GodotTrench/releases/tag/alpha).
+addon are in the [latest release](https://github.com/Paraxdev/GodotTrench/releases/latest).
 
 ## 1. Install the addon
 

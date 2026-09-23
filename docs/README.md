@@ -30,5 +30,5 @@ When something looks wrong on one side, one of these three is usually out of dat
 
 ## Download
 
-The [rolling alpha](https://github.com/Paraxdev/GodotTrench/releases/tag/alpha) has the editor for Linux, Windows and
-macOS, the addon zip and a demo project. To build from source, see [Development](development.md).
+The [latest release](https://github.com/Paraxdev/GodotTrench/releases/latest) has the editor for Linux, Windows and macOS, the addon zip and a demo project. The
+[rolling beta](https://github.com/Paraxdev/GodotTrench/releases/tag/beta) has the newest changes from `main`. To build from source, see [Development](development.md).

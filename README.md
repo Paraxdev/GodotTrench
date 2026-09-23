@@ -45,8 +45,9 @@ agents working on the repo should follow [AGENTS.md](AGENTS.md), it lists the ch
 
 ## Download
 
-grab the [rolling alpha](https://github.com/Paraxdev/GodotTrench/releases/tag/alpha): the editor for Linux, Windows and macOS,
-the forked addon (unzip into your Godot project) and a demo project. or build it yourself with `cargo run -p gt_editor --release`.
+grab the [latest release](https://github.com/Paraxdev/GodotTrench/releases/latest): the editor for Linux, Windows and macOS, the forked addon (unzip into your Godot
+project) and a demo project. the [rolling beta](https://github.com/Paraxdev/GodotTrench/releases/tag/beta) has the newest changes from `main`. or build it yourself with
+`cargo run -p gt_editor --release`.
 
 to use a map in Godot, add a `FuncGodotMap` node, point it at a `.gtm` file and press *Build Map*.
 
