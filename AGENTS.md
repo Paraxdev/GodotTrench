@@ -81,6 +81,10 @@ This applies to code comments, docs, the wiki, UI text, commit messages and pull
 
 ## Commits and pull requests
 
+* Commits are written by their author and signed, so GitHub shows them as Verified. The author has read and
+  checked the change before committing it.
+* If an AI drafts any text, a commit message, a pull request description or docs, keep it short and useful to any
+  developer reading it later. Cut filler, repetition and anything that only makes sense inside the chat it came from.
 * Short plain subject in the imperative, the way a person would write it, for example
   "Add map overlays for Godot-side content". Add a few sentences of body only when the why is not obvious.
 * Group related work into one commit instead of a chain of follow-up fixes.
