@@ -19,9 +19,9 @@ The editor reads and writes maps in
 [`binary.rs`](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_doc/src/binary.rs) and
 [`variant.rs`](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_doc/src/variant.rs). The Godot addon reads
 files with
-[`gtm_file.gd`](https://github.com/Paraxdev/GodotTrench/blob/main/godot/addons/func_godot/src/godottrench/gtm_file.gd)
+[`gtm_file.gd`](https://github.com/Paraxdev/godottrench_func/blob/main/src/godottrench/gtm_file.gd)
 and builds them with
-[`gtm_parser.gd`](https://github.com/Paraxdev/GodotTrench/blob/main/godot/addons/func_godot/src/godottrench/gtm_parser.gd).
+[`gtm_parser.gd`](https://github.com/Paraxdev/godottrench_func/blob/main/src/godottrench/gtm_parser.gd).
 
 ## Converting
 

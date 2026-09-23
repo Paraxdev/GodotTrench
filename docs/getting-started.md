@@ -10,7 +10,7 @@ addon are in the [latest release](https://github.com/Paraxdev/GodotTrench/releas
 ## 1. Install the addon
 
 Extract `func_godot-godottrench-addon.zip` into your project folder so the addon ends up in `addons/func_godot`, then
-enable **FuncGodot (GodotTrench)** under *Project > Project Settings > Plugins*.
+enable **GodotTrench** under *Project > Project Settings > Plugins*.
 
 The addon's defaults include the GodotTrench entities, so doors, triggers and lights work without resources of your
 own. [Project setup](godot/project-setup.md) covers replacing them.

@@ -73,4 +73,4 @@
     * [Terrain and scatter](format/terrain-scatter.md)
     * [JSON layout](format/json.md)
 * [Development](development.md)
-* [Fork changes](https://github.com/Paraxdev/GodotTrench/blob/main/godot/addons/func_godot/FORK.md)
+* [The Godot addon](https://github.com/Paraxdev/godottrench_func#readme)

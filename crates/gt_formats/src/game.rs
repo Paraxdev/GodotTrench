@@ -1,4 +1,4 @@
-//! Game configuration exported by the GodotTrench fork of FuncGodot (`godottrench_game.json`).
+//! Game configuration exported by the GodotTrench Godot addon (`godottrench_game.json`).
 //! Describes textures, tool textures, scale and entity definitions of one Godot project.
 
 use std::collections::BTreeMap;
@@ -393,7 +393,7 @@ impl GameConfig {
     }
 
     /// Used when no project is open, so the editor is usable out of the box. Lists the GodotTrench gameplay entities
-    /// that ship with the FuncGodot fork (doors, lifts, triggers, spawners, logic and debug helpers).
+    /// that ship with the Godot addon (doors, lifts, triggers, spawners, logic and debug helpers).
     pub fn builtin() -> Self {
         let mut cfg: GameConfig = serde_json::from_str(BUILTIN_ENTITIES).expect("built-in entity definitions parse");
         for e in &mut cfg.entities {
@@ -406,7 +406,7 @@ impl GameConfig {
     }
 }
 
-/// The entity library of the FuncGodot fork, mirrored by `addons/func_godot/fgd/godottrench/` in Godot.
+/// The entity library of the Godot addon, mirrored by `addons/func_godot/fgd/godottrench/` in Godot.
 pub const BUILTIN_ENTITIES: &str = include_str!("builtin_entities.json");
 /// Walks up from a file until a folder containing project.godot is found.
 pub fn find_project_root(start: &Path) -> Option<PathBuf> {

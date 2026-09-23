@@ -1,4 +1,4 @@
-//! Writes the FuncGodot fork's gameplay entity definitions (addons/func_godot/fgd/godottrench/) from the editor's built-in
+//! Writes the Godot addon's gameplay entity definitions (addons/func_godot/fgd/godottrench/) from the editor's built-in
 //! entity library, so the editor and Godot agree on classnames, properties, inputs, outputs and gizmos.
 //! cargo run -p gt_editor --example export_addon_fgd
 

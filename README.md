@@ -7,7 +7,8 @@
 A brush based level editor for Godot, written in Rust. heavily inspired by TrenchBroom and Hammer++, it aims for TrenchBroom parity plus
 Hammer++ features (entity I/O, prefabs, displacements, decals, vertex paint, lit preview) and Godot specific QoL like a live view.
 
-Maps are saved as `.gtm` and loaded in Godot by our fork of [FuncGodot](https://github.com/func-godot/func_godot_plugin).
+Maps are saved as `.gtm` and built into Godot scenes by the [GodotTrench addon](https://github.com/Paraxdev/godottrench_func), which started as a fork of
+[FuncGodot](https://github.com/func-godot/func_godot_plugin).
 
 ![The GodotTrench editor](docs/screenshots/editor.png)
 
@@ -45,9 +46,9 @@ agents working on the repo should follow [AGENTS.md](AGENTS.md), it lists the ch
 
 ## Download
 
-grab the [latest release](https://github.com/Paraxdev/GodotTrench/releases/latest): the editor for Linux, Windows and macOS, the forked addon (unzip into your Godot
-project) and a demo project. the [rolling beta](https://github.com/Paraxdev/GodotTrench/releases/tag/beta) has the newest changes from `main`. or build it yourself with
-`cargo run -p gt_editor --release`.
+grab the [latest release](https://github.com/Paraxdev/GodotTrench/releases/latest): the editor for Linux, Windows and macOS, the Godot addon (unzip into your Godot
+project) and a demo project. the [rolling beta](https://github.com/Paraxdev/GodotTrench/releases/tag/beta) has the newest changes from `main`. or build it yourself: clone with
+`git clone --recursive` so the addon submodule comes along, then `cargo run -p gt_editor --release`.
 
 to use a map in Godot, add a `FuncGodotMap` node, point it at a `.gtm` file and press *Build Map*.
 
@@ -70,13 +71,13 @@ The documentation is at **[paraxdev.github.io/GodotTrench](https://paraxdev.gith
 * [How entity I/O works](docs/gameplay/io.md)
 * [MCP server](docs/mcp.md)
 * [Development: building, tests, CI](docs/development.md)
-* [Fork changes](godot/addons/func_godot/FORK.md)
+* [The Godot addon](https://github.com/Paraxdev/godottrench_func)
 
 # Thanks
 
 this project couldn't exist with the work of: <br>
 [TrenchBroom](https://github.com/TrenchBroom/TrenchBroom) as it inspired the whole ui and features
-and [FuncGodot](https://github.com/func-godot) which was forked and modified to have a more advanced set of features.
+and [FuncGodot](https://github.com/func-godot), which the Godot addon started as a fork of.
 
 the toolbar, menu and outliner icons are from [Lucide](https://lucide.dev).
 

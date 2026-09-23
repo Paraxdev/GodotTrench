@@ -2,7 +2,7 @@
 
 GodotTrench is a brush based level editor for Godot in the spirit of TrenchBroom and Hammer. You block out a level from
 brushes, add meshes, terrain and props, and wire gameplay together with Hammer style inputs and outputs. The editor is a
-standalone app, and a fork of FuncGodot inside your Godot project turns the saved map into a scene.
+standalone app, and the GodotTrench addon inside your Godot project turns the saved map into a scene.
 
 ![The GodotTrench editor](screenshots/editor.png)
 

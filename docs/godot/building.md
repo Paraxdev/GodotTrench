@@ -7,7 +7,7 @@ nodes that are saved with your scene, so nothing rebuilds at runtime unless you 
 
 | Property | Meaning |
 | --- | --- |
-| Local Map File | `res://` path to a `.gtm`, `.map` or `.vmf` |
+| Local Map File | `res://` path to a `.gtm` |
 | Global Map File | A file outside the project, wins when both are set |
 | Auto Rebuild On Save | Rebuild when GodotTrench saves this map, on by default |
 | Map Settings | Defaults to the project setting `func_godot/default_map_settings` |
@@ -15,6 +15,9 @@ nodes that are saved with your scene, so nothing rebuilds at runtime unless you 
 **Build Map** generates everything and **Clear Map** removes it. A build first deletes every child of the map node
 except [overlays](overlays.md), then adds brushes as meshes and collision, entities with their properties and outputs,
 terrain, scatter, the worldspawn environment and the [chunk streamer](streaming.md). It emits `build_complete` when done.
+
+The addon only builds `.gtm`. Open a Quake `.map` or Hammer `.vmf` in the editor with *File > Import* and save it as
+`.gtm` first.
 
 > **Warning:** Anything you put under the map node by hand is gone after the next build. Keep your own nodes next to
 > the map node, or in an [overlay](overlays.md).
