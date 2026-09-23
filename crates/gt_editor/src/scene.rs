@@ -1547,10 +1547,14 @@ impl SceneCache {
             }
 
             if let Some(base) = name.strip_prefix(DECAL_PREFIX) {
-                // A decal variant of a material: same textures, but alpha cut out and double sided.
+                // A decal variant of a material: same textures, double sided and blended like the addon draws it,
+                // unless the material cuts its alpha.
                 if let Some(loaded) = state.materials.load_material(base) {
                     let mut desc = material_desc(&loaded, state.prefs.texture_filter);
-                    desc.alpha = gt_render::AlphaMode::Scissor(0.5);
+                    if !matches!(desc.alpha, gt_render::AlphaMode::Scissor(_)) {
+                        desc.alpha = gt_render::AlphaMode::Blend;
+                    }
+
                     desc.double_sided = true;
                     renderer.set_material_desc(&name, &desc);
                 }

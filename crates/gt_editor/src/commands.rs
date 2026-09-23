@@ -121,11 +121,13 @@ pub enum Action {
         at: DVec3,
     },
     ReloadModels,
-    /// Lays a thin decal sheet (a quad with alpha cutout) on a surface, facing along `normal`.
+    /// Lays a decal sheet (a quad blended over what is behind it) on a surface, facing along `normal`.
     CreateDecal {
         material: String,
         at: DVec3,
         normal: DVec3,
+        /// Width and height in map units, one metre square when unset.
+        size: Option<[f64; 2]>,
     },
     ConvertToMesh,
     ConvertToBrushes,
@@ -884,7 +886,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             Ok(msg) => state.set_status(msg),
             Err(e) => state.set_status(format!("Place model failed: {e}")),
         },
-        Action::CreateDecal { material, at, normal } => create_decal(state, &material, at, normal),
+        Action::CreateDecal { material, at, normal, size } => create_decal(state, &material, at, normal, size),
         Action::MoveToWorld => {
             let layer = state.valid_layer();
             state.doc.edit("Move to World", |m, s| ops::move_brushes_to_world(m, s, layer));
@@ -1729,18 +1731,19 @@ pub fn place_model_mesh(state: &mut EditorState, path: &std::path::Path, at: DVe
     }
 }
 
-/// Lays a decal sheet on a surface: a thin quad facing along `normal`, textured with `material` and
-/// drawn with alpha cutout so the texture's shape shows through. Sized one metre square by default, it
-/// can be moved, rotated and scaled with the ordinary tools.
-fn create_decal(state: &mut EditorState, material: &str, at: DVec3, normal: DVec3) {
+/// Lays a decal sheet on a surface: a quad facing along `normal`, textured with `material` and blended
+/// over the surface so the texture's alpha shows through. `size` is width and height in map units, one
+/// metre square by default, and it can be moved, rotated and scaled with the ordinary tools.
+fn create_decal(state: &mut EditorState, material: &str, at: DVec3, normal: DVec3, size: Option<[f64; 2]>) {
     let n = normal.normalize_or(DVec3::Y);
     // Any two axes in the surface plane; avoid a degenerate cross when the normal is near vertical.
     let up = if n.y.abs() > 0.9 { DVec3::Z } else { DVec3::Y };
-    let u = up.cross(n).normalize_or(DVec3::X);
-    let v = n.cross(u);
-    let half = state.game.units_per_meter.max(1.0) * 0.5;
+    let metre = state.game.units_per_meter.max(1.0);
+    let [w, h] = size.filter(|s| s[0] > 0.0 && s[1] > 0.0).unwrap_or([metre, metre]);
+    let u = up.cross(n).normalize_or(DVec3::X) * w * 0.5;
+    let v = n.cross(u).normalize_or(DVec3::Y) * h * 0.5;
     let center = at + n * 0.1; // lift just off the surface so it draws cleanly over it
-    let corners = [center - u * half - v * half, center + u * half - v * half, center + u * half + v * half, center - u * half + v * half];
+    let corners = [center - u - v, center + u - v, center + u + v, center - u + v];
     let mut mesh = gt_geom::Mesh { vertices: corners.to_vec(), decal: true, ..Default::default() };
     let mut face = gt_geom::MeshFace::new(vec![0, 1, 2, 3], gt_geom::FaceData::new(material, gt_geom::FaceUv::default()));
     face.uvs = vec![[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];

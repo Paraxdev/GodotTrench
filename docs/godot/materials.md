@@ -43,7 +43,12 @@ Without a material file, an image named like the albedo with `_emission` added, 
 `night/sign.png`, becomes the glow map. Emissive materials carry a glow badge in the Materials panel, and blends and
 terrain layers keep the glow of the materials they are made from.
 
-## Cutouts
+## Transparency
 
-For thin cutouts like wire fences, set alpha hash (`transparency = 3`) rather than alpha scissor. A scissored fence
-vanishes a few meters away once its mipmaps average below the threshold, a hashed one fades into a dither.
+| `transparency` | Mode | Use it for | Watch out |
+| --- | --- | --- | --- |
+| `1` | Alpha blend | Glass, soft decals, soot, stains, smoke cards | Sorted per object, and it neither writes depth nor casts shadows |
+| `2` | Alpha scissor | Hard cutouts seen up close: grates, leaves, signs | Thin parts vanish a few meters away once the mipmaps average below the threshold |
+| `3` | Alpha hash | Thin cutouts seen from afar, like wire fences | Soft alpha turns into dither that looks like TV static, so only use it on textures whose alpha is 0 or 1 |
+
+Decal sheets blend by default whatever the mode, and keep a hard cut only in scissor mode, see [Decals](../editor/decals.md).

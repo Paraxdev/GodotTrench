@@ -9,12 +9,14 @@ script_class = ExtResource("2_decal")
 classname = "infodecal"
 description = "Projected decal. Projects along its local -Y axis, GodotTrench aligns it to the surface it is dropped on."
 class_properties = Dictionary[String, Variant]({
+"material": "",
 "texture": "res://demo/textures/base/metal.png",
 "size": Vector3(64, 32, 64),
 "modulate": Color(1, 1, 1, 1)
 })
 class_property_descriptions = Dictionary[String, Variant]({
-"texture": "Albedo texture (res:// path)",
+"material": "Material to project, like a face's (base/stain) or a res:// path. Its textures, color and texture_size are used",
+"texture": "Albedo texture (res:// path), used without a material",
 "size": "Projector size in map units: width, depth, height"
 })
 meta_properties = Dictionary[String, Variant]({

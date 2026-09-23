@@ -7,7 +7,7 @@
 | Click a thumbnail in Materials | Apply it to the selection, and use it for new brushes |
 | Drag a thumbnail onto a face | Apply it to that face |
 | Shift while dropping | Apply it to the whole brush or mesh |
-| Alt while dropping | Place it as a decal |
+| Alt while dropping | Place it as a [decal](decals.md) |
 
 Dropping a material on a terrain sets a terrain layer instead, see [Terrain layers](terrain-layers.md).
 

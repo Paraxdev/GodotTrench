@@ -776,6 +776,13 @@ impl App {
                 Some(m) => Action::ApplyMaterial(m.to_string()),
                 None => return err("apply_material needs args.material"),
             },
+            "create_decal" => {
+                let (Some(material), Some(at)) = (a["material"].as_str().filter(|m| !m.is_empty()), vec3(&a["at"])) else {
+                    return err("create_decal needs args.material and args.at");
+                };
+                let size = a["size"].as_array().and_then(|s| Some([s.first()?.as_f64()?, s.get(1)?.as_f64()?]));
+                Action::CreateDecal { material: material.to_string(), at, normal: vec3(&a["normal"]).unwrap_or(DVec3::Y), size }
+            }
             "copy" | "cut" => {
                 let roots = ops::selection_roots(&self.state.doc.map, &self.state.doc.selection);
                 if roots.is_empty() {
@@ -1933,6 +1940,30 @@ mod tests {
         let merged = s.replaced[&pieces[0]].clone();
         assert_eq!(merged.len(), 1);
         assert!(s.replaced.values().all(|v| *v == merged), "every merged brush maps to the one result");
+    }
+
+    #[test]
+    fn decals_lie_on_their_surface_at_the_given_size() {
+        let mut s = state();
+        let ctx = egui::Context::default();
+        crate::commands::execute(
+            &mut s,
+            Action::CreateDecal { material: "grime".into(), at: DVec3::new(0.0, 0.0, 0.0), normal: DVec3::Y, size: Some([64.0, 16.0]) },
+            &ctx,
+        );
+        let id = *s.doc.selection.nodes.iter().next().unwrap();
+        let mesh = s.doc.map.mesh(id).unwrap();
+        assert!(mesh.decal);
+        let (min, max) = mesh.vertices.iter().fold((DVec3::MAX, DVec3::MIN), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
+        assert!((max - min - DVec3::new(64.0, 0.0, 16.0)).length() < 1e-9, "{min} {max}");
+        assert!((min.y - 0.1).abs() < 1e-9, "lifted just off the floor");
+
+        crate::commands::execute(&mut s, Action::CreateDecal { material: "grime".into(), at: DVec3::ZERO, normal: DVec3::X, size: None }, &ctx);
+        let id = *s.doc.selection.nodes.iter().next().unwrap();
+        let mesh = s.doc.map.mesh(id).unwrap();
+        let (min, max) = mesh.vertices.iter().fold((DVec3::MAX, DVec3::MIN), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
+        let metre = s.game.units_per_meter;
+        assert!((max - min - DVec3::new(0.0, metre, metre)).length() < 1e-9, "one metre square by default, {min} {max}");
     }
 
     #[test]

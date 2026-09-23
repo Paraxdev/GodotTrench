@@ -760,7 +760,7 @@ impl Viewport {
                 // Alt while dropping on a surface lays the material as a decal sheet instead of painting it.
                 if ui.input(|i| i.modifiers.alt) {
                     if let Some(h) = hit {
-                        cx.actions.push(Action::CreateDecal { material: name, at: h.point, normal: h.normal });
+                        cx.actions.push(Action::CreateDecal { material: name, at: h.point, normal: h.normal, size: None });
                     }
 
                     return;

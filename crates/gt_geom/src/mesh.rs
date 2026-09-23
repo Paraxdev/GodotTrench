@@ -53,8 +53,8 @@ pub struct Mesh {
     /// Corner normals are shared between faces meeting at less than this angle in degrees. 0 is flat shading.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub smooth_angle: f32,
-    /// A decal sheet: a thin quad drawn with its texture's alpha cut out and double sided, laid over a
-    /// surface. Set on meshes made by the decal tool, cleared on ordinary geometry.
+    /// A decal sheet: a quad blended over the surface behind it and double sided, which Godot draws without
+    /// z-fighting. Set on meshes made by the decal tool, cleared on ordinary geometry.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub decal: bool,
 }

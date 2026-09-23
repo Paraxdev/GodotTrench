@@ -286,7 +286,7 @@ func test_terrain() -> void:
 	await process_frame
 
 func test_decal_mesh() -> void:
-	print("- decal meshes are cut out and double sided")
+	print("- decal meshes blend over their surface with a depth pull")
 	var uv := { "u_axis": [1.0, 0.0, 0.0], "v_axis": [0.0, 0.0, 1.0], "offset": [0.0, 0.0], "scale": [1.0, 1.0], "rotation": 0.0 }
 	var quad := { "id": 2, "type": "mesh", "decal": true,
 		"vertices": [[0.0, 1.0, 0.0], [0.0, 1.0, 64.0], [64.0, 1.0, 64.0], [64.0, 1.0, 0.0]],
@@ -305,9 +305,41 @@ func test_decal_mesh() -> void:
 	await process_frame
 	var meshes := collect(map, func(n): return n is MeshInstance3D)
 	var mat: Material = meshes[0].mesh.surface_get_material(0) if meshes.size() == 1 else null
-	check(mat is BaseMaterial3D and mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR and mat.cull_mode == BaseMaterial3D.CULL_DISABLED, "decal surface uses a cut out, double sided material, got %s" % mat)
+	check(mat is ShaderMaterial and mat.get_shader_parameter(&"depth_pull") == GodotTrenchDecalMesh.DEPTH_PULL, "decal surface uses the decal shader with a depth pull, got %s" % mat)
+	if mat is ShaderMaterial:
+		var code: String = mat.shader.code
+		check("blend_mix" in code and "depth_draw_never" in code and "cull_disabled" in code, "decals blend without writing depth and show both sides")
+		check(mat.get_shader_parameter(&"texture_albedo") != null, "decal keeps the base albedo texture")
 	map.queue_free()
 	await process_frame
+
+	var base := StandardMaterial3D.new()
+	base.albedo_texture = PlaceholderTexture2D.new()
+	base.normal_enabled = true
+	base.normal_texture = PlaceholderTexture2D.new()
+	base.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	var shaders := {}
+	var a := GodotTrenchDecalMesh.material(base, shaders) as ShaderMaterial
+	var b := GodotTrenchDecalMesh.material(base.duplicate(), shaders) as ShaderMaterial
+	check(a and b and a.shader == b.shader and shaders.size() == 1, "decals with the same sampling share one shader per build")
+	check(a and "filter_nearest," in a.shader.code and a.get_shader_parameter(&"use_normal_map"), "decal shader keeps the base filter and normal map")
+	check(a and a.get_shader_parameter(&"alpha_scissor") < 0.0, "soft decals keep their soft alpha")
+	var cut := base.duplicate() as StandardMaterial3D
+	cut.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	cut.alpha_scissor_threshold = 0.3
+	check(near(GodotTrenchDecalMesh.material(cut, shaders).get_shader_parameter(&"alpha_scissor"), 0.3), "a scissor material keeps its cut on a decal")
+	base.uv1_triplanar = true
+	var fallback := GodotTrenchDecalMesh.material(base, shaders)
+	check(fallback is BaseMaterial3D and fallback.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA and fallback.depth_draw_mode == BaseMaterial3D.DEPTH_DRAW_DISABLED, "a base the decal shader cannot copy still blends without writing depth")
+	var custom := ShaderMaterial.new()
+	check(GodotTrenchDecalMesh.material(custom) == custom, "shader materials are used as they are")
+
+	var projector := GodotTrenchDecal.new()
+	projector._func_godot_apply_properties({ "material": "showcase/lamp", "size": Vector3(64, 32, 64), "modulate": Color.WHITE })
+	var lamp := load("res://demo/textures/showcase/lamp.tres") as BaseMaterial3D
+	check(projector.texture_albedo == lamp.albedo_texture and projector.texture_emission == lamp.emission_texture, "a projected decal takes its textures from a named material")
+	check(near(projector.size, Vector3(1, 1, 1)), "and its footprint from the material's texture_size, got %s" % projector.size)
+	projector.free()
 
 func test_warm_up() -> void:
 	print("- shader warm-up draws each material once, off screen")
@@ -1726,8 +1758,8 @@ func test_emission() -> void:
 	var materials: Dictionary = FuncGodotUtil.build_texture_map(entities, settings)[0]
 	var lamp := materials.get("showcase/lamp") as BaseMaterial3D
 	check(lamp != null and lamp.emission_enabled and near(lamp.emission_energy_multiplier, 3.0), "a face keeps its material's emission")
-	var lamp_decal := materials.get(decal) as BaseMaterial3D
-	check(lamp_decal != null and lamp_decal.emission_enabled and lamp_decal.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, "the decal variant keeps emission")
+	var lamp_decal := materials.get(decal) as ShaderMaterial
+	check(lamp_decal != null and lamp_decal.get_shader_parameter(&"use_emission") and near(lamp_decal.get_shader_parameter(&"emission_energy"), 3.0), "the decal variant keeps emission")
 	check(not (materials.get("showcase/cobble") as BaseMaterial3D).emission_enabled, "plain materials stay dark")
 
 	var blend := GodotTrenchBlend.build(GodotTrenchBlend.key("showcase/cobble", "showcase/lamp"), settings)[0] as ShaderMaterial

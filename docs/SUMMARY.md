@@ -10,6 +10,7 @@
 * [Meshes](editor/meshes.md)
 * [Models](editor/models.md)
 * [Texturing](editor/texturing.md)
+* [Decals](editor/decals.md)
 * [UV Editor](editor/uv-editor.md)
 * [Terrain](editor/terrain.md)
 * [Terrain layers](editor/terrain-layers.md)

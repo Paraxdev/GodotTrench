@@ -372,6 +372,16 @@ fn mesh_tool_extrude_with_keys() {
     ed.call("run_action", json!({ "action": "convert_to_brushes" }));
     assert_eq!(ed.brushes(), brushes + 1);
     assert_eq!(ed.state()["map"]["meshes"], 1, "only the convex cube was converted");
+
+    let r = ed.call(
+        "run_action",
+        json!({ "action": "create_decal", "args": { "material": "base/wall", "at": [100, 32, 32], "normal": [-1, 0, 0], "size": [48, 24] } }),
+    );
+    let decal = ed.call("get_node", json!({ "id": r["selection"][0] }));
+    assert_eq!(decal["decal"], true);
+    let (min, max) = ed.selection_bounds();
+    assert!(approx(&[max[1] - min[1], max[2] - min[2]], &[24.0, 48.0]), "decal spans its size on the wall {min:?} {max:?}");
+    assert!(ed.call_err("run_action", json!({ "action": "create_decal", "args": { "at": [0, 0, 0] } })).contains("material"));
 }
 
 #[test]
