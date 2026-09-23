@@ -8,7 +8,9 @@ Whoever opens the pull request vouches for every line in it, see the disclosure 
 * `crates/td_core` math primitives, `td_geom` brushes, CSG, displacements and terrain geometry, `td_doc` the map
   document and entities, `td_formats` `.tdm` and other file formats plus the Godot API data, `td_render` the wgpu
   renderer, `td_editor` the egui app and its MCP server, `td_samples` the demo Blockbench models.
-* `godot/addons/func_godot` is our FuncGodot fork that builds `.tdm` maps in Godot, see its `FORK.md`.
+* `godot/addons/func_godot` is the Godot addon that builds `.tdm` maps, a git submodule of
+  [trenchdot_func](https://github.com/Paraxdev/trenchdot_func). Clone with `git clone --recursive`, or run `git submodule update --init` in an
+  existing clone. Addon changes are committed and pushed there first, then the submodule is bumped here.
   `godot/tests` holds the addon tests, `godot/demo` the demo project.
 * `examples/mcp` holds the showcase maps as MCP tool call scripts.
 * `docs/` is the documentation, a GitBook style book published to GitHub Pages.
@@ -60,7 +62,8 @@ This applies to code comments, docs, UI text, commit messages and pull request d
 * Assets like textures and models may be generated or fetched by code, see the scripts in `tools/`. Only ship
   assets whose license allows it (CC0 preferred) and list them in [LICENSES.md](LICENSES.md).
 * After changing `builtin_entities.json` or `code_refs.rs`, regenerate the addon FGDs with
-  `cargo run -p td_editor --example export_addon_fgd`. The `addon_fgd_sync` test fails otherwise.
+  `cargo run -p td_editor --example export_addon_fgd`. The `addon_fgd_sync` test fails otherwise. The files land in
+  the addon submodule, so commit them there and bump the submodule.
 
 ## Docs
 

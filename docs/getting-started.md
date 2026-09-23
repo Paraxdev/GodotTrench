@@ -10,7 +10,7 @@ addon are in the [latest release](https://github.com/Paraxdev/TrenchDot/releases
 ## 1. Install the addon
 
 Extract `func_godot-trenchdot-addon.zip` into your project folder so the addon ends up in `addons/func_godot`, then
-enable **FuncGodot (TrenchDot)** under *Project > Project Settings > Plugins*.
+enable **TrenchDot** under *Project > Project Settings > Plugins*.
 
 The addon's defaults include the TrenchDot entities, so doors, triggers and lights work without resources of your
 own. [Project setup](godot/project-setup.md) covers replacing them.

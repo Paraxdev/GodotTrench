@@ -5,6 +5,10 @@ and the checks a pull request has to pass.
 
 ## Building
 
+The Godot addon in `godot/addons/func_godot` is a git submodule, so clone with
+`git clone --recursive https://github.com/Paraxdev/TrenchDot.git`, or run `git submodule update --init` in an
+existing clone. The editor builds without it, but the tests and the Godot project need it.
+
 ```sh
 cargo run -p td_editor --release            # start the editor
 cargo run -p td_editor --release -- map.tdm # open a map
@@ -53,8 +57,20 @@ it back into a binary map with the same content.
 | `python tools/fetch_demo_textures.py` | The demo's CC0 photo textures, see [texture size](godot/materials.md#texture-size) |
 | `python tools/fetch_demo_props.py` | The CC0 Poly Haven props in `godot/models/polyhaven`, with the alpha maps of glass and flames restored. `--fix-alpha` only restores them |
 | `cargo run -p td_samples --bin showcase --release` | The demo Blockbench models |
-| `cargo run -p td_editor --example export_addon_fgd` | The addon's FGD files from the built in entity definitions |
+| `cargo run -p td_editor --example export_addon_fgd` | The addon's FGD files from the built in entity definitions, written into the addon submodule |
 | `python tools/gen_licenses.py` | The Rust crate table in [LICENSES.md](https://github.com/Paraxdev/TrenchDot/blob/main/LICENSES.md) |
+
+## The Godot addon
+
+The addon has its own repository, [trenchdot_func](https://github.com/Paraxdev/trenchdot_func), checked out at
+`godot/addons/func_godot`. Its tests stay here in `godot/tests`, since they need the demo project. To change the addon:
+
+1. Commit the change inside `godot/addons/func_godot` and push it to trenchdot_func.
+2. Stage the new submodule commit here with `git add godot/addons/func_godot` and commit it with the TrenchDot
+   changes that need it.
+
+Push the addon first. A TrenchDot commit that points at an addon commit GitHub does not have fails to check out in
+CI.
 
 ## Documentation
 

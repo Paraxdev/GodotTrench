@@ -19,9 +19,9 @@ The editor reads and writes maps in
 [`binary.rs`](https://github.com/Paraxdev/TrenchDot/blob/main/crates/td_doc/src/binary.rs) and
 [`variant.rs`](https://github.com/Paraxdev/TrenchDot/blob/main/crates/td_doc/src/variant.rs). The Godot addon reads
 files with
-[`tdm_file.gd`](https://github.com/Paraxdev/TrenchDot/blob/main/godot/addons/func_godot/src/trenchdot/tdm_file.gd)
+[`tdm_file.gd`](https://github.com/Paraxdev/trenchdot_func/blob/main/src/trenchdot/tdm_file.gd)
 and builds them with
-[`tdm_parser.gd`](https://github.com/Paraxdev/TrenchDot/blob/main/godot/addons/func_godot/src/trenchdot/tdm_parser.gd).
+[`tdm_parser.gd`](https://github.com/Paraxdev/trenchdot_func/blob/main/src/trenchdot/tdm_parser.gd).
 
 ## Converting
 
