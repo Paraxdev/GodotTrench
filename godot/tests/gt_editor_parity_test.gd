@@ -223,7 +223,7 @@ static func _test_tool_and_transparent_containers_do_not_bury(t) -> void:
 			t.check(inner.faces.all(func(f): return not f.render_hidden), "a %s container must not bury what is inside it" % outer_material)
 
 ## Finding 8: an all zero splat weight must render as the first layer, matching Terrain::weights and
-## docs/format-gtm.md, not black. Not practically capturable headlessly, so this pins the fixed GLSL
+## docs/format/terrain-scatter.md, not black. Not practically capturable headlessly, so this pins the fixed GLSL
 ## expression in the shader source as a regression guard.
 static func _test_terrain_splat_shader_defaults_to_first_layer(t) -> void:
 	print("- terrain splat shader defaults to the first layer")

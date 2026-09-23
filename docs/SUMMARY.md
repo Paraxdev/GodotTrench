@@ -65,6 +65,12 @@
 
 * [MCP server](mcp.md)
 * [MCP scripts](mcp-scripts.md)
-* [The .gtm map format](format-gtm.md)
+* [The .gtm map format](format/README.md)
+    * [Container layout](format/container.md)
+    * [Damaged files](format/recovery.md)
+    * [Nodes](format/nodes.md)
+    * [Geometry](format/geometry.md)
+    * [Terrain and scatter](format/terrain-scatter.md)
+    * [JSON layout](format/json.md)
 * [Development](development.md)
 * [Fork changes](https://github.com/Paraxdev/GodotTrench/blob/main/godot/addons/func_godot/FORK.md)

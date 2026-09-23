@@ -43,7 +43,7 @@ map.build()
 ## Damaged maps and build speed
 
 A damaged map still builds from the parts that could be read, with a `[GTM]` warning for each part that could not. See
-[the .gtm map format](../format-gtm.md).
+[the .gtm map format](../format/recovery.md).
 
 Brushes and terrain chunks are converted on the WorkerThreadPool, while meshes and shapes are created on the main
 thread. The project setting `godottrench/threaded_build` turns the threaded steps off. To time each step on the

@@ -1,4 +1,4 @@
-//! `.gtm` GodotTrench map files. See docs/format-gtm.md.
+//! `.gtm` GodotTrench map files. See docs/format/README.md.
 
 use std::collections::BTreeMap;
 use std::path::Path;

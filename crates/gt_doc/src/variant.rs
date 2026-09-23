@@ -1,5 +1,5 @@
 //! The value encoding inside `.gtm` chunks: the part of Godot's binary Variant serialization that JSON values need,
-//! so the Godot addon decodes a whole chunk with one `bytes_to_var` call. See docs/format-gtm.md.
+//! so the Godot addon decodes a whole chunk with one `bytes_to_var` call. See docs/format/container.md.
 
 use base64::Engine;
 use serde_json::{Map, Number, Value};
