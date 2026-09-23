@@ -1,57 +1,59 @@
 # Interface and navigation
 
-GodotTrench borrows its habits from TrenchBroom and Hammer. If you know either, most of it will feel familiar.
+GodotTrench follows TrenchBroom and Hammer, so most habits from either carry over.
 
 ## The window
 
-**Menus** group commands by what they act on: File, Edit, Brush, Mesh, Texture, Terrain, Gameplay, Tools, View, Godot
-and Help. Look for a command under the object it changes.
+The menus are File, Edit, Brush, Mesh, Texture, Terrain, Gameplay, Tools, View, Godot and Help. A command sits under
+the kind of object it changes. The command palette (Ctrl+Shift+P or F1) finds any command by name.
 
-**The tool options bar** under the toolbar shows the settings of the active tool, or a one line hint on how to use it.
+The **tool options bar** under the toolbar holds the settings of the active tool.
 
-**The views** are 3D, Top, Front and Side. The 2D views show the selection's size in their corner, the quickest way to
-check that a doorway really is 64 units wide.
+| Dock | Panels |
+| --- | --- |
+| Left | Outliner, History, Issues |
+| Right | Inspector, Entities, UV Editor, Scatter |
+| Bottom | Materials, Models |
 
-**Panels** dock around the views. The defaults are the Outliner, History and Issues on the left, the Inspector,
-Entities, UV Editor and Scatter on the right, and Materials and Models at the bottom. **Logic** and **Reference** are
-not shown by default, open them from *View > Panels*. *Reset Layout* in the same menu puts everything back.
+Logic and Reference start closed. Open any panel from *View > Panels*, and *Reset Layout* in the same menu restores the
+defaults.
 
-> **Tip:** Can't find a command? The command palette (Ctrl+Shift+P or F1) finds it by name.
+## Views
 
-## Arranging the views
+The views are 3D, Top, Front and Side. With something selected, the 2D views print its width above it and its height
+beside it.
 
 | Do this | To |
 | --- | --- |
 | Drag the point where the dividers cross | Resize all four views at once |
-| Shift+Space | Maximize the view under the pointer, press again to restore |
+| Shift+Space | Maximize the view under the pointer, again to restore |
 | Click × on a view tab | Close it, *View > Views* brings it back |
 | *View > Views* | Switch between one, two and four views |
 
 The layout is kept for the next start.
 
-## Moving the camera
+## Camera
 
 | Input | 3D view | 2D views |
 | --- | --- | --- |
-| Right drag | Look around, WASD to move, Q and E for down and up | Pan |
+| Right drag | Look, WASD moves, Q and E go down and up, Shift triples the speed | Pan |
 | Middle drag | Pan | Pan |
-| Wheel | Dolly | Zoom towards the cursor |
-| Alt+left drag | Orbit, when nothing is selected | |
-| Shift | Move three times as fast | |
+| Wheel | Move forward and back | Zoom towards the cursor |
+| Alt+left drag, nothing selected | Orbit | |
 
 **F** frames the selection in every view, or the whole map when nothing is selected.
 
-**Camera bookmarks:** Ctrl+Shift+1 to 9 stores the 3D camera, Ctrl+1 to 9 jumps back. Bookmarks are saved in the map
-and undo does not touch them.
+Ctrl+Shift+1 to 9 stores the 3D camera as a bookmark and Ctrl+1 to 9 jumps back. Bookmarks are saved in the map, and
+undo does not touch them.
 
 ## Shading
 
-F2 cycles the 3D view between Textured, Flat, Lit Preview and Wireframe. **Lit Preview** (F3) shows the map's lights,
-sun shadows, sky and fog, a good check before you go to Godot. It previews up to 64 point and spot lights, the brightest
-first.
+F2 cycles the 3D view through Textured, Flat, Lit Preview and Wireframe. F3 toggles **Lit Preview**, which shows the
+map's lights, sun shadows, sky and fog, so you can judge lighting before building in Godot. It draws at most 64 point
+and spot lights, the strongest first.
 
 ## Interface scale
 
-Ctrl+= and Ctrl+- scale the interface, Ctrl+0 resets it. The scale is also in *View > Interface Scale* and
-*File > Preferences*. It multiplies the monitor's display scaling, which you can turn off in Preferences if your monitor
-reports the wrong value.
+Ctrl+= and Ctrl+- scale the interface and Ctrl+0 resets it, also under *View > Interface Scale*. The scale multiplies
+the monitor's display scaling. If the monitor reports the wrong scaling, untick
+*follow the monitor* in *File > Preferences*.
