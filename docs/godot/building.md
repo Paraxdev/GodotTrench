@@ -54,6 +54,24 @@ Worldspawn sky, fog and sun keys build a `WorldEnvironment` and a `sun` light in
 A scene that already has a `WorldEnvironment` or `DirectionalLight3D` of its own keeps it, and the map adds none. So a
 game with its own look wins, and of several maps in one scene the first one built lights it.
 
+## Build report
+
+`build()` returns a Dictionary, also kept in `build_report`, with the time of each step, entities per class, the vertex
+count, and what the build could not find: entity classes without a definition, model paths, materials, tool textures
+the map settings name differently, and targets that match nothing. Tick *Print Build Report* in *Build Flags*, or add
+`FuncGodotMap.BuildFlags.PRINT_REPORT` to `build_flags` in code, to print it after every build.
+
+```gdscript
+var report := map.build()
+if not report["missing_models"].is_empty():
+	push_error("missing models: %s" % [report["missing_models"]])
+```
+
+Missing models, materials and tool textures also print one warning each, however many props share the path.
+
+> **Note:** Overlays you add after `build()` are not there when the report looks for targets, so their targetnames show up
+> under `unresolved_targets`.
+
 ## Damaged maps
 
 A damaged map still builds from the parts that could be read, with a `[GTM]` warning for each part that could not. See

@@ -21,7 +21,7 @@ GodotTrenchIO.events().fired.connect(func(source, output, target, input, paramet
 
 | Mistake | Symptom |
 | --- | --- |
-| Target resolves to nothing | Nothing at all, no warning |
+| Target resolves to nothing | `[GT I/O] <node>.<output>: target '<name>' matches no node` the first time it fires |
 | Target has no such input | `[GT I/O] <node> has no input '<name>'` in the Godot output |
 | Output the entity never emits | `[GT I/O] <node> has no signal '<output>'` once, when the map is built |
 | Entity spawned or renamed at runtime | Not found by its targetname, see [Targets](parameters.md#runtime-changes) |

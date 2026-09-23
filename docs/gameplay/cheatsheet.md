@@ -3,7 +3,7 @@
 ## When an output fires
 
 The signal fires, counts against *Times*, waits *Delay*, then calls the input on every node the target finds. None
-found means nothing happens, silently.
+found means nothing happens, and a targetname or node path that finds nothing warns once.
 
 ## Targets
 

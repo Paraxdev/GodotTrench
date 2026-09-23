@@ -62,6 +62,7 @@ func _initialize() -> void:
 	await test_missing_map_settings()
 	test_bbmodel()
 	test_default_fgd()
+	test_build_report()
 	await test_game_config()
 	test_game_config_lint()
 	await test_io_targets()
@@ -582,6 +583,49 @@ func test_default_fgd() -> void:
 		for s in m.mesh.get_surface_count():
 			names.append(m.mesh.surface_get_name(s))
 	check(names == ["brick"], "with the addon defaults a clip brush draws nothing, got %s" % [names])
+	map.free()
+	DirAccess.remove_absolute(path)
+
+func test_build_report() -> void:
+	print("- the build report names what is missing, once each")
+	var settings: FuncGodotMapSettings = load(SETTINGS).duplicate()
+	settings.clip_texture = "clip"
+	settings.save_generated_materials = false
+	var entity := func(id: int, classname: String, properties: Dictionary, outputs := []) -> Dictionary:
+		return { "id": id, "type": "entity", "classname": classname, "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "properties": properties, "outputs": outputs }
+	var wire := func(target: String) -> Dictionary:
+		return { "output": "triggered", "target": target, "input": "trigger", "parameter": "", "delay": 0.0, "times": -1 }
+	var children := [
+		box_node(2, Vector3(0, 0, 0), Vector3(64, 64, 64), "special/clip"),
+		box_node(3, Vector3(128, 0, 0), Vector3(192, 64, 64), "gt_tests/no_such_texture"),
+		entity.call(4, "prop_model", { "model": "res://tests/missing_chair.glb", "targetname": "chair_a" }),
+		entity.call(5, "prop_model", { "model": "res://tests/missing_chair.glb" }),
+		entity.call(6, "prop_physics", { "model": "res://tests/missing_chair.glb" }),
+		entity.call(7, "gt_tests_unknown", {}),
+		entity.call(8, "logic_relay", { "targetname": "relay" }, [wire.call("nobody"), wire.call("relay"), wire.call("@players"), wire.call("rel*")]),
+	]
+	var path := OS.get_temp_dir().path_join("gt_build_report_test.gtm")
+	var map_json := { "format": "godottrench-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": children }] }
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify(map_json))
+	var map := FuncGodotMap.new()
+	map.map_settings = settings
+	map.global_map_file = path
+	map.build_flags = FuncGodotMap.BuildFlags.PRINT_REPORT
+	root.add_child(map)
+	var report := map.build()
+	check(report == map.build_report and report["error"] == "", "build returns the report it keeps")
+	check(report["missing_models"].keys() == ["res://tests/missing_chair.glb"] and report["missing_models"]["res://tests/missing_chair.glb"].size() == 3, "one missing model path with its three users, got %s" % [report["missing_models"]])
+	check(report["missing_materials"] == PackedStringArray(["gt_tests/no_such_texture"]), "missing material, got %s" % [report["missing_materials"]])
+	check(report["unknown_tool_textures"] == { "special/clip": "clip_texture" }, "the editor's clip texture the settings do not know, got %s" % [report["unknown_tool_textures"]])
+	check(report["missing_classes"] == PackedStringArray(["gt_tests_unknown"]), "class without a definition, got %s" % [report["missing_classes"]])
+	check(report["unresolved_targets"].size() == 1 and report["unresolved_targets"][0]["target"] == "nobody", "only the target that matches nothing, got %s" % [report["unresolved_targets"]])
+	check(report["entities"].get("prop_model", 0) == 2 and report["vertices"] > 0 and report["steps"].size() > 5, "entity counts, vertices and steps")
+	check(report["steps"].all(func(s): return s["step"] != "" and s["ms"] >= 0.0), "every step is named and timed")
+	var relay := find_targetname(map, "relay")
+	var out: GodotTrenchOutput = relay.get_children().filter(func(c): return c is GodotTrenchOutput and c.target == "nobody")[0] if relay else null
+	if out:
+		out.fire()
+		check(out._warned, "an output whose target matches nothing warns when it fires")
 	map.free()
 	DirAccess.remove_absolute(path)
 
