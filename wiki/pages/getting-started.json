@@ -54,7 +54,7 @@
       "id": "c_mudlx09f_uak267",
       "type": "text",
       "format": "markdown",
-      "md": "## The demo project\n\nThe repository's `godot` folder is a complete Godot project with the addon installed. Its main scene plays the showcase maps with a first person player: WASD walks, Space jumps, Shift runs, E uses doors and buttons, and the number keys 1 to 4 switch between the mountain house, the church and school, the lighthouse forest and the night district. F3 shows the I/O debug overlay. The maps were built entirely through the editor's MCP tools, from the scripts in `examples/mcp`, and the saved maps sit in `godot/demo/maps/showcase`, so opening one in the editor is a good way to see how a finished map is put together."
+      "md": "## The demo project\n\nThe repository's `godot` folder is a complete Godot project with the addon installed. Its main scene plays the showcase maps with a first person player: WASD walks, Space jumps, Shift runs, E uses doors and buttons, and the number keys 1 to 5 switch between the mountain house, the church and school, the lighthouse forest, the night district and the withered city. F3 shows the I/O debug overlay. The maps were built entirely through the editor's MCP tools, from the scripts in `examples/mcp`, and the saved maps sit in `godot/demo/maps/showcase`, so opening one in the editor is a good way to see how a finished map is put together."
     },
     {
       "id": "b9",

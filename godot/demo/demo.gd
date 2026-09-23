@@ -2,7 +2,7 @@ extends Node3D
 ## Plays the built showcase maps with a first person player. The number keys switch maps, F3 toggles the I/O debug overlay.
 ## Build the maps first: godot --headless --path godot --script res://tests/build_showcase.gd
 
-const MAPS := ["res://demo/showcase/mountain_house.scn", "res://demo/showcase/church_school.scn", "res://demo/showcase/lighthouse_forest.scn", "res://demo/showcase/night_district.scn"]
+const MAPS := ["res://demo/showcase/mountain_house.scn", "res://demo/showcase/church_school.scn", "res://demo/showcase/lighthouse_forest.scn", "res://demo/showcase/night_district.scn", "res://demo/showcase/withered_city.scn"]
 const PLAYER := preload("res://demo/player.tscn")
 
 @export var start_map := 2
