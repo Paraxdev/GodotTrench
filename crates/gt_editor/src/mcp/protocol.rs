@@ -288,10 +288,13 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "map_file",
-            "description": "new, open or save .gtm maps, import or export Quake/TrenchBroom .map files. new and open keep a map with unsaved changes in its own tab, like the File menu. save without path saves to the current file. export_map returns the written .map path.",
+            "description": "new, open or save .gtm maps, import or export Quake/TrenchBroom .map files, import Hammer .vmf files (func_instance maps are inlined as groups), convert textures. new and open keep a map with unsaved changes in its own tab, like the File menu. save without path saves to the current file. export_map returns the written .map path. import_map and import_vmf report the materials the project lacks and how many of them the .vmt/.vtf, .wad or .wal files near the map could provide; textures: \"auto\" converts those, or a folder or file path converts them from there. convert_textures {path, only_missing, overwrite} turns a folder (or one .wad) of Valve, Quake or Half-Life textures into PNGs and .tres materials in the project texture folder, named so imported faces find them.",
             "inputSchema": { "type": "object", "properties": {
-                "op": { "type": "string", "enum": ["new", "open", "open_tab", "save", "import_map", "import_vmf", "export_map"] },
-                "path": { "type": "string" }
+                "op": { "type": "string", "enum": ["new", "open", "open_tab", "save", "import_map", "import_vmf", "convert_textures", "export_map"] },
+                "path": { "type": "string" },
+                "textures": { "type": "string", "description": "import_map, import_vmf: \"auto\" or a folder or file to convert the map's missing textures from" },
+                "only_missing": { "type": "boolean", "description": "convert_textures: only what the open map lacks" },
+                "overwrite": { "type": "boolean", "description": "convert_textures: replace files already in the project" }
             }, "required": ["op"] }
         }),
         json!({
@@ -356,7 +359,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "validate_map",
-            "description": "Checks the map for problems: invalid brushes, entities without definitions, broken I/O targets, output names the entity definitions do not know, inputs the target answers to neither as a declared input nor as a method or property of its Godot class or script (Node methods such as set_visible are valid inputs), empty brush entities.",
+            "description": "Checks the map for problems: invalid brushes, entities without definitions, broken I/O targets, output names the entity definitions do not know, inputs the target answers to neither as a declared input nor as a method or property of its Godot class or script (Node methods such as set_visible are valid inputs), empty brush entities, face materials the project does not have (missing_material, one per material).",
             "inputSchema": { "type": "object", "properties": {} }
         }),
         json!({

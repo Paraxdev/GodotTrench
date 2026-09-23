@@ -17,6 +17,7 @@
 * [Scatter](editor/scatter.md)
 * [Organizing a map](editor/organizing.md)
 * [Saving and recovery](editor/saving.md)
+* [Importing Hammer and TrenchBroom maps](editor/importing.md)
 * [Shortcuts](editor/shortcuts.md)
 
 ## Godot

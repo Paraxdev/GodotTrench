@@ -112,6 +112,8 @@ pub enum Action {
     ExportQuakeMap,
     ExportQuakeMapCordon,
     ImportVmf,
+    /// Turns a folder of Valve, Quake or Half-Life textures into project PNGs and materials.
+    ConvertTextures,
     ImportModel(ModelImport),
     /// Drops a model from the Models panel into the scene as an editable mesh at `at`.
     PlaceModel {
@@ -463,6 +465,7 @@ pub fn bindable_actions() -> Vec<Action> {
         Action::ShowKeymap,
         Action::ShowUvEditor,
         Action::ImportVmf,
+        Action::ConvertTextures,
         Action::ImportModel(ModelImport::Mesh),
         Action::ImportModel(ModelImport::Brushes),
         Action::ImportModel(ModelImport::Prop),
@@ -1033,7 +1036,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::ImportQuakeMap => {
             if let Some(path) = rfd::FileDialog::new().add_filter("Quake / TrenchBroom map", &["map"]).pick_file() {
                 match import_quake_map(state, &path) {
-                    Ok(()) => state.set_status(format!("Imported {}", path.display())),
+                    Ok(_) => crate::texture_convert::offer_for_map(state, &path),
                     Err(e) => state.set_status(format!("Import failed: {e}")),
                 }
             }
@@ -1041,11 +1044,12 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::ImportVmf => {
             if let Some(path) = rfd::FileDialog::new().add_filter("Hammer map", &["vmf"]).pick_file() {
                 match import_vmf(state, &path) {
-                    Ok(()) => state.set_status(format!("Imported {}", path.display())),
+                    Ok(_) => crate::texture_convert::offer_for_map(state, &path),
                     Err(e) => state.set_status(format!("Import failed: {e}")),
                 }
             }
         }
+        Action::ConvertTextures => crate::texture_convert::convert_folder_dialog(state),
         Action::ExportQuakeMap | Action::ExportQuakeMapCordon => {
             let name = state.doc.path.as_ref().and_then(|p| p.file_stem()).map(|s| format!("{}.map", s.to_string_lossy())).unwrap_or_else(|| "map.map".into());
             if let Some(path) = rfd::FileDialog::new().add_filter("Quake / TrenchBroom map", &["map"]).set_file_name(name).save_file() {
@@ -1466,9 +1470,10 @@ pub fn place_entities(state: &mut EditorState, classnames: &[String], at: Option
 }
 
 /// Opens a Quake `.map` as a new, unsaved GodotTrench document, in a tab when the current map has unsaved changes.
-pub fn import_quake_map(state: &mut EditorState, path: &std::path::Path) -> Result<(), String> {
-    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let map = gt_formats::quake_map::import(&text).map_err(|e| e.to_string())?;
+pub fn import_quake_map(state: &mut EditorState, path: &std::path::Path) -> Result<gt_formats::quake_map::ImportReport, String> {
+    let text = gt_formats::vmf::read_text(path).map_err(|e| e.to_string())?;
+    let options = gt_formats::vmf::ImportOptions { tools: state.game.tool_textures.clone(), ..Default::default() };
+    let (map, report) = gt_formats::quake_map::import_with(&text, &options).map_err(|e| e.to_string())?;
     let mut doc = Document::from_map(map, None);
     doc.revision += 1;
     if state.doc.is_modified() {
@@ -1477,17 +1482,33 @@ pub fn import_quake_map(state: &mut EditorState, path: &std::path::Path) -> Resu
         state.reset_document(doc);
     }
 
-    Ok(())
+    let mut status = format!("Imported {}", path.display());
+    if report.skipped_patches > 0 {
+        status += &format!(", {} Quake 3 patches left out", report.skipped_patches);
+    }
+
+    state.set_status(status);
+    Ok(report)
 }
 
-/// Opens a Hammer `.vmf` in a new tab.
-pub fn import_vmf(state: &mut EditorState, path: &std::path::Path) -> Result<(), String> {
-    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    let map = gt_formats::vmf::import(&text).map_err(|e| e.to_string())?;
+/// Opens a Hammer `.vmf` in a new tab, with its instances inlined and Valve tool materials renamed to the project's.
+pub fn import_vmf(state: &mut EditorState, path: &std::path::Path) -> Result<gt_formats::vmf::ImportReport, String> {
+    let options = gt_formats::vmf::ImportOptions { tools: state.game.tool_textures.clone(), ..Default::default() };
+    let (map, report) = gt_formats::vmf::import_file(path, &options).map_err(|e| e.to_string())?;
     let mut doc = Document::from_map(map, None);
     doc.revision += 1;
     state.open_tab(doc);
-    Ok(())
+    let mut status = format!("Imported {}", path.display());
+    if report.instances > 0 {
+        status += &format!(", {} instances inlined", report.instances);
+    }
+
+    if let Some(first) = report.missing_instances.first() {
+        status += &format!(", {} instances not found (first: {first})", report.missing_instances.len());
+    }
+
+    state.set_status(status);
+    Ok(report)
 }
 
 fn sanitize(name: &str) -> String {

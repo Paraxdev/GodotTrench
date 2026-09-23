@@ -309,6 +309,7 @@ fn dialog_action(name: &str) -> Option<&'static str> {
         "open_project" => "open_project {path}",
         "import_quake_map" | "import_map" => "map_file {op: import_map, path}",
         "import_vmf" => "map_file {op: import_vmf, path}",
+        "convert_textures" => "map_file {op: convert_textures, path}",
         "import_model" => "import_model {path}",
         "export_quake_map" | "export_map" | "export_quake_map_cordon" => "map_file {op: export_map, path}",
         "create_prefab" => "copy the objects and save them with map_file into a new map",
@@ -556,7 +557,8 @@ impl App {
                     },
                     &overlay_names,
                 );
-                let mut list: Vec<Value> = found.into_iter().map(|i| serde_json::to_value(i).unwrap_or_default()).collect();
+                let missing = crate::texture_convert::missing_material_issues(&self.state);
+                let mut list: Vec<Value> = found.into_iter().chain(missing).map(|i| serde_json::to_value(i).unwrap_or_default()).collect();
                 for (id, e) in self.state.doc.map.entities() {
                     if self.state.game.entity(&e.classname).is_none() {
                         list.push(json!({ "node": id.0, "severity": "warning", "code": "unknown_class", "message": format!("No entity definition for '{}'", e.classname) }));
@@ -1158,6 +1160,28 @@ impl App {
         }))
     }
 
+    /// After an import: `textures: "auto"` converts the missing textures found near the map, a path converts them
+    /// from there, and without it the reply only says what could be converted, the way the editor offers it.
+    fn import_textures(&mut self, map_file: &std::path::Path, args: &Value) -> Result<Value, String> {
+        let sources = match args["textures"].as_str() {
+            Some("auto") | None => crate::texture_convert::sources_for_map(&self.state, map_file),
+            Some(p) => vec![std::path::PathBuf::from(p)],
+        };
+        let lib = gt_formats::texture_import::scan(&sources);
+        let wanted = crate::texture_convert::convertible(&self.state, &lib);
+        let mut v = json!({
+            "texture_sources": sources.iter().map(path_text).collect::<Vec<_>>(),
+            "missing_materials": crate::texture_convert::missing_materials(&self.state).len(),
+            "convertible": wanted.len(),
+        });
+        if args["textures"].is_string() && !wanted.is_empty() {
+            let report = crate::texture_convert::convert(&mut self.state, &lib, Some(&wanted), false)?;
+            v["textures"] = crate::texture_convert::report_json(&report);
+        }
+
+        Ok(v)
+    }
+
     fn tool_map_file(&mut self, args: &Value) -> ToolResult {
         let op = args["op"].as_str().unwrap_or_default();
         let path = args["path"].as_str().map(std::path::PathBuf::from);
@@ -1184,15 +1208,33 @@ impl App {
                 Some(p) => self.state.save_map(&p).map(|()| json!({})),
                 None => Err("map has no path yet, pass one".into()),
             },
-            "import_map" => need(path).and_then(|p| crate::commands::import_quake_map(&mut self.state, &p)).map(|()| json!({})),
-            "import_vmf" => need(path).and_then(|p| crate::commands::import_vmf(&mut self.state, &p)).map(|()| json!({})),
+            "import_map" => need(path).and_then(|p| {
+                let report = crate::commands::import_quake_map(&mut self.state, &p)?;
+                let mut v = self.import_textures(&p, args)?;
+                v["skipped_patches"] = json!(report.skipped_patches);
+                Ok(v)
+            }),
+            "import_vmf" => need(path).and_then(|p| {
+                let report = crate::commands::import_vmf(&mut self.state, &p)?;
+                let mut v = self.import_textures(&p, args)?;
+                v["instances"] = json!(report.instances);
+                v["missing_instances"] = json!(report.missing_instances);
+                Ok(v)
+            }),
+            "convert_textures" => need(path).and_then(|p| {
+                let lib = gt_formats::texture_import::scan(std::slice::from_ref(&p));
+                let only = args["only_missing"].as_bool().unwrap_or(false).then(|| crate::texture_convert::convertible(&self.state, &lib));
+                let report = crate::texture_convert::convert(&mut self.state, &lib, only.as_ref(), args["overwrite"].as_bool().unwrap_or(false))?;
+                self.state.set_status(format!("Textures: {}", report.summary()));
+                Ok(json!({ "found": lib.len(), "textures": crate::texture_convert::report_json(&report) }))
+            }),
             "open_tab" => need(path).and_then(|p| crate::commands::open_map_in_tab(&mut self.state, &p)).map(|()| json!({})),
             "export_map" => need(path).and_then(|p| {
                 std::fs::write(&p, gt_formats::quake_map::export(&self.state.doc.map))
                     .map(|()| json!({ "path": path_text(&p), "map_path": path_value(self.state.doc.path.as_ref()) }))
                     .map_err(|e| format!("cannot write {}: {e}", path_text(&p)))
             }),
-            _ => Err(format!("unknown op {op}, use new, open, open_tab, save, import_map, import_vmf or export_map")),
+            _ => Err(format!("unknown op {op}, use new, open, open_tab, save, import_map, import_vmf, convert_textures or export_map")),
         };
         self.project_generation += 1;
         match result {

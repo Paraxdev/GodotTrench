@@ -2476,6 +2476,7 @@ fn collect_issues(state: &EditorState) -> Vec<gt_doc::issues::Issue> {
         }
     }
 
+    list.extend(crate::texture_convert::missing_material_issues(state));
     list.sort_by_key(|i| std::cmp::Reverse(i.severity));
     list
 }
