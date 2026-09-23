@@ -38,6 +38,17 @@ WAD, WAL)*, or `map_file {op: convert_textures, path}` over MCP.
 * Quake 2 translucency flags become alpha blending.
 * Animated textures (`+0lava`, multi frame VTFs) keep their first frame.
 
+## Skies
+
+Converting a map's textures also sets its sky, unless the map already has `sky_top_color`.
+
+| Map | Sky |
+| --- | --- |
+| Source, with the `skyname` skybox VTFs in `materials/skybox` | The six faces become one panorama, `skybox/<skyname>_panorama.png` in the texture folder, set as `sky_panorama`. Its zenith and horizon give the colors |
+| Quake and others, from the `sky_source` texture | The darker half of the texture, the back layer for Quake, becomes `sky_top_color` and the lighter half `sky_horizon_color` |
+
+`GodotTrenchEnvironment` builds a WorldEnvironment from these keys when the scene has none of its own.
+
 ## VTF formats
 
 VTF 7.0 to 7.5: DXT1 (with one bit alpha), DXT3, DXT5, the 8 bit RGB and RGBA orders, I8, IA88, A8, RGB565, BGR565,

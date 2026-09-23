@@ -47,7 +47,9 @@ in `git diff`, see [Map files in git](../development.md#map-files-in-git).
 
 Worldspawn values are strings, like in a `.map` file. `GodotTrenchEnvironment` builds a sky, fog and sun from `sun_angles`,
 `sun_color`, `sun_energy`, `ambient_color`, `ambient_energy`, `sky_top_color`, `sky_horizon_color`, `sky_ground_color`,
-`sky_energy`, `fog_color`, `fog_density`, `glow_intensity` and `ssr`, and `environment` set to `0` turns it off.
+`sky_energy`, `sky_panorama`, `fog_color`, `fog_density`, `glow_intensity` and `ssr`, and `environment` set to `0`
+turns it off. A scene that has a WorldEnvironment of its own keeps it. `sky_source` names the texture the sky faces
+of an imported map had.
 
 Only `layer` nodes are read from `layers`. A map with no layers gets a `Default` layer when it loads.
 

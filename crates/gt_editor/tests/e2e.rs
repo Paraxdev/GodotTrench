@@ -1106,14 +1106,15 @@ fn imports_convert_valve_and_quake_textures() {
     let quake = dir.join("quake");
     std::fs::create_dir_all(quake.join("wads")).unwrap();
     std::fs::write(quake.join("wads/base.wad"), tiny_wad("wall1")).unwrap();
+    std::fs::write(quake.join("sky.wad"), tiny_wad("sky4")).unwrap();
     let map = quake.join("room.map");
     let brush = "( -64 -64 -16 ) ( -64 -63 -16 ) ( -64 -64 -15 ) WALL1 0 0 0 1 1\n\
 ( -64 -64 -16 ) ( -64 -64 -15 ) ( -63 -64 -16 ) wall1 0 0 0 1 1\n\
 ( -64 -64 -16 ) ( -63 -64 -16 ) ( -64 -63 -16 ) skip 0 0 0 1 1\n\
-( 64 64 16 ) ( 64 65 16 ) ( 65 64 16 ) wall1 0 0 0 1 1\n\
+( 64 64 16 ) ( 64 65 16 ) ( 65 64 16 ) sky4 0 0 0 1 1\n\
 ( 64 64 16 ) ( 65 64 16 ) ( 64 64 17 ) wall1 0 0 0 1 1\n\
 ( 64 64 16 ) ( 64 64 17 ) ( 64 65 16 ) wall1 0 0 0 1 1\n";
-    std::fs::write(&map, format!("{{\n\"classname\" \"worldspawn\"\n\"wad\" \"/somewhere/else/base.wad\"\n{{\n{brush}}}\n}}\n")).unwrap();
+    std::fs::write(&map, format!("{{\n\"classname\" \"worldspawn\"\n\"wad\" \"/somewhere/else/base.wad;sky.wad\"\n{{\n{brush}}}\n}}\n")).unwrap();
     let imported = ed.call("map_file", json!({ "op": "import_map", "path": map, "textures": "auto" }));
     assert_eq!(imported["textures"]["converted"], 1, "the WAD is found by name one folder down: {imported}");
     assert!(project.join("textures/wall1.png").is_file());
@@ -1121,6 +1122,9 @@ fn imports_convert_valve_and_quake_textures() {
     let brush = ed.call("list_nodes", json!({ "type": "brush" }))["nodes"][0]["id"].clone();
     let faces = ed.call("get_node", json!({ "id": brush })).to_string();
     assert!(!faces.contains("WALL1") && faces.contains("\"wall1\"") && faces.contains("special/skip"), "{faces}");
+    assert!(faces.contains("special/sky") && !faces.contains("sky4"), "{faces}");
+    let sky = &imported["textures"]["sky"];
+    assert!(sky["sky_top_color"].is_string() && sky["sky_horizon_color"].is_string(), "sky colors from sky4: {imported}");
 
     let again = ed.call("map_file", json!({ "op": "convert_textures", "path": game }));
     assert_eq!((again["found"].as_u64(), again["textures"]["existing"].as_u64()), (Some(1), Some(1)), "{again}");

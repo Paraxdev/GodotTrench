@@ -83,11 +83,18 @@ pub struct ToolTextures {
     pub clip: String,
     pub skip: String,
     pub origin: String,
+    /// Faces that show the sky in Quake and Source. They collide but build no visual mesh.
+    #[serde(default = "default_sky")]
+    pub sky: String,
+}
+
+fn default_sky() -> String {
+    "special/sky".into()
 }
 
 impl Default for ToolTextures {
     fn default() -> Self {
-        Self { clip: "special/clip".into(), skip: "special/skip".into(), origin: "special/origin".into() }
+        Self { clip: "special/clip".into(), skip: "special/skip".into(), origin: "special/origin".into(), sky: default_sky() }
     }
 }
 
@@ -389,7 +396,7 @@ impl GameConfig {
 
     pub fn is_tool_texture(&self, material: &str) -> bool {
         let m = material.to_ascii_lowercase();
-        m == self.tool_textures.clip || m == self.tool_textures.skip || m == self.tool_textures.origin
+        m == self.tool_textures.clip || m == self.tool_textures.skip || m == self.tool_textures.origin || m == self.tool_textures.sky
     }
 
     /// Used when no project is open, so the editor is usable out of the box. Lists the GodotTrench gameplay entities

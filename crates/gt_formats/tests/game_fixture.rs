@@ -17,6 +17,7 @@ fn parses_exported_config() {
     assert_eq!(cfg.textures.base_dir, "res://demo/textures");
     assert_eq!(cfg.tool_textures.clip, "special/clip");
     assert!(cfg.is_tool_texture("SPECIAL/CLIP"));
+    assert!(cfg.is_tool_texture("special/sky"), "sky faces build no mesh, like the other tool textures");
 }
 
 #[test]

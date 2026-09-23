@@ -63,12 +63,22 @@ pub fn missing_material_issues(state: &EditorState) -> Vec<gt_doc::issues::Issue
 }
 
 /// Converts `only` (face material names) or every texture the sources hold, then reloads the material browser.
+/// The map's sky colors come from its sky texture, unless the map has them already.
 pub fn convert(state: &mut EditorState, lib: &Library, only: Option<&BTreeSet<String>>, overwrite: bool) -> Result<Report, String> {
     let target = target(state)?;
-    let report = lib.convert(only, &target, overwrite);
+    let mut report = lib.convert(only, &target, overwrite);
     if !report.converted.is_empty() {
         state.material_reload = true;
         match_file_case(state, &report.converted);
+    }
+
+    if overwrite || !state.doc.map.properties.contains_key("sky_top_color") {
+        report.sky = lib.sky_keys(&state.doc.map.properties, &target)?;
+    }
+
+    if !report.sky.is_empty() {
+        let keys = report.sky.clone();
+        state.doc.edit("Sky From Texture", |m, _| m.properties.extend(keys));
     }
 
     Ok(report)
@@ -106,6 +116,7 @@ pub fn report_json(report: &Report) -> Value {
         "converted": report.converted.len(),
         "existing": report.existing.len(),
         "failed": report.failed.iter().map(|(n, e)| json!({ "material": n, "error": e })).collect::<Vec<_>>(),
+        "sky": report.sky.iter().map(|(k, v)| (k.clone(), json!(v))).collect::<serde_json::Map<String, Value>>(),
     })
 }
 

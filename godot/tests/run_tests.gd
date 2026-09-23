@@ -79,6 +79,7 @@ func _initialize() -> void:
 	test_texture_size_override()
 	test_emission()
 	await test_night_environment()
+	await test_sky_faces()
 	test_face_cull()
 	test_interior_face_culling()
 	test_chunk_streamer()
@@ -438,6 +439,27 @@ func test_default_fgd() -> void:
 	check(defs.has("func_door") and defs.has("logic_relay") and defs.has("worldspawn"), "default map settings know func_door, logic_relay and worldspawn")
 	var config: GodotTrenchGameConfig = load(GodotTrenchEditorIntegration.DEFAULT_CONFIG)
 	check(config.fgd_file.get_entity_definitions().has("trigger_once"), "default game config exports trigger_once")
+	# The editor names its tool textures special/..., so a fresh project has to agree or clip brushes draw.
+	var tools := { "clip": "special/clip", "skip": "special/skip", "origin": "special/origin", "sky": "special/sky" }
+	check(config.build_config()["tool_textures"] == tools, "default game config exports the editor's tool textures, got %s" % [config.build_config()["tool_textures"]])
+	for fresh: FuncGodotMapSettings in [settings, FuncGodotMapSettings.new()]:
+		check([fresh.clip_texture, fresh.skip_texture, fresh.origin_texture, fresh.sky_texture] == tools.values(), "default map settings use the editor's tool textures")
+	var path := OS.get_temp_dir().path_join("gt_default_tools_test.gtm")
+	var map_json := { "format": "godottrench-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": [
+		box_node(2, Vector3(0, 0, 0), Vector3(64, 64, 64), "special/clip"), box_node(3, Vector3(128, 0, 0), Vector3(192, 64, 64), "brick")] }] }
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify(map_json))
+	var map := FuncGodotMap.new()
+	map.map_settings = settings
+	map.global_map_file = path
+	root.add_child(map)
+	map.build()
+	var names := []
+	for m: MeshInstance3D in collect(map, func(n): return n is MeshInstance3D and n.mesh):
+		for s in m.mesh.get_surface_count():
+			names.append(m.mesh.surface_get_name(s))
+	check(names == ["brick"], "with the addon defaults a clip brush draws nothing, got %s" % [names])
+	map.free()
+	DirAccess.remove_absolute(path)
 
 func test_game_config() -> void:
 	print("- game config export")
@@ -450,6 +472,7 @@ func test_game_config() -> void:
 		return
 	check(data["units_per_meter"] == 32.0, "units per meter exported")
 	check(data["tool_textures"]["clip"] == "special/clip", "tool textures exported")
+	check(data["tool_textures"]["sky"] == "special/sky", "the sky tool texture exported")
 	var by_name := {}
 	for e in data["entities"]:
 		by_name[e["classname"]] = e
@@ -1676,6 +1699,67 @@ func test_night_environment() -> void:
 	check(light.shadow_enabled, "light shadows property")
 	light.free()
 	holder.queue_free()
+	await process_frame
+
+## Imported Quake and Source maps wrap the level in sky brushes. Their faces collide but draw nothing, and the
+## worldspawn sky keys bring the sky back as a WorldEnvironment.
+func test_sky_faces() -> void:
+	print("- sky faces and the sky environment")
+	var children := [
+		box_node(2, Vector3(-16, -16, -16), Vector3(16, 16, 16), "showcase/carpet"),
+		box_node(3, Vector3(-256, 512, -256), Vector3(256, 544, 256), "special/sky"),
+		box_node(4, Vector3(-64, -64, -64), Vector3(64, 64, 64)),
+	]
+	var path := OS.get_temp_dir().path_join("gt_sky_test.gtm")
+	var map_json := {
+		"format": "godottrench-map", "properties": { "sky_top_color": "51 102 204", "sky_horizon_color": "200 210 220" },
+		"layers": [{ "type": "layer", "id": 1, "children": children }],
+	}
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify(map_json))
+	var map := FuncGodotMap.new()
+	map.map_settings = load(SETTINGS)
+	map.global_map_file = path
+	root.add_child(map)
+	map.build()
+	var meshes := collect(map, func(n): return n is MeshInstance3D and n.mesh)
+	var names: Array[String] = []
+	for m: MeshInstance3D in meshes:
+		for s in m.mesh.get_surface_count():
+			names.append(m.mesh.surface_get_name(s))
+			var material := m.mesh.surface_get_material(s) as BaseMaterial3D
+			check(material and material.albedo_texture and material.albedo_texture.resource_path.contains(m.mesh.surface_get_name(s)), "surface %s has its own material" % m.mesh.surface_get_name(s))
+	check(names == ["showcase/cobble"], "sky faces and the buried carpet box draw nothing, got %s" % [names])
+	var top := -INF
+	for shape_node: CollisionShape3D in collect(map, func(n): return n is CollisionShape3D):
+		var shape := shape_node.shape
+		var points: PackedVector3Array = shape.points if shape is ConvexPolygonShape3D else (shape.get_faces() if shape is ConcavePolygonShape3D else PackedVector3Array())
+		for p in points:
+			top = maxf(top, (shape_node.global_transform * p).y)
+	check(near(top, 544.0 / 32.0), "the sky brush still collides, collision reaches %s" % top)
+	var env_node := find_named(map, "environment") as WorldEnvironment
+	check(env_node != null, "the sky keys build a WorldEnvironment")
+	if env_node:
+		var sky_material := env_node.environment.sky.sky_material as ProceduralSkyMaterial
+		check(sky_material and sky_material.sky_top_color.is_equal_approx(Color8(51, 102, 204)), "sky_top_color colors the procedural sky")
+	map.free()
+
+	var scene := Node3D.new()
+	root.add_child(scene)
+	var own := WorldEnvironment.new()
+	scene.add_child(own)
+	own.owner = scene
+	var holder := Node3D.new()
+	scene.add_child(holder)
+	holder.owner = scene
+	var nodes := GodotTrenchEnvironment.build(holder, { "sky_top_color": "0 0 1", "sky_panorama": "res://demo/textures/special/sky.png" })
+	check(not nodes.any(func(n): return n is WorldEnvironment), "a scene with its own WorldEnvironment keeps it")
+	scene.remove_child(own)
+	own.free()
+	nodes = GodotTrenchEnvironment.build(holder, { "sky_top_color": "0 0 1", "sky_panorama": "res://demo/textures/special/sky.png" })
+	var panorama := (nodes[0] as WorldEnvironment).environment.sky.sky_material as PanoramaSkyMaterial if nodes.size() > 0 and nodes[0] is WorldEnvironment else null
+	check(panorama != null and panorama.panorama.resource_path == "res://demo/textures/special/sky.png", "sky_panorama shows a Source skybox")
+	DirAccess.remove_absolute(path)
+	scene.queue_free()
 	await process_frame
 
 ## Plays the night map built by examples/mcp/night_district.json: the garage switch and its beacon, the flickering alley

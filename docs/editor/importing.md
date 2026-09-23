@@ -18,7 +18,8 @@ Textures are covered in [Converting textures](importing-textures.md).
 
 | Hammer | In GodotTrench |
 | --- | --- |
-| Tool materials (`tools/toolsnodraw`, `toolsskybox`, `toolsclip`, `toolsplayerclip`, `toolstrigger`, `toolsorigin`, ...) | The project's skip, clip and origin textures and `special/trigger` |
+| Tool materials (`tools/toolsnodraw`, `toolsclip`, `toolsplayerclip`, `toolstrigger`, `toolsorigin`, ...) | The project's skip, clip and origin textures and `special/trigger` |
+| `tools/toolsskybox` and `toolsskybox2d` | The project's sky texture, `special/sky` by default |
 | Displacements | Displacements with their heights and blend alphas |
 | Displacements whose vertices move sideways | Smooth meshes with the exact positions, since a displacement here only moves along the face normal |
 | `func_instance` | A group with the instance's contents, placed, renamed by its fixup and with `$` and `#` replacements applied. `instance:name;Input` wiring is resolved |
@@ -28,6 +29,22 @@ Textures are covered in [Converting textures](importing-textures.md).
 
 TrenchBroom layers and groups stay layers and groups. Quake tool textures (`skip`, `clip`, `hint`, `trigger`,
 `origin`, Quake 3 `common/caulk`) become the project's tool textures the same way.
+
+## Skies
+
+Quake and Source draw the sky wherever a sky face is, so a map is closed in by sky brushes. The import gives those
+faces the project's sky texture, which collides in Godot but draws nothing, and the editor's lit view leaves it out.
+
+| Game | Sky faces |
+| --- | --- |
+| Quake and Half-Life | textures whose names start with `sky` |
+| Quake 2 | faces with the `SURF_SKY` surface flag |
+| Quake 3 | shaders under `textures/skies/` |
+| Source | `tools/toolsskybox` and `toolsskybox2d` |
+
+The worldspawn key `sky_source` keeps the texture the sky faces had. Converting the map's textures then turns that
+texture into `sky_top_color` and `sky_horizon_color`, which Godot builds a procedural sky from, see
+[Converting textures](importing-textures.md#skies).
 
 > **Note:** Units are kept as they are. A Source map is built for about 40 units per meter and a Quake map for about
 > 32, so a Source map comes out a little larger than in its game unless the project uses a different scale.

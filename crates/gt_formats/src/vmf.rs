@@ -186,8 +186,9 @@ impl ImportOptions {
     fn material(&self, name: &str) -> String {
         let Some(tool) = name.strip_prefix("tools/") else { return name.to_string() };
         match tool {
-            "toolsnodraw" | "toolsskybox" | "toolsskybox2d" | "toolsskip" | "toolshint" | "toolsareaportal" | "toolsoccluder" | "toolsblocklight"
-            | "toolsblock_los" | "toolsfog" | "toolsblack" => self.tools.skip.clone(),
+            "toolsskybox" | "toolsskybox2d" | "toolsskyfog" => self.tools.sky.clone(),
+            "toolsnodraw" | "toolsskip" | "toolshint" | "toolsareaportal" | "toolsoccluder" | "toolsblocklight" | "toolsblock_los" | "toolsfog"
+            | "toolsblack" => self.tools.skip.clone(),
             "toolsclip"
             | "toolsplayerclip"
             | "toolsnpcclip"
@@ -205,6 +206,37 @@ impl ImportOptions {
     }
 }
 
+/// Renames each face to what `tool` returns for it. The name most faces renamed to `sky` had is kept in the worldspawn
+/// key `sky_source`, so texture conversion can still find the sky.
+pub(crate) fn rename_tool_faces(map: &mut Map, sky: &str, mut tool: impl FnMut(&mut FaceData) -> Option<String>) {
+    let mut skies: BTreeMap<String, usize> = BTreeMap::new();
+    let mut rename = |f: &mut FaceData| {
+        let Some(new) = tool(f) else { return };
+        if new == sky && !f.material.eq_ignore_ascii_case(sky) {
+            *skies.entry(std::mem::take(&mut f.material)).or_default() += 1;
+        }
+
+        f.material = new;
+    };
+    let brushes: Vec<NodeId> = map.brushes().map(|(id, _)| id).collect();
+    for id in brushes {
+        for f in map.brush_mut(id).map(|b| b.faces.iter_mut()).into_iter().flatten() {
+            rename(&mut f.data);
+        }
+    }
+
+    let meshes: Vec<NodeId> = map.meshes().map(|(id, _)| id).collect();
+    for id in meshes {
+        for f in map.mesh_mut(id).map(|m| m.faces.iter_mut()).into_iter().flatten() {
+            rename(&mut f.data);
+        }
+    }
+
+    if let Some((name, _)) = skies.into_iter().max_by_key(|(_, n)| *n) {
+        map.properties.entry("sky_source".into()).or_insert(name);
+    }
+}
+
 /// What an import found beyond the map itself.
 #[derive(Debug, Default)]
 pub struct ImportReport {
@@ -215,13 +247,13 @@ pub struct ImportReport {
 }
 
 /// A solid as a brush, or as meshes for displacements that move sideways.
-fn parse_solid(solid: &Block, options: &ImportOptions) -> Option<Vec<NodeKind>> {
+fn parse_solid(solid: &Block) -> Option<Vec<NodeKind>> {
     let mut planes = Vec::new();
     let mut disps: Vec<(Plane, Displacement, DVec3, Vec<DVec3>)> = Vec::new();
     for side in solid.children_named("side") {
         let Some([p1, p2, p3]) = side.get("plane").and_then(plane_points) else { continue };
         let Some(plane) = Plane::from_points(from_id(p1), from_id(p3), from_id(p2)) else { continue };
-        let material = options.material(&side.get("material").unwrap_or("").to_ascii_lowercase());
+        let material = side.get("material").unwrap_or("").to_ascii_lowercase();
         let (u, ou, su) = axis(side.get("uaxis")).unwrap_or((DVec3::X, 0.0, 0.25));
         let (v, ov, sv) = axis(side.get("vaxis")).unwrap_or((DVec3::NEG_Z, 0.0, 0.25));
         let uv = FaceUv {
@@ -491,8 +523,7 @@ fn apply_replacements(block: &mut Block, vars: &[(String, String)]) {
     }
 }
 
-struct Importer<'a> {
-    options: &'a ImportOptions,
+struct Importer {
     report: ImportReport,
     /// Files being inlined, to stop an instance that includes itself.
     stack: Vec<PathBuf>,
@@ -512,12 +543,16 @@ pub fn import_file(path: &Path, options: &ImportOptions) -> Result<(Map, ImportR
 
 pub fn import_with(src: &str, path: Option<&Path>, options: &ImportOptions) -> Result<(Map, ImportReport), VmfError> {
     let blocks = parse_keyvalues(src)?;
-    let mut importer = Importer { options, report: ImportReport::default(), stack: path.map(|p| vec![p.to_path_buf()]).unwrap_or_default(), auto_names: 0 };
-    let map = importer.import_blocks(&blocks, path.and_then(Path::parent))?;
+    let mut importer = Importer { report: ImportReport::default(), stack: path.map(|p| vec![p.to_path_buf()]).unwrap_or_default(), auto_names: 0 };
+    let mut map = importer.import_blocks(&blocks, path.and_then(Path::parent))?;
+    rename_tool_faces(&mut map, &options.tools.sky, |f| {
+        let tool = options.material(&f.material);
+        (tool != f.material).then_some(tool)
+    });
     Ok((map, importer.report))
 }
 
-impl Importer<'_> {
+impl Importer {
     fn import_blocks(&mut self, blocks: &[Block], dir: Option<&Path>) -> Result<Map, VmfError> {
         let mut map = Map::new();
         let default_layer = map.default_layer();
@@ -540,7 +575,7 @@ impl Importer<'_> {
 
                     for (s, hidden) in solids(b) {
                         let layer = layer_of(&mut map, s);
-                        for node in parse_solid(s, self.options).unwrap_or_default() {
+                        for node in parse_solid(s).unwrap_or_default() {
                             let id = map.insert(layer, node);
                             set_hidden(&mut map, id, hidden);
                         }
@@ -585,7 +620,7 @@ impl Importer<'_> {
             let id = map.insert(layer, NodeKind::Entity(e));
             set_hidden(&mut map, id, hidden);
             for (s, solid_hidden) in brush_solids {
-                for node in parse_solid(s, self.options).unwrap_or_default() {
+                for node in parse_solid(s).unwrap_or_default() {
                     let brush_id = map.insert(id, node);
                     set_hidden(&mut map, brush_id, solid_hidden && !hidden);
                 }
@@ -902,8 +937,24 @@ entity
         assert_eq!(tools.material("tools/toolsplayerclip"), "special/clip");
         assert_eq!(tools.material("tools/toolstrigger"), "special/trigger");
         assert_eq!(tools.material("tools/toolsorigin"), "special/origin");
-        assert_eq!(tools.material("tools/toolsskybox"), "special/skip");
+        for sky in ["tools/toolsskybox", "tools/toolsskybox2d", "tools/toolsskyfog"] {
+            assert_eq!(tools.material(sky), "special/sky", "{sky}");
+        }
+
+        assert_eq!(tools.material("tools/toolsnodraw"), "special/skip");
         assert_eq!(tools.material("brick/brickwall001a"), "brick/brickwall001a");
+
+        let src = format!(
+            "world {{ \"skyname\" \"lakebox\" {} {} {} }}",
+            solid([0.0; 3], [64.0; 3], "TOOLS/TOOLSSKYBOX", ""),
+            solid([128.0, 0.0, 0.0], [192.0, 64.0, 64.0], "tools/toolsskybox", ""),
+            solid([256.0, 0.0, 0.0], [320.0, 64.0, 64.0], "tools/toolsskybox2d", "")
+        );
+        let map = import(&src).unwrap();
+        let skies = map.brushes().flat_map(|(_, b)| b.faces.iter()).filter(|f| f.data.material == "special/sky").count();
+        assert_eq!(skies, 18);
+        assert_eq!(map.properties.get("sky_source").map(String::as_str), Some("tools/toolsskybox"), "the most used sky material");
+        assert_eq!(map.properties.get("skyname").map(String::as_str), Some("lakebox"));
     }
 
     #[test]

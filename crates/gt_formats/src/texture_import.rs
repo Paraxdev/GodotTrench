@@ -52,6 +52,8 @@ pub struct Report {
     /// Already in the project and left alone.
     pub existing: Vec<String>,
     pub failed: Vec<(String, String)>,
+    /// Worldspawn keys set from the map's sky.
+    pub sky: Vec<(String, String)>,
 }
 
 impl Report {
@@ -397,13 +399,68 @@ impl Library {
         report
     }
 
-    fn convert_valve(&self, name: &str, vmt_path: &Path, root: usize, target: &Target, png: &Path) -> Result<MaterialOut, String> {
+    fn vmt(&self, vmt_path: &Path, root: usize) -> Result<Vmt, String> {
         let text = crate::vmf::read_text(vmt_path).map_err(|e| e.to_string())?;
-        let vmt: Vmt = vmt::parse(&text, &mut |include| {
+        vmt::parse(&text, &mut |include| {
             let path = self.valve_file(root, &format!("{}.vmt", vmt::normalize(include)))?;
             crate::vmf::read_text(path).ok()
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())
+    }
+
+    /// The picture a face material shows: a Valve base texture, or the back layer of a Quake sky.
+    pub fn image(&self, material: &str) -> Result<Image, String> {
+        match self.sources.get(&material.to_ascii_lowercase()).ok_or_else(|| format!("{material} not found"))? {
+            Source::Valve { vmt, root } => {
+                let base = self.vmt(vmt, *root)?.base_texture().ok_or("no $basetexture")?;
+                self.vtf(*root, &base)
+            }
+            Source::Paletted(t) => Ok(if t.is_sky() { t.sky_image() } else { t.to_rgba() }),
+            Source::Image(p) => {
+                let img = image::open(p).map_err(|e| e.to_string())?.to_rgba8();
+                Ok(Image { width: img.width(), height: img.height(), rgba: img.into_raw() })
+            }
+        }
+    }
+
+    /// The sky of a map: the Source skybox its worldspawn `skyname` names, else the texture its sky faces had
+    /// (`sky_source`).
+    pub fn sky(&self, skyname: Option<&str>, sky_source: Option<&str>) -> Option<Sky> {
+        if let Some(name) = skyname {
+            let face = |side: &str| self.image(&format!("skybox/{name}{side}")).ok();
+            let sides: Option<Vec<Image>> = ["rt", "lf", "bk", "ft", "up"].into_iter().map(face).collect();
+            if let Some(sides) = sides {
+                let panorama = panorama(&sides, face("dn").as_ref());
+                return Some(Sky { top: mean_rows(&panorama, 0.0, 0.15), horizon: mean_rows(&panorama, 0.4, 0.49), panorama: Some(panorama) });
+            }
+        }
+
+        let img = self.image(sky_source?).ok()?;
+        let mut pixels: Vec<[u8; 3]> = img.rgba.as_chunks::<4>().0.iter().map(|p| [p[0], p[1], p[2]]).collect();
+        pixels.sort_by_key(|p| p[0] as u32 * 3 + p[1] as u32 * 6 + p[2] as u32);
+        let (dark, light) = pixels.split_at(pixels.len() / 2);
+        // A Quake sky has no up or down. Its darker half reads as the open sky, the lighter half as clouds and haze.
+        Some(Sky { top: mean(dark), horizon: mean(light), panorama: None })
+    }
+
+    /// Worldspawn keys for the sky of a map with these worldspawn `properties`. A Source skybox is also saved as a
+    /// panorama in the texture folder, for Godot.
+    pub fn sky_keys(&self, properties: &BTreeMap<String, String>, target: &Target) -> Result<Vec<(String, String)>, String> {
+        let skyname = properties.get("skyname").map(|s| s.to_ascii_lowercase());
+        let Some(sky) = self.sky(skyname.as_deref(), properties.get("sky_source").map(String::as_str)) else { return Ok(Vec::new()) };
+        let color = |c: [u8; 3]| format!("{} {} {}", c[0], c[1], c[2]);
+        let mut keys = vec![("sky_top_color".to_string(), color(sky.top)), ("sky_horizon_color".to_string(), color(sky.horizon))];
+        if let (Some(img), Some(name)) = (&sky.panorama, &skyname) {
+            let path = target.texture_dir.join(format!("skybox/{}_panorama.png", file_stem(name)));
+            save_png(img, &path)?;
+            keys.extend(to_res_path(&target.project_root, &path).map(|p| ("sky_panorama".to_string(), p)));
+        }
+
+        Ok(keys)
+    }
+
+    fn convert_valve(&self, name: &str, vmt_path: &Path, root: usize, target: &Target, png: &Path) -> Result<MaterialOut, String> {
+        let vmt = self.vmt(vmt_path, root)?;
         let res = |p: &Path| to_res_path(&target.project_root, p);
         let stem = file_stem(name);
         let mut out =
@@ -479,6 +536,84 @@ impl Library {
 
         Ok(out)
     }
+}
+
+/// A map's sky as the colors of a procedural sky, and a Source skybox as an equirectangular panorama.
+#[derive(Debug)]
+pub struct Sky {
+    pub top: [u8; 3],
+    pub horizon: [u8; 3],
+    pub panorama: Option<Image>,
+}
+
+fn mean(pixels: &[[u8; 3]]) -> [u8; 3] {
+    let mut sum = [0u64; 3];
+    for p in pixels {
+        for c in 0..3 {
+            sum[c] += p[c] as u64;
+        }
+    }
+
+    sum.map(|s| (s / (pixels.len() as u64).max(1)) as u8)
+}
+
+fn rgb(img: &Image, x: usize, y: usize) -> [u8; 3] {
+    let i = (y * img.width as usize + x) * 4;
+    [img.rgba[i], img.rgba[i + 1], img.rgba[i + 2]]
+}
+
+/// The mean color of the rows between the fractions `from` and `to` of the height.
+fn mean_rows(img: &Image, from: f32, to: f32) -> [u8; 3] {
+    let h = img.height as f32;
+    let rows = (from * h) as usize..((to * h) as usize).max(1);
+    let pixels: Vec<[u8; 3]> = rows.flat_map(|y| (0..img.width as usize).map(move |x| rgb(img, x, y))).collect();
+    mean(&pixels)
+}
+
+fn sample(img: &Image, u: f64, v: f64) -> [u8; 3] {
+    let x = ((u * img.width as f64) as usize).min(img.width as usize - 1);
+    let y = ((v * img.height as f64) as usize).min(img.height as usize - 1);
+    rgb(img, x, y)
+}
+
+/// An equirectangular panorama, laid out for Godot's `PanoramaSkyMaterial`, of a Source or Quake 2 skybox given as
+/// its rt, lf, bk, ft and up faces. Without a dn face the ground takes the mean color of the bottom row of the sides.
+pub fn panorama(sides: &[Image], down: Option<&Image>) -> Image {
+    let size = sides.iter().map(|s| s.width.max(s.height)).max().unwrap_or(1).clamp(16, 512);
+    let (w, h) = (size * 4, size * 2);
+    let bottoms: Vec<[u8; 3]> = sides[..4].iter().flat_map(|s| (0..s.width as usize).map(move |x| rgb(s, x, s.height as usize - 1))).collect();
+    let ground = mean(&bottoms);
+    let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+    for py in 0..h {
+        let theta = (py as f64 + 0.5) / h as f64 * std::f64::consts::PI;
+        for px in 0..w {
+            let phi = (px as f64 + 0.5) / w as f64 * std::f64::consts::TAU;
+            // Godot's panorama has -Z at u 0 and +X at u 0.25, and Godot (x, y, z) is id (y, z, x).
+            let (x, y, z) = (theta.sin() * phi.sin(), theta.cos(), -theta.sin() * phi.cos());
+            let d = [z, x, y];
+            let a = d.map(f64::abs);
+            // The face and its (s, t) in -1..1 the way Quake 2 lays out a skybox, s to the right and t up.
+            let (face, s, t) = if a[0] >= a[1] && a[0] >= a[2] {
+                if d[0] > 0.0 { (0, -d[1] / a[0], d[2] / a[0]) } else { (1, d[1] / a[0], d[2] / a[0]) }
+            } else if a[1] >= a[2] {
+                if d[1] > 0.0 { (2, d[0] / a[1], d[2] / a[1]) } else { (3, -d[0] / a[1], d[2] / a[1]) }
+            } else if d[2] > 0.0 {
+                (4, -d[1] / a[2], -d[0] / a[2])
+            } else {
+                (5, -d[1] / a[2], d[0] / a[2])
+            };
+            let (u, v) = ((s + 1.0) * 0.5, (1.0 - t) * 0.5);
+            let texel = match (face, down) {
+                (5, Some(dn)) => sample(dn, u, v),
+                (5, None) => ground,
+                _ => sample(&sides[face], u, v),
+            };
+            rgba.extend(texel);
+            rgba.push(255);
+        }
+    }
+
+    Image { width: w, height: h, rgba }
 }
 
 fn convert_paletted(t: &Paletted, target: &Target, png: &Path) -> Result<MaterialOut, String> {
@@ -620,6 +755,52 @@ mod tests {
         let glass = godot_material::parse(&std::fs::read_to_string(tex.join("e1u1/glass.tres")).unwrap()).unwrap();
         assert!(glass.is_transparent() && (glass.albedo_color[3] - 0.33).abs() < 1e-6);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sky_colors_come_from_the_sky_texture_or_skybox() {
+        let dir = temp("sky");
+        write(&dir.join("id1/q.wad"), quake_texture::tests::wad(b"WAD2", &[("sky4", 16, 8, 6)]));
+        std::fs::create_dir_all(dir.join("mod/textures")).unwrap();
+        image::RgbImage::from_fn(4, 4, |_, y| image::Rgb(if y < 2 { [10, 20, 90] } else { [200, 210, 220] }))
+            .save(dir.join("mod/textures/sky_clouds.png"))
+            .unwrap();
+        // BGRA8888 faces: a blue up face over orange sides.
+        let face = |bgra: [u8; 4]| crate::vtf::tests::build(2, 12, 4, 4, 1, 1, move |_, _, _| bgra.repeat(16));
+        for side in ["rt", "lf", "bk", "ft", "up"] {
+            let bgra = if side == "up" { [200, 40, 20, 255] } else { [20, 120, 240, 255] };
+            write(&dir.join(format!("hl2/materials/skybox/lake{side}.vtf")), face(bgra));
+            write(&dir.join(format!("hl2/materials/skybox/lake{side}.vmt")), format!("UnlitGeneric {{ $basetexture skybox/lake{side} }}"));
+        }
+
+        let lib = scan(&[dir.join("id1"), dir.join("mod"), dir.join("hl2")]);
+        let quake = lib.sky(None, Some("sky4")).unwrap();
+        assert_eq!(quake.top, quake.horizon, "only the back half, the front layer holds the odd pixel");
+        assert!(quake.panorama.is_none());
+        let clouds = lib.sky(None, Some("sky_clouds")).unwrap();
+        assert_eq!((clouds.top, clouds.horizon), ([10, 20, 90], [200, 210, 220]), "darker half up high, lighter half at the horizon");
+        assert!(lib.sky(None, Some("nothing")).is_none());
+
+        let project = dir.join("project");
+        let props: BTreeMap<String, String> =
+            [("skyname", "Lake"), ("sky_source", "sky_clouds")].into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let keys: BTreeMap<String, String> = lib.sky_keys(&props, &target(&project)).unwrap().into_iter().collect();
+        assert_eq!(keys["sky_top_color"], "20 40 200", "the skybox wins over the sky faces");
+        assert_eq!(keys["sky_horizon_color"], "240 120 20");
+        assert_eq!(keys["sky_panorama"], "res://textures/skybox/lake_panorama.png");
+        assert_eq!(image::image_dimensions(project.join("textures/skybox/lake_panorama.png")).unwrap(), (64, 32));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn panorama_puts_each_skybox_face_where_godot_looks() {
+        let solid = |c: u8| Image { width: 2, height: 2, rgba: [c, c, c, 255].repeat(4) };
+        let sides: Vec<Image> = (1..=5).map(|c| solid(c * 10)).collect();
+        let pano = panorama(&sides, Some(&solid(60)));
+        let at = |u: f32, v: f32| rgb(&pano, (u * pano.width as f32) as usize, (v * pano.height as f32) as usize)[0];
+        // Godot looks down -Z at u 0 and +X at u 0.25. Godot -Z is id -X (lf), +X is id +Y (bk), +Z is id +X (rt), -X is id -Y (ft).
+        assert_eq!([at(0.0, 0.5), at(0.25, 0.5), at(0.5, 0.5), at(0.75, 0.5)], [20, 30, 10, 40]);
+        assert_eq!((at(0.5, 0.0), at(0.5, 0.99)), (50, 60), "up and down");
     }
 
     #[test]
