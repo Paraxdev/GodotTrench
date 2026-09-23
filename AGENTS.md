@@ -11,7 +11,7 @@ Whoever opens the pull request vouches for every line in it, see the disclosure 
 * `godot/addons/func_godot` is our FuncGodot fork that builds `.gtm` maps in Godot, see its `FORK.md`.
   `godot/tests` holds the addon tests, `godot/demo` the demo project.
 * `examples/mcp` holds the showcase maps as MCP tool call scripts.
-* `wiki/` is the static documentation site, `docs/` the Markdown docs.
+* `docs/` is the documentation, a GitBook style book published to GitHub Pages.
 
 ## Before you open a pull request
 
@@ -36,7 +36,7 @@ Run `./tools/fmt --install` once per clone. It enables a pre-commit hook that fo
 
 ## Writing style
 
-This applies to code comments, docs, the wiki, UI text, commit messages and pull request descriptions.
+This applies to code comments, docs, UI text, commit messages and pull request descriptions.
 
 * No em dashes, en dashes or a spaced hyphen as punctuation. Join clauses with a comma or start a new sentence.
   Hyphens inside words, kebab-case names and CLI flags are fine.
@@ -62,11 +62,17 @@ This applies to code comments, docs, the wiki, UI text, commit messages and pull
 * After changing `builtin_entities.json` or `code_refs.rs`, regenerate the addon FGDs with
   `cargo run -p gt_editor --example export_addon_fgd`. The `addon_fgd_sync` test fails otherwise.
 
-## Wiki
+## Docs
 
-* Every element on a page must be one the wiki editor itself can create. If a page needs a new kind of element,
-  add it to the editor first, then use it. See [wiki/README.md](wiki/README.md) for what the editor writes.
-* Text renders with `breaks: true`, so a single newline in page JSON is a hard line break.
+* `docs/` is built with HonKit and deployed by `.github/workflows/pages.yml`. Every page must be listed in
+  `docs/SUMMARY.md`, and `npx honkit@6.2.2 build docs _site` must build without errors. See
+  [docs/development.md](docs/development.md#documentation).
+* Keep pages short and to the point. Prefer a table, a numbered list of steps or a short paragraph over a wall of text,
+  and split a page that grows long. Leave out what a reader does not need to get the job done.
+* Callouts are blockquotes with a bold label, `> **Note:**`, `> **Tip:**` or `> **Warning:**`. Tag GDScript code blocks
+  as `python`, HonKit's highlighter has no GDScript.
+* Images go in `docs/assets/<page>/`. Link other pages with relative `.md` paths, and files outside `docs/` with full
+  GitHub URLs, since only `docs/` is published.
 * Verify facts against the code before writing them. Explain why and when, not only what.
 
 ## Godot gotchas

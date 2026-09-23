@@ -2,7 +2,7 @@
   "format": "godottrench-mcp-script",
   "vars": {"save_dir": "${project}/demo/maps/showcase"},
   "title": "Sea Island",
-  "description": "A large island in the sea, built the way the wiki's sea island tutorial does it: an island terrain lowered into a water brush, two hills, terraced cliffs on the north east coast, a flattened beach, sand, rock and grass painted with height and slope masks, dirt paths from the beach to the hilltops, a mixed woodland with hero trees, bushes, cliff boulders with grass growing on them, meadow grass kept off the paths, and a jetty with Poly Haven props.",
+  "description": "A large island in the sea, built the way the sea island tutorial in the docs does it: an island terrain lowered into a water brush, two hills, terraced cliffs on the north east coast, a flattened beach, sand, rock and grass painted with height and slope masks, dirt paths from the beach to the hilltops, a mixed woodland with hero trees, bushes, cliff boulders with grass growing on them, meadow grass kept off the paths, and a jetty with Poly Haven props.",
   "steps": [
     {"tool": "map_file", "args": {"op": "new"}},
     {"tool": "set_map_properties", "args": {"properties": {"message": "Sea Island", "sun_angles": "-35 -125", "sun_color": "255 236 210", "sun_energy": "1.1", "ambient_color": "96 108 132", "sky_top_color": "70 124 196", "sky_horizon_color": "206 220 232", "sky_ground_color": "64 96 120", "fog_color": "196 212 226", "fog_density": "0.00012"}}},

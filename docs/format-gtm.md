@@ -1,14 +1,10 @@
 # The .gtm map format
 
-A `.gtm` file is a GodotTrench map: one UTF-8 JSON document holding worldspawn properties, some editor state and a tree
-of nodes (layers, groups, entities, brushes, meshes, terrains, scatter sets and prefab instances). The editor reads and
-writes it through `crates/gt_doc/src/format.rs`, and the Godot addon builds it with
-`godot/addons/func_godot/src/godottrench/gtm_parser.gd`. Everything below is taken from those two readers and the serde
-definitions they use.
+A `.gtm` file is one UTF-8 JSON document: worldspawn properties, some editor state and a tree of nodes. The editor
+reads and writes it in `crates/gt_doc/src/format.rs`, the addon builds it with
+`godot/addons/func_godot/src/godottrench/gtm_parser.gd`.
 
-## Format name and version
-
-Every map starts with
+## Format and version
 
 ```json
 {
@@ -16,266 +12,219 @@ Every map starts with
   "version": 1,
 ```
 
-The editor refuses a file whose `format` is anything else, and refuses a `version` newer than the one it knows (currently
-1) instead of opening it and silently dropping data it does not understand. Older versions go through a migration step
-before parsing; version 1 is the first format, so that step does nothing yet. A file without `version` counts as the
-oldest format. Keys the editor does not know are ignored on load and therefore lost on the next save.
-
-Before building anything, the editor checks the geometry a hand edit could break: face indices, displacement and terrain
-array sizes. A file that fails is refused with the node id and the reason, for example
-`node 12: face 3 uses vertex 9, but there are only 8 vertices`, rather than opening half broken. Pasted nodes go through
-the same check.
-
-The Godot importer applies the same `format` and `version` checks, to maps and to the prefabs they instance, and reports
-a newer version as a build error that asks for an addon update. It also checks face indices, but instead of refusing the
-map it reports and skips a brush or mesh with an out of range index, and builds a displacement whose arrays have the
-wrong size as a flat face.
+| Situation | Editor | Godot importer |
+| --- | --- | --- |
+| Other `format` | Refuses the file | Build error |
+| Newer `version` | Refuses the file rather than drop data | Build error asking for an addon update |
+| Missing `version` | Treated as the oldest format | Same |
+| Unknown keys | Ignored, and lost on the next save | Ignored |
+| Bad face index, wrong array size | Refuses the map, naming the node and reason | Skips that brush, builds a bad displacement flat |
 
 Saving writes `<name>.gtm.tmp` first and renames it over the map, so a crash never leaves a truncated file.
 
-## Top level object
+## Top level
 
 | Key | Type | Written | Meaning |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `format` | string | always | `"godottrench-map"` |
-| `version` | integer | always | format version, 0 when missing |
-| `properties` | object of string to string | when not empty | worldspawn key/values |
-| `editor` | object | when not all default | editor state, see below |
-| `layers` | array of nodes | always | the layer nodes, in order |
+| `version` | integer | always | Format version |
+| `properties` | object of string to string | when not empty | Worldspawn keys, sorted |
+| `editor` | object | when not all default | Editor state, never exported |
+| `layers` | array of nodes | always | Layer nodes, in order |
 
-`properties` are the worldspawn entity's keys. Values are always strings, like in a `.map` file, and keys are written in
-sorted order. The Godot importer copies them onto the worldspawn and then forces `classname` to `worldspawn`. The
-environment keys (`sun_angles`, `sun_color`, `sun_energy`, `ambient_color`, `sky_top_color`, `sky_horizon_color`,
-`sky_ground_color`, `fog_color`, `fog_density`, `ambient_energy`, `sky_energy`, `glow_intensity`, `ssr`, and
-`environment = 0` to switch it off) are read by `GodotTrenchEnvironment`, and all of them but `glow_intensity` and `ssr` by
-the editor's lit preview.
+Worldspawn values are always strings, like in a `.map` file. The environment keys (`sun_angles`, `sun_color`,
+`sun_energy`, `ambient_color`, `sky_top_color`, `sky_horizon_color`, `sky_ground_color`, `fog_color`, `fog_density`,
+`ambient_energy`, `sky_energy`, `glow_intensity`, `ssr`, and `environment = 0` to switch it off) are read by
+`GodotTrenchEnvironment`.
 
-Only nodes of type `layer` are taken from `layers`, anything else at that level is skipped by the editor. A file with no
-layers gets a `Default` layer on load.
+Only `layer` nodes are taken from `layers`. A file with no layers gets a `Default` layer on load.
 
 ### Editor data
 
-`editor` holds state that belongs to the map but is never exported. Each field is left out while it has its default, and
-the whole object is left out when all of them do.
-
 | Key | Type | Default | Meaning |
-|---|---|---|---|
-| `cameras` | object, slot `"1"` to `"9"` to bookmark | empty | saved 3D viewpoints, each `{"position": [x, y, z], "yaw": r, "pitch": r}` with angles in radians |
-| `cordon` | `{"min": [x, y, z], "max": [x, y, z]}` | none | cordon box in map units |
-| `cordon_enabled` | bool | `false` | objects outside the cordon are hidden and left out of cordoned exports |
+| --- | --- | --- | --- |
+| `cameras` | object, `"1"` to `"9"` | empty | Bookmarks, `{"position": [x, y, z], "yaw": r, "pitch": r}` in radians |
+| `cordon` | `{"min", "max"}` | none | Cordon box in map units |
+| `cordon_enabled` | bool | `false` | Hide objects outside the cordon and leave them out of cordoned exports |
 
 ## Nodes
 
-Every node is an object with the same outer shape:
+Every node has the same outer shape, with keys in this order:
 
 | Key | Type | Written | Meaning |
-|---|---|---|---|
-| `id` | integer | always | node id, unique in the map |
+| --- | --- | --- | --- |
+| `id` | integer | always | Unique in the map |
 | `type` | string | always | `layer`, `group`, `entity`, `brush`, `mesh`, `terrain`, `scatter` or `instance` |
-| fields of the type | | | see the sections below, written inline next to `id` and `type` |
-| `hidden` | bool | when `true` | hidden in the editor views |
-| `locked` | bool | when `true` | cannot be selected or edited |
-| `children` | array of nodes | when not empty | child nodes, in order |
+| type fields | | | See the sections below |
+| `hidden` | bool | when `true` | Hidden in the editor |
+| `locked` | bool | when `true` | Cannot be selected or edited |
+| `children` | array of nodes | when not empty | Child nodes, in order |
 
-Keys come out in that order: `id`, `type`, the type's own fields, then `hidden`, `locked` and `children`.
-
-`hidden` and `locked` are editor state and apply to the whole subtree. The Godot importer reads neither, so a hidden
-brush is still built. To leave content out of the build put it on a layer with `omit_from_export`.
+`hidden` and `locked` are editor state only. Godot still builds a hidden brush, use a layer with `omit_from_export` to
+leave content out.
 
 ### Ids
 
-Ids are positive integers that stay the same across saves. They are how the rest of the system refers to a node: the
-live link sends edits by id, scatter sets name their target surfaces by id, and Godot tags every generated node with the
-id it came from (`_gt_id` metadata, see [godot.md](godot.md)). The editor hands out new ids counting up from the highest id
-in the file. When loading, an id of `0` or one already used earlier in the file (which only happens in hand edited
-files) is replaced with a fresh one above the highest id in the file, so every other node keeps its id and scatter
-targets keep pointing at the node that first used an id.
+Ids are positive integers that stay the same across saves. The live link sends edits by id, scatter sets name their
+targets by id, and Godot tags every generated node with its id in `_gt_id` metadata. An id of `0` or a duplicate (only
+possible by hand editing) is replaced with a fresh one on load.
 
-Nodes inside prefab instances come from another file and may reuse ids of the including map, so the Godot importer
-offsets them by one million per level of instance nesting.
+Nodes inside prefab instances may reuse ids of the including map, so the importer offsets them by one million per
+level of nesting.
 
-### Tree rules
+### Where nodes go
 
-The file does not enforce a schema for which node can sit where, but the editor produces and the importer expects this
-shape:
+| Node | Parent |
+| --- | --- |
+| Layers | Top level only |
+| Groups | Layers or groups |
+| Brushes, meshes, terrains, scatter sets, point entities, instances | Layers or groups |
+| Brushes and meshes of a brush entity | That entity |
 
-* layers only at the top level, anything else there is dropped by the editor and ignored by the importer
-* groups under layers or other groups
-* brushes, meshes, terrains, scatter sets, point entities and instances under layers or groups
-* an entity with children is a brush entity, its geometry is its brush and mesh children
-
-Brushes and meshes that are not inside an entity belong to worldspawn.
+An entity with children is a brush entity. Brushes and meshes outside an entity belong to worldspawn.
 
 ## Layer
 
 | Key | Type | Default | Meaning |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `name` | string | required | |
-| `color` | string | required | `#rrggbbaa` (`#rrggbb` is accepted when reading), the layer's tint in the editor |
-| `omit_from_export` | bool | `false` | always written, the importer skips the whole layer |
+| `color` | string | required | `#rrggbbaa` (`#rrggbb` accepted when reading) |
+| `omit_from_export` | bool | `false` | Always written. The importer skips the whole layer |
 
 ## Group
 
 | Key | Type | Default | Meaning |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `name` | string | required | |
-| `link_id` | integer | none, omitted | groups sharing a link id are linked copies of each other |
-| `transform` | 16 numbers | identity, omitted | placement of this copy relative to the others in its link set |
+| `link_id` | integer | omitted | Groups sharing a link id are linked copies |
+| `transform` | 16 numbers | identity, omitted | This copy's placement relative to the others, 4x4 column-major |
 
-The contents of a group are stored in world space, already placed. `transform` is not applied again when building, it
-only records how the linked copies relate so that an edit in one copy can be mirrored into the others: the editor maps
-the edited contents back through the inverse of that copy's transform and out through each other copy's. The matrix is
-a 4x4 in column-major order. The Godot importer turns groups into FuncGodot groups and ignores `link_id` and `transform`.
+Group contents are stored in world space, already placed. `transform` is only used to mirror an edit in one linked
+copy into the others. The importer ignores `link_id` and `transform`.
 
 ## Entity
 
 | Key | Type | Default | Meaning |
-|---|---|---|---|
-| `classname` | string | required | entity class from the game config |
-| `origin` | `[x, y, z]` | `[0, 0, 0]` | always written, position of a point entity |
-| `angles` | `[pitch, yaw, roll]` | `[0, 0, 0]` | always written, degrees |
-| `properties` | object of string to string | empty, omitted | entity keys, written sorted |
-| `outputs` | array | empty, omitted | I/O connections, see below |
+| --- | --- | --- | --- |
+| `classname` | string | required | Entity class from the game config |
+| `origin` | `[x, y, z]` | `[0, 0, 0]` | Always written. Position of a point entity |
+| `angles` | `[pitch, yaw, roll]` | `[0, 0, 0]` | Always written. Degrees, YXZ order like `rotation_degrees` |
+| `properties` | object of string to string | omitted | Entity keys, sorted |
+| `outputs` | array | omitted | I/O connections |
 
-An entity without children is a point entity placed by `origin` and `angles`. An entity with children is a brush entity:
-its shape comes from its direct `brush` and `mesh` children, and `origin` and `angles` are still written but not used by
-the importer.
-
-`angles` are node rotation degrees around X (pitch), Y (yaw) and Z (roll), applied in Godot's YXZ order, the same as
-`rotation_degrees` on a `Node3D`. The importer converts them to Quake style angles for FuncGodot, unless the entity already
-has an `angles`, `angle` or `mangle` property, which then wins.
-
-Property values are strings whatever the FGD type, for example `"light_energy": "2.5"` or `"travel": "0 168 0"`.
-`targetname` names the entity for I/O.
+Property values are strings whatever the FGD type, for example `"travel": "0 168 0"`. An `angles`, `angle` or `mangle`
+property wins over the node's `angles`. Brush entities still write `origin` and `angles`, the importer ignores them.
 
 ### Outputs
 
-Each output is a Hammer style connection: when `output` fires on this entity, call `input` on every entity matched by
-`target`.
-
 | Key | Type | Default | Meaning |
-|---|---|---|---|
-| `output` | string | required | signal or output name on this entity |
-| `target` | string | required | targetname (with `*` wildcards), `@group`, a node path, `!player`, `!activator` or `!self` |
-| `input` | string | required | method to call on the target |
-| `parameter` | string | `""`, omitted | value passed to the input |
-| `delay` | number | `0`, omitted | seconds before the input is called |
-| `times` | integer | `-1`, omitted | how many times it may fire, `-1` for every time |
-
-How targets resolve and parameters spread into arguments is described in [gameplay.md](gameplay.md).
+| --- | --- | --- | --- |
+| `output` | string | required | Signal on this entity |
+| `target` | string | required | See [Targets and parameters](gameplay/targets.md) |
+| `input` | string | required | Method to call on the target |
+| `parameter` | string | `""`, omitted | Value passed to the input |
+| `delay` | number | `0`, omitted | Seconds before the call |
+| `times` | integer | `-1`, omitted | How many times it may fire, `-1` for always |
 
 ## Brush
 
-A brush is a convex solid stored as its exact vertices and a list of faces that index into them.
+A convex solid stored as its exact vertices and faces that index into them.
 
 | Key | Type | Meaning |
-|---|---|---|
-| `vertices` | array of `[x, y, z]` | corner positions in map units |
-| `faces` | array of faces | one polygon per face |
+| --- | --- | --- |
+| `vertices` | array of `[x, y, z]` | Corners in map units |
+| `faces` | array of faces | One polygon per face |
 
-Quake style `.map` files store three points per plane and every tool has to intersect the planes again to find the
-corners, which drifts in floating point, turns vertex edits lossy and can make two programs disagree about the same
-brush. A `.gtm` brush stores the corners themselves, so vertex editing round trips exactly and Godot builds exactly what
-the editor shows: the importer marks these brushes as exact and hands the face polygons to FuncGodot instead of letting
-it clip planes. The face planes are recomputed from the vertices on load and are not stored. Corners produced by
-clipping planes are snapped to whole numbers when they are within 0.00001 of one.
+Quake `.map` files store three points per plane, and every tool re-intersects the planes, which drifts. Storing the
+corners makes vertex edits round trip exactly, and Godot builds exactly what the editor shows. Face planes are
+recomputed on load. Clipped corners within 0.00001 of a whole number are snapped to it.
 
 Each face:
 
 | Key | Type | Default | Meaning |
-|---|---|---|---|
-| `indices` | array of integers | required | vertex indices, counter-clockwise seen from outside the brush |
-| `material` | string | `""` | always written, texture name as FuncGodot looks it up, for example `base/wall` |
-| `uv` | object | paraxial projection | always written, texture projection, see below |
-| `props` | object of string to string | empty, omitted | free-form face attributes |
-| `disp` | object | none, omitted | displacement, see below |
-| `colors` | array of `[r, g, b, a]` | empty, omitted | vertex paint, one color per entry of `indices` |
+| --- | --- | --- | --- |
+| `indices` | array of integers | required | Vertex indices, counter-clockwise from outside |
+| `material` | string | `""` | Always written. Texture name, for example `base/wall` |
+| `uv` | object | paraxial | Always written. Texture projection |
+| `props` | object of string to string | omitted | Free-form face attributes |
+| `disp` | object | omitted | Displacement |
+| `colors` | array of `[r, g, b, a]` | omitted | Vertex paint, one per index |
 
-The editor refuses a map where a face has fewer than three indices or an index past the last vertex. The importer skips a face with fewer than three indices and
-a brush with fewer than four vertices or four faces.
+Faces need at least three indices. The importer skips a brush with fewer than four vertices or faces.
 
-Face `props` carry surface flags and similar per face data. The keys `blend_material`, `blend_detile`, `blend_uv_scale`
-and `blend_detile_sharpen` set up material blending: the vertex color alpha blends from `material` towards
-`blend_material`.
+Face `props` `blend_material`, `blend_detile`, `blend_uv_scale` and `blend_detile_sharpen` set up material blending: the
+vertex color alpha blends from `material` towards `blend_material`.
 
 ### Texture projection
 
-`uv` is a Valve 220 style projection with explicit axes, so a face's texture never depends on which axis a tool would
-have picked for it:
+`uv` is a Valve 220 style projection with explicit axes:
 
 | Key | Type | Meaning |
-|---|---|---|
-| `u_axis` | `[x, y, z]` | world direction of the texture's u |
-| `v_axis` | `[x, y, z]` | world direction of the texture's v |
-| `offset` | `[u, v]` | shift in texels |
-| `scale` | `[u, v]` | map units per texel |
-| `rotation` | number | degrees, optional, defaults to `0` |
+| --- | --- | --- |
+| `u_axis`, `v_axis` | `[x, y, z]` | World direction of the texture's u and v |
+| `offset` | `[u, v]` | Shift in texels |
+| `scale` | `[u, v]` | Map units per texel |
+| `rotation` | number | Informational only, optional, the axes already contain it |
 
-A point `p` on the face lands on texel `dot(p, u_axis) / scale.x + offset.x` (the same for v), and the texel is divided
-by the texture's size for the final UV. That is the `metadata/texture_size` of the material when it sets one, see
-[Materials and texture size](godot.md#materials-and-texture-size), otherwise the albedo's pixel size. `rotation` is informational only, the axes already contain it. When `uv`
-is missing the projection is the axis aligned one for an upward facing face (`u_axis = [1, 0, 0]`,
-`v_axis = [0, 0, 1]`), and when `uv` is present all fields except `rotation` are required.
+A point `p` lands on texel `dot(p, u_axis) / scale.x + offset.x`, the same for v. The texel is divided by the texture
+size for the final UV: the material's `texture_size` when set (see [Materials and lighting](godot/materials.md)),
+otherwise the image's pixel size.
+
+When `uv` is missing it defaults to `u_axis = [1, 0, 0]`, `v_axis = [0, 0, 1]`. When present, every field but
+`rotation` is required.
 
 ### Displacement
 
-A quad face (exactly four indices) can carry a Hammer style displacement, a grid of vertices pushed along the face
-normal.
+A quad face can carry a Hammer style displacement, a grid pushed along the face normal.
 
 | Key | Type | Default | Meaning |
-|---|---|---|---|
-| `power` | integer | required | the grid has `2^power + 1` vertices per side, 1 to 4 |
-| `heights` | array of numbers | required | offset along the face normal per grid vertex, in map units |
-| `alphas` | array of numbers | empty, omitted | blend weight per grid vertex, 0 is the face material, 1 the blend material |
+| --- | --- | --- | --- |
+| `power` | integer | required | 1 to 4, the grid has `2^power + 1` vertices per side |
+| `heights` | array of numbers | required | Offset along the normal per grid vertex |
+| `alphas` | array of numbers | omitted | Blend weight per grid vertex, 0 is the face material |
 
-Both arrays are row major with `(2^power + 1)^2` entries. Rows run from the face's first corner towards its fourth,
-columns from the first corner towards its second. A `power` outside 1 to 4, or a `heights` or non-empty `alphas` count
-that does not match, is one of the checks above: the editor refuses the whole map with the node id and the reason.
+Both arrays are row major with `(2^power + 1)^2` entries. Rows run from the first corner towards the fourth, columns
+from the first towards the second.
 
 ## Mesh
 
-Editable polygon meshes. Unlike brushes they may be concave, open or non-planar.
+Editable polygon meshes. They may be concave, open or non-planar.
 
 | Key | Type | Default | Meaning |
-|---|---|---|---|
-| `vertices` | array of `[x, y, z]` | required | positions in map units |
-| `faces` | array of faces | required | |
-| `smooth_angle` | number | `0`, omitted | faces meeting at less than this many degrees share normals, 0 is flat shading |
-| `decal` | bool | `false`, omitted | a decal sheet made by the decal tool, drawn with its texture's alpha cut out at 0.5 and both sides visible, in the editor and in Godot |
+| --- | --- | --- | --- |
+| `vertices` | array of `[x, y, z]` | required | |
+| `faces` | array of faces | required | Same keys as brush faces, plus `uvs` |
+| `smooth_angle` | number | `0`, omitted | Faces meeting below this angle share normals, 0 is flat |
+| `decal` | bool | `false`, omitted | A decal sheet: alpha cut at 0.5, both sides drawn |
 
-Mesh faces have the same keys as brush faces (`indices`, `material`, `uv`, `props`, `disp`, `colors`), with `indices`
-counter-clockwise seen from the front, plus one more:
-
-| Key | Type | Default | Meaning |
-|---|---|---|---|
-| `uvs` | array of `[u, v]` | empty, omitted | explicit UV per corner in texture space (1.0 is one texture width), used instead of `uv` when there is one per index |
+A mesh face's `uvs` is an array of `[u, v]`, one per index, in texture space (1.0 is one texture width). It is used
+instead of `uv` when present.
 
 ## Terrain
 
-A heightmap on a regular grid. The bulk data is base64 so a large terrain stays one line per array instead of thousands
-of numbers.
+A heightmap on a regular grid. Bulk data is base64 so large terrains stay one line per array.
 
 | Key | Type | Default | Meaning |
-|---|---|---|---|
-| `origin` | `[x, y, z]` | required | world position of the first grid vertex, heights are added to its y |
-| `resolution` | `[nx, nz]` | required | vertex count along X and Z |
-| `cell_size` | number | required | map units between grid vertices |
-| `heights` | base64 string | required | little endian 32-bit floats, one per vertex |
-| `layers` | array | required | up to four texture layers |
-| `splat` | base64 string | empty, omitted | four weight bytes per vertex, one per layer |
-| `holes` | base64 string | empty, omitted | one byte per cell, non-zero cells are holes |
-| `chunk_cells` | integer | `32` | cells per chunk side for rendering and collision |
+| --- | --- | --- | --- |
+| `origin` | `[x, y, z]` | required | World position of the first vertex |
+| `resolution` | `[nx, nz]` | required | Vertex count along X and Z |
+| `cell_size` | number | required | Map units between vertices |
+| `heights` | base64 | required | Little endian 32-bit floats, one per vertex |
+| `layers` | array | required | Up to four texture layers |
+| `splat` | base64 | omitted | Four weight bytes per vertex, one per layer |
+| `holes` | base64 | omitted | One byte per cell, non-zero is a hole |
+| `chunk_cells` | integer | `32` | Cells per chunk side |
 
-Vertex `(i, j)` is at `origin + (i * cell_size, heights[j * nx + i], j * cell_size)`, so X runs along a row and Z along
-the rows. `splat` uses the same vertex order, and the four weights are normalized when read, with an empty or all zero
-entry meaning the first layer. `holes` is ordered the same way over the `(nx - 1) * (nz - 1)` cells.
+Vertex `(i, j)` sits at `origin + (i * cell_size, heights[j * nx + i], j * cell_size)`. `splat` uses the same order,
+weights are normalized on read and an all zero entry means layer 0. `holes` covers the `(nx - 1) * (nz - 1)` cells in
+the same order.
 
 Each layer:
 
 | Key | Type | Default | Meaning |
-|---|---|---|---|
-| `material` | string | required | texture name |
-| `tile` | number | `256` | map units covered by one texture repeat |
+| --- | --- | --- | --- |
+| `material` | string | required | |
+| `tile` | number | `256` | Map units per texture repeat |
 | `detile` | number | `0` | 0 to 1, how strongly the repeat is broken up |
 | `detile_sharpen` | number | `0.5` | 0 to 1, how crisp the de-tiled result stays |
 
@@ -283,110 +232,88 @@ Terrains stay axis aligned. A prefab instance moves a terrain but does not rotat
 
 ## Scatter
 
-A scatter set stores many model instances (trees, rocks, grass) painted onto surfaces as a single node.
+Many model instances painted onto surfaces, stored as one node. Every field except `targets` and `material` is always
+written.
 
 | Key | Type | Default | Meaning |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `name` | string | required | |
-| `kind` | string | `props` | `props` for scene instances that keep scripts and collision, `foliage` for MultiMesh instances without collision |
-| `targets` | array of node ids | empty, omitted | surfaces the set is painted on |
-| `items` | array | required | the models the set scatters, see below |
+| `kind` | string | `props` | `props` keeps scripts and collision, `foliage` is MultiMesh without collision |
+| `targets` | array of node ids | omitted | Surfaces the set is painted on |
+| `items` | array | required | The models it scatters |
 | `collision` | string | `none` for foliage, else `convex` | `none`, `convex` or `trimesh` |
 | `cast_shadows` | bool | `true` | |
-| `visibility_range` | number | `0` | map units beyond which instances are hidden, 0 shows them at any distance |
-| `chunk_size` | number | `0` | grid cell in map units the instances are split into so Godot culls each cell, 0 keeps one MultiMesh (new sets use 2048) |
-| `static_props_multimesh` | bool | `false` | draw prop scenes that carry scripts as MultiMesh too, dropping their scripts |
-| `material` | string | none, omitted | material drawn instead of the models' own, for the whole set |
-| `instances` | array | empty | the placed instances |
+| `visibility_range` | number | `0` | Hide instances beyond this distance, 0 is never |
+| `chunk_size` | number | `0` | Split into cells this size for culling. New sets use 2048 |
+| `static_props_multimesh` | bool | `false` | Draw scripted prop scenes as MultiMesh too, dropping their scripts |
+| `material` | string | omitted | Material override for the whole set |
+| `instances` | array | empty | The placed instances |
 
-Except for `targets` and `material` every field is always written.
-
-`targets` are node ids, so they only hold within one map. When a set is duplicated or pasted together with a surface it
-targets, the copy targets the copied surface; targets that were not copied keep pointing at the originals.
+Duplicating a set together with a surface it targets makes the copy target the copied surface.
 
 Each item:
 
 | Key | Type | Default | Meaning |
-|---|---|---|---|
-| `source` | string | required | `res://` model or scene (`.bbmodel`, `.glb`, `.gltf`, `.tscn`) |
-| `weight` | number | `1` | relative chance of being picked |
-| `scale` | `[min, max]` | `[0.8, 1.2]` | random uniform scale range |
-| `spacing` | number | `48` | minimum distance in map units to every other instance |
-| `align` | number | `0` | 0 keeps instances upright, 1 aligns them to the surface normal |
+| --- | --- | --- | --- |
+| `source` | string | required | `res://` model or scene |
+| `weight` | number | `1` | Relative chance of being picked |
+| `scale` | `[min, max]` | `[0.8, 1.2]` | Random uniform scale |
+| `spacing` | number | `48` | Minimum distance to every other instance |
+| `align` | number | `0` | 0 upright, 1 aligned to the surface normal |
 | `random_yaw` | bool | `true` | |
-| `tilt` | number | `0` | largest random lean in degrees |
-| `sink` | number | `0` | map units pushed into the surface |
-| `material` | string | none, omitted | material override for this item, wins over the set's |
-| `enabled` | bool | `true`, omitted | whether the scatter brush paints this item; a disabled item keeps the instances it already has |
+| `tilt` | number | `0` | Largest random lean in degrees |
+| `sink` | number | `0` | Map units pushed into the surface |
+| `material` | string | omitted | Override for this item, wins over the set's |
+| `enabled` | bool | `true`, omitted | Whether the brush paints this item |
 
-Older files have no `enabled` key and load with every item switched on.
-
-Instances are stored as one flat array each, `[item, x, y, z, pitch, yaw, roll, scale]`, rather than as objects, so a set
-with thousands of trees stays small and diffs line by line. `item` indexes into `items`, the position is in map units,
-the angles are degrees in the same YXZ order as entity angles. On save the position is rounded to 0.01, the angles to 0.1
-and the scale to 0.001. Reading needs at least eight numbers and ignores any extra.
+Each instance is a flat array `[item, x, y, z, pitch, yaw, roll, scale]`, so thousands of trees stay small and diff
+line by line. `item` indexes `items`, angles are degrees in YXZ order. On save the position is rounded to 0.01, angles
+to 0.1 and scale to 0.001.
 
 ## Instance
 
-A reference to another `.gtm` file placed with a transform, like a Hammer `func_instance`. Prefabs are built from these.
+A reference to another `.gtm` placed with a transform, like Hammer's `func_instance`. Prefabs are built from these.
 
 | Key | Type | Default | Meaning |
-|---|---|---|---|
-| `path` | string | required | path relative to the referencing map, or a `res://` path |
+| --- | --- | --- | --- |
+| `path` | string | required | Relative to the referencing map, or `res://` |
 | `origin` | `[x, y, z]` | required | |
-| `angles` | `[pitch, yaw, roll]` | required | degrees, YXZ like entity angles |
-| `fixup` | string | `""`, omitted | name prefix for the instance's contents |
+| `angles` | `[pitch, yaw, roll]` | required | Degrees, YXZ |
+| `fixup` | string | `""`, omitted | Name prefix for the instance's contents |
 
-When building, the importer reads the referenced map and places the children of each of its layers that is not omitted
-under the instance's group, transformed by `origin` and `angles`. The referenced map's worldspawn properties are not
-used. Brush and mesh texture projections are transformed along with the geometry, so textures stay locked to it.
-Instances may nest up to eight levels deep.
+The importer places the children of every non omitted layer of the referenced map, transformed by `origin` and
+`angles`. Its worldspawn is not used. Texture projections move with the geometry. Instances nest up to eight levels.
 
-A prefab placed twice would otherwise produce two entities with the same targetname, and a button in one copy would
-open the door in both. `fixup` avoids that: with a fixup of `p1`, the `targetname`, `target`, `destination` and
-`call_target` properties, any property the entity's definition declares as `target_source` or `target_destination`, and
-the `target` of every output inside the instance get `p1-` prepended, so `door` becomes `p1-door` and the copy's own wiring
-still connects. Empty values and values starting with `!` (`!player`, `!activator`, `!self`), `@` (groups) or `/` (node
-paths) are left alone, a `*` wildcard is prefixed like any name. Nested instances add their prefixes outside in, so a
-fixup of `b` inside `a` gives `a-b-door`, and an inner instance without a fixup uses the outer one.
-
-*Explode Instance* in the editor gives the same names as a Godot build. It skips the prefab's omitted layers, prefixes
-the entities it creates and folds its own fixup into any nested instance, so exploding `a` and then `b` also ends at
-`a-b-door`.
+**Fixup.** With a fixup of `p1`, `door` becomes `p1-door` in `targetname`, `target`, `destination`, `call_target`, any
+property declared as `target_source` or `target_destination`, and every output `target`. Values starting with `!`, `@`
+or `/` are left alone. Nested fixups add up outside in, `b` inside `a` gives `a-b-door`. *Explode Instance* in the
+editor produces the same names.
 
 ## Coordinates and units
 
-Maps are stored in Godot's axis convention: Y is up, X right and Z towards the viewer, right handed. Positions are in map
-units. The Godot build divides by the `FuncGodotMapSettings` inverse scale factor, 32 by default, so 32 units are one
-meter. Internally the importer rotates everything into FuncGodot's id Tech axes (`id = (z, x, y)`); since that is a pure
-rotation, face windings and UV axes stay valid, but nothing in the file uses id axes.
+Godot's axes: Y up, X right, Z towards the viewer, right handed. The build divides by the inverse scale factor, 32 by
+default, so 32 units are one meter. Nothing in the file uses id Tech axes.
 
 | Quantity | Unit |
-|---|---|
-| positions, sizes, heights, spacing, cell size | map units |
-| entity, instance and scatter angles | degrees, pitch X, yaw Y, roll Z, YXZ order |
-| camera bookmark yaw and pitch | radians |
-| UV offset | texels |
-| UV scale | map units per texel |
-| mesh `uvs` | texture widths |
+| --- | --- |
+| Positions, sizes, heights, spacing, cell size | Map units |
+| Entity, instance and scatter angles | Degrees, pitch X, yaw Y, roll Z, YXZ order |
+| Camera bookmark yaw and pitch | Radians |
+| UV offset | Texels |
+| UV scale | Map units per texel |
+| Mesh `uvs` | Texture widths |
 
 ## Layout on disk
 
-The JSON is written by a small custom printer (`crates/gt_doc/src/json_fmt.rs`) so that diffs of a map stay readable:
+A custom printer (`crates/gt_doc/src/json_fmt.rs`) keeps diffs readable: two space indentation, keys in the order
+above, and short arrays and objects on one line. Every face is one line, and so is a `vertices` array of up to 64
+entries. Moving one brush changes that brush's lines and nothing else.
 
-* two space indentation and a trailing newline
-* keys in the order of the definitions above, and property objects sorted by key
-* an array or object whose compact form fits in 100 characters is written on one line, unless it has non-empty
-  `children`
-* every face is written on one line whatever its length
-* a `vertices` array with up to 64 entries is written on one line
-
-Moving one brush therefore changes the lines of that brush and nothing else. Any valid JSON with the same content loads
-the same, the layout only matters for version control.
+Any valid JSON with the same content loads the same, the layout only matters for version control.
 
 ## Clipboard
 
-Copy and paste use the same node shape inside a different wrapper:
+Copy and paste use the same node shape in a different wrapper:
 
 ```json
 {
@@ -396,11 +323,9 @@ Copy and paste use the same node shape inside a different wrapper:
 }
 ```
 
-`nodes` holds the copied subtrees, each with all of its descendants. Their parents are not included. Pasting refuses
-another `format` or a newer `version` and runs the same geometry checks as loading a map, then inserts every node under
-the paste target with fresh ids and keeps `hidden` and `locked`. A copied layer
-is not pasted as a layer, its children are pasted instead. The live link to Godot sends single nodes in the same shape as
-well, without `children`.
+`nodes` holds the copied subtrees without their parents. Pasting runs the same checks as loading, gives every node a
+fresh id and keeps `hidden` and `locked`. A copied layer pastes its children. The live link sends single nodes in the
+same shape, without `children`.
 
 ## Example
 

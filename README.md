@@ -29,7 +29,7 @@ the showcase maps above are rendered in Godot and were built entirely through th
 ![Live mode: edits in GodotTrench show up in the Godot editor before saving](docs/screenshots/GodotTrench-demo-live-view.gif)
 
 work in live mode to instantly see changes before saving 
-[Working with Godot](docs/godot.md).
+[Live mode](docs/godot/live.md).
 
 # Disclosure
 This project makes use of AI / LLMs, specifically Claude.
@@ -60,10 +60,14 @@ to use a map in Godot, add a `FuncGodotMap` node, point it at a `.gtm` file and 
 
 ## Docs
 
-* [Tools and controls](docs/tools.md)
-* [Working with Godot: live mode, builds, live link protocol](docs/godot.md)
-* [Gameplay entities, I/O and C#](docs/gameplay.md)
-* [MCP server and scripts](docs/mcp.md)
+The documentation is at **[paraxdev.github.io/GodotTrench](https://paraxdev.github.io/GodotTrench/)**, built from
+[docs](docs/README.md). Good places to start:
+
+* [Getting started](docs/getting-started.md)
+* [Shortcuts](docs/editor/shortcuts.md)
+* [Building maps in Godot](docs/godot/building.md)
+* [How entity I/O works](docs/gameplay/io.md)
+* [MCP server](docs/mcp.md)
 * [Development: building, tests, CI](docs/development.md)
 * [Fork changes](godot/addons/func_godot/FORK.md)
 

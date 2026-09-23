@@ -1,5 +1,8 @@
 # Development
 
+Contributing with an AI agent? [AGENTS.md](https://github.com/Paraxdev/GodotTrench/blob/main/AGENTS.md) lists the rules
+and the checks a pull request has to pass.
+
 ## Building
 
 ```sh
@@ -7,58 +10,82 @@ cargo run -p gt_editor --release            # start the editor
 cargo run -p gt_editor --release -- map.gtm # open a map
 ```
 
-Requires a GPU with Vulkan, DX12 or Metal support. On Linux the window needs X11 or Wayland.
+| Requirement | Notes |
+| --- | --- |
+| GPU | Vulkan, DX12 or Metal. On Linux the window needs X11 or Wayland |
+| Rust | 1.95 or newer, the minimum egui 0.36 supports. Cargo stops an older compiler with a clear error |
 
-Building needs Rust 1.95 or newer, the minimum egui 0.36 supports, and cargo stops an older compiler with a clear
-error. [rust-toolchain.toml](../rust-toolchain.toml) pins 1.98.1, the version CI uses, so with rustup the right
-toolchain installs itself on the first build. Clippy warns when code uses an API newer than 1.95.
+[rust-toolchain.toml](https://github.com/Paraxdev/GodotTrench/blob/main/rust-toolchain.toml) pins 1.98.1, the version CI
+uses, so rustup installs the right toolchain on the first build. Clippy warns when code uses an API newer than 1.95.
 
 ## Formatting
 
-All Rust is formatted with the settings in [rustfmt.toml](../rustfmt.toml), so hand written and AI written commits share one
-style. `tools/fmt` runs rustfmt and then [tools/space_blocks.py](../tools/space_blocks.py), a pass that adds one blank line
-after a multi-line block so humans get vertical breathing room that stable rustfmt will not insert on its own (it only ever
-adds blank lines, never touches tokens). Run `tools/fmt --install` once per clone to enable the pre-commit hook in
-[.githooks](../.githooks); it formats staged Rust before each commit. `tools/fmt --check` verifies both passes, which is what CI runs.
+Run `tools/fmt --install` once per clone. It enables a pre-commit hook that formats staged Rust.
+
+`tools/fmt` runs rustfmt with
+[rustfmt.toml](https://github.com/Paraxdev/GodotTrench/blob/main/rustfmt.toml), then
+[tools/space_blocks.py](https://github.com/Paraxdev/GodotTrench/blob/main/tools/space_blocks.py), which adds one blank
+line after a multi-line block. It only ever adds blank lines, never touches tokens. `tools/fmt --check` verifies both,
+which is what CI runs.
 
 ## Tests
 
 ```sh
-cargo test --workspace                                            # unit tests + headless UI tests (egui_kittest)
-cargo test -p gt_editor --test e2e -- --ignored --test-threads=1  # end to end: launches the editor, drives it over MCP
+cargo test --workspace                                            # unit tests and headless UI tests
+cargo test -p gt_editor --test e2e -- --ignored --test-threads=1  # end to end, drives the editor over MCP
 
 cargo run -p gt_formats --example demo_maps                       # regenerate the Godot test maps
 godot --headless --path godot --import                            # run twice on a fresh checkout
-godot --headless --path godot --script res://tests/run_tests.gd   # addon tests: .gtm build, I/O, gameplay entities, scatter, blend, C#, live sessions, a showcase playthrough
-godot --headless --path godot --script res://tests/bench_build.gd -- runs=5 threaded=1  # time each build step of the showcase maps
+godot --headless --path godot --script res://tests/run_tests.gd   # addon tests
 ```
 
-To try the live link end to end without a window, open a scene with a `FuncGodotMap` in a headless Godot editor
-(`godot --headless --editor --path godot res://path/scene.tscn`), start the editor with `--mcp-http --project godot`, and
-check what Godot built with the `inspect` event described in [Working with Godot](godot.md).
+The addon tests cover the `.gtm` build, I/O, gameplay entities, scatter, blend, C#, live sessions and a showcase
+playthrough. The `example_mcp_scripts_replay` end to end test replays every script in `examples/mcp`.
 
-The `example_mcp_scripts_replay` end to end test replays every script in `examples/mcp` and checks the result.
+To test the live link without a window, see [Live link protocol](godot/live-link.md#testing-without-a-window).
 
 ## Generated content
 
-* `python tools/fetch_demo_textures.py` downloads the CC0 photo textures of the demo project and writes their materials,
-  see [Materials and texture size](godot.md#materials-and-texture-size).
-* `python tools/fetch_demo_props.py` downloads the CC0 Poly Haven props into `godot/models/polyhaven`. Poly Haven's
-  glTFs ship the glass and flame colors as JPGs, which lose the alpha map, so the script merges it back into a PNG
-  (`--fix-alpha` does only that for the props on disk) and turns `KHR_materials_transmission`, which Godot's importer
-  ignores, into `BLEND`.
-* `cargo run -p gt_samples --bin showcase --release` regenerates the demo Blockbench models.
-* `cargo run -p gt_editor --example export_addon_fgd` regenerates the addon's FGD resources from the built in entity definitions.
-* `python tools/gen_licenses.py` regenerates the Rust crate table in [LICENSES.md](../LICENSES.md).
+| Command | Regenerates |
+| --- | --- |
+| `python tools/fetch_demo_textures.py` | The demo's CC0 photo textures and their materials, see [texture size](godot/materials.md#texture-size) |
+| `python tools/fetch_demo_props.py` | The CC0 Poly Haven props in `godot/models/polyhaven`, with their alpha maps fixed |
+| `cargo run -p gt_samples --bin showcase --release` | The demo Blockbench models |
+| `cargo run -p gt_editor --example export_addon_fgd` | The addon's FGD resources from the built in entity definitions |
+| `python tools/gen_licenses.py` | The Rust crate table in [LICENSES.md](https://github.com/Paraxdev/GodotTrench/blob/main/LICENSES.md) |
+
+Poly Haven ships glass and flame colors as JPGs, which lose the alpha map. `fetch_demo_props.py` merges it back into a
+PNG (`--fix-alpha` does only that) and turns `KHR_materials_transmission`, which Godot ignores, into `BLEND`.
+
+## Documentation
+
+These docs live in `docs/` as a GitBook style book, built with [HonKit](https://github.com/honkit/honkit) and published
+to GitHub Pages by `.github/workflows/pages.yml` on every push to `main` that touches them. Pull requests build the book
+too, so a broken page fails before it merges.
+
+`docs/SUMMARY.md` is the table of contents. A page not listed there is not built. To preview:
+
+```sh
+npx honkit@6.2.2 serve docs          # live preview on http://localhost:4000
+npx honkit@6.2.2 build docs _site    # the same build CI runs
+```
+
+`.gitbook.yaml` points GitBook's Git Sync at the same folder, so the repository can also back a gitbook.com space.
 
 ## CI and releases
 
-GitHub Actions runs fmt, clippy and the Rust tests on Linux and Windows, the end to end tests on Linux with software Vulkan,
-and the Godot addon tests. Every green push to `main` replaces the
-[rolling alpha](https://github.com/Paraxdev/GodotTrench/releases/tag/alpha) with editor builds for Linux, Windows and macOS,
-the addon zip and the demo project.
+GitHub Actions runs fmt, clippy and the Rust tests on Linux and Windows, the end to end tests on Linux with software
+Vulkan, and the Godot addon tests.
 
-The same push also uploads to [itch.io](https://paraxdev.itch.io/godottrench) with [butler](https://itch.io/docs/butler/):
-the three editor builds on the `linux`, `windows` and `mac` channels, plus the addon and demo project zips on the `addon`
-and `demo-project` channels. Add a repository secret named `BUTLER_API_KEY` (a butler API key from itch) to enable it; the
-step skips itself while the secret is absent.
+Every green push to `main` replaces the
+[rolling alpha](https://github.com/Paraxdev/GodotTrench/releases/tag/alpha) with editor builds for Linux, Windows and
+macOS, the addon zip and the demo project. It also uploads to [itch.io](https://paraxdev.itch.io/godottrench) with
+[butler](https://itch.io/docs/butler/):
+
+| Channel | Upload |
+| --- | --- |
+| `linux`, `windows`, `mac` | The editor builds |
+| `addon` | The addon zip |
+| `demo-project` | The demo project zip |
+
+Add a repository secret named `BUTLER_API_KEY` to enable the upload, the step skips itself without it.
