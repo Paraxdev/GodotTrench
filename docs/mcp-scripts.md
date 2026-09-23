@@ -45,7 +45,9 @@ or its file.
 ```
 
 A step without `tool` is a comment. A step with `save` stores its result under that name for later steps.
-`screenshot`, `simulate_input` and `run_script` cannot run inside a script.
+`screenshot`, `simulate_input` and `run_script` cannot run inside a script. `run_script`'s summary reports `steps`
+and `notes` separately, so a 286 line script with 12 comments reads as 274 steps, 12 notes rather than losing the
+comments from the count.
 
 | Write | Means |
 | --- | --- |
@@ -58,7 +60,8 @@ A step without `tool` is a comment. A step with `save` stores its result under t
 | `$$` | A literal `$`, so a node path is `"$$Player"` |
 
 An unknown name is an error. A `$` that cannot start a name, like `"$5"`, stays as it is. Ids given as text, such as
-`"42"`, work wherever a node id is expected.
+`"42"`, work wherever a node id is expected. `$name/rest` without braces does not expand, an unbraced `$project/maps`
+is an error rather than a path nobody meant to write; use `"${project}/maps"`.
 
 ## Ids after CSG
 

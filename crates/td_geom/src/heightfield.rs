@@ -658,8 +658,7 @@ impl Terrain {
         changed
     }
 
-    /// Cuts or restores holes in the cells whose center lies within `radius`.
-    pub fn set_holes(&mut self, center: DVec3, radius: f64, hole: bool) -> bool {
+    fn set_holes_where(&mut self, hole: bool, mut inside: impl FnMut(DVec3) -> bool) -> bool {
         let [cw, cd] = self.cells();
         if self.holes.len() != (cw * cd) as usize {
             self.holes = vec![0; (cw * cd) as usize];
@@ -669,7 +668,7 @@ impl Terrain {
         for cj in 0..cd {
             for ci in 0..cw {
                 let c = self.origin + DVec3::new((ci as f64 + 0.5) * self.cell_size, 0.0, (cj as f64 + 0.5) * self.cell_size);
-                if DVec2::new(c.x - center.x, c.z - center.z).length() <= radius {
+                if inside(c) {
                     let k = (cj * cw + ci) as usize;
                     let v = hole as u8;
                     if self.holes[k] != v {
@@ -682,6 +681,47 @@ impl Terrain {
 
         if self.holes.iter().all(|h| *h == 0) {
             self.holes.clear();
+        }
+
+        changed
+    }
+
+    /// Cuts or restores holes in the cells whose center lies within `radius`.
+    pub fn set_holes(&mut self, center: DVec3, radius: f64, hole: bool) -> bool {
+        self.set_holes_where(hole, |c| DVec2::new(c.x - center.x, c.z - center.z).length() <= radius)
+    }
+
+    /// Cuts or restores holes in the cells whose center lies inside the rectangle `min`..`max` (world x, z).
+    pub fn set_holes_rect(&mut self, min: DVec2, max: DVec2, hole: bool) -> bool {
+        let (lo, hi) = (min.min(max), min.max(max));
+        self.set_holes_where(hole, |c| c.x >= lo.x && c.x <= hi.x && c.z >= lo.y && c.z <= hi.y)
+    }
+
+    /// Removes `layer`'s paint across the whole terrain, so a script that repaints an area from scratch gives the
+    /// same result no matter how many times it runs, instead of blending on top of whatever was there before.
+    pub fn clear_layer(&mut self, layer: usize) -> bool {
+        let layer = self.layer_slot(layer);
+        let n = self.heights.len();
+        if self.splat.len() != n * 4 {
+            return false;
+        }
+
+        let w = self.resolution[0];
+        let mut changed = false;
+        for k in 0..n {
+            let mut weights = self.weights(k as u32 % w, k as u32 / w);
+            if weights[layer] == 0.0 {
+                continue;
+            }
+
+            weights[layer] = 0.0;
+            let sum: f32 = weights.iter().sum();
+            weights = if sum > 0.0 { weights.map(|v| v / sum) } else { [1.0, 0.0, 0.0, 0.0] };
+            for (dst, wl) in self.splat[k * 4..k * 4 + 4].iter_mut().zip(weights) {
+                *dst = (wl * 255.0).round().clamp(0.0, 255.0) as u8;
+            }
+
+            changed = true;
         }
 
         changed
@@ -965,6 +1005,39 @@ mod tests {
         assert!(t.set_holes(DVec3::ZERO, 15.0, true));
         assert!(t.ray_cast(&Ray::new(DVec3::new(5.0, 100.0, 5.0), DVec3::NEG_Y)).is_none());
         t.set_holes(DVec3::ZERO, 15.0, false);
+        assert!(t.holes.is_empty());
+    }
+
+    #[test]
+    fn clear_layer_resets_the_whole_terrain_so_repainting_is_idempotent() {
+        let mut t = flat();
+        t.layers.push(TerrainLayer::new("rock", 128.0));
+        t.paint_layer(DVec3::ZERO, 400.0, 1, 1.0);
+        assert!(t.weights(16, 16)[1] > 0.99);
+        assert!(t.clear_layer(1));
+        for j in 0..t.resolution[1] {
+            for i in 0..t.resolution[0] {
+                assert_eq!(t.weights(i, j), [1.0, 0.0, 0.0, 0.0], "layer 1 cleared at {i} {j}");
+            }
+        }
+
+        assert!(!t.clear_layer(1), "already clear, nothing changed");
+        // Painting the same area twice after a clear gives the same result as painting it once.
+        t.paint_layer(DVec3::ZERO, 400.0, 1, 1.0);
+        let once = t.weights(16, 16);
+        t.clear_layer(1);
+        t.paint_layer(DVec3::ZERO, 400.0, 1, 1.0);
+        t.paint_layer(DVec3::ZERO, 400.0, 1, 1.0);
+        assert_eq!(t.weights(16, 16), once);
+    }
+
+    #[test]
+    fn holes_rect_cuts_a_rectangle_and_leaves_the_rest() {
+        let mut t = flat();
+        assert!(t.set_holes_rect(DVec2::new(-20.0, -20.0), DVec2::new(20.0, 20.0), true));
+        assert!(t.is_hole(16, 16), "the cell under the origin is cut");
+        assert!(!t.is_hole(0, 0), "a corner far outside the rectangle is untouched");
+        assert!(t.set_holes_rect(DVec2::new(-20.0, -20.0), DVec2::new(20.0, 20.0), false));
         assert!(t.holes.is_empty());
     }
 

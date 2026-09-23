@@ -562,9 +562,12 @@ impl App {
                     Some(root) => {
                         self.state.load_project(&root);
                         self.project_generation += 1;
-                        ok(
-                            json!({ "project_root": path_text(&root), "game": self.state.game.name, "entities": self.state.game.entities.len(), "materials": self.state.materials.entries.len(), "status": self.state.status }),
-                        )
+                        ok(json!({
+                            "project_root": path_text(&root), "game": self.state.game.name, "entities": self.state.game.entities.len(),
+                            "materials": self.state.materials.entries.len(), "status": self.state.status,
+                            "addon_version": self.state.game.addon_version,
+                            "addon_version_mismatch": self.state.game.addon_version.as_deref().is_some_and(|v| v != crate::VERSION),
+                        }))
                     }
                     None => err("no project.godot found"),
                 }
@@ -729,7 +732,11 @@ impl App {
                 "scale": (s.prefs.ui_scale as f64 * 100.0).round() / 100.0, "follow_display_scaling": s.prefs.follow_display_scaling,
                 "pixels_per_point": self.viewports.first().map(|v| (v.pixels_per_point as f64 * 1000.0).round() / 1000.0),
             },
-            "game": { "name": s.game.name, "project_root": path_value(s.game.project_root.as_ref()), "entity_definitions": s.game.entities.len(), "materials": s.materials.entries.len() },
+            "game": {
+                "name": s.game.name, "project_root": path_value(s.game.project_root.as_ref()), "entity_definitions": s.game.entities.len(),
+                "materials": s.materials.entries.len(), "editor_version": crate::VERSION, "addon_version": s.game.addon_version,
+                "addon_version_mismatch": s.game.addon_version.as_deref().is_some_and(|v| v != crate::VERSION),
+            },
             "godot": {
                 "executable": s.godot.exe, "connected": s.link_state.connected, "addon_outdated": s.link_state.outdated,
                 "project_open": s.godot_has_project(), "version": s.link_state.godot, "busy": s.link_state.busy,
@@ -1014,6 +1021,13 @@ impl App {
             "new_tab" => Action::NewTab,
             "next_tab" => Action::NextTab,
             "close_tab" => {
+                if a["close_others"].as_bool().unwrap_or(false) {
+                    return match self.state.close_other_tabs(a["discard"].as_bool().unwrap_or(false)) {
+                        Ok(closed) => ok(json!({ "ok": true, "closed": closed, "tabs": self.state.tab_titles().0 })),
+                        Err(e) => err(e),
+                    };
+                }
+
                 if a["discard"].as_bool().unwrap_or(false) {
                     self.state.discard_tab();
                     return ok(json!({ "ok": true, "tabs": self.state.tab_titles().0 }));
@@ -1307,7 +1321,11 @@ impl App {
 
     fn tool_map_file(&mut self, args: &Value) -> ToolResult {
         let op = args["op"].as_str().unwrap_or_default();
-        let path = args["path"].as_str().map(std::path::PathBuf::from);
+        // A relative path resolves against the process directory, which a later save should not depend on.
+        let path = args["path"]
+            .as_str()
+            .map(std::path::PathBuf::from)
+            .map(|p| if matches!(op, "open" | "open_tab") { std::path::absolute(&p).unwrap_or(p) } else { p });
         let need = |p: Option<std::path::PathBuf>| p.ok_or_else(|| format!("map_file {op} needs a path"));
         let modified = self.state.doc.is_modified();
         let result: Result<Value, String> = match op {
