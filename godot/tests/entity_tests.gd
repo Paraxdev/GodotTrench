@@ -368,6 +368,26 @@ func test_particles_and_sequence() -> void:
 	particles.stop()
 	check(not particles.one_shot and not particles.emitting, "stop during a burst restores continuous mode and stays off")
 
+	var looks := {}
+	for effect in ["rise", "fire", "smoke", "sparks", "rain", "lava"]:
+		var p := GTParticles.new()
+		p._func_godot_apply_properties({ "effect": effect, "color": "255 128 0", "size": 0.5 if effect == "fire" else 0.0, "blend": "mix" if effect == "rise" else "auto" })
+		map.add_child(p)
+		looks[effect] = p
+	var soft := func(p: GTParticles) -> StandardMaterial3D:
+		return p.draw_pass_1.surface_get_material(0) as StandardMaterial3D if p.draw_pass_1 else null
+	var fire: StandardMaterial3D = soft.call(looks["fire"])
+	check(fire and fire.blend_mode == BaseMaterial3D.BLEND_MODE_ADD and fire.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED and fire.albedo_texture is GradientTexture2D,
+		"fire draws soft additive unshaded sprites")
+	check(fire and fire.albedo_color.is_equal_approx(Color(1, 128 / 255.0, 0)) and (looks["fire"].draw_pass_1 as QuadMesh).size == Vector2(0.5, 0.5), "color tints and size sets the sprite size")
+	check((looks["fire"].process_material as ParticleProcessMaterial).color_ramp.gradient.get_color(0).a == 0.0, "particles fade in and out over their lifetime")
+	var smoke: StandardMaterial3D = soft.call(looks["smoke"])
+	check(smoke and smoke.blend_mode == BaseMaterial3D.BLEND_MODE_MIX and (looks["smoke"].draw_pass_1 as QuadMesh).size == Vector2(0.8, 0.8), "smoke mixes and keeps its own size")
+	check(soft.call(looks["rise"]).blend_mode == BaseMaterial3D.BLEND_MODE_MIX, "blend overrides the effect's own")
+	check(looks["sparks"].transform_align == GPUParticles3D.TRANSFORM_ALIGN_Z_BILLBOARD_Y_TO_VELOCITY, "sparks stretch along their velocity")
+	check((looks["rain"].process_material as ParticleProcessMaterial).emission_shape == ParticleProcessMaterial.EMISSION_SHAPE_BOX, "rain still falls from a box")
+	check(looks["lava"].effect == "rise" and soft.call(looks["lava"]) != null, "an unknown effect falls back to rise with a warning")
+
 	var seq := GTSequence.new()
 	seq._func_godot_apply_properties({ "steps": 2, "times": "0 0", "loop": true })
 	map.add_child(seq)
