@@ -259,6 +259,8 @@ struct Lexer<'a> {
     chars: std::iter::Peekable<std::str::CharIndices<'a>>,
     src: &'a str,
     line: usize,
+    /// Quake 3 patches and brush primitives, which have no brush equivalent and are left out.
+    skipped: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -275,7 +277,22 @@ enum Tok {
 
 impl<'a> Lexer<'a> {
     fn new(src: &'a str) -> Self {
-        Self { chars: src.char_indices().peekable(), src, line: 1 }
+        Self { chars: src.char_indices().peekable(), src, line: 1, skipped: 0 }
+    }
+
+    /// Skips tokens up to the `}` closing a block whose `{` was already read.
+    fn skip_block(&mut self) -> Result<(), MapError> {
+        let mut depth = 1;
+        while depth > 0 {
+            match self.next() {
+                Some(Tok::Open) => depth += 1,
+                Some(Tok::Close) => depth -= 1,
+                Some(_) => {}
+                None => return Err(MapError::Syntax { line: self.line, message: "unexpected end of file in a patch".into() }),
+            }
+        }
+
+        Ok(())
     }
 
     fn next(&mut self) -> Option<Tok> {
@@ -300,8 +317,10 @@ impl<'a> Lexer<'a> {
         }
 
         let (start, c) = self.chars.next()?;
+        // `{fence` is a texture name, cut out like Half-Life's, while a block brace always stands alone.
+        let brace_word = c == '{' && self.chars.peek().is_some_and(|(_, n)| !n.is_whitespace() && !matches!(n, '{' | '}' | '(' | '"'));
         Some(match c {
-            '{' => Tok::Open,
+            '{' if !brace_word => Tok::Open,
             '}' => Tok::Close,
             '(' => Tok::ParenOpen,
             ')' => Tok::ParenClose,
@@ -454,6 +473,16 @@ fn parse_brush(lx: &mut Lexer) -> Result<Option<Brush>, MapError> {
                 let material = if texture == "__TB_empty" { String::new() } else { texture };
                 planes.push((plane, FaceData::new(material, uv)));
             }
+            Some(Tok::Word(w)) if planes.is_empty() && matches!(w.to_ascii_lowercase().as_str(), "patchdef2" | "patchdef3" | "brushdef" | "brushdef3") => {
+                if lx.next() != Some(Tok::Open) {
+                    return Err(MapError::Syntax { line, message: format!("expected {{ after {w}") });
+                }
+
+                lx.skip_block()?;
+                lx.skip_block()?;
+                lx.skipped += 1;
+                return Ok(None);
+            }
             Some(Tok::Word(_)) => {}
             None => return Err(MapError::Syntax { line, message: "unexpected end of file in brush".into() }),
             Some(other) => return Err(MapError::Syntax { line, message: format!("unexpected {other:?} in brush") }),
@@ -463,7 +492,7 @@ fn parse_brush(lx: &mut Lexer) -> Result<Option<Brush>, MapError> {
     Ok(Brush::from_planes(planes).ok())
 }
 
-fn parse_entities(src: &str) -> Result<Vec<RawEntity>, MapError> {
+fn parse_entities(src: &str) -> Result<(Vec<RawEntity>, usize), MapError> {
     let mut lx = Lexer::new(src);
     let mut out = Vec::new();
     while let Some(tok) = lx.next() {
@@ -493,7 +522,7 @@ fn parse_entities(src: &str) -> Result<Vec<RawEntity>, MapError> {
         out.push(ent);
     }
 
-    Ok(out)
+    Ok((out, lx.skipped))
 }
 
 fn vec_prop(s: &str) -> Option<DVec3> {
@@ -501,9 +530,53 @@ fn vec_prop(s: &str) -> Option<DVec3> {
     (p.len() >= 3).then(|| DVec3::new(p[0], p[1], p[2]))
 }
 
+/// What an import had to leave out.
+#[derive(Debug, Default)]
+pub struct ImportReport {
+    /// Quake 3 patches and brush primitives.
+    pub skipped_patches: usize,
+}
+
 /// Imports a Quake `.map`. TrenchBroom layers and groups become GodotTrench layers and groups.
 pub fn import(src: &str) -> Result<Map, MapError> {
-    let entities = parse_entities(src)?;
+    import_report(src).map(|(map, _)| map)
+}
+
+/// The project tool texture a Quake, Quake 2 or Quake 3 tool texture stands for, such as `skip`, `e1u1/clip` or
+/// `common/caulk`.
+pub fn tool_texture(name: &str, options: &crate::vmf::ImportOptions) -> Option<String> {
+    let lower = name.to_ascii_lowercase();
+    let (folder, base) = lower.rsplit_once('/').unwrap_or(("", &lower));
+    if !matches!(folder, "" | "common" | "e1u1" | "tools") {
+        return None;
+    }
+
+    Some(match base {
+        "skip" | "hint" | "hintskip" | "caulk" | "nodraw" | "areaportal" | "clusterportal" | "skyportal" => options.tools.skip.clone(),
+        "clip" | "playerclip" | "monsterclip" | "botclip" | "fullclip" | "weapclip" | "invisible" => options.tools.clip.clone(),
+        "trigger" => options.trigger.clone(),
+        "origin" => options.tools.origin.clone(),
+        _ => return None,
+    })
+}
+
+/// [`import_report`], with the tool textures of other games renamed to the project's.
+pub fn import_with(src: &str, options: &crate::vmf::ImportOptions) -> Result<(Map, ImportReport), MapError> {
+    let (mut map, report) = import_report(src)?;
+    let ids: Vec<NodeId> = map.brushes().map(|(id, _)| id).collect();
+    for id in ids {
+        for f in map.brush_mut(id).map(|b| b.faces.iter_mut()).into_iter().flatten() {
+            if let Some(tool) = tool_texture(&f.data.material, options) {
+                f.data.material = tool;
+            }
+        }
+    }
+
+    Ok((map, report))
+}
+
+pub fn import_report(src: &str) -> Result<(Map, ImportReport), MapError> {
+    let (entities, skipped_patches) = parse_entities(src)?;
     let mut map = Map::new();
     let default_layer = map.default_layer();
     let mut containers: BTreeMap<String, NodeId> = BTreeMap::new();
@@ -610,7 +683,7 @@ pub fn import(src: &str) -> Result<Map, MapError> {
         }
     }
 
-    Ok(map)
+    Ok((map, ImportReport { skipped_patches }))
 }
 
 #[cfg(test)]
@@ -826,5 +899,52 @@ mod tests {
         let m = import(src).unwrap();
         let (_, e) = m.entities().next().unwrap();
         assert!((e.angles - angles_from_quake(DVec3::new(0.0, 90.0, 0.0))).length() < 1e-9, "{:?}", e.angles);
+    }
+
+    #[test]
+    fn fence_textures_starting_with_a_brace_are_names() {
+        let src = "{\n\"classname\" \"worldspawn\"\n{\n\
+( -64 -64 -16 ) ( -64 -63 -16 ) ( -64 -64 -15 ) wall [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1\n\
+( -64 -64 -16 ) ( -64 -64 -15 ) ( -63 -64 -16 ) wall [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1\n\
+( -64 -64 -16 ) ( -63 -64 -16 ) ( -64 -63 -16 ) {fence [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1\n\
+( 64 64 16 ) ( 64 65 16 ) ( 65 64 16 ) {fence [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1\n\
+( 64 64 16 ) ( 65 64 16 ) ( 64 64 17 ) wall [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1\n\
+( 64 64 16 ) ( 64 64 17 ) ( 64 65 16 ) wall [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1\n}\n}\n";
+        let m = import(src).unwrap();
+        let (_, b) = m.brushes().next().expect("the brush survives");
+        assert_eq!(b.faces.iter().filter(|f| f.data.material == "{fence").count(), 2);
+    }
+
+    #[test]
+    fn tool_textures_of_other_games_become_the_projects() {
+        let options = crate::vmf::ImportOptions::default();
+        for (name, tool) in
+            [("skip", "special/skip"), ("HINT", "special/skip"), ("common/caulk", "special/skip"), ("clip", "special/clip"), ("e1u1/clip", "special/clip")]
+        {
+            assert_eq!(tool_texture(name, &options).as_deref(), Some(tool), "{name}");
+        }
+
+        assert_eq!(tool_texture("trigger", &options).as_deref(), Some("special/trigger"));
+        assert_eq!(tool_texture("metal/clip", &options), None, "a texture that only happens to be called clip");
+        assert_eq!(tool_texture("wall", &options), None);
+        let src = "{\n\"classname\" \"worldspawn\"\n{\n\
+( -64 -64 -16 ) ( -64 -63 -16 ) ( -64 -64 -15 ) skip 0 0 0 1 1\n\
+( -64 -64 -16 ) ( -64 -64 -15 ) ( -63 -64 -16 ) skip 0 0 0 1 1\n\
+( -64 -64 -16 ) ( -63 -64 -16 ) ( -64 -63 -16 ) wall 0 0 0 1 1\n\
+( 64 64 16 ) ( 64 65 16 ) ( 65 64 16 ) wall 0 0 0 1 1\n\
+( 64 64 16 ) ( 65 64 16 ) ( 64 64 17 ) skip 0 0 0 1 1\n\
+( 64 64 16 ) ( 64 64 17 ) ( 64 65 16 ) skip 0 0 0 1 1\n}\n}\n";
+        let (m, _) = import_with(src, &options).unwrap();
+        let (_, b) = m.brushes().next().unwrap();
+        assert_eq!(b.faces.iter().filter(|f| f.data.material == "special/skip").count(), 4);
+    }
+
+    #[test]
+    fn quake3_patches_are_skipped_and_counted() {
+        let src = "{\n\"classname\" \"worldspawn\"\n{\npatchDef2\n{\nbase/metal\n( 3 3 0 0 0 )\n(\n( ( 0 0 0 0 0 ) ( 0 8 0 0 0.5 ) ( 0 16 0 0 1 ) )\n)\n}\n}\n}\n{\n\"classname\" \"info_player_start\"\n\"origin\" \"0 0 24\"\n}\n";
+        let (m, report) = import_report(src).unwrap();
+        assert_eq!(report.skipped_patches, 1);
+        assert_eq!(m.brush_count(), 0);
+        assert_eq!(m.entity_count(), 1, "the entity after the patch still imports");
     }
 }
