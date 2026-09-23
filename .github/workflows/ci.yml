@@ -3,11 +3,11 @@ name: CI
 on:
   push:
     branches: [main]
-    # The wiki has its own Pages deploy workflow (pages.yml) and publishes straight to main from
-    # the browser, one commit per save or image upload. Without this, every one of those commits
-    # runs the full Rust/E2E/Godot suite, replaces the rolling alpha release, and pushes to itch.
+    # The docs have their own build and deploy workflow (pages.yml). Without this, a docs only
+    # commit runs the full Rust/E2E/Godot suite, replaces the rolling alpha release, and pushes to itch.
     paths-ignore:
-      - "wiki/**"
+      - "docs/**"
+      - ".gitbook.yaml"
       - "**/*.md"
   pull_request:
   workflow_dispatch:
