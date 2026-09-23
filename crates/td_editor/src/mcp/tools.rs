@@ -419,8 +419,28 @@ impl App {
                     Err(e) => Reply::Now(err(e)),
                 }
             }
-            _ => Reply::Now(self.run_tool(name, args, ctx)),
+            _ => Reply::Now(self.run_tool_as_one_step(name, args, ctx)),
         }
+    }
+
+    /// Runs a tool as one undo step labelled "MCP: ...", so a person can take back an agent's call in one go. A script
+    /// labels its own step.
+    fn run_tool_as_one_step(&mut self, name: &str, args: Value, ctx: &egui::Context) -> ToolResult {
+        if name == "run_script" {
+            return self.run_tool(name, args, ctx);
+        }
+
+        let mark = self.state.doc.mark();
+        let call = match args["op"].as_str().or(args["action"].as_str()) {
+            Some(op) => format!("{name} {op}"),
+            None => name.to_string(),
+        };
+        let result = self.run_tool(name, args, ctx);
+        self.state.doc.squash_since(mark, |steps| match steps {
+            [one] => format!("MCP: {one}"),
+            _ => format!("MCP: {call}, {} edits", steps.len()),
+        });
+        result
     }
 
     /// Runs a tool that answers right away, as every tool inside run_script must.
@@ -723,8 +743,14 @@ impl App {
                     Err(e) => err(format!("Save failed: {e}")),
                 };
             }
-            "undo" => Action::Undo,
-            "redo" => Action::Redo,
+            "undo" | "redo" => {
+                let action = if name == "undo" { Action::Undo } else { Action::Redo };
+                for _ in 1..a["steps"].as_u64().unwrap_or(1) {
+                    crate::commands::execute(&mut self.state, action.clone(), ctx);
+                }
+
+                action
+            }
             "delete" => Action::Delete,
             "duplicate" => Action::Duplicate,
             "select_all" => Action::SelectAll,

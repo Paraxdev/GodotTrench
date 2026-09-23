@@ -1204,6 +1204,13 @@ impl App {
             }
         }
 
+        let label = args["label"]
+            .as_str()
+            .or(doc["label"].as_str())
+            .map(str::to_string)
+            .or_else(|| args["path"].as_str().and_then(|p| std::path::Path::new(p).file_name()).map(|n| n.to_string_lossy().into_owned()))
+            .unwrap_or_else(|| "script".into());
+        let mut mark = self.state.doc.mark();
         let continue_on_error = args["continue_on_error"].as_bool().unwrap_or(false);
         // Only results of steps follow replaced brushes, variables passed in stay as written.
         let mut saved_results: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
@@ -1231,7 +1238,13 @@ impl App {
                 }
             };
             ran += 1;
-            match self.run_tool(&step.tool, resolved, ctx) {
+            let result = self.run_tool(&step.tool, resolved, ctx);
+            // A step that opens or starts another map begins the undo step there.
+            if !self.state.doc.owns(&mark) {
+                mark = self.state.doc.mark();
+            }
+
+            match result {
                 ToolResult::Json(v) => {
                     let replaced = super::script::replacements(&v);
                     for name in saved_results.iter().chain(["last".to_string()].iter()) {
@@ -1263,8 +1276,9 @@ impl App {
             }
         }
 
+        let undo = self.state.doc.squash_since(mark, |_| format!("MCP: {label}, {ran} steps"));
         let saved: serde_json::Map<String, Value> = vars.into_iter().filter(|(k, _)| k != "last").collect();
-        let summary = json!({ "steps": steps.len(), "ran": ran, "errors": errors, "vars": saved, "state": self.state_summary()["map"] });
+        let summary = json!({ "steps": steps.len(), "ran": ran, "errors": errors, "undo": undo, "vars": saved, "state": self.state_summary()["map"] });
         if errors.is_empty() || continue_on_error { ok(summary) } else { ToolResult::Error(serde_json::to_string_pretty(&summary).unwrap_or_default()) }
     }
 }
