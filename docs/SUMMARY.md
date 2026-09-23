@@ -19,9 +19,13 @@
 ## Godot
 
 * [Building maps](godot/building.md)
+* [Streaming big maps](godot/streaming.md)
 * [Live mode and hot reload](godot/live.md)
-* [Materials and lighting](godot/materials.md)
+* [Running Godot from the editor](godot/running-godot.md)
+* [Materials](godot/materials.md)
+* [Night lighting](godot/night-lighting.md)
 * [Overlays](godot/overlays.md)
+* [Wiring overlays](godot/overlay-wiring.md)
 * [Project setup](godot/project-setup.md)
 * [Live link protocol](godot/live-link.md)
 
