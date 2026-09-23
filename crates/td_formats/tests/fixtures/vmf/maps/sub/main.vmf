@@ -1,0 +1,44 @@
+versioninfo
+{
+	"editorversion" "400"
+	"mapversion" "1"
+}
+world
+{
+	"id" "1"
+	"classname" "worldspawn"
+	"skyname" "sky_day01_01"
+}
+entity
+{
+	"id" "2"
+	"classname" "func_instance"
+	"targetname" "inst"
+	"file" "instances\lamp_box.vmf"
+	"fixup_style" "0"
+	"origin" "100 0 0"
+	"angles" "0 90 0"
+	"replace01" "$color 255 0 0 200"
+	"replace02" "#dev/placeholder brick/wall"
+	connections
+	{
+		"instance:relay;OnTrigger" "door,Open,,0,-1"
+	}
+}
+entity
+{
+	"id" "3"
+	"classname" "logic_auto"
+	"origin" "0 0 0"
+	connections
+	{
+		"OnMapSpawn" "inst,instance:relay;Trigger,,0,-1"
+	}
+}
+entity
+{
+	"id" "4"
+	"classname" "func_instance"
+	"file" "instances/missing.vmf"
+	"origin" "0 0 0"
+}
