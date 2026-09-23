@@ -274,7 +274,8 @@ impl MaterialLibrary {
         found.sort_by_cached_key(|e| (e.name.to_ascii_lowercase(), rank(e)));
         found.dedup_by(|later, first| later.name.eq_ignore_ascii_case(&first.name));
 
-        // Material resources without an image of the same name still show up, previewed with their albedo texture.
+        // Material resources without an image of the same name still show up, previewed with their albedo texture, or
+        // their albedo color when they have no texture.
         if let Some(mat_root) = self.material_root.clone() {
             let mut files = Vec::new();
             scan_dir(&mat_root, &mat_root, &[self.material_ext.clone(), "material".into()], &mut files);
@@ -292,8 +293,9 @@ impl MaterialLibrary {
                         e.is_emissive = emissive;
                     }
                     None => {
-                        let albedo = parsed.and_then(|m| m.albedo_texture).and_then(|res| self.resolve_res(&res));
-                        if albedo.is_some() {
+                        let Some(parsed) = parsed else { continue };
+                        let albedo = parsed.albedo_texture.as_deref().and_then(|res| self.resolve_res(res));
+                        if albedo.is_some() || parsed.albedo_texture.is_none() {
                             found.push(MaterialEntry {
                                 name: f.name,
                                 folder: f.folder,
@@ -411,6 +413,11 @@ impl MaterialLibrary {
         })
     }
 
+    /// A material file with neither an albedo texture nor an image of the same name, drawn in its albedo color.
+    pub fn is_color_only(&self, name: &str) -> bool {
+        self.find(name).is_some_and(|e| e.path.is_none() && e.material_file.is_some())
+    }
+
     pub fn load_image(&self, name: &str) -> Option<image::RgbaImage> {
         if let Some(rel) = name.strip_prefix("res://") {
             return image::open(self.project_root.as_ref()?.join(rel)).ok().map(|img| img.to_rgba8());
@@ -418,6 +425,12 @@ impl MaterialLibrary {
 
         if let Some(path) = self.find(name).and_then(|e| e.path.as_ref()) {
             return image::open(path).ok().map(|img| img.to_rgba8());
+        }
+
+        if self.is_color_only(name) {
+            let c = self.read_info(name)?.albedo_color;
+            let px = image::Rgba(c.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8));
+            return Some(image::RgbaImage::from_pixel(8, 8, px));
         }
 
         dev_textures().into_iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).map(|(_, make)| make())
@@ -469,7 +482,12 @@ impl MaterialLibrary {
         // Like FuncGodot, a material resource is used as is, companion maps only apply to generated materials.
         if let Some(info) = self.info(name) {
             let res = |r: &Option<String>| r.as_deref().and_then(|r| self.resolve_res(r)).and_then(|p| open(&p));
-            let albedo = res(&info.albedo_texture).or_else(|| self.load_image(name))?;
+            // The renderer tints the albedo with albedo_color, so a material without a texture draws on white.
+            let albedo = match res(&info.albedo_texture) {
+                Some(a) => a,
+                None if self.is_color_only(name) => image::RgbaImage::from_pixel(1, 1, image::Rgba([255; 4])),
+                None => self.load_image(name)?,
+            };
             let (normal, emission) = (res(&info.normal_texture), res(&info.emission_texture));
             return Some(LoadedMaterial { albedo, normal, emission, info });
         }
@@ -493,6 +511,10 @@ impl MaterialLibrary {
 
     /// Pixel size of the albedo image, read from the file header when no texture has been loaded yet.
     pub fn pixel_size(&self, name: &str) -> Option<[u32; 2]> {
+        if self.is_color_only(name) {
+            return None;
+        }
+
         if let Some(s) = self.sizes.get(name) {
             return Some(*s);
         }
@@ -789,6 +811,28 @@ metadata/texture_size = Vector2(80, 48)
         assert!(lib.find_new(&game, ["bark"]));
         let barks: Vec<_> = lib.entries.iter().filter(|e| e.name == "bark").collect();
         assert_eq!(barks.len(), 1, "a rescan keeps one entry per material name");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn color_only_materials_are_listed_and_drawn_in_their_color() {
+        let (dir, game) = empty_project("gt_materials_color");
+        let tex = dir.join("textures");
+        std::fs::write(tex.join("water_dark.tres"), "[gd_resource type=\"StandardMaterial3D\" format=3]\n[resource]\nalbedo_color = Color(0.2, 0.4, 0.6, 1)\n")
+            .unwrap();
+        std::fs::write(
+            tex.join("broken.tres"),
+            "[gd_resource type=\"StandardMaterial3D\" format=3]\n[ext_resource type=\"Texture2D\" path=\"res://textures/gone.png\" id=\"1\"]\n[resource]\nalbedo_texture = ExtResource(\"1\")\n",
+        )
+        .unwrap();
+        let mut lib = MaterialLibrary::new(&game);
+        assert!(lib.find("water_dark").is_some() && lib.is_color_only("water_dark"));
+        assert!(lib.find("broken").is_none(), "a material whose texture is gone stays missing");
+        assert_eq!(lib.load_image("water_dark").unwrap().get_pixel(0, 0).0, [51, 102, 153, 255], "the thumbnail shows the color");
+        let loaded = lib.load_material("water_dark").unwrap();
+        assert_eq!(loaded.albedo.get_pixel(0, 0).0, [255; 4], "the renderer applies the color as a tint");
+        assert_eq!(loaded.info.albedo_color, [0.2, 0.4, 0.6, 1.0]);
+        assert_eq!(lib.pixel_size("water_dark"), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
