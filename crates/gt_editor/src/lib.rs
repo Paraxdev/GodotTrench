@@ -58,6 +58,11 @@ pub struct CliArgs {
     pub default_prefs: bool,
     /// Convert a map file and exit instead of opening the editor.
     pub convert: Option<Convert>,
+    /// Print [`USAGE`] and exit.
+    pub help: bool,
+    /// Unknown options and options missing their value. The editor refuses to start with any, so a typo never opens
+    /// a window.
+    pub errors: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -71,25 +76,53 @@ pub enum Convert {
 
 pub const DEFAULT_MCP_PORT: u16 = 7841;
 
+pub const USAGE: &str = "\
+Usage: godottrench [options] [map]
+
+Opens the editor, with the map when one is given.
+
+Options:
+  --project <dir>        Load the Godot project in <dir> or a folder above it
+  --mcp                  Serve MCP over stdin and stdout
+  --mcp-http[=<port>]    Serve MCP over HTTP on 127.0.0.1, port 7841 by default
+  --default-prefs        Start with default preferences and never save them
+  --dump <map>           Print a map as JSON and exit
+  --to-json <map> <out>  Write a map as JSON and exit
+  --to-gtm <map> <out>   Write a map as a binary .gtm and exit
+  -h, --help             Print this help and exit
+";
+
 impl CliArgs {
     pub fn parse(args: impl IntoIterator<Item = String>) -> Self {
         let mut out = CliArgs::default();
-        let mut it = args.into_iter();
+        let mut it = args.into_iter().peekable();
         while let Some(arg) = it.next() {
+            let mut value = |what: &str| match it.next_if(|v| !v.starts_with("--")) {
+                Some(v) => Some(PathBuf::from(v)),
+                None => {
+                    out.errors.push(format!("{arg} needs {what}"));
+                    None
+                }
+            };
             match arg.as_str() {
+                "-h" | "--help" | "/?" => out.help = true,
                 "--mcp" => out.mcp_stdio = true,
-                "--project" => out.project = it.next().map(PathBuf::from),
+                "--project" => out.project = value("a folder"),
                 "--mcp-http" => out.mcp_http = Some(DEFAULT_MCP_PORT),
                 "--default-prefs" => out.default_prefs = true,
-                "--dump" => out.convert = it.next().map(|p| Convert::Dump(p.into())),
+                "--dump" => out.convert = value("a map file").map(Convert::Dump),
                 "--to-json" | "--to-gtm" => {
-                    let (Some(from), Some(to)) = (it.next(), it.next()) else { continue };
-                    let (from, to) = (PathBuf::from(from), PathBuf::from(to));
+                    let what = "a map file and an output file";
+                    let Some(from) = value(what) else { continue };
+                    let Some(to) = value(what) else { continue };
                     out.convert = Some(if arg == "--to-json" { Convert::ToJson(from, to) } else { Convert::ToGtm(from, to) });
                 }
-                a if a.starts_with("--mcp-http=") => out.mcp_http = a["--mcp-http=".len()..].parse().ok().or(Some(DEFAULT_MCP_PORT)),
-                a if !a.starts_with("--") => out.map = Some(PathBuf::from(a)),
-                _ => {}
+                a if a.starts_with("--mcp-http=") => match a["--mcp-http=".len()..].parse() {
+                    Ok(port) => out.mcp_http = Some(port),
+                    Err(_) => out.errors.push(format!("{a}: the port must be a number")),
+                },
+                a if a.starts_with('-') => out.errors.push(format!("unknown option {a}")),
+                a => out.map = Some(PathBuf::from(a)),
             }
         }
 
@@ -155,6 +188,20 @@ mod tests {
         assert_eq!(c.map, None);
         let c = CliArgs::parse(["--to-gtm", "a.json", "b.gtm"].map(String::from)).convert;
         assert_eq!(c, Some(Convert::ToGtm("a.json".into(), "b.gtm".into())));
+        assert!(a.errors.is_empty() && !a.help);
+    }
+
+    #[test]
+    fn help_and_bad_options_never_reach_the_editor() {
+        assert!(CliArgs::parse(["--help".to_string()]).help);
+        assert!(CliArgs::parse(["-h".to_string()]).help);
+        let errors = |args: &[&str]| CliArgs::parse(args.iter().map(|a| a.to_string())).errors;
+        assert_eq!(errors(&["--halp"]), ["unknown option --halp"]);
+        assert_eq!(errors(&["-v", "level.gtm"]), ["unknown option -v"]);
+        assert_eq!(errors(&["--project"]), ["--project needs a folder"]);
+        assert_eq!(errors(&["--dump", "--mcp"]), ["--dump needs a map file"]);
+        assert_eq!(errors(&["--to-json", "a.gtm"]), ["--to-json needs a map file and an output file"]);
+        assert_eq!(errors(&["--mcp-http=abc"]), ["--mcp-http=abc: the port must be a number"]);
     }
 
     #[test]
