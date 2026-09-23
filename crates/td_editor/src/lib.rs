@@ -28,6 +28,7 @@ pub mod scatter_panel;
 pub mod scatter_tool;
 pub mod scene;
 pub mod state;
+pub mod texture_convert;
 pub mod texture_ops;
 pub mod texture_tool;
 pub mod theme;

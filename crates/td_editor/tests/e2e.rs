@@ -1017,3 +1017,114 @@ fn script_ids_follow_csg_and_night_map_options() {
     ed.call("set_editor", json!({ "shade": "lit" }));
     ed.screenshot("3d", "fixture_hidden_while_off");
 }
+
+/// A 4 x 4 BGRA8888 VTF 7.2 without mipmaps or thumbnail.
+fn tiny_vtf(bgra: [u8; 4]) -> Vec<u8> {
+    let mut b = vec![0u8; 80];
+    b[0..4].copy_from_slice(b"VTF\0");
+    b[4..8].copy_from_slice(&7u32.to_le_bytes());
+    b[8..12].copy_from_slice(&2u32.to_le_bytes());
+    b[12..16].copy_from_slice(&80u32.to_le_bytes());
+    b[16..18].copy_from_slice(&4u16.to_le_bytes());
+    b[18..20].copy_from_slice(&4u16.to_le_bytes());
+    b[24..26].copy_from_slice(&1u16.to_le_bytes());
+    b[52..56].copy_from_slice(&12i32.to_le_bytes());
+    b[56] = 1;
+    b[57..61].copy_from_slice(&(-1i32).to_le_bytes());
+    b[63..65].copy_from_slice(&1u16.to_le_bytes());
+    b.extend(bgra.repeat(16));
+    b
+}
+
+/// A Quake WAD2 holding one 8 x 8 texture.
+fn tiny_wad(name: &str) -> Vec<u8> {
+    let mut b = b"WAD2".to_vec();
+    b.extend(1u32.to_le_bytes());
+    b.extend((12u32 + 40 + 85).to_le_bytes());
+    let mut header = [0u8; 40];
+    header[..name.len()].copy_from_slice(name.as_bytes());
+    header[16..20].copy_from_slice(&8u32.to_le_bytes());
+    header[20..24].copy_from_slice(&8u32.to_le_bytes());
+    for (k, off) in [40u32, 104, 120, 124].iter().enumerate() {
+        header[24 + k * 4..28 + k * 4].copy_from_slice(&off.to_le_bytes());
+    }
+
+    b.extend(header);
+    b.extend([7u8; 85]);
+    let mut entry = [0u8; 32];
+    entry[0..4].copy_from_slice(&12u32.to_le_bytes());
+    entry[12] = 0x44;
+    entry[16..16 + name.len()].copy_from_slice(name.as_bytes());
+    b.extend(entry);
+    b
+}
+
+/// A Hammer map and a TrenchBroom map, imported as a user would, find their textures next to them and bring them into
+/// the project, after which no face is missing its material.
+#[test]
+#[ignore]
+fn imports_convert_valve_and_quake_textures() {
+    let dir = artifacts().join("import_textures");
+    let _ = std::fs::remove_dir_all(&dir);
+    let project = dir.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(project.join("project.godot"), "config_version=5\n").unwrap();
+    let game = dir.join("mod");
+    std::fs::create_dir_all(game.join("materials/brick")).unwrap();
+    std::fs::create_dir_all(game.join("maps")).unwrap();
+    std::fs::write(game.join("materials/brick/wall.vtf"), tiny_vtf([40, 80, 160, 255])).unwrap();
+    std::fs::write(game.join("materials/brick/wall.vmt"), "LightmappedGeneric { $basetexture brick/wall $surfaceprop brick }").unwrap();
+    let side = |plane: &str, material: &str| {
+        format!("side {{ \"plane\" \"{plane}\" \"material\" \"{material}\" \"uaxis\" \"[1 0 0 0] 0.25\" \"vaxis\" \"[0 -1 0 0] 0.25\" }}")
+    };
+    let solid = [
+        side("(-64 64 64) (64 64 64) (64 -64 64)", "BRICK/WALL"),
+        side("(-64 -64 0) (64 -64 0) (64 64 0)", "TOOLS/TOOLSNODRAW"),
+        side("(-64 64 64) (-64 -64 64) (-64 -64 0)", "BRICK/WALL"),
+        side("(64 64 0) (64 -64 0) (64 -64 64)", "BRICK/WALL"),
+        side("(64 64 64) (-64 64 64) (-64 64 0)", "BRICK/WALL"),
+        side("(64 -64 0) (-64 -64 0) (-64 -64 64)", "BRICK/WALL"),
+    ]
+    .join("\n");
+    let vmf = game.join("maps/room.vmf");
+    std::fs::write(&vmf, format!("world {{ \"classname\" \"worldspawn\" solid {{ {solid} }} }}")).unwrap();
+
+    let ed = Editor::launch_with("import_textures", &["--project", project.to_str().unwrap()]);
+    let offered = ed.call("map_file", json!({ "op": "import_vmf", "path": vmf }));
+    assert_eq!((offered["missing_materials"].as_u64(), offered["convertible"].as_u64()), (Some(1), Some(1)), "{offered}");
+    let missing = |ed: &Editor| {
+        let issues = ed.call("validate_map", json!({}));
+        issues["issues"].as_array().unwrap().iter().filter(|i| i["code"] == "missing_material").count()
+    };
+    assert_eq!(missing(&ed), 1, "brick/wall is listed until it is converted");
+
+    let imported = ed.call("map_file", json!({ "op": "import_vmf", "path": vmf, "textures": "auto" }));
+    assert_eq!(imported["textures"]["converted"], 1, "{imported}");
+    assert!(project.join("textures/brick/wall.png").is_file() && project.join("textures/brick/wall.tres").is_file());
+    assert_eq!(missing(&ed), 0);
+
+    let quake = dir.join("quake");
+    std::fs::create_dir_all(quake.join("wads")).unwrap();
+    std::fs::write(quake.join("wads/base.wad"), tiny_wad("wall1")).unwrap();
+    let map = quake.join("room.map");
+    let brush = "( -64 -64 -16 ) ( -64 -63 -16 ) ( -64 -64 -15 ) WALL1 0 0 0 1 1\n\
+( -64 -64 -16 ) ( -64 -64 -15 ) ( -63 -64 -16 ) wall1 0 0 0 1 1\n\
+( -64 -64 -16 ) ( -63 -64 -16 ) ( -64 -63 -16 ) skip 0 0 0 1 1\n\
+( 64 64 16 ) ( 64 65 16 ) ( 65 64 16 ) wall1 0 0 0 1 1\n\
+( 64 64 16 ) ( 65 64 16 ) ( 64 64 17 ) wall1 0 0 0 1 1\n\
+( 64 64 16 ) ( 64 64 17 ) ( 64 65 16 ) wall1 0 0 0 1 1\n";
+    std::fs::write(&map, format!("{{\n\"classname\" \"worldspawn\"\n\"wad\" \"/somewhere/else/base.wad\"\n{{\n{brush}}}\n}}\n")).unwrap();
+    let imported = ed.call("map_file", json!({ "op": "import_map", "path": map, "textures": "auto" }));
+    assert_eq!(imported["textures"]["converted"], 1, "the WAD is found by name one folder down: {imported}");
+    assert!(project.join("textures/wall1.png").is_file());
+    assert_eq!(missing(&ed), 0, "WALL1 finds wall1 and skip is the project's skip texture");
+    let brush = ed.call("list_nodes", json!({ "type": "brush" }))["nodes"][0]["id"].clone();
+    let faces = ed.call("get_node", json!({ "id": brush })).to_string();
+    assert!(!faces.contains("WALL1") && faces.contains("\"wall1\"") && faces.contains("special/skip"), "{faces}");
+
+    let again = ed.call("map_file", json!({ "op": "convert_textures", "path": game }));
+    assert_eq!((again["found"].as_u64(), again["textures"]["existing"].as_u64()), (Some(1), Some(1)), "{again}");
+    ed.call("set_editor", json!({ "shade": "textured" }));
+    let (_, _, colors) = ed.screenshot("3d", "quake_room");
+    assert!(colors > 2);
+}

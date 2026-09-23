@@ -230,8 +230,12 @@ impl MaterialLibrary {
         f
     }
 
+    /// A Quake `*liquid` falls back to its name without the `*`, which is how its converted file is named.
     pub fn find(&self, name: &str) -> Option<&MaterialEntry> {
-        self.entries.iter().find(|e| e.name.eq_ignore_ascii_case(name))
+        self.entries.iter().find(|e| e.name.eq_ignore_ascii_case(name)).or_else(|| {
+            let bare = name.replace('*', "");
+            (bare.len() != name.len()).then(|| self.entries.iter().find(|e| e.name.eq_ignore_ascii_case(&bare))).flatten()
+        })
     }
 
     pub fn load_image(&self, name: &str) -> Option<image::RgbaImage> {

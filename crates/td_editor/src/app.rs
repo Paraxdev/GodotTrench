@@ -830,6 +830,7 @@ impl App {
                 sub_menu(ui, Some(icons::IMPORT), "Import", |ui| {
                     m.item(ui, None, ".map (TrenchBroom, Quake)…", Action::ImportQuakeMap);
                     m.item(ui, None, ".vmf (Hammer)…", Action::ImportVmf);
+                    m.item(ui, None, "Convert Textures (VTF/VMT, WAD, WAL)…", Action::ConvertTextures);
                     ui.separator();
                     m.item(ui, None, "Model Prop (.bbmodel, .glb)…", Action::ImportModel(ModelImport::Prop));
                     m.item(ui, None, "Blockbench Model as Mesh…", Action::ImportModel(ModelImport::Mesh));

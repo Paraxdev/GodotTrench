@@ -123,6 +123,7 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("View: Toggle Cordon".into(), Action::ToggleCordon),
         ("View: Clear Cordon".into(), Action::ClearCordon),
         ("File: Import Hammer .vmf".into(), Action::ImportVmf),
+        ("File: Convert Textures (VTF/VMT, WAD, WAL)".into(), Action::ConvertTextures),
         ("File: Import Model as Mesh (.bbmodel)".into(), Action::ImportModel(ModelImport::Mesh)),
         ("File: Import Model as Brushes (.bbmodel)".into(), Action::ImportModel(ModelImport::Brushes)),
         ("File: Place Model Prop (.bbmodel, .glb)".into(), Action::ImportModel(ModelImport::Prop)),
