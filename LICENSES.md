@@ -1,6 +1,6 @@
 # Third party licenses
 
-GodotTrench itself is MIT licensed, see [LICENSE.md](LICENSE.md). This file lists the third party code and assets
+GodotTrench itself is AGPLv3 licensed, see [LICENSE](LICENSE), and its Godot addon is MIT. This file lists the third party code and assets
 it uses, with their licenses. Everything below keeps its own license.
 
 ## Included in this repository and the releases
