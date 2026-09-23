@@ -34,7 +34,8 @@ jobs:
           node-version: 22
 
       - name: Build the book
-        run: npx --yes honkit@${{ env.HONKIT_VERSION }} build docs _site
+        # honkit resolves a relative output path against the book folder, which would put the site in docs/_site.
+        run: npx --yes honkit@${{ env.HONKIT_VERSION }} build docs "$GITHUB_WORKSPACE/_site"
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
