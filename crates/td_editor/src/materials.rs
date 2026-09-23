@@ -499,6 +499,7 @@ pub fn dev_textures() -> Vec<(&'static str, Generator)> {
         ("special/clip", || stripes([180, 40, 180], [90, 20, 90])),
         ("special/skip", || stripes([40, 40, 40], [90, 90, 90])),
         ("special/origin", || stripes([230, 140, 20], [120, 70, 10])),
+        ("special/sky", || stripes([110, 170, 230], [70, 120, 190])),
         ("special/trigger", || stripes([230, 160, 30], [140, 90, 10])),
     ]
 }

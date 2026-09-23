@@ -1174,7 +1174,8 @@ impl App {
             "missing_materials": crate::texture_convert::missing_materials(&self.state).len(),
             "convertible": wanted.len(),
         });
-        if args["textures"].is_string() && !wanted.is_empty() {
+        // Runs with nothing to convert too, the sky colors still come from the map's sky texture.
+        if args["textures"].is_string() && (!wanted.is_empty() || self.state.game.project_root.is_some()) {
             let report = crate::texture_convert::convert(&mut self.state, &lib, Some(&wanted), false)?;
             v["textures"] = crate::texture_convert::report_json(&report);
         }

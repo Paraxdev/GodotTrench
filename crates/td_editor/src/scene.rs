@@ -264,7 +264,7 @@ struct Builder<'a> {
     opaque: MeshBatch,
     double: MeshBatch,
     transparent: MeshBatch,
-    /// Trigger and other gameplay volumes, hidden in the lit preview.
+    /// Trigger and other gameplay volumes and sky faces, hidden in the lit preview.
     volumes: MeshBatch,
     /// Set while building the brushes of a volume entity.
     volume: bool,
@@ -294,6 +294,7 @@ pub fn tool_texture(name: &str) -> Option<image::RgbaImage> {
         "clip" | "playerclip" => ([170, 90, 220], [110, 50, 150]),
         "skip" | "nodraw" => ([120, 120, 128], [80, 80, 88]),
         "origin" => ([60, 200, 220], [30, 120, 140]),
+        "sky" => ([110, 170, 230], [70, 120, 190]),
         "hint" => ([230, 220, 60], [150, 140, 30]),
         "occluder" => ([60, 60, 70], [30, 30, 36]),
         _ => ([200, 60, 200], [120, 30, 120]),
@@ -502,9 +503,10 @@ impl Builder<'_> {
     }
 
     /// Batch for a surface: blended materials and see-through tool faces sort as transparent, cull disabled materials skip culling.
+    /// Sky faces go with the volumes, so the lit preview shows the sky instead of a box around the map.
     fn batch(&mut self, mat: &str, see_through: bool) -> &mut MeshBatch {
         let flags = self.renderer.material_flags(mat);
-        if self.volume {
+        if self.volume || mat.eq_ignore_ascii_case(&self.game.tool_textures.sky) {
             &mut self.volumes
         } else if see_through || flags.transparent {
             &mut self.transparent

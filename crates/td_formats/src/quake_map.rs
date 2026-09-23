@@ -412,8 +412,13 @@ fn parse_f(tok: Option<Tok>, line: usize) -> Result<f64, MapError> {
     }
 }
 
+/// Marks a face whose Quake 2 surface flags say sky until [`import_with`] renames it to the project's sky texture.
+const SKY_FLAG_PROP: &str = "_sky_flag";
+
 fn parse_brush(lx: &mut Lexer) -> Result<Option<Brush>, MapError> {
     let mut planes: Vec<(Plane, FaceData)> = Vec::new();
+    // Quake 2 and 3 faces end in content flags, surface flags and a value.
+    let mut trailing = 0;
     loop {
         let line = lx.line;
         match lx.next() {
@@ -472,6 +477,7 @@ fn parse_brush(lx: &mut Lexer) -> Result<Option<Brush>, MapError> {
                 let _ = lookahead;
                 let material = if texture == "__TB_empty" { String::new() } else { texture };
                 planes.push((plane, FaceData::new(material, uv)));
+                trailing = 0;
             }
             Some(Tok::Word(w)) if planes.is_empty() && matches!(w.to_ascii_lowercase().as_str(), "patchdef2" | "patchdef3" | "brushdef" | "brushdef3") => {
                 if lx.next() != Some(Tok::Open) {
@@ -483,7 +489,15 @@ fn parse_brush(lx: &mut Lexer) -> Result<Option<Brush>, MapError> {
                 lx.skipped += 1;
                 return Ok(None);
             }
-            Some(Tok::Word(_)) => {}
+            Some(Tok::Word(w)) => {
+                trailing += 1;
+                if trailing == 2
+                    && w.parse::<u32>().is_ok_and(|flags| flags & crate::quake_texture::SURF_SKY != 0)
+                    && let Some((_, face)) = planes.last_mut()
+                {
+                    face.props.insert(SKY_FLAG_PROP.into(), "1".into());
+                }
+            }
             None => return Err(MapError::Syntax { line, message: "unexpected end of file in brush".into() }),
             Some(other) => return Err(MapError::Syntax { line, message: format!("unexpected {other:?} in brush") }),
         }
@@ -542,10 +556,25 @@ pub fn import(src: &str) -> Result<Map, MapError> {
     import_report(src).map(|(map, _)| map)
 }
 
+/// Quake draws faces named `sky...` as the sky, Quake 3 its `skies/` shaders.
+fn is_sky_name(lower: &str) -> bool {
+    let (folder, base) = lower.rsplit_once('/').unwrap_or(("", lower));
+    match folder.strip_prefix("textures/").unwrap_or(folder) {
+        "" => base.starts_with("sky"),
+        "skies" | "skybox" => true,
+        "common" | "tools" => base == "sky",
+        _ => false,
+    }
+}
+
 /// The project tool texture a Quake, Quake 2 or Quake 3 tool texture stands for, such as `skip`, `e1u1/clip` or
 /// `common/caulk`.
 pub fn tool_texture(name: &str, options: &crate::vmf::ImportOptions) -> Option<String> {
     let lower = name.to_ascii_lowercase();
+    if is_sky_name(&lower) {
+        return Some(options.tools.sky.clone());
+    }
+
     let (folder, base) = lower.rsplit_once('/').unwrap_or(("", &lower));
     if !matches!(folder, "" | "common" | "e1u1" | "tools") {
         return None;
@@ -560,22 +589,26 @@ pub fn tool_texture(name: &str, options: &crate::vmf::ImportOptions) -> Option<S
     })
 }
 
-/// [`import_report`], with the tool textures of other games renamed to the project's.
+/// [`import_report`], with the tool textures of other games renamed to the project's. Sky faces take the project's
+/// sky texture, and the worldspawn key `sky_source` keeps the sky texture most of them used.
 pub fn import_with(src: &str, options: &crate::vmf::ImportOptions) -> Result<(Map, ImportReport), MapError> {
-    let (mut map, report) = import_report(src)?;
-    let ids: Vec<NodeId> = map.brushes().map(|(id, _)| id).collect();
-    for id in ids {
-        for f in map.brush_mut(id).map(|b| b.faces.iter_mut()).into_iter().flatten() {
-            if let Some(tool) = tool_texture(&f.data.material, options) {
-                f.data.material = tool;
-            }
-        }
-    }
-
+    let (mut map, report) = parse_map(src)?;
+    crate::vmf::rename_tool_faces(&mut map, &options.tools.sky, |f| {
+        if f.props.remove(SKY_FLAG_PROP).is_some() { Some(options.tools.sky.clone()) } else { tool_texture(&f.material, options) }
+    });
     Ok((map, report))
 }
 
 pub fn import_report(src: &str) -> Result<(Map, ImportReport), MapError> {
+    let (mut map, report) = parse_map(src)?;
+    crate::vmf::rename_tool_faces(&mut map, "", |f| {
+        f.props.remove(SKY_FLAG_PROP);
+        None
+    });
+    Ok((map, report))
+}
+
+fn parse_map(src: &str) -> Result<(Map, ImportReport), MapError> {
     let (entities, skipped_patches) = parse_entities(src)?;
     let mut map = Map::new();
     let default_layer = map.default_layer();
@@ -937,6 +970,70 @@ mod tests {
         let (m, _) = import_with(src, &options).unwrap();
         let (_, b) = m.brushes().next().unwrap();
         assert_eq!(b.faces.iter().filter(|f| f.data.material == "special/skip").count(), 4);
+    }
+
+    #[test]
+    fn sky_faces_of_each_quake_become_the_sky_texture() {
+        let options = crate::vmf::ImportOptions::default();
+        for name in ["sky1", "SKY5_BLU", "sky_star", "textures/skies/toxicsky", "skies/hellsky", "common/sky"] {
+            assert_eq!(tool_texture(name, &options).as_deref(), Some("special/sky"), "{name}");
+        }
+
+        for name in ["e1u1/sky1", "common/skyportal", "metal/sky_trim"] {
+            assert_ne!(tool_texture(name, &options).as_deref(), Some("special/sky"), "{name}");
+        }
+
+        let brush = |a: &str, b: &str| {
+            format!(
+                "{{
+( -64 -64 -16 ) ( -64 -63 -16 ) ( -64 -64 -15 ) {a}
+( -64 -64 -16 ) ( -64 -64 -15 ) ( -63 -64 -16 ) {a}
+( -64 -64 -16 ) ( -63 -64 -16 ) ( -64 -63 -16 ) {a}
+( 64 64 16 ) ( 64 65 16 ) ( 65 64 16 ) {b}
+( 64 64 16 ) ( 65 64 16 ) ( 64 64 17 ) {a}
+( 64 64 16 ) ( 64 64 17 ) ( 64 65 16 ) {a}
+}}
+"
+            )
+        };
+        let sky_materials = |src: &str| {
+            let (m, _) = import_with(src, &options).unwrap();
+            let skies = m.brushes().flat_map(|(_, b)| b.faces.iter()).filter(|f| f.data.material == "special/sky").count();
+            assert!(m.brushes().flat_map(|(_, b)| b.faces.iter()).all(|f| f.data.props.is_empty()), "the sky flag mark is dropped");
+            (skies, m.properties.get("sky_source").cloned())
+        };
+
+        // Quake 2: surface flags 4 are sky, whatever the texture is called. Contents come first, then the flags.
+        let q2 = format!(
+            "{{
+\"classname\" \"worldspawn\"
+{}}}
+",
+            brush("e1u1/sky1 0 0 0 1 1 1 4 0", "e1u1/floor 0 0 0 1 1 1 0 0")
+        );
+        assert_eq!(sky_materials(&q2), (5, Some("e1u1/sky1".into())));
+        let (plain, _) = import_report(&q2).unwrap();
+        assert!(plain.brushes().flat_map(|(_, b)| b.faces.iter()).all(|f| f.data.material != "special/sky" && f.data.props.is_empty()));
+
+        // Quake 1 by name, the most used sky texture is remembered, and a key the map already has is kept.
+        let q1 = format!(
+            "{{
+\"classname\" \"worldspawn\"
+{}{}}}
+",
+            brush("sky4 0 0 0 1 1", "wall 0 0 0 1 1"),
+            brush("wall 0 0 0 1 1", "sky1 0 0 0 1 1").replace("-64 ", "-200 ")
+        );
+        assert_eq!(sky_materials(&q1), (6, Some("sky4".into())));
+        let keyed = q1.replacen(
+            "\"worldspawn\"
+",
+            "\"worldspawn\"
+\"sky_source\" \"mine\"
+",
+            1,
+        );
+        assert_eq!(sky_materials(&keyed).1.as_deref(), Some("mine"));
     }
 
     #[test]

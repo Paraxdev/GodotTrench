@@ -20,7 +20,8 @@
   "tool_textures": {
     "clip": "special/clip",
     "skip": "special/skip",
-    "origin": "special/origin"
+    "origin": "special/origin",
+    "sky": "special/sky"
   },
   "entities": [
     {
