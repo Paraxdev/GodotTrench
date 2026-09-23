@@ -2,7 +2,8 @@ extends RefCounted
 ## Regression tests for the Godot-vs-editor parity audit: unique instance ids, mesh blend option passthrough,
 ## quad triangulation matching gt_geom::polygon::triangulate, terrain collision holes and the alternating
 ## diagonal, rotated prefab terrain placement, concave mesh containment, tool/transparent containers not
-## burying faces, terrain height_at following the triangles, and out of range brush indices being skipped.
+## burying faces, terrain layers keeping their material's maps, terrain height_at following the triangles, and out
+## of range brush indices being skipped.
 ##
 ## res://tests/run_tests.gd calls [method run] from its own [method SceneTree._initialize]. [param t] is that
 ## script's own instance, used for its [code]check[/code]/[code]near[/code]/[code]find_named[/code] helpers.
@@ -20,6 +21,8 @@ static func run(t) -> void:
 	_test_terrain_splat_shader_defaults_to_first_layer(t)
 	_test_terrain_missing_layer_slots_use_first_layer(t)
 	_test_terrain_emissive_layers_glow(t)
+	_test_terrain_layers_use_normal_and_roughness_maps(t)
+	_test_terrain_layer_ambient_occlusion(t)
 	_test_terrain_height_at_follows_triangles(t)
 	_test_brush_bad_index_is_skipped(t)
 	await t.process_frame
@@ -275,8 +278,79 @@ static func _test_terrain_emissive_layers_glow(t) -> void:
 	t.check(energy.x == 0.0 and textured.x == 0.0, "the grass layer stays dark")
 	t.check(energy.z == 0.0 and energy.w == 0.0, "slots without a layer of their own show the first, dark layer")
 	var code: String = GodotTrenchTerrain.SHADER.code
-	t.check(code.contains("EMISSION = g0 * w.r + g1 * w.g + g2 * w.b + g3 * w.a"), "the shader weights each layer's glow by its splat weight")
+	t.check(code.contains("* glow_energy[l] * weight;"), "the shader weights each layer's glow by its splat weight")
 	terrain.free()
+
+## A layer shades with its material's normal map and roughness like the material does on a brush. Layers
+## without a map keep the flags at 0 so the shader skips their samples.
+static func _test_terrain_layers_use_normal_and_roughness_maps(t) -> void:
+	print("- terrain layers use their material's normal and roughness maps")
+	var heights := PackedFloat32Array()
+	heights.resize(4)
+	var data := {
+		"resolution": [2, 2], "cell_size": 1.0,
+		"heights": Marshalls.raw_to_base64(heights.to_byte_array()),
+		"layers": [{ "material": "showcase/dirt", "tile": 100.0 }, { "material": "night/rusty_metal", "tile": 50.0 }, { "material": "special/clip", "tile": 50.0 }],
+	}
+	var terrain := GodotTrenchTerrain.create(data, Vector3.ZERO, load(SETTINGS))
+	t.check(terrain != null, "terrain built")
+	if not terrain:
+		return
+	var mat: ShaderMaterial = (terrain.get_child(0) as MeshInstance3D).mesh.surface_get_material(0)
+	var dirt: StandardMaterial3D = load("res://demo/textures/showcase/dirt.tres")
+	var rusty: StandardMaterial3D = load("res://demo/textures/night/rusty_metal.tres")
+	var mapped: Vector4 = mat.get_shader_parameter("normal_mapped")
+	var scales: Vector4 = mat.get_shader_parameter("normal_scales")
+	t.check(mat.get_shader_parameter("normal_texture0") == dirt.normal_texture and mat.get_shader_parameter("normal_texture1") == rusty.normal_texture, "each layer binds its material's normal map")
+	t.check(mapped == Vector4(1, 1, 0, 1), "layers with a normal map are flagged, the one without is not, got %s" % mapped)
+	t.check(is_equal_approx(scales.x, dirt.normal_scale) and is_equal_approx(scales.y, rusty.normal_scale), "and keep their normal scale, got %s" % scales)
+	var roughness: Vector4 = mat.get_shader_parameter("roughnesses")
+	var textured: Vector4 = mat.get_shader_parameter("roughness_textured")
+	var channels: Projection = mat.get_shader_parameter("roughness_channels")
+	t.check(is_equal_approx(roughness.x, dirt.roughness) and is_equal_approx(roughness.y, rusty.roughness), "each layer keeps its material's roughness value, got %s" % roughness)
+	t.check(textured == Vector4(0, 1, 0, 0), "only the layer with a roughness texture samples one, got %s" % textured)
+	t.check(mat.get_shader_parameter("surface_texture1") == rusty.roughness_texture and channels[1] == Vector4(1, 0, 0, 0), "and reads its red channel like BaseMaterial3D")
+	t.check(mat.get_shader_parameter("ao_textured") == Vector4.ZERO, "no demo layer has ambient occlusion")
+	var code: String = GodotTrenchTerrain.SHADER.code
+	t.check(code.count("uniform sampler2D ") == 16, "four textures per layer at most, so the shader stays within sampler limits")
+	t.check(code.contains("if (weight <= 0.0)"), "layers the splat leaves out are not sampled")
+	terrain.free()
+
+## Occlusion shares the roughness texture's sample: an ORM texture, a StandardMaterial3D packing both in one
+## texture, or occlusion alone. A separate occlusion texture next to a roughness texture is left out.
+static func _test_terrain_layer_ambient_occlusion(t) -> void:
+	print("- terrain layers take ambient occlusion from their roughness texture")
+	var tex := ImageTexture.create_from_image(Image.create(2, 2, false, Image.FORMAT_RGBA8))
+	var other := ImageTexture.create_from_image(Image.create(2, 2, false, Image.FORMAT_RGBA8))
+	var orm := ORMMaterial3D.new()
+	orm.orm_texture = tex
+	orm.ao_enabled = true
+	orm.ao_light_affect = 0.5
+	var packed := StandardMaterial3D.new()
+	packed.roughness_texture = tex
+	packed.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_GREEN
+	packed.ao_enabled = true
+	packed.ao_texture = tex
+	packed.ao_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_BLUE
+	var ao_only := StandardMaterial3D.new()
+	ao_only.ao_enabled = true
+	ao_only.ao_texture = other
+	var separate := StandardMaterial3D.new()
+	separate.roughness_texture = tex
+	separate.ao_enabled = true
+	separate.ao_texture = other
+	var mat := ShaderMaterial.new()
+	mat.shader = GodotTrenchTerrain.SHADER
+	var surface := GodotTrenchTerrain._default_surface()
+	for slot in 4:
+		GodotTrenchTerrain._set_layer_surface(mat, slot, [orm, packed, ao_only, separate][slot], surface)
+	var rough_channels: Projection = surface["roughness_channels"]
+	var ao_channels: Projection = surface["ao_channels"]
+	t.check(mat.get_shader_parameter("surface_texture0") == tex and rough_channels[0] == Vector4(0, 1, 0, 0) and ao_channels[0] == Vector4(1, 0, 0, 0), "an ORM texture gives roughness from green and occlusion from red")
+	t.check(is_equal_approx(surface["ao_light_affects"].x, 0.5), "with the material's light affect")
+	t.check(rough_channels[1] == Vector4(0, 1, 0, 0) and ao_channels[1] == Vector4(0, 0, 1, 0), "a packed texture keeps the channels the material picks")
+	t.check(mat.get_shader_parameter("surface_texture2") == other and surface["roughness_textured"].z == 0.0, "occlusion alone takes the slot without touching roughness")
+	t.check(surface["ao_textured"] == Vector4(1, 1, 1, 0) and surface["roughness_textured"] == Vector4(1, 1, 0, 1), "a separate occlusion texture is skipped, got %s" % surface["ao_textured"])
 
 ## Finding 9: height_at must follow the same triangles (and alternating diagonal) as the rendered surface,
 ## not a bilinear blend of the four corners.

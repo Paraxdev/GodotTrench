@@ -147,7 +147,7 @@ impl MaterialUniform {
     }
 }
 
-/// Terrain layer parameters, including each layer material's emission so glowing layers light up like on brushes.
+/// Terrain layer parameters, including each layer material's emission and normal map so layers shade like on brushes.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 struct TerrainUniform {
@@ -160,16 +160,30 @@ struct TerrainUniform {
     glow_textured: [f32; 4],
     /// Per layer 1 to multiply the emission color with the texture instead of adding them.
     glow_multiply: [f32; 4],
+    /// Per layer 1 when the layer's normal map is bound.
+    normal_mapped: [f32; 4],
+    normal_scales: [f32; 4],
 }
 
 impl TerrainUniform {
     fn new(tiles: [f32; 4], detiles: [f32; 4], sharpens: [f32; 4], materials: [Option<&MaterialUniform>; 4]) -> Self {
-        let mut u = Self { tiles, detiles, sharpens, glow: [[0.0; 4]; 4], glow_textured: [0.0; 4], glow_multiply: [0.0; 4] };
+        let mut u = Self {
+            tiles,
+            detiles,
+            sharpens,
+            glow: [[0.0; 4]; 4],
+            glow_textured: [0.0; 4],
+            glow_multiply: [0.0; 4],
+            normal_mapped: [0.0; 4],
+            normal_scales: [1.0; 4],
+        };
         for (l, m) in materials.iter().enumerate() {
             let Some(m) = m else { continue };
             u.glow[l] = m.emission;
             u.glow_textured[l] = m.glow[0];
             u.glow_multiply[l] = m.glow[1];
+            u.normal_mapped[l] = m.flags[0];
+            u.normal_scales[l] = m.extra[0];
         }
 
         u
@@ -491,6 +505,10 @@ impl Renderer {
                 texture_entry(7),
                 texture_entry(8),
                 texture_entry(9),
+                texture_entry(10),
+                texture_entry(11),
+                texture_entry(12),
+                texture_entry(13),
             ],
         });
         let shadow_bgl = device
@@ -998,6 +1016,7 @@ impl Renderer {
 
         let view = |n: &str| &self.materials.get(n).or_else(|| self.materials.get(MISSING_MATERIAL)).expect("missing material exists").view;
         let glow_view = |n: &str| self.materials.get(n).and_then(|m| m.emission.as_ref()).unwrap_or(&self.white);
+        let normal_view = |n: &str| self.materials.get(n).and_then(|m| m.normal.as_ref()).unwrap_or(&self.flat_normal);
         let four = |v: &[f32]| [v[0], v[1], v[2], v[3]];
         let uniform =
             TerrainUniform::new(four(&tiles), four(&detiles), four(&sharpens), std::array::from_fn(|l| self.materials.get(&names[l]).map(|m| &m.uniform)));
@@ -1020,6 +1039,10 @@ impl Renderer {
                 wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(glow_view(&names[1])) },
                 wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(glow_view(&names[2])) },
                 wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::TextureView(glow_view(&names[3])) },
+                wgpu::BindGroupEntry { binding: 10, resource: wgpu::BindingResource::TextureView(normal_view(&names[0])) },
+                wgpu::BindGroupEntry { binding: 11, resource: wgpu::BindingResource::TextureView(normal_view(&names[1])) },
+                wgpu::BindGroupEntry { binding: 12, resource: wgpu::BindingResource::TextureView(normal_view(&names[2])) },
+                wgpu::BindGroupEntry { binding: 13, resource: wgpu::BindingResource::TextureView(normal_view(&names[3])) },
             ],
         });
         self.terrain_materials.insert(key.clone(), bind_group);
@@ -1587,15 +1610,32 @@ mod tests {
         assert_eq!(u.glow[2], [0.0; 4], "a layer whose material is not loaded yet does not glow");
         assert_eq!(u.glow[3], [1.0, 0.5, 0.0, 2.0]);
         assert_eq!((u.glow_textured[3], u.glow_multiply[3]), (1.0, 1.0));
+        assert_eq!(u.normal_mapped, [0.0; 4], "no layer here has a normal map");
+        assert_eq!(u.normal_scales, [1.0; 4]);
         let head: [f32; 12] = [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 0.5, 0.5];
         assert_eq!(&bytemuck::bytes_of(&u)[..48], bytemuck::cast_slice::<f32, u8>(&head), "tiles, detiles and sharpens keep their place for the shader");
+    }
+
+    #[test]
+    fn terrain_layers_carry_their_material_normal_map() {
+        use super::{MaterialDesc, MaterialUniform, TerrainUniform};
+        let img = image::RgbaImage::new(1, 1);
+        let mut desc = MaterialDesc::plain(&img, false);
+        desc.normal = Some(&img);
+        desc.normal_scale = 0.5;
+        let bumpy = MaterialUniform::new(&desc, true, false);
+        let plain = MaterialUniform::new(&MaterialDesc::plain(&img, false), false, false);
+
+        let u = TerrainUniform::new([1.0; 4], [0.0; 4], [0.5; 4], [Some(&plain), Some(&bumpy), None, Some(&bumpy)]);
+        assert_eq!(u.normal_mapped, [0.0, 1.0, 0.0, 1.0], "only layers whose material has a normal map sample one");
+        assert_eq!(u.normal_scales, [1.0, 0.5, 1.0, 0.5], "with the material's normal scale");
     }
 
     #[test]
     fn uniform_sizes_match_shaders() {
         assert_eq!(std::mem::size_of::<super::CameraUniform>(), 176);
         assert_eq!(std::mem::size_of::<super::MaterialUniform>(), 80);
-        assert_eq!(std::mem::size_of::<super::TerrainUniform>(), 144);
+        assert_eq!(std::mem::size_of::<super::TerrainUniform>(), 176);
         assert_eq!(std::mem::size_of::<super::LightsUniform>(), 28 * 4 + 64 + super::MAX_LIGHTS * 48);
     }
 
