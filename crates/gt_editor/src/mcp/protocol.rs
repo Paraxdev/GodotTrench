@@ -359,7 +359,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "validate_map",
-            "description": "Checks the map for problems: invalid brushes, entities without definitions, broken I/O targets, output names the entity definitions do not know, inputs the target answers to neither as a declared input nor as a method or property of its Godot class or script (Node methods such as set_visible are valid inputs), empty brush entities, face materials the project does not have (missing_material, one per material, after looking for material files added since the last scan).",
+            "description": "Checks the map for problems: invalid brushes, entities without definitions, broken I/O targets, output names the entity definitions do not know, inputs the target answers to neither as a declared input nor as a method or property of its Godot class or script (Node methods such as set_visible are valid inputs), empty brush entities, face materials the project does not have (missing_material, one per material, after looking for material files added since the last scan), faces of two brushes that lie on one plane and overlap where both still draw in the Godot build, so they z-fight (coplanar_faces, one per brush pair, naming the other brush and where they overlap; tool textures, faces the build hides and overlaps under 3 units wide are left out).",
             "inputSchema": { "type": "object", "properties": {} }
         }),
         json!({

@@ -13,21 +13,21 @@ use gt_geom::polygon;
 pub type FacePieces = HashMap<usize, Pieces>;
 pub type Pieces = Vec<Vec<DVec3>>;
 
-const COPLANAR_DIST: f64 = 0.02;
-const SAME_NORMAL: f64 = 0.9995;
+pub(crate) const COPLANAR_DIST: f64 = 0.02;
+pub(crate) const SAME_NORMAL: f64 = 0.9995;
 
-type PlaneKey = (i64, i64, i64, i64);
+pub(crate) type PlaneKey = (i64, i64, i64, i64);
 
 #[derive(Clone)]
-struct CullFace {
-    face: usize,
-    key: PlaneKey,
-    normal: DVec3,
-    dist: f64,
-    bounds: Aabb,
-    polygon: Vec<DVec3>,
-    closed: bool,
-    is_mesh: bool,
+pub(crate) struct CullFace {
+    pub face: usize,
+    pub key: PlaneKey,
+    pub normal: DVec3,
+    pub dist: f64,
+    pub bounds: Aabb,
+    pub polygon: Vec<DVec3>,
+    pub closed: bool,
+    pub is_mesh: bool,
 }
 
 #[derive(Default)]
@@ -43,7 +43,7 @@ pub struct FaceCull {
 const MOVING_CLASSES: [&str; 5] = ["Area3D", "AnimatableBody3D", "RigidBody3D", "CharacterBody3D", "VehicleBody3D"];
 
 /// Brushes of triggers and of moving or volume entities take no part in culling, like godottrench_face_cull.gd.
-fn skipped_entity(map: &Map, game: &GameConfig, id: NodeId) -> bool {
+pub(crate) fn skipped_entity(map: &Map, game: &GameConfig, id: NodeId) -> bool {
     map.owning_entity(id)
         .and_then(|e| map.entity(e))
         .is_some_and(|e| e.classname.starts_with("trigger") || game.entity(&e.classname).is_some_and(|d| MOVING_CLASSES.contains(&d.node_class.as_str())))
@@ -69,7 +69,7 @@ fn solid_bounds(map: &Map, game: &GameConfig, opaque: &(dyn Fn(&str) -> bool + S
 /// sides of the face: a face resting on the other solid's surface leaves it on one side and is left to the
 /// coplanar pass, only a face with solid material on both sides counts as buried. Brushes are convex, so their
 /// corners decide it. A closed mesh can be concave, there the face must also not cross the mesh surface.
-fn buried_in(map: &Map, id: NodeId, face: &CullFace, mesh_tris: &mut HashMap<NodeId, Vec<[DVec3; 3]>>) -> bool {
+pub(crate) fn buried_in(map: &Map, id: NodeId, face: &CullFace, mesh_tris: &mut HashMap<NodeId, Vec<[DVec3; 3]>>) -> bool {
     let Some(node) = map.get(id) else { return false };
     let nudge = face.normal * COPLANAR_DIST;
     let mut samples: Vec<DVec3> = Vec::with_capacity((face.polygon.len() + 1) * 2);
@@ -136,7 +136,7 @@ fn segment_hits_triangle(a: DVec3, b: DVec3, tri: &[DVec3; 3]) -> bool {
 }
 
 /// Opposite normals share a key so back to back faces land in one group.
-fn plane_key(normal: DVec3, dist: f64) -> PlaneKey {
+pub(crate) fn plane_key(normal: DVec3, dist: f64) -> PlaneKey {
     let flip = [normal.x, normal.y, normal.z].into_iter().find(|c| c.abs() > 1e-6).is_some_and(|c| c < 0.0);
     let (n, d) = if flip { (-normal, -dist) } else { (normal, dist) };
     ((n.x * 1000.0).round() as i64, (n.y * 1000.0).round() as i64, (n.z * 1000.0).round() as i64, (d * 8.0).round() as i64)
@@ -419,7 +419,7 @@ enum Cover {
 
 /// Open meshes are sheets laid over a solid (blend layers, decals), so they draw over brushes, and brushes over closed
 /// meshes. The Godot build (godottrench_face_cull.gd) uses the same order.
-fn priority(face: &CullFace, id: NodeId) -> (u8, NodeId, usize) {
+pub(crate) fn priority(face: &CullFace, id: NodeId) -> (u8, NodeId, usize) {
     let rank = match (face.is_mesh, face.closed) {
         (true, false) => 0,
         (false, _) => 1,

@@ -67,5 +67,5 @@ python tools/mcp_client.py call screenshot '{"target":"3d","width":1280,"height"
 | `create_mesh` `rotate` | `[x, y, z]` degrees in Godot's YXZ order, so `[0, 0, 90]` lays a cylinder along X |
 | `transform` | Applies translate, rotate, flip and scale_to in that order, as one undo step |
 | `terrain_edit` | `probe [x, z]` without `op` only reads the height |
-| `validate_map` | Accepts any method or property of the target's Godot class or script as an input |
+| `validate_map` | Accepts any method or property of the target's Godot class or script as an input. Reports `coplanar_faces` for overlapping faces that z-fight in Godot |
 | `run_action` `reload_materials` | Rescans the texture folder now. New files are also found on their own within a couple of seconds, and on the first lookup of an unknown name |

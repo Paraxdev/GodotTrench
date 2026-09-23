@@ -1127,6 +1127,27 @@ fn materials_added_while_running_are_found() {
     assert_eq!(codes(&ed, "missing_material"), Vec::<Value>::new());
 }
 
+/// validate_map reports faces of two brushes that overlap on one plane with different textures, which z-fight once
+/// built, and leaves out the same texture lined up.
+#[test]
+#[ignore]
+fn validate_map_reports_coplanar_faces() {
+    let ed = Editor::launch("coplanar");
+    let fights = |ed: &Editor| -> Vec<Value> {
+        ed.call("validate_map", json!({}))["issues"].as_array().unwrap().iter().filter(|i| i["code"] == "coplanar_faces").cloned().collect()
+    };
+    ed.call("create_brush", json!({ "min": [0, 0, 0], "max": [64, 64, 16], "material": "dev/grey" }));
+    let aligned = ed.call("create_brush", json!({ "min": [32, 16, 0], "max": [96, 48, 16], "material": "dev/grey" }))["ids"][0].as_u64().unwrap();
+    assert_eq!(fights(&ed), Vec::<Value>::new(), "one texture lined up draws the same pixels");
+
+    ed.call("texture", json!({ "op": "apply", "material": "dev/orange", "faces": (0..6).map(|f| json!([aligned, f])).collect::<Vec<_>>() }));
+    let found = fights(&ed);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0]["node"].as_u64(), Some(aligned));
+    assert_eq!(found[0]["severity"], "warning");
+    assert!(found[0]["message"].as_str().unwrap().contains("as do 1 more"), "{}", found[0]["message"]);
+}
+
 /// A Hammer map and a TrenchBroom map, imported as a user would, find their textures next to them and bring them into
 /// the project, after which no face is missing its material.
 #[test]

@@ -39,6 +39,7 @@ pub mod uv_editor;
 pub mod viewport;
 pub mod volume_tool;
 pub mod widgets;
+pub mod zfight;
 
 use std::path::PathBuf;
 
