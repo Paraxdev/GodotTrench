@@ -153,6 +153,14 @@ impl MaterialLibrary {
             scan_dir(&root, &root, &self.image_exts, &mut found);
         }
 
+        // FuncGodot tries the extensions in order, so with wall.png and wall.jpg side by side the first extension is the material.
+        let rank = |e: &MaterialEntry| {
+            let ext = e.path.as_ref().and_then(|p| p.extension()).map(|x| x.to_string_lossy().to_ascii_lowercase());
+            ext.and_then(|x| self.image_exts.iter().position(|y| *y == x)).unwrap_or(usize::MAX)
+        };
+        found.sort_by_cached_key(|e| (e.name.to_ascii_lowercase(), rank(e)));
+        found.dedup_by(|later, first| later.name.eq_ignore_ascii_case(&first.name));
+
         // Material resources without an image of the same name still show up, previewed with their albedo texture.
         if let Some(mat_root) = self.material_root.clone() {
             let mut files = Vec::new();
@@ -521,6 +529,27 @@ mod tests {
         assert!(glass.info.is_transparent());
         assert_eq!(glass.info.nearest, Some(true));
         assert_eq!(glass.albedo.dimensions(), (2, 2));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn same_name_in_two_formats_is_one_material() {
+        let dir = std::env::temp_dir().join(format!("gt_material_formats_{}", std::process::id()));
+        let tex = dir.join("textures");
+        std::fs::create_dir_all(&tex).unwrap();
+        std::fs::write(dir.join("project.godot"), "").unwrap();
+        image::RgbImage::from_pixel(8, 8, image::Rgb([200, 10, 10])).save(tex.join("bark.jpg")).unwrap();
+        image::RgbaImage::from_pixel(4, 4, image::Rgba([10, 200, 10, 255])).save(tex.join("bark.png")).unwrap();
+        image::RgbImage::from_pixel(4, 4, image::Rgb([128, 128, 255])).save(tex.join("bark_normal.jpg")).unwrap();
+        image::RgbaImage::from_pixel(4, 4, image::Rgba([128, 128, 255, 255])).save(tex.join("bark_normal.png")).unwrap();
+        let mut game = GameConfig::builtin();
+        game.project_root = Some(dir.clone());
+        game.textures.base_dir = "res://textures".into();
+        let lib = MaterialLibrary::new(&game);
+        let barks: Vec<_> = lib.entries.iter().filter(|e| e.name == "bark").collect();
+        assert_eq!(barks.len(), 1, "one entry per material name");
+        assert_eq!(barks[0].path.as_ref().unwrap().extension().unwrap(), "png", "the first extension in the list wins, as in FuncGodot");
+        assert!(barks[0].is_pbr && barks[0].has_normal);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
