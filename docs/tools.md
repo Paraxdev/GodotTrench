@@ -39,13 +39,14 @@
   palette: the Scatter panel, which comes up when you pick the tool, shows the active set's models as cards, and you drag
   more in from the Models panel (or use *Add models…*). A card's switch decides whether the brush paints that model without
   touching what it already placed, and its details hold the weight, spacing, scale range, normal alignment, tilt, sink and a
-  material override. *+* starts an empty set and *Preset* starts one from the built-in presets (forest, pines, low-poly trees,
-  undergrowth, rocks, boulders, grass). A set only lands on its targets, so painting a forest on a terrain never covers the
+  material override. *+* starts an empty set and *Preset* starts one from the built-in presets (forest, pines, mixed woodland,
+  detailed forest, bushes, low-poly trees, undergrowth, rocks, boulders, grass). A set only lands on its targets, so painting a forest on a terrain never covers the
   house on top of it. The first stroke of a set without targets takes the surface it starts on, which can also be the
   instances of another set, so grass painted over scattered boulders grows on the boulders. The eyedropper in the panel
   (or Alt+click in a view) adds or removes a brush, mesh, terrain or another set as a target, and *Follow cursor* paints on
   whatever is under the brush instead. LMB paints, Shift+LMB erases (the panel can swap the two), Ctrl+wheel resizes the brush,
-  *Fill targets* covers the targets with slope and height limits. Foliage sets skip collision and shadows and fade out by
+  *Fill targets* covers the targets with slope and height limits. *Exposed only* skips
+  ground that has geometry above it within the clearance, so nothing grows under slabs or roofs. Foliage sets skip collision and shadows and fade out by
   distance. In Godot every set becomes MultiMeshes with shared collision shapes, or instanced scenes when the model has
   scripts. *Bake to entities* in the panel turns a set into `prop_model` entities.
 * **Blend** (`Shift+G`): paints terrain splat layers, displacement alpha and a second material on brush and mesh faces
