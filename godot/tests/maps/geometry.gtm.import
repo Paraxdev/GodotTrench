@@ -1,7 +1,7 @@
 [remap]
 
-importer="func_godot.map"
-type="QuakeMapFile"
+importer="godottrench.gtm"
+type="GodotTrenchImportedMap"
 uid="uid://b41gw5vb3h005"
 path="res://.godot/imported/geometry.gtm-59e3eee6e8cbf2018a235bda3f53d6fb.tres"
 

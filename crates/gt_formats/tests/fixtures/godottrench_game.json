@@ -11,8 +11,7 @@
       "jpeg",
       "bmp",
       "tga",
-      "webp",
-      "wal"
+      "webp"
     ],
     "material_dir": "",
     "material_extension": "tres",

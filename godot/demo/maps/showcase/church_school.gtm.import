@@ -1,7 +1,7 @@
 [remap]
 
-importer="func_godot.map"
-type="QuakeMapFile"
+importer="godottrench.gtm"
+type="GodotTrenchImportedMap"
 uid="uid://dyjlttvi18oeh"
 path="res://.godot/imported/church_school.gtm-7fa3923149acb1d1754881a9dcb55a61.tres"
 

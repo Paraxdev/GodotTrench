@@ -1,7 +1,7 @@
 [remap]
 
-importer="func_godot.map"
-type="QuakeMapFile"
+importer="godottrench.gtm"
+type="GodotTrenchImportedMap"
 uid="uid://civ00oppiux2u"
 path="res://.godot/imported/lighthouse_forest.gtm-f7b4986240fd9eb38dba8ed7c9446a35.tres"
 

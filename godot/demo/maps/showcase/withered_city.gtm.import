@@ -1,7 +1,7 @@
 [remap]
 
-importer="func_godot.map"
-type="QuakeMapFile"
+importer="godottrench.gtm"
+type="GodotTrenchImportedMap"
 uid="uid://240b4brfx1yg"
 path="res://.godot/imported/withered_city.gtm-83f4fc4cad1b2ae2c0cd02300fb01d2a.tres"
 

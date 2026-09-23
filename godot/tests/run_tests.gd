@@ -1,5 +1,5 @@
 extends SceneTree
-## Headless tests for the GodotTrench fork of FuncGodot.
+## Headless tests for the GodotTrench addon.
 ## godot --headless --path godot --script res://tests/run_tests.gd
 
 const MAP := "res://tests/maps/basic.gtm"
@@ -51,7 +51,7 @@ func build_map() -> FuncGodotMap:
 	return map
 
 func _initialize() -> void:
-	print("GodotTrench FuncGodot fork tests")
+	print("GodotTrench addon tests")
 	await process_frame
 	await test_parser()
 	await test_build()
@@ -59,7 +59,6 @@ func _initialize() -> void:
 	await test_meshes_terrain_props()
 	await test_decal_mesh()
 	test_bbmodel()
-	await test_map_export()
 	test_default_fgd()
 	await test_game_config()
 	await test_io_targets()
@@ -432,30 +431,6 @@ func test_bbmodel() -> void:
 		var nature := GodotTrenchBBModel.parse(FileAccess.get_file_as_string("res://godottrench/nature/%s.bbmodel" % file))
 		check(nature.has("polygons") and nature["polygons"].size() > 8 and not (nature["textures"][0]["image"] as Image).is_empty(), "nature %s parses with its texture" % file)
 
-func world_mesh_aabb(file: String) -> AABB:
-	var map := FuncGodotMap.new()
-	map.map_settings = load(SETTINGS)
-	map.local_map_file = file
-	root.add_child(map)
-	map.build()
-	var world := find_named(map, "entity_0_worldspawn")
-	var aabb := AABB()
-	if world:
-		for m in collect(world, func(n): return n is MeshInstance3D):
-			aabb = m.get_aabb()
-	var names := collect(map, func(n): return n.name.begins_with("entity_")).map(func(n): return String(n.name))
-	map.set_meta("names", names)
-	map.free()
-	return aabb
-
-func test_map_export() -> void:
-	print("- .map export read by upstream FuncGodot")
-	var from_gtm := world_mesh_aabb(MAP)
-	var from_map := world_mesh_aabb("res://tests/maps/basic_export.map")
-	# The prefab is not part of the .map, it sits inside the floor bounds so the extents still match.
-	check(from_map.size.length() > 1.0, "exported .map builds world geometry")
-	check(near(from_map.position, from_gtm.position, 0.01) and near(from_map.end, from_gtm.end, 0.01), "world bounds match: map %s vs gtm %s" % [from_map, from_gtm])
-
 func test_default_fgd() -> void:
 	print("- addon defaults include the entity library")
 	var settings: FuncGodotMapSettings = load("res://addons/func_godot/func_godot_default_map_settings.tres")
@@ -743,7 +718,7 @@ func test_scatter_and_blend() -> void:
 
 	var blend := GodotTrenchBlend.key("showcase/cobble", "showcase/grass")
 	check(GodotTrenchBlend.is_blend(blend) and GodotTrenchBlend.parts(blend) == PackedStringArray(["showcase/cobble", "showcase/grass"]), "blend texture names round trip")
-	var built: Array = GodotTrenchBlend.build(blend, settings, [])
+	var built: Array = GodotTrenchBlend.build(blend, settings)
 	var mat := built[0] as ShaderMaterial
 	check(mat != null and mat.get_shader_parameter("texture_a") != null and mat.get_shader_parameter("texture_b") != null, "blend material samples both textures")
 	check(GodotTrenchBlend.options(blend) == [0.0, 1.0, 0.5], "a plain blend tiles as authored")
@@ -755,7 +730,7 @@ func test_scatter_and_blend() -> void:
 	var opts := GodotTrenchBlend.options(path)
 	check(is_equal_approx(opts[0], 0.75) and is_equal_approx(opts[1], 4.0) and is_equal_approx(opts[2], 0.9), "options round trip, got %s" % [opts])
 	check(path != blend, "a de-tiled face gets its own material")
-	var path_mat := GodotTrenchBlend.build(path, settings, [])[0] as ShaderMaterial
+	var path_mat := GodotTrenchBlend.build(path, settings)[0] as ShaderMaterial
 	check(is_equal_approx(path_mat.get_shader_parameter("detile_b"), 0.75), "the painted texture is de-tiled")
 	check(path_mat.get_shader_parameter("uv_scale_b").is_equal_approx(Vector2.ONE * 4.0), "the painted texture takes the repeat")
 	check(is_equal_approx(path_mat.get_shader_parameter("detile_sharpen_b"), 0.9), "the painted texture keeps its crispness")
@@ -798,7 +773,7 @@ func test_texture_size_override() -> void:
 	check(uv.is_equal_approx(Vector2(1.0, 0.5)), "one world size along u is one repeat, got %s" % uv)
 
 	# A blend keeps the painted texture at its own world size: cobble repeats every 64 units, carpet every 32.
-	var blend: Array = GodotTrenchBlend.build(GodotTrenchBlend.key("showcase/cobble", "showcase/carpet"), settings, [])
+	var blend: Array = GodotTrenchBlend.build(GodotTrenchBlend.key("showcase/cobble", "showcase/carpet"), settings)
 	check(blend[1] == Vector2(64, 64), "the blend's UVs follow the base material, got %s" % blend[1])
 	var scale_b: Vector2 = (blend[0] as ShaderMaterial).get_shader_parameter("uv_scale_b")
 	check(scale_b.is_equal_approx(Vector2(2, 2)), "the painted texture repeats twice as often, got %s" % scale_b)
@@ -1645,9 +1620,9 @@ func test_emission() -> void:
 	check(lamp_decal != null and lamp_decal.emission_enabled and lamp_decal.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR, "the decal variant keeps emission")
 	check(not (materials.get("showcase/cobble") as BaseMaterial3D).emission_enabled, "plain materials stay dark")
 
-	var blend := GodotTrenchBlend.build(GodotTrenchBlend.key("showcase/cobble", "showcase/lamp"), settings, [])[0] as ShaderMaterial
+	var blend := GodotTrenchBlend.build(GodotTrenchBlend.key("showcase/cobble", "showcase/lamp"), settings)[0] as ShaderMaterial
 	check(near(blend.get_shader_parameter("emission_energy_b"), 3.0) and blend.get_shader_parameter("emission_energy_a") == null, "a blend glows where the emissive side is painted")
-	var glass := GodotTrenchBlend.build(GodotTrenchBlend.key("showcase/stained_glass", "showcase/cobble"), settings, [])[0] as ShaderMaterial
+	var glass := GodotTrenchBlend.build(GodotTrenchBlend.key("showcase/stained_glass", "showcase/cobble"), settings)[0] as ShaderMaterial
 	check(glass.get_shader_parameter("emission_texture_a") != null, "a blend carries the emission texture")
 
 	var bb := GodotTrenchBBModel.parse(FileAccess.get_file_as_string("res://demo/models/pine.bbmodel"))

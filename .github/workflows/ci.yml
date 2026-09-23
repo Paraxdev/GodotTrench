@@ -36,6 +36,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -60,6 +62,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -85,6 +89,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Download Godot
         run: |
           curl -sSL -o godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
@@ -122,6 +128,8 @@ jobs:
             exe: godottrench
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -161,6 +169,8 @@ jobs:
       BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: true
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -168,8 +178,9 @@ jobs:
           merge-multiple: true
       - name: Package Godot addon and demo project
         run: |
-          (cd godot && zip -qr "../dist/func_godot-godottrench-addon.zip" addons/func_godot)
-          zip -qr dist/godottrench-demo-project.zip godot -x "godot/.godot/*"
+          # The addon is a submodule, its .git file and git settings stay out of the zips.
+          (cd godot && zip -qr "../dist/func_godot-godottrench-addon.zip" addons/func_godot -x "addons/func_godot/.git*")
+          zip -qr dist/godottrench-demo-project.zip godot -x "godot/.godot/*" "godot/addons/func_godot/.git*"
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -180,7 +191,7 @@ jobs:
           fi
           shots="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/docs/screenshots"
           downloads="* godottrench-*: the editor for Linux, Windows and macOS.
-          * func_godot-godottrench-addon.zip: the forked FuncGodot addon, extract into your Godot project so it becomes res://addons/func_godot.
+          * func_godot-godottrench-addon.zip: the Godot addon, extract into your Godot project so it becomes res://addons/func_godot.
           * godottrench-demo-project.zip: the demo Godot project with the showcase maps.
 
           ![Editor](${shots}/editor.png)

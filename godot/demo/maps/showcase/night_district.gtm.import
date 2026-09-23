@@ -1,7 +1,7 @@
 [remap]
 
-importer="func_godot.map"
-type="QuakeMapFile"
+importer="godottrench.gtm"
+type="GodotTrenchImportedMap"
 uid="uid://c5i36yx3g22y7"
 path="res://.godot/imported/night_district.gtm-1b4fe5232577adb656abba4a14126da3.tres"
 

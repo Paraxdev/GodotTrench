@@ -11,6 +11,5 @@
 
 [resource]
 script = ExtResource("1_fgd")
-fgd_name = "GodotTrenchDemo"
 base_fgd_files = Array[Resource]([ExtResource("2_base"), ExtResource("3_gt")])
 entity_definitions = Array[Resource]([ExtResource("6_start"), ExtResource("7_trigger"), ExtResource("8_decal"), ExtResource("10_rot"), ExtResource("12_beam")])

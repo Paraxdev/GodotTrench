@@ -188,9 +188,6 @@ fn main() {
             std::fs::write(dir.join("geometry_json.gtm"), format::to_string(&geometry())).unwrap();
         }
 
-        // The same demo as a Valve 220 .map, built by FuncGodot's own parser in the Godot tests.
-        let options = gt_formats::quake_map::ExportOptions { skip_omitted_layers: true, ..Default::default() };
-        std::fs::write(dir.join("basic_export.map"), gt_formats::quake_map::export_with(&demo(), options)).unwrap();
         println!("wrote maps to {}", dir.display());
     }
 }

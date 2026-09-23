@@ -1,0 +1,3 @@
+[submodule "godot/addons/func_godot"]
+	path = godot/addons/func_godot
+	url = https://github.com/Paraxdev/godottrench_func.git
