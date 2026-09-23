@@ -16,7 +16,8 @@ the reply echoes. The editor keeps one connection open and sends a `status` hear
 | `map_saved` | `path` | `rebuilt` |
 | `build` | `path`, `text` | `rebuilt` |
 | `focus` | | |
-| `live_begin`, `live_resync` | `path`, `text` | `epoch` |
+| `live_begin` | `path`, `text`, `content` | `epoch` |
+| `live_resync` | `path`, `text` | `epoch` |
 | `live_delta` | `path`, `ops` | `epoch`, or `ok: false, resync: true` when the ops do not fit |
 | `live_end` | `path`, `revert` | |
 | `inspect` | `path`, `ids` | Generated node name, class and position per map node id |
@@ -26,10 +27,13 @@ the reply echoes. The editor keeps one connection open and sends a `status` hear
 
 | Op | Fields | Meaning |
 | --- | --- | --- |
-| `set` | `id`, `parent`, `index`, `node` | Insert or replace a node, as stored in the `.gtm`, without children |
+| `set` | `id`, `parent`, `index`, `node` | Insert or replace a node, in the JSON shape of the `.gtm` format, without children |
 | `remove` | `id` | Remove a node with its subtree, only the topmost id is sent |
 | `translate` | `ids`, `offset` | Move nodes, sent while dragging instead of geometry |
 | `properties` | `properties` | Replace the worldspawn properties |
+
+`text` is the whole map as JSON. `content` is the content id the END chunk of the saved file records, so a scene
+built from an unchanged file is not rebuilt when a session starts.
 
 Edits only go out once Godot has taken the previous batch, so a slow Godot editor never piles up work.
 

@@ -67,6 +67,10 @@ content alongside.
 
 ## Build performance
 
+Builds read `.gtm` files in one go, the binary container or the JSON of older maps (see
+[the .gtm map format](../format-gtm.md)). A damaged map still builds from the parts that could be read, with a `[GTM]`
+warning for each part that could not.
+
 Brushes and terrain chunks are converted on the WorkerThreadPool, meshes and shapes are created on the main thread. The
 project setting `godottrench/threaded_build` turns the threaded steps off. To time each step on the showcase maps:
 

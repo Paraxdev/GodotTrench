@@ -44,6 +44,21 @@ playthrough. The `example_mcp_scripts_replay` end to end test replays every scri
 
 To test the live link without a window, see [Live link protocol](godot/live-link.md#testing-without-a-window).
 
+## Map files in git
+
+`.gtm` maps are compressed binary files, see [the .gtm map format](format-gtm.md), and `.gitattributes` marks them as
+binary so git never changes their line endings. To see readable diffs of maps, tell git once per clone to print them as
+JSON with the editor:
+
+```sh
+git config diff.gtm.textconv "godottrench --dump"
+```
+
+`godottrench` has to be on your `PATH`, otherwise give the full path to the binary. The same flag prints any map to the
+terminal. `godottrench --to-json map.gtm map.json` writes the readable JSON to a file, which the editor opens and
+can save again, and `godottrench --to-gtm map.json map.gtm` turns it back into a binary map with exactly the same
+content. Older JSON maps load as they are and are saved in the binary format from then on.
+
 ## Generated content
 
 | Command | Regenerates |

@@ -12,7 +12,7 @@ standalone app. A fork of FuncGodot inside your Godot project turns the saved ma
 
 | Part | Role |
 | --- | --- |
-| The editor | Writes `.gtm` map files, which are JSON |
+| The editor | Writes `.gtm` map files, compressed binary files made of independent chunks, so a damaged byte costs a few objects instead of the whole map |
 | The addon | Reads `.gtm` files in Godot and builds meshes, collision and working entities |
 | The game config | `godottrench_game.json`, written by the addon so the editor knows your entities and textures |
 

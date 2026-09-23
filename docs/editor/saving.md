@@ -18,6 +18,13 @@ Godot does not import.
 
 Untitled maps autosave to a temporary file of their own. Find those under *File > Open Recent*.
 
+## Damaged files
+
+A map file damaged on disk still opens. The editor reads every part of the file that is intact, puts objects whose
+layer, group or entity was lost into a layer named *Recovered*, and says in the status bar what could not be read. The
+map then counts as changed, and saving it keeps the damaged original as `<map>.gtm.bak`, so you can still restore it
+from version control instead.
+
 ## Tabs
 
 Several maps can be open at once.
