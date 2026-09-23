@@ -5,6 +5,8 @@ Invisible brush volumes that react to bodies entering them. Draw one with the **
 ## Shared inputs, outputs and keys
 
 Every trigger below has these. `filter_group` limits it to bodies in that Godot group, empty accepts any body.
+Triggers detect bodies on physics layer 1. If the player is on another layer, add it to **Trigger Collision Mask** in
+the map settings, or the triggers never fire.
 
 * **Inputs:** `enable`, `disable`, `toggle`
 * **Outputs:** `triggered(activator)`, `entered(activator)`, `exited(activator)`

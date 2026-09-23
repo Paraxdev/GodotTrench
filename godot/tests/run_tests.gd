@@ -82,6 +82,7 @@ func _initialize() -> void:
 	test_emission()
 	await test_night_environment()
 	await test_sky_faces()
+	await test_trigger_collision_mask()
 	test_face_cull()
 	test_interior_face_culling()
 	test_chunk_streamer()
@@ -1880,6 +1881,30 @@ func test_sky_faces() -> void:
 	check(panorama != null and panorama.panorama.resource_path == "res://demo/textures/special/sky.png", "sky_panorama shows a Source skybox")
 	DirAccess.remove_absolute(path)
 	scene.queue_free()
+	await process_frame
+
+## Built triggers take the mask from the map settings, so a player on its own physics layer still fires them.
+func test_trigger_collision_mask() -> void:
+	print("- trigger collision mask")
+	var trigger := { "type": "entity", "id": 2, "classname": "trigger_once", "properties": { "targetname": "zone" }, "children": [box_node(3, Vector3(-32, 0, -32), Vector3(32, 64, 32))] }
+	var door := { "type": "entity", "id": 4, "classname": "func_door", "properties": { "targetname": "gate" }, "children": [box_node(5, Vector3(64, 0, -32), Vector3(80, 64, 32))] }
+	var path := OS.get_temp_dir().path_join("gt_trigger_mask_test.gtm")
+	var map_json := { "format": "godottrench-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": [trigger, door] }] }
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify(map_json))
+	var settings: FuncGodotMapSettings = load(SETTINGS).duplicate()
+	check(settings.trigger_collision_mask == 1, "triggers detect layer 1 by default")
+	settings.trigger_collision_mask = 0b110
+	var map := FuncGodotMap.new()
+	map.map_settings = settings
+	map.global_map_file = path
+	root.add_child(map)
+	map.build()
+	var zone := find_named(map, "entity_zone") as Area3D
+	check(zone and zone.collision_mask == 0b110, "the trigger takes trigger_collision_mask, got %s" % (zone.collision_mask if zone else -1))
+	var gate := find_named(map, "entity_gate") as CollisionObject3D
+	check(gate and gate.collision_mask == 1, "bodies that are not triggers keep their class mask")
+	map.free()
+	DirAccess.remove_absolute(path)
 	await process_frame
 
 ## Plays the night map built by examples/mcp/night_district.json: the garage switch and its beacon, the flickering alley
