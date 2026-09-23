@@ -1,10 +1,8 @@
 # GodotTrench
 
-![GodotTrench logo](assets/logo.png)
-
 GodotTrench is a brush based level editor for Godot in the spirit of TrenchBroom and Hammer. You block out a level from
 brushes, add meshes, terrain and props, and wire gameplay together with Hammer style inputs and outputs. The editor is a
-standalone app. A fork of FuncGodot inside your Godot project turns the saved map into a real scene.
+standalone app, and a fork of FuncGodot inside your Godot project turns the saved map into a scene.
 
 ![The GodotTrench editor](screenshots/editor.png)
 
@@ -12,7 +10,7 @@ standalone app. A fork of FuncGodot inside your Godot project turns the saved ma
 
 | Part | Role |
 | --- | --- |
-| The editor | Writes `.gtm` map files, compressed binary files made of independent chunks, so a damaged byte costs a few objects instead of the whole map |
+| The editor | Writes `.gtm` maps, compressed binary files made of independent chunks, so a damaged byte costs a few objects instead of the whole map |
 | The addon | Reads `.gtm` files in Godot and builds meshes, collision and working entities |
 | The game config | `godottrench_game.json`, written by the addon so the editor knows your entities and textures |
 
@@ -25,6 +23,7 @@ When something looks wrong on one side, one of these three is usually out of dat
 | Set up a project and build a first room | [Getting started](getting-started.md) |
 | Find your way around the editor | [Interface and navigation](editor/interface.md), [Shortcuts](editor/shortcuts.md) |
 | Understand what happens in Godot | [Building maps](godot/building.md) |
+| See edits in Godot before saving | [Live mode and hot reload](godot/live.md) |
 | Make doors, triggers and scripted scenes | [How entity I/O works](gameplay/io.md), then [Button opens a door](tutorials/button-door.md) |
 | Build outdoor terrain | [Terrain](editor/terrain.md), then [Building a sea island](tutorials/sea-island.md) |
 | Drive the editor from scripts or AI agents | [MCP server](mcp.md) |
