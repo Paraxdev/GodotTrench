@@ -1,0 +1,16 @@
+{
+  "title": "GodotTrench",
+  "description": "A brush based level editor for Godot",
+  "language": "en",
+  "plugins": ["-sharing", "-livereload"],
+  "pluginsConfig": {
+    "theme-default": {
+      "showLevel": false
+    }
+  },
+  "links": {
+    "sidebar": {
+      "GodotTrench on GitHub": "https://github.com/Paraxdev/GodotTrench"
+    }
+  }
+}
