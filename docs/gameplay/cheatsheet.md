@@ -46,7 +46,7 @@ input with a parameter sets the property of that name.
 
 `this`, `activator`, `parameter`, `io` and `tree`. Indent with tabs.
 
-```python
+```gdscript
 var p = io.find_targets(this, "!player", null)
 if not p.is_empty():
 	p[0].take_damage(25, this)

@@ -114,23 +114,39 @@
 
 .book .book-body .page-wrapper .page-inner section.normal .hljs-keyword,
 .book .book-body .page-wrapper .page-inner section.normal .hljs-selector-tag {
-  color: #cc99e6 !important;
+  color: #c678dd !important;
 }
 
 .book .book-body .page-wrapper .page-inner section.normal .hljs-string,
 .book .book-body .page-wrapper .page-inner section.normal .hljs-attr {
-  color: #a5d68a !important;
+  color: #98c379 !important;
 }
 
 .book .book-body .page-wrapper .page-inner section.normal .hljs-number,
 .book .book-body .page-wrapper .page-inner section.normal .hljs-literal {
-  color: #f0b36b !important;
+  color: #d19a66 !important;
 }
 
 .book .book-body .page-wrapper .page-inner section.normal .hljs-built_in,
 .book .book-body .page-wrapper .page-inner section.normal .hljs-title,
 .book .book-body .page-wrapper .page-inner section.normal .hljs-type {
-  color: #7cc4f0 !important;
+  color: #56b6c2 !important;
+}
+
+.book .book-body .page-wrapper .page-inner section.normal .hljs-meta {
+  color: #e06c75 !important;
+}
+
+.book .book-body .page-wrapper .page-inner section.normal .hljs-title.function_ {
+  color: #61afef !important;
+}
+
+.book .book-body .page-wrapper .page-inner section.normal .hljs-title.class_ {
+  color: #e5c07b !important;
+}
+
+.book .book-body .page-wrapper .page-inner section.normal .hljs-symbol {
+  color: #7fd6c2 !important;
 }
 
 .book .book-body .page-wrapper .page-inner section.normal .hljs-variable,

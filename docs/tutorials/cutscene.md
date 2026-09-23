@@ -25,7 +25,7 @@ step 5 at 7.5 s. For uneven timing, set `times` to one wait per step, such as `0
 The barrel's `broken` output calls `run` on a `logic_script` named `hp_readout`. Its `source` writes the player's
 health onto a HUD `game_text` named `hpmsg`:
 
-```python
+```gdscript
 var players = io.find_targets(this, "!player", null)
 if players.is_empty():
 	return

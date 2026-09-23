@@ -17,6 +17,6 @@ train, are never hidden.
 The streamer emits `area_loaded(key, bounds)` and `area_unloaded(key, bounds)` as cells come and go, so you can stream
 your own content alongside:
 
-```python
+```gdscript
 streamer.area_loaded.connect(func(key, bounds): spawn_wildlife(bounds))
 ```

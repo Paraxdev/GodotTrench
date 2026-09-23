@@ -6,6 +6,7 @@
     "-sharing",
     "-livereload",
     "-fontsettings",
+    "gdscript",
     "honkit-plugin-theme-darkening"
   ],
   "pluginsConfig": {
