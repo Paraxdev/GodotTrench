@@ -48,11 +48,12 @@ static func _scene(root: Node) -> Array:
 	return out
 
 static func _test_builds_like_json(t, binary: String, json: String) -> void:
+	# One at a time, the second map would leave the sun to the first.
 	var a := _build(t, binary)
-	var b := _build(t, json)
 	var scene_a := _scene(a)
-	t.check(scene_a.size() > 5 and scene_a == _scene(b), "%s builds the same as its JSON twin, %d nodes" % [binary, scene_a.size()])
 	a.free()
+	var b := _build(t, json)
+	t.check(scene_a.size() > 5 and scene_a == _scene(b), "%s builds the same as its JSON twin, %d nodes" % [binary, scene_a.size()])
 	b.free()
 	await t.process_frame
 

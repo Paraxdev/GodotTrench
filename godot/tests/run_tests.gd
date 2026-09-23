@@ -82,6 +82,7 @@ func _initialize() -> void:
 	test_emission()
 	await test_night_environment()
 	await test_sky_faces()
+	await test_environment_modes()
 	await test_trigger_collision_mask()
 	test_face_cull()
 	test_interior_face_culling()
@@ -1880,6 +1881,33 @@ func test_sky_faces() -> void:
 	var panorama := (nodes[0] as WorldEnvironment).environment.sky.sky_material as PanoramaSkyMaterial if nodes.size() > 0 and nodes[0] is WorldEnvironment else null
 	check(panorama != null and panorama.panorama.resource_path == "res://demo/textures/special/sky.png", "sky_panorama shows a Source skybox")
 	DirAccess.remove_absolute(path)
+	scene.queue_free()
+	await process_frame
+
+## The worldspawn environment modes, and a scene's own sun winning over the map's.
+func test_environment_modes() -> void:
+	print("- environment modes")
+	var scene := Node3D.new()
+	root.add_child(scene)
+	var holder := Node3D.new()
+	scene.add_child(holder)
+	var keys := { "sun_angles": "-30 60", "fog_density": "0.01" }
+	var sun_only := GodotTrenchEnvironment.build(holder, keys.merged({ "environment": "sun_only" }))
+	check(sun_only.size() == 1 and sun_only[0] is DirectionalLight3D, "sun_only builds the sun and no WorldEnvironment")
+	var only_key := GodotTrenchEnvironment.build(Node3D.new(), { "environment": "sun_only" })
+	check(only_key.size() == 1, "sun_only builds the sun without other keys")
+	for n in only_key:
+		n.get_parent().free()
+	check(GodotTrenchEnvironment.build(holder, keys.merged({ "environment": "none" })).is_empty(), "none builds nothing")
+	check(GodotTrenchEnvironment.build(holder, keys.merged({ "environment": "0" })).is_empty(), "0 builds nothing")
+	for n in sun_only:
+		n.free()
+	var moon := DirectionalLight3D.new()
+	scene.add_child(moon)
+	var map := Node3D.new()
+	scene.add_child(map)
+	var nodes := GodotTrenchEnvironment.build(map, keys)
+	check(nodes.size() == 1 and nodes[0] is WorldEnvironment, "a scene with its own DirectionalLight3D keeps it and gets no second sun")
 	scene.queue_free()
 	await process_frame
 

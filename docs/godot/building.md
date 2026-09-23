@@ -40,6 +40,20 @@ add_child(map)
 map.build()
 ```
 
+## Environment and sun
+
+Worldspawn sky, fog and sun keys build a `WorldEnvironment` and a `sun` light into the map. The worldspawn key
+`environment` picks what gets built:
+
+| `environment` | Builds |
+| --- | --- |
+| `1` | The environment and the sun, the default |
+| `sun_only` | Only the sun |
+| `0` | Nothing |
+
+A scene that already has a `WorldEnvironment` or `DirectionalLight3D` of its own keeps it, and the map adds none. So a
+game with its own look wins, and of several maps in one scene the first one built lights it.
+
 ## Damaged maps
 
 A damaged map still builds from the parts that could be read, with a `[GTM]` warning for each part that could not. See

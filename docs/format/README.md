@@ -36,8 +36,9 @@ Only `layer` nodes are read from `layers`. A map with no layers gets a `Default`
 Worldspawn values are strings, like in a `.map` file. `GodotTrenchEnvironment` builds a sky, fog and sun from
 `sun_angles`, `sun_color`, `sun_energy`, `ambient_color`, `ambient_energy`, `sky_top_color`, `sky_horizon_color`,
 `sky_ground_color`, `sky_energy`, `sky_panorama`, `fog_color`, `fog_density`, `glow_intensity` and `ssr`.
-`environment` set to `0` turns it off, and a scene with a WorldEnvironment of its own keeps that one. `sky_source` names
-the texture the sky faces of an imported map had.
+`environment` set to `sun_only` builds only the sun and `0` nothing, see
+[environment and sun](../godot/building.md#environment-and-sun). `sky_source` names the texture the sky faces of an
+imported map had.
 
 The `editor` object:
 
