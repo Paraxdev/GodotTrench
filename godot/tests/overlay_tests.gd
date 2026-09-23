@@ -6,6 +6,7 @@ extends RefCounted
 ## res://tests/run_tests.gd calls [method run], [param t] is that script's instance for its check helpers.
 
 const MAP := "res://tests/maps/basic.gtm"
+const MAP_JSON := "res://tests/maps/basic_json.gtm"
 const SETTINGS := "res://demo/demo_map_settings.tres"
 const PROBE := preload("res://tests/helpers/io_probe.gd")
 
@@ -79,7 +80,7 @@ static func _by_targetname(map: Node, targetname: String) -> Node:
 	return found
 
 static func _basic_with_outputs(outputs: Array) -> String:
-	var json: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(MAP))
+	var json: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(MAP_JSON))
 	for layer in json["layers"]:
 		for node in layer.get("children", []):
 			if node.get("type") == "entity" and node.get("properties", {}).get("targetname", "") == "button1":
@@ -209,7 +210,7 @@ static func _test_overlay_output_reaches_map(t) -> void:
 	map.owner.free()
 
 static func _test_anchor_follows_entity(t) -> void:
-	var text := FileAccess.get_file_as_string(MAP)
+	var text := FileAccess.get_file_as_string(MAP_JSON)
 	var map := _level(t, text)
 	var overlay := _overlay(map)
 	await t.process_frame
@@ -251,7 +252,7 @@ static func _test_anchor_follows_entity(t) -> void:
 	map.owner.free()
 
 static func _test_live_session_and_hot_reload(t) -> void:
-	var text := FileAccess.get_file_as_string(MAP)
+	var text := FileAccess.get_file_as_string(MAP_JSON)
 	var map := _level(t, text)
 	var overlay := _overlay(map)
 	var decor := _add(overlay, MeshInstance3D.new(), "Decor")
@@ -332,8 +333,8 @@ static func _test_sidecar(t) -> void:
 	var dir := OS.get_temp_dir().path_join("gt_overlay_test")
 	DirAccess.make_dir_recursive_absolute(dir)
 	var map_file := dir.path_join("overlay_map.gtm")
-	FileAccess.open(map_file, FileAccess.WRITE).store_string(FileAccess.get_file_as_string(MAP))
-	FileAccess.open(dir.path_join("prefab.gtm"), FileAccess.WRITE).store_string(FileAccess.get_file_as_string("res://tests/maps/prefab.gtm"))
+	FileAccess.open(map_file, FileAccess.WRITE).store_buffer(FileAccess.get_file_as_bytes(MAP))
+	FileAccess.open(dir.path_join("prefab.gtm"), FileAccess.WRITE).store_buffer(FileAccess.get_file_as_bytes("res://tests/maps/prefab.gtm"))
 	var sidecar := dir.path_join("overlay_map.overlay.json")
 	if FileAccess.file_exists(sidecar):
 		DirAccess.remove_absolute(sidecar)

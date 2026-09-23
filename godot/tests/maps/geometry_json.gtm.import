@@ -1,0 +1,14 @@
+[remap]
+
+importer="func_godot.map"
+type="QuakeMapFile"
+uid="uid://cey8a0epnaouh"
+path="res://.godot/imported/geometry_json.gtm-ff250e7ec759de7a062cb3c875cc0ff2.tres"
+
+[deps]
+
+source_file="res://tests/maps/geometry_json.gtm"
+dest_files=["res://.godot/imported/geometry_json.gtm-ff250e7ec759de7a062cb3c875cc0ff2.tres"]
+
+[params]
+

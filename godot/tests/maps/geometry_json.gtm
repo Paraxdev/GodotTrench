@@ -1,0 +1,87 @@
+{
+  "format": "godottrench-map",
+  "version": 1,
+  "properties": {
+    "classname": "worldspawn",
+    "fog_color": "200 210 220",
+    "fog_density": "0.004",
+    "sky_top_color": "51 90 150",
+    "sun_angles": "-30 60"
+  },
+  "layers": [
+    {
+      "id": 1,
+      "type": "layer",
+      "name": "Default",
+      "color": "#7e67e6ff",
+      "omit_from_export": false,
+      "children": [
+        {
+          "id": 2,
+          "type": "mesh",
+          "vertices": [[64.0,64.0,0.0],[64.0,64.0,64.0],[64.0,0.0,64.0],[64.0,0.0,0.0],[0.0,64.0,64.0],[0.0,64.0,0.0],[0.0,0.0,0.0],[0.0,0.0,64.0],[64.0,96.0,0.0],[64.0,96.0,64.0],[0.0,96.0,64.0],[0.0,96.0,0.0]],
+          "faces": [
+            {"indices":[0,1,2,3],"material":"base/wall","uv":{"u_axis":[0.0,0.0,-1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[4,5,6,7],"material":"base/wall","uv":{"u_axis":[0.0,0.0,1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[9,8,11,10],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[3,2,7,6],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[2,1,4,7],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[6,5,0,3],"material":"base/wall","uv":{"u_axis":[-1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[0,5,11,8],"material":"base/wall","uv":{"u_axis":[-1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[1,0,8,9],"material":"base/wall","uv":{"u_axis":[0.0,0.0,-1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[4,1,9,10],"material":"base/wall","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[5,4,10,11],"material":"base/wall","uv":{"u_axis":[0.0,0.0,1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}}
+          ]
+        },
+        {
+          "id": 3,
+          "type": "mesh",
+          "vertices": [[192.0,0.0,32.0],[189.56414504036118,0.0,44.245869835682875],[182.62741699796953,0.0,54.62741699796952],[172.24586983568287,0.0,61.564145040361176],[160.0,0.0,64.0],[147.75413016431713,0.0,61.564145040361176],[137.37258300203047,0.0,54.62741699796952],[130.43585495963882,0.0,44.245869835682875],[128.0,0.0,32.00000000000001],[130.43585495963882,0.0,19.754130164317132],[137.37258300203047,0.0,9.372583002030481],[147.7541301643171,0.0,2.4358549596388315],[160.0,0.0,0.0],[172.24586983568287,0.0,2.435854959638828],[182.6274169979695,0.0,9.372583002030474],[189.56414504036115,0.0,19.754130164317107],[192.0,96.0,32.0],[189.56414504036118,96.0,44.245869835682875],[182.62741699796953,96.0,54.62741699796952],[172.24586983568287,96.0,61.564145040361176],[160.0,96.0,64.0],[147.75413016431713,96.0,61.564145040361176],[137.37258300203047,96.0,54.62741699796952],[130.43585495963882,96.0,44.245869835682875],[128.0,96.0,32.00000000000001],[130.43585495963882,96.0,19.754130164317132],[137.37258300203047,96.0,9.372583002030481],[147.7541301643171,96.0,2.4358549596388315],[160.0,96.0,0.0],[172.24586983568287,96.0,2.435854959638828],[182.6274169979695,96.0,9.372583002030474],[189.56414504036115,96.0,19.754130164317107]],
+          "faces": [
+            {"indices":[0,16,17,1],"material":"base/metal","uv":{"u_axis":[0.19509032201612772,0.0,-0.9807852804032304],"v_axis":[0.0,-1.0,-0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0},"uvs":[[0.0,0.0],[1.0,0.0],[1.0,1.0],[0.0,1.0]]},
+            {"indices":[1,17,18,2],"material":"base/metal","uv":{"u_axis":[0.5555702330196022,0.0,-0.8314696123025451],"v_axis":[0.0,-1.0,-0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[2,18,19,3],"material":"base/metal","uv":{"u_axis":[0.8314696123025456,0.0,-0.555570233019602],"v_axis":[0.0,-1.0,-0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[3,19,20,4],"material":"base/metal","uv":{"u_axis":[0.9807852804032303,0.0,-0.19509032201612858],"v_axis":[0.0,-1.0,-0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[4,20,21,5],"material":"base/metal","uv":{"u_axis":[0.9807852804032303,0.0,0.19509032201612858],"v_axis":[-0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[5,21,22,6],"material":"base/metal","uv":{"u_axis":[0.8314696123025456,0.0,0.555570233019602],"v_axis":[-0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[6,22,23,7],"material":"base/metal","uv":{"u_axis":[0.5555702330196022,0.0,0.8314696123025451],"v_axis":[-0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[7,23,24,8],"material":"base/metal","uv":{"u_axis":[0.19509032201612775,0.0,0.9807852804032304],"v_axis":[-0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[8,24,25,9],"material":"base/metal","uv":{"u_axis":[-0.19509032201612772,0.0,0.9807852804032304],"v_axis":[-0.0,-1.0,-0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[9,25,26,10],"material":"base/metal","uv":{"u_axis":[-0.5555702330196017,0.0,0.8314696123025457],"v_axis":[-0.0,-1.0,-0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[10,26,27,11],"material":"base/metal","uv":{"u_axis":[-0.8314696123025451,0.0,0.5555702330196022],"v_axis":[-0.0,-1.0,-0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[11,27,28,12],"material":"base/metal","uv":{"u_axis":[-0.9807852804032303,0.0,0.19509032201612855],"v_axis":[-0.0,-1.0,-0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[12,28,29,13],"material":"base/metal","uv":{"u_axis":[-0.9807852804032303,0.0,-0.1950903220161286],"v_axis":[-0.0,-1.0,-0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[13,29,30,14],"material":"base/metal","uv":{"u_axis":[-0.8314696123025451,0.0,-0.5555702330196022],"v_axis":[-0.0,-1.0,-0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[14,30,31,15],"material":"base/metal","uv":{"u_axis":[-0.5555702330196024,0.0,-0.831469612302545],"v_axis":[-0.0,-1.0,-0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[15,31,16,0],"material":"base/metal","uv":{"u_axis":[-0.19509032201612966,0.0,-0.9807852804032301],"v_axis":[-0.0,-1.0,-0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],"material":"base/metal","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[-0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16],"material":"base/metal","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[-0.0,-0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}}
+          ],
+          "smooth_angle": 40.0
+        },
+        {
+          "id": 4,
+          "type": "terrain",
+          "origin": [-320.0,-8.0,-320.0],
+          "resolution": [17,17],
+          "cell_size": 40.0,
+          "heights": "yyxLQhj7UkJAMUJCDzE7Ql5vP0LGIilCFq0zQk1KLUI4NDZCP7szQmMWQEJVTUJC1/g8QgggXkKEAmdCebZuQpOrY0IHAiZC6VkmQkOPK0I6CzhCNCJCQt8pKkJ2qiJC2oApQt5/KUIkqCpCzo0/QrtLVEKyxVdCMMFoQhoJZkIOZHVCDvFuQnVsFEKMQyJCE+kzQv5tQ0IhG0RCwoM1Qj8BHkJW5xZCiFwgQtlmJ0IviUBCX6pSQukxXUIWN3RCM/d0QmrQdEID6ntClDIVQhL/HULC1S9CmPomQvYlJkKeFQtCiJcKQg54BULcQgtCCDsoQuoYSUITLE5CDrVnQs6pcEKZTndCDtt9QgCJg0LE6w5CqMISQoVGE0KfVg9CnWv4QXIaz0HE9MVB3xbaQWHm70Edwx1CoOIuQgaWQkKcmE9Ck2xZQox3bELiCYBCzB+DQjnDFkK+1QtClYn4QQUB0UFZCMtBWs2wQbWXoEFvQcBBbkL/QYmvFEI2eDBCX9s1QueuQkISOk5CXvZwQlewc0II93dCX30bQkS6AkI9T+VBZW3KQeWfxEGnNNdBzFLiQR5o9kFukR1CE0IvQtG6MUK0UklCAD5JQu87YUIx82ZChOtgQs0tXUKyNg5CPer6QftQ20Gpjb5B3o+5QYdv4EFXuAVCHdISQtTfJUJv0ixCC7MtQvtoQ0KnD1ZCmQBhQu0CbkJaxGpCARB1QjxHIkIv5Q5CEdj2QTNg2kFfg9dB6PbzQUW+GEIAEiBCAAAgQy7RL0LbBSpCTflJQguHYEIUYGdCrYJmQko5b0JtC4BC31QsQu17E0LhvQpCSRj6QWG36kF6DQ1Cz2IcQt/6LUI9ey1CHf4vQjfFNEIE/0VCou5TQsgBbkKVG3JCvm57QtkdgkIW3kpCXloqQmpaH0Lchg5CRCENQpc1G0LImjJCsw05Qmn7KkItJiBC4F0qQuH1QkKDy11CMKV+QgG1gUJ7SX9Cz797Qj7FdEK2uUpC7Sk5QpaIHkLRbxZCuKgkQpaeJ0KVTDJCJVYtQp6lMkKhikpCFMNVQtN5ZUL+9X9CSbyJQhfJikKwV4BCl9x7QnrlXkLlsD9CPoA2QlmrM0I4vDJCBcUoQmbxK0Jd9ixCLMJQQj0YYEI1MG5C9hhwQh0cfkIHoYdCuPWMQn/XhkKjy3BCbqxSQjnHPEJXJi1CdUQ2Qop9MUK70RtCYQIhQjpwMUIRzkdCt/FTQgv0Y0JhVmNCxoVxQn85gUK23IVCCW2GQjrCYULfXUhCoPUyQhCVK0KpoStC3ZwwQvW2H0JT8RtC40Q0QnzjQkIQ7EFCMThLQrO8X0LNXFxCrvN2QsQDf0KxpoFC7/BoQrWjXEI3PURCzOsvQjeyLUIM0S1CszkZQk0BDkKujiBCvPgqQlMENUJ4gkJCJoJbQpsUUkJOIGNCBjN1Qj+6cEKPjHVC8T1lQnBoVkLbwkpCmxE+QtzTF0KIm/9BfooDQn+dFUKtoSNClpQwQlgpQEKYEFJCWuFRQglAaEJM4XhCJ05wQg==",
+          "layers": [
+            {"material":"base/floor","tile":256.0,"detile":0.0,"detile_sharpen":0.5},
+            {"material":"base/wall","tile":128.0,"detile":0.0,"detile_sharpen":0.5}
+          ],
+          "splat": "/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/AMAALBPAAD8AwAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAACwTwAAAP8AALBPAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAPwDAACwTwAA/AMAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAP8AAAD/AAAA/wAAAA==",
+          "chunk_cells": 32
+        },
+        {
+          "id": 5,
+          "type": "entity",
+          "classname": "prop_model",
+          "origin": [256.0,0.0,0.0],
+          "angles": [0.0,0.0,0.0],
+          "properties": {"collision":"convex","model":"res://demo/models/bush.bbmodel"}
+        }
+      ]
+    }
+  ]
+}

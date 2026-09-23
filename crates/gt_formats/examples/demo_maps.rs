@@ -303,6 +303,12 @@ fn main() {
         format::save(&prefab(), &dir.join("prefab.gtm")).unwrap();
         format::save(&terrain(), &dir.join("terrain.gtm")).unwrap();
         format::save(&geometry(), &dir.join("geometry.gtm")).unwrap();
+        if dir.ends_with("tests/maps") {
+            // The JSON .gtm older editors wrote, which the Godot tests check builds the same as the binary files.
+            std::fs::write(dir.join("basic_json.gtm"), format::to_string(&demo())).unwrap();
+            std::fs::write(dir.join("geometry_json.gtm"), format::to_string(&geometry())).unwrap();
+        }
+
         // The same demo as a Valve 220 .map, built by FuncGodot's own parser in the Godot tests.
         let options = gt_formats::quake_map::ExportOptions { skip_omitted_layers: true, ..Default::default() };
         std::fs::write(dir.join("basic_export.map"), gt_formats::quake_map::export_with(&demo(), options)).unwrap();

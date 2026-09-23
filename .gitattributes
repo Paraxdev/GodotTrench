@@ -3,3 +3,4 @@
 *.jpg binary
 *.ctex binary
 *.exe binary
+*.gtm binary diff=gtm
