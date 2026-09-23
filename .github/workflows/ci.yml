@@ -197,11 +197,15 @@ jobs:
             gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "GodotTrench ${GITHUB_REF_NAME}" --notes-file notes.md
             exit 0
           fi
-          # GitHub refuses the workflow token a tag on an older commit whose workflow files differ from main, and a newer run publishes anyway.
+          # GitHub refuses the workflow token a tag on an older commit whose workflow files differ from main, and a newer run
+          # publishes anyway. A newer docs only commit starts no run, so only step aside when the workflows changed.
           head=$(git ls-remote origin refs/heads/main | cut -f1)
           if [ "$head" != "$GITHUB_SHA" ]; then
-            echo "main moved on to ${head::7}, leaving the beta to that run"
-            exit 0
+            git fetch -q --depth=1 origin "$head"
+            if ! git diff --quiet "$GITHUB_SHA" "$head" -- .github/workflows; then
+              echo "main moved on to ${head::7} with new workflows, leaving the beta to that run"
+              exit 0
+            fi
           fi
           notes="Rolling beta built from ${GITHUB_SHA::7} on $(date -u +%Y-%m-%d), ahead of the latest release. It passed every test, but may still have rough edges.
 
