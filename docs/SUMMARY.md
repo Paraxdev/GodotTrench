@@ -18,6 +18,7 @@
 * [Organizing a map](editor/organizing.md)
 * [Saving and recovery](editor/saving.md)
 * [Importing Hammer and TrenchBroom maps](editor/importing.md)
+* [Converting textures](editor/importing-textures.md)
 * [Shortcuts](editor/shortcuts.md)
 
 ## Godot

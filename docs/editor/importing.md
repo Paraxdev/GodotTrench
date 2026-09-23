@@ -1,7 +1,7 @@
 # Importing Hammer and TrenchBroom maps
 
-*File > Import* opens a Hammer `.vmf` or a TrenchBroom, Quake or Qodot `.map` as a new unsaved map. Save it as a
-`.gtm` and Godot builds it like any other map, with the textures the editor converted for it.
+*File > Import* opens a Hammer `.vmf` or a TrenchBroom, Quake or Qodot `.map` as a new unsaved map. Saved as `.gtm`,
+Godot builds it like any other map.
 
 ## Steps
 
@@ -12,43 +12,7 @@
    it. Those faces keep the name, so adding the texture later fixes them.
 5. *File > Save As* a `.gtm` inside the project.
 
-Textures kept elsewhere are converted with *File > Import > Convert Textures (VTF/VMT, WAD, WAL)*. Pick a folder, and
-when the open map is missing some of its textures you can convert only those. Over MCP it is
-`map_file {op: convert_textures, path}`, and `import_vmf` or `import_map` take `textures: "auto"` or a folder.
-
-## Where textures are found
-
-| Source | Looked for | Named after |
-| --- | --- | --- |
-| Valve `.vmt` and `.vtf` | a `materials` folder next to the map or up to four folders up | the path below `materials`, like `brick/brickwall001a` |
-| Quake and Half-Life `.wad` | the worldspawn `wad` key, then the same file name in nearby folders | the texture name, like `{grate` |
-| Quake 2 `.wal` | a `textures` folder nearby | the path below `textures`, like `e1u1/floor1_1` |
-| Loose `.png`, `.jpg`, `.tga` | a `textures` folder nearby, as Qodot and FuncGodot projects ship them | the path below `textures`, copied as they are |
-
-Every texture becomes a PNG under the project's texture folder with the face's material name. A `.tres` next to it
-carries what a plain image cannot, so Godot and the editor show the same thing.
-
-| Valve material | Godot material |
-| --- | --- |
-| `$basetexture` | albedo, its alpha dropped unless the material is see through |
-| `$bumpmap`, or `$normalmap` on water | normal map, green flipped from DirectX to Godot |
-| `$translucent`, `$additive` | alpha blend, additive blend |
-| `$alphatest`, `$alphatestreference` | alpha scissor at that threshold, 0.5 by default |
-| `$selfillum`, `$selfillummask` | emission texture masked by the base alpha or the mask |
-| `$nocull`, `UnlitGeneric` | double sided, unshaded |
-| `$color` | albedo color |
-| `$surfaceprop` | `metadata/surfaceprop` on the material |
-| `patch` with `include` | the included material with `insert` and `replace` applied |
-
-Quake textures starting with `{` cut out their last palette color with alpha scissor. A Quake sky keeps its back
-layer, unshaded. `*water` loses the `*` in its file name, which the addon and the editor both look past. Quake 2
-translucency flags on a `.wal` become alpha blending. Animated textures (`+0lava`, multi frame VTFs) keep their
-first frame.
-
-VTF versions 7.0 to 7.5 are read in these formats: DXT1 (with one bit alpha), DXT3, DXT5, RGBA8888, ABGR8888,
-ARGB8888, BGRA8888, BGRX8888, RGB888, BGR888, the blue screen variants, I8, IA88, A8, RGB565, BGR565, BGRA4444,
-BGRA5551, BGRX5551, UV88, UVWQ8888, UVLX8888 and the 16 bit RGBA formats. Others, and VTF 7.6, are refused with the
-format named in the report.
+Textures are covered in [Converting textures](importing-textures.md).
 
 ## What the import keeps
 
