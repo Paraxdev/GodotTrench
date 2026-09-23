@@ -1,3 +1,13 @@
 fn main() -> eframe::Result {
-    td_editor::run(td_editor::CliArgs::parse(std::env::args().skip(1)))
+    let args = td_editor::CliArgs::parse(std::env::args().skip(1));
+    if let Some(c) = &args.convert {
+        if let Err(e) = td_editor::convert(c) {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+
+        return Ok(());
+    }
+
+    td_editor::run(args)
 }

@@ -1177,7 +1177,8 @@ impl App {
                 Ok(json!({ "new_tab": modified }))
             }
             "open" => need(path).and_then(|p| {
-                if modified { crate::commands::open_map_in_tab(&mut self.state, &p) } else { self.state.open_map(&p) }.map(|()| json!({ "new_tab": modified }))
+                if modified { crate::commands::open_map_in_tab(&mut self.state, &p) } else { self.state.open_map(&p) }
+                    .map(|()| json!({ "new_tab": modified, "problems": self.state.doc.load_problems }))
             }),
             "save" => match path.or_else(|| self.state.doc.path.clone()) {
                 Some(p) => self.state.save_map(&p).map(|()| json!({})),

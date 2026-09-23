@@ -200,6 +200,8 @@ pub struct Map {
     pub properties: BTreeMap<String, String>,
     pub next_id: u64,
     pub editor: EditorData,
+    /// Chunks of a newer editor read from the file, written back unchanged on save.
+    pub unknown_chunks: Vec<crate::binary::RawChunk>,
 }
 
 impl Default for Map {
@@ -210,7 +212,14 @@ impl Default for Map {
 
 impl Map {
     pub fn new() -> Self {
-        let mut map = Map { nodes: imbl::OrdMap::new(), layers: Vec::new(), properties: BTreeMap::new(), next_id: 1, editor: EditorData::default() };
+        let mut map = Map {
+            nodes: imbl::OrdMap::new(),
+            layers: Vec::new(),
+            properties: BTreeMap::new(),
+            next_id: 1,
+            editor: EditorData::default(),
+            unknown_chunks: Vec::new(),
+        };
         map.add_layer("Default");
         map
     }
