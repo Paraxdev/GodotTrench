@@ -1,33 +1,29 @@
 # MCP scripts
 
-An MCP script is a JSON list of tool calls the editor replays. The showcase maps are built entirely this way, and
-their scripts in `examples/mcp` double as a reference for the tools.
+An MCP script is a JSON list of tool calls that the editor replays with `run_script`. The showcase maps are built
+this way, so their scripts in [examples/mcp](https://github.com/Paraxdev/GodotTrench/tree/main/examples/mcp) double
+as examples for every tool.
 
-## The showcase scripts
-
-| Script | What it builds |
+| Script | Builds |
 | --- | --- |
-| `mountain_house.json` | A cabin hanging off a cliff, with a walk-up door, a cliff lift, a respawn teleport and forests |
-| `church_school.json` | A church with stained glass and a bell tower, a school where three buttons open the courtyard gate |
-| `lighthouse_forest.json` | A lighthouse island with a rotating beacon, relay gates, a boat on a `func_train` and spawning wisps |
-| `withered_city.json` | A stormy ruined city lit by neon block letter signs, lightning as a light `fixture`, glow and `ssr` |
-| `night_district.json` | An industrial night street with emissive facades, triggered lamps, a roller door and a viaduct train |
-| `sea_island.json` | The [sea island tutorial](tutorials/sea-island.md), step for step |
+| `mountain_house.json` | A cabin hanging off a cliff, with a cliff lift and forests |
+| `church_school.json` | A church and a school where three buttons open the courtyard gate |
+| `lighthouse_forest.json` | A lighthouse with a rotating beacon, a boat on a `func_train` and spawning wisps |
+| `withered_city.json` | A ruined neon city at night with lightning, glow and `ssr` |
+| `night_district.json` | An industrial street at night with a roller door and a viaduct train |
+| `sea_island.json` | The [sea island tutorial](tutorials/sea-island.md) |
 | `scripted_scene.json` | The [cutscene tutorial](tutorials/cutscene.md) |
 
 ## Running them
 
 ```sh
-godottrench --mcp-http --project godot                                        # editor with the demo project
-python tools/mcp_script.py run examples/mcp/lighthouse_forest.json            # replay, saves to godot/demo/maps/showcase
+godottrench --mcp-http --project godot                        # the editor with the demo project
+python tools/mcp_script.py run examples/mcp/sea_island.json   # replay a script
 python tools/mcp_script.py shot view.png --pos 4300,900,3300 --look 2200,700,1200 --shade lit
-godot --headless --path godot --script res://tests/build_showcase.gd         # build the showcase scenes
-godot --path godot --script res://tests/showcase_screenshots.gd -- <out dir>  # render every viewpoint
-godot --path godot                                                            # play them
 ```
 
-Scripts run on the editor's UI thread, so the server waits for `run_script` as long as it takes. Other calls time out
-after 120 s. `tools/mcp_script.py` waits up to an hour per call, `--timeout` changes that.
+The scripts save into `godot/demo/maps/showcase`, `scripted_scene.json` into `godot/demo/maps`. A run stops at the
+first failed step unless you pass `--continue-on-error`.
 
 ## Script format
 
@@ -46,33 +42,28 @@ after 120 s. `tools/mcp_script.py` waits up to an hour per call, `--timeout` cha
 }
 ```
 
-A step's result is stored under its `save` name, and later steps refer to it.
+A step without `tool` is a comment. A step with `save` stores its result under that name for later steps.
+`screenshot`, `simulate_input` and `run_script` cannot run inside a script.
 
 | Write | Means |
 | --- | --- |
-| `"$name.path"` | The saved JSON value |
+| `"$name.path"` | The saved JSON value. Numbers index arrays, as in `$room.ids.0` |
 | `"${name.path}"` | Its text inside a longer string |
-| `"$a.ids + $b.ids"` | Joined into one array. `["$a.ids", "$b.ids"]` works too |
-| `$$` | A literal `$`, so a node path is `"$$Player"` |
-| `$project` | The open Godot project's folder. An error without a project |
+| `"$a.ids + $b.ids"` | Both joined into one array. `["$a.ids", "$b.ids"]` works too |
+| `$last` | The previous step's result |
+| `$project` | The open Godot project's folder, an error when none is open |
 | `$script_dir` | The script file's folder |
+| `$$` | A literal `$`, so a node path is `"$$Player"` |
 
-A `$` that cannot start a reference, like `"$5"`, stays as it is. A name no step saved is an error, so typos never pass
-silently. Ids arriving as text, such as `"42"`, are accepted wherever a node id is expected.
+An unknown name is an error, so typos never pass silently. A `$` that cannot start a name, like `"$5"`, stays as it
+is. Ids given as text, such as `"42"`, work wherever a node id is expected.
 
 ## Ids after CSG
 
-CSG and clip steps replace brushes and return `replaced`. The runner then rewrites the ids in every earlier saved
-result, so `"$wall.ids"` keeps meaning the wall after a window is cut into it.
+CSG and clip steps replace brushes. The runner then rewrites the ids saved by earlier steps, so `"$wall.ids"` still
+means the wall after a window is cut into it. In a list, a replaced id gives way to all of its replacements, or drops
+out when the brush was removed. A single id becomes its replacement, a list of them, or null. Only values under `id`,
+`ids`, `selection`, `letters`, `copies`, `entity` and keys ending in `_id` or `_ids` change.
 
-| Saved value | After replacement |
-| --- | --- |
-| An id in a list | Gives way to all its replacements, or drops out when it has none |
-| A single id | Its one replacement, a list when there are several, null when removed |
-| Other numbers, `vars` | Never touched |
-
-This applies to values under `id`, `ids`, `selection`, `letters`, `copies`, `entity` and keys ending in `_id` or
-`_ids`.
-
-> **Tip:** Scatter and blend calls should spell out every brush setting. Anything a call leaves out is filled in from
-> the Scatter panel's current settings.
+> **Tip:** Spell out every brush setting in `scatter` and `blend` calls. Anything left out comes from the editor's
+> current Scatter panel or Blend tool settings.
