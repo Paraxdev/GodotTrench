@@ -88,6 +88,15 @@ npx honkit serve              # live preview on http://localhost:4000
 npx honkit build . _site      # the build CI runs, lands in docs/_site
 ```
 
+Two conventions keep pages readable for people who never touch MCP:
+
+| For | Write |
+| --- | --- |
+| Text only MCP users need | {% raw %}`{% mcp %}` and `{% endmcp %}`{% endraw %} around it, or `<span class="gt-mcp-row"></span>` in the first cell of a table row. The **MCP** switch in the header shows it, it is off by default |
+| A term a newcomer would not know | An entry in `GLOSSARY.md`. Every page then shows its definition when you hover the term |
+
+Pages only about MCP belong in the **MCP** part of `SUMMARY.md`, which the switch hides too.
+
 `.github/workflows/pages.yml` builds the book for pull requests that touch `docs/`, and publishes it to GitHub Pages
 when they reach `main`.
 

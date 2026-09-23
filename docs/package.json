@@ -9,6 +9,7 @@
   "devDependencies": {
     "honkit": "6.2.2",
     "honkit-plugin-theme-darkening": "1.0.3",
-    "honkit-plugin-gdscript": "file:plugins/gdscript"
+    "honkit-plugin-gdscript": "file:plugins/gdscript",
+    "honkit-plugin-gt": "file:plugins/gt"
   }
 }

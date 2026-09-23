@@ -1,20 +1,22 @@
 # Entity reference
 
-The entities that ship with the addon, grouped by use.
+The entities that ship with the addon, grouped by what you would use them for. Each entry says what the entity is
+for, then lists its inputs (what other entities can tell it to do), its outputs (events you can wire onward) and its
+keys (the settings in the Inspector). How outputs connect to inputs is explained in [Inputs and outputs](../io.md).
 
-| Page | Entities |
+| Page | What you find there |
 | --- | --- |
-| [Logic](logic.md) | Relays, branches, counters, timers, `logic_auto`, sequences |
-| [Scripts and calls](scripting.md) | `logic_script`, `logic_call`, `logic_animate`, `logic_debug` |
-| [Doors, movers and buttons](movers.md) | Doors, platforms, trains, buttons |
-| [Triggers](triggers.md) | Volumes that react to bodies entering them |
-| [Spawners and paths](actors.md) | Spawners, teleport destinations, path corners, NPC walkers |
-| [Props, lights and effects](effects.md) | Physics and model props, explosions, text, switchable lights, sound, particles |
+| [Logic](logic.md) | Invisible helpers that route signals: relays, branches, counters, timers, `logic_auto` and sequences |
+| [Scripts and calls](scripting.md) | `logic_script`, `logic_call`, `logic_animate` and `logic_debug`, for reaching game code, animations and debugging |
+| [Doors, movers and buttons](movers.md) | Brush entities that move: doors, platforms, trains and buttons |
+| [Triggers](triggers.md) | Invisible volumes that react when a body walks into them |
+| [Spawners and paths](actors.md) | Spawners, teleport destinations, path corners and scripted NPC walkers |
+| [Props, lights and effects](effects.md) | Physics and model props, explosions, text, switchable lights, sound and particles |
 
 ## Reading the entries
 
 * Arguments in brackets are what an input accepts or an output passes along.
-* Every entity with I/O has a `targetname` key, except `logic_auto`.
+* Every entity with I/O has a `targetname` key, except `logic_auto`. It is the name other entities use to reach it.
 * A missing key uses the default listed.
 * Distances are in map units, 32 per meter. Speeds are in meters per second, and `omni_range`, `spot_range` and
   `max_distance` are in meters.

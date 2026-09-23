@@ -1,0 +1,98 @@
+.gt-hide-mcp .gt-mcp {
+  display: none !important;
+}
+
+.gt-mcp:not(li):not(tr) {
+  border-left: 3px solid #4a90c2;
+  padding: 2px 0 2px 12px;
+  margin: 0 0 0.85em;
+}
+
+.gt-mcp:not(li):not(tr)::before {
+  content: "MCP";
+  display: block;
+  font-size: 0.75em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #4a90c2;
+  margin-bottom: 2px;
+}
+
+.gt-mcp-switch {
+  position: absolute;
+  right: 60px;
+  top: 0;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0.8;
+}
+
+.gt-mcp-switch:hover {
+  opacity: 1;
+}
+
+.gt-mcp-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gt-mcp-track {
+  width: 30px;
+  height: 16px;
+  border-radius: 8px;
+  background: #8a8f98;
+  position: relative;
+  transition: background 0.15s;
+}
+
+.gt-mcp-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s;
+}
+
+.gt-mcp-switch input:checked + .gt-mcp-track {
+  background: #4a90c2;
+}
+
+.gt-mcp-switch input:checked + .gt-mcp-track .gt-mcp-knob {
+  left: 16px;
+}
+
+.gt-mcp-switch input:focus-visible + .gt-mcp-track {
+  outline: 2px solid #4a90c2;
+  outline-offset: 2px;
+}
+
+.glossary-term,
+.markdown-section a.glossary-term {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.gt-card {
+  position: absolute;
+  z-index: 1000;
+  max-width: 340px;
+  padding: 8px 11px;
+  border-radius: 6px;
+  background: #2b2f36;
+  color: #eceff4;
+  font-size: 13px;
+  line-height: 1.45;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}

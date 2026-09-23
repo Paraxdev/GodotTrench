@@ -66,9 +66,8 @@
 
 ## Reference
 
+* [Glossary](GLOSSARY.md)
 * [Command line](command-line.md)
-* [MCP server](mcp.md)
-* [MCP scripts](mcp-scripts.md)
 * [The .gtm map format](format/README.md)
     * [Container layout](format/container.md)
     * [Damaged files](format/recovery.md)
@@ -78,3 +77,8 @@
     * [JSON layout](format/json.md)
 * [Development](development.md)
 * [The Godot addon](https://github.com/Paraxdev/godottrench_func#readme)
+
+## MCP
+
+* [MCP server](mcp.md)
+* [MCP scripts](mcp-scripts.md)
