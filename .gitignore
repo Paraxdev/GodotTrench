@@ -17,3 +17,7 @@ __pycache__/
 # Emergent tooling, not part of the project
 .emergent/
 plan.md
+
+# HonKit output, relative output paths resolve inside docs/
+docs/_site/
+docs/_book/

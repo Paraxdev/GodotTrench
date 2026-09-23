@@ -82,7 +82,7 @@ too, so a broken page fails before it merges.
 
 ```sh
 npx honkit@6.2.2 serve docs          # live preview on http://localhost:4000
-npx honkit@6.2.2 build docs _site    # the same build CI runs
+npx honkit@6.2.2 build docs _site    # the same build CI runs, the site lands in docs/_site
 ```
 
 `.gitbook.yaml` points GitBook's Git Sync at the same folder, so the repository can also back a gitbook.com space.
