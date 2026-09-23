@@ -81,9 +81,10 @@ func parse_map_data(map_file: String, map_settings: FuncGodotMapSettings) -> _Pa
 			return parse_data
 		map_file = ResourceUID.get_id_path(uid)
 	
-	# TrenchDot: .tdm files are JSON, reading them in one call is about 25 times faster than line by line.
-	if map_file.get_extension().to_lower() == "tdm" and FileAccess.file_exists(map_file):
-		return parse_tdm(FileAccess.get_file_as_string(map_file), map_settings, map_file)
+	# TrenchDot: .tdm files are read whole, the binary container or the JSON of older maps.
+	if map_file.get_extension().to_lower() == "tdm":
+		var map = TrenchDotTdmFile.load_map(map_file)
+		return parse_tdm(map, map_settings, map_file) if map != null else parse_data
 
 	# Open the map file
 	var file: FileAccess = FileAccess.open(map_file, FileAccess.READ)
@@ -114,11 +115,7 @@ func parse_map_data(map_file: String, map_settings: FuncGodotMapSettings) -> _Pa
 			map_data.append(file.get_line())
 	
 	# Determine map type and parse data
-	if map_file.to_lower().contains(".tdm"):
-		declare_step.emit("Parsing as TrenchDot TDM")
-		var source_path := map_file.trim_suffix(".import")
-		parse_data = TrenchDotParser.parse("\n".join(map_data), map_settings, parse_data, source_path)
-	elif map_file.to_lower().contains(".map"):
+	if map_file.to_lower().contains(".map"):
 		declare_step.emit("Parsing as Quake MAP")
 		parse_data = _parse_quake_map(map_data, map_settings, parse_data)
 	elif map_file.to_lower().contains(".vmf"):

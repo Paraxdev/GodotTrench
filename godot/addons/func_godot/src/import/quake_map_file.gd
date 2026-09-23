@@ -12,3 +12,6 @@ class_name QuakeMapFile extends Resource
 
 ## Raw map data.
 @export_multiline var map_data: String = ""
+
+## TrenchDot: the file's bytes for a .tdm map, which may be binary, see [TrenchDotTdmFile].
+@export var map_bytes: PackedByteArray

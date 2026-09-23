@@ -137,7 +137,7 @@ func _build(text: String) -> void:
 		parse_data = parser.parse_map_data(_map_file_internal, map_settings)
 	# TrenchDot: lets a live session tell whether the scene still matches the map it was built from.
 	if is_tdm and (text != "" or Engine.is_editor_hint()):
-		set_meta(TrenchDotBuild.SOURCE_HASH_META, (text if text != "" else FileAccess.get_file_as_string(_map_file_internal)).hash())
+		set_meta(TrenchDotBuild.SOURCE_HASH_META, text.hash() if text != "" else TrenchDotTdmFile.content_id(_map_file_internal))
 	
 	if parse_data.entities.is_empty():
 		return	# Already printed failure message in parser, just return here
