@@ -12,3 +12,6 @@ class_name QuakeMapFile extends Resource
 
 ## Raw map data.
 @export_multiline var map_data: String = ""
+
+## GodotTrench: the file's bytes for a .gtm map, which may be binary, see [GodotTrenchGtmFile].
+@export var map_bytes: PackedByteArray

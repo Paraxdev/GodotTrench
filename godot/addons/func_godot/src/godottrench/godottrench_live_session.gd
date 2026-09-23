@@ -52,8 +52,9 @@ func _init(map_path: String, map_nodes: Array[FuncGodotMap]) -> void:
 	path = map_path
 	maps = map_nodes
 
-## Takes the whole map. Maps whose scene was built from other content are built from it right away.
-func begin(text: String) -> bool:
+## Takes the whole map. Maps whose scene was built from other content are built from it right away. [param content] is
+## the content id the editor computed for the map, matching the one a scene built from the saved binary file keeps.
+func begin(text: String, content: Variant = null) -> bool:
 	var json = JSON.parse_string(text)
 	if not json is Dictionary or json.get("format", "") != GodotTrenchParser.FORMAT_NAME:
 		return false
@@ -62,7 +63,8 @@ func begin(text: String) -> bool:
 	_clear_pending()
 	var text_hash := text.hash()
 	for map in _live_maps():
-		if int(map.get_meta(GodotTrenchBuild.SOURCE_HASH_META, 0)) != text_hash:
+		var built := int(map.get_meta(GodotTrenchBuild.SOURCE_HASH_META, 0))
+		if built != text_hash and (content == null or built != int(content)):
 			_full_build(map, text)
 	return true
 

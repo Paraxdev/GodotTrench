@@ -378,12 +378,8 @@ static func _parse_instance(ctx: Context, node: Dictionary, group: _GroupData) -
 		push_error("[GTM] instance nesting deeper than %d, skipping %s" % [MAX_INSTANCE_DEPTH, node.get("path", "")])
 		return
 	var path := _resolve_instance_path(ctx, str(node.get("path", "")))
-	var text := FileAccess.get_file_as_string(path)
-	if text.is_empty():
-		push_error("[GTM] cannot read instance map %s" % path)
-		return
-	var json = JSON.parse_string(text)
-	if not _readable(json, path):
+	var json = GodotTrenchGtmFile.load_map(path)
+	if json == null or not _readable(json, path):
 		return
 
 	var saved_xform := ctx.xform

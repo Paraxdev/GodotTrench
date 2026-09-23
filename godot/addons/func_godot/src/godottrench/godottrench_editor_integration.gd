@@ -7,7 +7,7 @@ class_name GodotTrenchEditorIntegration extends Node
 ## [code]seq[/code]. Events:
 ## [code]status[/code] (project, Godot version, pid and the maps of the edited scene with their build epoch),
 ## [code]map_saved {path}[/code] and [code]build {path, text}[/code] (full builds), [code]focus[/code],
-## [code]export_game_config[/code], and for live mode [code]live_begin {path, text}[/code],
+## [code]export_game_config[/code], and for live mode [code]live_begin {path, text, content}[/code],
 ## [code]live_resync {path, text}[/code], [code]live_delta {path, ops}[/code] and [code]live_end {path, revert}[/code]
 ## (see [GodotTrenchLiveSession]).
 
@@ -181,7 +181,7 @@ func _handle(msg: Dictionary) -> Dictionary:
 			if maps.is_empty():
 				return { "ok": false, "error": "no open scene uses this map" }
 			var session := GodotTrenchLiveSession.new(_local_path(path), maps)
-			if not session.begin(str(msg.get("text", ""))):
+			if not session.begin(str(msg.get("text", "")), msg.get("content")):
 				return { "ok": false, "error": "invalid map" }
 			_sessions[path_key(path)] = session
 			return { "ok": true, "epoch": _epochs.get(path_key(path), 0) }

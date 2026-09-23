@@ -5,7 +5,8 @@ class_name GodotTrenchBuild extends RefCounted
 const ID_META := &"_gt_id"
 ## Map node id of a generated layer or group node.
 const GROUP_META := &"_gt_group"
-## Hash of the map text the node was last fully built from.
+## What the node was last fully built from: the hash of the map text for a build from text or a JSON file, the END
+## chunk content id for a binary file, see [method GodotTrenchGtmFile.content_id].
 const SOURCE_HASH_META := &"_gt_source_hash"
 ## Project setting: build steps that only compute data run on the WorkerThreadPool.
 const SETTING_THREADED := "godottrench/threaded_build"

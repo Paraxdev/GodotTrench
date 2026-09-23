@@ -82,10 +82,11 @@ static func _shader(pixelated: bool) -> Shader:
 		_nearest_shader.code = SHADER.code.replace("filter_linear_mipmap_anisotropic", "filter_nearest_mipmap")
 	return _nearest_shader
 
-static func _decode_f32(text: String) -> PackedFloat32Array:
-	return Marshalls.base64_to_raw(text).to_float32_array() if text != "" else PackedFloat32Array()
-
-static func _decode_u8(text: String) -> PackedByteArray:
+## Terrain arrays are raw bytes in a binary .gtm and base64 in JSON.
+static func _decode_u8(value: Variant) -> PackedByteArray:
+	if value is PackedByteArray:
+		return value
+	var text := str(value) if value != null else ""
 	return Marshalls.base64_to_raw(text) if text != "" else PackedByteArray()
 
 ## Builds terrain nodes for every parsed terrain and adds them under the map (or their group).
@@ -172,14 +173,14 @@ static func _chunk_arrays(start: Vector2i, chunk_cells: int, res: Vector2i, cell
 static func create(data: Dictionary, xform: Variant, settings: FuncGodotMapSettings) -> GodotTrenchTerrain:
 	var res_raw: Array = data.get("resolution", [0, 0])
 	var res := Vector2i(int(res_raw[0]), int(res_raw[1]))
-	var raw_heights := _decode_f32(str(data.get("heights", "")))
+	var raw_heights := _decode_u8(data.get("heights")).to_float32_array()
 	if res.x < 2 or res.y < 2 or raw_heights.size() != res.x * res.y:
 		push_error("[GTM] terrain height data does not match its resolution")
 		return null
 	var scale := settings.scale_factor
 	var cell := float(data.get("cell_size", 32.0)) * scale
-	var splat := _decode_u8(str(data.get("splat", "")))
-	var holes := _decode_u8(str(data.get("holes", "")))
+	var splat := _decode_u8(data.get("splat"))
+	var holes := _decode_u8(data.get("holes"))
 	var chunk_cells := maxi(int(data.get("chunk_cells", 32)), 1)
 
 	var t := GodotTrenchTerrain.new()
