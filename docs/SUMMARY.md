@@ -28,15 +28,19 @@
 ## Gameplay
 
 * [How entity I/O works](gameplay/io.md)
-* [Targets and parameters](gameplay/targets.md)
+* [Targets](gameplay/targets.md)
+* [Parameters and inputs](gameplay/parameters.md)
 * [Placing and wiring](gameplay/placing.md)
 * [Debugging wiring](gameplay/debugging.md)
 * [I/O cheatsheet](gameplay/cheatsheet.md)
 * [Entity reference](gameplay/entities/README.md)
     * [Logic](gameplay/entities/logic.md)
+    * [Scripts and calls](gameplay/entities/scripting.md)
     * [Doors, movers and buttons](gameplay/entities/movers.md)
     * [Triggers](gameplay/entities/triggers.md)
-    * [Actors, props and effects](gameplay/entities/actors.md)
+    * [Spawners and paths](gameplay/entities/actors.md)
+    * [Props and explosions](gameplay/entities/props.md)
+    * [Text, lights and effects](gameplay/entities/effects.md)
 * [Custom entities in GDScript](gameplay/custom-entities.md)
 * [C# entities](gameplay/csharp.md)
 

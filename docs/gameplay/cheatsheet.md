@@ -1,13 +1,11 @@
 # I/O cheatsheet
 
-All of entity I/O on one page. The long version starts at [How entity I/O works](io.md).
-
-## What happens when an output fires
+## When an output fires
 
 1. The entity emits a signal, like `pressed(activator)`.
-2. The fire is counted against *Times*, then waits *Delay* seconds.
+2. The fire counts against *Times*, then waits *Delay* seconds.
 3. The target becomes a list of nodes. None found means nothing happens.
-4. The input is called on each node with the parameter.
+4. The input is called on each node.
 
 ## Targets
 
@@ -24,11 +22,9 @@ All of entity I/O on one page. The long version starts at [How entity I/O works]
 ## Parameters
 
 A plain value is tried as int, float, bool, then `x y z` as a `Vector3`, else it stays a string. A JSON `[a, b]` spreads
-into several arguments.
+into several arguments. `$activator`, `$self`, `$position` and `$caller_name` are filled in on the **receiving** entity.
 
-Placeholders `$activator`, `$self`, `$position` and `$caller_name` are filled in on the **receiving** entity.
-
-No parameter: the activator goes into the first object argument, other values the output carried fill the rest in
+No parameter: the activator goes into the first object argument, and other values the output carried fill the rest in
 order.
 
 ## Who keeps the activator
@@ -43,8 +39,8 @@ Lost it? Target `!player`.
 
 ## Inputs every node has
 
-`kill`, `show`, `hide`, `enable`, `disable`, `toggle`, used when no method of that name exists. An unknown input with a
-parameter sets the property of that name.
+`kill`, `show`, `hide`, `enable`, `disable` and `toggle`, used when the entity has no method of that name. An unknown
+input with a parameter sets the property of that name.
 
 ## logic_script scope
 
