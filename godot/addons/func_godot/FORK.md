@@ -8,6 +8,7 @@ Upstream class names are kept so the fork stays a drop-in replacement and upstre
 
 | file | purpose |
 |------|---------|
+| `src/trenchdot/tdm_file.gd` | `TrenchDotTdmFile`: reads `.tdm` files, the chunked zstd container the editor saves (each chunk decoded with `bytes_to_var`) and the JSON of older maps. Skips damaged chunks, moves nodes whose parent was lost into a `Recovered` layer and reports what was lost. Layout in `docs/format-tdm.md`. |
 | `src/trenchdot/tdm_parser.gd` | Parses TrenchDot `.tdm` maps into `FuncGodotData`: layers, groups, omitted layers, brush and point entities, exact brush vertices, Valve 220 UVs, prefab instances (transform, UV lock, targetname fixup). |
 | `src/trenchdot/runtime/trenchdot_io.gd` | Hammer style entity I/O: targetname lookup (with `*` wildcard, `!self`, `!activator`), parameter parsing, input dispatch to methods, properties or built-in inputs (`kill`, `show`, `hide`, `enable`, `disable`, `toggle`). |
 | `src/trenchdot/runtime/trenchdot_output.gd` | `TrenchDotOutput` node, one per output. Connects itself to the parent's signal when entering the tree and honours delay and fire count. |
@@ -47,7 +48,7 @@ Upstream class names are kept so the fork stays a drop-in replacement and upstre
 All changes are small and marked with `TrenchDot` comments.
 
 * `src/core/data.gd`: `FaceData.exact_vertices`, `FaceData.props`, vertex colors and displacement arrays (including explicit `disp_uvs` and `disp_colors`), `BrushData.exact`, `BrushData.has_disp`, `BrushData.is_mesh`, `BrushData.closed`, `BrushData.node_id`, `FaceData.render_hidden`, `ParseData.terrains`, `EntityData.outputs`, `EntityData.node`, `EntityData.node_id`, pending shape data.
-* `src/core/parser.gd`: `.tdm` branch in `parse_map_data` that reads the file in one call, `parse_tdm` for map text or parsed JSON, the post processing split into `post_process`, and the class property default caches are actually filled (keyed by definition).
+* `src/core/parser.gd`: `.tdm` branch in `parse_map_data` that reads the whole file through `TrenchDotTdmFile`, `parse_tdm` for map text or parsed JSON, the post processing split into `post_process`, and the class property default caches are actually filled (keyed by definition).
 * `src/core/geometry_generator.gd`:
   * exact brushes skip hyperplane clipping,
   * faces hidden by `TrenchDotFaceCull` (run before surface generation) are skipped for visuals but kept for collision,
@@ -62,8 +63,8 @@ All changes are small and marked with `TrenchDot` comments.
 * `src/core/entity_assembler.gd`: remembers the node of each entity and sets up I/O after assembly. `attach_entity` adds
   one generated entity node (used by the build loop and live rebuilds), entity and group nodes get their map node id as
   metadata, and every generated node follows `TrenchDotBuild.scene_owner`.
-* `src/map/func_godot_map.gd`: accepts `*.tdm`, `auto_rebuild_on_save` for the live link, builds terrains and the worldspawn environment after the entity assembler, `build_from_text` for unsaved map text and the `_td_source_hash` of the last full build.
-* `src/import/quake_map_import_plugin.gd`: imports `.tdm` so maps ship in exported games.
+* `src/map/func_godot_map.gd`: accepts `*.tdm`, `auto_rebuild_on_save` for the live link, builds terrains and the worldspawn environment after the entity assembler, `build_from_text` for unsaved map text and the `_td_source_hash` of the last full build (the END chunk content id for a binary map).
+* `src/import/quake_map_import_plugin.gd` and `src/import/quake_map_file.gd`: imports `.tdm` so maps ship in exported games, keeping the file's bytes in `map_bytes` because the map is binary.
 * `src/func_godot_plugin.gd`: creates the TrenchDot integration node, the *TrenchDot: Export Game Config* tool menu entry and the `.bbmodel` import plugin.
 * `src/core/parser.gd` and `src/core/entity_assembler.gd`: merge C# entity definitions and apply their properties.
 * `src/util/func_godot_util.gd` (`build_texture_map`) and `src/core/geometry_generator.gd`: blend texture keys build blend materials and force a color array.

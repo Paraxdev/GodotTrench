@@ -67,6 +67,10 @@ content alongside.
 
 ## Build performance
 
+Builds read `.tdm` files in one go, the binary container or the JSON of older maps (see
+[the .tdm map format](../format-tdm.md)). A damaged map still builds from the parts that could be read, with a `[TDM]`
+warning for each part that could not.
+
 Brushes and terrain chunks are converted on the WorkerThreadPool, meshes and shapes are created on the main thread. The
 project setting `trenchdot/threaded_build` turns the threaded steps off. To time each step on the showcase maps:
 
