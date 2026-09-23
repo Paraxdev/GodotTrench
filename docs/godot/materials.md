@@ -5,6 +5,10 @@ A face's material is a path under the map settings' *Base Texture Dir* without a
 that material as it is. Otherwise the addon generates a plain material from the image. The editor previews the same `.tres`, including transparency, emission and normal maps, so both sides look
 alike.
 
+New or changed images and material files are picked up while the editor runs, a second or two after they are written.
+A tool that meets a material name it does not know looks at the disk again first, so a script can write a material and
+use it right away. *Godot > Reload > Materials*, or `run_action reload_materials` over MCP, rescans at once.
+
 ## Texture size
 
 UVs count texels, and by default a texel is one pixel. A 64 pixel texture then repeats every 64 units, two meters. That
