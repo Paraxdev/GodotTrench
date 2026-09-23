@@ -36,15 +36,8 @@ The Issues panel checks the map as you work, for brushes with no volume, faces w
 targetnames nothing has and more. Click an issue to select and frame the object. Many have a **Fix** button, and
 *Fix all* sits in the header. MCP's `validate_map` runs the same checks.
 
-| Code | What it means |
-| --- | --- |
-| `missing_material` | Faces use a material the project's texture folder does not have |
-| `coplanar_faces` | Faces of two brushes lie on one plane and overlap, and the Godot build draws both, so they flicker |
-
-The build only hides a face that other faces cover completely, so a partly overlapped face still z-fights.
-`coplanar_faces` names the other brush and where the two meet. Move one face off the plane, trim the overlap, or give
-both the same material and alignment. Tool textures, faces the build hides, faces pressed against an opaque face or
-standing on terrain, and overlaps under 3 units wide are left out. Layered decals need a small step between them.
+A `coplanar_faces` issue means two brushes have faces on the same plane that overlap, and they will flicker in Godot. Move
+one face off the plane or trim the overlap.
 
 ## History
 

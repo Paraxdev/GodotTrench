@@ -65,7 +65,7 @@ An editable polygon mesh, which may be concave, open or non-planar.
 | `vertices` | array of `[x, y, z]` | required | |
 | `faces` | array of faces | required | The keys of brush faces, plus `uvs` |
 | `smooth_angle` | number | `0`, omitted | Faces meeting at less than this many degrees share normals, 0 is flat shading |
-| `decal` | bool | `false`, omitted | A decal sheet, blended over the surface behind it with both sides visible, see [Decals](../editor/decals.md) |
+| `decal` | bool | `false`, omitted | A [decal](../editor/decals.md) |
 
 A mesh face's `uvs` is an array of `[u, v]`, one per index, in texture widths. When present it replaces `uv`, and a
 count that does not match `indices` makes the editor refuse the map.

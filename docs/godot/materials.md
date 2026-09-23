@@ -5,9 +5,7 @@ A face's material is a path under the map settings' *Base Texture Dir* without a
 that material as it is. Otherwise the addon generates a plain material from the image. The editor previews the same `.tres`, including transparency, emission and normal maps, so both sides look
 alike.
 
-New or changed images and material files are picked up while the editor runs, a second or two after they are written.
-A tool that meets a material name it does not know looks at the disk again first, so a script can write a material and
-use it right away. *Godot > Reload > Materials*, or `run_action reload_materials` over MCP, rescans at once.
+New textures and materials show up in the editor on their own within a couple of seconds, no reload needed.
 
 ## Texture size
 
@@ -49,10 +47,8 @@ terrain layers keep the glow of the materials they are made from.
 
 ## Transparency
 
-| `transparency` | Mode | Use it for | Watch out |
-| --- | --- | --- | --- |
-| `1` | Alpha blend | Glass, soft decals, soot, stains, smoke cards | Sorted per object, and it neither writes depth nor casts shadows |
-| `2` | Alpha scissor | Hard cutouts seen up close: grates, leaves, signs | Thin parts vanish a few meters away once the mipmaps average below the threshold |
-| `3` | Alpha hash | Thin cutouts seen from afar, like wire fences | Soft alpha turns into dither that looks like TV static, so only use it on textures whose alpha is 0 or 1 |
-
-Decal sheets blend by default whatever the mode, and keep a hard cut only in scissor mode, see [Decals](../editor/decals.md).
+| `transparency` | Use it for | Watch out |
+| --- | --- | --- |
+| `1` blend | Glass, soft stains, smoke | Casts no shadows |
+| `2` scissor | Hard cutouts up close, like grates and leaves | Thin parts vanish at a distance |
+| `3` hash | Thin cutouts seen from afar, like wire fences | Soft edges turn into static |

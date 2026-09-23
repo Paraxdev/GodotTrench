@@ -11,7 +11,7 @@ nodes that are saved with your scene, so nothing rebuilds at runtime unless you 
 | Global Map File | A file outside the project, wins when both are set |
 | Auto Rebuild On Save | Rebuild when GodotTrench saves this map, on by default |
 | Map Settings | Defaults to the project setting `func_godot/default_map_settings` |
-| Warm Up Shaders | In the running game, compile the map's pipelines off screen after it builds or loads, see [Shader warm-up](warm-up.md) |
+| Warm Up Shaders | Compiles the map's shaders on load so play does not stutter, see [Shader warm-up](warm-up.md) |
 
 **Build Map** generates everything and **Clear Map** removes it. A build first deletes every child of the map node
 except [overlays](overlays.md), then adds brushes as meshes and collision, entities with their properties and outputs,
