@@ -17,9 +17,6 @@ concurrency:
   group: pages-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  HONKIT_VERSION: 6.2.2
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -33,9 +30,14 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install the book tools
+        working-directory: docs
+        run: npm ci
+
       - name: Build the book
+        working-directory: docs
         # honkit resolves a relative output path against the book folder, which would put the site in docs/_site.
-        run: npx --yes honkit@${{ env.HONKIT_VERSION }} build docs "$GITHUB_WORKSPACE/_site"
+        run: npx honkit build . "$GITHUB_WORKSPACE/_site"
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'

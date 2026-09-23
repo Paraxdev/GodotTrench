@@ -1,0 +1,279 @@
+/* honkit-plugin-theme-darkening writes its CSS under the gitbook-plugin- prefix older HonKit used, while HonKit 6 links
+   gitbook/honkit-plugin-theme-darkening/, so the theme is pulled in from here instead. */
+@import url("../gitbook/gitbook-plugin-honkit-plugin-theme-darkening/darkening.css");
+
+:root {
+  --bg: #0c0c0c;
+  --surface: #14161a;
+  --surface-2: #1b1e23;
+  --border: #2a2e36;
+  --text: #dde1e7;
+  --text-soft: #c3c8d0;
+  --muted: #8f96a1;
+  --accent: #56b4e9;
+  --accent-hover: #93d0f3;
+}
+
+::selection {
+  background: rgba(86, 180, 233, 0.35);
+}
+
+/* The theme sets the whole page in its code font, prose reads better in the sans serif. */
+.markdown-section {
+  font-family: "Roboto", sans-serif !important;
+  color: var(--text-soft) !important;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.book .book-body .page-wrapper .page-inner {
+  max-width: 900px !important;
+  margin: 0 auto;
+  padding: 24px 32px 64px;
+}
+
+.markdown-section p,
+.markdown-section li {
+  color: var(--text-soft) !important;
+}
+
+.markdown-section h1,
+.markdown-section h2,
+.markdown-section h3,
+.markdown-section h4 {
+  color: var(--text) !important;
+  letter-spacing: -0.01em;
+}
+
+.markdown-section h1 {
+  font-size: 2.1em;
+  margin-bottom: 0.6em;
+}
+
+.markdown-section h2 {
+  margin-top: 1.8em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border);
+}
+
+.markdown-section strong {
+  color: var(--text);
+}
+
+.markdown-section a {
+  color: var(--accent) !important;
+  text-decoration: underline;
+  text-decoration-color: rgba(86, 180, 233, 0.4);
+  text-underline-offset: 3px;
+}
+
+.markdown-section a:hover {
+  color: var(--accent-hover) !important;
+  text-decoration-color: var(--accent-hover) !important;
+}
+
+.markdown-section hr {
+  background: var(--border);
+  height: 1px;
+}
+
+/* Inline code */
+.book .book-body .page-wrapper .page-inner section.normal code {
+  font-family: "Fira Code", monospace !important;
+  background: var(--surface-2) !important;
+  color: #e8ebef !important;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.05em 0.35em;
+  font-size: 0.82em;
+}
+
+/* Code blocks */
+.book .book-body .page-wrapper .page-inner section.normal pre {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  padding: 16px 18px;
+}
+
+.book .book-body .page-wrapper .page-inner section.normal pre code {
+  background: transparent !important;
+  border: 0;
+  padding: 0;
+  color: #d6dae0 !important;
+  font-size: 0.88em;
+  line-height: 1.6;
+}
+
+.book .book-body .page-wrapper .page-inner section.normal .hljs-comment,
+.book .book-body .page-wrapper .page-inner section.normal .hljs-quote {
+  color: #8b929c !important;
+  font-style: italic;
+}
+
+.book .book-body .page-wrapper .page-inner section.normal .hljs-keyword,
+.book .book-body .page-wrapper .page-inner section.normal .hljs-selector-tag {
+  color: #cc99e6 !important;
+}
+
+.book .book-body .page-wrapper .page-inner section.normal .hljs-string,
+.book .book-body .page-wrapper .page-inner section.normal .hljs-attr {
+  color: #a5d68a !important;
+}
+
+.book .book-body .page-wrapper .page-inner section.normal .hljs-number,
+.book .book-body .page-wrapper .page-inner section.normal .hljs-literal {
+  color: #f0b36b !important;
+}
+
+.book .book-body .page-wrapper .page-inner section.normal .hljs-built_in,
+.book .book-body .page-wrapper .page-inner section.normal .hljs-title,
+.book .book-body .page-wrapper .page-inner section.normal .hljs-type {
+  color: #7cc4f0 !important;
+}
+
+.book .book-body .page-wrapper .page-inner section.normal .hljs-variable,
+.book .book-body .page-wrapper .page-inner section.normal .hljs-params {
+  color: #e8ebef !important;
+}
+
+/* Tables */
+.markdown-section table {
+  border-collapse: separate !important;
+  border-spacing: 0;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px;
+  overflow: hidden;
+  display: table;
+  width: 100%;
+}
+
+.markdown-section table th,
+.markdown-section table td {
+  border: 0 !important;
+  border-top: 1px solid var(--border) !important;
+  padding: 9px 14px !important;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-section table th {
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+  font-weight: 600;
+  border-top: 0 !important;
+}
+
+.markdown-section table tr,
+.markdown-section table tr:nth-child(odd) {
+  background: var(--bg) !important;
+  color: var(--text-soft) !important;
+}
+
+.markdown-section table tr:nth-child(2n) {
+  background: var(--surface) !important;
+}
+
+/* Callouts are blockquotes that open with a bold label. */
+.markdown-section blockquote {
+  background: rgba(86, 180, 233, 0.07);
+  border-left: 3px solid var(--accent) !important;
+  border-radius: 0 8px 8px 0;
+  color: var(--text-soft) !important;
+  padding: 10px 16px;
+  margin: 1.2em 0;
+}
+
+.markdown-section blockquote p {
+  margin: 0.3em 0;
+}
+
+.markdown-section blockquote strong:first-child {
+  color: var(--accent-hover);
+}
+
+.markdown-section img {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* Sidebar */
+.book-summary {
+  border-right: 1px solid var(--border);
+}
+
+.book-summary ul.summary li a,
+.book-summary ul.summary li span {
+  color: var(--text-soft) !important;
+  font-weight: 400 !important;
+  padding: 7px 16px;
+}
+
+.book-summary ul.summary li a:hover {
+  color: var(--text) !important;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.book-summary ul.summary li.header {
+  color: var(--muted) !important;
+  font-size: 0.78em;
+  letter-spacing: 0.08em;
+  padding-top: 18px;
+}
+
+.book-summary ul.summary li.active {
+  border-left: 0 !important;
+}
+
+.book-summary ul.summary li.active > a {
+  color: var(--accent-hover) !important;
+  background: rgba(86, 180, 233, 0.1);
+  box-shadow: inset 3px 0 0 var(--accent);
+  font-weight: 500 !important;
+}
+
+.book-summary ul.summary li.divider {
+  background: var(--border);
+}
+
+#book-search-input {
+  border-bottom: 1px solid var(--border);
+}
+
+#book-search-input input::placeholder {
+  color: var(--muted);
+}
+
+.book-header .btn {
+  color: var(--muted) !important;
+}
+
+.book-header .btn:hover {
+  color: var(--text) !important;
+}
+
+#book-search-results .search-results .search-results-title,
+#book-search-results .search-results .search-results-item h3 a {
+  color: var(--text) !important;
+}
+
+#book-search-results .search-results .search-results-item p {
+  color: var(--text-soft) !important;
+}
+
+#book-search-results .search-results .has-results .search-results-item {
+  border-bottom: 1px solid var(--border);
+}
+
+@media (max-width: 600px) {
+  .book .book-body .page-wrapper .page-inner {
+    padding: 16px 16px 48px;
+  }
+
+  .markdown-section table {
+    display: block;
+    overflow-x: auto;
+  }
+}

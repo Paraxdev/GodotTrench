@@ -4,19 +4,21 @@
   "language": "en",
   "plugins": [
     "-sharing",
-    "-livereload"
+    "-livereload",
+    "-fontsettings",
+    "honkit-plugin-theme-darkening"
   ],
   "pluginsConfig": {
     "theme-default": {
       "showLevel": false
-    },
-    "fontsettings": {
-      "theme": "night"
     }
   },
   "links": {
     "sidebar": {
       "GodotTrench on GitHub": "https://github.com/Paraxdev/GodotTrench"
     }
+  },
+  "styles": {
+    "website": "styles/website.css"
   }
 }

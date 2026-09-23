@@ -59,11 +59,14 @@ it back into a binary map with the same content.
 ## Documentation
 
 The docs are a HonKit book in `docs/`. `docs/SUMMARY.md` is the table of contents, a page not listed there is not
-built.
+built. `docs/package.json` pins HonKit and the
+[darkening theme](https://github.com/Stuyk/honkit-plugin-theme-darkening), and `docs/styles/website.css` adjusts it.
 
 ```sh
-npx honkit@6.2.2 serve docs          # live preview on http://localhost:4000
-npx honkit@6.2.2 build docs _site    # a relative output lands in docs/_site
+cd docs
+npm ci                        # once
+npx honkit serve              # live preview on http://localhost:4000
+npx honkit build . _site      # the build CI runs, lands in docs/_site
 ```
 
 `.github/workflows/pages.yml` builds the book for pull requests that touch `docs/`, and publishes it to GitHub Pages

@@ -1,0 +1,13 @@
+{
+  "name": "godottrench-docs",
+  "private": true,
+  "description": "Build tooling for the GodotTrench docs",
+  "scripts": {
+    "serve": "honkit serve",
+    "build": "honkit build"
+  },
+  "devDependencies": {
+    "honkit": "6.2.2",
+    "honkit-plugin-theme-darkening": "1.0.3"
+  }
+}

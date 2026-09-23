@@ -65,7 +65,7 @@ This applies to code comments, docs, UI text, commit messages and pull request d
 ## Docs
 
 * `docs/` is built with HonKit and deployed by `.github/workflows/pages.yml`. Every page must be listed in
-  `docs/SUMMARY.md`, and `npx honkit@6.2.2 build docs _site` must build without errors. See
+  `docs/SUMMARY.md`, and `npx honkit build . _site` in `docs/` (after `npm ci`) must build without errors. See
   [docs/development.md](docs/development.md#documentation).
 * Keep pages short and to the point. Prefer a table, a numbered list of steps or a short paragraph over a wall of text,
   and split a page that grows long. Leave out what a reader does not need to get the job done.
