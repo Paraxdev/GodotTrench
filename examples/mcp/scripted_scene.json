@@ -20,14 +20,14 @@
     { "tool": "create_entity", "args": { "classname": "path_corner", "origin": [0, 8, 64], "properties": { "targetname": "corner_a", "target": "corner_b" } } },
     { "tool": "create_entity", "args": { "classname": "path_corner", "origin": [-176, 8, -176], "properties": { "targetname": "corner_b" } } },
 
-    { "tool": "create_entity", "args": { "classname": "npc_walker", "origin": [0, 8, 176], "properties": { "targetname": "guide", "target": "corner_a", "speed": "2.5" } } },
+    { "tool": "create_entity", "args": { "classname": "npc_walker", "origin": [0, 8, 176], "properties": { "targetname": "guide", "target": "corner_a", "speed": "2.5", "model": "res://demo/scenes/npc.tscn" } } },
 
     { "tool": "create_entity", "args": { "classname": "game_text", "origin": [0, 96, 0], "properties": { "targetname": "hint", "text": "Follow the guide", "place": "world", "world_size": "0.03" } } },
     { "tool": "create_entity", "args": { "classname": "game_text", "origin": [0, 8, 240], "properties": { "targetname": "hpmsg", "place": "hud" } } },
 
     { "tool": "create_entity", "args": { "classname": "light", "origin": [0, 200, -40], "properties": { "targetname": "lamp", "start_on": "0", "light_energy": "3.0", "light_color": "255 220 170", "omni_range": "16" } } },
 
-    { "tool": "create_entity", "args": { "classname": "prop_physics", "origin": [0, 24, 176], "properties": { "targetname": "barrel", "health": "5", "explosive": "1", "explosion_radius": "256", "explosion_damage": "25", "size": "16 24 16" }, "outputs": [ { "output": "broken", "target": "hp_readout", "input": "run" } ] } },
+    { "tool": "create_entity", "args": { "classname": "prop_physics", "origin": [0, 24, 176], "properties": { "targetname": "barrel", "model": "res://demo/scenes/barrel.tscn", "health": "5", "explosive": "1", "explosion_radius": "256", "explosion_damage": "25", "size": "16 24 16" }, "outputs": [ { "output": "broken", "target": "hp_readout", "input": "run" } ] } },
 
     { "tool": "create_entity", "args": { "classname": "logic_script", "origin": [0, 8, 288], "properties": { "targetname": "hp_readout", "source": "var players = io.find_targets(this, \"!player\", null)\nif players.is_empty():\n\treturn\nvar hp = int(players[0].health)\nfor label in io.find_targets(this, \"hpmsg\", null):\n\tlabel.set_text(\"HP \" + str(hp))\n\tlabel.show()" } } },
 

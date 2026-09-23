@@ -38,6 +38,8 @@ an explosive barrel:
     "ambient_color": "60 66 82",
     "classname": "worldspawn",
     "message": "Scripted Scene",
+    "sky_ground_color": "60 62 70",
+    "sky_horizon_color": "120 130 150",
     "sky_top_color": "40 54 92",
     "sun_angles": "-40 -55",
     "sun_energy": "0.6"
@@ -53,18 +55,18 @@ an explosive barrel:
         {
           "id": 2,
           "type": "brush",
-          "vertices": [[320.0,0.0,-320.0],[320.0,0.0,320.0],[320.0,-16.0,320.0],[320.0,-16.0,-320.0],[-320.0,0.0,320.0],[-320.0,0.0,-320.0],[-320.0,-16.0,-320.0],[-320.0,-16.0,320.0]],
+          "vertices": [[320.0,8.0,-320.0],[320.0,8.0,320.0],[320.0,0.0,320.0],[320.0,0.0,-320.0],[-320.0,8.0,320.0],[-320.0,8.0,-320.0],[-320.0,0.0,-320.0],[-320.0,0.0,320.0]],
           "faces": [
-            {"indices":[0,1,2,3],"material":"base/floor","uv":{"u_axis":[0.0,0.0,-1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
-            {"indices":[4,5,6,7],"material":"base/floor","uv":{"u_axis":[0.0,0.0,1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
-            {"indices":[1,0,5,4],"material":"base/floor","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
-            {"indices":[3,2,7,6],"material":"base/floor","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
-            {"indices":[2,1,4,7],"material":"base/floor","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
-            {"indices":[6,5,0,3],"material":"base/floor","uv":{"u_axis":[-1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}}
+            {"indices":[0,1,2,3],"material":"showcase/cobble","uv":{"u_axis":[0.0,0.0,-1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[4,5,6,7],"material":"showcase/cobble","uv":{"u_axis":[0.0,0.0,1.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[1,0,5,4],"material":"showcase/cobble","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[3,2,7,6],"material":"showcase/cobble","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,0.0,1.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[2,1,4,7],"material":"showcase/cobble","uv":{"u_axis":[1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}},
+            {"indices":[6,5,0,3],"material":"showcase/cobble","uv":{"u_axis":[-1.0,0.0,0.0],"v_axis":[0.0,-1.0,0.0],"offset":[0.0,0.0],"scale":[1.0,1.0],"rotation":0.0}}
           ]
         },
         {
-          "id": 14,
+          "id": 17,
           "type": "entity",
           "classname": "prop_physics",
           "origin": [0.0,24.0,176.0],
@@ -86,6 +88,6 @@ an explosive barrel:
 }
 ```
 
-The floor is a 640 by 640 unit slab 16 units thick whose top sits at Y 0. Its first face, `[0,1,2,3]`, is the +X side,
-with corners that run counter-clockwise seen from +X. The barrel is a point entity 24 units above the floor, and when it
+The floor is a 640 by 640 unit slab 8 units thick whose top sits at Y 8. Its first face, `[0,1,2,3]`, is the +X side,
+with corners that run counter-clockwise seen from +X. The barrel is a point entity 16 units above the floor, and when it
 breaks it calls `run` on `hp_readout`.
