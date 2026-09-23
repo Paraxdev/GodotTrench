@@ -8,7 +8,7 @@ Upstream class names are kept so the fork stays a drop-in replacement and upstre
 
 | file | purpose |
 |------|---------|
-| `src/trenchdot/tdm_file.gd` | `TrenchDotTdmFile`: reads `.tdm` files, the chunked zstd container the editor saves (each chunk decoded with `bytes_to_var`) and the JSON of older maps. Skips damaged chunks, moves nodes whose parent was lost into a `Recovered` layer and reports what was lost. Layout in `docs/format-tdm.md`. |
+| `src/trenchdot/tdm_file.gd` | `TrenchDotTdmFile`: reads `.tdm` files, the chunked zstd container the editor saves (each chunk decoded with `bytes_to_var`) and the JSON of older maps. Skips damaged chunks, moves nodes whose parent was lost into a `Recovered` layer and reports what was lost. Layout in `docs/format/container.md`. |
 | `src/trenchdot/tdm_parser.gd` | Parses TrenchDot `.tdm` maps into `FuncGodotData`: layers, groups, omitted layers, brush and point entities, exact brush vertices, Valve 220 UVs, prefab instances (transform, UV lock, targetname fixup). |
 | `src/trenchdot/runtime/trenchdot_io.gd` | Hammer style entity I/O: targetname lookup (with `*` wildcard, `!self`, `!activator`), parameter parsing, input dispatch to methods, properties or built-in inputs (`kill`, `show`, `hide`, `enable`, `disable`, `toggle`). |
 | `src/trenchdot/runtime/trenchdot_output.gd` | `TrenchDotOutput` node, one per output. Connects itself to the parent's signal when entering the tree and honours delay and fire count. |

@@ -1,6 +1,6 @@
 class_name TrenchDotTdmFile extends RefCounted
 ## Reads .tdm files: the chunked, zstd compressed container the editor saves and the JSON text of older maps. The byte
-## layout is in docs/format-tdm.md, the editor's side in crates/td_doc/src/binary.rs. Chunk payloads use Godot's own
+## layout is in docs/format/container.md, the editor's side in crates/td_doc/src/binary.rs. Chunk payloads use Godot's own
 ## Variant encoding, so each one decodes with a single [method @GlobalScope.bytes_to_var] call.
 
 const MAGIC := [0x89, 0x47, 0x54, 0x4D, 0x0D, 0x0A, 0x1A, 0x0A]

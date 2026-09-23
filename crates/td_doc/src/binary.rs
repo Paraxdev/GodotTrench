@@ -1,5 +1,5 @@
 //! The chunked, zstd compressed container `.tdm` maps are saved in. It converts between file bytes and the same JSON
-//! value tree `format.rs` reads and writes, and recovers what it can from a damaged file. See docs/format-tdm.md.
+//! value tree `format.rs` reads and writes, and recovers what it can from a damaged file. See docs/format/container.md.
 
 use std::sync::Arc;
 

@@ -1,4 +1,4 @@
-//! `.tdm` TrenchDot map files. See docs/format-tdm.md.
+//! `.tdm` TrenchDot map files. See docs/format/README.md.
 
 use std::collections::BTreeMap;
 use std::path::Path;
