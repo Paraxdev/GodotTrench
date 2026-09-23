@@ -787,6 +787,30 @@ mod tests {
     }
 
     #[test]
+    fn exposed_only_fill_leaves_the_ground_under_a_slab_bare() {
+        let mut state = EditorState::new(Default::default());
+        let floor = ground(&mut state, [-512.0, -16.0, -512.0], [512.0, 0.0, 512.0]);
+        ground(&mut state, [-512.0, 200.0, -512.0], [0.0, 204.0, 512.0]);
+        template(&mut state, "res://weed.glb", 16.0, ScatterKind::Foliage);
+        state.prefs.scatter.rules.density = 4.0;
+        let under = |state: &EditorState| {
+            let set = state.doc.map.scatter(active_set(state).unwrap()).unwrap();
+            (set.instances.iter().filter(|i| i.position.x < 0.0).count(), set.instances.len())
+        };
+        state.doc.select(|_, s| s.select_node(floor));
+        fill(&mut state, &mut Rng::new(2)).unwrap();
+        let (covered, all) = under(&state);
+        assert!(covered > 0 && all > covered, "the slab starts above the fill's rays, so weeds grow under it: {covered} of {all}");
+
+        state.active_scatter = None;
+        state.prefs.scatter.rules.exposed_only = true;
+        state.doc.select(|_, s| s.select_node(floor));
+        fill(&mut state, &mut Rng::new(2)).unwrap();
+        let (covered, all) = under(&state);
+        assert!(covered == 0 && all > 0, "exposed only keeps them out: {covered} of {all}");
+    }
+
+    #[test]
     fn a_scatter_set_can_be_the_ground_of_another_one() {
         let (mut state, floor, rocks) = floor_with_rocks();
         let top = state.doc.map.scatter(rocks).unwrap().instances.iter().map(|i| i.position.y).fold(f64::MIN, f64::max);

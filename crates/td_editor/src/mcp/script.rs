@@ -1,6 +1,7 @@
 //! MCP scripts: JSON lists of tool calls replayed against the editor, with results saved under names and referenced by
 //! later steps. `"$door.id"` is replaced by that JSON value, `"${door.id}"` inside a longer string by its text, and `$$` is a
-//! literal `$`.
+//! literal `$`. `"$a.ids + $b.ids"` joins values into one array. When a step replaces brushes (CSG, clip) the ids saved
+//! by earlier steps are rewritten to their replacements, see [`follow_replacements`].
 
 use std::collections::BTreeMap;
 
@@ -87,6 +88,15 @@ fn missing(vars: &BTreeMap<String, Value>, path: &str) -> String {
     format!("unknown variable ${path}, write $$ for a literal $")
 }
 
+/// `"$a.ids + $b.ids"`: the reference paths of a string made only of whole references joined by `+`.
+fn joined_references(s: &str) -> Option<Vec<&str>> {
+    if !s.contains('+') {
+        return None;
+    }
+
+    s.split('+').map(|part| whole_reference(part.trim())).collect()
+}
+
 /// Replaces variable references in `args`. Unknown names are an error so typos do not silently pass, `$$` is a literal `$`,
 /// and a `$` that starts no reference (such as `$5`) stays as it is.
 pub fn resolve(args: &Value, vars: &BTreeMap<String, Value>) -> Result<Value, String> {
@@ -94,6 +104,19 @@ pub fn resolve(args: &Value, vars: &BTreeMap<String, Value>) -> Result<Value, St
         Value::String(s) => {
             if let Some(path) = whole_reference(s) {
                 return lookup(vars, path).cloned().ok_or_else(|| missing(vars, path));
+            }
+
+            if let Some(paths) = joined_references(s) {
+                let mut out = Vec::new();
+                for path in paths {
+                    match lookup(vars, path).ok_or_else(|| missing(vars, path))? {
+                        Value::Array(a) => out.extend(a.iter().cloned()),
+                        Value::Null => {}
+                        other => out.push(other.clone()),
+                    }
+                }
+
+                return Ok(Value::Array(out));
             }
 
             if !s.contains('$') {
@@ -126,6 +149,70 @@ pub fn resolve(args: &Value, vars: &BTreeMap<String, Value>) -> Result<Value, St
         Value::Object(o) => Value::Object(o.iter().map(|(k, v)| Ok((k.clone(), resolve(v, vars)?))).collect::<Result<_, String>>()?),
         other => other.clone(),
     })
+}
+
+/// Keys of tool results whose values are node ids, alone or in (nested) arrays.
+fn is_id_key(key: &str) -> bool {
+    matches!(key, "id" | "ids" | "selection" | "letters" | "copies" | "entity") || key.ends_with("_id") || key.ends_with("_ids")
+}
+
+/// The `replaced` map of a tool result, `{"old id": [new ids]}`.
+pub fn replacements(result: &Value) -> BTreeMap<u64, Vec<u64>> {
+    let Some(map) = result.get("replaced").and_then(Value::as_object) else { return BTreeMap::new() };
+    map.iter().filter_map(|(old, new)| Some((old.parse().ok()?, new.as_array()?.iter().filter_map(Value::as_u64).collect()))).collect()
+}
+
+fn rewrite_ids(v: &mut Value, replaced: &BTreeMap<u64, Vec<u64>>) {
+    match v {
+        Value::Array(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for mut item in std::mem::take(items) {
+                match item.as_u64().and_then(|id| replaced.get(&id)) {
+                    Some(new) => out.extend(new.iter().map(|n| Value::from(*n))),
+                    None => {
+                        rewrite_ids(&mut item, replaced);
+                        out.push(item);
+                    }
+                }
+            }
+
+            *items = out;
+        }
+        Value::Number(n) => {
+            if let Some(new) = n.as_u64().and_then(|id| replaced.get(&id)) {
+                *v = match new.as_slice() {
+                    [] => Value::Null,
+                    [one] => Value::from(*one),
+                    many => Value::from(many.to_vec()),
+                };
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Rewrites the node ids inside a saved result after a later step replaced some of them. Ids are the values under
+/// `id`, `ids`, `selection`, `letters`, `copies`, `entity` and keys ending in `_id` or `_ids`, at any depth. In a list
+/// a replaced id gives way to all of its replacements in place (none when it was removed, like a CSG cutter), a
+/// single id becomes its one replacement, the list of them when there are several, and null when it was removed.
+pub fn follow_replacements(saved: &mut Value, replaced: &BTreeMap<u64, Vec<u64>>) {
+    if replaced.is_empty() {
+        return;
+    }
+
+    match saved {
+        Value::Object(o) => {
+            for (k, v) in o.iter_mut() {
+                if is_id_key(k) && !v.is_object() {
+                    rewrite_ids(v, replaced);
+                } else if k != "replaced" {
+                    follow_replacements(v, replaced);
+                }
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(|v| follow_replacements(v, replaced)),
+        _ => {}
+    }
 }
 
 #[cfg(test)]
@@ -161,5 +248,33 @@ mod tests {
         assert!(resolve(&json!("$wall.nope"), &vars).unwrap_err().contains("no value"));
         assert!(resolve(&json!("${project}/maps"), &vars).unwrap_err().contains("open_project"));
         assert_eq!(resolve(&json!("a $ b"), &vars).unwrap(), json!("a $ b"));
+    }
+
+    #[test]
+    fn plus_joins_saved_values_into_one_list() {
+        let mut vars = BTreeMap::new();
+        vars.insert("a".to_string(), json!({ "ids": [1, 2], "id": 9 }));
+        vars.insert("b".to_string(), json!({ "ids": [3] }));
+        assert_eq!(resolve(&json!({ "ids": "$a.ids + $b.ids" }), &vars).unwrap(), json!({ "ids": [1, 2, 3] }));
+        assert_eq!(resolve(&json!("$a.ids+$a.id+$b.ids"), &vars).unwrap(), json!([1, 2, 9, 3]));
+        assert!(resolve(&json!("$a.ids + $nope.ids"), &vars).unwrap_err().contains("unknown variable"));
+        assert_eq!(resolve(&json!("1 + 2"), &vars).unwrap(), json!("1 + 2"), "plain text with a plus stays text");
+        assert_eq!(resolve(&json!("$5 + $6"), &vars).unwrap(), json!("$5 + $6"));
+        assert_eq!(resolve(&json!("${a.id} + ${b.ids.0}"), &vars).unwrap(), json!("9 + 3"));
+    }
+
+    #[test]
+    fn saved_ids_follow_replaced_brushes() {
+        let result = json!({ "ok": true, "replaced": { "10": [20, 21], "11": [], "12": [22] } });
+        let replaced = replacements(&result);
+        assert_eq!(replaced[&10], vec![20, 21]);
+        let mut wall = json!({ "ids": [10, 11, 12, 13], "entity": null, "letters": [[10], [13]], "bounds": { "min": [10, 11, 12] } });
+        follow_replacements(&mut wall, &replaced);
+        assert_eq!(wall["ids"], json!([20, 21, 22, 13]), "pieces take the place of the cut brush, the cutter drops out");
+        assert_eq!(wall["letters"], json!([[20, 21], [13]]));
+        assert_eq!(wall["bounds"]["min"], json!([10, 11, 12]), "numbers that are not ids stay");
+        let mut single = json!({ "id": 12, "other_id": 10, "gone_id": 11, "count": 10, "faces": [[10, 3]] });
+        follow_replacements(&mut single, &replaced);
+        assert_eq!(single, json!({ "id": 22, "other_id": [20, 21], "gone_id": null, "count": 10, "faces": [[10, 3]] }));
     }
 }

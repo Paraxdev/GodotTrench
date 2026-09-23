@@ -826,21 +826,32 @@ impl Viewport {
     }
 
     /// Renders this view's camera into a throwaway target of `size` pixels, for screenshots larger than the docked view.
-    pub fn render_offscreen(&self, renderer: &mut Renderer, scene: &SceneCache, state: &EditorState, size: [u32; 2]) -> Option<image::RgbaImage> {
+    /// Without `overlays` it is a beauty shot: no grid, entity boxes, volumes, edges, selection outlines or links.
+    pub fn render_offscreen(
+        &self,
+        renderer: &mut Renderer,
+        scene: &SceneCache,
+        state: &EditorState,
+        size: [u32; 2],
+        overlays: bool,
+    ) -> Option<image::RgbaImage> {
         let mut target = None;
         renderer.ensure_target(&mut target, size);
         let target = target?;
-        let mut params = self.frame_params(Vec2::new(size[0] as f32, size[1] as f32), state, 1.0);
-        params.grid_size = 0.0;
-        let lit = state.prefs.shade == crate::state::Shade::Lit;
+        let size_points = Vec2::new(size[0] as f32, size[1] as f32);
+        let mut params = self.frame_params(size_points, state, 1.0);
         let is_2d = self.camera.kind.is_2d();
+        let grid =
+            if overlays && is_2d { renderer.upload_lines(&grid_lines(&self.camera, Rect::from_min_size(Pos2::ZERO, size_points), state.grid)) } else { None };
+        if !overlays {
+            params.grid_size = 0.0;
+        }
+
+        let lit = state.prefs.shade == crate::state::Shade::Lit;
         let mut frame = Frame::default();
-        scene.fill_frame(&mut frame, is_2d, lit);
+        frame.overlay_lines.extend(grid.as_ref());
+        scene.fill_frame(&mut frame, is_2d, lit, overlays);
         frame.sky = !is_2d && lit;
-        // Only the surfaces: edges, I/O links and handles would clutter a picture of the level.
-        frame.lines.clear();
-        frame.overlay_lines.clear();
-        frame.overlay_meshes.clear();
         renderer.render(&target, &params, &frame);
         let image = renderer.read_target(&target);
         renderer.free_target(target);
@@ -882,7 +893,7 @@ impl Viewport {
         }
 
         let lit = state.prefs.shade == crate::state::Shade::Lit;
-        scene.fill_frame(&mut frame, is_2d, lit);
+        scene.fill_frame(&mut frame, is_2d, lit, true);
         frame.sky = !is_2d && lit;
         frame.overlay_lines.extend(tools.as_ref());
         cx.renderer.render(target, &params, &frame);

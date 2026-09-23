@@ -424,8 +424,20 @@ pub fn find_project_root(start: &Path) -> Option<PathBuf> {
 
 /// Converts a file system path inside the project into a res:// path.
 pub fn to_res_path(project_root: &Path, path: &Path) -> Option<String> {
-    let rel = path.strip_prefix(project_root).ok()?;
-    Some(format!("res://{}", rel.to_string_lossy().replace('\\', "/")))
+    if let Ok(rel) = path.strip_prefix(project_root) {
+        return Some(format!("res://{}", rel.to_string_lossy().replace('\\', "/")));
+    }
+
+    // A canonicalized root is a verbatim `\\?\D:\` path and scripts spell it `//?/D:/`, which Path parses as a
+    // different prefix. Compare the plain text of both, in one slash style and without that prefix.
+    let plain = |p: &Path| {
+        let text = p.to_string_lossy().replace('\\', "/");
+        let text = text.strip_prefix("//?/").unwrap_or(&text).trim_end_matches('/').to_string();
+        if cfg!(windows) { text.to_lowercase() } else { text }
+    };
+    let rest = plain(path).strip_prefix(&plain(project_root))?.strip_prefix('/')?.to_string();
+    let full = path.to_string_lossy().replace('\\', "/");
+    Some(format!("res://{}", &full[full.len() - rest.len()..]))
 }
 
 pub type PropertyValues = BTreeMap<String, String>;
@@ -433,6 +445,16 @@ pub type PropertyValues = BTreeMap<String, String>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn res_paths_ignore_the_verbatim_prefix_and_slash_style() {
+        let res = |root: &str, path: &str| to_res_path(Path::new(root), Path::new(path));
+        assert_eq!(res(r"\\?\D:\game\godot", "//?/D:/game/godot/models/Crate.gltf").as_deref(), Some("res://models/Crate.gltf"));
+        assert_eq!(res("D:/game/godot", r"\\?\D:\game\godot\a\b.glb").as_deref(), Some("res://a/b.glb"));
+        assert_eq!(res("/game/godot", "/game/godot/x.glb").as_deref(), Some("res://x.glb"));
+        assert_eq!(res("D:/game/godot", "D:/game/godot2/x.glb"), None, "a sibling folder is outside");
+        assert_eq!(res("D:/game/godot", "D:/elsewhere/x.glb"), None);
+    }
 
     #[test]
     fn accepts_current_format_and_a_config_missing_the_fields() {

@@ -524,9 +524,14 @@ fn example_mcp_scripts_replay() {
         .collect();
     assert_eq!(centers, vec![[0, -104], [-104, 0], [0, 104]], "copies rotate 90, 180 and 270 degrees");
 
-    for (script, min_brushes, min_entities) in
-        [("mountain_house", 60, 10), ("church_school", 250, 20), ("lighthouse_forest", 100, 20), ("night_district", 150, 30), ("withered_city", 600, 40)]
-    {
+    for (script, min_brushes, min_entities) in [
+        ("mountain_house", 60, 10),
+        ("church_school", 250, 20),
+        ("lighthouse_forest", 100, 20),
+        ("night_district", 150, 30),
+        ("withered_city", 600, 40),
+        ("sea_island", 16, 6),
+    ] {
         let path = root.join("examples/mcp").join(format!("{script}.json")).canonicalize().unwrap();
         let summary = ed.call("run_script", json!({ "path": path, "vars": { "save_dir": out } }));
         assert_eq!(summary["errors"], json!([]), "{script}");
@@ -751,4 +756,210 @@ fn mesh_uv_projections_adjustments_and_the_mesh_vertex_gizmo() {
     let (a, b) = &changed[0];
     assert_eq!((b[0] - a[0], b[1] - a[1], b[2] - a[2]), (32.0, 0.0, 0.0), "moved +32 along X only");
     assert_eq!(ed.state()["undo"][0], "Move Vertices");
+}
+
+/// Scripted building blocks the withered city showcase needs: block letters, window grids, plane clips, vertex moves and
+/// named wizard entities, all without mouse input.
+#[test]
+#[ignore]
+fn block_text_window_grids_clips_and_named_wizards() {
+    let ed = Editor::launch("block_text");
+    let text = ed.call("create_brush", json!({ "shape": "text", "text": "HI", "min": [0, 0, 0], "max": [300, 4, 140], "material": "dev/orange" }));
+    let letters = text["letters"].as_array().unwrap();
+    assert_eq!(letters.len(), 2);
+    assert_eq!(letters[0].as_array().unwrap().len(), 3, "H is two posts and a bar");
+    assert_eq!(text["ids"].as_array().unwrap().len(), 3 + letters[1].as_array().unwrap().len());
+    assert!(ed.call_err("create_brush", json!({ "shape": "text", "text": "Ö", "min": [0, 0, 0], "max": [64, 8, 64] })).contains("no block letter"));
+
+    let solid = ed.call("create_brush", json!({ "min": [0, 0, 200], "max": [512, 128, 216] }))["ids"].as_array().unwrap().len();
+    let wall = ed.call(
+        "create_brush",
+        json!({ "min": [0, 0, 300], "max": [512, 128, 316], "openings": [{ "min": [32, 32, 296], "max": [96, 96, 320], "count": 4, "step": [128, 0, 0] }] }),
+    );
+    assert!(wall["ids"].as_array().unwrap().len() > solid + 3, "four windows cut the wall into pieces: {wall}");
+
+    ed.call("select", json!({ "ids": wall["ids"] }));
+    let clipped = ed.call("run_action", json!({ "action": "clip_apply", "args": { "point": [0, 64, 0], "normal": [0, 1, 0], "keep": "back" } }));
+    assert!(!clipped["ids"].as_array().unwrap().is_empty());
+    assert_eq!(ed.selection_bounds().1[1], 64.0, "only the part below the plane is left");
+    assert!(ed.call_err("run_action", json!({ "action": "clip_apply", "args": { "point": [0, 0, 0] } })).contains("normal"));
+
+    let block = ed.call("create_brush", json!({ "min": [600, 0, 0], "max": [664, 64, 64] }))["ids"][0].clone();
+    ed.call("select", json!({ "ids": [block] }));
+    ed.call("run_action", json!({ "action": "move_vertices", "args": { "vertices": [[664, 64, 64]], "offset": [0, -32, 0] } }));
+    let node = ed.call("get_node", json!({ "id": block }));
+    assert!(node.to_string().contains("32"), "the corner sags: {node}");
+    assert!(ed.call_err("run_action", json!({ "action": "move_vertices", "args": { "vertices": [[1, 2, 3]], "offset": [0, 8, 0] } })).contains("vertices"));
+
+    let lift = ed.call("create_brush", json!({ "min": [800, 0, 0], "max": [864, 8, 64] }))["ids"].clone();
+    let platform =
+        ed.call("gameplay", json!({ "op": "make_platform", "ids": lift, "travel": [0, 256, 0], "properties": { "targetname": "lift", "speed": "3" } }));
+    assert_eq!(platform["properties"]["targetname"], "lift");
+    assert_eq!(platform["properties"]["speed"], "3");
+    let button = ed.call("create_brush", json!({ "min": [900, 0, 0], "max": [908, 8, 8] }))["ids"].clone();
+    let made = ed.call("gameplay", json!({ "op": "make_button", "ids": button, "target": "lift", "input": "toggle", "properties": { "targetname": "call" } }));
+    assert_eq!(made["properties"]["targetname"], "call");
+    assert_eq!(made["outputs"][0]["target"], "lift");
+}
+
+fn shot(ed: &Editor, args: Value, label: &str) -> image::RgbaImage {
+    let r = ed.try_rpc("tools/call", json!({ "name": "screenshot", "arguments": args })).unwrap();
+    let data = r["result"]["content"][0]["data"].as_str().unwrap_or_else(|| panic!("{label}: no image in {r}"));
+    let png = base64::engine::general_purpose::STANDARD.decode(data).unwrap();
+    std::fs::write(artifacts().join(format!("{}_{label}.png", ed.name)), &png).unwrap();
+    image::load_from_memory(&png).unwrap().to_rgba8()
+}
+
+/// Mean absolute difference per channel, 0 for identical pictures.
+fn image_difference(a: &image::RgbaImage, b: &image::RgbaImage) -> f64 {
+    assert_eq!(a.dimensions(), b.dimensions());
+    let sum: u64 = a.as_raw().iter().zip(b.as_raw()).map(|(x, y)| x.abs_diff(*y) as u64).sum();
+    sum as f64 / a.as_raw().len() as f64
+}
+
+#[test]
+#[ignore]
+fn offscreen_beauty_shots_leave_out_editor_overlays() {
+    let ed = Editor::launch("beauty");
+    ed.box_brush([-256.0, -16.0, -256.0], [256.0, 0.0, 256.0]);
+    ed.call("set_camera", json!({ "view": "3d", "position": [0, 96, 192], "look_at": [0, 16, 0] }));
+    ed.call("run_action", json!({ "action": "select_none" }));
+    let size = json!({ "target": "3d", "width": 320, "height": 200 });
+    let empty = shot(&ed, size.clone(), "empty");
+    ed.call("create_entity", json!({ "classname": "info_player_start", "origin": [0, 0, 0] }));
+    ed.call("run_action", json!({ "action": "select_none" }));
+    let beauty = shot(&ed, size.clone(), "beauty");
+    let mut with_overlays = size.clone();
+    with_overlays["overlays"] = json!(true);
+    let overlays = shot(&ed, with_overlays, "overlays");
+    assert!(image_difference(&beauty, &empty) < 0.5, "the player start box shows in a beauty shot");
+    assert!(image_difference(&overlays, &empty) > 1.0, "overlays: true still draws the entity box and edges");
+}
+
+#[test]
+#[ignore]
+fn a_camera_inside_a_trigger_sees_out_of_it() {
+    let ed = Editor::launch("trigger_inside");
+    ed.box_brush([-512.0, -16.0, -512.0], [512.0, 0.0, 512.0]);
+    ed.box_brush([-64.0, 0.0, -300.0], [64.0, 128.0, -268.0]);
+    ed.call("set_camera", json!({ "view": "3d", "position": [0, 64, 0], "look_at": [0, 48, -300] }));
+    let args = json!({ "target": "3d", "width": 320, "height": 200, "overlays": true });
+    let outside = shot(&ed, args.clone(), "no_trigger");
+    let volume = ed.box_brush([-128.0, 0.0, -128.0], [128.0, 128.0, 128.0]);
+    ed.call("select", json!({ "ids": [volume] }));
+    ed.call("run_action", json!({ "action": "create_brush_entity", "args": { "classname": "trigger_once" } }));
+    ed.call("run_action", json!({ "action": "select_none" }));
+    let inside = shot(&ed, args, "inside_trigger");
+    assert!(image_difference(&inside, &outside) < 2.0, "the trigger's back faces tint the whole view, difference {}", image_difference(&inside, &outside));
+}
+
+#[test]
+#[ignore]
+fn emissive_model_materials_glow_in_the_lit_preview() {
+    let b64 = base64::engine::general_purpose::STANDARD;
+    let mut bin: Vec<u8> = Vec::new();
+    for f in [-1.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 2.0, 0.0, -1.0, 0.0, 0.0, 1.0, 2.0, 0.0, -1.0, 2.0, 0.0] {
+        bin.extend(f.to_le_bytes());
+    }
+
+    // A black panel that only its emission can light up.
+    let gltf = json!({
+        "asset": { "version": "2.0" },
+        "extensionsUsed": ["KHR_materials_emissive_strength"],
+        "scene": 0, "scenes": [{ "nodes": [0] }], "nodes": [{ "mesh": 0 }],
+        "meshes": [{ "primitives": [{ "attributes": { "POSITION": 0 }, "material": 0 }] }],
+        "materials": [{ "pbrMetallicRoughness": { "baseColorFactor": [0.0, 0.0, 0.0, 1.0] }, "emissiveFactor": [1.0, 0.2, 0.0],
+                        "extensions": { "KHR_materials_emissive_strength": { "emissiveStrength": 4.0 } } }],
+        "buffers": [{ "byteLength": bin.len(), "uri": format!("data:application/octet-stream;base64,{}", b64.encode(&bin)) }],
+        "bufferViews": [{ "buffer": 0, "byteLength": bin.len() }],
+        "accessors": [{ "bufferView": 0, "componentType": 5126, "count": 6, "type": "VEC3", "min": [-1.0, 0.0, 0.0], "max": [1.0, 2.0, 0.0] }]
+    });
+    let path = artifacts().join("emissive_panel.gltf");
+    std::fs::write(&path, gltf.to_string()).unwrap();
+
+    let ed = Editor::launch("emissive_model");
+    ed.call("create_entity", json!({ "classname": "prop_model", "origin": [0, 0, 0], "properties": { "model": path.to_string_lossy() } }));
+    ed.call("run_action", json!({ "action": "select_none" }));
+    ed.call("set_camera", json!({ "view": "3d", "position": [0, 32, 96], "look_at": [0, 32, 0] }));
+    ed.call("set_editor", json!({ "shade": "lit" }));
+    let img = shot(&ed, json!({ "target": "3d", "width": 200, "height": 200 }), "lit");
+    let center = img.get_pixel(100, 100).0;
+    assert!(center[0] > 180 && center[2] < 120, "the emissive panel glows orange instead of rendering black, got {center:?}");
+}
+
+#[test]
+#[ignore]
+fn view_panes_maximize_close_and_come_back() {
+    let ed = Editor::launch("view_panes");
+    let width = |ed: &Editor| ed.screenshot("front", "front").0;
+    let docked = width(&ed);
+    ed.input("front", json!([{ "type": "move" }, { "type": "key", "key": "Space", "modifiers": ["shift"] }]));
+    let maximized = width(&ed);
+    assert!(maximized > docked * 3 / 2, "Shift+Space fills the view area with the front view, {docked} to {maximized}");
+    ed.input("front", json!([{ "type": "move" }, { "type": "key", "key": "Space", "modifiers": ["shift"] }]));
+    assert_eq!(width(&ed), docked, "Shift+Space again brings the four views back");
+}
+
+/// Script ergonomics found building the night maps: ids that follow CSG, joined id lists, carve materials, full mesh
+/// rotation, exposed-only scatter fills, forward slash paths, lamp fixtures and Node methods as inputs.
+#[test]
+#[ignore]
+fn script_ids_follow_csg_and_night_map_options() {
+    let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../godot").canonicalize().unwrap();
+    let ed = Editor::launch_with("night_options", &["--project", project.to_str().unwrap()]);
+    let steps = json!([
+        { "tool": "create_brush", "args": { "min": [0, 0, 0], "max": [256, 128, 16], "material": "dev/grey" }, "save": "wall" },
+        { "tool": "create_brush", "args": { "min": [512, 0, 0], "max": [576, 64, 64], "material": "dev/grey" }, "save": "block" },
+        { "tool": "create_brush", "args": { "min": [96, 32, -8], "max": [160, 96, 24], "material": "dev/orange" }, "save": "window" },
+        { "tool": "select", "args": { "ids": "$window.ids" } },
+        { "tool": "run_action", "args": { "action": "csg_subtract", "args": { "carve_material": "target" } }, "save": "cut" },
+        { "tool": "select", "args": { "ids": "$wall.ids + $block.ids" }, "save": "both" },
+        { "tool": "select", "args": { "ids": ["$wall.ids", "$block.ids"] }, "save": "nested" }
+    ]);
+    let summary = ed.call("run_script", json!({ "steps": steps }));
+    assert_eq!(summary["errors"], json!([]));
+    let vars = &summary["vars"];
+    let pieces = vars["wall"]["ids"].as_array().unwrap();
+    assert_eq!(pieces.len(), 4, "the saved wall ids now name the four pieces around the window: {vars}");
+    assert_eq!(vars["window"]["ids"], json!([]), "the cutter is gone");
+    assert_eq!(vars["cut"]["replaced"].as_object().unwrap().len(), 2, "{}", vars["cut"]);
+    assert_eq!(vars["both"]["selected"].as_array().unwrap().len(), 5, "joined lists select the pieces and the block");
+    assert_eq!(vars["nested"]["selected"], vars["both"]["selected"]);
+    for id in pieces {
+        let node = ed.call("get_node", json!({ "id": id }));
+        assert!(!node.to_string().contains("dev/orange"), "carved faces kept the wall's material: {node}");
+    }
+
+    let flat = ed.call("create_mesh", json!({ "shape": "cylinder", "min": [0, 0, 300], "max": [16, 64, 316], "rotate": [0, 0, 90] }));
+    ed.call("select", json!({ "ids": [flat["id"]] }));
+    let (min, max) = ed.selection_bounds();
+    assert!((max[0] - min[0] - 64.0).abs() < 1e-3 && max[1] - min[1] < 17.0, "the cylinder lies along X: {min:?} {max:?}");
+
+    let ground = ed.box_brush([-512.0, -16.0, 600.0], [512.0, 0.0, 1600.0]);
+    ed.box_brush([-512.0, 200.0, 600.0], [0.0, 204.0, 1600.0]);
+    ed.call("select", json!({ "ids": [ground] }));
+    ed.call("scatter", json!({ "op": "new_set", "name": "weeds", "items": ["res://weed.glb"], "kind": "foliage", "targets": [ground] }));
+    let filled = ed.call("scatter", json!({ "op": "fill", "density": 3, "exposed_only": true, "seed": 3 }));
+    assert!(filled["placed"].as_u64().unwrap() > 0, "{filled}");
+    assert!(filled["set"]["bounds"]["min"][0].as_f64().unwrap() > -64.0, "no weed under the slab over negative X: {filled}");
+
+    let info = ed.call("texture", json!({ "op": "material_info", "material": "night/apartment_lit" }));
+    let file = info["material_file"].as_str().expect("the material has a file");
+    assert!(!file.contains('\\') && file.ends_with("night/apartment_lit.tres"), "{file}");
+    assert!(!ed.state()["game"]["project_root"].as_str().unwrap().contains('\\'));
+
+    ed.call(
+        "create_entity",
+        json!({ "classname": "light", "origin": [0, 64, 0], "properties": { "targetname": "lamp", "start_on": "0", "fixture": "bulb" },
+        "outputs": [{ "output": "switched", "target": "bulb", "input": "set_visible" }, { "output": "switched", "target": "bulb", "input": "set_visibel" }] }),
+    );
+    let bulb = ed.box_brush([0.0, 70.0, 0.0], [8.0, 78.0, 8.0]);
+    ed.call("gameplay", json!({ "op": "brush_entity", "ids": [bulb], "classname": "func_illusionary", "properties": { "targetname": "bulb" } }));
+    let issues = ed.call("validate_map", json!({}));
+    let inputs: Vec<String> =
+        issues["issues"].as_array().unwrap().iter().filter(|i| i["code"] == "io_unknown_input").map(|i| i["message"].to_string()).collect();
+    assert_eq!(inputs.len(), 1, "{inputs:?}");
+    assert!(inputs[0].contains("set_visibel"));
+    ed.call("set_editor", json!({ "shade": "lit" }));
+    ed.screenshot("3d", "fixture_hidden_while_off");
 }

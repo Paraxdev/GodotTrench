@@ -53,7 +53,9 @@
         { "name": "light_color", "type": "color", "default": "255 255 255", "description": "Color" },
         { "name": "omni_range", "type": "float", "default": "10.0", "description": "Range in meters" },
         { "name": "start_on", "type": "bool", "default": "1", "description": "Starts switched on" },
-        { "name": "shadows", "type": "bool", "default": "0", "description": "Casts shadows, costs more to render" }
+        { "name": "shadows", "type": "bool", "default": "0", "description": "Casts shadows, costs more to render" },
+        { "name": "fixture", "type": "target_destination", "default": "", "description": "Targetname of the lamp geometry (* for a prefix) that follows the light: shown while on, hidden or dark while off" },
+        { "name": "fixture_off", "type": "choices", "default": "hide", "description": "What a fixture does while the light is off", "options": [["hide", "hide"], ["dark (emission off)", "dark"]] }
       ],
       "inputs": [{ "name": "turn_on" }, { "name": "turn_off" }, { "name": "toggle" }],
       "outputs": [{ "name": "switched", "parameter": "on" }]
@@ -64,6 +66,7 @@
       "size": [[-16, 0, -16], [16, 32, 16]],
       "properties": [
         { "name": "model", "type": "resource", "description": "res:// path of the model" },
+        { "name": "model_node", "type": "string", "default": "", "description": "Name of one node in the model to use, placed at the origin, for files that hold several variants side by side" },
         { "name": "collision", "type": "choices", "default": "convex", "description": "Collision shape", "options": [["none", "none"], ["convex", "convex"], ["trimesh", "trimesh"]] },
         { "name": "scale", "type": "float", "default": "1.0", "description": "Uniform scale" }
       ]
@@ -477,7 +480,9 @@
         { "name": "spot_range", "type": "float", "default": "15.0", "description": "Range in meters" },
         { "name": "spot_angle", "type": "float", "default": "35.0", "description": "Cone half angle in degrees" },
         { "name": "start_on", "type": "bool", "default": "1", "description": "Starts switched on" },
-        { "name": "shadows", "type": "bool", "default": "0", "description": "Casts shadows, costs more to render" }
+        { "name": "shadows", "type": "bool", "default": "0", "description": "Casts shadows, costs more to render" },
+        { "name": "fixture", "type": "target_destination", "default": "", "description": "Targetname of the lamp geometry (* for a prefix) that follows the light: shown while on, hidden or dark while off" },
+        { "name": "fixture_off", "type": "choices", "default": "hide", "description": "What a fixture does while the light is off", "options": [["hide", "hide"], ["dark (emission off)", "dark"]] }
       ],
       "inputs": [{ "name": "turn_on" }, { "name": "turn_off" }, { "name": "toggle" }],
       "outputs": [{ "name": "switched", "parameter": "on" }]

@@ -112,6 +112,25 @@ pub fn glyph_rects(c: char) -> Option<Vec<[usize; 4]>> {
     Some(best)
 }
 
+/// Bounds with `min` as their minimum corner that [`layout`] fills with letters `letter_height` tall and `depth` thick.
+pub fn sized_bounds(text: &str, min: DVec3, letter_height: f64, depth: f64, standing: bool, spacing: f64) -> Result<Aabb, String> {
+    if letter_height <= 0.0 || depth <= 0.0 {
+        return Err("letter height and depth must be positive".into());
+    }
+
+    let lines: Vec<usize> = text.lines().map(|l| l.trim_end().chars().count()).collect();
+    let spacing = spacing.max(0.0);
+    let cols = lines.iter().map(|n| if *n == 0 { 0.0 } else { *n as f64 * (COLS as f64 + spacing) - spacing }).fold(0.0, f64::max);
+    if cols <= 0.0 {
+        return Err("text has no letters".into());
+    }
+
+    let cell = letter_height / ROWS as f64;
+    let rows = (lines.len() * ROWS + (lines.len() - 1) * LINE_GAP) as f64 * cell;
+    let size = if standing { DVec3::new(cols * cell, rows, depth) } else { DVec3::new(cols * cell, depth, rows) };
+    Ok(Aabb::new(min, min + size))
+}
+
 /// Lays `text` out inside `bounds` as boxes, one list per visible character. Letters read along +X with square cells
 /// as large as fit, centered. Lying letters (the default) put the top of each glyph towards -Z and fill the bounds'
 /// height, so they read from above or from a viewer on the +Z side. Standing letters put the top up and fill the
@@ -173,6 +192,22 @@ mod tests {
     fn cells(c: char) -> Vec<(usize, usize)> {
         let rows = glyph(c).unwrap();
         (0..ROWS).flat_map(|r| (0..COLS).map(move |col| (col, r))).filter(|&(col, r)| rows[r].as_bytes()[col] == b'#').collect()
+    }
+
+    #[test]
+    fn sized_bounds_give_letters_of_the_asked_height() {
+        for standing in [false, true] {
+            let bounds = sized_bounds("HI\nOK", DVec3::new(10.0, 0.0, 0.0), 70.0, 8.0, standing, 1.0).unwrap();
+            assert_eq!(bounds.min, DVec3::new(10.0, 0.0, 0.0));
+            let letters = layout("HI\nOK", &bounds, standing, 1.0).unwrap();
+            let h = letters[0].iter().fold(Aabb::EMPTY, |acc, b| acc.union(b)).size();
+            let (tall, thick) = if standing { (h.y, h.z) } else { (h.z, h.y) };
+            assert!((tall - 70.0).abs() < 1e-9 && (thick - 8.0).abs() < 1e-9, "standing {standing}: {h}");
+            assert!((bounds.size().x - 110.0).abs() < 1e-9, "two letters of five cells and one gap, ten units a cell");
+        }
+
+        assert!(sized_bounds("A", DVec3::ZERO, 0.0, 8.0, false, 1.0).is_err());
+        assert!(sized_bounds(" ", DVec3::ZERO, 70.0, 8.0, false, 1.0).is_err());
     }
 
     #[test]

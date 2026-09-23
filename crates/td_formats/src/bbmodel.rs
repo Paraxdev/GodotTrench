@@ -25,6 +25,8 @@ pub struct BbTexture {
     pub path: String,
     /// Size of the UV space the face coordinates are expressed in.
     pub uv_size: DVec2,
+    /// Blockbench's emissive render mode, drawn at full brightness whatever the light.
+    pub emissive: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -150,7 +152,8 @@ pub fn parse(text: &str) -> Result<BbModel, BbError> {
             texture_index.insert(uuid.to_string(), i);
         }
 
-        model.textures.push(BbTexture { name, png, path: t.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string(), uv_size });
+        let emissive = t.get("render_mode").and_then(|v| v.as_str()) == Some("emissive");
+        model.textures.push(BbTexture { name, png, path: t.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string(), uv_size, emissive });
     }
 
     let uv_size = |tex: Option<usize>| tex.and_then(|t| model.textures.get(t)).map(|t| t.uv_size).unwrap_or(resolution);
@@ -452,9 +455,21 @@ mod tests {
         assert_eq!(m.cubes[1].faces.len(), 1);
         assert_eq!(m.mesh_polygons.len(), 1);
         assert_eq!(m.textures[0].name, "bark");
+        assert!(!m.textures[0].emissive);
         assert_eq!(&m.textures[0].png[..4], &[0x89, b'P', b'N', b'G']);
         let b = m.bounds();
         assert!((b.max.y - 24.0).abs() < 1e-9 && b.min.y.abs() < 1e-9);
+    }
+
+    #[test]
+    fn emissive_render_mode_is_read_per_texture() {
+        let text = r#"{
+            "meta": {"format_version": "4.10", "model_format": "free", "box_uv": false},
+            "elements": [],
+            "textures": [{"name": "glow", "render_mode": "emissive"}, {"name": "plain", "render_mode": "default"}, {"name": "old"}]
+        }"#;
+        let m = parse(text).unwrap();
+        assert_eq!(m.textures.iter().map(|t| t.emissive).collect::<Vec<_>>(), [true, false, false]);
     }
 
     #[test]
