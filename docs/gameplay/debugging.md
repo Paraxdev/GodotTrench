@@ -13,7 +13,7 @@ Most wiring mistakes fail quietly. Check in this order.
 4. **Code.** `GodotTrenchIO.events()` emits `fired` for every output, including ones whose target resolved to nothing.
    A `logic_debug` entity with `trace_all` set to 1 logs the same without code.
 
-```python
+```gdscript
 GodotTrenchIO.events().fired.connect(func(source, output, target, input, parameter):
 	print(source.name, ".", output, " -> ", target, ".", input))
 ```

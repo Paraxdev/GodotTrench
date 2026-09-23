@@ -1,0 +1,10 @@
+{
+  "name": "honkit-plugin-gdscript",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Registers a GDScript grammar with the highlight.js that HonKit's highlight plugin uses",
+  "main": "index.js",
+  "engines": {
+    "honkit": ">=4.0.0"
+  }
+}

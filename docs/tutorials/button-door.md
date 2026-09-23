@@ -15,7 +15,7 @@ The status bar confirms the new output, `pressed > main_door.open`.
 The addon has no interaction system of its own. Doors and buttons have a `use(activator)` method and your player
 calls it. The demo player does it on **E** with a ray from the camera (`godot/demo/player.gd`):
 
-```python
+```gdscript
 func use_target() -> void:
 	var from := camera.global_position
 	var query := PhysicsRayQueryParameters3D.create(from, from - camera.global_basis.z * use_distance)
@@ -44,7 +44,7 @@ The player passes itself, so `pressed(activator)` carries the player and later o
 
 ## The same wiring in code
 
-```python
+```gdscript
 # pressed(activator) > main_door.open
 button.pressed.connect(func(activator):
 	for door in GodotTrenchIO.find_targets(button, "main_door", activator):

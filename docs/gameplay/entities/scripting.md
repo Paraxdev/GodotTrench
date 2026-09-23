@@ -13,7 +13,7 @@ Runs a GDScript snippet when fired, for logic no combination of inputs can expre
 In scope are `this`, `activator`, `parameter`, `io` (the `GodotTrenchIO` class) and `tree`. `source` is compiled once
 when the map loads, and a compile error is logged as a warning. `run_with` always has a null `activator`.
 
-```python
+```gdscript
 var p = io.find_targets(this, "!player", null)
 if not p.is_empty():
 	p[0].take_damage(25, this)

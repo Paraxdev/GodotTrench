@@ -3,7 +3,7 @@
 Any script can be an entity. Declare a **signal** for each output and a **method** for each input, and emit the signal
 when the thing happens.
 
-```python
+```gdscript
 @tool
 class_name Alarm extends Node3D
 
@@ -37,7 +37,7 @@ skeleton for any entity.
 
 Use the same functions the map uses:
 
-```python
+```gdscript
 for door in GodotTrenchIO.find_targets(self, "main_door", null):
 	GodotTrenchIO.invoke(door, &"open", "", null)
 ```

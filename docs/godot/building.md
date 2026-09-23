@@ -32,7 +32,7 @@ you open them and build. A rebuild marks the scene as modified, so save it in Go
 
 ## Building from code
 
-```python
+```gdscript
 var map := FuncGodotMap.new()
 map.map_settings = load("res://demo/demo_map_settings.tres")
 map.local_map_file = "res://demo/maps/scripted_scene.gtm"

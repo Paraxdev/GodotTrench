@@ -20,7 +20,7 @@ input.
 A `GodotTrenchOutput` listens to any signal of its parent, so an `Area3D` fires on `body_entered` without code. Your own
 script can declare its own signals:
 
-```python
+```gdscript
 extends StaticBody3D
 
 signal flipped_on(activator: Node)

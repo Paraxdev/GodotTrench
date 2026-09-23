@@ -70,7 +70,7 @@ This applies to code comments, docs, UI text, commit messages and pull request d
 * Keep pages short and to the point. Prefer a table, a numbered list of steps or a short paragraph over a wall of text,
   and split a page that grows long. Leave out what a reader does not need to get the job done.
 * Callouts are blockquotes with a bold label, `> **Note:**`, `> **Tip:**` or `> **Warning:**`. Tag GDScript code blocks
-  as `python`, HonKit's highlighter has no GDScript.
+  as `gdscript`, highlighted by the small local plugin in `docs/plugins/gdscript`.
 * Images go in `docs/assets/<page>/`. Link other pages with relative `.md` paths, and files outside `docs/` with full
   GitHub URLs, since only `docs/` is published.
 * Verify facts against the code before writing them. Explain why and when, not only what.
