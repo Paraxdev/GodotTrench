@@ -10,10 +10,12 @@ Usage:
 import argparse
 import base64
 import json
+import os
 import sys
 import urllib.request
 
-URL = "http://127.0.0.1:7841/mcp"
+# GODOTTRENCH_MCP_URL overrides this, useful when the editor was started with --mcp-http on another port.
+URL = os.environ.get("GODOTTRENCH_MCP_URL", "http://127.0.0.1:7841/mcp")
 
 
 def rpc(method, params=None, url=URL, rid=1):

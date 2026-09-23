@@ -412,6 +412,18 @@ fn terrain_sprinkle_cordon_tabs_bookmarks() {
     };
     let (from_floor, from_sea) = (low_weight(Value::Null), low_weight(json!(40)));
     assert!(from_floor < 0.5 && from_sea > 0.8, "flat ground below sea level joins the low band only when bands start at sea level: {from_floor} {from_sea}");
+
+    // clear_layer wipes a layer's paint everywhere, so a script that repaints an area gives the same result however
+    // many times it runs.
+    let weight_at = |id: u64, p: [f64; 3]| ed.call("blend", json!({ "op": "weights", "id": id, "center": p }))["weights"][3].as_f64().unwrap();
+    assert_eq!(ed.call("terrain_edit", json!({ "id": id, "op": "clear_layer", "layer": 3 }))["changed"], true);
+    assert_eq!(weight_at(id, [-500.0, 0.0, -500.0]), 0.0, "layer 3 cleared everywhere");
+
+    // A rectangular hole for scripts that need a precise cut rather than a circular brush.
+    let holed = ed.call("terrain_edit", json!({ "id": id, "op": "holes", "min": [-40, -40], "max": [40, 40], "hole": true }));
+    assert_eq!(holed["changed"], true);
+    ed.call("terrain_edit", json!({ "id": id, "op": "holes", "min": [-40, -40], "max": [40, 40], "hole": false }));
+
     ed.call("set_editor", json!({ "shade": "lit", "tool": "select" }));
     let (_, _, colors) = ed.screenshot("3d", "terrain_lit");
     assert!(colors > 8);
@@ -949,6 +961,49 @@ fn emissive_model_materials_glow_in_the_lit_preview() {
     let img = shot(&ed, json!({ "target": "3d", "width": 200, "height": 200 }), "lit");
     let center = img.get_pixel(100, 100).0;
     assert!(center[0] > 180 && center[2] < 120, "the emissive panel glows orange instead of rendering black, got {center:?}");
+}
+
+#[test]
+#[ignore]
+fn map_file_absolute_open_close_others_and_script_notes() {
+    let ed = Editor::launch("mcp_small");
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let name = "e2e_relative_room.gtm";
+    let abs = manifest.join(name);
+    ed.call("map_file", json!({ "op": "save", "path": abs.clone() }));
+
+    // A relative path resolves against the process directory, opening it should not leave a later save exposed
+    // to that changing: the path in the open map is made absolute.
+    ed.call("map_file", json!({ "op": "open", "path": name }));
+    let opened_path = ed.state()["map"]["path"].as_str().unwrap().to_string();
+    assert!(std::path::Path::new(&opened_path).is_absolute(), "opened path should be absolute: {opened_path}");
+    let _ = std::fs::remove_file(&abs);
+
+    // A dirty tab left behind by map_file new does not linger: close_others clears it.
+    ed.call("map_file", json!({ "op": "new" }));
+    ed.box_brush([0.0, 0.0, 0.0], [16.0, 16.0, 16.0]);
+    ed.call("map_file", json!({ "op": "new" }));
+    assert_eq!(ed.state()["tabs"]["titles"].as_array().unwrap().len(), 2, "the dirty tab stayed open in the background");
+    let closed = ed.call("run_action", json!({ "action": "close_tab", "args": { "close_others": true, "discard": true } }));
+    assert_eq!(closed["closed"], 1);
+    assert_eq!(ed.state()["tabs"]["titles"].as_array().unwrap().len(), 1);
+
+    // run_script reports note steps separately instead of dropping them from the count.
+    let steps = json!([
+        { "note": "first" },
+        { "tool": "create_brush", "args": { "min": [0, 0, 0], "max": [8, 8, 8] } },
+        { "note": "second" },
+        { "tool": "create_brush", "args": { "min": [8, 0, 0], "max": [16, 8, 8] } }
+    ]);
+    let summary = ed.call("run_script", json!({ "steps": steps }));
+    assert_eq!(summary["steps"], 2);
+    assert_eq!(summary["notes"], 2);
+
+    // An unbraced $name/... is an error rather than a path nobody meant to write passing through unexpanded.
+    let project = manifest.join("../../godot").canonicalize().unwrap();
+    ed.call("open_project", json!({ "path": project }));
+    let err = ed.call_err("run_script", json!({ "steps": [{ "tool": "map_file", "args": { "op": "open", "path": "$project/does_not_exist.gtm" } }] }));
+    assert!(err.contains("${project}"), "{err}");
 }
 
 #[test]

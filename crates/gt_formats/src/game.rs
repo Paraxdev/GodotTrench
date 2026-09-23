@@ -34,6 +34,9 @@ pub struct GameConfig {
     pub project_root: Option<PathBuf>,
     #[serde(skip)]
     pub source: Option<PathBuf>,
+    /// The addon's `plugin.cfg` version, read from the project alongside it. None when the addon is missing.
+    #[serde(skip)]
+    pub addon_version: Option<String>,
 }
 
 fn default_name() -> String {
@@ -429,6 +432,33 @@ pub fn find_project_root(start: &Path) -> Option<PathBuf> {
     None
 }
 
+/// The `version` line of a Godot `plugin.cfg`'s `[plugin]` section.
+fn parse_plugin_version(text: &str) -> Option<String> {
+    let mut in_plugin = false;
+    for raw in text.lines() {
+        let line = raw.trim();
+        if let Some(section) = line.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+            in_plugin = section == "plugin";
+            continue;
+        }
+
+        if in_plugin
+            && let Some((k, v)) = line.split_once('=')
+            && k.trim() == "version"
+        {
+            return Some(v.trim().trim_matches('"').to_string());
+        }
+    }
+
+    None
+}
+
+/// The version the GodotTrench addon declares in its `plugin.cfg`, for the editor to compare against its own.
+pub fn addon_version(project_root: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(project_root.join("addons/func_godot/plugin.cfg")).ok()?;
+    parse_plugin_version(&text)
+}
+
 /// Converts a file system path inside the project into a res:// path.
 pub fn to_res_path(project_root: &Path, path: &Path) -> Option<String> {
     if let Ok(rel) = path.strip_prefix(project_root) {
@@ -452,6 +482,14 @@ pub type PropertyValues = BTreeMap<String, String>;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plugin_version_reads_only_the_plugin_section() {
+        let cfg = "[plugin]\nname=\"GodotTrench\"\nversion=\"0.1.0\"\n\n[other]\nversion=\"9.9.9\"\n";
+        assert_eq!(parse_plugin_version(cfg).as_deref(), Some("0.1.0"));
+        assert_eq!(parse_plugin_version("[plugin]\nname=\"x\"\n"), None, "no version line");
+        assert_eq!(parse_plugin_version("version=\"9.9.9\"\n"), None, "not inside [plugin]");
+    }
 
     #[test]
     fn res_paths_ignore_the_verbatim_prefix_and_slash_style() {

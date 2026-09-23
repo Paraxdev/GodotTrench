@@ -43,6 +43,9 @@ pub mod zfight;
 
 use std::path::PathBuf;
 
+/// The editor's own version, compared against the Godot addon's `plugin.cfg` when a project loads.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Clone, Debug, Default)]
 pub struct CliArgs {
     pub map: Option<PathBuf>,

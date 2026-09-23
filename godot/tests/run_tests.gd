@@ -63,6 +63,7 @@ func _initialize() -> void:
 	test_bbmodel()
 	test_default_fgd()
 	await test_game_config()
+	test_game_config_lint()
 	await test_io_targets()
 	await test_gameplay_entities()
 	await test_spawner()
@@ -614,6 +615,26 @@ func test_game_config() -> void:
 	if by_name.has("info_player_start"):
 		var size: Array = by_name["info_player_start"]["size"]
 		check(size[0] == [-16.0, 0.0, -16.0] and size[1] == [16.0, 56.0, 16.0], "sizes converted to Y-up, got %s" % [size])
+
+func test_game_config_lint() -> void:
+	print("- game config export lint")
+	var fgd := FuncGodotFGDFile.new()
+	var point := FuncGodotFGDPointClass.new()
+	point.classname = "test_lint_point"
+	point.meta_properties = { "inputs": [], "size": Vector3(1, 1, 1) }
+	fgd.entity_definitions = [point]
+	var config := GodotTrenchGameConfig.new()
+	config.fgd_file = fgd
+	config.map_settings = load("res://addons/func_godot/func_godot_default_map_settings.tres")
+	var warnings := config.lint()
+	check(warnings.any(func(w): return w.begins_with("test_lint_point: meta_properties.inputs")), "empty inputs array is flagged, got %s" % [warnings])
+	check(warnings.any(func(w): return w.begins_with("test_lint_point: meta_properties.size")), "a non AABB size is flagged, got %s" % [warnings])
+
+	point.meta_properties = { "size": AABB(Vector3(-8, 0, -8), Vector3(16, 32, 16)) }
+	check(config.lint().is_empty(), "a curated size with a positive AABB lints clean, got %s" % [config.lint()])
+
+	point.meta_properties = { "size": AABB(Vector3.ZERO, Vector3.ZERO) }
+	check(config.lint().any(func(w): return w.begins_with("test_lint_point: meta_properties.size")), "a zero size AABB is flagged")
 
 func test_io_targets() -> void:
 	print("- I/O targets, arguments and C# style methods")

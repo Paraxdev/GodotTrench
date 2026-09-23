@@ -17,19 +17,26 @@ pub struct Step {
     pub save: Option<String>,
 }
 
+/// The raw step entries of a script document, tool calls and notes together.
+fn entries(doc: &Value) -> Option<&Vec<Value>> {
+    match doc {
+        Value::Array(a) => Some(a),
+        Value::Object(o) => o.get("steps").and_then(|s| s.as_array()),
+        _ => None,
+    }
+}
+
 /// Steps of a script document: `{"format": ..., "steps": [...]}` or a bare array of steps.
 pub fn parse(doc: &Value) -> Result<Vec<Step>, String> {
-    let steps = match doc {
-        Value::Array(a) => a,
-        Value::Object(o) => {
-            if let Some(f) = o.get("format").and_then(|f| f.as_str())
-                && f != FORMAT
-            {
-                return Err(format!("not a GodotTrench MCP script (format {f})"));
-            }
+    if let Value::Object(o) = doc
+        && let Some(f) = o.get("format").and_then(|f| f.as_str())
+        && f != FORMAT
+    {
+        return Err(format!("not a GodotTrench MCP script (format {f})"));
+    }
 
-            o.get("steps").and_then(|s| s.as_array()).ok_or("script needs a steps array")?
-        }
+    let steps = match doc {
+        Value::Array(_) | Value::Object(_) => entries(doc).ok_or("script needs a steps array")?,
         _ => return Err("script must be an object or an array".into()),
     };
     steps
@@ -45,6 +52,12 @@ pub fn parse(doc: &Value) -> Result<Vec<Step>, String> {
             })
         })
         .collect()
+}
+
+/// Entries with no `tool`, dropped from `parse`'s result. `run_script` reports these separately so a script with
+/// comment steps does not look like it silently lost some of its work.
+pub fn count_notes(doc: &Value) -> usize {
+    entries(doc).map_or(0, |a| a.iter().filter(|s| s.get("tool").is_none()).count())
 }
 
 fn lookup<'a>(vars: &'a BTreeMap<String, Value>, path: &str) -> Option<&'a Value> {
@@ -86,6 +99,17 @@ fn missing(vars: &BTreeMap<String, Value>, path: &str) -> String {
     }
 
     format!("unknown variable ${path}, write $$ for a literal $")
+}
+
+/// The known variable name right before a `/` in `s`, such as `project` in `"project/maps"`. Catches a script
+/// author's `$name/rest` where `${name}/rest` was meant, since unbraced it never expands and passes through as a
+/// literal `$name/rest` string, usually breaking whatever the file path was supposed to be.
+fn known_name_before_slash<'a>(s: &'a str, vars: &BTreeMap<String, Value>) -> Option<&'a str> {
+    let first = s.chars().next()?;
+    (first.is_ascii_alphabetic() || first == '_').then_some(())?;
+    let end = s.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).unwrap_or(s.len());
+    let (name, rest) = s.split_at(end);
+    (rest.starts_with('/') && (vars.contains_key(name) || name == "project")).then_some(name)
 }
 
 /// `"$a.ids + $b.ids"`: the reference paths of a string made only of whole references joined by `+`.
@@ -137,6 +161,10 @@ pub fn resolve(args: &Value, vars: &BTreeMap<String, Value>) -> Result<Value, St
                     out.push_str(&text_of(lookup(vars, path).ok_or_else(|| missing(vars, path))?));
                     rest = &r[end + 1..];
                 } else {
+                    if let Some(name) = known_name_before_slash(after, vars) {
+                        return Err(format!("${name}/... in {s} is not expanded, write ${{{name}}}/... instead"));
+                    }
+
                     out.push('$');
                     rest = after;
                 }
@@ -248,6 +276,19 @@ mod tests {
         assert!(resolve(&json!("$wall.nope"), &vars).unwrap_err().contains("no value"));
         assert!(resolve(&json!("${project}/maps"), &vars).unwrap_err().contains("open_project"));
         assert_eq!(resolve(&json!("a $ b"), &vars).unwrap(), json!("a $ b"));
+    }
+
+    #[test]
+    fn unbraced_known_name_before_a_slash_is_an_error() {
+        let mut vars = BTreeMap::new();
+        vars.insert("wall".to_string(), json!({ "ids": [42] }));
+        let err = resolve(&json!("$project/maps/room.gtm"), &vars).unwrap_err();
+        assert!(err.contains("${project}"), "{err}");
+        let err = resolve(&json!("$wall/x"), &vars).unwrap_err();
+        assert!(err.contains("${wall}"), "{err}");
+        // Not a known name, or no slash right after it: passes through as plain text.
+        assert_eq!(resolve(&json!("$nope/x"), &vars).unwrap(), json!("$nope/x"));
+        assert_eq!(resolve(&json!("$wall-x"), &vars).unwrap(), json!("$wall-x"));
     }
 
     #[test]

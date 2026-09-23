@@ -1069,12 +1069,19 @@ impl App {
                     true
                 }
                 "holes" => {
-                    let Some(c) = point(&a["center"]) else { return Err("center required".to_string()) };
-                    t.set_holes(c, radius, a["hole"].as_bool().unwrap_or(true))
+                    let hole = a["hole"].as_bool().unwrap_or(true);
+                    match (point(&a["min"]), point(&a["max"])) {
+                        (Some(min), Some(max)) => t.set_holes_rect(DVec2::new(min.x, min.z), DVec2::new(max.x, max.z), hole),
+                        _ => {
+                            let Some(c) = point(&a["center"]) else { return Err("center [x, z], or min and max [x, z], required".to_string()) };
+                            t.set_holes(c, radius, hole)
+                        }
+                    }
                 }
+                "clear_layer" => t.clear_layer(a["layer"].as_u64().unwrap_or(1) as usize),
                 other => {
                     return Err(format!(
-                        "unknown terrain op {other}, use sculpt, sculpt_path, paint_path, flatten_rect, ramp, erode, auto_paint, set_layers or holes, or only probe"
+                        "unknown terrain op {other}, use sculpt, sculpt_path, paint_path, flatten_rect, ramp, erode, auto_paint, set_layers, holes or clear_layer, or only probe"
                     ));
                 }
             };
@@ -1179,6 +1186,7 @@ impl App {
             Ok(s) => s,
             Err(e) => return err(e),
         };
+        let notes = super::script::count_notes(&doc);
         let mut vars: BTreeMap<String, Value> = BTreeMap::new();
         vars.insert("script_dir".into(), json!(dir));
         if let Some(p) = project {
@@ -1278,7 +1286,8 @@ impl App {
 
         let undo = self.state.doc.squash_since(mark, |_| format!("MCP: {label}, {ran} steps"));
         let saved: serde_json::Map<String, Value> = vars.into_iter().filter(|(k, _)| k != "last").collect();
-        let summary = json!({ "steps": steps.len(), "ran": ran, "errors": errors, "undo": undo, "vars": saved, "state": self.state_summary()["map"] });
+        let summary =
+            json!({ "steps": steps.len(), "notes": notes, "ran": ran, "errors": errors, "undo": undo, "vars": saved, "state": self.state_summary()["map"] });
         if errors.is_empty() || continue_on_error { ok(summary) } else { ToolResult::Error(serde_json::to_string_pretty(&summary).unwrap_or_default()) }
     }
 }

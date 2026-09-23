@@ -17,6 +17,10 @@ claude mcp add godottrench -- /path/to/godottrench --mcp                 # stdio
 
 The repository's `.mcp.json` already points Claude Code at the HTTP server.
 
+`GODOTTRENCH_MCP_URL` overrides the URL [tools/mcp_client.py](https://github.com/Paraxdev/GodotTrench/blob/main/tools/mcp_client.py)
+and [tools/mcp_script.py](https://github.com/Paraxdev/GodotTrench/blob/main/tools/mcp_script.py) connect to, for an
+editor started on a different port than `.mcp.json` expects.
+
 ## Tools
 
 | Area | Tools |
@@ -84,10 +88,12 @@ See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 | --- | --- |
 | Errors | A tool that could not do its job returns `isError`, including a failed `run_action` |
 | File dialogs | Actions that open one are refused, use `map_file` with a path. `run_action save` needs a map that already has a file |
-| Unsaved tabs | `run_action close_tab` refuses unsaved changes unless `args.discard` is true |
+| Unsaved tabs | `run_action close_tab` refuses unsaved changes unless `args.discard` is true. `args.close_others` closes every tab but the active one instead |
+| Map paths | `map_file open` and `open_tab` resolve the path to an absolute one before opening, so a later `save` cannot land somewhere else because the process directory changed |
 | Selection | `select` refuses unknown ids and skips hidden or locked nodes, listing them in `skipped` |
 | CSG | `csg_subtract`, `csg_merge`, `csg_intersect`, `csg_hollow` and `clip_apply` return `replaced`, old ids mapped to new ones |
 | Timeouts | Calls time out after 120 s, except `run_script` |
+| Script variables | `$name/rest` (unbraced) is an error when `name` is a known variable, since only `$name` alone or `${name}/rest` expand it. Write `${project}/maps` |
 
 ## Tool notes
 

@@ -546,7 +546,12 @@ impl App {
         state.godot.refresh(&state.prefs.godot_path, state.game.project_root.as_deref());
         if !state.godot.found() {
             let warning = format!("{}. Run Project and Open in Godot stay disabled until then", commands::GODOT_NOT_FOUND);
-            eprintln!("GodotTrench: {warning}");
+            // A --project start is usually scripted (MCP, tests), where this is expected and would spam the log
+            // every run, so only log it there when it is worth a person's attention: an interactive session.
+            if args.project.is_none() {
+                eprintln!("GodotTrench: info: {warning}");
+            }
+
             if !map_failed {
                 state.set_status(warning);
             }

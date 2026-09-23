@@ -614,6 +614,26 @@ impl EditorState {
         true
     }
 
+    /// Closes every tab but the active one. Refuses when one has unsaved changes, unless `discard` is true.
+    /// Returns how many tabs closed.
+    pub fn close_other_tabs(&mut self, discard: bool) -> Result<usize, String> {
+        if !discard && let Some(dirty) = self.tabs.iter().find(|t| t.doc.is_modified()) {
+            return Err(format!("{} has unsaved changes, save it or pass args.discard true to drop them", dirty.doc.title()));
+        }
+
+        let closed = self.tabs.len();
+        for tab in std::mem::take(&mut self.tabs) {
+            if tab.doc.is_modified()
+                && let Some(path) = tab.doc.path
+            {
+                self.revert_live(vec![path], false);
+            }
+        }
+
+        self.active_tab = 0;
+        Ok(closed)
+    }
+
     /// Closes the active tab and throws away its unsaved changes. The last open map is replaced by a new one.
     pub fn discard_tab(&mut self) {
         if self.tabs.is_empty() {
@@ -837,6 +857,13 @@ impl EditorState {
             }
         };
         game.project_root = Some(root.to_path_buf());
+        game.addon_version = gt_formats::game::addon_version(root);
+        if let Some(addon) = &game.addon_version
+            && addon != crate::VERSION
+        {
+            eprintln!("GodotTrench: info: the addon's plugin.cfg is v{addon}, the editor is v{}; update the addon submodule to match", crate::VERSION);
+        }
+
         self.materials.rescan(&game);
         self.model_library.rescan(&game);
         self.game = game;
@@ -1044,5 +1071,38 @@ mod tests {
         assert_eq!(p.ui_scale, 0.9);
         let old: Prefs = serde_json::from_str(r#"{"fly_speed": 100.0}"#).unwrap();
         assert_eq!((old.ui_scale, old.follow_display_scaling), (1.0, true));
+    }
+
+    #[test]
+    fn load_project_reads_the_addon_version() {
+        let dir = std::env::temp_dir().join(format!("gt_addon_version_test_{}", std::process::id()));
+        let addon = dir.join("addons/func_godot");
+        std::fs::create_dir_all(&addon).unwrap();
+        std::fs::write(dir.join("project.godot"), "").unwrap();
+        std::fs::write(addon.join("plugin.cfg"), "[plugin]\nversion=\"0.0.1-not-the-editor\"\n").unwrap();
+
+        let mut state = EditorState::new(Prefs::default());
+        state.load_project(&dir);
+        assert_eq!(state.game.addon_version.as_deref(), Some("0.0.1-not-the-editor"));
+        assert_ne!(state.game.addon_version.as_deref(), Some(crate::VERSION), "picked an addon version that differs from the editor's");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn close_other_tabs_keeps_the_active_one() {
+        let mut state = EditorState::new(Prefs::default());
+        let layer = state.doc.map.default_layer();
+        state.doc.edit("add", |m, _| gt_doc::ops::create_point_entity(m, layer, "light", DVec3::ZERO));
+        assert!(state.doc.is_modified());
+        // Opening tabs pushes the modified map into `tabs`, each new active one starts blank.
+        state.open_tab(Document::new());
+        state.open_tab(Document::new());
+        assert_eq!(state.tabs.len(), 2);
+        assert!(!state.doc.is_modified(), "the now active tab is untouched");
+        assert!(state.close_other_tabs(false).is_err(), "a modified tab among the others refuses without discard");
+        assert_eq!(state.tabs.len(), 2);
+        assert_eq!(state.close_other_tabs(true), Ok(2));
+        assert!(state.tabs.is_empty());
+        assert!(!state.doc.is_modified(), "closing others left the active tab alone");
     }
 }

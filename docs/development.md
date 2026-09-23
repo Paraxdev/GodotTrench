@@ -37,6 +37,9 @@ CI runs all of these. The e2e tests run on Linux with software Vulkan and drive 
 `example_mcp_scripts_replay` replays every script in `examples/mcp`. To test the live link without a window, see
 [Live link protocol](godot/live-link.md#testing-without-a-window).
 
+> **Note:** `godot --headless --script` renders nothing (screenshots and rendered checks come out black) and does not
+> run project autoloads, only the script itself. Write tests against data and nodes, not pixels or autoload state.
+
 To time map builds, run `godot --headless --path godot --script res://tests/bench_build.gd -- runs=5 threaded=1`.
 Do not time them with `build_showcase.gd`, it overwrites the committed showcase scenes.
 
@@ -68,6 +71,9 @@ The addon has its own repository, [godottrench_func](https://github.com/Paraxdev
 
 Push the addon first. A GodotTrench commit that points at an addon commit GitHub does not have fails to check out in
 CI.
+
+`plugin.cfg`'s `version` matches [Cargo.toml](https://github.com/Paraxdev/GodotTrench/blob/main/Cargo.toml)'s
+workspace version. Bump both together, the editor warns when a project's addon does not match it.
 
 ## Documentation
 

@@ -17,6 +17,8 @@ import urllib.request
 
 
 TIMEOUT = 3600
+# GODOTTRENCH_MCP_URL overrides this, useful when the editor was started with --mcp-http on another port.
+DEFAULT_URL = os.environ.get("GODOTTRENCH_MCP_URL", "http://127.0.0.1:7841/mcp")
 
 
 def rpc(url, method, params=None):
@@ -57,7 +59,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("cmd", choices=["run", "shot", "call"])
     p.add_argument("target", nargs="?")
-    p.add_argument("--url", default="http://127.0.0.1:7841/mcp")
+    p.add_argument("--url", default=DEFAULT_URL)
     p.add_argument("--pos")
     p.add_argument("--look")
     p.add_argument("--view", default="3d")
@@ -75,7 +77,7 @@ def main():
             print(f"error: {text_of(result)}")
             sys.exit(1)
         errors = summary.get("errors", [])
-        print(f"ran {summary.get('ran')} of {summary.get('steps')} steps, {len(errors)} errors")
+        print(f"ran {summary.get('ran')} of {summary.get('steps')} steps, {summary.get('notes', 0)} notes, {len(errors)} errors")
         for e in errors:
             print(f"  step {e.get('step')} {e.get('tool')}: {e.get('error')}")
         print(json.dumps(summary.get("state", {}), indent=1))
