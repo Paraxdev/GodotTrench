@@ -1,15 +1,14 @@
 # Doors, movers and buttons
 
-These are brush entities: draw the brush, then convert it. They move by animating their body, so they carry players
-standing on them. Speeds are in meters per second, or degrees per second for rotation.
+These are brush entities. They are `AnimatableBody3D` nodes, so they carry whatever stands on them.
 
-> **Note:** None of these react to the player on their own. Your player script calls `use(activator)` on them, see
-> [Button opens a door](../../tutorials/button-door.md). Set `interact` to 0 for doors that should only open from a
-> trigger or a script.
+> **Note:** Doors and buttons do not react to the player on their own. Your player script calls `use(activator)` on
+> them, see [Button opens a door](../../tutorials/button-door.md). Set `interact` to 0 for one that should only move
+> from I/O or a script.
 
 ## func_door
 
-Slides by `travel` when opened. `wait` -1 stays open, a positive value closes again after that many seconds. A locked
+Slides by `travel` when opened. `wait` -1 stays open, a positive value closes it again after that many seconds. A locked
 door ignores `open` and `use` and fires `locked_use` instead.
 
 * **Inputs:** `open`, `close`, `toggle`, `lock`, `unlock`, `use(activator)`
@@ -23,44 +22,37 @@ which is why `open` takes the activator here.
 
 * **Inputs:** `open(activator)`, `close`, `toggle(activator)`, `lock`, `unlock`, `use(activator)`
 * **Outputs:** same as `func_door`
-* **Keys:** `hinge` 0 0 0 (relative to the door), `axis` y, `open_angle` 95, `speed` 120, `open_away` 1, `wait` -1,
-  `locked` 0, `start_open` 0, `interact` 1
+* **Keys:** `hinge` 0 0 0 (relative to the door's center), `axis` y, `open_angle` 95 (negative swings the other way),
+  `speed` 120 (degrees per second), `open_away` 1, `wait` -1, `locked` 0, `start_open` 0, `interact` 1
 
-## func_gate
-
-A rotating door with fewer options, for gates and simple swinging panels. Runs the same script as
-`func_door_rotating`.
-
-* **Inputs:** `open`, `close`, `toggle`
-* **Outputs:** `opened`, `closed`
-* **Keys:** `hinge`, `open_angle` 100, `speed` 90
+`func_gate` is an older alias with only `hinge`, `open_angle` 100 and `speed` 90 as keys. Use `func_door_rotating`.
 
 ## func_platform
 
-Moves between its start and `start + travel`.
+A lift or moving platform between its start and `start + travel`.
 
 * **Inputs:** `start`, `stop`, `toggle`, `go_to_end`, `go_to_start`
 * **Outputs:** `reached_end`, `reached_start`, `started`
 * **Keys:** `travel` 0 128 0, `speed` 2.0, `wait` 1.0, `mode` 0, `start_active` 0
 
-| `mode` | Behaviour |
+| `mode` | `start` does |
 | --- | --- |
-| 0 | One way per toggle |
-| 1 | Ping pong, waiting `wait` seconds at each end |
-| 2 | Goes once |
+| 0, toggle | Moves to the other end |
+| 1, ping pong | Moves back and forth until `stop`, waiting `wait` seconds at each end |
+| 2, once | Moves to the end and stays there |
 
 ## func_train
 
-Follows a chain of `path_corner` entities, starting at `target`. It moves from the moment the map loads and loops, so
-set `start_active` or `loop` to 0 for a one off ride.
+Follows a chain of `path_corner` entities, starting at `target`. It moves from map load and loops, so set
+`start_active` or `loop` to 0 for a one off ride. Each corner's `wait` and `speed` apply on arrival.
 
 * **Inputs:** `start`, `stop`, `toggle`
 * **Outputs:** `arrived(corner)`, `finished` (only when not looping)
-* **Keys:** `target`, `speed` 3.0, `loop` 1, `start_active` 1, `orient` 0
+* **Keys:** `target`, `speed` 3.0, `loop` 1, `start_active` 1, `orient` 0 (1 turns it to face where it goes)
 
 ## func_button
 
-Moves by `travel` while pressed and fires `pressed`. `wait` -1 keeps it pressed.
+Moves by `travel` while pressed and fires `pressed`. It pops out again after `wait` seconds, -1 keeps it pressed.
 
 * **Inputs:** `press(activator)`, `release`, `lock`, `unlock`, `use(activator)`
 * **Outputs:** `pressed(activator)`, `released`, `locked_use(activator)`
