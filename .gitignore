@@ -21,3 +21,6 @@ plan.md
 # HonKit output, relative output paths resolve inside docs/
 docs/_site/
 docs/_book/
+
+# Docs build tooling
+docs/node_modules/
