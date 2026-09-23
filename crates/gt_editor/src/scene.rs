@@ -107,6 +107,7 @@ fn build_drag_batches(renderer: &Renderer, game: &GameConfig, base: &Map, nodes:
         volumes: MeshBatch::default(),
         markers: MeshBatch::default(),
         volume: false,
+        dark: false,
         face_overlay: MeshBatch::default(),
         edges: Vec::new(),
         edges_2d: Vec::new(),
@@ -164,8 +165,10 @@ pub struct SceneCache {
     scene_bounds: Aabb,
     face_cull: FaceCull,
     drag: Option<DragLayer>,
-    /// Fixtures of lights that start off, left out of the lit view like the game hides them.
-    hidden_fixtures: BTreeSet<NodeId>,
+    /// Fixtures of lights that start off: left out of the lit view like the game hides them, or drawn without their glow.
+    fixtures: gt_doc::entity::OffFixtures,
+    /// Set while the cache holds the selected nodes built as if unselected, for a beauty shot.
+    selection_hidden: bool,
 }
 
 pub fn v3(v: DVec3) -> [f32; 3] {
@@ -261,6 +264,8 @@ struct Builder<'a> {
     volumes: MeshBatch,
     /// Set while building the brushes of a volume entity.
     volume: bool,
+    /// Set while building a fixture of a light that starts off with `fixture_off dark`.
+    dark: bool,
     /// Editor stand-ins like point entity boxes, left out of beauty shots and the sun shadow.
     markers: MeshBatch,
     face_overlay: MeshBatch,
@@ -449,7 +454,38 @@ fn build_scatter(
     out
 }
 
+/// Material key a surface draws with: the copy without emission for a dark fixture, once the renderer has it.
+fn fixture_material<'k>(dark: bool, key: &'k str, has_material: impl Fn(&str) -> bool) -> std::borrow::Cow<'k, str> {
+    if dark {
+        let dark = gt_render::dark_key(key);
+        if has_material(&dark) {
+            return dark.into();
+        }
+    }
+
+    key.into()
+}
+
+/// Material keys the surfaces of `node` draw with, before `fixture_material`.
+fn surface_keys(renderer: &Renderer, node: &gt_doc::Node, model: Option<&crate::models::Model>) -> BTreeSet<String> {
+    let face_key = |data: &gt_geom::FaceData| {
+        let blend = data.props.get(gt_doc::blend::BLEND_MATERIAL).map(|b| gt_render::blend_key(&data.material, b));
+        blend.filter(|k| renderer.has_material(k)).unwrap_or_else(|| data.material.clone())
+    };
+    match &node.kind {
+        NodeKind::Brush(b) => b.faces.iter().map(|f| face_key(&f.data)).collect(),
+        NodeKind::Mesh(m) if m.decal => m.faces.iter().map(|f| decal_key(&f.data.material)).collect(),
+        NodeKind::Mesh(m) => m.faces.iter().map(|f| face_key(&f.data)).collect(),
+        NodeKind::Entity(_) => model.map(|m| m.parts.iter().map(|p| p.material.clone()).collect()).unwrap_or_default(),
+        _ => BTreeSet::new(),
+    }
+}
+
 impl Builder<'_> {
+    fn draw_key<'k>(&self, key: &'k str) -> std::borrow::Cow<'k, str> {
+        fixture_material(self.dark, key, |k| self.renderer.has_material(k))
+    }
+
     /// Composite material key for a face with a blend material, when both textures are loaded.
     fn blend_material(&self, data: &gt_geom::FaceData) -> Option<String> {
         let blend = data.props.get(gt_doc::blend::BLEND_MATERIAL)?;
@@ -517,8 +553,8 @@ impl Builder<'_> {
                     .collect();
                 let indices: Vec<u32> = gt_geom::displacement::triangles(grid.size).flat_map(|(a, b, c)| [a as u32, b as u32, c as u32]).collect();
                 self.stats.triangles += indices.len() / 3;
-                let key = blend.as_deref().unwrap_or(mat);
-                self.batch(key, false).add_triangles(key, &verts, &indices);
+                let key = self.draw_key(blend.as_deref().unwrap_or(mat));
+                self.batch(&key, false).add_triangles(&key, &verts, &indices);
                 let n_side = grid.size;
                 for j in 0..n_side {
                     for i in 0..n_side {
@@ -556,7 +592,7 @@ impl Builder<'_> {
                     MeshVertex { pos: v3(p), normal: n, uv: [uv.x as f32, uv.y as f32], color: c }
                 })
                 .collect();
-            let key = blend.as_deref().unwrap_or(mat);
+            let key = self.draw_key(blend.as_deref().unwrap_or(mat));
             match culled.and_then(|c| c.get(&fi)) {
                 Some(pieces) => {
                     let corners: Vec<DVec3> = face.indices.iter().map(|i| brush.vertices[*i as usize]).collect();
@@ -571,12 +607,12 @@ impl Builder<'_> {
                             })
                             .collect();
                         self.stats.triangles += piece_verts.len().saturating_sub(2);
-                        self.batch(key, tool).add_polygon(key, &piece_verts);
+                        self.batch(&key, tool).add_polygon(&key, &piece_verts);
                     }
                 }
                 None => {
                     self.stats.triangles += verts.len().saturating_sub(2);
-                    self.batch(key, tool).add_polygon(key, &verts);
+                    self.batch(&key, tool).add_polygon(&key, &verts);
                 }
             }
 
@@ -643,12 +679,12 @@ impl Builder<'_> {
             let corner_tris = mesh.triangulate_corners(fi);
             let tris: Vec<u32> = corner_tris.iter().flat_map(|[a, b, c]| [*a as u32, *b as u32, *c as u32]).collect();
             let decal_mat;
-            let key = if mesh.decal {
+            let key = self.draw_key(if mesh.decal {
                 decal_mat = decal_key(mat);
                 decal_mat.as_str()
             } else {
                 blend.as_deref().unwrap_or(mat)
-            };
+            });
             match culled.and_then(|c| c.get(&fi)) {
                 Some(pieces) => {
                     let corners = mesh.face_points(fi);
@@ -668,12 +704,12 @@ impl Builder<'_> {
                             })
                             .collect();
                         self.stats.triangles += piece_verts.len().saturating_sub(2);
-                        self.batch(key, tool).add_polygon(key, &piece_verts);
+                        self.batch(&key, tool).add_polygon(&key, &piece_verts);
                     }
                 }
                 None => {
                     self.stats.triangles += tris.len() / 3;
-                    self.batch(key, tool).add_triangles(key, &verts, &tris);
+                    self.batch(&key, tool).add_triangles(&key, &verts, &tris);
                 }
             }
 
@@ -726,7 +762,8 @@ impl Builder<'_> {
                         })
                         .collect();
                     self.stats.triangles += part.indices.len() / 3;
-                    self.batch(&part.material, false).add_triangles(&part.material, &verts, &part.indices);
+                    let key = self.draw_key(&part.material);
+                    self.batch(&key, false).add_triangles(&key, &verts, &part.indices);
                 }
 
                 let corners = m.bounds.corners();
@@ -1191,7 +1228,7 @@ struct BucketCtx<'a> {
     pieces: &'a HashMap<NodeId, FacePieces>,
     entity_models: &'a HashMap<NodeId, std::sync::Arc<crate::models::Model>>,
     drag_nodes: &'a BTreeSet<NodeId>,
-    hidden_fixtures: &'a BTreeSet<NodeId>,
+    fixtures: &'a gt_doc::entity::OffFixtures,
 }
 
 /// Builds the batches for one bucket's brush, mesh, entity and terrain nodes. Prefab instances are left to
@@ -1208,6 +1245,7 @@ fn build_bucket<'a>(ctx: &BucketCtx<'a>, ids: &[NodeId]) -> Builder<'a> {
         volumes: MeshBatch::default(),
         markers: MeshBatch::default(),
         volume: false,
+        dark: false,
         face_overlay: MeshBatch::default(),
         edges: Vec::new(),
         edges_2d: Vec::new(),
@@ -1219,7 +1257,9 @@ fn build_bucket<'a>(ctx: &BucketCtx<'a>, ids: &[NodeId]) -> Builder<'a> {
     let is_selected = |id: NodeId| ctx.selection.nodes.contains(&id) || map.ancestors(id).iter().any(|a| ctx.selection.nodes.contains(a));
     for &id in ids {
         let Some(node) = map.get(id) else { continue };
-        if ctx.drag_nodes.contains(&id) || ctx.hidden_fixtures.contains(&id) || map.owning_entity(id).is_some_and(|e| ctx.hidden_fixtures.contains(&e)) {
+        let owner = map.owning_entity(id);
+        let in_set = |set: &BTreeSet<NodeId>| set.contains(&id) || owner.is_some_and(|e| set.contains(&e));
+        if ctx.drag_nodes.contains(&id) || in_set(&ctx.fixtures.hidden) {
             continue;
         }
 
@@ -1243,6 +1283,7 @@ fn build_bucket<'a>(ctx: &BucketCtx<'a>, ids: &[NodeId]) -> Builder<'a> {
         let edge_2d = entity_def.map(|d| [d.color.r, d.color.g, d.color.b, 0.9]).unwrap_or(EDGE_COLOR_2D);
         let is_trigger = entity.is_some_and(|e| e.classname.starts_with("trigger")) || entity_def.is_some_and(|d| d.node_class == "Area3D");
         builder.volume = is_trigger;
+        builder.dark = in_set(&ctx.fixtures.dark);
         match &node.kind {
             NodeKind::Brush(brush) => {
                 builder.brush(brush, tint, selected, |fi| ctx.selected_faces.contains(&(id, fi)), edge_2d, is_trigger, EDGE_COLOR, ctx.pieces.get(&id))
@@ -1289,6 +1330,12 @@ impl SceneCache {
     }
 
     pub fn update(&mut self, renderer: &mut Renderer, state: &mut EditorState, project_generation: u64) {
+        self.update_with(renderer, state, project_generation, true);
+    }
+
+    /// Like `update`, but with `show_selection` false the selected nodes are built like the rest, without the
+    /// selection tint, for beauty shots. The next `update` brings the tint back.
+    pub fn update_with(&mut self, renderer: &mut Renderer, state: &mut EditorState, project_generation: u64, show_selection: bool) {
         let prefab_generation = state.prefabs.generation;
         let model_generation = state.models.generation;
         let lit = state.prefs.shade == crate::state::Shade::Lit;
@@ -1299,6 +1346,7 @@ impl SceneCache {
             && self.model_generation == model_generation
             && self.lit == lit
             && self.wireframe == wireframe
+            && self.selection_hidden != show_selection
             && self.prev_map.is_some()
         {
             return;
@@ -1316,7 +1364,8 @@ impl SceneCache {
         }
 
         let map = state.doc.map.clone();
-        let selection = state.doc.selection.clone();
+        let selection = if show_selection { state.doc.selection.clone() } else { Selection::default() };
+        self.selection_hidden = !show_selection;
         // Only heavy moves use the drag layer; ordinary brush drags keep the live rebuild-and-cull path.
         let drag_req =
             state.drag_preview.clone().filter(|d| d.nodes.iter().filter_map(|id| map.get(*id)).map(node_face_count).sum::<usize>() > CULL_DEFER_FACES);
@@ -1384,14 +1433,16 @@ impl SceneCache {
             dirty.extend(prev_drag_nodes.iter().copied());
         }
 
-        let hidden_fixtures = if lit { gt_doc::entity::hidden_fixtures(&map) } else { BTreeSet::new() };
-        if hidden_fixtures != self.hidden_fixtures {
-            for id in hidden_fixtures.symmetric_difference(&self.hidden_fixtures) {
-                dirty.insert(*id);
-                dirty.extend(map.descendants(*id));
+        let fixtures = if lit { gt_doc::entity::off_fixtures(&map) } else { Default::default() };
+        if fixtures != self.fixtures {
+            let changed = fixtures.hidden.symmetric_difference(&self.fixtures.hidden).chain(fixtures.dark.symmetric_difference(&self.fixtures.dark));
+            let changed: BTreeSet<NodeId> = changed.copied().collect();
+            for id in changed {
+                dirty.insert(id);
+                dirty.extend(map.descendants(id));
             }
 
-            self.hidden_fixtures = hidden_fixtures;
+            self.fixtures = fixtures;
         }
 
         let entities_changed = full || dirty.iter().any(|id| map.entity(*id).is_some() || self.prev_map.as_ref().is_some_and(|p| p.entity(*id).is_some()));
@@ -1513,6 +1564,16 @@ impl SceneCache {
             }
         }
 
+        for &fixture in &self.fixtures.dark {
+            for id in std::iter::once(fixture).chain(map.descendants(fixture)) {
+                let Some(node) = map.get(id) else { continue };
+                let model = node.entity().and_then(|e| crate::models::entity_model_path(&game, e)).and_then(|p| state.models.get(&p, game.units_per_meter));
+                for key in surface_keys(renderer, node, model.as_deref()) {
+                    renderer.prepare_dark_material(&key);
+                }
+            }
+        }
+
         let opaque = |m: &str| {
             let flags = renderer.material_flags(m);
             !flags.transparent && !flags.double_sided
@@ -1604,7 +1665,7 @@ impl SceneCache {
                     pieces: &self.face_cull.pieces,
                     entity_models: &entity_models,
                     drag_nodes: &drag_nodes,
-                    hidden_fixtures: &self.hidden_fixtures,
+                    fixtures: &self.fixtures,
                 };
                 let has_instance = |b: usize| {
                     per_bucket_ref.get(&b).is_some_and(|ids| ids.iter().any(|id| matches!(map.get(*id).map(|n| &n.kind), Some(NodeKind::Instance(_)))))
@@ -1897,6 +1958,14 @@ impl SceneCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dark_fixtures_draw_the_copy_without_emission() {
+        let has = |k: &str| k == "dark:night/neon";
+        assert_eq!(fixture_material(true, "night/neon", has), "dark:night/neon");
+        assert_eq!(fixture_material(false, "night/neon", has), "night/neon", "lamps that start on keep their glow");
+        assert_eq!(fixture_material(true, "dev/grey", has), "dev/grey", "materials that never glow have no dark copy");
+    }
 
     #[test]
     fn night_worldspawn_keys_dim_the_lit_preview() {

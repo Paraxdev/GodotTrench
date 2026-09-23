@@ -35,7 +35,8 @@ play animations, show text, break things and switch lights entirely through I/O:
 * `light` and `light_spot`: switchable omni and spot lights. Inputs `turn_on`, `turn_off`, `toggle`. Output
   `switched(on)`. `fixture` names the lamp geometry (a targetname, `*` at the end for a prefix) that follows the light
   without any I/O: shown while on and hidden while off, or with `fixture_off dark` kept visible with the emission of
-  its materials off. The editor's lit preview hides the fixtures of lights that start off.
+  its materials off. The editor's lit preview shows the fixtures of lights that start off the same way, hidden or drawn
+  without their glow.
 * `prop_model`: a model with optional collision. `model_node` keeps only the node of that name from the model file,
   placed at the prop's origin, for files like Poly Haven packs that hold several variants side by side.
 * `env_sound`: a positional sound. Inputs `play`, `stop`, `toggle`. Output `finished`.

@@ -119,9 +119,9 @@
       "uri": "textures/security_camera_01_arm_1k.jpg"
     },
     {
-      "mimeType": "image/jpeg",
+      "mimeType": "image/png",
       "name": "security_camera_01_diff-security_camera_01_opacity",
-      "uri": "textures/security_camera_01_diff_1k.jpg"
+      "uri": "textures/security_camera_01_diff_rgba_1k.png"
     }
   ],
   "accessors": [

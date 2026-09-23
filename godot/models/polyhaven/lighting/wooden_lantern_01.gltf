@@ -37,9 +37,9 @@
       "mesh": 2,
       "name": "wooden_lantern_01_handle",
       "translation": [
-        0.00005633384353131987,
+        5.633384353131987e-05,
         0.3528529107570648,
-        0.00005396036431193352
+        5.396036431193352e-05
       ]
     }
   ],
@@ -186,9 +186,9 @@
       "uri": "textures/wooden_lantern_01_glass_nor_gl_1k.jpg"
     },
     {
-      "mimeType": "image/jpeg",
+      "mimeType": "image/png",
       "name": "wooden_lantern_01_glass_diff-wooden_lantern_01_glass_opacity",
-      "uri": "textures/wooden_lantern_01_glass_diff_1k.jpg"
+      "uri": "textures/wooden_lantern_01_glass_diff_rgba_1k.png"
     },
     {
       "mimeType": "image/jpeg",

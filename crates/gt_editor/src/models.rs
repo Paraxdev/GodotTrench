@@ -34,6 +34,15 @@ pub struct ModelEmission {
     pub texture: Option<image::RgbaImage>,
 }
 
+/// Transparency and culling of a glTF material that is not opaque, from its alphaMode, baseColorFactor and doubleSided.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ModelSurface {
+    pub alpha: gt_render::AlphaMode,
+    /// Base color factor alpha, multiplied with the texture's.
+    pub opacity: f32,
+    pub double_sided: bool,
+}
+
 /// A model in map units, placed at the entity origin.
 pub struct Model {
     pub parts: Vec<ModelPart>,
@@ -41,15 +50,21 @@ pub struct Model {
     pub textures: Vec<(String, image::RgbaImage, bool)>,
     /// Emission of the texture keys that glow.
     pub emission: HashMap<String, ModelEmission>,
+    /// Transparency of the texture keys of blended or alpha tested glTF materials.
+    pub surfaces: HashMap<String, ModelSurface>,
     pub bounds: Aabb,
 }
 
 impl Model {
-    /// Renderer description of one of `textures`, with alpha scissor for textures that have transparent
-    /// pixels (leaves, grass cards) and the emission of glowing materials.
+    /// Renderer description of one of `textures`: the transparency of its glTF material, otherwise alpha scissor for
+    /// textures that have transparent pixels (leaves, grass cards), and the emission of glowing materials.
     pub fn material_desc<'a>(&'a self, key: &str, image: &'a image::RgbaImage, pixelated: bool) -> gt_render::MaterialDesc<'a> {
         let mut desc = gt_render::MaterialDesc::plain(image, pixelated);
-        if image.pixels().any(|p| p.0[3] < 128) {
+        if let Some(s) = self.surfaces.get(key) {
+            desc.alpha = s.alpha;
+            desc.tint[3] = s.opacity;
+            desc.double_sided = s.double_sided;
+        } else if image.pixels().any(|p| p.0[3] < 128) {
             desc.alpha = gt_render::AlphaMode::Scissor(0.5);
         }
 
@@ -173,7 +188,7 @@ fn load_stl(path: &Path, units_per_meter: f64) -> Result<Model, String> {
     }
 
     let part = ModelPart { material: gt_render::WHITE_MATERIAL.to_string(), vertices, indices };
-    Ok(Model { parts: vec![part], textures: Vec::new(), emission: HashMap::new(), bounds })
+    Ok(Model { parts: vec![part], textures: Vec::new(), emission: HashMap::new(), surfaces: HashMap::new(), bounds })
 }
 
 /// Triangles of an STL file, ascii or binary. Binary is detected by the exact size the triangle
@@ -240,7 +255,7 @@ fn id_model_to_model(path: &Path, mesh: gt_formats::idmodel::IdModel, units_per_
         parts.push(ModelPart { material, vertices, indices: surf.indices.clone() });
     }
 
-    Model { parts, textures, emission: HashMap::new(), bounds }
+    Model { parts, textures, emission: HashMap::new(), surfaces: HashMap::new(), bounds }
 }
 
 /// Loads an md2/md3 skin: the path the model names, tried as given and relative to the model's folder.
@@ -302,7 +317,7 @@ fn load_bbmodel(path: &Path, units_per_meter: f64) -> Result<Model, String> {
         }
     }
 
-    Ok(Model { parts: parts.into_values().collect(), textures, emission, bounds })
+    Ok(Model { parts: parts.into_values().collect(), textures, emission, surfaces: HashMap::new(), bounds })
 }
 
 fn load_gltf(path: &Path, units_per_meter: f64) -> Result<Model, String> {
@@ -336,6 +351,7 @@ fn load_gltf_node(path: &Path, units_per_meter: f64, node: Option<&str>) -> Resu
     }
 
     let mut emission: HashMap<String, ModelEmission> = HashMap::new();
+    let mut surfaces: HashMap<String, ModelSurface> = HashMap::new();
     let mut parts: Vec<ModelPart> = Vec::new();
     let mut bounds = Aabb::EMPTY;
     let scene = doc.default_scene().or_else(|| doc.scenes().next()).ok_or("gltf has no scene")?;
@@ -379,7 +395,7 @@ fn load_gltf_node(path: &Path, units_per_meter: f64, node: Option<&str>) -> Resu
                         key
                     }
                 };
-                let material = gltf_emissive_material(&base, &prim.material(), material, &image_keys, &mut textures, &mut emission);
+                let material = gltf_material_key(&base, &prim.material(), material, &image_keys, &mut textures, &mut emission, &mut surfaces);
                 let mirrored = world.determinant() < 0.0;
                 let vertices: Vec<ModelVertex> = positions
                     .iter()
@@ -420,36 +436,58 @@ fn load_gltf_node(path: &Path, units_per_meter: f64, node: Option<&str>) -> Resu
         stack.extend(node.children().map(|c| (c, world)));
     }
 
-    Ok(Model { parts, textures, emission, bounds })
+    // Parts of a glowing or transparent material draw with their own copy of the albedo.
+    textures.retain(|(key, ..)| parts.iter().any(|p| p.material == *key));
+    Ok(Model { parts, textures, emission, surfaces, bounds })
 }
 
-/// Key of a glTF material that glows, its own texture entry sharing the albedo of `albedo_key`, so the plain
-/// parts using the same image stay dark. Returns `albedo_key` for materials without emission.
-fn gltf_emissive_material(
+/// Transparency of a glTF material, None for opaque ones. Like Godot's importer this reads alphaMode only, a material
+/// that is only KHR_materials_transmission stays opaque (tools/fetch_demo_props.py turns those into BLEND).
+fn gltf_surface(material: &gltf::Material) -> Option<ModelSurface> {
+    let alpha = match material.alpha_mode() {
+        gltf::material::AlphaMode::Opaque => return None,
+        gltf::material::AlphaMode::Blend => gt_render::AlphaMode::Blend,
+        gltf::material::AlphaMode::Mask => gt_render::AlphaMode::Scissor(material.alpha_cutoff().unwrap_or(0.5)),
+    };
+    Some(ModelSurface { alpha, opacity: material.pbr_metallic_roughness().base_color_factor()[3], double_sided: material.double_sided() })
+}
+
+/// Key of a glTF material that glows or is not opaque, its own texture entry sharing the albedo of `albedo_key`, so the
+/// plain parts using the same image stay dark and opaque. Returns `albedo_key` for other materials.
+fn gltf_material_key(
     base: &str,
     material: &gltf::Material,
     albedo_key: String,
     image_keys: &HashMap<usize, String>,
     textures: &mut Vec<(String, image::RgbaImage, bool)>,
     emission: &mut HashMap<String, ModelEmission>,
+    surfaces: &mut HashMap<String, ModelSurface>,
 ) -> String {
     let Some(index) = material.index() else { return albedo_key };
     let image_of = |key: &String, textures: &[(String, image::RgbaImage, bool)]| textures.iter().find(|(k, ..)| k == key).map(|(_, img, _)| img.clone());
     let texture = material.emissive_texture().and_then(|t| image_keys.get(&t.texture().source().index())).and_then(|k| image_of(k, textures));
     let factor = material.emissive_factor();
     let energy = material.emissive_strength().unwrap_or(1.0);
-    if energy <= 0.0 || (texture.is_none() && factor.iter().all(|c| *c <= 0.0)) {
+    let glows = energy > 0.0 && (texture.is_some() || factor.iter().any(|c| *c > 0.0));
+    let surface = gltf_surface(material);
+    if !glows && surface.is_none() {
         return albedo_key;
     }
 
     let key = format!("{base}#mat{index}");
-    if !emission.contains_key(&key) {
+    if !textures.iter().any(|(k, ..)| *k == key) {
         let Some(albedo) = image_of(&albedo_key, textures) else { return albedo_key };
         textures.push((key.clone(), albedo, false));
-        // Godot's glTF importer drops emissiveFactor for a black color when there is an emissive texture, the
-        // texture alone glows. Matching it keeps the preview what the game shows.
-        let color = if texture.is_some() { [0.0; 3] } else { factor };
-        emission.insert(key.clone(), ModelEmission { color, energy, multiply: false, texture });
+        if glows {
+            // Godot's glTF importer drops emissiveFactor for a black color when there is an emissive texture, the
+            // texture alone glows. Matching it keeps the preview what the game shows.
+            let color = if texture.is_some() { [0.0; 3] } else { factor };
+            emission.insert(key.clone(), ModelEmission { color, energy, multiply: false, texture });
+        }
+
+        if let Some(surface) = surface {
+            surfaces.insert(key.clone(), surface);
+        }
     }
 
     key
@@ -550,7 +588,7 @@ fn load_obj(path: &Path, units_per_meter: f64) -> Result<Model, String> {
         return Err("obj has no triangles".into());
     }
 
-    Ok(Model { parts, textures, emission: HashMap::new(), bounds })
+    Ok(Model { parts, textures, emission: HashMap::new(), surfaces: HashMap::new(), bounds })
 }
 
 /// Uniform scale to place a model at, from its natural (unit-scaled) bounds and the import prefs. Auto-fit
@@ -779,7 +817,8 @@ mod tests {
                 let model = load(&path, 16.0).unwrap_or_else(|e| panic!("{rel}: {e}"));
                 assert!(model.parts.iter().any(|p| !p.indices.is_empty()), "{rel} has no geometry");
                 // The textures live in the shared nature/textures folder, referenced by relative URI.
-                assert!(model.parts.iter().all(|p| p.material.contains("#img")), "{rel} lost a texture");
+                let textured = |p: &ModelPart| model.textures.iter().any(|(k, img, _)| *k == p.material && img.width() > 4);
+                assert!(model.parts.iter().all(textured), "{rel} lost a texture");
                 count += 1;
             }
         }
@@ -953,6 +992,62 @@ mod tests {
         let tex = flame.emission_texture.expect("the emissive texture is uploaded");
         assert_eq!(tex.get_pixel(1, 1).0, [255, 128, 0, 255]);
         assert_eq!((flame.emission, flame.emission_energy, flame.emission_multiply), ([0.0; 3], 1.0, false), "like Godot's importer, the texture alone glows");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn gltf_alpha_modes_reach_the_renderer_description() {
+        use base64::Engine;
+        let dir = std::env::temp_dir().join(format!("gt_models_alpha_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let b64 = base64::engine::general_purpose::STANDARD;
+        let mut bin: Vec<u8> = Vec::new();
+        for f in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
+            bin.extend(f.to_le_bytes());
+        }
+
+        // Glass that is mostly see through, like the Poly Haven chimneys once their alpha map is merged in.
+        let mut png = Vec::new();
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([230, 240, 255, 40])).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        let prim = |m: usize| serde_json::json!({ "attributes": { "POSITION": 0 }, "material": m });
+        let textured = serde_json::json!({ "baseColorTexture": { "index": 0 } });
+        let gltf = serde_json::json!({
+            "asset": { "version": "2.0" },
+            "scene": 0,
+            "scenes": [{ "nodes": [0] }],
+            "nodes": [{ "mesh": 0 }],
+            "meshes": [{ "primitives": [prim(0), prim(1), prim(2), prim(3)] }],
+            "materials": [
+                { "pbrMetallicRoughness": textured },
+                { "pbrMetallicRoughness": textured, "alphaMode": "BLEND", "doubleSided": true },
+                { "pbrMetallicRoughness": textured, "alphaMode": "MASK", "alphaCutoff": 0.3 },
+                { "pbrMetallicRoughness": { "baseColorFactor": [0.8, 0.9, 1.0, 0.25] }, "alphaMode": "BLEND",
+                  "extensions": { "KHR_materials_transmission": { "transmissionFactor": 1.0 } } }
+            ],
+            "textures": [{ "source": 0 }],
+            "images": [{ "uri": format!("data:image/png;base64,{}", b64.encode(&png)) }],
+            "buffers": [{ "byteLength": bin.len(), "uri": format!("data:application/octet-stream;base64,{}", b64.encode(&bin)) }],
+            "bufferViews": [{ "buffer": 0, "byteLength": bin.len() }],
+            "accessors": [{ "bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0] }]
+        });
+        let path = dir.join("glass.gltf");
+        std::fs::write(&path, gltf.to_string()).unwrap();
+        let model = load(&path, 32.0).unwrap();
+        let desc_of = |part: &ModelPart| {
+            let (key, img, pixelated) = model.textures.iter().find(|(k, ..)| *k == part.material).expect("every part has a texture");
+            model.material_desc(key, img, *pixelated)
+        };
+
+        let opaque = desc_of(&model.parts[0]);
+        assert_eq!(opaque.alpha, gt_render::AlphaMode::Scissor(0.5), "an opaque material keeps the cutout guess for textures with holes");
+        let glass = desc_of(&model.parts[1]);
+        assert_ne!(model.parts[1].material, model.parts[0].material, "the blended material does not share the opaque one's key");
+        assert_eq!((glass.alpha, glass.double_sided), (gt_render::AlphaMode::Blend, true));
+        assert_eq!(glass.albedo.get_pixel(0, 0).0[3], 40, "the texture alpha is the glass opacity");
+        assert_eq!(desc_of(&model.parts[2]).alpha, gt_render::AlphaMode::Scissor(0.3));
+        let tinted = desc_of(&model.parts[3]);
+        assert_eq!((tinted.alpha, tinted.tint[3]), (gt_render::AlphaMode::Blend, 0.25), "baseColorFactor alpha fades an untextured material");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

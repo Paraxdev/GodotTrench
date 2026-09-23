@@ -329,7 +329,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "screenshot",
-            "description": "PNG of the whole window or of one viewport. Use after changes to verify them visually. width and height render a view's camera offscreen at that size (up to 4096), larger than its docked pane. overlays: false renders a beauty shot without the grid, entity boxes, trigger volumes, edges, selection outlines, links and gizmos, the default for offscreen captures. A viewport capture without width and height shows the pane as it is unless overlays is false.",
+            "description": "PNG of the whole window or of one viewport. Use after changes to verify them visually. width and height render a view's camera offscreen at that size (up to 4096), larger than its docked pane. overlays: false renders a beauty shot without the grid, entity boxes, trigger volumes, edges, selection outlines and tint, links and gizmos, the default for offscreen captures. A viewport capture without width and height shows the pane as it is unless overlays is false.",
             "inputSchema": { "type": "object", "properties": {
                 "target": { "type": "string", "enum": view_enum, "default": "window" },
                 "width": { "type": "integer" }, "height": { "type": "integer" },

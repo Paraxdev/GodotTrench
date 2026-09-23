@@ -517,7 +517,17 @@ impl App {
                     None => None,
                 };
                 if let Some(size) = size {
-                    return match vp.render_offscreen(&mut self.renderer, &self.scene, &self.state, size, overlays) {
+                    let clean = !overlays && !self.state.doc.selection.is_empty();
+                    if clean {
+                        self.scene.update_with(&mut self.renderer, &mut self.state, self.project_generation, false);
+                    }
+
+                    let shot = vp.render_offscreen(&mut self.renderer, &self.scene, &self.state, size, overlays);
+                    if clean {
+                        self.scene.update(&mut self.renderer, &mut self.state, self.project_generation);
+                    }
+
+                    return match shot {
                         Some(img) => ToolResult::Image { png: png(&img), note: format!("{} view {}x{}", kind.label(), img.width(), img.height()) },
                         None => err("readback failed"),
                     };

@@ -103,19 +103,38 @@ pub fn fixture_matches(fixture: &str, targetname: &str) -> bool {
     }
 }
 
-/// Entities that are the hidden fixtures of lights starting off (`start_on 0` with `fixture_off` other than dark), the
-/// way the Godot addon shows them when the map starts.
-pub fn hidden_fixtures(map: &crate::map::Map) -> std::collections::BTreeSet<gt_core::NodeId> {
-    let fixtures: Vec<&str> = map
-        .entities()
-        .filter(|(_, e)| e.property("start_on") == Some("0") && e.property("fixture_off") != Some("dark"))
-        .filter_map(|(_, e)| e.property("fixture").map(str::trim).filter(|f| !f.is_empty() && *f != "*"))
-        .collect();
-    if fixtures.is_empty() {
-        return Default::default();
+/// Fixtures of the lights that start off (`start_on 0`), the way the Godot addon shows them when the map starts.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct OffFixtures {
+    /// Fixtures of lights with `fixture_off hide` (the default), not shown at all.
+    pub hidden: std::collections::BTreeSet<gt_core::NodeId>,
+    /// Fixtures of lights with `fixture_off dark`, shown with the emission of their materials off.
+    pub dark: std::collections::BTreeSet<gt_core::NodeId>,
+}
+
+pub fn off_fixtures(map: &crate::map::Map) -> OffFixtures {
+    let mut hide: Vec<&str> = Vec::new();
+    let mut dark: Vec<&str> = Vec::new();
+    for (_, e) in map.entities().filter(|(_, e)| e.property("start_on") == Some("0")) {
+        let Some(fixture) = e.property("fixture").map(str::trim).filter(|f| !f.is_empty() && *f != "*") else { continue };
+        if e.property("fixture_off") == Some("dark") { dark.push(fixture) } else { hide.push(fixture) }
     }
 
-    map.entities().filter(|(_, e)| e.targetname().is_some_and(|t| fixtures.iter().any(|f| fixture_matches(f, t)))).map(|(id, _)| id).collect()
+    let mut out = OffFixtures::default();
+    if hide.is_empty() && dark.is_empty() {
+        return out;
+    }
+
+    for (id, e) in map.entities() {
+        let Some(name) = e.targetname() else { continue };
+        if hide.iter().any(|f| fixture_matches(f, name)) {
+            out.hidden.insert(id);
+        } else if dark.iter().any(|f| fixture_matches(f, name)) {
+            out.dark.insert(id);
+        }
+    }
+
+    out
 }
 
 #[cfg(test)]
@@ -123,24 +142,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fixtures_of_lights_that_start_off_are_hidden() {
+    fn fixtures_of_lights_that_start_off_are_hidden_or_dark() {
         let mut map = crate::map::Map::new();
         let layer = map.default_layer();
-        let mut add = |class: &str, props: &[(&str, &str)]| {
+        let add = |map: &mut crate::map::Map, class: &str, props: &[(&str, &str)]| {
             let mut e = Entity::new(class);
             e.properties.extend(props.iter().map(|(k, v)| (k.to_string(), v.to_string())));
             map.insert(layer, crate::map::NodeKind::Entity(e))
         };
-        add("light", &[("start_on", "0"), ("fixture", "hall_tube_*")]);
-        add("light", &[("fixture", "street_bulb")]);
-        add("light_spot", &[("start_on", "0"), ("fixture", "sign"), ("fixture_off", "dark")]);
-        let tube = add("func_illusionary", &[("targetname", "hall_tube_1")]);
-        let street = add("func_illusionary", &[("targetname", "street_bulb")]);
-        let sign = add("func_illusionary", &[("targetname", "sign")]);
-        let hidden = hidden_fixtures(&map);
-        assert!(hidden.contains(&tube), "a prefix fixture of a light that starts off");
-        assert!(!hidden.contains(&street), "lights that start on show their fixture");
-        assert!(!hidden.contains(&sign), "dark fixtures stay visible");
+        add(&mut map, "light", &[("start_on", "0"), ("fixture", "hall_tube_*")]);
+        add(&mut map, "light", &[("fixture", "street_bulb")]);
+        add(&mut map, "light_spot", &[("start_on", "0"), ("fixture", "sign"), ("fixture_off", "dark")]);
+        let tube = add(&mut map, "func_illusionary", &[("targetname", "hall_tube_1")]);
+        let street = add(&mut map, "func_illusionary", &[("targetname", "street_bulb")]);
+        let sign = add(&mut map, "func_illusionary", &[("targetname", "sign")]);
+        let off = off_fixtures(&map);
+        assert!(off.hidden.contains(&tube), "a prefix fixture of a light that starts off");
+        assert!(!off.hidden.contains(&street) && !off.dark.contains(&street), "lights that start on show their fixture");
+        assert!(!off.hidden.contains(&sign), "dark fixtures stay visible");
+        assert_eq!(off.dark, [sign].into(), "and lose their glow");
+
+        add(&mut map, "light", &[("start_on", "0"), ("fixture", "sign"), ("fixture_off", "hide")]);
+        let off = off_fixtures(&map);
+        assert!(off.hidden.contains(&sign) && off.dark.is_empty(), "a fixture that another light hides is not drawn at all");
         assert!(fixture_matches("bulb", "bulb") && !fixture_matches("bulb", "bulb_2") && fixture_matches("bulb*", "bulb_2"));
     }
 

@@ -134,11 +134,16 @@ impl MaterialUniform {
     }
 
     /// Whether the shader ends up adding any light of its own, mirroring Godot's `(color op texture) * energy`.
-    #[cfg(test)]
     fn glows(&self) -> bool {
         let lit = self.emission[..3].iter().any(|c| *c > 0.0);
         let textured = self.glow[0] > 0.5;
         self.emission[3] > 0.0 && if self.glow[1] > 0.5 { lit && textured } else { lit || textured }
+    }
+
+    fn darkened(&self) -> Self {
+        let mut u = *self;
+        u.emission[3] = 0.0;
+        u
     }
 }
 
@@ -322,6 +327,8 @@ pub struct Material {
     view: wgpu::TextureView,
     normal: Option<wgpu::TextureView>,
     emission: Option<wgpu::TextureView>,
+    /// What binding 3 holds: the emission texture, the second albedo of a blend material, or white.
+    third: wgpu::TextureView,
     uniform: MaterialUniform,
     nearest: bool,
     /// Size in map units that one repeat of the texture covers, the albedo's pixel size unless overridden.
@@ -334,6 +341,19 @@ pub const BLEND_PREFIX: &str = "blend:";
 
 pub fn blend_key(base: &str, blend: &str) -> String {
     format!("{BLEND_PREFIX}{base}|{blend}")
+}
+
+/// Prefix of materials drawn with their emission off, for the fixtures of lights that start dark.
+pub const DARK_PREFIX: &str = "dark:";
+
+pub fn dark_key(base: &str) -> String {
+    format!("{DARK_PREFIX}{base}")
+}
+
+/// Whether the material `key` is built from the material `name`: a blend using it, or a dark copy of either.
+fn derived_from(key: &str, name: &str) -> bool {
+    let base = key.strip_prefix(DARK_PREFIX).unwrap_or(key);
+    (base.len() != key.len() && base == name) || base.strip_prefix(BLEND_PREFIX).is_some_and(|rest| rest.split('|').any(|part| part == name))
 }
 
 /// Offscreen render target for one viewport, displayed by egui as an image.
@@ -802,7 +822,68 @@ impl Renderer {
     }
 
     pub fn clear_materials_with_prefix(&mut self, prefix: &str) {
-        self.materials.retain(|k, _| !k.starts_with(prefix));
+        self.materials.retain(|k, _| !k.strip_prefix(DARK_PREFIX).unwrap_or(k).starts_with(prefix));
+    }
+
+    /// The material a draw uses. A dark copy that is not built falls back to its base, which then does not glow.
+    fn draw_material(&self, key: &str) -> &Material {
+        self.materials
+            .get(key)
+            .or_else(|| key.strip_prefix(DARK_PREFIX).and_then(|base| self.materials.get(base)))
+            .or_else(|| self.materials.get(MISSING_MATERIAL))
+            .expect("missing material exists")
+    }
+
+    fn material_bind_group(
+        &self,
+        label: &str,
+        view: &wgpu::TextureView,
+        nearest: bool,
+        normal: Option<&wgpu::TextureView>,
+        third: &wgpu::TextureView,
+        uniform: &MaterialUniform,
+    ) -> wgpu::BindGroup {
+        let params = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("material params"),
+            contents: bytemuck::bytes_of(uniform),
+            usage: wgpu::BufferUsages::UNIFORM,
+        });
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(label),
+            layout: &self.material_bgl,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(if nearest { &self.sampler_nearest } else { &self.sampler }) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(normal.unwrap_or(&self.flat_normal)) },
+                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(third) },
+                wgpu::BindGroupEntry { binding: 4, resource: params.as_entire_binding() },
+            ],
+        })
+    }
+
+    /// Key of `key` drawn with its emission off. Materials that do not glow, or are not uploaded, keep their key.
+    pub fn prepare_dark_material(&mut self, key: &str) -> String {
+        let Some(m) = self.materials.get(key).filter(|m| m.uniform.glows()) else { return key.to_string() };
+        let dark = dark_key(key);
+        if self.materials.contains_key(&dark) {
+            return dark;
+        }
+
+        let uniform = m.uniform.darkened();
+        let bind_group = self.material_bind_group(&dark, &m.view, m.nearest, m.normal.as_ref(), &m.third, &uniform);
+        let material = Material {
+            bind_group,
+            view: m.view.clone(),
+            normal: m.normal.clone(),
+            emission: None,
+            third: m.third.clone(),
+            uniform,
+            nearest: m.nearest,
+            size: m.size,
+            flags: m.flags,
+        };
+        self.materials.insert(dark.clone(), material);
+        dark
     }
 
     pub fn set_material(&mut self, name: &str, image: &image::RgbaImage) {
@@ -860,27 +941,13 @@ impl Renderer {
         // Face UVs follow the base's world size, the blend texture is rescaled to keep its own.
         uniform.extra[2] = a.size[0] / b.size[0].max(1e-3);
         uniform.extra[3] = a.size[1] / b.size[1].max(1e-3);
-        let params = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("blend material params"),
-            contents: bytemuck::bytes_of(&uniform),
-            usage: wgpu::BufferUsages::UNIFORM,
-        });
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(&key),
-            layout: &self.material_bgl,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&a.view) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(if a.nearest { &self.sampler_nearest } else { &self.sampler }) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(a.normal.as_ref().unwrap_or(&self.flat_normal)) },
-                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&b.view) },
-                wgpu::BindGroupEntry { binding: 4, resource: params.as_entire_binding() },
-            ],
-        });
+        let bind_group = self.material_bind_group(&key, &a.view, a.nearest, a.normal.as_ref(), &b.view, &uniform);
         let material = Material {
             bind_group,
             view: a.view.clone(),
             normal: a.normal.clone(),
             emission: None,
+            third: b.view.clone(),
             uniform,
             nearest: a.nearest,
             size: a.size,
@@ -892,33 +959,22 @@ impl Renderer {
 
     pub fn set_material_desc(&mut self, name: &str, desc: &MaterialDesc) {
         self.terrain_materials.retain(|key, _| !key.split('|').any(|part| part == name));
-        self.materials.retain(|key, _| !key.strip_prefix(BLEND_PREFIX).is_some_and(|rest| rest.split('|').any(|part| part == name)));
+        let had_dark = self.materials.contains_key(&dark_key(name));
+        self.materials.retain(|key, _| !derived_from(key, name));
         let (w, h) = desc.albedo.dimensions();
         let view = self.upload_texture(name, desc.albedo, true);
         let normal = desc.normal.map(|n| self.upload_texture(name, n, false));
         let emission = desc.emission_texture.map(|e| self.upload_texture(name, e, true));
         let uniform = MaterialUniform::new(desc, normal.is_some(), emission.is_some());
-        let params = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("material params"),
-            contents: bytemuck::bytes_of(&uniform),
-            usage: wgpu::BufferUsages::UNIFORM,
-        });
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(name),
-            layout: &self.material_bgl,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(if desc.nearest { &self.sampler_nearest } else { &self.sampler }) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(normal.as_ref().unwrap_or(&self.flat_normal)) },
-                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(emission.as_ref().unwrap_or(&self.white)) },
-                wgpu::BindGroupEntry { binding: 4, resource: params.as_entire_binding() },
-            ],
-        });
+        let third = emission.clone().unwrap_or_else(|| self.white.clone());
+        let bind_group = self.material_bind_group(name, &view, desc.nearest, normal.as_ref(), &third, &uniform);
         let flags = MaterialFlags { transparent: desc.alpha == AlphaMode::Blend || desc.tint[3] < 0.999, double_sided: desc.double_sided };
-        self.materials.insert(
-            name.to_string(),
-            Material { bind_group, view, normal, emission, uniform, nearest: desc.nearest, size: desc.world_size.unwrap_or([w as f32, h as f32]), flags },
-        );
+        let size = desc.world_size.unwrap_or([w as f32, h as f32]);
+        self.materials.insert(name.to_string(), Material { bind_group, view, normal, emission, third, uniform, nearest: desc.nearest, size, flags });
+        // Meshes built earlier keep drawing the dark key, so re-registering the base (model thumbnails do) rebuilds it.
+        if had_dark {
+            self.prepare_dark_material(name);
+        }
     }
 
     /// Key for a terrain draw with up to four layers `(material, world units per repeat)`. Creates the bind group once.
@@ -1245,7 +1301,7 @@ impl Renderer {
                     pass.set_vertex_buffer(0, mesh.vertex.slice(..));
                     pass.set_index_buffer(mesh.index.slice(..), wgpu::IndexFormat::Uint32);
                     for (material, range) in &mesh.draws {
-                        let mat = self.materials.get(material).or_else(|| self.materials.get(MISSING_MATERIAL)).expect("missing material exists");
+                        let mat = self.draw_material(material);
                         pass.set_bind_group(1, &mat.bind_group, &[]);
                         pass.draw_indexed(range.clone(), 0, 0..1);
                     }
@@ -1300,7 +1356,7 @@ impl Renderer {
                 pass.set_vertex_buffer(0, mesh.vertex.slice(..));
                 pass.set_index_buffer(mesh.index.slice(..), wgpu::IndexFormat::Uint32);
                 for (material, range) in &mesh.draws {
-                    let mat = self.materials.get(material).or_else(|| self.materials.get(MISSING_MATERIAL)).expect("missing material exists");
+                    let mat = self.draw_material(material);
                     if double_sided != Some(mat.flags.double_sided) {
                         double_sided = Some(mat.flags.double_sided);
                         pass.set_pipeline(if mat.flags.double_sided { &self.mesh_transparent_double } else { &self.mesh_transparent });
@@ -1486,6 +1542,29 @@ mod tests {
 
         desc.emission_energy = 0.0;
         assert!(!MaterialUniform::new(&desc, false, true).glows());
+    }
+
+    #[test]
+    fn dark_copies_keep_everything_but_the_glow() {
+        use super::{MaterialDesc, MaterialUniform, blend_key, dark_key, derived_from};
+        let img = image::RgbaImage::new(1, 1);
+        let mut desc = MaterialDesc::plain(&img, false);
+        desc.emission = [1.0, 0.8, 0.5];
+        desc.emission_energy = 4.0;
+        desc.tint = [0.5, 0.5, 0.5, 0.75];
+        desc.alpha = super::AlphaMode::Scissor(0.3);
+        for texture in [false, true] {
+            let lit = MaterialUniform::new(&desc, true, texture);
+            let dark = lit.darkened();
+            assert!(lit.glows() && !dark.glows(), "a dark fixture adds no light of its own");
+            assert_eq!((dark.tint, dark.flags, dark.extra, dark.glow), (lit.tint, lit.flags, lit.extra, lit.glow), "and looks the same otherwise");
+        }
+
+        let blend = blend_key("night/neon", "dev/grey");
+        assert!(derived_from(&dark_key("night/neon"), "night/neon"));
+        assert!(derived_from(&blend, "dev/grey") && derived_from(&dark_key(&blend), "night/neon"));
+        assert!(!derived_from("night/neon", "night/neon"), "the material itself is replaced, not dropped as a variant");
+        assert!(!derived_from(&dark_key("night/neon_2"), "night/neon"));
     }
 
     #[test]

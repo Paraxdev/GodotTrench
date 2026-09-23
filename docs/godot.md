@@ -101,7 +101,8 @@ the built scene the emission of a face also survives decals, which duplicate the
 emission color, energy, texture and operator of both sides and mix them with the painted weight. Blockbench textures
 set to the emissive render mode glow with their own image, and glTF props keep the emissive materials they ship with:
 `emissiveFactor`, `emissiveTexture` and `KHR_materials_emissive_strength`, previewed the way Godot's glTF importer reads
-them (with an emissive texture the texture alone glows). The Models panel thumbnails show the glow too. A terrain layer
+them (with an emissive texture the texture alone glows). Their `alphaMode` carries over too: `BLEND` glass and flames
+are see through and `MASK` cards cut out at `alphaCutoff`, in the editor as in Godot. The Models panel thumbnails show the glow too. A terrain layer
 takes the emission of its material as well, weighted by how much of that layer is painted, in the editor and in the
 built `GodotTrenchTerrain` alike, so a lava or neon layer glows where it is painted.
 
@@ -115,8 +116,9 @@ For a night map the worldspawn keys cover the sky and the ambient light: a low `
 previews the same keys (glow excepted), fog and up to 64 point and spot lights, the brightest first. Lights that
 start switched off stay out of the preview. `light` and `light_spot` take a `shadows` key for the lamps that should
 cast shadows. A lamp fixture can follow its light: give the glowing brush a `func_illusionary` entity with a
-targetname and connect the light's `switched` output to its `set_visible` input, which receives the new state. A
-`logic_auto` that sends `hide` on `map_spawn` keeps fixtures dark whose lights start off.
+targetname and put that name in the light's `fixture` key. The fixture hides while the light is off, or with
+`fixture_off dark` stays visible with its emission off, and the lit view previews fixtures of lights that start off
+the same way.
 `examples/mcp/night_district.json` builds a whole night district this way.
 
 ## Live mode

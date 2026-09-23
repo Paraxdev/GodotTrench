@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c1p4d2wsfpmmj"
-path="res://.godot/imported/tex1.png-64fd70595cdcad5f0dc66afaa0b6006c.ctex"
+uid="uid://dba7fhwgl0crk"
+path="res://.godot/imported/vintage_oil_lamp_flame_diff_rgba_1k.png-ee48e843ed9ababc6c9a75e3adb05e7a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://demo/textures/models/bush_flowering/tex1.png"
-dest_files=["res://.godot/imported/tex1.png-64fd70595cdcad5f0dc66afaa0b6006c.ctex"]
+source_file="res://models/polyhaven/lighting/textures/vintage_oil_lamp_flame_diff_rgba_1k.png"
+dest_files=["res://.godot/imported/vintage_oil_lamp_flame_diff_rgba_1k.png-ee48e843ed9ababc6c9a75e3adb05e7a.ctex"]
 
 [params]
 

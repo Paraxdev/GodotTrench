@@ -821,7 +821,7 @@ fn image_difference(a: &image::RgbaImage, b: &image::RgbaImage) -> f64 {
 #[ignore]
 fn offscreen_beauty_shots_leave_out_editor_overlays() {
     let ed = Editor::launch("beauty");
-    ed.box_brush([-256.0, -16.0, -256.0], [256.0, 0.0, 256.0]);
+    let floor = ed.box_brush([-256.0, -16.0, -256.0], [256.0, 0.0, 256.0]);
     ed.call("set_camera", json!({ "view": "3d", "position": [0, 96, 192], "look_at": [0, 16, 0] }));
     ed.call("run_action", json!({ "action": "select_none" }));
     let size = json!({ "target": "3d", "width": 320, "height": 200 });
@@ -834,6 +834,47 @@ fn offscreen_beauty_shots_leave_out_editor_overlays() {
     let overlays = shot(&ed, with_overlays, "overlays");
     assert!(image_difference(&beauty, &empty) < 0.5, "the player start box shows in a beauty shot");
     assert!(image_difference(&overlays, &empty) > 1.0, "overlays: true still draws the entity box and edges");
+
+    ed.call("select", json!({ "ids": [floor] }));
+    let selected = shot(&ed, size.clone(), "selected_beauty");
+    assert!(image_difference(&selected, &beauty) < 0.1, "a selected brush keeps its selection tint, difference {}", image_difference(&selected, &beauty));
+    let mut tinted = size.clone();
+    tinted["overlays"] = json!(true);
+    let tinted = shot(&ed, tinted, "selected_overlays");
+    assert!(image_difference(&tinted, &overlays) > 1.0, "the overlay shot right after still shows the selection");
+}
+
+/// Lamps that start off with `fixture_off dark` keep their fixture in the lit preview, drawn without its glow like the
+/// Godot addon does, and glow again once the lamp starts on.
+#[test]
+#[ignore]
+fn dark_fixtures_lose_their_glow_in_the_lit_preview() {
+    let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../godot").canonicalize().unwrap();
+    let ed = Editor::launch_with("dark_fixture", &["--project", project.to_str().unwrap()]);
+    ed.call("set_map_properties", json!({ "properties": { "sun_energy": "0", "ambient_energy": "0.1", "sky_energy": "0.1" } }));
+    let panel = ed.call("create_brush", json!({ "min": [-64, 0, -8], "max": [64, 96, 0], "material": "showcase/lamp" }))["ids"][0].as_u64().unwrap();
+    ed.call("gameplay", json!({ "op": "brush_entity", "ids": [panel], "classname": "func_illusionary", "properties": { "targetname": "panel" } }));
+    let lamp = ed.call(
+        "create_entity",
+        json!({ "classname": "light", "origin": [0, 48, -64], "properties": { "start_on": "0", "fixture": "panel", "fixture_off": "dark" } }),
+    )["id"]
+        .as_u64()
+        .unwrap();
+    ed.call("run_action", json!({ "action": "select_none" }));
+    ed.call("set_camera", json!({ "view": "3d", "position": [0, 48, 48], "look_at": [0, 48, 0] }));
+    ed.call("set_editor", json!({ "shade": "lit" }));
+    let args = json!({ "target": "3d", "width": 160, "height": 120 });
+    let luma = |img: &image::RgbaImage| {
+        let p = img.get_pixel(80, 60).0;
+        (p[0] as u32 + p[1] as u32 + p[2] as u32) / 3
+    };
+    let dark = shot(&ed, args.clone(), "off");
+    ed.call("update_entity", json!({ "id": lamp, "properties": { "start_on": "1" } }));
+    let on = shot(&ed, args.clone(), "on");
+    ed.call("update_entity", json!({ "id": lamp, "properties": { "start_on": "0", "fixture_off": "hide" } }));
+    let hidden = shot(&ed, args, "hidden");
+    assert!(luma(&on) > 200 && luma(&dark) + 80 < luma(&on), "the glow goes with the lamp: on {} dark {}", luma(&on), luma(&dark));
+    assert!(image_difference(&dark, &hidden) > 5.0, "a dark fixture is still drawn, unlike a hidden one");
 }
 
 #[test]

@@ -3,6 +3,13 @@
 
   python tools/fetch_demo_props.py          # fetch everything in PROPS below
   python tools/fetch_demo_props.py --check  # verify the files on disk match PROPS, no network
+  python tools/fetch_demo_props.py --fix-alpha  # only run fix_alpha() on the props already on disk
+
+Glass and flames need a fix up after download. Poly Haven's glTFs mark them alphaMode BLEND with a base color
+image named "<diffuse>-<alpha map>", but ship that image as the plain diffuse JPG, so the alpha map is lost and
+the glass renders opaque. fix_alpha() downloads the alpha map, merges it into a "<diffuse>_rgba_1k.png" and points
+the material at it. Materials that only use KHR_materials_transmission (which neither Godot's importer nor the
+editor reads) become BLEND with a faint base color alpha. Both steps need Pillow and are skipped once done.
 
 Each entry in PROPS is (asset id, category folder). The category folder holds every prop's .gltf
 and .bin directly, plus a shared textures/ folder, since Poly Haven texture filenames are already
@@ -11,6 +18,7 @@ unless --force is passed. Also (re)writes godot/models/polyhaven/pack.json with 
 Poly Haven's /info endpoint.
 """
 import argparse
+import io
 import json
 import pathlib
 import sys
@@ -76,6 +84,74 @@ def download(url, dest):
         f.write(r.read())
 
 
+# Base color alpha given to glass that is only marked with KHR_materials_transmission.
+TRANSMISSION_ALPHA = 0.25
+
+
+def alpha_channel(image):
+    """An alpha map as an 8 bit channel. Some Poly Haven maps are 16 bit grayscale."""
+    if image.mode.startswith("I"):
+        return image.convert("I").point(lambda v: v * (1 / 256)).convert("L")
+    return image.convert("L")
+
+
+def fix_alpha(gltf_path, files):
+    """Merges the lost alpha maps of blended materials into PNGs and turns transmission into blending. Returns
+    whether the glTF changed."""
+    from PIL import Image
+
+    gltf = json.loads(gltf_path.read_text(encoding="utf-8"))
+    images = gltf.get("images", [])
+    textures = gltf.get("textures", [])
+    maps = {k.lower(): v for k, v in files.items()}
+    changed = False
+    for material in gltf.get("materials", []):
+        transmission = material.get("extensions", {}).get("KHR_materials_transmission")
+        if transmission and material.get("alphaMode", "OPAQUE") == "OPAQUE":
+            material["alphaMode"] = "BLEND"
+            pbr = material.setdefault("pbrMetallicRoughness", {})
+            factor = pbr.get("baseColorFactor", [1.0, 1.0, 1.0, 1.0])
+            pbr["baseColorFactor"] = factor[:3] + [min(factor[3], TRANSMISSION_ALPHA)]
+            changed = True
+
+        base = material.get("pbrMetallicRoughness", {}).get("baseColorTexture")
+        if material.get("alphaMode", "OPAQUE") == "OPAQUE" or base is None:
+            continue
+        image = images[textures[base["index"]]["source"]]
+        diffuse, _, alpha_name = image.get("name", "").partition("-")
+        uri = image.get("uri", "")
+        if not alpha_name or not uri.lower().endswith((".jpg", ".jpeg")):
+            continue
+        asset = gltf_path.stem
+        key = alpha_name[len(asset) + 1 :] if alpha_name.lower().startswith(asset.lower() + "_") else alpha_name
+        entry = maps.get(key.lower(), {}).get("1k", {})
+        source = entry.get("png") or entry.get("jpg")
+        if not source:
+            print(f"  {gltf_path.name}: no {key} map for {image['name']}, left opaque")
+            continue
+
+        rgb_path = gltf_path.parent / uri
+        merged_uri = f"{uri.rsplit('.', 1)[0].removesuffix('_1k')}_rgba_1k.png"
+        merged_path = gltf_path.parent / merged_uri
+        if not merged_path.exists():
+            req = urllib.request.Request(source["url"], headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=60) as r:
+                alpha = alpha_channel(Image.open(io.BytesIO(r.read())))
+            rgb = Image.open(rgb_path).convert("RGB")
+            if alpha.size != rgb.size:
+                alpha = alpha.resize(rgb.size, Image.Resampling.BILINEAR)
+            rgb.putalpha(alpha)
+            rgb.save(merged_path, optimize=True)
+            print(f"  {merged_uri}: {diffuse} with {alpha_name}")
+        image["uri"] = merged_uri
+        image["mimeType"] = "image/png"
+        changed = True
+
+    if changed:
+        gltf_path.write_bytes(json.dumps(gltf, indent=2).encode("utf-8"))
+    return changed
+
+
 def fetch_one(asset_id, category):
     info = get_json(f"{API}/info/{asset_id}")
     files = get_json(f"{API}/files/{asset_id}")
@@ -85,6 +161,7 @@ def fetch_one(asset_id, category):
     download(entry["url"], cat_dir / f"{asset_id}.gltf")
     for rel, meta in entry["include"].items():
         download(meta["url"], cat_dir / rel)
+    fix_alpha(cat_dir / f"{asset_id}.gltf", files)
     authors = ", ".join(info.get("authors", {}).keys()) or "Poly Haven"
     return {
         "asset": asset_id,
@@ -123,9 +200,16 @@ def check():
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--check", action="store_true", help="verify files on disk, no network")
+    p.add_argument("--fix-alpha", action="store_true", help="merge lost alpha maps into the glTFs on disk")
     args = p.parse_args()
     if args.check:
         sys.exit(check())
+    if args.fix_alpha:
+        for asset_id, category in PROPS:
+            path = OUT / category / f"{asset_id}.gltf"
+            if path.exists() and fix_alpha(path, get_json(f"{API}/files/{asset_id}")):
+                print(f"fixed {category}/{asset_id}.gltf")
+        return
 
     credits_list = []
     for asset_id, category in PROPS:

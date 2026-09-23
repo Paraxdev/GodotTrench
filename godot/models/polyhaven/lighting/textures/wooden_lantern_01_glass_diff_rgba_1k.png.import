@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d1vx6x87qecjw"
-path="res://.godot/imported/tex2.png-403a2abbfb447b3c94f61fc19ab6a237.ctex"
+uid="uid://bdvdklok3s4gg"
+path="res://.godot/imported/wooden_lantern_01_glass_diff_rgba_1k.png-1d3c33ad7a6662372a05f7b89455db03.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://demo/textures/models/bush_flowering/tex2.png"
-dest_files=["res://.godot/imported/tex2.png-403a2abbfb447b3c94f61fc19ab6a237.ctex"]
+source_file="res://models/polyhaven/lighting/textures/wooden_lantern_01_glass_diff_rgba_1k.png"
+dest_files=["res://.godot/imported/wooden_lantern_01_glass_diff_rgba_1k.png-1d3c33ad7a6662372a05f7b89455db03.ctex"]
 
 [params]
 
