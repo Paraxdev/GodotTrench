@@ -108,31 +108,28 @@ fn ok(v: Value) -> ToolResult {
     ToolResult::Json(v)
 }
 
-/// Inputs validate_map accepts per entity class: the declared ones, plus every method and property of the Godot class
-/// the entity is built as and the functions of its script, since the runtime calls any of them. A class whose Godot
-/// class the table does not know keeps only its declared inputs, and one without declared inputs whose script cannot
-/// be read (no project open) stays unchecked, an empty list.
-pub(super) fn class_inputs(game: &gt_formats::GameConfig) -> std::collections::BTreeMap<String, Vec<String>> {
-    game.entities
+/// Issues as validate_map returns them, each with the bounds of its node so it can be found without the id.
+fn issues_json(map: &gt_doc::Map, found: &[issues::Issue]) -> Vec<Value> {
+    found
         .iter()
-        .map(|d| {
-            let mut list: Vec<String> = d.inputs.iter().map(|i| i.name.clone()).collect();
-            let script = match d.script.as_str() {
-                "" => Some(Vec::new()),
-                path => game.resolve_res(path).and_then(|p| std::fs::read_to_string(p).ok()).map(|src| gt_formats::godot_api::script_functions(&src)),
-            };
-            if script.is_none() && list.is_empty() {
-                return (d.classname.clone(), list);
+        .map(|i| {
+            let mut v = serde_json::to_value(i).unwrap_or_default();
+            if let Some(id) = i.node.filter(|id| map.contains(*id)) {
+                v["bounds"] = bounds_json(&map.bounds_of([id]));
             }
 
-            if let Some(members) = gt_formats::godot_api::class_members(&d.node_class) {
-                list.extend(members.into_iter().map(str::to_string));
-                list.extend(script.unwrap_or_default());
-            }
-
-            (d.classname.clone(), list)
+            v
         })
         .collect()
+}
+
+/// A map path from an MCP call: `res://` and relative paths start at the open project.
+fn project_path(game: &gt_formats::GameConfig, path: &str) -> std::path::PathBuf {
+    let rel = path.strip_prefix("res://").unwrap_or(path);
+    match &game.project_root {
+        Some(root) if std::path::Path::new(rel).is_relative() => root.join(rel),
+        _ => std::path::PathBuf::from(path),
+    }
 }
 
 /// A filesystem path as MCP returns it, always with forward slashes whatever the platform.
@@ -642,33 +639,35 @@ impl App {
             }
             "simulate_input" => err("simulate_input cannot run inside scripts"),
             "validate_map" => {
-                let unknown: Vec<String> = crate::texture_convert::missing_materials(&self.state).into_keys().collect();
-                self.state.find_new_materials(unknown.iter().map(String::as_str));
-                let path = self.state.doc.path.clone();
-                self.state.overlay_ghosts.refresh(path.as_deref());
-                let overlay_names = self.state.overlay_ghosts.targetnames();
-                let game = &self.state.game;
-                let inputs = class_inputs(game);
-                let found = issues::check_with_external(
-                    &self.state.doc.map,
-                    |class| {
-                        game.entity(class).map(|d| issues::ClassIo {
-                            outputs: d.outputs.iter().map(|o| o.name.as_str()).collect(),
-                            inputs: inputs.get(class).map(|list| list.iter().map(String::as_str).collect()).unwrap_or_default(),
-                        })
-                    },
-                    &overlay_names,
-                );
-                let missing = crate::texture_convert::missing_material_issues(&self.state);
-                let coplanar = crate::zfight::coplanar_issues(&mut self.state);
-                let mut list: Vec<Value> = found.into_iter().chain(missing).chain(coplanar).map(|i| serde_json::to_value(i).unwrap_or_default()).collect();
-                for (id, e) in self.state.doc.map.entities() {
-                    if self.state.game.entity(&e.classname).is_none() {
-                        list.push(json!({ "node": id.0, "severity": "warning", "code": "unknown_class", "message": format!("No entity definition for '{}'", e.classname) }));
+                if args["project"].as_bool() == Some(true) {
+                    let Some(root) = self.state.game.project_root.clone() else { return err("no project is open, use open_project") };
+                    let mut count = 0;
+                    let mut maps = Vec::new();
+                    for path in crate::validate::project_maps(&root) {
+                        maps.push(match crate::validate::file_issues(&mut self.state, &path) {
+                            Ok((map, found)) => {
+                                count += found.len();
+                                json!({ "path": path_text(&path), "count": found.len(), "issues": issues_json(&map, &found) })
+                            }
+                            Err(e) => json!({ "path": path_text(&path), "error": e }),
+                        });
                     }
+
+                    return ok(json!({ "count": count, "maps": maps }));
                 }
 
-                ok(json!({ "count": list.len(), "issues": list }))
+                let path = args["path"].as_str().map(|p| project_path(&self.state.game, p));
+                let (map, found) = match path {
+                    Some(p) => match crate::validate::file_issues(&mut self.state, &p) {
+                        Ok(checked) => checked,
+                        Err(e) => return err(e),
+                    },
+                    None => {
+                        let found = crate::validate::open_map_issues(&mut self.state);
+                        (self.state.doc.map.clone(), found)
+                    }
+                };
+                ok(json!({ "count": found.len(), "issues": issues_json(&map, &found) }))
             }
             "get_game_config" => match args["classname"].as_str() {
                 Some(c) => match self.state.game.entity(c) {
@@ -2043,7 +2042,7 @@ mod tests {
     #[test]
     fn node_methods_are_valid_inputs_and_typos_are_not() {
         let game = gt_formats::GameConfig::builtin();
-        let inputs = class_inputs(&game);
+        let inputs = crate::validate::class_inputs(&game);
         let mut map = gt_doc::Map::new();
         let layer = map.default_layer();
         let mut light = gt_doc::Entity::new("light");

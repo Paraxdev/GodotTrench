@@ -27,8 +27,16 @@ pub fn target(state: &EditorState) -> Result<Target, String> {
 /// Face materials of the map that neither the project, the built-in placeholders nor the tool textures provide, with
 /// how many faces use each and the first brush or mesh using it.
 pub fn missing_materials(state: &EditorState) -> BTreeMap<String, (usize, NodeId)> {
-    let known: HashSet<String> = state.materials.entries.iter().map(|e| e.name.to_ascii_lowercase()).collect();
-    let map = &state.doc.map;
+    missing_materials_in(&state.doc.map, &state.game, &state.materials)
+}
+
+/// [`missing_materials`] of any map.
+pub fn missing_materials_in(
+    map: &gt_doc::Map,
+    game: &gt_formats::GameConfig,
+    materials: &crate::materials::MaterialLibrary,
+) -> BTreeMap<String, (usize, NodeId)> {
+    let known: HashSet<String> = materials.entries.iter().map(|e| e.name.to_ascii_lowercase()).collect();
     let faces = map
         .brushes()
         .flat_map(|(id, b)| b.faces.iter().map(move |f| (id, f.data.material.as_str())))
@@ -40,7 +48,7 @@ pub fn missing_materials(state: &EditorState) -> BTreeMap<String, (usize, NodeId
         }
 
         let lower = material.to_ascii_lowercase();
-        if known.contains(&lower) || known.contains(&texture_import::file_stem(&lower)) || state.game.is_tool_texture(&lower) {
+        if known.contains(&lower) || known.contains(&texture_import::file_stem(&lower)) || game.is_tool_texture(&lower) {
             continue;
         }
 
@@ -50,8 +58,8 @@ pub fn missing_materials(state: &EditorState) -> BTreeMap<String, (usize, NodeId
     out
 }
 
-pub fn missing_material_issues(state: &EditorState) -> Vec<gt_doc::issues::Issue> {
-    missing_materials(state)
+pub fn missing_material_issues(map: &gt_doc::Map, game: &gt_formats::GameConfig, materials: &crate::materials::MaterialLibrary) -> Vec<gt_doc::issues::Issue> {
+    missing_materials_in(map, game, materials)
         .into_iter()
         .map(|(name, (faces, node))| gt_doc::issues::Issue {
             node: Some(node),
@@ -223,7 +231,7 @@ mod tests {
         let missing = missing_materials(&state);
         assert_eq!(missing.keys().collect::<Vec<_>>(), ["*water1", "brick/wall"]);
         assert_eq!(missing["brick/wall"].0, 12, "two brushes of six faces, names compared without case");
-        let issues = missing_material_issues(&state);
+        let issues = missing_material_issues(&state.doc.map, &state.game, &state.materials);
         assert!(issues.iter().all(|i| i.code == "missing_material") && issues.len() == 2);
     }
 }

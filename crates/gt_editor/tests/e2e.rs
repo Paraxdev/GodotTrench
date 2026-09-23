@@ -1265,6 +1265,42 @@ fn game_config_changes_are_picked_up() {
     assert_eq!(reloaded["entities"], 2, "{reloaded}");
 }
 
+/// validate_map names a prop whose model file does not exist, gives every issue its bounds, and checks saved maps
+/// one by one or all at once without opening them.
+#[test]
+#[ignore]
+fn validate_map_reports_missing_models_across_the_project() {
+    let dir = artifacts().join("validate_project");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("props")).unwrap();
+    std::fs::create_dir_all(dir.join("maps")).unwrap();
+    std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+    std::fs::write(dir.join("props/chair.gltf"), "{}").unwrap();
+    let ed = Editor::launch_with("validate_project", &["--project", dir.to_str().unwrap()]);
+    let missing = |result: &Value| -> Vec<Value> { result["issues"].as_array().unwrap().iter().filter(|i| i["code"] == "missing_model").cloned().collect() };
+
+    let chair =
+        ed.call("create_entity", json!({ "classname": "prop_model", "origin": [64, 0, 32], "properties": { "model": "res://props/chair.glb" } }))["id"].clone();
+    let found = missing(&ed.call("validate_map", json!({})));
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0]["node"], chair);
+    assert!(found[0]["message"].as_str().unwrap().contains("res://props/chair.gltf does"), "{}", found[0]["message"]);
+    let bounds = &found[0]["bounds"];
+    assert!(bounds["min"][0].as_f64().unwrap() <= 64.0 && bounds["max"][0].as_f64().unwrap() >= 64.0, "{bounds}");
+
+    let saved = dir.join("maps/block_a.gtm");
+    ed.call("map_file", json!({ "op": "save", "path": saved }));
+    ed.call("map_file", json!({ "op": "new" }));
+    assert_eq!(missing(&ed.call("validate_map", json!({}))).len(), 0, "the new map is clean");
+    assert_eq!(missing(&ed.call("validate_map", json!({ "path": "res://maps/block_a.gtm" }))).len(), 1, "a saved map is checked without opening it");
+    let project = ed.call("validate_map", json!({ "project": true }));
+    let maps = project["maps"].as_array().unwrap();
+    assert_eq!(maps.len(), 1, "{project}");
+    assert!(maps[0]["path"].as_str().unwrap().ends_with("maps/block_a.gtm"));
+    assert_eq!(missing(&maps[0]).len(), 1);
+    assert!(ed.call_err("validate_map", json!({ "path": "maps/nope.gtm" })).contains("nope.gtm"));
+}
+
 /// validate_map reports faces of two brushes that overlap on one plane with different textures, which z-fight once
 /// built, and leaves out the same texture lined up.
 #[test]

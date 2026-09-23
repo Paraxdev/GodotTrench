@@ -39,6 +39,9 @@ targetnames nothing has and more. Click an issue to select and frame the object.
 A `coplanar_faces` issue means two brushes have faces on the same plane that overlap, and they will flicker in Godot. Move
 one face off the plane or trim the overlap.
 
+A `missing_model` issue means a prop's `model` names a file that does not exist, so the prop builds with no mesh. When a
+file of the same name with another extension exists, `chair.gltf` for `chair.glb`, the message names it.
+
 ## History
 
 The History panel lists every edit. Click an older entry to undo back to it, that entry included. Click a dimmed entry

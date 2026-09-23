@@ -2455,44 +2455,12 @@ fn place_action(state: &EditorState, classnames: Vec<String>) -> Action {
 
 // -------------------------------------------------------------------- issues
 
-fn collect_issues(state: &EditorState) -> Vec<gt_doc::issues::Issue> {
-    use gt_doc::issues::{Issue, Severity};
-    let mut list = gt_doc::issues::check_with_external(
-        &state.doc.map,
-        |class| {
-            state.game.entity(class).map(|d| gt_doc::issues::ClassIo {
-                outputs: d.outputs.iter().map(|o| o.name.as_str()).collect(),
-                inputs: d.inputs.iter().map(|i| i.name.as_str()).collect(),
-            })
-        },
-        &state.overlay_ghosts.targetnames(),
-    );
-    for (id, e) in state.doc.map.entities() {
-        if state.game.entity(&e.classname).is_none() && !e.classname.is_empty() {
-            list.push(Issue {
-                node: Some(id),
-                severity: Severity::Warning,
-                code: "unknown_class",
-                message: format!("No entity definition for '{}'", e.classname),
-            });
-        }
-    }
-
-    list.extend(crate::texture_convert::missing_material_issues(state));
-    list.sort_by_key(|i| std::cmp::Reverse(i.severity));
-    list
-}
-
 pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
     use gt_doc::issues::{self, Severity};
     let stale =
         ps.issues_revision != state.doc.revision || ps.issues_overlays != state.overlay_ghosts.generation || ps.issues_materials != state.materials.generation;
     if stale && !state.doc.in_transaction() {
-        let missing: Vec<String> = crate::texture_convert::missing_materials(state).into_keys().collect();
-        state.find_new_materials(missing.iter().map(String::as_str));
-        ps.issues = collect_issues(state);
-        ps.issues.extend(crate::zfight::coplanar_issues(state));
-        ps.issues.sort_by_key(|i| std::cmp::Reverse(i.severity));
+        ps.issues = crate::validate::open_map_issues(state);
         ps.issues_revision = state.doc.revision;
         ps.issues_overlays = state.overlay_ghosts.generation;
         ps.issues_materials = state.materials.generation;

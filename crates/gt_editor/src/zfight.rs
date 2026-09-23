@@ -11,7 +11,7 @@ use gt_formats::GameConfig;
 use gt_geom::{FaceUv, Terrain, polygon};
 
 use crate::face_cull::{self, COPLANAR_DIST, CullFace, SAME_NORMAL};
-use crate::state::EditorState;
+use crate::materials::MaterialLibrary;
 
 /// Faces closer than this to each other's plane fight over depth at any distance.
 const PLANE_DIST: f64 = 0.05;
@@ -321,24 +321,24 @@ pub fn coplanar_overlaps(map: &Map, game: &GameConfig, look: &dyn Fn(&str) -> Lo
         .collect()
 }
 
-/// [`coplanar_overlaps`] for the open map, with materials as the project's material files describe them.
-pub fn coplanar_issues(state: &mut EditorState) -> Vec<Issue> {
+/// [`coplanar_overlaps`] with materials as the project's material files describe them.
+pub fn coplanar_issues(map: &Map, game: &GameConfig, materials: &mut MaterialLibrary) -> Vec<Issue> {
     let mut looks: HashMap<String, Look> = HashMap::new();
-    for (_, b) in state.doc.map.brushes() {
+    for (_, b) in map.brushes() {
         for f in &b.faces {
             if !looks.contains_key(&f.data.material) {
-                let info = state.materials.info(&f.data.material);
+                let info = materials.info(&f.data.material);
                 let look = Look {
                     see_through: info.as_ref().is_some_and(|m| m.transparency != gt_formats::godot_material::Transparency::Opaque),
                     double_sided: info.as_ref().is_some_and(|m| m.double_sided),
-                    repeat: state.materials.size(&f.data.material).map(DVec2::from_array),
+                    repeat: materials.size(&f.data.material).map(DVec2::from_array),
                 };
                 looks.insert(f.data.material.clone(), look);
             }
         }
     }
 
-    coplanar_overlaps(&state.doc.map, &state.game, &|m| looks.get(m).copied().unwrap_or_default())
+    coplanar_overlaps(map, game, &|m| looks.get(m).copied().unwrap_or_default())
 }
 
 #[cfg(test)]

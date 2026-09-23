@@ -106,6 +106,6 @@ See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 | `create_mesh` `rotate` | `[x, y, z]` degrees in Godot's YXZ order, so `[0, 0, 90]` lays a cylinder along X |
 | `transform` | Applies translate, rotate, flip and scale_to in that order, as one undo step |
 | `terrain_edit` | `probe [x, z]` without `op` only reads the height |
-| `validate_map` | Accepts any method or property of the target's Godot class or script as an input. `coplanar_faces` flags faces that will flicker |
+| `validate_map` | Accepts any method or property of the target's Godot class or script as an input. `coplanar_faces` flags faces that will flicker. Every issue has `bounds`. `path` checks a saved map without opening it, `project: true` checks every map in the project |
 | `run_action` `reload_materials` | Rescans the texture folder now, though new files are found on their own anyway |
 | `set_editor` `live_link_port` | Talks to a Godot editor whose project sets another `godottrench/live_link_port` |

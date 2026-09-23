@@ -382,8 +382,11 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "validate_map",
-            "description": "Checks the map for problems: invalid brushes, entities without definitions, broken I/O targets, output names the entity definitions do not know, inputs the target answers to neither as a declared input nor as a method or property of its Godot class or script (Node methods such as set_visible are valid inputs), empty brush entities, face materials the project does not have (missing_material, one per material, after looking for material files added since the last scan), faces of two brushes that lie on one plane and overlap where both still draw in the Godot build, so they z-fight (coplanar_faces, one per brush pair, naming the other brush and where they overlap; tool textures, faces the build hides and overlaps under 3 units wide are left out).",
-            "inputSchema": { "type": "object", "properties": {} }
+            "description": "Checks the map for problems: invalid brushes, entities without definitions, broken I/O targets, output names the entity definitions do not know, inputs the target answers to neither as a declared input nor as a method or property of its Godot class or script (Node methods such as set_visible are valid inputs), empty brush entities, face materials the project does not have (missing_material, one per material, after looking for material files added since the last scan), faces of two brushes that lie on one plane and overlap where both still draw in the Godot build, so they z-fight (coplanar_faces, one per brush pair, naming the other brush and where they overlap; tool textures, faces the build hides and overlaps under 3 units wide are left out), model paths no file answers to (missing_model, one per path, naming the first entity and a file of the same name with another extension). Every issue has the node id and its bounds. Checks the open map, or with path a map file without opening it (a map open in a tab is checked with its unsaved edits), or with project true every .gtm in the project, returning maps [{path, count, issues}].",
+            "inputSchema": { "type": "object", "properties": {
+                "path": { "type": "string", "description": "map file to check instead of the open map, res:// and relative paths start at the project" },
+                "project": { "type": "boolean", "description": "check every map of the open project" }
+            } }
         }),
         json!({
             "name": "scatter",
