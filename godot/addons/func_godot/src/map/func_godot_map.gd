@@ -59,11 +59,16 @@ func fail_build(reason: String, notify: bool = false) -> void:
 		build_failed.emit()
 
 ## Frees all children of the map node.[br]
-## [b][color=yellow]Warning:[/color][/b] This does not distinguish between nodes generated in the FuncGodot build process and other user created nodes.
+## GodotTrench: except [GodotTrenchOverlay] nodes and nodes in the [code]godottrench_keep[/code] group, which keep their
+## place and node instances. Any other user created node directly under the map is freed with the generated ones.
 func clear_children() -> void:
 	for child in get_children():
+		if GodotTrenchOverlay.is_kept(child):
+			continue
 		remove_child(child)
 		child.queue_free()
+	if has_meta(GodotTrenchIO.CACHE_META):
+		remove_meta(GodotTrenchIO.CACHE_META)
 	if Engine.is_editor_hint():
 		Engine.get_singleton(&"EditorInterface").mark_scene_as_unsaved()
 
@@ -173,6 +178,9 @@ func _build(text: String) -> void:
 	var streamer := GodotTrenchStreamer.build(self, entities[0].properties, map_settings)
 	if streamer:
 		streamer.rebuild()
+
+	# GodotTrench: overlays and their anchors catch up with the rebuilt entities.
+	GodotTrenchOverlay.notify_built(self)
 
 	time_elapsed = Time.get_ticks_msec() - time_elapsed
 

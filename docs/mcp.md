@@ -123,7 +123,8 @@ to an hour per call (`--timeout` changes that) and prints the editor's error tex
 * Paths the tools return (`material_file`, map and project paths, `export_map`) always use forward slashes.
 * `validate_map` knows that inputs can call any method or set any property of the target's Godot class or script, as
   the runtime does, so `set_visible` on a `func_illusionary` passes while a typo such as `set_visibel` is reported.
-  Classes whose Godot class is unknown are only checked against their declared inputs.
+  Classes whose Godot class is unknown are only checked against their declared inputs. Targetnames listed in the map's
+  Godot overlay sidecar (`<map>.overlay.json`, see `docs/godot.md`) count as existing targets.
   An entry of `openings` can be `{min, max, count, step, rows, row_step}` to cut a whole grid of windows.
 * `run_action clip_apply` takes a plane (`point` and `normal`, or three `points`) and `keep: front|back|both`, and
   `move_vertices {vertices, offset}` runs the vertex tool on the selected brushes, so scripts can break edges without mouse input.

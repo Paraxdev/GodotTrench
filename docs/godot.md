@@ -37,12 +37,52 @@ The link button next to it switches live mode, a spinner shows while Godot is bu
 * **Godot > Build in Godot** does a full build of the map as it is in GodotTrench, saved or not, without writing the file.
 * **Build Map** on the `FuncGodotMap` node in Godot does a full build of the saved file.
 
-Builds only replace the children of the `FuncGodotMap` node. Nodes you add next to it in the scene are never touched.
+Builds only replace the children of the `FuncGodotMap` node. Nodes you add next to it in the scene are never touched,
+and neither are Godot overlays (below). Anything else you add under the map, or inside a generated node, is freed by the
+next build.
 
 Full builds read `.gtm` files in one go, convert brushes and terrain chunks on the WorkerThreadPool and create meshes and
 shapes on the main thread. The project setting `godottrench/threaded_build` turns the threaded steps off.
 `godot --headless --path godot --script res://tests/bench_build.gd -- runs=5 threaded=1` times every build step of the
 showcase maps.
+
+## Godot overlays
+
+An overlay is Godot content that sits on top of a map and survives every rebuild: props with scripts, decor, lights,
+particles, whole scenes. Add a `GodotTrenchOverlay` node as a direct child of the `FuncGodotMap` and put your nodes under
+it. Build Map, Clear Map, saving in GodotTrench, live mode and `GodotTrenchHotReload` in a running game all leave it in
+place with the same node instances, so its owner, its connections and its state stay as they are and it is saved with
+your scene. The build puts generated nodes after it, so the overlay is listed first under the map.
+
+Overlay content is authored in meters in the map's local space, the space the generated nodes use. With the default
+`inverse_scale_factor` of 32 a child at `(2, 0, -3)` sits where GodotTrench shows `(64, 0, -96)`. The overlay itself
+stays at the map origin. An overlay that lives somewhere else in the scene can point at its map with `map_path` instead
+and follows the map's transform. For a single node a whole overlay is too much: a direct child of the map in the
+`godottrench_keep` group is kept too.
+
+Overlays take part in the map's I/O:
+
+| You want | Do this |
+|---|---|
+| a map output to reach an overlay node | give the node a `GodotTrenchOverlayIO` child with a `targetname`. Inputs call the node's method of that name, set its property of that name (`emitting` with parameter `true` starts a `GPUParticles3D`), or run a built in input (`show`, `hide`, `toggle`, `enable`, `disable`, `kill`). The component also emits `input_received(input, parameter, activator)` for every input, to connect in the editor. |
+| an overlay node to fire at map entities | add `GodotTrenchOutput` children to it, the same nodes the build makes for entity outputs. They listen to a signal of their parent (`body_entered` of an `Area3D`, `used` of your own script), or scripts call `GodotTrenchOverlayIO.fire("used")`. |
+| content to stay on an entity that moves | put it under a `GodotTrenchAnchor` with `target` set to the entity's targetname. The anchor binds at the offset it was placed at and follows the entity after rebuilds, live edits and at runtime, so a sign on a `func_door` opens with the door. Moving the anchor changes its offset. |
+
+Targets resolve by name when an output fires, so connections keep working after the entities they point at are
+rebuilt. A rebuild brings map entities back in their starting state while overlay nodes keep theirs, and the overlay's
+`map_rebuilt(map)` signal is the place to push overlay state back into the map (the demo breaker switches the new lamps
+on again when it was left on). Chunk streaming leaves overlay content alone.
+
+When the map is built in the Godot editor and when the scene is saved, each overlay writes its content to
+`<map>.overlay.json` next to the map (turn off `share_with_editor` to skip it). GodotTrench reads that file and draws
+every direct child of the overlay as a dashed blue ghost box with its name (View > Godot Overlays), and overlay
+targetnames count as existing targets in the Issues panel, the output editor and `validate_map`. The ghosts are read
+only, they show level designers where Godot content stands so they do not build through it.
+
+`godot/demo/overlays/night_district_overlay.tscn` is an example: a breaker box that switches the map's courtyard lamps,
+string lights and fireflies that the map's courtyard trigger turns on, steam from a manhole, a sign on the courtyard wall
+and a sign riding the warehouse roller door. `tests/build_showcase.gd` instances `demo/overlays/<map>_overlay.tscn` on
+top of a showcase map when that file exists.
 
 ## Materials and texture size
 

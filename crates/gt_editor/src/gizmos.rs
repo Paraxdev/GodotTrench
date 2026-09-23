@@ -415,12 +415,13 @@ fn io_labels(painter: &egui::Painter, cam: &Camera, rect: Rect, state: &EditorSt
             let param = if o.parameter.is_empty() { String::new() } else { format!("({})", o.parameter) };
             let text = format!("{} > {}.{}{param}{delay}", o.output, o.target, o.input);
             let targets = map.find_by_targetname(&o.target);
-            let anchor = match targets.first().and_then(|t| center(*t)) {
+            let overlay = state.overlay_ghosts.items.iter().find(|i| i.targetnames.contains(&o.target)).map(|i| i.bounds.center());
+            let anchor = match targets.first().and_then(|t| center(*t)).or(overlay) {
                 Some(to) => from.lerp(to, 0.5),
                 None => from + DVec3::Y * (24.0 + 14.0 * shown as f64),
             };
             if let Some(sp) = cam.project(rect, anchor) {
-                let color = if targets.is_empty() && !gt_doc::issues::is_dynamic_target(&o.target) {
+                let color = if targets.is_empty() && overlay.is_none() && !gt_doc::issues::is_dynamic_target(&o.target) {
                     Color32::from_rgb(255, 110, 90)
                 } else {
                     Color32::from_rgb(255, 190, 110)

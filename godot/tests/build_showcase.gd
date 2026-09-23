@@ -2,6 +2,8 @@ extends SceneTree
 ## Builds the showcase maps into ready to play scenes (the environment comes from worldspawn keys).
 ## godot --headless --path godot --script res://tests/build_showcase.gd [-- map_name ...]
 ## Names after -- build only those maps, the others keep their saved scenes.
+## A map with a Godot overlay scene (res://demo/overlays/<map>_overlay.tscn) gets it on top, instanced before the build
+## so the build keeps it, and its overlay sidecar is written next to the map for GodotTrench.
 
 const SETTINGS := "res://demo/demo_map_settings.tres"
 const MAPS := ["mountain_house", "church_school", "lighthouse_forest", "withered_city", "night_district"]
@@ -33,10 +35,18 @@ func _initialize() -> void:
 		map.name = "Map"
 		map.map_settings = load(SETTINGS)
 		map.local_map_file = map_file
-		map.build()
 		root.add_child(map)
 		map.owner = root
+		var overlay_file := "res://demo/overlays/%s_overlay.tscn" % name
+		var overlay: GodotTrenchOverlay = null
+		if ResourceLoader.exists(overlay_file):
+			overlay = (load(overlay_file) as PackedScene).instantiate() as GodotTrenchOverlay
+			map.add_child(overlay)
+			overlay.owner = root
+		map.build()
 		reown(map, map, root)
+		if overlay:
+			print("%s: overlay %s, sidecar %s" % [name, overlay_file, overlay.write_sidecar()])
 
 		var meshes := count(map, func(n): return n is MeshInstance3D)
 		var terrains := count(map, func(n): return n is GodotTrenchTerrain)

@@ -153,6 +153,7 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("Help: Entity and Code Reference".into(), Action::ShowReference),
         ("File: Preferences".into(), Action::ShowPreferences),
         ("View: Toggle Transform Gizmo".into(), Action::ToggleTransformGizmo),
+        ("View: Toggle Godot Overlays".into(), Action::ToggleGodotOverlays),
         ("Edit: Repeat Last".into(), Action::RepeatLast),
         ("Group: Open Group".into(), Action::OpenGroup),
         ("Brush: Box from Last Bounds".into(), Action::CreateBrushFromBounds),

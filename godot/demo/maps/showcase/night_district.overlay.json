@@ -1,0 +1,22 @@
+{
+  "format": "godottrench-overlay",
+  "version": 1,
+  "map": "night_district.gtm",
+  "units_per_meter": 32.0,
+  "overlays": [
+    { "source": "res://demo/overlays/night_district_overlay.tscn", "name": "NightDistrictOverlay", "items": [
+        {"class":"StaticBody3D","max":[-576.16,59.84,-621.89],"min":[-591.52,8.0,-658.11],"name":"Breaker","targetnames":["court_breaker"]},
+        {"class":"Node3D","max":[-671.75,153.86,-726.26],"min":[-1088.25,112.0,-1033.74],"name":"CourtStringLights","targetnames":["court_string_lights"]},
+        {"class":"GPUParticles3D","max":[-304.0,147.2,-688.0],"min":[-1136.0,-12.8,-1072.0],"name":"CourtFireflies","targetnames":["court_fireflies"]},
+        {"class":"CPUParticles3D","max":[-536.0,129.6,24.0],"min":[-664.0,1.6,-104.0],"name":"ManholeSteam"},
+        {"class":"Label3D","max":[-579.2,158.62,-1038.4],"min":[-828.8,116.58,-1038.4],"name":"CourtSign"},
+        {"class":"OmniLight3D","max":[-704.0,137.6,-1017.6],"min":[-704.0,137.6,-1017.6],"name":"CourtSignGlow"},
+        {"class":"Node3D","max":[-943.66,24.6,-1004.03],"min":[-950.74,7.64,-1011.54],"name":"Lantern1"},
+        {"class":"Node3D","max":[-846.67,24.6,-1003.47],"min":[-855.73,7.64,-1012.53],"name":"Lantern2"},
+        {"class":"Node3D","max":[-1061.5,19.87,-1009.56],"min":[-1082.5,7.97,-1025.62],"name":"Planter1"},
+        {"class":"Node3D","max":[-530.79,19.87,-1004.69],"min":[-557.2,7.97,-1030.49],"name":"Planter2"},
+        {"class":"Node3D","max":[-512.56,25.6,-992.89],"min":[-524.3,8.0,-1003.84],"name":"Bucket"},
+        {"anchor":"garage_door","class":"Node3D","max":[233.6,113.6,-275.84],"min":[150.4,91.2,-276.96],"name":"GarageSign"}
+    ] }
+  ]
+}

@@ -1,0 +1,1100 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/runtime/godottrench_overlay.gd" id="1_hipb1"]
+[ext_resource type="Script" path="res://demo/overlays/overlay_breaker.gd" id="2_ygy5b"]
+[ext_resource type="PackedScene" path="res://models/polyhaven/industrial/utility_box_01.gltf" id="3_f3oyw"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/runtime/godottrench_overlay_io.gd" id="4_tojds"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/runtime/godottrench_output.gd" id="5_fyf5o"]
+[ext_resource type="Script" path="res://demo/overlays/string_lights.gd" id="6_f413j"]
+[ext_resource type="PackedScene" path="res://models/polyhaven/lighting/wooden_lantern_01.gltf" id="7_007gd"]
+[ext_resource type="PackedScene" path="res://models/polyhaven/decorative/ceramic_pot.gltf" id="8_22rqd"]
+[ext_resource type="PackedScene" path="res://models/polyhaven/containers/wooden_bucket_01.gltf" id="9_lkvwy"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/runtime/godottrench_anchor.gd" id="10_ljih3"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_lsaqb"]
+size = Vector3(0.52, 1.12, 0.43)
+
+[sub_resource type="SphereMesh" id="SphereMesh_6kg6q"]
+radius = 0.035
+height = 0.07
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kg5yv"]
+albedo_color = Color(1, 0.86, 0.62, 1)
+emission_enabled = true
+emission = Color(1, 0.72, 0.38, 1)
+emission_energy_multiplier = 5.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pd5cd"]
+albedo_color = Color(0.55, 0.5, 0.42, 1)
+roughness = 0.3
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_g2asm"]
+albedo_color = Color(0.05, 0.05, 0.05, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_w32tv"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7489993
+radial_segments = 4
+rings = 1
+
+[sub_resource type="SphereMesh" id="SphereMesh_fkbaj"]
+radius = 0.06
+height = 0.14
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_sjwgw"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.73553085
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_6jys0"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7241193
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_tjvkv"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.714858
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_lrib0"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7078312
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_6sl2i"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.70310634
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_erg2m"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.70073473
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_wudy7"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.70073473
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_6fcnw"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7031082
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_gkcmn"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.70782936
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_rtgkf"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.714858
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_pjvql"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7241175
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_eegpt"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.73553264
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_nhlo2"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7489993
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_p0pn7"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7489993
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_8bhxe"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7355313
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_7svkr"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7241193
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_g87n3"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7148572
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_bvbbo"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7078312
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_h3a43"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7031067
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_bmbdu"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.70073473
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_simtq"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.70073473
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_ynqst"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.70310855
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_6b3mw"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.70782936
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_dml3c"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7148572
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_gw6ho"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7241175
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_abknf"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.735533
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_iegjf"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7489993
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_pudli"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7489993
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_dl0di"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7355313
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_1fmri"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7241193
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_yiaru"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7148572
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_aeimd"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7078312
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_q3s01"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7031067
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_yxo0w"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.70073473
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_5shc1"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.70073473
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_kduf4"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.70310855
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_grg6h"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.70782936
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_aspym"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7148572
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_ggn4w"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7241175
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_07o2i"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.735533
+radial_segments = 4
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_r082m"]
+material = SubResource("StandardMaterial3D_g2asm")
+top_radius = 0.008
+bottom_radius = 0.008
+height = 0.7489993
+radial_segments = 4
+rings = 1
+
+[sub_resource type="Gradient" id="Gradient_y4dtf"]
+offsets = PackedFloat32Array(0, 1, 0.2, 0.8)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_kneax"]
+gradient = SubResource("Gradient_y4dtf")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_waxg0"]
+emission_shape = 3
+emission_box_extents = Vector3(11, 1.2, 4.5)
+direction = Vector3(0, 1, 0)
+spread = 180.0
+initial_velocity_min = 0.1
+initial_velocity_max = 0.35
+gravity = Vector3(0, 0, 0)
+color_ramp = SubResource("GradientTexture1D_kneax")
+turbulence_enabled = true
+turbulence_noise_strength = 0.6
+turbulence_noise_scale = 3.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_irwq3"]
+transparency = 1
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_color = Color(0.8, 1, 0.4, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_r4oft"]
+material = SubResource("StandardMaterial3D_irwq3")
+radius = 0.018
+height = 0.036
+radial_segments = 8
+rings = 4
+
+[sub_resource type="Gradient" id="Gradient_6e3p2"]
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_j74c5"]
+gradient = SubResource("Gradient_6e3p2")
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_6n4up"]
+transparency = 1
+shading_mode = 0
+vertex_color_use_as_albedo = true
+albedo_color = Color(0.5, 0.52, 0.58, 1)
+albedo_texture = SubResource("GradientTexture2D_j74c5")
+billboard_mode = 3
+particles_anim_h_frames = 1
+particles_anim_v_frames = 1
+particles_anim_loop = false
+proximity_fade_enabled = true
+proximity_fade_distance = 0.5
+
+[sub_resource type="QuadMesh" id="QuadMesh_xhoti"]
+material = SubResource("StandardMaterial3D_6n4up")
+size = Vector2(0.9, 0.9)
+
+[sub_resource type="Curve" id="Curve_gf4o1"]
+_limits = [0.0, 2.0, 0.0, 1.0]
+_data = [Vector2(0, 0.5), 0.0, 0.0, 0, 0, Vector2(1, 1.8), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="Gradient" id="Gradient_a0521"]
+offsets = PackedFloat32Array(0, 1, 0.15, 0.65)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0.35, 1, 1, 1, 0.25)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_w6qnv"]
+albedo_color = Color(0.95, 0.74, 0.1, 1)
+roughness = 0.6
+
+[sub_resource type="BoxMesh" id="BoxMesh_dbbax"]
+material = SubResource("StandardMaterial3D_w6qnv")
+size = Vector3(2.6, 0.7, 0.03)
+
+[node name="NightDistrictOverlay" type="Node3D" unique_id=1168185767]
+script = ExtResource("1_hipb1")
+
+[node name="Breaker" type="StaticBody3D" parent="." unique_id=2020843058 node_paths=PackedStringArray("indicator", "label")]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, -18.27, 0.25, -20)
+script = ExtResource("2_ygy5b")
+indicator = NodePath("Indicator")
+label = NodePath("Label")
+
+[node name="Box" type="Node3D" parent="Breaker" unique_id=1615982758 instance=ExtResource("3_f3oyw")]
+
+[node name="Shape" type="CollisionShape3D" parent="Breaker" unique_id=1531792908]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.56, 0)
+shape = SubResource("BoxShape3D_lsaqb")
+
+[node name="Indicator" type="MeshInstance3D" parent="Breaker" unique_id=894545031]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.16, 1.02, 0.23)
+mesh = SubResource("SphereMesh_6kg6q")
+
+[node name="Label" type="Label3D" parent="Breaker" unique_id=12415641]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4, 0.05)
+pixel_size = 0.004
+modulate = Color(1, 0.92, 0.7, 1)
+text = "COURT LIGHTS
+OFF"
+font_size = 40
+outline_size = 8
+
+[node name="IO" type="Node" parent="Breaker" unique_id=187404215]
+script = ExtResource("4_tojds")
+targetname = "court_breaker"
+
+[node name="on_flipped_on" type="Node" parent="Breaker" unique_id=1930448081]
+script = ExtResource("5_fyf5o")
+output = &"flipped_on"
+target = "court_lamp_*"
+input = &"turn_on"
+
+[node name="on_flipped_off" type="Node" parent="Breaker" unique_id=683272345]
+script = ExtResource("5_fyf5o")
+output = &"flipped_off"
+target = "court_lamp_*"
+input = &"turn_off"
+
+[node name="CourtStringLights" type="Node3D" parent="." unique_id=2089954542]
+script = ExtResource("6_f413j")
+lit = SubResource("StandardMaterial3D_kg5yv")
+unlit = SubResource("StandardMaterial3D_pd5cd")
+
+[node name="IO" type="Node" parent="CourtStringLights" unique_id=1025011347]
+script = ExtResource("4_tojds")
+targetname = "court_string_lights"
+
+[node name="Cable00" type="MeshInstance3D" parent="CourtStringLights" unique_id=1139309189]
+transform = Transform3D(0, 0.19072995, 0.9816426, -0.9326285, -0.35421392, 0.068822615, 0.360838, -0.91550785, 0.17788018, -33.928574, 4.667347, -23.042858)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_w32tv")
+
+[node name="Bulb00" type="MeshInstance3D" parent="CourtStringLights" unique_id=349876249]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -33.857143, 4.4546943, -23.385715)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable01" type="MeshInstance3D" parent="CourtStringLights" unique_id=1654133990]
+transform = Transform3D(0, 0.19422244, 0.98095757, -0.9503666, -0.30520773, 0.060428903, 0.31113246, -0.9322693, 0.18458252, -33.785713, 4.422449, -23.728573)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_sjwgw")
+
+[node name="Bulb01" type="MeshInstance3D" parent="CourtStringLights" unique_id=674854416]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -33.714287, 4.2302046, -24.071428)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable02" type="MeshInstance3D" parent="CourtStringLights" unique_id=1156227441]
+transform = Transform3D(0, 0.19728324, 0.98034656, -0.965948, -0.25365138, 0.051044367, 0.25873646, -0.9469637, 0.19056535, -33.64286, 4.2183676, -24.414286)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_6jys0")
+
+[node name="Bulb02" type="MeshInstance3D" parent="CourtStringLights" unique_id=1737007240]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -33.57143, 4.0465307, -24.757143)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Glow02" type="OmniLight3D" parent="CourtStringLights" unique_id=45023738]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -33.57143, 3.8265307, -24.757143)
+visible = false
+light_color = Color(1, 0.78, 0.5, 1)
+light_energy = 0.9
+omni_range = 4.5
+
+[node name="Cable03" type="MeshInstance3D" parent="CourtStringLights" unique_id=963828399]
+transform = Transform3D(0, 0.19984448, 0.97982764, -0.9789805, -0.19983982, 0.040759087, 0.20395404, -0.95923215, 0.19564384, -33.5, 4.0551023, -25.1)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_tjvkv")
+
+[node name="Bulb03" type="MeshInstance3D" parent="CourtStringLights" unique_id=1291039415]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -33.42857, 3.9036736, -25.442858)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable04" type="MeshInstance3D" parent="CourtStringLights" unique_id=1780647147]
+transform = Transform3D(0, 0.20182297, 0.97942203, -0.98910844, -0.14415973, 0.029706039, 0.14718859, -0.9687546, 0.1996248, -33.35714, 3.9326532, -25.785715)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_lrib0")
+
+[node name="Bulb04" type="MeshInstance3D" parent="CourtStringLights" unique_id=1486068470]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -33.285713, 3.801633, -26.128572)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable05" type="MeshInstance3D" parent="CourtStringLights" unique_id=960552579]
+transform = Transform3D(0, 0.20317924, 0.9791416, -0.9960377, -0.0870771, 0.018069154, 0.08893209, -0.9752619, 0.20237418, -33.214287, 3.8510206, -26.471428)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_6sl2i")
+
+[node name="Bulb05" type="MeshInstance3D" parent="CourtStringLights" unique_id=317990477]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -33.142857, 3.7404084, -26.814285)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable06" type="MeshInstance3D" parent="CourtStringLights" unique_id=932065327]
+transform = Transform3D(0, 0.20386687, 0.97899866, -0.99955744, -0.029123936, 0.006064775, 0.0297487, -0.97856534, 0.20377666, -33.071426, 3.8102043, -27.157143)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_erg2m")
+
+[node name="Bulb06" type="MeshInstance3D" parent="CourtStringLights" unique_id=487913747]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -33, 3.7200003, -27.5)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Glow06" type="OmniLight3D" parent="CourtStringLights" unique_id=147990832]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -33, 3.5000002, -27.5)
+visible = false
+light_color = Color(1, 0.78, 0.5, 1)
+light_energy = 0.9
+omni_range = 4.5
+
+[node name="Cable07" type="MeshInstance3D" parent="CourtStringLights" unique_id=1751084968]
+transform = Transform3D(0, 0.20386687, 0.97899866, -0.99955744, 0.029123936, -0.006064775, -0.0297487, -0.97856534, 0.20377666, -32.928574, 3.8102043, -27.842857)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_wudy7")
+
+[node name="Bulb07" type="MeshInstance3D" parent="CourtStringLights" unique_id=448313680]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32.857143, 3.7404084, -28.185715)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable08" type="MeshInstance3D" parent="CourtStringLights" unique_id=1215993640]
+transform = Transform3D(0, 0.20317869, 0.9791417, -0.9960377, 0.08707687, -0.018069057, -0.08893184, -0.97526205, 0.20237365, -32.785713, 3.8510206, -28.528572)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_6fcnw")
+
+[node name="Bulb08" type="MeshInstance3D" parent="CourtStringLights" unique_id=1185536369]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32.714287, 3.801633, -28.87143)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable09" type="MeshInstance3D" parent="CourtStringLights" unique_id=1257276592]
+transform = Transform3D(0, 0.20182352, 0.979422, -0.98910844, 0.14416014, -0.029706199, -0.14718899, -0.9687545, 0.19962534, -32.64286, 3.9326532, -29.214287)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_gkcmn")
+
+[node name="Bulb09" type="MeshInstance3D" parent="CourtStringLights" unique_id=1543860444]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32.57143, 3.9036736, -29.557142)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable10" type="MeshInstance3D" parent="CourtStringLights" unique_id=356020674]
+transform = Transform3D(0, 0.19984448, 0.97982764, -0.9789805, 0.19983982, -0.040759087, -0.20395404, -0.95923215, 0.19564384, -32.5, 4.0551023, -29.9)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_rtgkf")
+
+[node name="Bulb10" type="MeshInstance3D" parent="CourtStringLights" unique_id=1221942206]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32.42857, 4.0465307, -30.242857)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Glow10" type="OmniLight3D" parent="CourtStringLights" unique_id=1927062008]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32.42857, 3.8265307, -30.242857)
+visible = false
+light_color = Color(1, 0.78, 0.5, 1)
+light_energy = 0.9
+omni_range = 4.5
+
+[node name="Cable11" type="MeshInstance3D" parent="CourtStringLights" unique_id=1263334445]
+transform = Transform3D(0, 0.19728373, 0.98034644, -0.9659478, 0.25365204, -0.051044617, -0.25873712, -0.9469635, 0.19056576, -32.35714, 4.2183676, -30.585712)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_pjvql")
+
+[node name="Bulb11" type="MeshInstance3D" parent="CourtStringLights" unique_id=1379596234]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32.285713, 4.2302046, -30.92857)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable12" type="MeshInstance3D" parent="CourtStringLights" unique_id=1788822443]
+transform = Transform3D(0, 0.19422197, 0.9809576, -0.95036685, 0.30520698, -0.060428604, -0.3111317, -0.9322696, 0.18458211, -32.214287, 4.422449, -31.271427)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_eegpt")
+
+[node name="Bulb12" type="MeshInstance3D" parent="CourtStringLights" unique_id=613141740]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32.142857, 4.4546943, -31.614285)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable13" type="MeshInstance3D" parent="CourtStringLights" unique_id=1687328699]
+transform = Transform3D(0, 0.19072995, 0.9816426, -0.9326285, 0.35421392, -0.068822615, -0.360838, -0.91550785, 0.17788018, -32.071426, 4.667347, -31.957142)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_nhlo2")
+
+[node name="Cable14" type="MeshInstance3D" parent="CourtStringLights" unique_id=769282313]
+transform = Transform3D(0, 0.19072995, 0.9816426, -0.9326285, -0.35421392, 0.068822615, 0.360838, -0.91550785, 0.17788018, -28.428572, 4.667347, -23.042858)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_p0pn7")
+
+[node name="Bulb14" type="MeshInstance3D" parent="CourtStringLights" unique_id=1477749833]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28.357143, 4.4546943, -23.385715)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable15" type="MeshInstance3D" parent="CourtStringLights" unique_id=1728688741]
+transform = Transform3D(0, 0.19422492, 0.98095703, -0.9503666, -0.30520755, 0.060429674, 0.31113246, -0.93226874, 0.18458487, -28.285713, 4.422449, -23.728573)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_8bhxe")
+
+[node name="Bulb15" type="MeshInstance3D" parent="CourtStringLights" unique_id=1182035976]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28.214285, 4.2302046, -24.071428)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable16" type="MeshInstance3D" parent="CourtStringLights" unique_id=1489335006]
+transform = Transform3D(0, 0.19728324, 0.98034656, -0.965948, -0.25365138, 0.051044367, 0.25873646, -0.9469637, 0.19056535, -28.142857, 4.2183676, -24.414286)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_7svkr")
+
+[node name="Bulb16" type="MeshInstance3D" parent="CourtStringLights" unique_id=1730774622]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28.071428, 4.0465307, -24.757143)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Glow16" type="OmniLight3D" parent="CourtStringLights" unique_id=1783758588]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28.071428, 3.8265307, -24.757143)
+visible = false
+light_color = Color(1, 0.78, 0.5, 1)
+light_energy = 0.9
+omni_range = 4.5
+
+[node name="Cable17" type="MeshInstance3D" parent="CourtStringLights" unique_id=2063540529]
+transform = Transform3D(0, 0.19983935, 0.9798287, -0.9789805, -0.19984002, 0.040758044, 0.20395404, -0.95923316, 0.19563882, -28, 4.0551023, -25.1)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_g87n3")
+
+[node name="Bulb17" type="MeshInstance3D" parent="CourtStringLights" unique_id=176398549]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -27.928572, 3.9036736, -25.442858)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable18" type="MeshInstance3D" parent="CourtStringLights" unique_id=1797960568]
+transform = Transform3D(0, 0.20182297, 0.97942203, -0.98910844, -0.14415973, 0.029706039, 0.14718859, -0.9687546, 0.1996248, -27.857143, 3.9326532, -25.785715)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_bvbbo")
+
+[node name="Bulb18" type="MeshInstance3D" parent="CourtStringLights" unique_id=1750115203]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -27.785715, 3.801633, -26.128572)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable19" type="MeshInstance3D" parent="CourtStringLights" unique_id=255267159]
+transform = Transform3D(0, 0.20318183, 0.97914106, -0.9960377, -0.08707705, 0.018069386, 0.08893209, -0.9752614, 0.20237677, -27.714287, 3.8510206, -26.471428)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_h3a43")
+
+[node name="Bulb19" type="MeshInstance3D" parent="CourtStringLights" unique_id=1002229802]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -27.642857, 3.7404084, -26.814285)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable20" type="MeshInstance3D" parent="CourtStringLights" unique_id=1092832011]
+transform = Transform3D(0, 0.20386687, 0.97899866, -0.99955744, -0.029123936, 0.006064775, 0.0297487, -0.97856534, 0.20377666, -27.571428, 3.8102043, -27.157143)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_bmbdu")
+
+[node name="Bulb20" type="MeshInstance3D" parent="CourtStringLights" unique_id=1161173564]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -27.5, 3.7200003, -27.5)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Glow20" type="OmniLight3D" parent="CourtStringLights" unique_id=681084991]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -27.5, 3.5000002, -27.5)
+visible = false
+light_color = Color(1, 0.78, 0.5, 1)
+light_energy = 0.9
+omni_range = 4.5
+
+[node name="Cable21" type="MeshInstance3D" parent="CourtStringLights" unique_id=1427448197]
+transform = Transform3D(0, 0.20386687, 0.97899866, -0.99955744, 0.029123936, -0.006064775, -0.0297487, -0.97856534, 0.20377666, -27.428572, 3.8102043, -27.842857)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_simtq")
+
+[node name="Bulb21" type="MeshInstance3D" parent="CourtStringLights" unique_id=722053691]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -27.357143, 3.7404084, -28.185715)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable22" type="MeshInstance3D" parent="CourtStringLights" unique_id=1119851096]
+transform = Transform3D(0, 0.2031813, 0.9791411, -0.9960377, 0.087076835, -0.01806929, -0.08893185, -0.9752615, 0.20237623, -27.285713, 3.8510206, -28.528572)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_ynqst")
+
+[node name="Bulb22" type="MeshInstance3D" parent="CourtStringLights" unique_id=813609439]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -27.214285, 3.801633, -28.87143)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable23" type="MeshInstance3D" parent="CourtStringLights" unique_id=1075209572]
+transform = Transform3D(0, 0.20182352, 0.979422, -0.98910844, 0.14416014, -0.029706199, -0.14718899, -0.9687545, 0.19962534, -27.142857, 3.9326532, -29.214287)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_6b3mw")
+
+[node name="Bulb23" type="MeshInstance3D" parent="CourtStringLights" unique_id=1432673961]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -27.071428, 3.9036736, -29.557142)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable24" type="MeshInstance3D" parent="CourtStringLights" unique_id=1535818566]
+transform = Transform3D(0, 0.19983935, 0.9798287, -0.9789805, 0.19984002, -0.040758044, -0.20395404, -0.95923316, 0.19563882, -27, 4.0551023, -29.9)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_dml3c")
+
+[node name="Bulb24" type="MeshInstance3D" parent="CourtStringLights" unique_id=904397404]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -26.928572, 4.0465307, -30.242857)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Glow24" type="OmniLight3D" parent="CourtStringLights" unique_id=1491796411]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -26.928572, 3.8265307, -30.242857)
+visible = false
+light_color = Color(1, 0.78, 0.5, 1)
+light_energy = 0.9
+omni_range = 4.5
+
+[node name="Cable25" type="MeshInstance3D" parent="CourtStringLights" unique_id=1676825540]
+transform = Transform3D(0, 0.19728373, 0.98034644, -0.9659478, 0.25365204, -0.051044617, -0.25873712, -0.9469635, 0.19056576, -26.857143, 4.2183676, -30.585712)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_gw6ho")
+
+[node name="Bulb25" type="MeshInstance3D" parent="CourtStringLights" unique_id=1433924684]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -26.785715, 4.2302046, -30.92857)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable26" type="MeshInstance3D" parent="CourtStringLights" unique_id=588819233]
+transform = Transform3D(0, 0.19422446, 0.98095715, -0.95036685, 0.30520684, -0.06042938, -0.3111317, -0.93226916, 0.18458447, -26.714287, 4.422449, -31.271427)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_abknf")
+
+[node name="Bulb26" type="MeshInstance3D" parent="CourtStringLights" unique_id=1748327225]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -26.642857, 4.4546943, -31.614285)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable27" type="MeshInstance3D" parent="CourtStringLights" unique_id=460701866]
+transform = Transform3D(0, 0.19072995, 0.9816426, -0.9326285, 0.35421392, -0.068822615, -0.360838, -0.91550785, 0.17788018, -26.571428, 4.667347, -31.957142)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_iegjf")
+
+[node name="Cable28" type="MeshInstance3D" parent="CourtStringLights" unique_id=1399710185]
+transform = Transform3D(0, 0.19072995, 0.9816426, -0.9326285, -0.35421392, 0.068822615, 0.360838, -0.91550785, 0.17788018, -22.928572, 4.667347, -23.042858)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_pudli")
+
+[node name="Bulb28" type="MeshInstance3D" parent="CourtStringLights" unique_id=971033766]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22.857143, 4.4546943, -23.385715)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable29" type="MeshInstance3D" parent="CourtStringLights" unique_id=1913857711]
+transform = Transform3D(0, 0.19422492, 0.98095703, -0.9503666, -0.30520755, 0.060429674, 0.31113246, -0.93226874, 0.18458487, -22.785713, 4.422449, -23.728573)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_dl0di")
+
+[node name="Bulb29" type="MeshInstance3D" parent="CourtStringLights" unique_id=269713862]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22.714285, 4.2302046, -24.071428)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable30" type="MeshInstance3D" parent="CourtStringLights" unique_id=1983082587]
+transform = Transform3D(0, 0.19728324, 0.98034656, -0.965948, -0.25365138, 0.051044367, 0.25873646, -0.9469637, 0.19056535, -22.642857, 4.2183676, -24.414286)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_1fmri")
+
+[node name="Bulb30" type="MeshInstance3D" parent="CourtStringLights" unique_id=1411715197]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22.571428, 4.0465307, -24.757143)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Glow30" type="OmniLight3D" parent="CourtStringLights" unique_id=437328852]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22.571428, 3.8265307, -24.757143)
+visible = false
+light_color = Color(1, 0.78, 0.5, 1)
+light_energy = 0.9
+omni_range = 4.5
+
+[node name="Cable31" type="MeshInstance3D" parent="CourtStringLights" unique_id=576899306]
+transform = Transform3D(0, 0.19983935, 0.9798287, -0.9789805, -0.19984002, 0.040758044, 0.20395404, -0.95923316, 0.19563882, -22.5, 4.0551023, -25.1)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_yiaru")
+
+[node name="Bulb31" type="MeshInstance3D" parent="CourtStringLights" unique_id=1079504150]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22.428572, 3.9036736, -25.442858)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable32" type="MeshInstance3D" parent="CourtStringLights" unique_id=1890423777]
+transform = Transform3D(0, 0.20182297, 0.97942203, -0.98910844, -0.14415973, 0.029706039, 0.14718859, -0.9687546, 0.1996248, -22.357143, 3.9326532, -25.785715)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_aeimd")
+
+[node name="Bulb32" type="MeshInstance3D" parent="CourtStringLights" unique_id=1974324676]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22.285715, 3.801633, -26.128572)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable33" type="MeshInstance3D" parent="CourtStringLights" unique_id=433948557]
+transform = Transform3D(0, 0.20318183, 0.97914106, -0.9960377, -0.08707705, 0.018069386, 0.08893209, -0.9752614, 0.20237677, -22.214287, 3.8510206, -26.471428)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_q3s01")
+
+[node name="Bulb33" type="MeshInstance3D" parent="CourtStringLights" unique_id=1327209681]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22.142857, 3.7404084, -26.814285)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable34" type="MeshInstance3D" parent="CourtStringLights" unique_id=401353146]
+transform = Transform3D(0, 0.20386687, 0.97899866, -0.99955744, -0.029123936, 0.006064775, 0.0297487, -0.97856534, 0.20377666, -22.071428, 3.8102043, -27.157143)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_yxo0w")
+
+[node name="Bulb34" type="MeshInstance3D" parent="CourtStringLights" unique_id=2042067647]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22, 3.7200003, -27.5)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Glow34" type="OmniLight3D" parent="CourtStringLights" unique_id=1315631876]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22, 3.5000002, -27.5)
+visible = false
+light_color = Color(1, 0.78, 0.5, 1)
+light_energy = 0.9
+omni_range = 4.5
+
+[node name="Cable35" type="MeshInstance3D" parent="CourtStringLights" unique_id=1257550416]
+transform = Transform3D(0, 0.20386687, 0.97899866, -0.99955744, 0.029123936, -0.006064775, -0.0297487, -0.97856534, 0.20377666, -21.928572, 3.8102043, -27.842857)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_5shc1")
+
+[node name="Bulb35" type="MeshInstance3D" parent="CourtStringLights" unique_id=569500420]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -21.857143, 3.7404084, -28.185715)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable36" type="MeshInstance3D" parent="CourtStringLights" unique_id=968195197]
+transform = Transform3D(0, 0.2031813, 0.9791411, -0.9960377, 0.087076835, -0.01806929, -0.08893185, -0.9752615, 0.20237623, -21.785713, 3.8510206, -28.528572)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_kduf4")
+
+[node name="Bulb36" type="MeshInstance3D" parent="CourtStringLights" unique_id=1136647209]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -21.714285, 3.801633, -28.87143)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable37" type="MeshInstance3D" parent="CourtStringLights" unique_id=2085961307]
+transform = Transform3D(0, 0.20182352, 0.979422, -0.98910844, 0.14416014, -0.029706199, -0.14718899, -0.9687545, 0.19962534, -21.642857, 3.9326532, -29.214287)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_grg6h")
+
+[node name="Bulb37" type="MeshInstance3D" parent="CourtStringLights" unique_id=438857314]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -21.571428, 3.9036736, -29.557142)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable38" type="MeshInstance3D" parent="CourtStringLights" unique_id=1168451917]
+transform = Transform3D(0, 0.19983935, 0.9798287, -0.9789805, 0.19984002, -0.040758044, -0.20395404, -0.95923316, 0.19563882, -21.5, 4.0551023, -29.9)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_aspym")
+
+[node name="Bulb38" type="MeshInstance3D" parent="CourtStringLights" unique_id=403339658]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -21.428572, 4.0465307, -30.242857)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Glow38" type="OmniLight3D" parent="CourtStringLights" unique_id=535916959]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -21.428572, 3.8265307, -30.242857)
+visible = false
+light_color = Color(1, 0.78, 0.5, 1)
+light_energy = 0.9
+omni_range = 4.5
+
+[node name="Cable39" type="MeshInstance3D" parent="CourtStringLights" unique_id=1095883020]
+transform = Transform3D(0, 0.19728373, 0.98034644, -0.9659478, 0.25365204, -0.051044617, -0.25873712, -0.9469635, 0.19056576, -21.357143, 4.2183676, -30.585712)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_ggn4w")
+
+[node name="Bulb39" type="MeshInstance3D" parent="CourtStringLights" unique_id=983668529]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -21.285715, 4.2302046, -30.92857)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable40" type="MeshInstance3D" parent="CourtStringLights" unique_id=692508087]
+transform = Transform3D(0, 0.19422446, 0.98095715, -0.95036685, 0.30520684, -0.06042938, -0.3111317, -0.93226916, 0.18458447, -21.214287, 4.422449, -31.271427)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_07o2i")
+
+[node name="Bulb40" type="MeshInstance3D" parent="CourtStringLights" unique_id=1719629023]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -21.142857, 4.4546943, -31.614285)
+material_override = SubResource("StandardMaterial3D_pd5cd")
+cast_shadow = 0
+mesh = SubResource("SphereMesh_fkbaj")
+
+[node name="Cable41" type="MeshInstance3D" parent="CourtStringLights" unique_id=863195779]
+transform = Transform3D(0, 0.19072995, 0.9816426, -0.9326285, 0.35421392, -0.068822615, -0.360838, -0.91550785, 0.17788018, -21.071428, 4.667347, -31.957142)
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_r082m")
+
+[node name="CourtFireflies" type="GPUParticles3D" parent="." unique_id=519388786]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22.5, 1.6, -27.5)
+emitting = false
+amount = 48
+lifetime = 6.0
+visibility_aabb = AABB(-13, -2, -6, 26, 5, 12)
+process_material = SubResource("ParticleProcessMaterial_waxg0")
+draw_pass_1 = SubResource("SphereMesh_r4oft")
+
+[node name="IO" type="Node" parent="CourtFireflies" unique_id=1379114925]
+script = ExtResource("4_tojds")
+targetname = "court_fireflies"
+
+[node name="ManholeSteam" type="CPUParticles3D" parent="." unique_id=631580041]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -18.75, 0.05, -1.25)
+custom_aabb = AABB(-2, 0, -2, 4, 4, 4)
+amount = 32
+lifetime = 3.5
+preprocess = 3.5
+mesh = SubResource("QuadMesh_xhoti")
+emission_shape = 1
+emission_sphere_radius = 0.35
+direction = Vector3(0, 1, 0)
+spread = 12.0
+gravity = Vector3(0.05, 0.1, 0)
+initial_velocity_min = 0.5
+initial_velocity_max = 0.9
+scale_amount_min = 0.8
+scale_amount_max = 1.2
+scale_amount_curve = SubResource("Curve_gf4o1")
+color_ramp = SubResource("Gradient_a0521")
+
+[node name="CourtSign" type="Label3D" parent="." unique_id=197926411]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22, 4.3, -32.45)
+pixel_size = 0.006
+modulate = Color(0.55, 0.95, 1, 1)
+outline_modulate = Color(0.05, 0.25, 0.35, 1)
+text = "THE COURTYARD"
+font_size = 160
+outline_size = 18
+
+[node name="CourtSignGlow" type="OmniLight3D" parent="." unique_id=739194084]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -22, 4.3, -31.8)
+light_color = Color(0.5, 0.9, 1, 1)
+light_energy = 0.8
+omni_range = 3.5
+
+[node name="Lantern1" type="Node3D" parent="." unique_id=560274086 instance=ExtResource("7_007gd")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -29.6, 0.25, -31.5)
+
+[node name="Glow" type="OmniLight3D" parent="Lantern1" unique_id=2019800169]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+light_color = Color(1, 0.7, 0.4, 1)
+light_energy = 0.7
+omni_range = 2.5
+
+[node name="Lantern2" type="Node3D" parent="." unique_id=1003684195 instance=ExtResource("7_007gd")]
+transform = Transform3D(0.9396926, 0, 0.34202012, 0, 1, 0, -0.34202012, 0, 0.9396926, -26.6, 0.25, -31.5)
+
+[node name="Glow" type="OmniLight3D" parent="Lantern2" unique_id=1820352767]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.3, 0)
+light_color = Color(1, 0.7, 0.4, 1)
+light_energy = 0.7
+omni_range = 2.5
+
+[node name="Planter1" type="Node3D" parent="." unique_id=374495368 instance=ExtResource("8_22rqd")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -33.5, 0.25, -31.8)
+
+[node name="Planter2" type="Node3D" parent="." unique_id=173534297 instance=ExtResource("8_22rqd")]
+transform = Transform3D(0.76604444, 0, 0.6427876, 0, 1, 0, -0.6427876, 0, 0.76604444, -17, 0.25, -31.8)
+
+[node name="Bucket" type="Node3D" parent="." unique_id=941874508 instance=ExtResource("9_lkvwy")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16.2, 0.25, -31.2)
+
+[node name="GarageSign" type="Node3D" parent="." unique_id=1410644092]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 3.2, -8.64)
+script = ExtResource("10_ljih3")
+target = "garage_door"
+offset = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.20000005, 0.10999966)
+bound = true
+
+[node name="Plate" type="MeshInstance3D" parent="GarageSign" unique_id=1190699852]
+mesh = SubResource("BoxMesh_dbbax")
+
+[node name="Text" type="Label3D" parent="GarageSign" unique_id=1940075792]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.02)
+pixel_size = 0.004
+modulate = Color(0.05, 0.05, 0.05, 1)
+text = "KEEP CLEAR"
+font_size = 90
+outline_size = 0

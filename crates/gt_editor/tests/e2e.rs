@@ -535,6 +535,12 @@ fn example_mcp_scripts_replay() {
         ("withered_city", 600, 40),
         ("sea_island", 16, 6),
     ] {
+        // Outputs may target Godot overlay nodes, which the editor only knows from the sidecar next to the saved map.
+        let sidecar = root.join("godot/demo/maps/showcase").join(format!("{script}.overlay.json"));
+        if sidecar.is_file() {
+            std::fs::copy(&sidecar, out.join(format!("{script}.overlay.json"))).unwrap();
+        }
+
         let path = root.join("examples/mcp").join(format!("{script}.json")).canonicalize().unwrap();
         let summary = ed.call("run_script", json!({ "path": path, "vars": { "save_dir": out } }));
         assert_eq!(summary["errors"], json!([]), "{script}");

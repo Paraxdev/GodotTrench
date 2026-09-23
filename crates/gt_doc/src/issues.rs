@@ -47,7 +47,13 @@ pub fn check(map: &Map) -> Vec<Issue> {
 /// declare. `classes` gives the declared I/O of a classname, `None` for classes without a definition, which are
 /// skipped like dynamic targets.
 pub fn check_with<'a>(map: &Map, classes: impl Fn(&str) -> Option<ClassIo<'a>>) -> Vec<Issue> {
-    let mut out = check_map(map);
+    check_with_external(map, classes, &BTreeSet::new())
+}
+
+/// [`check_with`] where `external` holds targetnames that exist outside the map, like the nodes of a Godot overlay
+/// built on top of it, so outputs and targets naming them are not reported as missing.
+pub fn check_with_external<'a>(map: &Map, classes: impl Fn(&str) -> Option<ClassIo<'a>>, external: &BTreeSet<String>) -> Vec<Issue> {
+    let mut out = check_map(map, external);
     check_io_names(map, &classes, &mut out);
     out.sort_by_key(|i| std::cmp::Reverse(i.severity));
     out
@@ -101,9 +107,10 @@ fn check_io_names<'a>(map: &Map, classes: &impl Fn(&str) -> Option<ClassIo<'a>>,
     }
 }
 
-fn check_map(map: &Map) -> Vec<Issue> {
+fn check_map(map: &Map, external: &BTreeSet<String>) -> Vec<Issue> {
     let mut out = Vec::new();
-    let names: BTreeSet<&str> = map.entities().filter_map(|(_, e)| e.targetname()).collect();
+    let mut names: BTreeSet<&str> = map.entities().filter_map(|(_, e)| e.targetname()).collect();
+    names.extend(external.iter().map(String::as_str));
     let mut brush_keys: BTreeMap<Vec<[i64; 3]>, NodeId> = BTreeMap::new();
 
     for (id, node) in map.nodes.iter() {
@@ -367,6 +374,27 @@ mod tests {
         }
 
         assert!(check(&m).iter().all(|i| !fixable(i.code)), "{:?}", check(&m));
+    }
+
+    #[test]
+    fn overlay_targetnames_count_as_existing_targets() {
+        let mut m = Map::new();
+        let l = m.default_layer();
+        let mut e = Entity::new("trigger_once");
+        e.outputs.push(IoConnection {
+            output: "triggered".into(),
+            target: "court_fireflies".into(),
+            input: "emitting".into(),
+            parameter: "true".into(),
+            delay: 0.0,
+            times: -1,
+        });
+        e.properties.insert("target".into(), "court_string_lights".into());
+        m.insert(l, NodeKind::Entity(e));
+        let missing = |issues: Vec<Issue>| issues.iter().filter(|i| i.code == "io_missing_target" || i.code == "missing_target").count();
+        assert_eq!(missing(check(&m)), 2);
+        let external: BTreeSet<String> = ["court_fireflies".to_string(), "court_string_lights".to_string()].into();
+        assert_eq!(missing(check_with_external(&m, |_| None, &external)), 0);
     }
 
     #[test]

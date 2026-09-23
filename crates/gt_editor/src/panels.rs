@@ -43,6 +43,7 @@ pub struct PanelState {
     outliner_offset: f32,
     issues: Vec<gt_doc::issues::Issue>,
     issues_revision: u64,
+    issues_overlays: u64,
     pub uv: crate::uv_editor::UvEditorState,
     pub reference_class: String,
     reference_filter: String,
@@ -77,6 +78,7 @@ impl Default for PanelState {
             outliner_offset: 0.0,
             issues: Vec::new(),
             issues_revision: 0,
+            issues_overlays: 0,
             uv: Default::default(),
             reference_class: String::new(),
             reference_filter: String::new(),
@@ -1047,8 +1049,10 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &gt_doc::
         ui.label(RichText::new("No outputs. Outputs fire inputs on other entities, for example a trigger opening a door.").weak());
     }
 
-    let targetnames: Vec<(String, String)> =
+    let mut targetnames: Vec<(String, String)> =
         state.doc.map.entities().filter_map(|(_, e)| e.targetname().map(|n| (n.to_string(), e.classname.clone()))).collect();
+    // Godot overlay nodes have no class the editor knows, so they offer no inputs to pick from.
+    targetnames.extend(state.overlay_ghosts.targetnames().into_iter().map(|n| (n, String::new())));
     let mut outputs = entity.outputs.clone();
     let mut changed = false;
     let mut remove = None;
@@ -2451,12 +2455,16 @@ fn place_action(state: &EditorState, classnames: Vec<String>) -> Action {
 
 fn collect_issues(state: &EditorState) -> Vec<gt_doc::issues::Issue> {
     use gt_doc::issues::{Issue, Severity};
-    let mut list = gt_doc::issues::check_with(&state.doc.map, |class| {
-        state.game.entity(class).map(|d| gt_doc::issues::ClassIo {
-            outputs: d.outputs.iter().map(|o| o.name.as_str()).collect(),
-            inputs: d.inputs.iter().map(|i| i.name.as_str()).collect(),
-        })
-    });
+    let mut list = gt_doc::issues::check_with_external(
+        &state.doc.map,
+        |class| {
+            state.game.entity(class).map(|d| gt_doc::issues::ClassIo {
+                outputs: d.outputs.iter().map(|o| o.name.as_str()).collect(),
+                inputs: d.inputs.iter().map(|i| i.name.as_str()).collect(),
+            })
+        },
+        &state.overlay_ghosts.targetnames(),
+    );
     for (id, e) in state.doc.map.entities() {
         if state.game.entity(&e.classname).is_none() && !e.classname.is_empty() {
             list.push(Issue {
@@ -2474,9 +2482,10 @@ fn collect_issues(state: &EditorState) -> Vec<gt_doc::issues::Issue> {
 
 pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
     use gt_doc::issues::{self, Severity};
-    if ps.issues_revision != state.doc.revision {
+    if ps.issues_revision != state.doc.revision || ps.issues_overlays != state.overlay_ghosts.generation {
         ps.issues = collect_issues(state);
         ps.issues_revision = state.doc.revision;
+        ps.issues_overlays = state.overlay_ghosts.generation;
     }
 
     let errors = ps.issues.iter().filter(|i| i.severity == Severity::Error).count();

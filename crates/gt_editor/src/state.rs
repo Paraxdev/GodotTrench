@@ -216,6 +216,8 @@ pub struct Prefs {
     pub follow_display_scaling: bool,
     /// Move, rotate and scale handles on the selection in the 3D view.
     pub transform_gizmo: bool,
+    /// Ghost boxes of the Godot overlays built on top of the map, read from its overlay sidecar.
+    pub godot_overlays: bool,
 }
 
 pub const UI_SCALE_MIN: f32 = 0.5;
@@ -278,6 +280,7 @@ impl Default for Prefs {
             ui_scale: 1.0,
             follow_display_scaling: true,
             transform_gizmo: true,
+            godot_overlays: true,
         }
     }
 }
@@ -328,6 +331,8 @@ pub struct EditorState {
     pub prefabs: crate::prefabs::PrefabCache,
     /// World bounds of every instance node, refreshed by the scene cache.
     pub instance_bounds: std::collections::HashMap<NodeId, Aabb>,
+    /// Godot overlay content of the open map, from its `.overlay.json` sidecar.
+    pub overlay_ghosts: crate::overlays::OverlayGhosts,
     pub models: crate::models::ModelCache,
     pub model_thumbs: crate::model_thumbs::ModelThumbnails,
     /// World bounds of point entities drawn with a model.
@@ -407,6 +412,7 @@ impl EditorState {
             paint_color: [0.55, 0.45, 0.35, 1.0],
             prefabs: Default::default(),
             instance_bounds: Default::default(),
+            overlay_ghosts: Default::default(),
             models: Default::default(),
             model_thumbs: Default::default(),
             model_bounds: Default::default(),

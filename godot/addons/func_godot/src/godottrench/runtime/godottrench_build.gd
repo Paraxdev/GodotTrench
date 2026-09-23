@@ -30,12 +30,15 @@ static func set_owner_recursive(node: Node, owner_node: Node) -> void:
 	for child in node.get_children():
 		set_owner_recursive(child, owner_node)
 
-## Generated nodes below [param map_node] by map node id, for entities, terrains and scatter sets.
+## Generated nodes below [param map_node] by map node id, for entities, terrains and scatter sets. Overlays are
+## skipped, so a generated node copied into one is never taken for the original.
 static func nodes_by_id(map_node: Node) -> Dictionary:
 	var out := {}
 	var stack: Array[Node] = [map_node]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
+		if n != map_node and GodotTrenchOverlay.is_kept(n):
+			continue
 		if n != map_node and n.has_meta(ID_META):
 			out[int(n.get_meta(ID_META))] = n
 			continue
@@ -48,6 +51,8 @@ static func groups_by_id(map_node: Node) -> Dictionary:
 	var stack: Array[Node] = [map_node]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
+		if n != map_node and GodotTrenchOverlay.is_kept(n):
+			continue
 		if n.has_meta(GROUP_META):
 			out[int(n.get_meta(GROUP_META))] = n
 		if n == map_node or n.has_meta(GROUP_META):

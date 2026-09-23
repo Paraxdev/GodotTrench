@@ -935,6 +935,24 @@ impl Viewport {
             }
         }
 
+        if state.prefs.godot_overlays {
+            let ghost = Color32::from_rgba_unmultiplied(115, 184, 255, 230);
+            for item in &state.overlay_ghosts.items {
+                let points: Vec<Pos2> = item.drawn_bounds().corners().iter().filter_map(|c| self.camera.project(self.rect, *c)).collect();
+                if points.len() < 8 {
+                    continue;
+                }
+
+                // Only boxes big enough on screen get a name, an overview would drown in labels.
+                let screen = Rect::from_points(&points);
+                if screen.width().max(screen.height()) < 28.0 || !self.rect.intersects(screen) {
+                    continue;
+                }
+
+                painter.text(Pos2::new(screen.center().x, screen.min.y - 2.0), Align2::CENTER_BOTTOM, item.label(), FontId::proportional(11.0), ghost);
+            }
+        }
+
         if self.camera.kind == ViewKind::Perspective {
             for (id, e) in state.doc.map.entities() {
                 let selected = state.doc.selection.nodes.contains(&id);

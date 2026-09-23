@@ -20,6 +20,7 @@ pub mod mcp;
 pub mod mesh_tool;
 pub mod model_thumbs;
 pub mod models;
+pub mod overlays;
 pub mod panels;
 pub mod picking;
 pub mod prefabs;

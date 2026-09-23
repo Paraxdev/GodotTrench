@@ -60,7 +60,37 @@
       "id": "b7",
       "type": "text",
       "format": "markdown",
-      "md": "It listens on port 7843, rebuilds the matching maps whenever you save, and then emits `map_reloaded(map)`, which is your chance to put the player back at a spawn point or reset game state. It only runs in games launched from the Godot editor, unless you set `enabled_in_exported_builds` on it.\n\n> [!WARNING] Every rebuild frees what is under the map\n> A manual build, a rebuild on save and a hot reload all start by deleting the map node's children. A player or pickup you parented under the map node disappears with them. Keep your own nodes beside the map node."
+      "md": "It listens on port 7843, rebuilds the matching maps whenever you save, and then emits `map_reloaded(map)`, which is your chance to put the player back at a spawn point or reset game state. It only runs in games launched from the Godot editor, unless you set `enabled_in_exported_builds` on it.\n\n> [!WARNING] Every rebuild frees what is under the map\n> A manual build, a rebuild on save and a hot reload all start by deleting the map node's children. A player or pickup you parented under the map node disappears with them. Keep your own nodes beside the map node, or put them in an overlay as described next."
+    },
+    {
+      "id": "b16",
+      "type": "text",
+      "format": "markdown",
+      "md": "## Godot overlays\n\nSome things belong to the game rather than the level: a vending machine with its own script, a particle effect you tuned in Godot, a sign, a lamp with an AnimationPlayer. You still want them in the same place as the map and you do not want to lose them every time the map is rebuilt. That is what an overlay is for. Add a `GodotTrenchOverlay` node as a direct child of the `FuncGodotMap` and put your nodes under it. Builds, Clear Map, rebuilds on save, live mode and hot reload all skip it, so its nodes stay the same instances with the same owner, signals and state, and it is saved with your scene like anything else you made. After the next build it is listed first under the map, before the generated nodes.\n\nOverlay content lives in the map's own space and is measured in meters, the same as the generated nodes. With the default scale of 32 units per meter, a child at `(2, 0, -3)` sits where GodotTrench shows `(64, 0, -96)`. The overlay itself always stays at the map origin, so moving the map moves everything on it. An overlay kept somewhere else in the scene can point at its map with *Map Path* and follows the map's transform instead, and for a single node there is a lighter option: a direct child of the map in the `godottrench_keep` group survives builds as well."
+    },
+    {
+      "id": "b17",
+      "type": "image",
+      "src": "assets/overlays/night-district-courtyard.jpg",
+      "alt": "The night district courtyard in Godot: string lights, fireflies, lanterns and a glowing sign from the overlay, lamps from the map"
+    },
+    {
+      "id": "b18",
+      "type": "text",
+      "format": "markdown",
+      "md": "### Wiring an overlay to the map\n\nOverlay nodes take part in the map's inputs and outputs. To let a map output reach one, give it a `GodotTrenchOverlayIO` child and set its *Targetname*. From then on the node behaves like an entity with that name: an input calls its method of the same name, sets its property of the same name to the parameter, or runs one of the built in inputs such as `show`, `hide` or `toggle`. That is enough for nodes without a script, since an output with input `emitting` and parameter `true` starts a `GPUParticles3D`. The component also emits `input_received(input, parameter, activator)` for every input it gets, which you can connect to anything in the editor.\n\nThe other direction uses the same `GodotTrenchOutput` nodes the build creates for entities. Add one as a child of the overlay node, pick the signal it listens to in *Output*, and fill in the target, input and parameter. An `Area3D` can fire on `body_entered` without any code, and a script can declare its own signal:"
+    },
+    {
+      "id": "b19",
+      "type": "code",
+      "lang": "gdscript",
+      "code": "extends StaticBody3D\n## A breaker box in the overlay. The player's use key calls use(), and GodotTrenchOutput\n## children listening to flipped_on and flipped_off switch the map's lamps.\n\nsignal flipped_on(activator: Node)\nsignal flipped_off(activator: Node)\n\nvar on := false\n\nfunc use(activator: Node = null) -> void:\n\ton = not on\n\tif on:\n\t\tflipped_on.emit(activator)\n\telse:\n\t\tflipped_off.emit(activator)"
+    },
+    {
+      "id": "b20",
+      "type": "text",
+      "format": "markdown",
+      "md": "Targets are looked up by name when an output fires, so an overlay output keeps working after the entity it points at has been rebuilt, and a map output finds overlay nodes the same way it finds entities. A rebuild does reset the map, though: entities come back in their starting state while the overlay keeps its own, so a switch that was on still says on while its lamps are off. The overlay emits `map_rebuilt(map)` after every build, and that is the moment to send your state back to the map.\n\nSome content should stay on an entity rather than on the map, like a warning plate on a roller door. Put it under a `GodotTrenchAnchor` and set *Target* to the entity's targetname. The anchor binds at the offset where you placed it, then follows the entity when a rebuild or a live edit moves it and while the game moves it, so the plate goes up with the door. Moving the anchor itself changes the offset.\n\n### What GodotTrench sees\n\nThe level editor cannot show Godot nodes, so the overlay describes itself. When the map is built in the Godot editor and whenever the scene is saved, it writes a small `<map>.overlay.json` next to the map with the name, bounds and targetnames of each of its direct children. GodotTrench reads that file and draws each child as a dashed blue ghost box with its name, so a level designer can see where the breaker box stands before building a wall through it. *View > Godot Overlays* hides them. Overlay targetnames also count as real targets: the Issues panel no longer reports outputs aimed at them as missing, and they show up in the target list of the output editor. Turn off *Share With Editor* on an overlay to keep it out of the file.\n\nThe night district in the demo project comes with an overlay, `demo/overlays/night_district_overlay.tscn`. Its breaker box switches the map's courtyard lamps, the map's courtyard trigger turns on its string lights and fireflies, steam rises from a manhole, and a keep clear plate rides the warehouse roller door."
     },
     {
       "id": "b8",

@@ -6,7 +6,7 @@ class_name GodotTrenchStreamer extends Node3D
 ## costs what the player can see rather than what the map contains. It has no visuals of its own and touches
 ## nothing but [member Node3D.visible] on visual nodes, so scripts, physics and gameplay keep running.
 ##
-## Only geometry the map build generated is streamed. Visuals created at runtime (game_text and logic_debug
+## Only geometry the map build generated is streamed, overlays are left alone. Visuals created at runtime (game_text and logic_debug
 ## labels, spawned scenes) and everything under a moving body (func_train, func_door, npc_walker, prop_physics)
 ## are left alone, since their chunk would be wrong as soon as they move. A visual that gameplay hid stays hidden
 ## when its chunk comes back into range.
@@ -122,7 +122,7 @@ func _visual_aabb(node: Node3D) -> AABB:
 ## chunks and a terrain's chunks are streamed one by one rather than all at once.
 func _collect(node: Node, out: Array[Node3D]) -> void:
 	for child in node.get_children():
-		if child == self or child is Light3D or child is WorldEnvironment or is_moving_body(child):
+		if child == self or child is Light3D or child is WorldEnvironment or is_moving_body(child) or GodotTrenchOverlay.is_kept(child):
 			continue
 		if child is VisualInstance3D:
 			# Nodes without an owner were added at runtime, by entity scripts or game code, not by the build.
@@ -304,6 +304,8 @@ static func split_visuals(root: Node, cell: float) -> int:
 	var stack: Array[Node] = [root]
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
+		if n != root and GodotTrenchOverlay.is_kept(n):
+			continue
 		var mi := n as MeshInstance3D
 		if mi and mi.mesh and mi.mesh is ArrayMesh:
 			var size := mi.mesh.get_aabb().size

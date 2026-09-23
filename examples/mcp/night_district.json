@@ -220,11 +220,14 @@
     { "tool": "gameplay", "args": { "op": "brush_entity", "ids": ["$cb3.ids.0"], "classname": "func_illusionary", "properties": { "targetname": "court_bulb_3" } } },
     { "tool": "create_entity", "args": { "classname": "light", "origin": [-720, 140, -744], "properties": { "targetname": "court_lamp_3", "light_energy": "1.6", "light_color": "255 206 140", "omni_range": "9", "start_on": "0", "fixture": "court_bulb_3", "fixture_off": "dark" } } },
     { "tool": "hierarchy", "args": { "op": "close_group" } },
+    { "note": "court_string_lights and court_fireflies are not in the map: they live in the Godot overlay res://demo/overlays/night_district_overlay.tscn, which the showcase build puts on top of this map. The map only names them as targets, the overlay sidecar tells GodotTrench they exist." },
     { "tool": "gameplay", "args": { "op": "volume", "classname": "trigger_once", "min": [-352, 8, -1040], "max": [-288, 140, -560], "properties": { "targetname": "court_entry" },
       "outputs": [
         { "output": "triggered", "target": "court_lamp_3", "input": "turn_on", "delay": 0.1 },
         { "output": "triggered", "target": "court_lamp_2", "input": "turn_on", "delay": 0.6 },
-        { "output": "triggered", "target": "court_lamp_1", "input": "turn_on", "delay": 1.1 }
+        { "output": "triggered", "target": "court_lamp_1", "input": "turn_on", "delay": 1.1 },
+        { "output": "triggered", "target": "court_string_lights", "input": "turn_on", "delay": 1.2 },
+        { "output": "triggered", "target": "court_fireflies", "input": "emitting", "parameter": "true" }
       ] } },
     { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [-900, 8, -1000], "angles": [0, 0, 0], "properties": { "model": "res://models/polyhaven/furniture/painted_wooden_bench.gltf" } } },
     { "tool": "create_entity", "args": { "classname": "prop_model", "origin": [-1080, 8, -900], "angles": [0, 70, 0], "properties": { "model": "res://models/polyhaven/furniture/Sofa_01.gltf" } } },

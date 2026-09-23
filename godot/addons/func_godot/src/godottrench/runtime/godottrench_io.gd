@@ -61,12 +61,17 @@ static func fire_output(source: Node, output: StringName, activator: Node = null
 		if child is GodotTrenchOutput and (child.output == output or str(child.output).to_pascal_case() == str(output)):
 			child.fire(activator)
 
-## The node that scopes targetname lookups: the enclosing FuncGodotMap, else the scene root.
+## The node that scopes targetname lookups: the enclosing FuncGodotMap (or the map an overlay outside it points at),
+## else the scene root.
 static func lookup_root(from: Node) -> Node:
 	var n := from
 	while n:
 		if n is FuncGodotMap:
 			return n
+		if n is GodotTrenchOverlay and not (n as GodotTrenchOverlay).map_path.is_empty():
+			var map := (n as GodotTrenchOverlay).get_map()
+			if map:
+				return map
 		n = n.get_parent()
 	var tree := from.get_tree()
 	if tree and tree.current_scene:
@@ -84,6 +89,8 @@ static func _named_nodes(root: Node) -> Dictionary:
 		return cache
 	cache = {}
 	var stack: Array[Node] = [root]
+	if root is FuncGodotMap:
+		stack.append_array(GodotTrenchOverlay.external_overlays(root))
 	while not stack.is_empty():
 		var n: Node = stack.pop_back()
 		if n.has_meta(TARGETNAME_META):
@@ -92,7 +99,9 @@ static func _named_nodes(root: Node) -> Dictionary:
 				cache[key] = []
 			cache[key].append(n)
 		stack.append_array(n.get_children())
-	root.set_meta(CACHE_META, cache)
+	# Metadata would be saved with an edited scene.
+	if not Engine.is_editor_hint():
+		root.set_meta(CACHE_META, cache)
 	return cache
 
 ## Forgets cached targetname lookups, call after spawning or renaming named entities at runtime.
@@ -365,6 +374,11 @@ static func _script_defines(node: Object, input: StringName) -> bool:
 static func invoke(node: Node, input: StringName, parameter: String, activator: Node, caller: Node = null, values: Array = []) -> void:
 	if not is_instance_valid(node):
 		return
+	var listened := false
+	for child in node.get_children():
+		if child is GodotTrenchOverlayIO:
+			child.input_received.emit(input, parameter, activator)
+			listened = true
 	var lower := str(input).to_lower()
 	# Node3D and CanvasItem have native show() and hide() that only change visibility. The built in inputs also
 	# stop processing, so they win unless the entity's own script defines show or hide.
@@ -392,7 +406,8 @@ static func invoke(node: Node, input: StringName, parameter: String, activator: 
 			if "visible" in node:
 				node.visible = not node.visible
 		_:
-			push_warning("[GT I/O] %s has no input '%s'" % [node.name, input])
+			if not listened:
+				push_warning("[GT I/O] %s has no input '%s'" % [node.name, input])
 
 ## Makes the fixture of a light (nodes named [param target], a trailing * matches a prefix) follow its state: shown
 ## while on and hidden while off, or with [param mode] "dark" always shown with the emission of its materials off

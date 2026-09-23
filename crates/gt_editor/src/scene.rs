@@ -158,6 +158,10 @@ pub struct SceneCache {
     scatters: HashMap<NodeId, ScatterGpu>,
     links: Option<GpuLines>,
     cordon: Option<GpuLines>,
+    /// Dashed boxes of the Godot overlay content on top of the map, see `crate::overlays`.
+    ghosts: Option<GpuLines>,
+    ghost_generation: Option<u64>,
+    show_ghosts: bool,
     pub stats: SceneStats,
     pub lighting: Lighting,
     shadow_dirty: bool,
@@ -1323,6 +1327,7 @@ impl SceneCache {
     pub fn invalidate(&mut self) {
         self.prev_map = None;
         self.revision = 0;
+        self.ghost_generation = None;
     }
 
     fn bucket_of(id: NodeId) -> usize {
@@ -1336,6 +1341,13 @@ impl SceneCache {
     /// Like `update`, but with `show_selection` false the selected nodes are built like the rest, without the
     /// selection tint, for beauty shots. The next `update` brings the tint back.
     pub fn update_with(&mut self, renderer: &mut Renderer, state: &mut EditorState, project_generation: u64, show_selection: bool) {
+        state.overlay_ghosts.refresh(state.doc.path.as_deref());
+        self.show_ghosts = state.prefs.godot_overlays;
+        if self.ghost_generation != Some(state.overlay_ghosts.generation) {
+            self.ghosts = renderer.upload_lines(&crate::overlays::ghost_lines(&state.overlay_ghosts.items));
+            self.ghost_generation = Some(state.overlay_ghosts.generation);
+        }
+
         let prefab_generation = state.prefabs.generation;
         let model_generation = state.models.generation;
         let lit = state.prefs.shade == crate::state::Shade::Lit;
@@ -1887,7 +1899,7 @@ impl SceneCache {
 
     /// Adds the scene to a frame for a 3D or 2D view.
     /// Unselected edges are left out of lit views, which preview the game look. Without `overlays` only what
-    /// the game shows is drawn: no entity boxes, volumes, edges, selection outlines, links or cordon.
+    /// the game shows is drawn: no entity boxes, volumes, edges, selection outlines, links, cordon or Godot overlay ghosts.
     pub fn fill_frame<'a>(&'a self, frame: &mut Frame<'a>, is_2d: bool, lit: bool, overlays: bool) {
         for t in self.terrains.values() {
             if is_2d {
@@ -1951,6 +1963,13 @@ impl SceneCache {
         if overlays {
             frame.overlay_lines.extend(self.links.as_ref());
             frame.lines.extend(self.cordon.as_ref());
+            if self.show_ghosts {
+                if is_2d {
+                    frame.overlay_lines.extend(self.ghosts.as_ref());
+                } else {
+                    frame.lines.extend(self.ghosts.as_ref());
+                }
+            }
         }
     }
 }
