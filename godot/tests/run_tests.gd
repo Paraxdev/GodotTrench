@@ -3,6 +3,8 @@ extends SceneTree
 ## godot --headless --path godot --script res://tests/run_tests.gd
 
 const MAP := "res://tests/maps/basic.tdm"
+## The same map as the JSON the editor sends over the live link, and older editors saved.
+const MAP_JSON := "res://tests/maps/basic_json.tdm"
 const SETTINGS := "res://demo/demo_map_settings.tres"
 const EPS := 0.001
 
@@ -90,6 +92,7 @@ func _initialize() -> void:
 	await test_withered_city_playthrough()
 	await preload("res://tests/td_editor_parity_test.gd").run(self)
 	await load("res://tests/overlay_tests.gd").run(self)
+	await load("res://tests/tdm_file_tests.gd").run(self)
 	await load("res://tests/entity_tests.gd").new().run(self)
 	print("%d checks, %d failures" % [checks, failures.size()])
 	quit(1 if failures.size() > 0 else 0)
@@ -97,8 +100,7 @@ func _initialize() -> void:
 func test_parser() -> void:
 	print("- parser")
 	var parse_data := FuncGodotData.ParseData.new()
-	var text := FileAccess.get_file_as_string(MAP)
-	var result := TrenchDotParser.parse(text, load(SETTINGS), parse_data, MAP)
+	var result := TrenchDotParser.parse_dict(TrenchDotTdmFile.load_map(MAP), load(SETTINGS), parse_data, MAP)
 	check(result != null, "parse returns data")
 	var newer := { "format": "trenchdot-map", "version": TrenchDotParser.FORMAT_VERSION + 1, "layers": [] }
 	check(TrenchDotParser.parse_dict(newer, load(SETTINGS), FuncGodotData.ParseData.new(), "newer.tdm") == null, "a newer map version is refused")
@@ -1025,7 +1027,7 @@ func world_vertex_count(map: FuncGodotMap) -> int:
 
 func test_live_session() -> void:
 	print("- live session")
-	var text := FileAccess.get_file_as_string(MAP)
+	var text := FileAccess.get_file_as_string(MAP_JSON)
 	var map := FuncGodotMap.new()
 	map.name = "LiveMap"
 	map.map_settings = load(SETTINGS)
@@ -1124,11 +1126,10 @@ func test_threaded_build_matches() -> void:
 	print("- threaded building matches single threaded")
 	var path := "res://demo/maps/showcase/lighthouse_forest.tdm"
 	var settings: FuncGodotMapSettings = load(SETTINGS)
-	var text := FileAccess.get_file_as_string(path)
 	var runs := []
 	for threaded in [false, true]:
 		ProjectSettings.set_setting(TrenchDotBuild.SETTING_THREADED, threaded)
-		var data := FuncGodotParser.new().parse_tdm(text, settings, path)
+		var data := FuncGodotParser.new().parse_tdm(TrenchDotTdmFile.load_map(path), settings, path)
 		var brushes := []
 		for e in data.entities:
 			for b in e.brushes:

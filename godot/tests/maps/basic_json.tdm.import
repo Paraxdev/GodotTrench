@@ -1,0 +1,14 @@
+[remap]
+
+importer="func_godot.map"
+type="QuakeMapFile"
+uid="uid://eetpfrf4lg03"
+path="res://.godot/imported/basic_json.tdm-a756b81a9d2a0c404e5dec78e20c65ec.tres"
+
+[deps]
+
+source_file="res://tests/maps/basic_json.tdm"
+dest_files=["res://.godot/imported/basic_json.tdm-a756b81a9d2a0c404e5dec78e20c65ec.tres"]
+
+[params]
+
