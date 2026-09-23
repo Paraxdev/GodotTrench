@@ -25,6 +25,7 @@
 ## Godot
 
 * [Building maps](godot/building.md)
+* [Navigation](godot/navigation.md)
 * [Shader warm-up](godot/warm-up.md)
 * [Streaming big maps](godot/streaming.md)
 * [Live mode and hot reload](godot/live.md)
