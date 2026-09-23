@@ -27,6 +27,12 @@ beside it.
 | Shift+Space | Maximize the view under the pointer, again to restore |
 | *View > Views* | Switch between one, two and four views, or bring back a closed view |
 
+## Tabs
+
+Each open map gets a tab, and the tab bar appears once two are open. Ctrl+Shift+N opens a new tab, Ctrl+Tab switches
+and Ctrl+W closes one. *New Map* and importing open in a new tab when the current map has unsaved changes. Closing a
+modified tab asks to save, discard or cancel, and quitting lists every unsaved map.
+
 ## Camera
 
 | Input | 3D view | 2D views |

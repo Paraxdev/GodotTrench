@@ -24,4 +24,4 @@ TrenchDotIO.events().fired.connect(func(source, output, target, input, parameter
 | Target resolves to nothing | Nothing at all, no warning |
 | Target has no such input | `[TD I/O] <node> has no input '<name>'` in the Godot output |
 | Output the entity never emits | `[TD I/O] <node> has no signal '<output>'` once, when the map is built |
-| Entity spawned or renamed at runtime | Not found by its targetname, see [Targets](targets.md#runtime-changes) |
+| Entity spawned or renamed at runtime | Not found by its targetname, see [Targets](parameters.md#runtime-changes) |
