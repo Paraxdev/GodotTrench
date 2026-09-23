@@ -42,15 +42,9 @@ Do not time them with `build_showcase.gd`, it overwrites the committed showcase 
 
 ## Map files in git
 
-`.gtm` maps are binary, see [the .gtm map format](format/README.md). For readable diffs, tell git once per clone to print
-them as JSON with the editor, which has to be on your `PATH`:
-
-```sh
-git config diff.gtm.textconv "godottrench --dump"
-```
-
-`godottrench --to-json map.gtm map.json` writes the JSON to a file, and `godottrench --to-gtm map.json map.gtm` turns
-it back into a binary map with the same content.
+`.gtm` maps are binary, see [the .gtm map format](format/README.md). The repository's `.gitattributes` already marks
+them, so for readable diffs run the `git config` line from [Reviewing changes](editor/reviewing.md#maps-in-git) once
+per clone.
 
 ## Generated content
 
