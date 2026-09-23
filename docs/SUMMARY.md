@@ -66,6 +66,7 @@
 
 ## Reference
 
+* [Command line](command-line.md)
 * [MCP server](mcp.md)
 * [MCP scripts](mcp-scripts.md)
 * [The .tdm map format](format/README.md)
