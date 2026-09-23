@@ -38,6 +38,11 @@ impl History {
     pub fn can_redo(&self) -> bool {
         !self.redo.is_empty()
     }
+
+    /// The map as it was `steps` undo steps ago, 1 being before the latest step.
+    pub fn map_before(&self, steps: usize) -> Option<&Map> {
+        self.undo.iter().rev().nth(steps.checked_sub(1)?).map(|s| &s.map)
+    }
 }
 
 /// Where the undo history stood, see [`Document::squash_since`].
@@ -72,6 +77,8 @@ pub struct Document {
     transaction: Option<Snapshot>,
     last_command: Option<String>,
     last_edit: Option<(String, Instant)>,
+    /// The map as last saved or opened.
+    saved_map: Map,
     uid: u64,
     /// Undo steps dropped off the bottom of the history, and undo or redo calls, both for [`HistoryMark`].
     evicted: u64,
@@ -91,6 +98,7 @@ impl Document {
 
     pub fn from_map(map: Map, path: Option<PathBuf>) -> Self {
         Self {
+            saved_map: map.clone(),
             map,
             selection: Selection::default(),
             path,
@@ -118,6 +126,7 @@ impl Document {
     pub fn mark_saved(&mut self) {
         self.absorb_direct_changes();
         self.saved_state = Some(self.state);
+        self.saved_map = self.map.clone();
         self.recovered_from = None;
         self.load_problems.clear();
         // The saved state has to stay reachable by undo, so the next coalesced edit starts its own step.
@@ -126,6 +135,10 @@ impl Document {
 
     pub fn mark_unsaved(&mut self) {
         self.saved_state = None;
+    }
+
+    pub fn saved_map(&self) -> &Map {
+        &self.saved_map
     }
 
     pub fn title(&self) -> String {
@@ -516,6 +529,8 @@ mod tests {
         let b = add(&mut doc, "b");
         assert_eq!(doc.squash_since(mark, |steps| format!("batch of {}", steps.join(" "))), Some("batch of a b".into()));
         assert_eq!(doc.history.undo_labels().collect::<Vec<_>>(), ["batch of a b", "before"]);
+        assert_eq!(doc.history.map_before(1).unwrap().entity_count(), 1);
+        assert!(doc.history.map_before(3).is_none());
         doc.undo();
         assert_eq!(doc.map.entity_count(), 1);
         assert!(!doc.is_modified());
@@ -536,6 +551,7 @@ mod tests {
         assert_eq!(doc.squash_since(mark, |_| "x".into()), None, "undo inside the batch keeps the steps apart");
         let other = Document::new();
         assert_eq!(doc.squash_since(other.mark(), |_| "x".into()), None);
+        assert_eq!(doc.saved_map().entity_count(), 1);
     }
 
     #[test]
