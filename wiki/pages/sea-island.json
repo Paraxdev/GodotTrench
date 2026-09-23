@@ -24,7 +24,7 @@
       "id": "b4",
       "type": "text",
       "format": "markdown",
-      "md": "## Choose the four layers\n\nA terrain can blend four textures, so decide first which four the island needs. This one uses the demo textures in `showcase/`:\n\n| Layer | Material | Used for |\n|---|---|---|\n| 0 | `showcase/grass` | everything that is not something else |\n| 1 | `showcase/cliff` | steep ground and cliff faces |\n| 2 | `showcase/dirt` | the paths |\n| 3 | `showcase/sand` | the shore and the beach |\n\nGrass goes in layer 0 because it is the default ground: a fresh terrain is all layer 0, and erasing paints it back. The order of the others does not matter, but the Create Terrain dialog names its four slots after what *Auto Paint* would put there (base, slope, peak, low), so following that order keeps the dialog honest."
+      "md": "## Choose the four layers\n\nA terrain can blend four textures, so decide first which four the island needs. This one uses the demo textures in `showcase/`:\n\n| Layer | Material | Used for |\n| --- | --- | --- |\n| 0 | `showcase/grass` | everything that is not something else |\n| 1 | `showcase/cliff` | steep ground and cliff faces |\n| 2 | `showcase/dirt` | the paths |\n| 3 | `showcase/sand` | the shore and the beach |\n\nGrass goes in layer 0 because it is the default ground: a fresh terrain is all layer 0, and erasing paints it back. The order of the others does not matter, but the Create Terrain dialog names its four slots after what *Auto Paint* would put there (base, slope, peak, low), so following that order keeps the dialog honest."
     },
     {
       "id": "b5",

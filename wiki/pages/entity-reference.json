@@ -232,7 +232,7 @@
       "type": "text",
       "variant": "entry",
       "format": "markdown",
-      "md": "### game_text\n\nShows a line of text in the world, on the HUD or both. `show` and `hide` toggle the label, not the node. The world label draws on top of everything, so it is visible through walls.\n\nInputs\n: `show`, `hide`, `set_text(text)`, `flash(seconds)`\nOutputs\n: `shown`, `hidden`\nKeys\n: `text`, `place` world, hud or both, `start_visible` 0, `duration` 0, `text_color` 255 255 255, `world_size` 0.01"
+      "md": "### game_text\n\nShows a line of text in the world, on the HUD or both. `show` and `hide` toggle the label, not the node. With `billboard` on, the world label turns to face the camera and draws on top of everything, so it is visible through walls. Turn it off for signs: the label keeps the entity's angles and hides behind walls like any other surface.\n\nInputs\n: `show`, `hide`, `set_text(text)`, `flash(seconds)`\nOutputs\n: `shown`, `hidden`\nKeys\n: `text`, `place` world, hud or both, `start_visible` 0, `duration` 0, `text_color` 255 255 255, `world_size` 0.01, `billboard` 1"
     },
     {
       "id": "b5-prop-physics",
@@ -246,7 +246,7 @@
       "type": "text",
       "variant": "entry",
       "format": "markdown",
-      "md": "### prop_model\n\nA static model with optional collision, for props that should not move.\n\nKeys\n: `model` (.bbmodel, .glb, .gltf or .tscn), `collision` convex (or none, trimesh), `scale` 1.0"
+      "md": "### prop_model\n\nA static model with optional collision, for props that should not move.\n\nKeys\n: `model` (.bbmodel, .glb, .gltf or .tscn), `model_node`, `collision` convex (or none, trimesh), `scale` 1.0\n\nSome model files hold several variants side by side, like a pack of fire hydrants in one glTF. `model_node` names one node of the file, and the prop keeps only that node and its children, moved to the prop's origin with its rotation and scale. The editor preview and the built scene both show just that variant."
     },
     {
       "id": "b5-env-explosion",
@@ -260,7 +260,7 @@
       "type": "text",
       "variant": "entry",
       "format": "markdown",
-      "md": "### light and light_spot\n\nSwitchable omni and spot lights. `switched` only fires when the state actually changes.\n\nInputs\n: `turn_on`, `turn_off`, `toggle`\nOutputs\n: `switched(on)`\nKeys\n: `light_energy` 1.0 (1.5 for spots), `light_color`, `start_on` 1, and `omni_range` 10, or `spot_range` 15 and `spot_angle` 35"
+      "md": "### light and light_spot\n\nSwitchable omni and spot lights. `switched` only fires when the state actually changes.\n\nInputs\n: `turn_on`, `turn_off`, `toggle`\nOutputs\n: `switched(on)`\nKeys\n: `light_energy` 1.0 (1.5 for spots), `light_color`, `start_on` 1, `shadows` 0, `fixture`, `fixture_off` hide, and `omni_range` 10, or `spot_range` 15 and `spot_angle` 35\n\nA lamp usually has geometry that glows with it, a bulb brush or a neon tube. Give that geometry a targetname and put the same name in the light's `fixture` key (a trailing `*` matches a prefix, so `hall_tube_*` covers every tube). The fixture then follows the light without any I/O: shown while the light is on, hidden while it is off, or with `fixture_off` set to dark, kept visible with the glow of its materials switched off. A light that starts off hides its fixture in the editor's lit preview too."
     },
     {
       "id": "b5-env-sound",
@@ -280,7 +280,7 @@
       "id": "b6",
       "type": "text",
       "format": "markdown",
-      "md": "## Not in the library\n\nThe plain FuncGodot classes, `worldspawn`, `func_geo`, `func_detail`, `func_detail_illusionary` and `func_illusionary`, come from the base definition file. Worldspawn holds the map's sun, ambient light, sky, fog and streaming settings, and the Inspector shows it when nothing is selected.\n\n`info_player_start` and `trigger_area` are known to the editor but only defined by the demo project. If you use them in your own project, add definitions for them, or they build as plain nodes with a warning.\n\nThe player is not an entity either. The library expects it to be in the `player` group, on collision layer 1, and to have a `take_damage(amount, source)` method. `godot/demo/player.gd` is a complete example."
+      "md": "## Not in the library\n\nThe plain FuncGodot classes, `worldspawn`, `func_geo`, `func_detail`, `func_detail_illusionary` and `func_illusionary`, come from the base definition file. Worldspawn holds the map's sun, ambient light, sky, fog and streaming settings, and the Inspector shows it when nothing is selected. For night maps, `ambient_energy` and `sky_energy` dim the ambient light and the sky, and `glow_intensity` makes lamps and emissive surfaces bloom, see [[building-in-godot]].\n\n`info_player_start` and `trigger_area` are known to the editor but only defined by the demo project. If you use them in your own project, add definitions for them, or they build as plain nodes with a warning.\n\nThe player is not an entity either. The library expects it to be in the `player` group, on collision layer 1, and to have a `take_damage(amount, source)` method. `godot/demo/player.gd` is a complete example."
     }
   ]
 }

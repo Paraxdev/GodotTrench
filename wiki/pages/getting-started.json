@@ -51,6 +51,12 @@
       "md": "## When you outgrow the defaults\n\nThe defaults live inside the addon folder, so they are replaced whenever you update it. Once you write entities of your own, or want different map settings such as another texture folder, give the project its own three resources. The demo project in `godot/demo` has working copies, so the quickest route is to copy `demo_fgd.tres`, `demo_map_settings.tres` and `demo_game_config.tres` into your project and adjust the paths.\n\n1. **An FGD file** (`FuncGodotFGDFile`). Set *Base Fgd Files* to `res://addons/func_godot/fgd/godottrench_default_fgd.tres`, which brings in both the plain FuncGodot classes and the GodotTrench library. Your own entity definitions go into *Entity Definitions*.\n2. **Map settings** (`FuncGodotMapSettings`). Set *Entity Fgd* to the FGD above and *Base Texture Dir* to your texture folder, `res://textures` by default. Setting *Entity Name Property* to `targetname` names the built nodes after their targetnames, which makes the scene tree much easier to read.\n3. **A game config** (`GodotTrenchGameConfig`). Point *Fgd File* and *Map Settings* at the two resources above. This is what gets exported for the editor.\n\nThen register two of them in *Project Settings*: `func_godot/default_map_settings` gets the map settings and `godottrench/game_config` gets the game config. The demo's `project.godot` has both lines if you want to compare."
     },
     {
+      "id": "c_mudlx09f_uak267",
+      "type": "text",
+      "format": "markdown",
+      "md": "## The demo project\n\nThe repository's `godot` folder is a complete Godot project with the addon installed. Its main scene plays the showcase maps with a first person player: WASD walks, Space jumps, Shift runs, E uses doors and buttons, and the number keys 1 to 4 switch between the mountain house, the church and school, the lighthouse forest and the night district. F3 shows the I/O debug overlay. The maps were built entirely through the editor's MCP tools, from the scripts in `examples/mcp`, and the saved maps sit in `godot/demo/maps/showcase`, so opening one in the editor is a good way to see how a finished map is put together."
+    },
+    {
       "id": "b9",
       "type": "text",
       "format": "markdown",
