@@ -1243,6 +1243,28 @@ fn materials_added_while_running_are_found() {
     assert_eq!(codes(&ed, "missing_material"), Vec::<Value>::new());
 }
 
+/// A game config exported from Godot while the editor runs is used by the next MCP call, without open_project.
+#[test]
+#[ignore]
+fn game_config_changes_are_picked_up() {
+    let dir = artifacts().join("game_config_watch");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+    let export = |classes: &[&str]| {
+        let entities: Vec<Value> = classes.iter().map(|c| json!({ "classname": c, "type": "point" })).collect();
+        std::fs::write(dir.join("godottrench_game.json"), json!({ "format": "godottrench-game", "entities": entities }).to_string()).unwrap();
+    };
+    export(&["game_locker"]);
+    let ed = Editor::launch_with("game_config_watch", &["--project", dir.to_str().unwrap()]);
+    assert!(ed.call_err("get_game_config", json!({ "classname": "clue_spot" })).contains("no definition"));
+
+    export(&["game_locker", "clue_spot"]);
+    assert_eq!(ed.call("get_game_config", json!({ "classname": "clue_spot" }))["classname"], "clue_spot");
+    let reloaded = ed.call("run_action", json!({ "action": "reload_game_config" }));
+    assert_eq!(reloaded["entities"], 2, "{reloaded}");
+}
+
 /// validate_map reports faces of two brushes that overlap on one plane with different textures, which z-fight once
 /// built, and leaves out the same texture lined up.
 #[test]

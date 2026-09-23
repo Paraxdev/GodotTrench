@@ -1,4 +1,6 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use gt_core::{Aabb, DVec3, NodeId};
@@ -346,6 +348,10 @@ pub struct EditorState {
     pub material_reload: bool,
     /// Set when the material library found new files, so the scene loads the materials it lacked.
     pub materials_rescanned: bool,
+    /// The game config file as it was when the project loaded, compared against the disk to reload it.
+    game_file: Option<FileStamp>,
+    game_watch: Option<GameWatch>,
+    repaint: Option<egui::Context>,
     /// Material and alignment picked with the texture tool's eyedropper.
     pub uv_clipboard: Option<crate::texture_ops::UvClipboard>,
     /// Justify selected faces against their combined extent.
@@ -364,6 +370,52 @@ pub struct EditorState {
     /// Live move in progress: the dragged nodes and their offset from the drag start. The scene renders
     /// these from their pre-drag geometry translated on the GPU, skipping the per-frame rebuild.
     pub drag_preview: Option<DragPreview>,
+}
+
+/// A file with its modification time and size.
+type FileStamp = (PathBuf, Option<std::time::SystemTime>, u64);
+
+/// The game config file of a project, None when it has none.
+fn game_file_stamp(root: &Path) -> Option<FileStamp> {
+    let path = GameConfig::discover(root)?;
+    let meta = std::fs::metadata(&path).ok()?;
+    Some((path, meta.modified().ok(), meta.len()))
+}
+
+/// Looks at a project's game config once a second on a thread and wakes the UI once the file differs from the one
+/// loaded, so a config exported from Godot is picked up without a click.
+struct GameWatch {
+    stop: Arc<AtomicBool>,
+    changed: Arc<AtomicBool>,
+}
+
+impl GameWatch {
+    fn start(root: PathBuf, loaded: Option<FileStamp>, repaint: egui::Context) -> Self {
+        let (stop, changed) = (Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)));
+        let (stop_flag, changed_flag) = (stop.clone(), changed.clone());
+        let _ = std::thread::Builder::new().name("game-config-watch".into()).spawn(move || {
+            while !changed_flag.load(Ordering::Relaxed) {
+                for _ in 0..10 {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    if stop_flag.load(Ordering::Relaxed) {
+                        return;
+                    }
+                }
+
+                if game_file_stamp(&root) != loaded {
+                    changed_flag.store(true, Ordering::Relaxed);
+                    repaint.request_repaint();
+                }
+            }
+        });
+        Self { stop, changed }
+    }
+}
+
+impl Drop for GameWatch {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
 }
 
 #[derive(Clone, Default)]
@@ -423,6 +475,9 @@ impl EditorState {
             scene_reset: false,
             material_reload: false,
             materials_rescanned: false,
+            game_file: None,
+            game_watch: None,
+            repaint: None,
             uv_clipboard: None,
             treat_as_one: false,
             uv_panel_open: false,
@@ -837,6 +892,8 @@ impl EditorState {
 
     /// Loads the game config of a Godot project, falling back to built-in definitions.
     pub fn load_project(&mut self, root: &Path) {
+        // Taken before reading, so a file still being written when it was read counts as changed afterwards.
+        self.game_file = game_file_stamp(root);
         let mut game = match GameConfig::discover(root) {
             Some(path) => match GameConfig::load(&path) {
                 Ok(g) => {
@@ -867,10 +924,44 @@ impl EditorState {
         self.materials.rescan(&game);
         self.model_library.rescan(&game);
         self.game = game;
+        self.restart_game_watch();
         let p = root.to_path_buf();
         self.prefs.recent_projects.retain(|r| r != &p);
         self.prefs.recent_projects.insert(0, p);
         self.prefs.recent_projects.truncate(8);
+    }
+
+    /// Watches the project's game config from now on, waking `repaint` when it changes on disk.
+    pub fn watch_game_config(&mut self, repaint: egui::Context) {
+        self.repaint = Some(repaint);
+        self.restart_game_watch();
+    }
+
+    fn restart_game_watch(&mut self) {
+        self.game_watch = match (&self.repaint, &self.game.project_root) {
+            (Some(repaint), Some(root)) => Some(GameWatch::start(root.clone(), self.game_file.clone(), repaint.clone())),
+            _ => None,
+        };
+    }
+
+    /// The watcher saw the game config file appear, change or go away since the project loaded.
+    pub fn game_config_changed(&self) -> bool {
+        self.game_watch.as_ref().is_some_and(|w| w.changed.load(Ordering::Relaxed))
+    }
+
+    /// Reloads the project when its game config file differs from the one loaded. Returns true when it reloaded.
+    pub fn reload_changed_game_config(&mut self) -> bool {
+        let Some(root) = self.game.project_root.clone() else { return false };
+        if game_file_stamp(&root) == self.game_file {
+            if self.game_config_changed() {
+                self.restart_game_watch();
+            }
+
+            return false;
+        }
+
+        self.load_project(&root);
+        true
     }
 
     /// Autosaves every open map with unsaved changes.
@@ -1104,5 +1195,38 @@ mod tests {
         assert_eq!(state.close_other_tabs(true), Ok(2));
         assert!(state.tabs.is_empty());
         assert!(!state.doc.is_modified(), "closing others left the active tab alone");
+    }
+
+    #[test]
+    fn a_changed_game_config_is_reloaded() {
+        let dir = std::env::temp_dir().join(format!("gt_game_reload_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("project.godot"), "").unwrap();
+        let file = dir.join(gt_formats::game::GAME_FILE_NAME);
+        let write = |classes: &[&str]| {
+            let entities: Vec<_> = classes.iter().map(|c| serde_json::json!({ "classname": c, "type": "point" })).collect();
+            std::fs::write(&file, serde_json::json!({ "format": "godottrench-game", "entities": entities }).to_string()).unwrap();
+        };
+        write(&["game_locker"]);
+        let mut state = EditorState::new(Prefs::default());
+        state.load_project(&dir);
+        state.watch_game_config(egui::Context::default());
+        assert!(state.game.entity("game_locker").is_some());
+        assert!(!state.reload_changed_game_config() && !state.game_config_changed());
+
+        write(&["game_locker", "clue_spot"]);
+        let start = Instant::now();
+        while !state.game_config_changed() && start.elapsed().as_secs() < 10 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        assert!(state.game_config_changed(), "the watcher notices the export");
+        assert!(state.reload_changed_game_config() && state.game.entity("clue_spot").is_some());
+        assert!(!state.game_config_changed(), "the reload watches the new file");
+
+        std::fs::remove_file(&file).unwrap();
+        assert!(state.reload_changed_game_config() && state.game.entity("clue_spot").is_none(), "a removed config falls back to the built-in one");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
