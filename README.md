@@ -41,6 +41,8 @@ by creating a pull request you vouch for the changes the AI made, and if it caus
 
 you must pass the whole test suite and preferably write tests for the feature you changed or added.
 
+agents working on the repo should follow [AGENTS.md](AGENTS.md), it lists the checks, style and gotchas.
+
 ## Download
 
 grab the [rolling alpha](https://github.com/Paraxdev/GodotTrench/releases/tag/alpha): the editor for Linux, Windows and macOS,
