@@ -394,6 +394,50 @@ static func invoke(node: Node, input: StringName, parameter: String, activator: 
 		_:
 			push_warning("[GT I/O] %s has no input '%s'" % [node.name, input])
 
+## Makes the fixture of a light (nodes named [param target], a trailing * matches a prefix) follow its state: shown
+## while on and hidden while off, or with [param mode] "dark" always shown with the emission of its materials off
+## while the light is off.
+static func apply_fixture(light: Node, target: String, on: bool, mode: String = "hide") -> void:
+	if target == "" or not light.is_inside_tree():
+		return
+	for n in find_targets(light, target, null):
+		if n == light:
+			continue
+		if mode == "dark":
+			if "visible" in n:
+				n.visible = true
+			_set_emission(n, on)
+		elif "visible" in n:
+			n.visible = on
+
+const FIXTURE_META := &"gt_fixture_overrides"
+
+static func _set_emission(node: Node, on: bool) -> void:
+	var stack: Array[Node] = [node]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		var mi := n as MeshInstance3D
+		if not mi or not mi.mesh:
+			continue
+		var count := mi.mesh.get_surface_count()
+		if not mi.has_meta(FIXTURE_META):
+			var own: Array = []
+			for i in count:
+				own.append(mi.get_surface_override_material(i))
+			mi.set_meta(FIXTURE_META, own)
+		var own: Array = mi.get_meta(FIXTURE_META)
+		for i in count:
+			var original: Material = own[i] if i < own.size() else null
+			if on:
+				mi.set_surface_override_material(i, original)
+				continue
+			var base := original if original else mi.mesh.surface_get_material(i)
+			if base is BaseMaterial3D and (base as BaseMaterial3D).emission_enabled:
+				var dark := base.duplicate() as BaseMaterial3D
+				dark.emission_enabled = false
+				mi.set_surface_override_material(i, dark)
+
 ## Map property helpers for entity scripts, map values arrive as strings.
 static func to_bool(value: Variant) -> bool:
 	if value is bool:

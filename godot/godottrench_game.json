@@ -470,6 +470,28 @@
           "type": "bool",
           "default": "0",
           "description": "Casts shadows, costs more to render"
+        },
+        {
+          "name": "fixture",
+          "type": "target_destination",
+          "default": "",
+          "description": "Targetname of the lamp geometry (* for a prefix) that follows the light: shown while on, hidden or dark while off"
+        },
+        {
+          "name": "fixture_off",
+          "type": "choices",
+          "default": "hide",
+          "description": "What a fixture does while the light is off",
+          "options": [
+            [
+              "hide",
+              "hide"
+            ],
+            [
+              "dark (emission off)",
+              "dark"
+            ]
+          ]
         }
       ],
       "script": "res://addons/func_godot/src/godottrench/entities/gt_light.gd",
@@ -519,6 +541,12 @@
           "type": "resource",
           "default": "",
           "description": "res:// path of the model"
+        },
+        {
+          "name": "model_node",
+          "type": "string",
+          "default": "",
+          "description": "Name of one node in the model to use, placed at the origin, for files that hold several variants side by side"
         },
         {
           "name": "collision",
@@ -2898,6 +2926,28 @@
           "type": "bool",
           "default": "0",
           "description": "Casts shadows, costs more to render"
+        },
+        {
+          "name": "fixture",
+          "type": "target_destination",
+          "default": "",
+          "description": "Targetname of the lamp geometry (* for a prefix) that follows the light: shown while on, hidden or dark while off"
+        },
+        {
+          "name": "fixture_off",
+          "type": "choices",
+          "default": "hide",
+          "description": "What a fixture does while the light is off",
+          "options": [
+            [
+              "hide",
+              "hide"
+            ],
+            [
+              "dark (emission off)",
+              "dark"
+            ]
+          ]
         }
       ],
       "script": "res://addons/func_godot/src/godottrench/entities/gt_spot_light.gd",

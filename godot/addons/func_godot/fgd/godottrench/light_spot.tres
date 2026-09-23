@@ -15,7 +15,12 @@ class_properties = Dictionary[String, Variant]({
 "spot_range": 15.0,
 "spot_angle": 35.0,
 "start_on": true,
-"shadows": false
+"shadows": false,
+"fixture": "",
+"fixture_off": {
+"hide": "hide",
+"dark (emission off)": "dark"
+}
 })
 class_property_descriptions = Dictionary[String, Variant]({
 "targetname": "Name",
@@ -24,11 +29,14 @@ class_property_descriptions = Dictionary[String, Variant]({
 "spot_range": "Range in meters",
 "spot_angle": "Cone half angle in degrees",
 "start_on": "Starts switched on",
-"shadows": "Casts shadows, costs more to render"
+"shadows": "Casts shadows, costs more to render",
+"fixture": "Targetname of the lamp geometry (* for a prefix) that follows the light: shown while on, hidden or dark while off",
+"fixture_off": ["What a fixture does while the light is off", "hide"]
 })
 meta_properties = Dictionary[String, Variant]({
 "color": Color(1, 0.9019608, 0.3019608, 1),
 "size": AABB(-8, -8, -8, 8, 8, 8),
+"property_types": {"fixture": "target_destination"},
 "inputs": ["turn_on", "turn_off", "toggle"],
 "outputs": ["switched"]
 })

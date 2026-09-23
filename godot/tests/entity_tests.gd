@@ -26,6 +26,8 @@ func run(runner: SceneTree) -> void:
 	test_hot_reload_uid()
 	test_csharp_initializers()
 	test_definitions()
+	await test_light_fixture()
+	await test_prop_model_node()
 
 func _map() -> Node3D:
 	var map := Node3D.new()
@@ -492,3 +494,81 @@ func test_definitions() -> void:
 	lamp.turn_off()
 	check(switched == [false], "the demo lamp only reports actual changes, got %s" % [switched])
 	lamp.free()
+
+func _lamp_geometry(parent: Node, targetname: String) -> Node3D:
+	var lamp := Node3D.new()
+	lamp.set_meta(GodotTrenchIO.TARGETNAME_META, targetname)
+	var mi := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	var glow := StandardMaterial3D.new()
+	glow.emission_enabled = true
+	glow.emission = Color(1, 0.8, 0.5)
+	mesh.material = glow
+	mi.mesh = mesh
+	lamp.add_child(mi)
+	parent.add_child(lamp)
+	return lamp
+
+func _glows(lamp: Node3D) -> bool:
+	var mi := lamp.get_child(0) as MeshInstance3D
+	return (mi.get_active_material(0) as BaseMaterial3D).emission_enabled
+
+func test_light_fixture() -> void:
+	print("- light fixtures follow the light")
+	var map := _map()
+	var bulb := _lamp_geometry(map, "bulb")
+	var tube := _lamp_geometry(map, "tube_1")
+	var light := GTLight.new()
+	light._func_godot_apply_properties({ "start_on": false, "fixture": "bulb" })
+	map.add_child(light)
+	var spot := GTSpotLight.new()
+	spot._func_godot_apply_properties({ "start_on": false, "fixture": "tube_*", "fixture_off": "dark" })
+	map.add_child(spot)
+	GodotTrenchIO.invalidate(light)
+	await t.process_frame
+	check(not bulb.visible, "a light that starts off hides its fixture")
+	check(tube.visible and not _glows(tube), "a dark fixture stays visible with its emission off")
+	GodotTrenchIO.invoke(light, &"turn_on", "", null)
+	GodotTrenchIO.invoke(spot, &"turn_on", "", null)
+	check(bulb.visible, "turning the light on shows the fixture")
+	check(tube.visible and _glows(tube), "turning the spot on lights the fixture again")
+	GodotTrenchIO.invoke(light, &"toggle", "", null)
+	GodotTrenchIO.invoke(spot, &"toggle", "", null)
+	check(not bulb.visible and not _glows(tube), "switching off follows too, bulb %s" % bulb.visible)
+	map.queue_free()
+	await t.process_frame
+
+func test_prop_model_node() -> void:
+	print("- prop_model picks one node of a model")
+	var variants := Node3D.new()
+	variants.name = "Variants"
+	for i in 2:
+		var v := MeshInstance3D.new()
+		v.name = "hydrant_%d" % i
+		v.mesh = BoxMesh.new()
+		v.position = Vector3(10.0 + 90.0 * i, 0, 0)
+		v.scale = Vector3.ONE * (1.0 + i)
+		var cap := MeshInstance3D.new()
+		cap.name = "cap"
+		cap.mesh = BoxMesh.new()
+		cap.position = Vector3(0, 1, 0)
+		v.add_child(cap)
+		variants.add_child(v)
+		v.owner = variants
+		cap.owner = variants
+	var packed := PackedScene.new()
+	packed.pack(variants)
+	variants.free()
+	ResourceSaver.save(packed, "user://gt_entity_test_variants.tscn")
+	var map := _map()
+	var prop := GodotTrenchProp.new()
+	map.add_child(prop)
+	prop._func_godot_apply_properties({ "model": "user://gt_entity_test_variants.tscn", "model_node": "hydrant_1", "collision": "none" })
+	var picked := prop.get_child(0) as Node3D
+	check(prop.get_child_count() == 1 and picked.name == &"hydrant_1", "only the named node is kept, got %s" % [prop.get_children()])
+	check(picked.position == Vector3.ZERO and picked.scale.is_equal_approx(Vector3.ONE * 2.0), "it sits at the prop origin and keeps its scale, %s" % picked.transform)
+	check(picked.get_child_count() == 1, "its children come with it")
+	prop._func_godot_apply_properties({ "model_node": "" })
+	check(prop.get_child_count() == 1 and prop.get_child(0).get_child_count() == 2, "without model_node the whole model is back")
+	map.queue_free()
+	await t.process_frame

@@ -19,6 +19,7 @@ static func run(t) -> void:
 	_test_tool_and_transparent_containers_do_not_bury(t)
 	_test_terrain_splat_shader_defaults_to_first_layer(t)
 	_test_terrain_missing_layer_slots_use_first_layer(t)
+	_test_terrain_emissive_layers_glow(t)
 	_test_terrain_height_at_follows_triangles(t)
 	_test_brush_bad_index_is_skipped(t)
 	await t.process_frame
@@ -249,6 +250,33 @@ static func _test_terrain_missing_layer_slots_use_first_layer(t) -> void:
 		var tiles: Vector4 = mat.get_shader_parameter("tiles")
 		t.check(is_equal_approx(tiles.z, tiles.x) and is_equal_approx(tiles.w, tiles.x), "and repeat at its tile size, got %s" % tiles)
 		terrain.free()
+
+## An emissive material painted as a terrain layer glows like it does on a brush, weighted by the layer, the
+## same (color + texture) * energy the editor preview's terrain.wgsl adds.
+static func _test_terrain_emissive_layers_glow(t) -> void:
+	print("- terrain layers keep their material's emission")
+	var heights := PackedFloat32Array()
+	heights.resize(4)
+	var data := {
+		"resolution": [2, 2], "cell_size": 1.0,
+		"heights": Marshalls.raw_to_base64(heights.to_byte_array()),
+		"layers": [{ "material": "showcase/grass", "tile": 100.0 }, { "material": "night/neon_red", "tile": 50.0 }],
+	}
+	var terrain := GodotTrenchTerrain.create(data, Vector3.ZERO, load(SETTINGS))
+	t.check(terrain != null, "terrain built")
+	if not terrain:
+		return
+	var mat: ShaderMaterial = (terrain.get_child(0) as MeshInstance3D).mesh.surface_get_material(0)
+	var neon: StandardMaterial3D = load("res://demo/textures/night/neon_red.tres")
+	var energy: Vector4 = mat.get_shader_parameter("glow_energy")
+	var textured: Vector4 = mat.get_shader_parameter("glow_textured")
+	t.check(is_equal_approx(energy.y, neon.emission_energy_multiplier) and textured.y == 1.0, "the neon layer glows with its energy and texture, got %s %s" % [energy, textured])
+	t.check(mat.get_shader_parameter("glow_texture1") == neon.emission_texture, "the layer's emission texture is bound")
+	t.check(energy.x == 0.0 and textured.x == 0.0, "the grass layer stays dark")
+	t.check(energy.z == 0.0 and energy.w == 0.0, "slots without a layer of their own show the first, dark layer")
+	var code: String = GodotTrenchTerrain.SHADER.code
+	t.check(code.contains("EMISSION = g0 * w.r + g1 * w.g + g2 * w.b + g3 * w.a"), "the shader weights each layer's glow by its splat weight")
+	terrain.free()
 
 ## Finding 9: height_at must follow the same triangles (and alternating diagonal) as the rendered surface,
 ## not a bilinear blend of the four corners.

@@ -16,6 +16,21 @@ uniform vec4 sharpens = vec4(0.5);
 // Terrain origin in map space, so textures line up with the editor.
 uniform vec3 map_offset = vec3(0.0);
 uniform float roughness_value : hint_range(0.0, 1.0) = 0.9;
+// Emission of each layer's material, like BaseMaterial3D: (color + texture) or (color * texture), times energy,
+// weighted by the layer. The same as the editor preview.
+uniform vec4 glow_color0 : source_color = vec4(0.0, 0.0, 0.0, 1.0);
+uniform vec4 glow_color1 : source_color = vec4(0.0, 0.0, 0.0, 1.0);
+uniform vec4 glow_color2 : source_color = vec4(0.0, 0.0, 0.0, 1.0);
+uniform vec4 glow_color3 : source_color = vec4(0.0, 0.0, 0.0, 1.0);
+uniform sampler2D glow_texture0 : source_color, hint_default_black, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D glow_texture1 : source_color, hint_default_black, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D glow_texture2 : source_color, hint_default_black, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D glow_texture3 : source_color, hint_default_black, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform vec4 glow_energy = vec4(0.0);
+// Per layer 1 when its emission texture is set, so layers without one skip the samples.
+uniform vec4 glow_textured = vec4(0.0);
+// Per layer 1 for BaseMaterial3D's multiply emission operator.
+uniform vec4 glow_multiply = vec4(0.0);
 
 varying vec3 map_position;
 varying vec3 map_normal;
@@ -78,6 +93,14 @@ vec3 layer(sampler2D t, float tile, float detile, float sharpen, vec3 blend) {
 	return top * blend.y + side_x * blend.x + side_z * blend.z;
 }
 
+vec3 layer_glow(sampler2D t, vec3 color, float energy, float textured, float multiply, float tile, float detile, float sharpen, vec3 blend) {
+	vec3 tex = vec3(0.0);
+	if (textured > 0.5) {
+		tex = layer(t, tile, detile, sharpen, blend);
+	}
+	return (multiply > 0.5 ? color * tex : color + tex) * energy;
+}
+
 void fragment() {
 	vec3 blend = pow(abs(normalize(map_normal)), vec3(6.0));
 	blend /= max(blend.x + blend.y + blend.z, 0.0001);
@@ -90,5 +113,10 @@ void fragment() {
 	// An all zero splat means the first layer, matching Terrain::weights.
 	w = sum > 0.0001 ? w / sum : vec4(1.0, 0.0, 0.0, 0.0);
 	ALBEDO = c0 * w.r + c1 * w.g + c2 * w.b + c3 * w.a;
+	vec3 g0 = layer_glow(glow_texture0, glow_color0.rgb, glow_energy.x, glow_textured.x, glow_multiply.x, tiles.x, detiles.x, sharpens.x, blend);
+	vec3 g1 = layer_glow(glow_texture1, glow_color1.rgb, glow_energy.y, glow_textured.y, glow_multiply.y, tiles.y, detiles.y, sharpens.y, blend);
+	vec3 g2 = layer_glow(glow_texture2, glow_color2.rgb, glow_energy.z, glow_textured.z, glow_multiply.z, tiles.z, detiles.z, sharpens.z, blend);
+	vec3 g3 = layer_glow(glow_texture3, glow_color3.rgb, glow_energy.w, glow_textured.w, glow_multiply.w, tiles.w, detiles.w, sharpens.w, blend);
+	EMISSION = g0 * w.r + g1 * w.g + g2 * w.b + g3 * w.a;
 	ROUGHNESS = roughness_value;
 }

@@ -10,6 +10,7 @@ description = "Model prop (.bbmodel, .glb, .gltf, .tscn) with optional collision
 script_class = ExtResource("2_script")
 class_properties = Dictionary[String, Variant]({
 "model": "",
+"model_node": "",
 "collision": {
 "none": "none",
 "convex": "convex",
@@ -19,6 +20,7 @@ class_properties = Dictionary[String, Variant]({
 })
 class_property_descriptions = Dictionary[String, Variant]({
 "model": "res:// path of the model",
+"model_node": "Name of one node in the model to use, placed at the origin, for files that hold several variants side by side",
 "collision": ["Collision shape", "convex"],
 "scale": "Uniform scale"
 })
