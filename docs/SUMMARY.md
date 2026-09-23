@@ -24,6 +24,7 @@
 ## Godot
 
 * [Building maps](godot/building.md)
+* [Shader warm-up](godot/warm-up.md)
 * [Streaming big maps](godot/streaming.md)
 * [Live mode and hot reload](godot/live.md)
 * [Running Godot from the editor](godot/running-godot.md)

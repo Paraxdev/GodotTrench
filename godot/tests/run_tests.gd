@@ -58,6 +58,8 @@ func _initialize() -> void:
 	await test_terrain()
 	await test_meshes_terrain_props()
 	await test_decal_mesh()
+	await test_warm_up()
+	await test_missing_map_settings()
 	test_bbmodel()
 	test_default_fgd()
 	await test_game_config()
@@ -304,6 +306,91 @@ func test_decal_mesh() -> void:
 	var meshes := collect(map, func(n): return n is MeshInstance3D)
 	var mat: Material = meshes[0].mesh.surface_get_material(0) if meshes.size() == 1 else null
 	check(mat is BaseMaterial3D and mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR and mat.cull_mode == BaseMaterial3D.CULL_DISABLED, "decal surface uses a cut out, double sided material, got %s" % mat)
+	map.queue_free()
+	await process_frame
+
+func test_warm_up() -> void:
+	print("- shader warm-up draws each material once, off screen")
+	var map := build_map()
+	var signalled := [false]
+	map.warmed_up.connect(func(): signalled[0] = true)
+	map.build()
+	await process_frame
+	await process_frame
+	check(signalled[0], "a headless build still emits warmed_up")
+
+	var materials := {}
+	for mi: MeshInstance3D in collect(map, func(n): return n is MeshInstance3D):
+		for i in mi.mesh.get_surface_count():
+			materials[mi.get_active_material(i)] = true
+	var twin := collect(map, func(n): return n is MeshInstance3D)[0].duplicate(0) as MeshInstance3D
+	map.add_child(twin)
+	for i in 2:
+		var box := MeshInstance3D.new()
+		box.mesh = BoxMesh.new()
+		map.add_child(box)
+		materials[i] = true
+	var swatches := GodotTrenchWarmUp.collect([map])
+	check(not swatches.is_empty() and swatches.size() < materials.size(), "one copy per distinct material and format, %d copies for %d materials" % [swatches.size(), materials.size()])
+	check(swatches.filter(func(s): return s is MeshInstance3D and s.mesh is BoxMesh).size() == 1, "primitive meshes are copied once too")
+	check(swatches.all(func(s): return s is GeometryInstance3D and s.layers == GodotTrenchWarmUp.LAYER and not s.get_script()), "copies only draw on the warm-up layer and carry no scripts")
+	for s in swatches:
+		s.free()
+
+	# A spawner's template scene is read without instancing it, so its scripts never run.
+	var marker := GDScript.new()
+	marker.source_code = "extends Node3D\nvar template: PackedScene\nfunc _init():\n\tEngine.set_meta(&\"gt_warm_ran\", true)\n"
+	marker.reload()
+	var enemy := Node3D.new()
+	var body := MeshInstance3D.new()
+	body.mesh = SphereMesh.new()
+	body.skin = Skin.new()
+	body.skin.set_bind_count(3)
+	for b in 3:
+		body.skin.set_bind_bone(b, b)
+	enemy.add_child(body)
+	body.owner = enemy
+	enemy.set_script(marker)
+	var template := PackedScene.new()
+	template.pack(enemy)
+	enemy.free()
+	var spawner: Node3D = marker.new()
+	spawner.template = template
+	map.add_child(spawner)
+	Engine.remove_meta(&"gt_warm_ran")
+	var found := GodotTrenchWarmUp.collect([spawner])
+	var skinned := found.filter(func(s): return s is Skeleton3D)
+	check(skinned.size() == 1 and skinned[0].get_bone_count() == 3 and (skinned[0].get_child(0) as MeshInstance3D).mesh is SphereMesh, "a referenced scene's skinned mesh is warmed with a skeleton of its own")
+	check(not Engine.has_meta(&"gt_warm_ran"), "no script of a warmed scene runs")
+	for s in found:
+		s.free()
+
+	var omni := OmniLight3D.new()
+	omni.shadow_enabled = true
+	map.add_child(omni)
+	var w := GodotTrenchWarmUp.warm_shaders([map, BoxMesh.new()], 2)
+	var steps: Array = []
+	w.progress.connect(func(done, total): steps.append([done, total]))
+	await w.finished
+	check(w.total > 2 and steps.size() == ceili(w.total / 2.0) and steps.back() == [w.total, w.total], "warm-up reports progress per chunk, got %s" % [steps])
+	check(w.frames >= GodotTrenchWarmUp.MIN_FRAMES * steps.size(), "each chunk draws for at least %d frames, got %d" % [GodotTrenchWarmUp.MIN_FRAMES, w.frames])
+	var lights := w.find_children("*", "OmniLight3D", true, false)
+	check(lights.size() == 1 and lights[0].shadow_enabled and lights[0].light_cull_mask == GodotTrenchWarmUp.LAYER, "the warm-up lights its copies with a shadowed omni like the scene's")
+	check(w.find_children("*", "SpotLight3D", true, false).size() == 1, "and a shadowed spot, for torches the game adds later")
+	await process_frame
+	check(not is_instance_valid(w), "the warm-up frees itself")
+	map.queue_free()
+	await process_frame
+
+func test_missing_map_settings() -> void:
+	print("- a map without settings builds with the project's default ones")
+	var map := FuncGodotMap.new()
+	map.map_settings = null
+	map.local_map_file = MAP
+	root.add_child(map)
+	map.build()
+	check(map.map_settings == load(ProjectSettings.get_setting("func_godot/default_map_settings")), "the default map settings are used")
+	check(not collect(map, func(n): return n is MeshInstance3D).is_empty(), "and the map builds")
 	map.queue_free()
 	await process_frame
 
