@@ -2491,6 +2491,8 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
         let missing: Vec<String> = crate::texture_convert::missing_materials(state).into_keys().collect();
         state.find_new_materials(missing.iter().map(String::as_str));
         ps.issues = collect_issues(state);
+        ps.issues.extend(crate::zfight::coplanar_issues(state));
+        ps.issues.sort_by_key(|i| std::cmp::Reverse(i.severity));
         ps.issues_revision = state.doc.revision;
         ps.issues_overlays = state.overlay_ghosts.generation;
         ps.issues_materials = state.materials.generation;

@@ -564,7 +564,8 @@ impl App {
                     &overlay_names,
                 );
                 let missing = crate::texture_convert::missing_material_issues(&self.state);
-                let mut list: Vec<Value> = found.into_iter().chain(missing).map(|i| serde_json::to_value(i).unwrap_or_default()).collect();
+                let coplanar = crate::zfight::coplanar_issues(&mut self.state);
+                let mut list: Vec<Value> = found.into_iter().chain(missing).chain(coplanar).map(|i| serde_json::to_value(i).unwrap_or_default()).collect();
                 for (id, e) in self.state.doc.map.entities() {
                     if self.state.game.entity(&e.classname).is_none() {
                         list.push(json!({ "node": id.0, "severity": "warning", "code": "unknown_class", "message": format!("No entity definition for '{}'", e.classname) }));
