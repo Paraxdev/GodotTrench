@@ -2,8 +2,33 @@ use gt_core::DVec3;
 
 use crate::brush::{Brush, BrushError, FaceData};
 
+/// Where the faces a subtraction carves into a brush take their material and alignment from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CarveMaterial {
+    /// The cutter's face that made the cut.
+    #[default]
+    Cutter,
+    /// The target's face that points the most like the new one, as clipping does.
+    Target,
+}
+
+impl CarveMaterial {
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "cutter" => Some(Self::Cutter),
+            "target" => Some(Self::Target),
+            _ => None,
+        }
+    }
+}
+
 /// `minuend - subtrahend`, as a set of convex pieces. New faces take the subtrahend's surface data.
 pub fn subtract(minuend: &Brush, subtrahend: &Brush) -> Vec<Brush> {
+    subtract_with(minuend, subtrahend, CarveMaterial::Cutter)
+}
+
+/// [`subtract`] with a choice of surface data for the carved faces.
+pub fn subtract_with(minuend: &Brush, subtrahend: &Brush, carve: CarveMaterial) -> Vec<Brush> {
     if !minuend.intersects(subtrahend) {
         return vec![minuend.clone()];
     }
@@ -16,8 +41,14 @@ pub fn subtract(minuend: &Brush, subtrahend: &Brush) -> Vec<Brush> {
         let cut = |f: &crate::brush::Face| minuend.split(&f.plane, &f.data).0.map(|p| p.volume()).unwrap_or(0.0);
         cut(b).total_cmp(&cut(a))
     });
+    let template = minuend.planes();
     for face in faces {
-        let (front, back) = remaining.split(&face.plane, &face.data);
+        let data = match carve {
+            CarveMaterial::Cutter => &face.data,
+            // The visible carved face of a piece faces into the cutter.
+            CarveMaterial::Target => crate::brush::best_face_data(&face.plane.flipped(), &template).unwrap_or(&face.data),
+        };
+        let (front, back) = remaining.split(&face.plane, data);
         if let Some(f) = front {
             out.push(f);
         }
@@ -115,6 +146,20 @@ mod tests {
         for p in &pieces {
             p.validate().unwrap();
         }
+    }
+
+    #[test]
+    fn carved_faces_can_keep_the_target_material() {
+        let wall = Brush::from_aabb(&Aabb::new(DVec3::new(-64.0, 0.0, -8.0), DVec3::new(64.0, 128.0, 8.0)), "brick").unwrap();
+        let window = Brush::from_aabb(&Aabb::new(DVec3::new(-16.0, 32.0, -16.0), DVec3::new(16.0, 96.0, 16.0)), "cutter").unwrap();
+        let materials = |pieces: &[Brush]| pieces.iter().flat_map(|p| p.faces.iter().map(|f| f.data.material.clone())).collect::<Vec<_>>();
+        let cutter = subtract(&wall, &window);
+        assert!(materials(&cutter).iter().any(|m| m == "cutter"), "by default the reveal takes the cutter's material");
+        let target = subtract_with(&wall, &window, CarveMaterial::Target);
+        assert!(materials(&target).iter().all(|m| m == "brick"), "{:?}", materials(&target));
+        assert_eq!(target.len(), cutter.len());
+        assert_eq!(CarveMaterial::from_name("target"), Some(CarveMaterial::Target));
+        assert_eq!(CarveMaterial::from_name("nope"), None);
     }
 
     #[test]

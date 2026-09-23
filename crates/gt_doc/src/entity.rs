@@ -95,9 +95,54 @@ pub fn transform_rotation(m: &DMat4, rot: DQuat) -> DQuat {
     DQuat::from_mat3(&DMat3::from_cols(side, back.cross(side), back)).normalize()
 }
 
+/// Whether a light's `fixture` value names `targetname`: exactly, or by prefix with a trailing `*`.
+pub fn fixture_matches(fixture: &str, targetname: &str) -> bool {
+    match fixture.strip_suffix('*') {
+        Some(prefix) => targetname.starts_with(prefix),
+        None => fixture == targetname,
+    }
+}
+
+/// Entities that are the hidden fixtures of lights starting off (`start_on 0` with `fixture_off` other than dark), the
+/// way the Godot addon shows them when the map starts.
+pub fn hidden_fixtures(map: &crate::map::Map) -> std::collections::BTreeSet<gt_core::NodeId> {
+    let fixtures: Vec<&str> = map
+        .entities()
+        .filter(|(_, e)| e.property("start_on") == Some("0") && e.property("fixture_off") != Some("dark"))
+        .filter_map(|(_, e)| e.property("fixture").map(str::trim).filter(|f| !f.is_empty() && *f != "*"))
+        .collect();
+    if fixtures.is_empty() {
+        return Default::default();
+    }
+
+    map.entities().filter(|(_, e)| e.targetname().is_some_and(|t| fixtures.iter().any(|f| fixture_matches(f, t)))).map(|(id, _)| id).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fixtures_of_lights_that_start_off_are_hidden() {
+        let mut map = crate::map::Map::new();
+        let layer = map.default_layer();
+        let mut add = |class: &str, props: &[(&str, &str)]| {
+            let mut e = Entity::new(class);
+            e.properties.extend(props.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+            map.insert(layer, crate::map::NodeKind::Entity(e))
+        };
+        add("light", &[("start_on", "0"), ("fixture", "hall_tube_*")]);
+        add("light", &[("fixture", "street_bulb")]);
+        add("light_spot", &[("start_on", "0"), ("fixture", "sign"), ("fixture_off", "dark")]);
+        let tube = add("func_illusionary", &[("targetname", "hall_tube_1")]);
+        let street = add("func_illusionary", &[("targetname", "street_bulb")]);
+        let sign = add("func_illusionary", &[("targetname", "sign")]);
+        let hidden = hidden_fixtures(&map);
+        assert!(hidden.contains(&tube), "a prefix fixture of a light that starts off");
+        assert!(!hidden.contains(&street), "lights that start on show their fixture");
+        assert!(!hidden.contains(&sign), "dark fixtures stay visible");
+        assert!(fixture_matches("bulb", "bulb") && !fixture_matches("bulb", "bulb_2") && fixture_matches("bulb*", "bulb_2"));
+    }
 
     fn flipped(yaw: f64, axis: usize) -> DVec3 {
         let mut e = Entity::new("light");

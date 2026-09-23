@@ -4,7 +4,9 @@
 
 * 3D: hold right mouse to look, WASD to fly (Q/E down/up while looking), middle mouse pans, wheel dollies, Alt+left drag orbits.
 * 2D: right or middle mouse pans, wheel zooms.
-* Drag the point where the view separators cross to resize all four views at once.
+* Drag the point where the view separators cross to resize all four views at once. `Shift+Space` maximizes the view under
+  the pointer, pressing it again restores the others. The × on a view tab closes it, *View > Views* reopens it and switches
+  between one, two and four views. The layout is saved with the rest of the dock, a maximized view comes back restored.
 * Click selects the object under the cursor, also inside groups, double click selects the whole group. Linked groups are always
   selected as a whole. The outliner expands to and scrolls to whatever you pick in a view.
 * The 3D view skips faces pressed fully against another solid, and where two faces overlap on the same plane only one draws the
@@ -48,7 +50,10 @@
   scripts. *Bake to entities* in the panel turns a set into `prop_model` entities.
 * **Blend** (`Shift+G`): paints terrain splat layers, displacement alpha and a second material on brush and mesh faces
   (Terrain > Blend, *Set Blend Material*). Modes: paint, erase, smooth, sharpen, noise, slope and height masks, with smooth, linear,
-  constant and spray falloffs. Godot uses the same blend through `gt_blend.gdshader`.
+  constant and spray falloffs. Godot uses the same blend through `gt_blend.gdshader`. Paint only goes into layers a terrain
+  has: a layer number past the last one paints the last layer, in the Blend tool (which says so in the status bar), the
+  Sculpt tool's PaintLayer mode and Auto Paint alike. *Auto Paint Layers* measures its height bands from the lowest point,
+  or from a sea level set with *Bands from sea level* (Terrain > Blend menu, Inspector, Create Terrain dialog).
 * **Volume** (`Shift+E`): drag out a `trigger_once`, `trigger_multiple`, `trigger_call`, spawn area, hurt, teleport, push or plain area volume in one step.
 * **Gameplay wizards** (Gameplay menu and the selection panel): turn brushes into a door that swings on its left or right hinge or
   slides in any direction (optionally with a walk-up trigger), a lift, a button that fires a target, a trigger or spawn area around the

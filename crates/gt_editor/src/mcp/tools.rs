@@ -92,6 +92,48 @@ fn ok(v: Value) -> ToolResult {
     ToolResult::Json(v)
 }
 
+/// Inputs validate_map accepts per entity class: the declared ones, plus every method and property of the Godot class
+/// the entity is built as and the functions of its script, since the runtime calls any of them. A class whose Godot
+/// class the table does not know keeps only its declared inputs, and one without declared inputs whose script cannot
+/// be read (no project open) stays unchecked, an empty list.
+pub(super) fn class_inputs(game: &gt_formats::GameConfig) -> std::collections::BTreeMap<String, Vec<String>> {
+    game.entities
+        .iter()
+        .map(|d| {
+            let mut list: Vec<String> = d.inputs.iter().map(|i| i.name.clone()).collect();
+            let script = match d.script.as_str() {
+                "" => Some(Vec::new()),
+                path => game.resolve_res(path).and_then(|p| std::fs::read_to_string(p).ok()).map(|src| gt_formats::godot_api::script_functions(&src)),
+            };
+            if script.is_none() && list.is_empty() {
+                return (d.classname.clone(), list);
+            }
+
+            if let Some(members) = gt_formats::godot_api::class_members(&d.node_class) {
+                list.extend(members.into_iter().map(str::to_string));
+                list.extend(script.unwrap_or_default());
+            }
+
+            (d.classname.clone(), list)
+        })
+        .collect()
+}
+
+/// A filesystem path as MCP returns it, always with forward slashes whatever the platform.
+pub(super) fn path_text(p: impl AsRef<std::path::Path>) -> String {
+    p.as_ref().to_string_lossy().replace('\\', "/")
+}
+
+/// [`path_text`] of an optional path, null when there is none.
+pub(super) fn path_value<P: AsRef<std::path::Path>>(p: Option<P>) -> Value {
+    p.map_or(Value::Null, |p| Value::String(path_text(p)))
+}
+
+/// `{"old id": [new ids], ...}`, the form run_script reads to follow replaced brushes.
+pub(super) fn replaced_json(replaced: &gt_doc::ops::Replaced) -> Value {
+    Value::Object(replaced.iter().map(|(old, new)| (old.0.to_string(), json!(new.iter().map(|n| n.0).collect::<Vec<_>>()))).collect())
+}
+
 /// A non-negative integer. Numeric strings count too, since `"${x.id}"` in scripts produces text.
 pub(super) fn uint(v: &Value) -> Option<u64> {
     match v {
@@ -120,10 +162,25 @@ pub(super) fn optional_id(args: &Value, key: &str) -> Result<Option<NodeId>, Str
     }
 }
 
+/// Nested arrays are flattened, so a script can pass `["$a.ids", "$b.ids"]`.
 pub(super) fn uint_list(args: &Value, key: &str) -> Result<Vec<u64>, String> {
+    fn collect(v: &Value, key: &str, out: &mut Vec<u64>) -> Result<(), String> {
+        match v {
+            Value::Array(a) => a.iter().try_for_each(|x| collect(x, key, out)),
+            _ => {
+                out.push(uint(v).ok_or_else(|| format!("{key} must hold non-negative integers, got {v}"))?);
+                Ok(())
+            }
+        }
+    }
+
     match &args[key] {
         Value::Null => Ok(Vec::new()),
-        Value::Array(a) => a.iter().map(|v| uint(v).ok_or_else(|| format!("{key} must hold non-negative integers, got {v}"))).collect(),
+        v @ Value::Array(_) => {
+            let mut out = Vec::new();
+            collect(v, key, &mut out)?;
+            Ok(out)
+        }
         other => Err(format!("{key} must be an array, got {other}")),
     }
 }
@@ -414,7 +471,7 @@ impl App {
                         self.state.load_project(&root);
                         self.project_generation += 1;
                         ok(
-                            json!({ "project_root": root, "game": self.state.game.name, "entities": self.state.game.entities.len(), "materials": self.state.materials.entries.len(), "status": self.state.status }),
+                            json!({ "project_root": path_text(&root), "game": self.state.game.name, "entities": self.state.game.entities.len(), "materials": self.state.materials.entries.len(), "status": self.state.status }),
                         )
                     }
                     None => err("no project.godot found"),
@@ -451,9 +508,16 @@ impl App {
                 let target = args["target"].as_str().unwrap_or("window");
                 let Some(kind) = view_kind(target) else { return err("unknown target, or window screenshots, which cannot run inside scripts") };
                 let Some(vp) = self.viewports.iter().find(|v| v.kind() == kind) else { return err("view not open") };
-                if let (Some(w), Some(h)) = (args["width"].as_u64(), args["height"].as_u64()) {
-                    let size = [w.clamp(16, 4096) as u32, h.clamp(16, 4096) as u32];
-                    return match vp.render_offscreen(&mut self.renderer, &self.scene, &self.state, size) {
+                let sized = args["width"].as_u64().zip(args["height"].as_u64());
+                // Offscreen captures are beauty shots unless asked otherwise, a docked capture keeps what the pane shows.
+                let overlays = args["overlays"].as_bool().unwrap_or(sized.is_none());
+                let size = match sized {
+                    Some((w, h)) => Some([w.clamp(16, 4096) as u32, h.clamp(16, 4096) as u32]),
+                    None if !overlays => vp.target().map(|t| t.size),
+                    None => None,
+                };
+                if let Some(size) = size {
+                    return match vp.render_offscreen(&mut self.renderer, &self.scene, &self.state, size, overlays) {
                         Some(img) => ToolResult::Image { png: png(&img), note: format!("{} view {}x{}", kind.label(), img.width(), img.height()) },
                         None => err("readback failed"),
                     };
@@ -468,10 +532,11 @@ impl App {
             "simulate_input" => err("simulate_input cannot run inside scripts"),
             "validate_map" => {
                 let game = &self.state.game;
+                let inputs = class_inputs(game);
                 let found = issues::check_with(&self.state.doc.map, |class| {
                     game.entity(class).map(|d| issues::ClassIo {
                         outputs: d.outputs.iter().map(|o| o.name.as_str()).collect(),
-                        inputs: d.inputs.iter().map(|i| i.name.as_str()).collect(),
+                        inputs: inputs.get(class).map(|list| list.iter().map(String::as_str).collect()).unwrap_or_default(),
                     })
                 });
                 let mut list: Vec<Value> = found.into_iter().map(|i| serde_json::to_value(i).unwrap_or_default()).collect();
@@ -490,7 +555,7 @@ impl App {
                 },
                 None => ok(json!({
                     "name": self.state.game.name,
-                    "project_root": self.state.game.project_root,
+                    "project_root": path_value(self.state.game.project_root.as_ref()),
                     "units_per_meter": self.state.game.units_per_meter,
                     "textures": serde_json::to_value(&self.state.game.textures).unwrap_or_default(),
                     "point_entities": self.state.game.point_entities().map(|e| e.classname.clone()).collect::<Vec<_>>(),
@@ -521,7 +586,7 @@ impl App {
             .collect();
         json!({
             "map": {
-                "path": s.doc.path, "modified": s.doc.is_modified(), "revision": s.doc.revision,
+                "path": path_value(s.doc.path.as_ref()), "modified": s.doc.is_modified(), "revision": s.doc.revision,
                 "brushes": map.brush_count(), "entities": map.entity_count(), "layers": map.layers.len(),
                 "meshes": map.meshes().count(), "terrains": map.terrains().count(),
                 "cordon": map.editor.cordon.map(|c| bounds_json(&c)), "cordon_enabled": map.editor.cordon_enabled,
@@ -550,7 +615,7 @@ impl App {
                 "scale": (s.prefs.ui_scale as f64 * 100.0).round() / 100.0, "follow_display_scaling": s.prefs.follow_display_scaling,
                 "pixels_per_point": self.viewports.first().map(|v| (v.pixels_per_point as f64 * 1000.0).round() / 1000.0),
             },
-            "game": { "name": s.game.name, "project_root": s.game.project_root, "entity_definitions": s.game.entities.len(), "materials": s.materials.entries.len() },
+            "game": { "name": s.game.name, "project_root": path_value(s.game.project_root.as_ref()), "entity_definitions": s.game.entities.len(), "materials": s.materials.entries.len() },
             "godot": {
                 "executable": s.godot.exe, "connected": s.link_state.connected, "addon_outdated": s.link_state.outdated,
                 "project_open": s.godot_has_project(), "version": s.link_state.godot, "busy": s.link_state.busy,
@@ -620,6 +685,7 @@ impl App {
         }
 
         let started = Instant::now();
+        self.state.replaced.clear();
         let action = match name {
             "new_map" => Action::NewMap,
             "save" => {
@@ -627,7 +693,7 @@ impl App {
                     return err("the map has no file yet, use map_file {op: save, path} (saving an untitled map opens a file dialog)");
                 };
                 return match self.state.save_map(&path) {
-                    Ok(()) => ok(json!({ "ok": true, "path": path, "status": self.fresh_status(started) })),
+                    Ok(()) => ok(json!({ "ok": true, "path": path_text(&path), "status": self.fresh_status(started) })),
                     Err(e) => err(format!("Save failed: {e}")),
                 };
             }
@@ -658,7 +724,19 @@ impl App {
             "toggle_snap" => Action::ToggleSnap,
             "toggle_uv_lock" => Action::ToggleUvLock,
             "toggle_textured" => Action::ToggleTextured,
-            "csg_subtract" => Action::CsgSubtract,
+            "csg_subtract" => {
+                if let Some(name) = a["carve_material"].as_str() {
+                    let Some(carve) = gt_geom::csg::CarveMaterial::from_name(name) else {
+                        return err(format!("carve_material is target or cutter, not {name}"));
+                    };
+                    let saved = std::mem::replace(&mut self.state.carve_material, carve);
+                    let result = self.tool_run_action(&json!({ "action": "csg_subtract" }), ctx);
+                    self.state.carve_material = saved;
+                    return result;
+                }
+
+                Action::CsgSubtract
+            }
             "csg_merge" => Action::CsgMerge,
             "csg_intersect" => Action::CsgIntersect,
             "csg_hollow" => Action::CsgHollow,
@@ -877,7 +955,9 @@ impl App {
                 let Some(plane) = plane else {
                     self.tools.sync(&self.state);
                     self.tools.apply_clip_public(&mut self.state);
-                    return ok(json!({ "brushes_before": before, "brushes_after": self.state.doc.map.brush_count() }));
+                    return ok(
+                        json!({ "brushes_before": before, "brushes_after": self.state.doc.map.brush_count(), "replaced": replaced_json(&self.state.replaced) }),
+                    );
                 };
                 if self.state.doc.selection.brushes(&self.state.doc.map).is_empty() {
                     return err("select the brushes to clip first");
@@ -891,7 +971,9 @@ impl App {
                 };
                 crate::toolset::clip_selection(&mut self.state, &plane, side);
                 let selection: Vec<u64> = self.state.doc.selection.nodes.iter().map(|i| i.0).collect();
-                return ok(json!({ "brushes_before": before, "brushes_after": self.state.doc.map.brush_count(), "ids": selection }));
+                return ok(
+                    json!({ "brushes_before": before, "brushes_after": self.state.doc.map.brush_count(), "ids": selection, "replaced": replaced_json(&self.state.replaced) }),
+                );
             }
             other => return err(format!("unknown action {other}")),
         };
@@ -912,9 +994,12 @@ impl App {
             return err(s);
         }
 
-        ok(
-            json!({ "ok": true, "status": status, "brushes": self.state.doc.map.brush_count(), "selection": self.state.doc.selection.nodes.iter().map(|i| i.0).collect::<Vec<_>>() }),
-        )
+        let mut result = json!({ "ok": true, "status": status, "brushes": self.state.doc.map.brush_count(), "selection": self.state.doc.selection.nodes.iter().map(|i| i.0).collect::<Vec<_>>() });
+        if !self.state.replaced.is_empty() {
+            result["replaced"] = replaced_json(&self.state.replaced);
+        }
+
+        ok(result)
     }
 
     fn tool_create_entity(&mut self, args: &Value) -> ToolResult {
@@ -955,7 +1040,7 @@ impl App {
         let Some(path) = args["path"].as_str() else { return err("path required") };
         let path = std::path::Path::new(path);
         if !path.is_file() {
-            return err(format!("no file at {}", path.display()));
+            return err(format!("no file at {}", path_text(path)));
         }
 
         let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
@@ -1086,15 +1171,15 @@ impl App {
             "open_tab" => need(path).and_then(|p| crate::commands::open_map_in_tab(&mut self.state, &p)).map(|()| json!({})),
             "export_map" => need(path).and_then(|p| {
                 std::fs::write(&p, gt_formats::quake_map::export(&self.state.doc.map))
-                    .map(|()| json!({ "path": p, "map_path": self.state.doc.path }))
-                    .map_err(|e| format!("cannot write {}: {e}", p.display()))
+                    .map(|()| json!({ "path": path_text(&p), "map_path": path_value(self.state.doc.path.as_ref()) }))
+                    .map_err(|e| format!("cannot write {}: {e}", path_text(&p)))
             }),
             _ => Err(format!("unknown op {op}, use new, open, open_tab, save, import_map, import_vmf or export_map")),
         };
         self.project_generation += 1;
         match result {
             Ok(extra) => {
-                let mut v = json!({ "ok": true, "path": self.state.doc.path });
+                let mut v = json!({ "ok": true, "path": path_value(self.state.doc.path.as_ref()) });
                 if let Some(o) = extra.as_object() {
                     for (k, x) in o {
                         v[k] = x.clone();
@@ -1718,6 +1803,75 @@ mod tests {
         assert_eq!(id_list(&json!({ "ids": [1, "2"] }), "ids"), Ok(vec![NodeId(1), NodeId(2)]));
         assert!(id_list(&json!({ "ids": [1, -3] }), "ids").is_err());
         assert!(face_list(&json!({ "faces": [[1]] }), "faces").is_err());
+        assert_eq!(
+            path_text(std::path::Path::new("D:/dev/TrenchWorld/godot\\demo/textures\\night\\lit.tres")),
+            "D:/dev/TrenchWorld/godot/demo/textures/night/lit.tres"
+        );
+        assert_eq!(path_value(None::<&std::path::Path>), Value::Null);
+        assert_eq!(id_list(&json!({ "ids": [[1, 2], 3, [[4]]] }), "ids"), Ok(vec![NodeId(1), NodeId(2), NodeId(3), NodeId(4)]), "joined id lists flatten");
+    }
+
+    #[test]
+    fn node_methods_are_valid_inputs_and_typos_are_not() {
+        let game = gt_formats::GameConfig::builtin();
+        let inputs = class_inputs(&game);
+        let mut map = gt_doc::Map::new();
+        let layer = map.default_layer();
+        let mut light = gt_doc::Entity::new("light");
+        let conn = |input: &str, target: &str| IoConnection {
+            output: "switched".into(),
+            target: target.into(),
+            input: input.into(),
+            parameter: String::new(),
+            delay: 0.0,
+            times: -1,
+        };
+        light.outputs =
+            vec![conn("set_visible", "bulb"), conn("set_visibel", "bulb"), conn("hide", "bulb"), conn("turn_on", "lamp"), conn("omni_range", "lamp")];
+        light.properties.insert("targetname".into(), "lamp".into());
+        map.insert(layer, NodeKind::Entity(light));
+        let mut bulb = gt_doc::Entity::new("func_illusionary");
+        bulb.properties.insert("targetname".into(), "bulb".into());
+        map.insert(layer, NodeKind::Entity(bulb));
+        let found = issues::check_with(&map, |class| {
+            game.entity(class).map(|d| issues::ClassIo {
+                outputs: d.outputs.iter().map(|o| o.name.as_str()).collect(),
+                inputs: inputs.get(class).map(|list| list.iter().map(String::as_str).collect()).unwrap_or_default(),
+            })
+        });
+        let unknown: Vec<&str> = found.iter().filter(|i| i.code == "io_unknown_input").map(|i| i.message.as_str()).collect();
+        assert_eq!(unknown.len(), 1, "{unknown:?}");
+        assert!(unknown[0].contains("set_visibel"), "a func_illusionary is a Node3D, so set_visible passes and the typo does not");
+    }
+
+    #[test]
+    fn csg_commands_report_the_brushes_they_replaced() {
+        let mut s = state();
+        let layer = s.doc.map.default_layer();
+        let wall = s.doc.edit("w", |m, _| {
+            m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::new(-64.0, 0.0, -8.0), DVec3::new(64.0, 128.0, 8.0)), "brick").unwrap()))
+        });
+        let cutter = s.doc.edit("c", |m, _| {
+            m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::new(-16.0, 32.0, -16.0), DVec3::new(16.0, 96.0, 16.0)), "glass").unwrap()))
+        });
+        s.doc.select(|_, sel| sel.select_node(cutter));
+        s.carve_material = gt_geom::csg::CarveMaterial::Target;
+        crate::commands::execute(&mut s, Action::CsgSubtract, &egui::Context::default());
+        assert!(s.replaced[&cutter].is_empty());
+        let pieces = s.replaced[&wall].clone();
+        assert_eq!(pieces.len(), 4);
+        assert!(pieces.iter().all(|p| s.doc.map.brush(*p).unwrap().faces.iter().all(|f| f.data.material == "brick")), "carved faces kept the wall's material");
+        let json = replaced_json(&s.replaced);
+        assert_eq!(json[wall.0.to_string()].as_array().unwrap().len(), 4);
+
+        s.doc.select(|_, sel| {
+            sel.clear();
+            sel.nodes.extend(pieces.iter().copied());
+        });
+        crate::commands::execute(&mut s, Action::CsgMerge, &egui::Context::default());
+        let merged = s.replaced[&pieces[0]].clone();
+        assert_eq!(merged.len(), 1);
+        assert!(s.replaced.values().all(|v| *v == merged), "every merged brush maps to the one result");
     }
 
     #[test]

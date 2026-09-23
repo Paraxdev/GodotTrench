@@ -189,6 +189,12 @@ pub enum Action {
     VolumeAroundSelection(String),
     ShowReference,
     ShowPreferences,
+    /// Fills the view area with the view under the pointer, or brings the other views back.
+    ToggleMaximizeView,
+    /// Shows 1, 2 or 4 views.
+    ViewLayout(u8),
+    /// Closes or reopens one of the four views.
+    ToggleView(usize),
     UiScaleUp,
     UiScaleDown,
     UiScaleReset,
@@ -216,6 +222,11 @@ impl Action {
             Action::Justify(j) => format!("Justify Texture {}", j.label()),
             Action::TexelDensity(d) => format!("Texel Density {d}"),
             Action::MeshUv(k) => format!("Mesh UVs: {}", k.label()),
+            Action::ToggleMaximizeView => "Maximize View".into(),
+            Action::ViewLayout(1) => "Single View Layout".into(),
+            Action::ViewLayout(2) => "Two View Layout".into(),
+            Action::ViewLayout(_) => "Four View Layout".into(),
+            Action::ToggleView(i) => format!("Toggle View {}", i + 1),
             Action::UiScaleUp => "Increase UI Scale".into(),
             Action::UiScaleDown => "Decrease UI Scale".into(),
             Action::UiScaleReset => "Reset UI Scale".into(),
@@ -321,6 +332,7 @@ fn trenchbroom_bindings() -> Vec<(KeyboardShortcut, Action)> {
         (sc(CTRL, Key::Equals), Action::UiScaleUp),
         (sc(CTRL, Key::Minus), Action::UiScaleDown),
         (sc(CTRL, Key::Num0), Action::UiScaleReset),
+        (sc(SHIFT, Key::Space), Action::ToggleMaximizeView),
     ];
     for (i, key) in DIGITS.iter().enumerate() {
         out.push((sc(CTRL, *key), Action::RecallCamera(i as u8 + 1)));
@@ -476,6 +488,9 @@ pub fn bindable_actions() -> Vec<Action> {
         Action::ShowLinkDialog,
         Action::ShowReference,
         Action::ShowPreferences,
+        Action::ViewLayout(1),
+        Action::ViewLayout(2),
+        Action::ViewLayout(4),
         Action::ToggleTransformGizmo,
         Action::OpenGodotEditor,
         Action::BuildInGodot,
@@ -760,19 +775,26 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             state.set_status(format!("Shading: {}", state.prefs.shade.label()));
         }
         Action::CsgSubtract => {
-            let n = state.doc.edit("CSG Subtract", ops::csg_subtract);
+            let carve = state.carve_material;
+            let (n, replaced) = state.doc.edit("CSG Subtract", |m, s| ops::csg_subtract(m, s, carve));
+            state.replaced = replaced;
             state.set_status(format!("Subtracted from {n} brushes"));
         }
-        Action::CsgMerge => {
-            let mat = state.current_material.clone();
-            edit_or(state, "CSG Merge", "Select at least two brushes to merge", |m, s| ops::csg_merge(m, s, &mat));
-        }
-        Action::CsgIntersect => {
-            edit_or(state, "CSG Intersect", "Select at least two brushes that intersect", ops::csg_intersect);
+        Action::CsgMerge | Action::CsgIntersect => {
+            let before = state.doc.selection.brushes(&state.doc.map);
+            let result = if action == Action::CsgMerge {
+                let mat = state.current_material.clone();
+                edit_or(state, "CSG Merge", "Select at least two brushes to merge", |m, s| ops::csg_merge(m, s, &mat))
+            } else {
+                edit_or(state, "CSG Intersect", "Select at least two brushes that intersect", ops::csg_intersect)
+            };
+            if let Some(new_id) = result {
+                state.replaced = before.into_iter().map(|id| (id, vec![new_id])).collect();
+            }
         }
         Action::CsgHollow => {
             let t = state.hollow_thickness.max(state.grid.min(state.hollow_thickness));
-            state.doc.edit("Hollow", |m, s| ops::csg_hollow(m, s, t));
+            state.replaced = state.doc.edit("Hollow", |m, s| ops::csg_hollow(m, s, t));
         }
         Action::Rotate { axis, degrees } => {
             let center = ops::selection_center(&state.doc.map, &state.doc.selection, grid);
@@ -1215,7 +1237,14 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 state.set_status(e);
             }
         }
-        Action::ShowScatterPanel | Action::ShowLinkDialog | Action::ShowReference | Action::ShowPreferences => {}
+
+        Action::ShowScatterPanel
+        | Action::ShowLinkDialog
+        | Action::ShowReference
+        | Action::ShowPreferences
+        | Action::ToggleMaximizeView
+        | Action::ViewLayout(_)
+        | Action::ToggleView(_) => {}
         Action::CreateBrushFromBounds => {
             let b = state.last_bounds;
             let mat = state.current_material.clone();

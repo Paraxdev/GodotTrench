@@ -407,11 +407,26 @@ pub struct ScatterRules {
     pub items: Option<Vec<usize>>,
     /// 0 fills the brush evenly, 1 thins instances out towards the rim.
     pub falloff: f64,
+    /// Only place where nothing lies above the point within `clearance`, so nothing grows under slabs and roofs.
+    pub exposed_only: bool,
+    /// Height above a point that must be free of geometry when `exposed_only` is on.
+    pub clearance: f64,
 }
+
+pub const DEFAULT_CLEARANCE: f64 = 512.0;
 
 impl Default for ScatterRules {
     fn default() -> Self {
-        Self { density: 1.0, slope: [0.0, 40.0], height: None, only_targets: true, items: None, falloff: 0.3 }
+        Self {
+            density: 1.0,
+            slope: [0.0, 40.0],
+            height: None,
+            only_targets: true,
+            items: None,
+            falloff: 0.3,
+            exposed_only: false,
+            clearance: DEFAULT_CLEARANCE,
+        }
     }
 }
 
@@ -464,6 +479,17 @@ fn slope_ok(normal: DVec3, rules: &ScatterRules) -> bool {
 
 fn height_ok(p: DVec3, rules: &ScatterRules) -> bool {
     rules.height.is_none_or(|[lo, hi]| p.y >= lo && p.y <= hi)
+}
+
+/// True when `exposed_only` is on and a surface lies above the hit within the clearance.
+fn covered(hit: &SurfaceHit, rules: &ScatterRules, cast: &impl Fn(DVec3, DVec3) -> Option<SurfaceHit>) -> bool {
+    if !rules.exposed_only {
+        return false;
+    }
+
+    // Lifted off the surface so the ray does not hit the face it starts on.
+    let origin = hit.point + hit.normal.normalize_or(DVec3::Y) + DVec3::Y;
+    cast(origin, DVec3::Y).is_some_and(|above| above.point.y - hit.point.y <= rules.clearance.max(0.0))
 }
 
 impl Scatter {
@@ -549,7 +575,7 @@ impl Scatter {
                 }
 
                 let spacing = self.items[item].spacing;
-                if !self.accepts(&hit, rules) || grid.blocked(hit.point, spacing) {
+                if !self.accepts(&hit, rules) || grid.blocked(hit.point, spacing) || covered(&hit, rules, &cast) {
                     continue;
                 }
 
@@ -593,7 +619,7 @@ impl Scatter {
                 let x = bounds.min.x + rng.next_f64() * size.x;
                 let z = bounds.min.z + rng.next_f64() * size.z;
                 let Some(hit) = cast(DVec3::new(x, top, z), DVec3::NEG_Y) else { continue };
-                if !hit.point.is_finite() || !self.accepts(&hit, rules) || grid.blocked(hit.point, spacing) {
+                if !hit.point.is_finite() || !self.accepts(&hit, rules) || grid.blocked(hit.point, spacing) || covered(&hit, rules, &cast) {
                     continue;
                 }
 
@@ -816,6 +842,42 @@ mod tests {
         let before = set.instances.len();
         assert_eq!(set.paint(DVec3::new(5000.0, 0.0, 0.0), DVec3::Y, 400.0, &rules, &mut rng, &[], flat(NodeId(8), 0.0)), 0);
         assert_eq!(set.instances.len(), before);
+    }
+
+    #[test]
+    fn exposed_only_keeps_instances_out_from_under_slabs() {
+        // Ground at y 0, a slab spanning x < 0 from y 200 to 204 that the downward samples start below.
+        let cast = |origin: DVec3, dir: DVec3| {
+            if dir.y > 0.0 {
+                return (origin.x < 0.0 && origin.y < 200.0).then(|| SurfaceHit {
+                    point: DVec3::new(origin.x, 200.0, origin.z),
+                    normal: DVec3::NEG_Y,
+                    node: NodeId(2),
+                });
+            }
+
+            flat(NodeId(1), 0.0)(origin, dir)
+        };
+        let area = Aabb::new(DVec3::new(-1000.0, 0.0, -1000.0), DVec3::new(1000.0, 0.0, 1000.0));
+        let fill = |rules: &ScatterRules| {
+            let (_, items) = preset("grass").unwrap();
+            let mut set = Scatter::new("weeds", ScatterKind::Foliage, items);
+            set.fill(&area, rules, &mut Rng::new(4), &[], cast);
+            let under = set.instances.iter().filter(|i| i.position.x < 0.0).count();
+            (set.instances.len() - under, under)
+        };
+        let base = ScatterRules { density: 2.0, slope: [0.0, 90.0], ..Default::default() };
+        let (open, under) = fill(&base);
+        assert!(open > 0 && under > 0, "without the option both halves grow: {open} {under}");
+        let (open, under) = fill(&ScatterRules { exposed_only: true, ..base.clone() });
+        assert!(open > 0 && under == 0, "exposed only leaves the covered half bare: {open} {under}");
+        let (_, under) = fill(&ScatterRules { exposed_only: true, clearance: 100.0, ..base.clone() });
+        assert!(under > 0, "a slab higher than the clearance does not count");
+
+        let mut set = Scatter::new("weeds", ScatterKind::Foliage, preset("grass").unwrap().1);
+        let rules = ScatterRules { exposed_only: true, falloff: 0.0, ..base };
+        set.paint(DVec3::new(-300.0, 0.0, 0.0), DVec3::Y, 200.0, &rules, &mut Rng::new(5), &[], cast);
+        assert!(set.instances.iter().all(|i| i.position.x >= 0.0), "painting honours it too");
     }
 
     #[test]

@@ -92,6 +92,10 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("View: Increase UI Scale".into(), Action::UiScaleUp),
         ("View: Decrease UI Scale".into(), Action::UiScaleDown),
         ("View: Reset UI Scale".into(), Action::UiScaleReset),
+        ("View: Maximize View".into(), Action::ToggleMaximizeView),
+        ("View: Single View Layout".into(), Action::ViewLayout(1)),
+        ("View: Two View Layout".into(), Action::ViewLayout(2)),
+        ("View: Four View Layout".into(), Action::ViewLayout(4)),
         ("Grid: Smaller".into(), Action::GridDown),
         ("Grid: Larger".into(), Action::GridUp),
         ("Grid: Toggle Snap".into(), Action::ToggleSnap),
@@ -336,10 +340,11 @@ pub enum ShapeKind {
     GableRoof,
     Spire,
     Grid,
+    Text,
 }
 
 impl ShapeKind {
-    const ALL: [ShapeKind; 14] = [
+    const ALL: [ShapeKind; 15] = [
         ShapeKind::Cylinder,
         ShapeKind::Cone,
         ShapeKind::Sphere,
@@ -354,6 +359,7 @@ impl ShapeKind {
         ShapeKind::GableRoof,
         ShapeKind::Spire,
         ShapeKind::Grid,
+        ShapeKind::Text,
     ];
 
     /// Shapes that only exist as meshes.
@@ -370,11 +376,38 @@ pub struct ShapeDialog {
     steps: usize,
     as_mesh: bool,
     smooth: bool,
+    text: TextShape,
+}
+
+/// Block letter settings of the Text shape, laid out from the corner of the bounds.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextShape {
+    pub text: String,
+    pub letter_height: f64,
+    pub depth: f64,
+    /// Gap between letters in font cells.
+    pub spacing: f64,
+    /// Upright letters reading from +Z, else lying on the floor with their tops towards -Z.
+    pub standing: bool,
+}
+
+impl Default for TextShape {
+    fn default() -> Self {
+        Self { text: "TEXT".into(), letter_height: 64.0, depth: 8.0, spacing: 1.0, standing: true }
+    }
+}
+
+impl TextShape {
+    pub fn brushes(&self, corner: DVec3, material: &str) -> Result<Vec<Brush>, String> {
+        let bounds = gt_geom::block_text::sized_bounds(&self.text, corner, self.letter_height, self.depth, self.standing, self.spacing)?;
+        let letters = gt_geom::block_text::layout(&self.text, &bounds, self.standing, self.spacing)?;
+        Ok(letters.iter().flatten().filter_map(|b| Brush::from_aabb(b, material).ok()).collect())
+    }
 }
 
 impl Default for ShapeDialog {
     fn default() -> Self {
-        Self { open: false, kind: ShapeKind::Cylinder, sides: 16, thickness: 16.0, steps: 8, as_mesh: false, smooth: true }
+        Self { open: false, kind: ShapeKind::Cylinder, sides: 16, thickness: 16.0, steps: 8, as_mesh: false, smooth: true, text: TextShape::default() }
     }
 }
 
@@ -421,6 +454,7 @@ impl ShapeDialog {
             (ShapeKind::Pipe, _) => brushes(shapes::pipe(bounds, self.sides, self.thickness, material)),
             (ShapeKind::Stairs, _) => brushes(shapes::stairs(bounds, self.steps, material)),
             (ShapeKind::SpiralStairs, _) => brushes(shapes::spiral_stairs(bounds, self.steps, self.thickness, 1.0, material)),
+            (ShapeKind::Text, _) => brushes(self.text.brushes(bounds.min, material).unwrap_or_default()),
         }
     }
 
@@ -466,8 +500,42 @@ impl ShapeDialog {
                 ui.checkbox(&mut self.smooth, "Smooth shading");
             }
 
+            if self.kind == ShapeKind::Text {
+                let t = &mut self.text;
+                egui::Grid::new("shape_text").num_columns(2).show(ui, |ui| {
+                    ui.label("Text");
+                    ui.add(egui::TextEdit::multiline(&mut t.text).desired_rows(2).desired_width(180.0))
+                        .on_hover_text("A-Z, 0-9, space and . , ! ? ' - + : /, Enter starts a new line");
+                    ui.end_row();
+                    ui.label("Letter height");
+                    ui.add(egui::DragValue::new(&mut t.letter_height).range(1.0..=4096.0).suffix(" u"));
+                    ui.end_row();
+                    ui.label("Depth");
+                    ui.add(egui::DragValue::new(&mut t.depth).range(0.125..=4096.0).suffix(" u"));
+                    ui.end_row();
+                    ui.label("Spacing");
+                    ui.add(egui::DragValue::new(&mut t.spacing).range(0.0..=10.0).speed(0.05)).on_hover_text("Gap between letters in font cells");
+                    ui.end_row();
+                    ui.label("Orientation");
+                    ui.horizontal(|ui| {
+                        ui.selectable_value(&mut t.standing, true, "standing");
+                        ui.selectable_value(&mut t.standing, false, "lying");
+                    });
+                    ui.end_row();
+                });
+                if let Err(e) = t.brushes(bounds.min, &state.current_material) {
+                    ui.colored_label(ui.visuals().warn_fg_color, e);
+                }
+            }
+
             let size = bounds.size();
-            ui.label(format!("Bounds {} x {} x {} ({})", size.x, size.y, size.z, if brushes.is_empty() { "last brush" } else { "replaces selection" }));
+            if self.kind == ShapeKind::Text {
+                let c = bounds.min;
+                ui.label(format!("Starts at {} {} {} ({})", c.x, c.y, c.z, if brushes.is_empty() { "last brush" } else { "replaces selection" }));
+            } else {
+                ui.label(format!("Bounds {} x {} x {} ({})", size.x, size.y, size.z, if brushes.is_empty() { "last brush" } else { "replaces selection" }));
+            }
+
             let preview = self.generate(&bounds, &state.current_material);
             ui.label(RichText::new(format!("{} object(s)", preview.len())).weak());
             if ui.add_enabled(!preview.is_empty(), egui::Button::new("Create")).clicked() {
@@ -629,7 +697,8 @@ impl TerrainDialog {
                     let mut at_cursor = self.center.is_none();
                     if ui.checkbox(&mut at_cursor, "3D cursor").changed() {
                         let cursor = state.cursor_world.map(|c| state.snap(c)).unwrap_or(DVec3::ZERO);
-                        self.center = (!at_cursor).then(|| cursor.to_array());
+                        // Adding 0.0 turns a snapped -0.0 into 0.0, which the field would show as "-0".
+                        self.center = (!at_cursor).then(|| cursor.to_array().map(|v| v + 0.0));
                     }
 
                     if let Some(c) = &mut self.center {
@@ -914,6 +983,32 @@ mod tests {
         let a = fuzzy_score("sub", "Brush: CSG Subtract").unwrap();
         let b = fuzzy_score("sub", "Select: Same Material but").unwrap_or(i32::MIN);
         assert!(a > b);
+    }
+
+    #[test]
+    fn the_shape_dialog_builds_block_text() {
+        let mut dialog = ShapeDialog { kind: ShapeKind::Text, ..Default::default() };
+        dialog.text = TextShape { text: "HI".into(), letter_height: 70.0, depth: 4.0, spacing: 1.0, standing: false };
+        let corner = Aabb::new(DVec3::new(100.0, 8.0, 0.0), DVec3::new(164.0, 72.0, 64.0));
+        let nodes = dialog.generate(&corner, "dev/orange");
+        assert!(nodes.len() >= 4, "H is three boxes, I at least one: {}", nodes.len());
+        let mut bounds = Aabb::EMPTY;
+        for n in &nodes {
+            let NodeKind::Brush(b) = n else { panic!("text is brushes") };
+            bounds = bounds.union(&b.bounds());
+        }
+
+        assert_eq!(bounds.min.y, 8.0, "letters start at the corner of the bounds");
+        assert!(
+            (bounds.size().y - 4.0).abs() < 1e-9 && (bounds.size().z - 70.0).abs() < 1e-9,
+            "lying letters are depth thick and letter height long: {bounds:?}"
+        );
+        dialog.text.standing = true;
+        let upright = dialog.generate(&corner, "m").iter().fold(Aabb::EMPTY, |acc, n| if let NodeKind::Brush(b) = n { acc.union(&b.bounds()) } else { acc });
+        assert!((upright.size().y - 70.0).abs() < 1e-9);
+        dialog.text.text = "Ö".into();
+        assert!(dialog.generate(&corner, "m").is_empty(), "unsupported letters create nothing");
+        assert!(dialog.text.brushes(DVec3::ZERO, "m").unwrap_err().contains("no block letter"));
     }
 
     #[test]

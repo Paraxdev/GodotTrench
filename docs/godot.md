@@ -99,8 +99,11 @@ The lit view adds emission to the light a surface receives before tone mapping, 
 the dark and saturate like a lamp instead of clipping. The textured view brightens them towards their glow color. In
 the built scene the emission of a face also survives decals, which duplicate the material, and blends, which carry the
 emission color, energy, texture and operator of both sides and mix them with the painted weight. Blockbench textures
-set to the emissive render mode glow with their own image, and glTF props keep the emissive materials they ship with.
-Terrain layers use only the albedo of their material.
+set to the emissive render mode glow with their own image, and glTF props keep the emissive materials they ship with:
+`emissiveFactor`, `emissiveTexture` and `KHR_materials_emissive_strength`, previewed the way Godot's glTF importer reads
+them (with an emissive texture the texture alone glows). The Models panel thumbnails show the glow too. A terrain layer
+takes the emission of its material as well, weighted by how much of that layer is painted, in the editor and in the
+built `GodotTrenchTerrain` alike, so a lava or neon layer glows where it is painted.
 
 Thin cutouts such as wire fences read better with alpha hash (`transparency = 3`) than with an alpha scissor: their
 mipmaps average the wires below any fixed threshold, so a scissored fence vanishes a few meters away, while a hashed

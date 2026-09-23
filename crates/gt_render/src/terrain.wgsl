@@ -10,8 +10,18 @@ struct TerrainParams {
     detiles: vec4<f32>,
     // Per layer crispness of the de-tiled blend, 0 mixes the cells evenly, 1 mixes only in a narrow band.
     sharpens: vec4<f32>,
+    // Per layer emission of the layer's material, rgb: linear color, w: energy.
+    glow: array<vec4<f32>, 4>,
+    // Per layer 1 when t_glowN holds the layer's emission texture.
+    glow_textured: vec4<f32>,
+    // Per layer 1 to multiply the emission color with the texture instead of adding them.
+    glow_multiply: vec4<f32>,
 };
 @group(1) @binding(5) var<uniform> params: TerrainParams;
+@group(1) @binding(6) var t_glow0: texture_2d<f32>;
+@group(1) @binding(7) var t_glow1: texture_2d<f32>;
+@group(1) @binding(8) var t_glow2: texture_2d<f32>;
+@group(1) @binding(9) var t_glow3: texture_2d<f32>;
 
 struct VIn {
     @location(0) pos: vec3<f32>,
@@ -94,6 +104,17 @@ fn layer(t: texture_2d<f32>, tile: f32, detile: f32, sharpen: f32, world: vec3<f
     return top * blend.y + side_x * blend.x + side_z * blend.z;
 }
 
+/// Godot's emission of one layer: (color + texture) or (color * texture), times energy, black without a texture.
+/// Matches gt_terrain.gdshader.
+fn layer_glow(t: texture_2d<f32>, glow: vec4<f32>, textured: f32, multiply: f32, tile: f32, detile: f32, sharpen: f32, world: vec3<f32>, blend: vec3<f32>) -> vec3<f32> {
+    var tex = vec3<f32>(0.0);
+    if textured > 0.5 {
+        tex = layer(t, tile, detile, sharpen, world, blend);
+    }
+
+    return select(glow.rgb + tex, glow.rgb * tex, multiply > 0.5) * glow.w;
+}
+
 @fragment
 fn fs_main(f: VOut) -> @location(0) vec4<f32> {
     let nn = normalize(f.normal);
@@ -109,7 +130,21 @@ fn fs_main(f: VOut) -> @location(0) vec4<f32> {
     let flat_mode = step(0.5, cam.params.z) * step(cam.params.z, 1.5);
     base = mix(base, vec3<f32>(0.8, 0.8, 0.8), flat_mode);
     base = mix(base, base * vec3<f32>(1.0, 0.62, 0.58), f.flags.x);
-    var rgb = shade(base, f.world, f.normal);
+    let g0 = layer_glow(t_glow0, params.glow[0], params.glow_textured.x, params.glow_multiply.x, params.tiles.x, params.detiles.x, params.sharpens.x, f.world, blend);
+    let g1 = layer_glow(t_glow1, params.glow[1], params.glow_textured.y, params.glow_multiply.y, params.tiles.y, params.detiles.y, params.sharpens.y, f.world, blend);
+    let g2 = layer_glow(t_glow2, params.glow[2], params.glow_textured.z, params.glow_multiply.z, params.tiles.z, params.detiles.z, params.sharpens.z, f.world, blend);
+    let g3 = layer_glow(t_glow3, params.glow[3], params.glow_textured.w, params.glow_multiply.w, params.tiles.w, params.detiles.w, params.sharpens.w, f.world, blend);
+    let glow = g0 * w.x + g1 * w.y + g2 * w.z + g3 * w.w;
+    var rgb: vec3<f32>;
+    if (is_lit()) {
+        // Like brushes, emission joins the light before the tonemap.
+        rgb = tonemap(base * light_at(f.world, nn) + glow);
+    } else {
+        rgb = shade(base, f.world, f.normal);
+        if (flat_mode < 0.5) {
+            rgb = max(rgb, min(glow, vec3<f32>(1.0)) * 0.85);
+        }
+    }
     rgb = apply_fog(rgb, f.world);
     let grid_strength = select(0.12, 0.03, is_lit());
     rgb = mix(rgb, vec3<f32>(1.0), grid * grid_strength);

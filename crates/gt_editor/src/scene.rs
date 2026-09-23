@@ -61,6 +61,7 @@ struct Bucket {
     double: Option<GpuMesh>,
     transparent: Option<GpuMesh>,
     volumes: Option<GpuMesh>,
+    markers: Option<GpuMesh>,
     overlay: Option<GpuMesh>,
     edges: Option<GpuLines>,
     edges_2d: Option<GpuLines>,
@@ -104,6 +105,7 @@ fn build_drag_batches(renderer: &Renderer, game: &GameConfig, base: &Map, nodes:
         double: MeshBatch::default(),
         transparent: MeshBatch::default(),
         volumes: MeshBatch::default(),
+        markers: MeshBatch::default(),
         volume: false,
         face_overlay: MeshBatch::default(),
         edges: Vec::new(),
@@ -162,6 +164,8 @@ pub struct SceneCache {
     scene_bounds: Aabb,
     face_cull: FaceCull,
     drag: Option<DragLayer>,
+    /// Fixtures of lights that start off, left out of the lit view like the game hides them.
+    hidden_fixtures: BTreeSet<NodeId>,
 }
 
 pub fn v3(v: DVec3) -> [f32; 3] {
@@ -257,6 +261,8 @@ struct Builder<'a> {
     volumes: MeshBatch,
     /// Set while building the brushes of a volume entity.
     volume: bool,
+    /// Editor stand-ins like point entity boxes, left out of beauty shots and the sun shadow.
+    markers: MeshBatch,
     face_overlay: MeshBatch,
     edges: Vec<LineVertex>,
     edges_2d: Vec<LineVertex>,
@@ -310,19 +316,11 @@ fn mix_corners<const N: usize>(weights: [(usize, f64); 3], value: impl Fn(usize)
     out
 }
 
-/// Registers a model's textures, with alpha scissor for textures that have transparent pixels (leaves, grass cards).
 fn register_model_textures(renderer: &mut Renderer, model: &crate::models::Model) {
     for (key, img, pixelated) in &model.textures {
-        if renderer.has_material(key) {
-            continue;
+        if !renderer.has_material(key) {
+            renderer.set_material_desc(key, &model.material_desc(key, img, *pixelated));
         }
-
-        let mut desc = gt_render::MaterialDesc::plain(img, *pixelated);
-        if img.pixels().any(|p| p.0[3] < 128) {
-            desc.alpha = gt_render::AlphaMode::Scissor(0.5);
-        }
-
-        renderer.set_material_desc(key, &desc);
     }
 }
 
@@ -742,7 +740,7 @@ impl Builder<'_> {
             None => {
                 let bounds = entity_box(self.game, e);
                 let fill = if selected { [1.0, 0.45, 0.4, 1.0] } else { tint.unwrap_or([c.r, c.g, c.b, 1.0]) };
-                self.opaque.add_box(Vec3::from_array(v3(bounds.min)), Vec3::from_array(v3(bounds.max)), fill);
+                self.markers.add_box(Vec3::from_array(v3(bounds.min)), Vec3::from_array(v3(bounds.max)), fill);
                 bounds
             }
         };
@@ -1193,6 +1191,7 @@ struct BucketCtx<'a> {
     pieces: &'a HashMap<NodeId, FacePieces>,
     entity_models: &'a HashMap<NodeId, std::sync::Arc<crate::models::Model>>,
     drag_nodes: &'a BTreeSet<NodeId>,
+    hidden_fixtures: &'a BTreeSet<NodeId>,
 }
 
 /// Builds the batches for one bucket's brush, mesh, entity and terrain nodes. Prefab instances are left to
@@ -1207,6 +1206,7 @@ fn build_bucket<'a>(ctx: &BucketCtx<'a>, ids: &[NodeId]) -> Builder<'a> {
         double: MeshBatch::default(),
         transparent: MeshBatch::default(),
         volumes: MeshBatch::default(),
+        markers: MeshBatch::default(),
         volume: false,
         face_overlay: MeshBatch::default(),
         edges: Vec::new(),
@@ -1219,7 +1219,7 @@ fn build_bucket<'a>(ctx: &BucketCtx<'a>, ids: &[NodeId]) -> Builder<'a> {
     let is_selected = |id: NodeId| ctx.selection.nodes.contains(&id) || map.ancestors(id).iter().any(|a| ctx.selection.nodes.contains(a));
     for &id in ids {
         let Some(node) = map.get(id) else { continue };
-        if ctx.drag_nodes.contains(&id) {
+        if ctx.drag_nodes.contains(&id) || ctx.hidden_fixtures.contains(&id) || map.owning_entity(id).is_some_and(|e| ctx.hidden_fixtures.contains(&e)) {
             continue;
         }
 
@@ -1266,6 +1266,7 @@ fn upload_bucket(renderer: &Renderer, builder: Builder) -> Bucket {
         double: renderer.upload_mesh(&builder.double),
         transparent: renderer.upload_mesh(&builder.transparent),
         volumes: renderer.upload_mesh(&builder.volumes),
+        markers: renderer.upload_mesh(&builder.markers),
         overlay: renderer.upload_mesh(&builder.face_overlay),
         edges: renderer.upload_lines(&builder.edges),
         edges_2d: renderer.upload_lines(&builder.edges_2d),
@@ -1381,6 +1382,16 @@ impl SceneCache {
         if drag_nodes != prev_drag_nodes {
             dirty.extend(drag_nodes.iter().copied());
             dirty.extend(prev_drag_nodes.iter().copied());
+        }
+
+        let hidden_fixtures = if lit { gt_doc::entity::hidden_fixtures(&map) } else { BTreeSet::new() };
+        if hidden_fixtures != self.hidden_fixtures {
+            for id in hidden_fixtures.symmetric_difference(&self.hidden_fixtures) {
+                dirty.insert(*id);
+                dirty.extend(map.descendants(*id));
+            }
+
+            self.hidden_fixtures = hidden_fixtures;
         }
 
         let entities_changed = full || dirty.iter().any(|id| map.entity(*id).is_some() || self.prev_map.as_ref().is_some_and(|p| p.entity(*id).is_some()));
@@ -1593,6 +1604,7 @@ impl SceneCache {
                     pieces: &self.face_cull.pieces,
                     entity_models: &entity_models,
                     drag_nodes: &drag_nodes,
+                    hidden_fixtures: &self.hidden_fixtures,
                 };
                 let has_instance = |b: usize| {
                     per_bucket_ref.get(&b).is_some_and(|ids| ids.iter().any(|id| matches!(map.get(*id).map(|n| &n.kind), Some(NodeKind::Instance(_)))))
@@ -1813,15 +1825,18 @@ impl SceneCache {
     }
 
     /// Adds the scene to a frame for a 3D or 2D view.
-    /// Unselected edges are left out of lit views, which preview the game look.
-    pub fn fill_frame<'a>(&'a self, frame: &mut Frame<'a>, is_2d: bool, lit: bool) {
+    /// Unselected edges are left out of lit views, which preview the game look. Without `overlays` only what
+    /// the game shows is drawn: no entity boxes, volumes, edges, selection outlines, links or cordon.
+    pub fn fill_frame<'a>(&'a self, frame: &mut Frame<'a>, is_2d: bool, lit: bool, overlays: bool) {
         for t in self.terrains.values() {
             if is_2d {
                 frame.overlay_lines.extend(t.lines_2d.as_ref());
             } else {
                 frame.terrain.extend(t.chunks.iter().flatten());
-                frame.overlay_lines.extend(t.sel_lines.as_ref());
                 frame.wire_lines.extend(t.wire.as_ref());
+                if overlays {
+                    frame.overlay_lines.extend(t.sel_lines.as_ref());
+                }
             }
         }
 
@@ -1830,7 +1845,9 @@ impl SceneCache {
                 frame.overlay_lines.extend(s.lines_2d.as_ref());
             } else {
                 frame.opaque.extend(s.chunks.values().filter_map(|(_, m)| m.as_ref()));
-                frame.overlay_lines.extend(s.sel_lines.as_ref());
+                if overlays {
+                    frame.overlay_lines.extend(s.sel_lines.as_ref());
+                }
             }
         }
 
@@ -1842,16 +1859,18 @@ impl SceneCache {
                 frame.wire_lines.extend(b.edges_2d.as_ref());
                 frame.opaque.extend(b.opaque.as_ref());
                 frame.double_sided.extend(b.double.as_ref());
-                if !lit {
-                    frame.lines.extend(b.edges.as_ref());
+                frame.transparent.extend(b.transparent.as_ref());
+                if !overlays {
+                    continue;
                 }
 
-                frame.lines.extend(b.sel_edges.as_ref());
-                frame.transparent.extend(b.transparent.as_ref());
+                frame.opaque.extend(b.markers.as_ref());
                 if !lit {
+                    frame.lines.extend(b.edges.as_ref());
                     frame.transparent.extend(b.volumes.as_ref());
                 }
 
+                frame.lines.extend(b.sel_edges.as_ref());
                 frame.overlay_meshes.extend(b.overlay.as_ref());
                 frame.overlay_lines.extend(b.xray.as_ref());
             }
@@ -1868,8 +1887,10 @@ impl SceneCache {
             }
         }
 
-        frame.overlay_lines.extend(self.links.as_ref());
-        frame.lines.extend(self.cordon.as_ref());
+        if overlays {
+            frame.overlay_lines.extend(self.links.as_ref());
+            frame.lines.extend(self.cordon.as_ref());
+        }
     }
 }
 

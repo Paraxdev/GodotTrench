@@ -23,7 +23,8 @@ pub enum ClipSide {
 /// behind it or both, and selects what is left.
 pub fn clip_selection(state: &mut EditorState, plane: &Plane, side: ClipSide) {
     let brushes = state.doc.selection.brushes(&state.doc.map);
-    state.doc.edit("Clip", |m, s| {
+    state.replaced = state.doc.edit("Clip", |m, s| {
+        let mut replaced = gt_doc::ops::Replaced::new();
         s.clear();
         for id in brushes {
             let Some(b) = m.brush(id).cloned() else { continue };
@@ -37,11 +38,12 @@ pub fn clip_selection(state: &mut EditorState, plane: &Plane, side: ClipSide) {
                 ClipSide::Back => back.into_iter().collect(),
                 ClipSide::Both => front.into_iter().chain(back).collect(),
             };
-            for k in keep {
-                let nid = m.insert(parent, gt_doc::NodeKind::Brush(k));
-                s.nodes.insert(nid);
-            }
+            let new_ids: Vec<_> = keep.into_iter().map(|k| m.insert(parent, gt_doc::NodeKind::Brush(k))).collect();
+            s.nodes.extend(new_ids.iter().copied());
+            replaced.insert(id, new_ids);
         }
+
+        replaced
     });
 }
 

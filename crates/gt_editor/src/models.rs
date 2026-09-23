@@ -24,12 +24,44 @@ pub struct ModelPart {
     pub indices: Vec<u32>,
 }
 
+/// How a model material glows, in Godot's terms: (color + texture) or (color * texture), times energy.
+#[derive(Clone, Debug)]
+pub struct ModelEmission {
+    /// Linear color.
+    pub color: [f32; 3],
+    pub energy: f32,
+    pub multiply: bool,
+    pub texture: Option<image::RgbaImage>,
+}
+
 /// A model in map units, placed at the entity origin.
 pub struct Model {
     pub parts: Vec<ModelPart>,
     /// Textures to register with the renderer: (key, image, pixelated).
     pub textures: Vec<(String, image::RgbaImage, bool)>,
+    /// Emission of the texture keys that glow.
+    pub emission: HashMap<String, ModelEmission>,
     pub bounds: Aabb,
+}
+
+impl Model {
+    /// Renderer description of one of `textures`, with alpha scissor for textures that have transparent
+    /// pixels (leaves, grass cards) and the emission of glowing materials.
+    pub fn material_desc<'a>(&'a self, key: &str, image: &'a image::RgbaImage, pixelated: bool) -> gt_render::MaterialDesc<'a> {
+        let mut desc = gt_render::MaterialDesc::plain(image, pixelated);
+        if image.pixels().any(|p| p.0[3] < 128) {
+            desc.alpha = gt_render::AlphaMode::Scissor(0.5);
+        }
+
+        if let Some(e) = self.emission.get(key) {
+            desc.emission = e.color;
+            desc.emission_energy = e.energy;
+            desc.emission_multiply = e.multiply;
+            desc.emission_texture = e.texture.as_ref();
+        }
+
+        desc
+    }
 }
 
 #[derive(Default)]
@@ -51,15 +83,23 @@ pub fn is_model_path(path: &str) -> bool {
 pub const MODEL_EXTS: [&str; 7] = ["glb", "gltf", "obj", "bbmodel", "stl", "md2", "md3"];
 
 impl ModelCache {
+    /// `path` may end in `#node` (see [`entity_model_path`]) to load only that node of a glTF.
     pub fn get(&mut self, path: &Path, units_per_meter: f64) -> Option<Arc<Model>> {
-        let mtime = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+        let (file, node) = split_model_node(path);
+        let mtime = std::fs::metadata(&file).and_then(|m| m.modified()).ok();
         match self.entries.get(path) {
             Some((cached_time, model)) if *cached_time == mtime => return model.clone(),
             Some(_) => self.reloads += 1,
             None => {}
         }
 
-        let model = load(path, units_per_meter).map(Arc::new);
+        let model = match node {
+            Some(node) if matches!(file.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).as_deref(), Some("glb" | "gltf")) => {
+                load_gltf_node(&file, units_per_meter, Some(&node))
+            }
+            _ => load(&file, units_per_meter),
+        }
+        .map(Arc::new);
         if let Err(e) = &model {
             eprintln!("model {}: {e}", path.display());
         }
@@ -133,7 +173,7 @@ fn load_stl(path: &Path, units_per_meter: f64) -> Result<Model, String> {
     }
 
     let part = ModelPart { material: gt_render::WHITE_MATERIAL.to_string(), vertices, indices };
-    Ok(Model { parts: vec![part], textures: Vec::new(), bounds })
+    Ok(Model { parts: vec![part], textures: Vec::new(), emission: HashMap::new(), bounds })
 }
 
 /// Triangles of an STL file, ascii or binary. Binary is detected by the exact size the triangle
@@ -200,7 +240,7 @@ fn id_model_to_model(path: &Path, mesh: gt_formats::idmodel::IdModel, units_per_
         parts.push(ModelPart { material, vertices, indices: surf.indices.clone() });
     }
 
-    Model { parts, textures, bounds }
+    Model { parts, textures, emission: HashMap::new(), bounds }
 }
 
 /// Loads an md2/md3 skin: the path the model names, tried as given and relative to the model's folder.
@@ -224,6 +264,7 @@ fn load_bbmodel(path: &Path, units_per_meter: f64) -> Result<Model, String> {
     let scale = (units_per_meter / BB_UNITS_PER_METER) as f32;
     let base = format!("model:{}", path.display());
     let mut textures = Vec::new();
+    let mut emission = HashMap::new();
     for (i, t) in bb.textures.iter().enumerate() {
         let img = if !t.png.is_empty() {
             image::load_from_memory(&t.png).ok().map(|i| i.to_rgba8())
@@ -231,7 +272,13 @@ fn load_bbmodel(path: &Path, units_per_meter: f64) -> Result<Model, String> {
             let p = path.parent().map(|d| d.join(&t.path)).filter(|p| p.is_file()).or_else(|| Some(PathBuf::from(&t.path)).filter(|p| p.is_file()));
             p.and_then(|p| image::open(p).ok()).map(|i| i.to_rgba8())
         };
-        textures.push((format!("{base}#{i}"), img.unwrap_or_else(|| image::RgbaImage::from_pixel(2, 2, image::Rgba([200, 60, 200, 255]))), true));
+        let img = img.unwrap_or_else(|| image::RgbaImage::from_pixel(2, 2, image::Rgba([200, 60, 200, 255])));
+        // Like the Godot importer: the texture itself is the emission, added to a black color.
+        if t.emissive {
+            emission.insert(format!("{base}#{i}"), ModelEmission { color: [0.0; 3], energy: 1.0, multiply: false, texture: Some(img.clone()) });
+        }
+
+        textures.push((format!("{base}#{i}"), img, true));
     }
 
     let mut parts: HashMap<Option<usize>, ModelPart> = HashMap::new();
@@ -255,10 +302,16 @@ fn load_bbmodel(path: &Path, units_per_meter: f64) -> Result<Model, String> {
         }
     }
 
-    Ok(Model { parts: parts.into_values().collect(), textures, bounds })
+    Ok(Model { parts: parts.into_values().collect(), textures, emission, bounds })
 }
 
 fn load_gltf(path: &Path, units_per_meter: f64) -> Result<Model, String> {
+    load_gltf_node(path, units_per_meter, None)
+}
+
+/// A glTF, or only the subtree of the node named `node` placed with that node at the origin, for files that hold
+/// several variants side by side.
+fn load_gltf_node(path: &Path, units_per_meter: f64, node: Option<&str>) -> Result<Model, String> {
     let (doc, buffers, images) = gltf::import(path).map_err(|e| e.to_string())?;
     let base = format!("model:{}", path.display());
     let scale = units_per_meter as f32;
@@ -282,10 +335,21 @@ fn load_gltf(path: &Path, units_per_meter: f64) -> Result<Model, String> {
         }
     }
 
+    let mut emission: HashMap<String, ModelEmission> = HashMap::new();
     let mut parts: Vec<ModelPart> = Vec::new();
     let mut bounds = Aabb::EMPTY;
     let scene = doc.default_scene().or_else(|| doc.scenes().next()).ok_or("gltf has no scene")?;
-    let mut stack: Vec<(gltf::Node, Mat4)> = scene.nodes().map(|n| (n, Mat4::from_scale(Vec3::splat(scale)))).collect();
+    let root = Mat4::from_scale(Vec3::splat(scale));
+    let mut stack: Vec<(gltf::Node, Mat4)> = match node {
+        None => scene.nodes().map(|n| (n, root)).collect(),
+        Some(name) => {
+            let (picked, parent) = find_gltf_node(scene.nodes(), Mat4::IDENTITY, name).ok_or_else(|| format!("no node named {name} in the model"))?;
+            let local = Mat4::from_cols_array_2d(&picked.transform().matrix());
+            let mut placed = parent * local;
+            placed.w_axis = glam::Vec4::W;
+            vec![(picked, root * placed * local.inverse())]
+        }
+    };
     while let Some((node, parent)) = stack.pop() {
         let world = parent * Mat4::from_cols_array_2d(&node.transform().matrix());
         if let Some(mesh) = node.mesh() {
@@ -315,6 +379,7 @@ fn load_gltf(path: &Path, units_per_meter: f64) -> Result<Model, String> {
                         key
                     }
                 };
+                let material = gltf_emissive_material(&base, &prim.material(), material, &image_keys, &mut textures, &mut emission);
                 let mirrored = world.determinant() < 0.0;
                 let vertices: Vec<ModelVertex> = positions
                     .iter()
@@ -355,7 +420,39 @@ fn load_gltf(path: &Path, units_per_meter: f64) -> Result<Model, String> {
         stack.extend(node.children().map(|c| (c, world)));
     }
 
-    Ok(Model { parts, textures, bounds })
+    Ok(Model { parts, textures, emission, bounds })
+}
+
+/// Key of a glTF material that glows, its own texture entry sharing the albedo of `albedo_key`, so the plain
+/// parts using the same image stay dark. Returns `albedo_key` for materials without emission.
+fn gltf_emissive_material(
+    base: &str,
+    material: &gltf::Material,
+    albedo_key: String,
+    image_keys: &HashMap<usize, String>,
+    textures: &mut Vec<(String, image::RgbaImage, bool)>,
+    emission: &mut HashMap<String, ModelEmission>,
+) -> String {
+    let Some(index) = material.index() else { return albedo_key };
+    let image_of = |key: &String, textures: &[(String, image::RgbaImage, bool)]| textures.iter().find(|(k, ..)| k == key).map(|(_, img, _)| img.clone());
+    let texture = material.emissive_texture().and_then(|t| image_keys.get(&t.texture().source().index())).and_then(|k| image_of(k, textures));
+    let factor = material.emissive_factor();
+    let energy = material.emissive_strength().unwrap_or(1.0);
+    if energy <= 0.0 || (texture.is_none() && factor.iter().all(|c| *c <= 0.0)) {
+        return albedo_key;
+    }
+
+    let key = format!("{base}#mat{index}");
+    if !emission.contains_key(&key) {
+        let Some(albedo) = image_of(&albedo_key, textures) else { return albedo_key };
+        textures.push((key.clone(), albedo, false));
+        // Godot's glTF importer drops emissiveFactor for a black color when there is an emissive texture, the
+        // texture alone glows. Matching it keeps the preview what the game shows.
+        let color = if texture.is_some() { [0.0; 3] } else { factor };
+        emission.insert(key.clone(), ModelEmission { color, energy, multiply: false, texture });
+    }
+
+    key
 }
 
 /// Model path of a point entity: its "model" property, or the definition's model.
@@ -363,7 +460,37 @@ pub fn entity_model_path(game: &gt_formats::GameConfig, e: &gt_doc::Entity) -> O
     let from_prop = e.property("model").filter(|m| is_model_path(m));
     let from_def = game.entity(&e.classname).map(|d| d.model.as_str()).filter(|m| is_model_path(m));
     let path = from_prop.or(from_def)?;
-    if path.starts_with("res://") { game.resolve_res(path) } else { Some(PathBuf::from(path)) }
+    let file = if path.starts_with("res://") { game.resolve_res(path) } else { Some(PathBuf::from(path)) }?;
+    match e.property("model_node").map(str::trim).filter(|n| !n.is_empty()) {
+        Some(node) => Some(PathBuf::from(format!("{}#{node}", file.to_string_lossy()))),
+        None => Some(file),
+    }
+}
+
+/// Splits `model.glb#node` into the file and the node name. Paths without a node, or whose part before `#` is not a
+/// model file, come back whole.
+pub fn split_model_node(path: &Path) -> (PathBuf, Option<String>) {
+    let text = path.to_string_lossy();
+    match text.rsplit_once('#') {
+        Some((file, node)) if is_model_path(file) && !node.is_empty() => (PathBuf::from(file), Some(node.to_string())),
+        _ => (path.to_path_buf(), None),
+    }
+}
+
+/// The glTF node named `name` below `nodes`, with the accumulated transform of its parents.
+fn find_gltf_node<'a>(nodes: impl Iterator<Item = gltf::Node<'a>>, parent: Mat4, name: &str) -> Option<(gltf::Node<'a>, Mat4)> {
+    for n in nodes {
+        if n.name() == Some(name) {
+            return Some((n, parent));
+        }
+
+        let world = parent * Mat4::from_cols_array_2d(&n.transform().matrix());
+        if let Some(found) = find_gltf_node(n.children(), world, name) {
+            return Some(found);
+        }
+    }
+
+    None
 }
 
 fn load_obj(path: &Path, units_per_meter: f64) -> Result<Model, String> {
@@ -423,7 +550,7 @@ fn load_obj(path: &Path, units_per_meter: f64) -> Result<Model, String> {
         return Err("obj has no triangles".into());
     }
 
-    Ok(Model { parts, textures, bounds })
+    Ok(Model { parts, textures, emission: HashMap::new(), bounds })
 }
 
 /// Uniform scale to place a model at, from its natural (unit-scaled) bounds and the import prefs. Auto-fit
@@ -764,6 +891,103 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A one triangle glTF with three materials: plain, glowing by factor and strength, and glowing by texture.
+    fn emissive_gltf(dir: &Path) -> PathBuf {
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD;
+        let mut bin: Vec<u8> = Vec::new();
+        for f in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
+            bin.extend(f.to_le_bytes());
+        }
+
+        let mut png = Vec::new();
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 128, 0, 255])).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        let prim = |m: usize| serde_json::json!({ "attributes": { "POSITION": 0 }, "material": m });
+        let gltf = serde_json::json!({
+            "asset": { "version": "2.0" },
+            "extensionsUsed": ["KHR_materials_emissive_strength"],
+            "scene": 0,
+            "scenes": [{ "nodes": [0] }],
+            "nodes": [{ "mesh": 0 }],
+            "meshes": [{ "primitives": [prim(0), prim(1), prim(2)] }],
+            "materials": [
+                { "pbrMetallicRoughness": { "baseColorFactor": [0.5, 0.5, 0.5, 1.0] } },
+                { "pbrMetallicRoughness": { "baseColorFactor": [0.5, 0.5, 0.5, 1.0] }, "emissiveFactor": [1.0, 0.25, 0.0],
+                  "extensions": { "KHR_materials_emissive_strength": { "emissiveStrength": 6.0 } } },
+                { "emissiveFactor": [1.0, 1.0, 1.0], "emissiveTexture": { "index": 0 } }
+            ],
+            "textures": [{ "source": 0 }],
+            "images": [{ "uri": format!("data:image/png;base64,{}", b64.encode(&png)) }],
+            "buffers": [{ "byteLength": bin.len(), "uri": format!("data:application/octet-stream;base64,{}", b64.encode(&bin)) }],
+            "bufferViews": [{ "buffer": 0, "byteLength": bin.len() }],
+            "accessors": [{ "bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0] }]
+        });
+        let path = dir.join("glow.gltf");
+        std::fs::write(&path, gltf.to_string()).unwrap();
+        path
+    }
+
+    #[test]
+    fn gltf_emission_reaches_the_renderer_description() {
+        let dir = std::env::temp_dir().join(format!("gt_models_glow_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let model = load(&emissive_gltf(&dir), 32.0).unwrap();
+        assert_eq!(model.parts.len(), 3);
+        let desc_of = |part: &ModelPart| {
+            let (key, img, pixelated) = model.textures.iter().find(|(k, ..)| *k == part.material).expect("every part has a texture");
+            model.material_desc(key, img, *pixelated)
+        };
+
+        let plain = desc_of(&model.parts[0]);
+        assert_eq!(plain.emission, [0.0; 3], "a plain material does not glow");
+        assert!(plain.emission_texture.is_none());
+
+        let lamp = desc_of(&model.parts[1]);
+        assert_ne!(model.parts[1].material, model.parts[0].material, "the glowing material does not share the plain one's key");
+        assert_eq!(lamp.emission, [1.0, 0.25, 0.0]);
+        assert_eq!(lamp.emission_energy, 6.0, "KHR_materials_emissive_strength scales the glow");
+        assert_eq!(lamp.albedo.get_pixel(0, 0).0, [127, 127, 127, 255], "the base color stays the albedo");
+
+        let flame = desc_of(&model.parts[2]);
+        let tex = flame.emission_texture.expect("the emissive texture is uploaded");
+        assert_eq!(tex.get_pixel(1, 1).0, [255, 128, 0, 255]);
+        assert_eq!((flame.emission, flame.emission_energy, flame.emission_multiply), ([0.0; 3], 1.0, false), "like Godot's importer, the texture alone glows");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn blockbench_emissive_render_mode_glows_with_its_texture() {
+        let dir = std::env::temp_dir().join(format!("gt_models_bbglow_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        use base64::Engine;
+        let mut png = Vec::new();
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([40, 200, 255, 255])).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        let source = format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(&png));
+        let face = serde_json::json!({ "uv": [0, 0, 2, 2], "texture": 0 });
+        let plain_face = serde_json::json!({ "uv": [0, 0, 2, 2], "texture": 1 });
+        let bb = serde_json::json!({
+            "meta": { "format_version": "4.10", "model_format": "free", "box_uv": false },
+            "resolution": { "width": 2, "height": 2 },
+            "elements": [
+                { "name": "screen", "type": "cube", "uuid": "a", "from": [0, 0, 0], "to": [2, 2, 2], "origin": [0, 0, 0], "faces": { "north": face } },
+                { "name": "case", "type": "cube", "uuid": "b", "from": [0, 0, 0], "to": [2, 2, 2], "origin": [0, 0, 0], "faces": { "south": plain_face } }
+            ],
+            "textures": [{ "name": "screen", "render_mode": "emissive", "source": source }, { "name": "case", "source": source }]
+        });
+        let path = dir.join("tv.bbmodel");
+        std::fs::write(&path, bb.to_string()).unwrap();
+        let model = load(&path, 32.0).unwrap();
+        let (key, img, pixelated) = &model.textures[0];
+        let screen = model.material_desc(key, img, *pixelated);
+        assert_eq!(screen.emission_texture.map(|t| t.get_pixel(0, 0).0), Some([40, 200, 255, 255]), "the emissive texture glows with itself");
+        assert_eq!((screen.emission, screen.emission_energy, screen.emission_multiply), ([0.0; 3], 1.0, false));
+        let (key, img, pixelated) = &model.textures[1];
+        assert!(model.material_desc(key, img, *pixelated).emission_texture.is_none(), "a default render mode texture does not glow");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn autofit_grows_tiny_metric_models() {
         // A 2.4u toy car at 32 units/metre fits to the 2m (64u) target.
@@ -789,5 +1013,50 @@ mod tests {
         assert!((2.4 * both - 128.0).abs() < 1e-6);
         // With fit off, only the manual multiplier applies to the real size.
         assert_eq!(placement_scale(&aabb(2.4), 32.0, false, 3.0), 3.0);
+    }
+
+    #[test]
+    fn model_node_picks_one_variant_and_centers_it() {
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::STANDARD;
+        let bin: Vec<u8> = [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0].iter().flat_map(|f| f.to_le_bytes()).collect();
+        // Two variants side by side under a group, the way Poly Haven packs them.
+        let gltf = serde_json::json!({
+            "asset": { "version": "2.0" }, "scene": 0, "scenes": [{ "nodes": [0] }],
+            "nodes": [
+                { "name": "variants", "children": [1, 2], "translation": [0.0, 5.0, 0.0] },
+                { "name": "hydrant_a", "mesh": 0, "translation": [10.0, 0.0, 0.0] },
+                { "name": "hydrant_b", "mesh": 0, "translation": [100.0, 0.0, 0.0], "scale": [2.0, 2.0, 2.0] }
+            ],
+            "meshes": [{ "primitives": [{ "attributes": { "POSITION": 0 } }] }],
+            "buffers": [{ "byteLength": bin.len(), "uri": format!("data:application/octet-stream;base64,{}", b64.encode(&bin)) }],
+            "bufferViews": [{ "buffer": 0, "byteLength": bin.len() }],
+            "accessors": [{ "bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0] }]
+        });
+        let dir = std::env::temp_dir().join(format!("gt_models_node_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("hydrants.gltf");
+        std::fs::write(&file, gltf.to_string()).unwrap();
+
+        let mut cache = ModelCache::default();
+        let whole = cache.get(&file, 1.0).unwrap();
+        assert_eq!(whole.parts.len(), 2);
+        assert_eq!(whole.bounds.min.x, 10.0);
+
+        let with_node = |node: &str| PathBuf::from(format!("{}#{node}", file.to_string_lossy()));
+        assert_eq!(split_model_node(&with_node("hydrant_b")), (file.clone(), Some("hydrant_b".to_string())));
+        assert_eq!(split_model_node(&file), (file.clone(), None));
+        let b = cache.get(&with_node("hydrant_b"), 1.0).unwrap();
+        assert_eq!(b.parts.len(), 1, "only the picked variant");
+        assert_eq!((b.bounds.min, b.bounds.max), (DVec3::ZERO, DVec3::new(2.0, 2.0, 0.0)), "it sits at the origin and keeps its scale");
+        assert!(cache.get(&with_node("missing"), 1.0).is_none());
+
+        let mut prop = gt_doc::Entity::new("prop_model");
+        prop.properties.insert("model".into(), file.to_string_lossy().into_owned());
+        prop.properties.insert("model_node".into(), "hydrant_a".into());
+        let game = gt_formats::GameConfig::builtin();
+        assert_eq!(entity_model_path(&game, &prop), Some(with_node("hydrant_a")));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

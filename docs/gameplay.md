@@ -33,7 +33,11 @@ play animations, show text, break things and switch lights entirely through I/O:
 * `env_explosion`: on `explode` it pushes rigid bodies away and calls `take_damage` on nodes within `radius`, then
   optionally spawns an effect. Output `exploded`.
 * `light` and `light_spot`: switchable omni and spot lights. Inputs `turn_on`, `turn_off`, `toggle`. Output
-  `switched(on)`.
+  `switched(on)`. `fixture` names the lamp geometry (a targetname, `*` at the end for a prefix) that follows the light
+  without any I/O: shown while on and hidden while off, or with `fixture_off dark` kept visible with the emission of
+  its materials off. The editor's lit preview hides the fixtures of lights that start off.
+* `prop_model`: a model with optional collision. `model_node` keeps only the node of that name from the model file,
+  placed at the prop's origin, for files like Poly Haven packs that hold several variants side by side.
 * `env_sound`: a positional sound. Inputs `play`, `stop`, `toggle`. Output `finished`.
 * `env_particles`: a particle effect for smoke, fire, sparks or dust. Inputs `start`, `stop`, `toggle`, `burst`.
 * `logic_branch`: stores a boolean and, on `test`, fires `on_true` or `on_false`, for conditional wiring. Inputs
@@ -57,6 +61,9 @@ is spread into arguments with `$activator`, `$self`, `$position` and `$caller_na
 With no parameter, the signal's own arguments after the activator are forwarded to the input in order, so `changed(value)` wired
 straight to a counter's `set_value` passes the value through; this forwards `false` too, so a bool output wired without a
 parameter to a numeric input still passes `0`, give the connection an explicit parameter to override it.
+Because inputs reach any method or property, `validate_map` accepts the methods and properties of the target's Godot
+class and script as inputs (so `set_visible` or `hide` on a brush entity is fine) and reports names that exist on
+neither, when the class is known.
 `trigger_call` and `logic_call` call a method directly, for example `call_target = "/root/Game"`, `method = "give_item"`,
 `arguments = ["key_red", "$activator"]`. `GodotTrenchIO.events()` reports every fired output, and
 `GodotTrenchDebugOverlay` shows them in game (F3) together with the trigger volumes.

@@ -306,6 +306,10 @@ pub struct EditorState {
     pub cursor_world: Option<DVec3>,
     pub focus_request: Option<Aabb>,
     pub hollow_thickness: f64,
+    /// Whether faces CSG Subtract carves take the cutter's or the target's material.
+    pub carve_material: gt_geom::csg::CarveMaterial,
+    /// Brushes the last CSG or clip command replaced, with their replacements, for MCP results.
+    pub replaced: gt_doc::ops::Replaced,
     last_autosave: Instant,
     autosave: Autosave,
     /// MCP runs over stdin and stdout, so launched programs must not write to them.
@@ -388,6 +392,8 @@ impl EditorState {
             cursor_world: None,
             focus_request: None,
             hollow_thickness: 16.0,
+            carve_material: Default::default(),
+            replaced: Default::default(),
             last_autosave: Instant::now(),
             autosave: Autosave::default(),
             stdio_mcp: false,

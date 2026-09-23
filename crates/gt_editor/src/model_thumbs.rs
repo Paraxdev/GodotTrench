@@ -12,6 +12,8 @@ use gt_render::{Frame, FrameParams, Lighting, MeshBatch, MeshVertex, Renderer, S
 use crate::models::ModelCache;
 
 const SIZE: u32 = 128;
+/// Part of the disk cache name, bumped when thumbnails render differently (emission) so stale ones are redrawn.
+const THUMB_VERSION: u32 = 2;
 /// Cache misses rendered per egui frame, so scrolling past many never-seen models never stalls the UI.
 const BUDGET_PER_FRAME: u32 = 2;
 
@@ -106,7 +108,7 @@ impl ModelThumbnails {
     fn disk_cache_path(&mut self, path: &Path, mtime: Option<SystemTime>) -> Option<PathBuf> {
         let dir = self.disk_dir.get_or_insert_with(|| eframe::storage_dir("GodotTrench").map(|d| d.join("cache").join("model_thumbs"))).clone()?;
         let secs = mtime.and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
-        Some(dir.join(format!("{:016x}-{secs}.png", fnv_hash(&path.to_string_lossy()))))
+        Some(dir.join(format!("{:016x}-{secs}-v{THUMB_VERSION}.png", fnv_hash(&path.to_string_lossy()))))
     }
 }
 
@@ -129,7 +131,7 @@ fn fnv_hash(s: &str) -> u64 {
 /// reads it back to the CPU.
 fn render_model(renderer: &mut Renderer, scratch: &mut Option<ViewTarget>, model: &crate::models::Model) -> Option<image::RgbaImage> {
     for (key, image, pixelated) in &model.textures {
-        renderer.set_material_filtered(key, image, *pixelated);
+        renderer.set_material_desc(key, &model.material_desc(key, image, *pixelated));
     }
 
     let mut batch = MeshBatch::default();
@@ -187,6 +189,14 @@ mod tests {
         let later = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(5);
         let c = thumbs.disk_cache_path(p, Some(later)).unwrap();
         assert_ne!(a, c, "a changed mtime changes the cache filename, so a stale image is never loaded");
+    }
+
+    #[test]
+    fn thumbnails_saved_before_emission_are_not_reused() {
+        let mut thumbs = ModelThumbnails { disk_dir: Some(Some(PathBuf::from("/cache"))), ..Default::default() };
+        let name = thumbs.disk_cache_path(Path::new("/models/lamp.gltf"), Some(SystemTime::UNIX_EPOCH)).unwrap();
+        let name = name.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.ends_with(&format!("-v{THUMB_VERSION}.png")) && THUMB_VERSION >= 2, "{name} would load a thumbnail rendered without emission");
     }
 
     #[test]

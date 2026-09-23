@@ -1,6 +1,6 @@
 //! Editing operations on a map and selection. Callers wrap these in `Document::edit` for undo.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use gt_core::{Aabb, DMat4, DQuat, DVec3, NodeId};
 use gt_geom::{Brush, FaceData, Mesh, csg};
@@ -8,6 +8,9 @@ use gt_geom::{Brush, FaceData, Mesh, csg};
 use crate::entity::Entity;
 use crate::map::{Group, Map, Node, NodeKind};
 use crate::selection::Selection;
+
+/// Nodes an edit replaced, each with the nodes that took its place, empty when it was removed.
+pub type Replaced = BTreeMap<NodeId, Vec<NodeId>>;
 
 #[derive(Clone, Copy, Debug)]
 pub struct EditOptions {
@@ -408,10 +411,12 @@ pub fn apply_material(map: &mut Map, sel: &Selection, material: &str) {
 }
 
 /// Subtracts the selected brushes from every other intersecting editable brush, then removes the selected ones.
-pub fn csg_subtract(map: &mut Map, sel: &mut Selection) -> usize {
+/// Returns how many brushes were cut, and every replaced brush (the cutters with no replacement).
+pub fn csg_subtract(map: &mut Map, sel: &mut Selection, carve: csg::CarveMaterial) -> (usize, Replaced) {
+    let mut replaced = Replaced::new();
     let cutters: Vec<(NodeId, Brush)> = sel.brushes(map).into_iter().filter_map(|id| map.brush(id).cloned().map(|b| (id, b))).collect();
     if cutters.is_empty() {
-        return 0;
+        return (0, replaced);
     }
 
     let cutter_ids: Vec<NodeId> = cutters.iter().map(|(id, _)| *id).collect();
@@ -422,7 +427,7 @@ pub fn csg_subtract(map: &mut Map, sel: &mut Selection) -> usize {
         let Some(original) = map.brush(t).cloned() else { continue };
         let mut pieces = vec![original.clone()];
         for (_, c) in &cutters {
-            pieces = pieces.iter().flat_map(|p| csg::subtract(p, c)).collect();
+            pieces = pieces.iter().flat_map(|p| csg::subtract_with(p, c, carve)).collect();
         }
 
         if pieces.len() == 1 && pieces[0] == original {
@@ -432,15 +437,15 @@ pub fn csg_subtract(map: &mut Map, sel: &mut Selection) -> usize {
         changed += 1;
         let parent = map.get(t).and_then(|n| n.parent).unwrap_or(map.default_layer());
         parents.extend(remove_nodes(map, &[t]));
-        for p in pieces {
-            map.insert(parent, NodeKind::Brush(p));
-        }
+        let new_ids = pieces.into_iter().map(|p| map.insert(parent, NodeKind::Brush(p))).collect();
+        replaced.insert(t, new_ids);
     }
 
     parents.extend(remove_nodes(map, &cutter_ids));
     remove_empty_containers(map, parents);
+    replaced.extend(cutter_ids.into_iter().map(|c| (c, Vec::new())));
     sel.clear();
-    changed
+    (changed, replaced)
 }
 
 pub fn csg_merge(map: &mut Map, sel: &mut Selection, default_material: &str) -> Option<NodeId> {
@@ -481,9 +486,10 @@ pub fn csg_intersect(map: &mut Map, sel: &mut Selection) -> Option<NodeId> {
     Some(new_id)
 }
 
-pub fn csg_hollow(map: &mut Map, sel: &mut Selection, thickness: f64) -> Vec<NodeId> {
+/// Returns each hollowed brush with the walls that replaced it.
+pub fn csg_hollow(map: &mut Map, sel: &mut Selection, thickness: f64) -> Replaced {
     let ids = sel.brushes(map);
-    let mut out = Vec::new();
+    let mut replaced = Replaced::new();
     for id in ids {
         let Some(b) = map.brush(id).cloned() else { continue };
         let walls = csg::hollow(&b, thickness);
@@ -493,14 +499,13 @@ pub fn csg_hollow(map: &mut Map, sel: &mut Selection, thickness: f64) -> Vec<Nod
 
         let parent = map.get(id).and_then(|n| n.parent).unwrap_or(map.default_layer());
         map.remove(id);
-        for w in walls {
-            out.push(map.insert(parent, NodeKind::Brush(w)));
-        }
+        let new_ids: Vec<NodeId> = walls.into_iter().map(|w| map.insert(parent, NodeKind::Brush(w))).collect();
+        replaced.insert(id, new_ids);
     }
 
     sel.clear();
-    sel.nodes.extend(out.iter().copied());
-    out
+    sel.nodes.extend(replaced.values().flatten().copied());
+    replaced
 }
 
 /// Moves the selected brushes into a new brush entity.
@@ -724,8 +729,24 @@ mod tests {
         let (mut m, ids) = world_with_boxes();
         let mut sel = Selection::default();
         sel.nodes.insert(ids[1]);
-        assert_eq!(csg_subtract(&mut m, &mut sel), 1);
+        let (changed, replaced) = csg_subtract(&mut m, &mut sel, csg::CarveMaterial::Cutter);
+        assert_eq!(changed, 1);
         assert_eq!(m.brush_count(), 5);
+        assert_eq!(replaced[&ids[1]], Vec::<NodeId>::new(), "the cutter is gone without a replacement");
+        assert_eq!(replaced[&ids[0]].len(), 4, "the target maps to its pieces");
+        assert!(replaced[&ids[0]].iter().all(|id| m.brush(*id).is_some()));
+        assert!(!replaced.contains_key(&ids[2]), "brushes the cutter missed keep their ids");
+    }
+
+    #[test]
+    fn hollow_maps_each_brush_to_its_walls() {
+        let (mut m, ids) = world_with_boxes();
+        let mut sel = Selection::default();
+        sel.nodes.insert(ids[0]);
+        let replaced = csg_hollow(&mut m, &mut sel, 4.0);
+        assert_eq!(replaced.len(), 1);
+        assert_eq!(replaced[&ids[0]].len(), sel.nodes.len());
+        assert!(!m.contains(ids[0]));
     }
 
     fn in_entity(m: &mut Map, id: NodeId, classname: &str) -> NodeId {
@@ -741,7 +762,7 @@ mod tests {
         let cutter = in_entity(&mut m, ids[1], "func_detail");
         let mut sel = Selection::default();
         sel.nodes.insert(ids[1]);
-        csg_subtract(&mut m, &mut sel);
+        csg_subtract(&mut m, &mut sel, csg::CarveMaterial::Cutter);
         assert!(!m.contains(cutter), "the cutter's entity went with it");
 
         for op in 0..3 {

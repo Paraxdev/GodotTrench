@@ -61,6 +61,17 @@ fn check_mesh_indices(mesh: &gt_geom::Mesh, op: &str, faces: &[u64], verts: &[u6
     }
 }
 
+/// `rotate: [x, y, z]` degrees applied like Godot's `rotation_degrees` (YXZ order, the same as entity angles), or the
+/// older `rotate_y`.
+fn mesh_rotation(args: &Value) -> Result<Option<gt_core::DQuat>, String> {
+    if !args["rotate"].is_null() {
+        let r = vec3(&args["rotate"]).ok_or("rotate must be [x, y, z] degrees")?;
+        return Ok(Some(gt_core::DQuat::from_euler(gt_core::EulerRot::YXZ, r.y.to_radians(), r.x.to_radians(), r.z.to_radians())));
+    }
+
+    Ok(args["rotate_y"].as_f64().map(|deg| gt_core::DQuat::from_rotation_y(deg.to_radians())))
+}
+
 impl App {
     pub(crate) fn tool_create_mesh(&mut self, args: &Value) -> ToolResult {
         let material = args["material"].as_str().map(str::to_string).unwrap_or_else(|| self.state.current_material.clone());
@@ -126,9 +137,13 @@ impl App {
             }
         }
 
-        if let Some(deg) = args["rotate_y"].as_f64() {
-            let c = mesh.bounds().center();
-            mesh = mesh.transformed(&(DMat4::from_translation(c) * DMat4::from_rotation_y(deg.to_radians()) * DMat4::from_translation(-c)), false);
+        match mesh_rotation(args) {
+            Ok(Some(rotation)) => {
+                let c = mesh.bounds().center();
+                mesh = mesh.transformed(&(DMat4::from_translation(c) * DMat4::from_quat(rotation) * DMat4::from_translation(-c)), false);
+            }
+            Ok(None) => {}
+            Err(e) => return err(e),
         }
 
         if let Some(t) = vec3(&args["translate"]) {
@@ -468,7 +483,7 @@ impl App {
                     "material": material,
                     "size": size,
                     "world_size": self.state.materials.world_size(&material),
-                    "material_file": self.state.materials.find(&material).and_then(|e| e.material_file.clone()),
+                    "material_file": super::tools::path_value(self.state.materials.find(&material).and_then(|e| e.material_file.as_ref())),
                     "summary": info.as_ref().map(crate::panels::material_summary).unwrap_or_default().trim_start_matches(", "),
                     "transparent": info.as_ref().is_some_and(|i| i.is_transparent()),
                     "emissive": self.state.materials.find(&material).is_some_and(|e| e.is_emissive) || info.as_ref().is_some_and(|i| i.is_emissive()),
@@ -562,5 +577,22 @@ mod tests {
         let (a, b) = mesh.edges()[0];
         assert!(check_mesh_indices(&mesh, "bevel_edges", &[], &[], &[(b as u64, a as u64)]).is_ok());
         assert!(check_mesh_indices(&mesh, "weld", &[], &[], &[]).is_ok());
+    }
+
+    #[test]
+    fn a_full_rotation_lays_a_cylinder_flat() {
+        let upright = mesh_shapes::cylinder(&Aabb::new(DVec3::new(-8.0, 0.0, -8.0), DVec3::new(8.0, 64.0, 8.0)), 12, "a");
+        let turn = |args: Value| {
+            let q = mesh_rotation(&args).unwrap().unwrap();
+            let c = upright.bounds().center();
+            upright.transformed(&(DMat4::from_translation(c) * DMat4::from_quat(q) * DMat4::from_translation(-c)), false).bounds().size()
+        };
+        let along_x = turn(json!({ "rotate": [0, 0, 90] }));
+        assert!((along_x.x - 64.0).abs() < 1e-6 && along_x.y <= 16.0 + 1e-6 && along_x.y > 14.0, "{along_x}");
+        let along_z = turn(json!({ "rotate": [90, 0, 0] }));
+        assert!((along_z.z - 64.0).abs() < 1e-6, "{along_z}");
+        assert!(mesh_rotation(&json!({ "rotate_y": 45 })).unwrap().is_some(), "rotate_y still works");
+        assert!(mesh_rotation(&json!({})).unwrap().is_none());
+        assert!(mesh_rotation(&json!({ "rotate": [1, 2] })).is_err());
     }
 }

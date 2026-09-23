@@ -120,6 +120,10 @@ pub struct App {
     last_selected_scatter: Option<gt_core::NodeId>,
     /// Tool of the last frame, so picking the scatter tool can bring up the Scatter panel once.
     last_tool: ToolKind,
+    /// The layout from before Maximize View, restored when it is toggled off.
+    maximized: Option<DockState<Tab>>,
+    /// The view last under the pointer, the one Maximize View fills the area with.
+    active_view: usize,
 }
 
 const PREFS_LABEL_WIDTH: f32 = 180.0;
@@ -434,6 +438,55 @@ fn ensure_tab(dock: &mut DockState<Tab>, tab: Tab, beside: Tab) {
     }
 }
 
+/// The views shown in the dock.
+fn open_views(dock: &DockState<Tab>) -> Vec<usize> {
+    dock.iter_all_tabs()
+        .filter_map(|(_, t)| match t {
+            Tab::View(i) => Some(*i),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Views keep a close button while another view stays open, the dock always shows at least one.
+fn view_closeable(tab: &Tab, views_open: usize) -> bool {
+    !matches!(tab, Tab::View(_)) || views_open > 1
+}
+
+/// Shows exactly `views` where the views were: one fills the area, two sit side by side, three put the second
+/// beside the other two stacked, four make the 2x2 grid of the default layout.
+fn set_views(dock: &mut DockState<Tab>, views: &[usize]) {
+    let Some(&first) = views.first() else { return };
+    let Some(anchor) = dock.iter_all_tabs().find_map(|(_, t)| matches!(t, Tab::View(_)).then_some(*t)) else { return };
+    while let Some(path) = dock.find_tab_from(|t| matches!(t, Tab::View(_)) && *t != anchor) {
+        dock.remove_tab(path);
+    }
+
+    let Some(path) = dock.find_tab(&anchor) else { return };
+    if let Some(tabs) = dock[path.surface][path.node].tabs_mut() {
+        tabs[path.tab.0] = Tab::View(first);
+    }
+
+    let _ = dock.set_active_tab(path);
+    let tree = &mut dock[path.surface];
+    let tab = |k: usize| vec![Tab::View(views[k])];
+    match views.len() {
+        1 => {}
+        2 => {
+            tree.split_right(path.node, 0.5, tab(1));
+        }
+        3 => {
+            let [left, _] = tree.split_right(path.node, 0.5, tab(1));
+            tree.split_below(left, 0.5, tab(2));
+        }
+        _ => {
+            let [left, right] = tree.split_right(path.node, 0.5, tab(1));
+            tree.split_below(left, 0.5, tab(2));
+            tree.split_below(right, 0.5, tab(3));
+        }
+    }
+}
+
 fn default_dock() -> DockState<Tab> {
     let mut dock = DockState::new(vec![Tab::View(0)]);
     let surface = dock.main_surface_mut();
@@ -552,6 +605,8 @@ impl App {
             logo: crate::brand::texture(&cc.egui_ctx),
             last_selected_scatter: None,
             last_tool: ToolKind::Select,
+            maximized: None,
+            active_view: 0,
         }
     }
 
@@ -618,6 +673,13 @@ impl App {
             }
             Action::ShowReference => show_tab(&mut self.dock, Tab::Reference),
             Action::ShowPreferences => self.show_prefs = true,
+            Action::ToggleMaximizeView => self.toggle_maximize(),
+            Action::ViewLayout(n) => {
+                self.maximized = None;
+                let views: Vec<usize> = if n <= 1 { vec![self.view_to_maximize()] } else { (0..(n as usize).min(self.viewports.len())).collect() };
+                set_views(&mut self.dock, &views);
+            }
+            Action::ToggleView(view) => self.toggle_view(view),
             Action::ShowUvEditor => show_tab(&mut self.dock, Tab::Uv),
             Action::MeshOp(op) => {
                 if self.state.tool != ToolKind::Mesh {
@@ -677,6 +739,44 @@ impl App {
         }
 
         None
+    }
+
+    /// The shown view last under the pointer, else the first shown view.
+    fn view_to_maximize(&self) -> usize {
+        let open = open_views(&self.dock);
+        if open.contains(&self.active_view) { self.active_view } else { open.iter().copied().min().unwrap_or(0) }
+    }
+
+    fn toggle_maximize(&mut self) {
+        if let Some(saved) = self.maximized.take() {
+            self.dock = saved;
+            return;
+        }
+
+        if open_views(&self.dock).len() < 2 {
+            self.state.set_status("Only one view is shown, View > Views brings the others back");
+            return;
+        }
+
+        let view = self.view_to_maximize();
+        self.maximized = Some(self.dock.clone());
+        set_views(&mut self.dock, &[view]);
+    }
+
+    fn toggle_view(&mut self, view: usize) {
+        self.maximized = None;
+        let mut open = open_views(&self.dock);
+        if open.contains(&view) {
+            if open.len() == 1 {
+                self.state.set_status("The last view stays open");
+            } else if let Some(path) = self.dock.find_tab(&Tab::View(view)) {
+                self.dock.remove_tab(path);
+            }
+        } else if view < self.viewports.len() {
+            open.push(view);
+            open.sort_unstable();
+            set_views(&mut self.dock, &open);
+        }
     }
 
     fn menu_bar(&mut self, ui: &mut Ui) {
@@ -814,6 +914,17 @@ impl App {
                 ui.separator();
                 sub_menu(ui, Some(icons::CSG_SUBTRACT), "CSG", |ui| {
                     m.item(ui, Some(icons::CSG_SUBTRACT), "Subtract", Action::CsgSubtract);
+                    ui.horizontal(|ui| {
+                        ui.add_space(icons::SMALL + ui.spacing().item_spacing.x);
+                        let mut keep = self.state.carve_material == gt_geom::csg::CarveMaterial::Target;
+                        if ui
+                            .checkbox(&mut keep, "Carved faces keep the target's material")
+                            .on_hover_text("Off: the cut faces take the cutter's material")
+                            .changed()
+                        {
+                            self.state.carve_material = if keep { gt_geom::csg::CarveMaterial::Target } else { gt_geom::csg::CarveMaterial::Cutter };
+                        }
+                    });
                     m.item(ui, Some(icons::CSG_MERGE), "Convex Merge", Action::CsgMerge);
                     m.item(ui, Some(icons::CSG_INTERSECT), "Intersect", Action::CsgIntersect);
                     ui.separator();
@@ -1023,6 +1134,24 @@ impl App {
                 m.item(ui, Some(icons::FOCUS), "Focus Selection", Action::FocusSelection);
                 m.toggle(ui, "Transform Gizmo", self.state.prefs.transform_gizmo, Action::ToggleTransformGizmo);
                 ui.separator();
+                sub_menu(ui, None, "Views", |ui| {
+                    let open = open_views(&self.dock);
+                    for (i, vp) in self.viewports.iter().enumerate() {
+                        m.toggle(ui, vp.kind().label(), open.contains(&i), Action::ToggleView(i));
+                    }
+
+                    ui.separator();
+                    for (n, label) in [(1u8, "Single View"), (2, "Two Views"), (4, "Four Views")] {
+                        let current = self.maximized.is_none() && open.len() == n as usize;
+                        if ui.add(menu_button(current.then_some(icons::CHECK), label, m.shortcut(&Action::ViewLayout(n)))).clicked() {
+                            m.actions.push(Action::ViewLayout(n));
+                            ui.close();
+                        }
+                    }
+
+                    ui.separator();
+                    m.toggle(ui, "Maximize View", self.maximized.is_some(), Action::ToggleMaximizeView);
+                });
                 sub_menu(ui, Some(icons::shade(self.state.prefs.shade)), "Shading", |ui| {
                     for s in Shade::ALL {
                         let shortcut = m.shortcut(&Action::SetShade(s));
@@ -1852,6 +1981,7 @@ impl App {
 }
 
 struct Tabs<'a> {
+    views_open: usize,
     state: &'a mut EditorState,
     renderer: &'a mut Renderer,
     scene: &'a SceneCache,
@@ -1903,11 +2033,11 @@ impl TabViewer for Tabs<'_> {
     }
 
     fn is_closeable(&self, tab: &Tab) -> bool {
-        !matches!(tab, Tab::View(_))
+        view_closeable(tab, self.views_open)
     }
 
     fn closeable(&mut self, tab: &mut Tab) -> bool {
-        !matches!(tab, Tab::View(_))
+        view_closeable(tab, self.views_open)
     }
 
     fn clear_background(&self, tab: &Tab) -> bool {
@@ -1977,6 +2107,7 @@ impl eframe::App for App {
             .is_some_and(|p| self.dock.leaf(egui_dock::NodePath { surface: p.surface, node: p.node }).is_ok_and(|leaf| leaf.active == p.tab));
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
             let mut tabs = Tabs {
+                views_open: open_views(&self.dock).len(),
                 state: &mut self.state,
                 renderer: &mut self.renderer,
                 scene: &self.scene,
@@ -1986,6 +2117,16 @@ impl eframe::App for App {
                 actions: &mut self.actions,
             };
             DockArea::new(&mut self.dock).show_leaf_collapse_buttons(false).show_inside(ui, &mut tabs);
+            // Closing every tab of a leaf at once can take the last view with it.
+            let open = open_views(&self.dock);
+            if open.is_empty() {
+                self.dock.push_to_first_leaf(Tab::View(0));
+            }
+
+            if let Some(hovered) = open.into_iter().find(|i| self.viewports.get(*i).is_some_and(|v| v.hovered)) {
+                self.active_view = hovered;
+            }
+
             view_grid_corner(ui, &mut self.dock);
         });
 
@@ -2044,7 +2185,8 @@ impl eframe::App for App {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         if self.keep_prefs {
             eframe::set_value(storage, "prefs", &self.state.prefs);
-            eframe::set_value(storage, DOCK_KEY, &self.dock);
+            // A maximized view is a temporary state, the next launch starts from the layout it replaced.
+            eframe::set_value(storage, DOCK_KEY, self.maximized.as_ref().unwrap_or(&self.dock));
         }
     }
 }
@@ -2052,6 +2194,51 @@ impl eframe::App for App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn view_layouts_show_one_two_or_four_views() {
+        let mut dock = default_dock();
+        assert_eq!(open_views(&dock).len(), 4);
+        let panels = |d: &DockState<Tab>| d.iter_all_tabs().filter(|(_, t)| !matches!(t, Tab::View(_))).count();
+        let panel_count = panels(&dock);
+
+        set_views(&mut dock, &[2]);
+        assert_eq!(open_views(&dock), [2], "a single view fills the view area");
+        assert_eq!(panels(&dock), panel_count, "the panels stay where they were");
+        assert!(view_grid(dock.main_surface()).is_none());
+
+        set_views(&mut dock, &[0, 1]);
+        let mut open = open_views(&dock);
+        open.sort_unstable();
+        assert_eq!(open, [0, 1]);
+
+        set_views(&mut dock, &[0, 1, 2, 3]);
+        assert!(view_grid(dock.main_surface()).is_some(), "four views make the same 2x2 grid as the default, so the grid corner drags them");
+        let mut open = open_views(&dock);
+        open.sort_unstable();
+        assert_eq!(open, [0, 1, 2, 3]);
+        assert_eq!(panels(&dock), panel_count);
+        assert!(valid_dock(&dock));
+    }
+
+    #[test]
+    fn view_tabs_close_while_another_view_is_open() {
+        assert!(view_closeable(&Tab::View(1), 4), "the Top, Front and Side tabs close like panels");
+        assert!(!view_closeable(&Tab::View(0), 1), "the last view never closes");
+        assert!(view_closeable(&Tab::Outliner, 1));
+
+        let mut dock = default_dock();
+        let path = dock.find_tab(&Tab::View(3)).unwrap();
+        dock.remove_tab(path);
+        assert_eq!(open_views(&dock).len(), 3);
+        assert!(valid_dock(&dock), "a layout with a closed view is still saved and restored");
+        let mut open = open_views(&dock);
+        open.push(3);
+        open.sort_unstable();
+        set_views(&mut dock, &open);
+        assert!(dock.find_tab(&Tab::View(3)).is_some(), "View > Views brings it back");
+        assert!(view_grid(dock.main_surface()).is_some());
+    }
 
     #[test]
     fn mesh_menu_groups_cover_every_op() {

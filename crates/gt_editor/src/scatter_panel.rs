@@ -454,6 +454,13 @@ fn brush_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>) {
         ui.label("Falloff");
         ui.add(egui::Slider::new(&mut s.rules.falloff, 0.0..=1.0)).on_hover_text("Thins instances out towards the rim");
         ui.end_row();
+        ui.label("Exposed only");
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut s.rules.exposed_only, "").on_hover_text("Skips points with geometry above them, so nothing grows under slabs and roofs");
+            ui.add_enabled(s.rules.exposed_only, egui::DragValue::new(&mut s.rules.clearance).range(0.0..=65536.0).prefix("clear ").suffix(" u"))
+                .on_hover_text("Height above a point that must be free");
+        });
+        ui.end_row();
         ui.label("Erase amount");
         ui.add(egui::Slider::new(&mut s.erase_amount, 0.05..=1.0)).on_hover_text("Share of the instances under the brush one erase dab removes");
         ui.end_row();

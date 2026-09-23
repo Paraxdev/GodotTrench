@@ -170,6 +170,14 @@ impl App {
             s.rules.falloff = f;
         }
 
+        if let Some(b) = a["exposed_only"].as_bool() {
+            s.rules.exposed_only = b;
+        }
+
+        if let Some(c) = a["clearance"].as_f64() {
+            s.rules.clearance = c.max(0.0);
+        }
+
         if let Some(b) = a["avoid_other_sets"].as_bool() {
             s.avoid_other_sets = b;
         }
@@ -1147,8 +1155,8 @@ impl App {
     }
 
     pub(crate) fn tool_run_script(&mut self, args: &Value, ctx: &egui::Context) -> ToolResult {
-        let project = self.state.game.project_root.as_ref().map(|p| p.to_string_lossy().replace('\\', "/"));
-        let cwd = || std::env::current_dir().map(|d| d.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+        let project = self.state.game.project_root.as_ref().map(super::tools::path_text);
+        let cwd = || std::env::current_dir().map(super::tools::path_text).unwrap_or_default();
         let (doc, dir) = match args["path"].as_str() {
             Some(path) => {
                 let text = match std::fs::read_to_string(path) {
@@ -1157,7 +1165,7 @@ impl App {
                 };
                 match serde_json::from_str::<Value>(&text) {
                     Ok(v) => {
-                        let parent = std::path::Path::new(path).parent().map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+                        let parent = std::path::Path::new(path).parent().map(super::tools::path_text).unwrap_or_default();
                         (v, if parent.is_empty() { cwd() } else { parent })
                     }
                     Err(e) => return err(format!("{path}: {e}")),
@@ -1197,6 +1205,8 @@ impl App {
         }
 
         let continue_on_error = args["continue_on_error"].as_bool().unwrap_or(false);
+        // Only results of steps follow replaced brushes, variables passed in stay as written.
+        let mut saved_results: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         let mut errors = Vec::new();
         let mut ran = 0;
         for (i, step) in steps.iter().enumerate() {
@@ -1223,8 +1233,16 @@ impl App {
             ran += 1;
             match self.run_tool(&step.tool, resolved, ctx) {
                 ToolResult::Json(v) => {
+                    let replaced = super::script::replacements(&v);
+                    for name in saved_results.iter().chain(["last".to_string()].iter()) {
+                        if let Some(saved) = vars.get_mut(name) {
+                            super::script::follow_replacements(saved, &replaced);
+                        }
+                    }
+
                     if let Some(name) = &step.save {
                         vars.insert(name.clone(), v.clone());
+                        saved_results.insert(name.clone());
                     }
 
                     vars.insert("last".into(), v);

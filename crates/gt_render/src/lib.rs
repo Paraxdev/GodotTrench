@@ -142,6 +142,35 @@ impl MaterialUniform {
     }
 }
 
+/// Terrain layer parameters, including each layer material's emission so glowing layers light up like on brushes.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+struct TerrainUniform {
+    tiles: [f32; 4],
+    detiles: [f32; 4],
+    sharpens: [f32; 4],
+    /// Per layer linear emission color and energy.
+    glow: [[f32; 4]; 4],
+    /// Per layer 1 when the layer's emission texture is bound.
+    glow_textured: [f32; 4],
+    /// Per layer 1 to multiply the emission color with the texture instead of adding them.
+    glow_multiply: [f32; 4],
+}
+
+impl TerrainUniform {
+    fn new(tiles: [f32; 4], detiles: [f32; 4], sharpens: [f32; 4], materials: [Option<&MaterialUniform>; 4]) -> Self {
+        let mut u = Self { tiles, detiles, sharpens, glow: [[0.0; 4]; 4], glow_textured: [0.0; 4], glow_multiply: [0.0; 4] };
+        for (l, m) in materials.iter().enumerate() {
+            let Some(m) = m else { continue };
+            u.glow[l] = m.emission;
+            u.glow_textured[l] = m.glow[0];
+            u.glow_multiply[l] = m.glow[1];
+        }
+
+        u
+    }
+}
+
 pub fn srgb_to_linear(c: f32) -> f32 {
     if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
 }
@@ -292,6 +321,7 @@ pub struct Material {
     bind_group: wgpu::BindGroup,
     view: wgpu::TextureView,
     normal: Option<wgpu::TextureView>,
+    emission: Option<wgpu::TextureView>,
     uniform: MaterialUniform,
     nearest: bool,
     /// Size in map units that one repeat of the texture covers, the albedo's pixel size unless overridden.
@@ -363,6 +393,7 @@ pub struct Renderer {
     flat_normal: wgpu::TextureView,
     white: wgpu::TextureView,
     mesh_transparent: wgpu::RenderPipeline,
+    mesh_transparent_double: wgpu::RenderPipeline,
     mesh_overlay: wgpu::RenderPipeline,
     line_depth: wgpu::RenderPipeline,
     line_overlay: wgpu::RenderPipeline,
@@ -436,6 +467,10 @@ impl Renderer {
                     count: None,
                 },
                 uniform_entry(5, wgpu::ShaderStages::FRAGMENT),
+                texture_entry(6),
+                texture_entry(7),
+                texture_entry(8),
+                texture_entry(9),
             ],
         });
         let shadow_bgl = device
@@ -651,8 +686,23 @@ impl Renderer {
         };
         let flat_normal = solid_texture("flat normal", wgpu::TextureFormat::Rgba8Unorm, [128, 128, 255, 255]);
         let white = solid_texture("white", wgpu::TextureFormat::Rgba8UnormSrgb, [255, 255, 255, 255]);
+        // Back faces are culled like Godot does unless the material is double sided, so a camera inside a
+        // translucent trigger or tool brush sees out of it instead of through a screen filling back face.
         let mesh_transparent =
-            make("mesh transparent", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, wgpu::VertexStepMode::Vertex, tri, false, true, false, GreaterEqual);
+            make("mesh transparent", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, wgpu::VertexStepMode::Vertex, tri, true, true, false, GreaterEqual);
+        let mesh_transparent_double = make(
+            "mesh transparent double sided",
+            &mesh_shader,
+            &mesh_layout,
+            &mesh_attrs,
+            mesh_stride,
+            wgpu::VertexStepMode::Vertex,
+            tri,
+            false,
+            true,
+            false,
+            GreaterEqual,
+        );
         let mesh_overlay =
             make("mesh overlay", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, wgpu::VertexStepMode::Vertex, tri, false, true, false, Always);
         let line_depth =
@@ -704,6 +754,7 @@ impl Renderer {
             flat_normal,
             white,
             mesh_transparent,
+            mesh_transparent_double,
             mesh_overlay,
             line_depth,
             line_overlay,
@@ -829,6 +880,7 @@ impl Renderer {
             bind_group,
             view: a.view.clone(),
             normal: a.normal.clone(),
+            emission: None,
             uniform,
             nearest: a.nearest,
             size: a.size,
@@ -865,7 +917,7 @@ impl Renderer {
         let flags = MaterialFlags { transparent: desc.alpha == AlphaMode::Blend || desc.tint[3] < 0.999, double_sided: desc.double_sided };
         self.materials.insert(
             name.to_string(),
-            Material { bind_group, view, normal, uniform, nearest: desc.nearest, size: desc.world_size.unwrap_or([w as f32, h as f32]), flags },
+            Material { bind_group, view, normal, emission, uniform, nearest: desc.nearest, size: desc.world_size.unwrap_or([w as f32, h as f32]), flags },
         );
     }
 
@@ -889,22 +941,13 @@ impl Renderer {
         }
 
         let view = |n: &str| &self.materials.get(n).or_else(|| self.materials.get(MISSING_MATERIAL)).expect("missing material exists").view;
-        let tiles_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("terrain tiles"),
-            contents: bytemuck::cast_slice(&[
-                tiles[0],
-                tiles[1],
-                tiles[2],
-                tiles[3],
-                detiles[0],
-                detiles[1],
-                detiles[2],
-                detiles[3],
-                sharpens[0],
-                sharpens[1],
-                sharpens[2],
-                sharpens[3],
-            ]),
+        let glow_view = |n: &str| self.materials.get(n).and_then(|m| m.emission.as_ref()).unwrap_or(&self.white);
+        let four = |v: &[f32]| [v[0], v[1], v[2], v[3]];
+        let uniform =
+            TerrainUniform::new(four(&tiles), four(&detiles), four(&sharpens), std::array::from_fn(|l| self.materials.get(&names[l]).map(|m| &m.uniform)));
+        let params = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("terrain params"),
+            contents: bytemuck::bytes_of(&uniform),
             usage: wgpu::BufferUsages::UNIFORM,
         });
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -916,7 +959,11 @@ impl Renderer {
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(view(&names[2])) },
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(view(&names[3])) },
                 wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::Sampler(&self.sampler) },
-                wgpu::BindGroupEntry { binding: 5, resource: tiles_buffer.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 5, resource: params.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(glow_view(&names[0])) },
+                wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(glow_view(&names[1])) },
+                wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(glow_view(&names[2])) },
+                wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::TextureView(glow_view(&names[3])) },
             ],
         });
         self.terrain_materials.insert(key.clone(), bind_group);
@@ -1248,7 +1295,22 @@ impl Renderer {
             }
 
             draw_lines(&mut pass, &self.line_depth, &frame.lines);
-            draw_meshes(&mut pass, &self.mesh_transparent, &frame.transparent);
+            let mut double_sided: Option<bool> = None;
+            for mesh in &frame.transparent {
+                pass.set_vertex_buffer(0, mesh.vertex.slice(..));
+                pass.set_index_buffer(mesh.index.slice(..), wgpu::IndexFormat::Uint32);
+                for (material, range) in &mesh.draws {
+                    let mat = self.materials.get(material).or_else(|| self.materials.get(MISSING_MATERIAL)).expect("missing material exists");
+                    if double_sided != Some(mat.flags.double_sided) {
+                        double_sided = Some(mat.flags.double_sided);
+                        pass.set_pipeline(if mat.flags.double_sided { &self.mesh_transparent_double } else { &self.mesh_transparent });
+                    }
+
+                    pass.set_bind_group(1, &mat.bind_group, &[]);
+                    pass.draw_indexed(range.clone(), 0, 0..1);
+                }
+            }
+
             draw_meshes(&mut pass, &self.mesh_overlay, &frame.overlay_meshes);
             draw_lines(&mut pass, &self.line_overlay, &frame.overlay_lines);
         }
@@ -1427,9 +1489,34 @@ mod tests {
     }
 
     #[test]
+    fn terrain_layers_carry_their_material_emission() {
+        use super::{MaterialDesc, MaterialUniform, TerrainUniform};
+        let img = image::RgbaImage::new(1, 1);
+        let plain = MaterialUniform::new(&MaterialDesc::plain(&img, false), false, false);
+        let mut desc = MaterialDesc::plain(&img, false);
+        desc.emission_energy = 4.0;
+        let neon = MaterialUniform::new(&desc, false, true);
+        desc.emission = [1.0, 0.5, 0.0];
+        desc.emission_energy = 2.0;
+        desc.emission_multiply = true;
+        let lava = MaterialUniform::new(&desc, false, true);
+
+        let u = TerrainUniform::new([1.0; 4], [0.0; 4], [0.5; 4], [Some(&plain), Some(&neon), None, Some(&lava)]);
+        assert_eq!(u.glow[0], [0.0, 0.0, 0.0, 1.0], "a plain layer has a black emission color and no texture, so it adds nothing");
+        assert_eq!(u.glow[1], [0.0, 0.0, 0.0, 4.0]);
+        assert_eq!((u.glow_textured[1], u.glow_multiply[1]), (1.0, 0.0), "a textured glow adds the texture, like Godot's default operator");
+        assert_eq!(u.glow[2], [0.0; 4], "a layer whose material is not loaded yet does not glow");
+        assert_eq!(u.glow[3], [1.0, 0.5, 0.0, 2.0]);
+        assert_eq!((u.glow_textured[3], u.glow_multiply[3]), (1.0, 1.0));
+        let head: [f32; 12] = [1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 0.5, 0.5];
+        assert_eq!(&bytemuck::bytes_of(&u)[..48], bytemuck::cast_slice::<f32, u8>(&head), "tiles, detiles and sharpens keep their place for the shader");
+    }
+
+    #[test]
     fn uniform_sizes_match_shaders() {
         assert_eq!(std::mem::size_of::<super::CameraUniform>(), 176);
         assert_eq!(std::mem::size_of::<super::MaterialUniform>(), 80);
+        assert_eq!(std::mem::size_of::<super::TerrainUniform>(), 144);
         assert_eq!(std::mem::size_of::<super::LightsUniform>(), 28 * 4 + 64 + super::MAX_LIGHTS * 48);
     }
 

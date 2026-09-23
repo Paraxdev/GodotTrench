@@ -21,8 +21,10 @@ python tools/mcp_client.py call screenshot '{"target":"3d"}' --out view.png
 python tools/mcp_client.py call screenshot '{"target":"3d","width":1280,"height":720}' --out big.png
 ```
 
-A viewport screenshot is as large as the docked view. With `width` and `height` the view's camera renders offscreen at
-that size instead, surfaces only, without grid, edges, I/O links or handles.
+A viewport screenshot is as large as the docked view and shows it as it is. With `width` and `height` the view's camera
+renders offscreen at that size instead, as a beauty shot: only what the game shows, without grid, entity boxes, trigger
+volumes, edges, selection outlines, I/O links or gizmos. Pass `"overlays": true` to keep the editor overlays in an
+offscreen capture, or `"overlays": false` without a size for a beauty shot at the docked size.
 
 ## Showcase map scripts
 
@@ -46,9 +48,11 @@ in a running editor, read as a reference for the tools, or copy as a starting po
   `switched`, a warehouse roller door on a switch with a beacon, hall lights and courtyard lamps switched on by triggers,
   a chain-link yard and a train shuttling along a viaduct over scattered waste ground.
 
-`sea_island.json` is not one of the built showcase scenes. It replays the terrain of the wiki's sea island tutorial step for
-step: the generated island lowered into a water brush, sculpted hills, terraced cliffs, a flattened beach, sand, rock and
-dirt paths painted with the `blend` tool's height, slope and paint modes, and de-tiled layers.
+`sea_island.json` is not one of the built showcase scenes. It replays the wiki's sea island tutorial step for step: the
+generated island lowered into a water brush, sculpted hills, terraced cliffs, a flattened beach, sand, rock and dirt paths
+painted with the `blend` tool's height, slope and paint modes, de-tiled layers, then scatter sets for a woodland, hero trees,
+bushes, cliff boulders, meadow grass kept off the paths and grass growing on the boulders, and a brush jetty with Poly Haven
+props. Its painting calls spell out every brush setting, since the Scatter panel's settings fill in whatever a call leaves out.
 
 ```sh
 godottrench --mcp-http --project godot                                        # editor with the demo project
@@ -63,6 +67,9 @@ Scripts are JSON: `{"format": "godottrench-mcp-script", "vars": {...}, "steps": 
 result is stored under its `save` name and later args refer to it with `"$name.path"` (the JSON value) or `"${name.path}"`
 (its text inside a longer string). Ids that arrive as text this way, such as `"42"`, are accepted wherever a node id is expected.
 
+* `"$a.ids + $b.ids"` joins saved values into one array (arrays are spread, single values appended), so one
+  `select` or `duplicate` can take the brushes of several steps. Id lists also accept nested arrays, so
+  `["$a.ids", "$b.ids"]` works too.
 * `$$` is a literal `$`, so a Godot node path is written `"$$Player"` and `"get_node($$Door)"`.
 * A `$` that cannot start a reference, such as `"$5"` or `"a $ b"`, stays as it is.
 * `"$name"` with a name no step saved is an error, so typos never pass silently.
@@ -70,6 +77,16 @@ result is stored under its `save` name and later args refer to it with `"$name.p
   one fails with a hint to call `open_project` first, instead of writing to the drive root.
 * `$script_dir` is the folder of the script file. For steps passed inline it is the project folder, or the editor's working
   directory without a project.
+
+Steps that replace brushes (`run_action` with `csg_subtract`, `csg_merge`, `csg_intersect`, `csg_hollow` or
+`clip_apply`) return `replaced`, a map from each old id to the ids that took its place, empty for brushes that are
+gone such as the cutters. The script runner then rewrites the ids in every result saved by an earlier step, so
+`"$wall.ids"` keeps meaning the wall after a window is cut into it. The rule, applied to the values under `id`, `ids`,
+`selection`, `letters`, `copies`, `entity` and keys ending in `_id` or `_ids`:
+
+* In a list, a replaced id gives way to all of its replacements in place, and drops out when it has none.
+* A single id becomes its one replacement, a list of them when there are several, and null when it was removed.
+* Other numbers, and variables passed in through `vars`, are never touched.
 
 Scripts run on the editor's UI thread, so the server waits for `run_script` as long as it takes. Other calls give up after
 120 s with a timeout error, and a request the editor dropped says so instead of timing out. `tools/mcp_script.py` waits up
@@ -93,8 +110,21 @@ to an hour per call (`--timeout` changes that) and prints the editor's error tex
 * `terrain_edit` with only `probe [x, z]` reads the height without editing.
 * `create_brush` with `shape: text` lays `text` out as block letter brushes that fill the bounds, lying with their tops
   towards -Z or `standing`, and returns each character's brush ids under `letters` so single letters can be moved or broken.
+  The Shape Generator's Text shape builds the same letters by letter height, depth and spacing.
+* `create_mesh` takes `rotate: [x, y, z]` in degrees, applied about the mesh center like Godot's `rotation_degrees`
+  (Y, then X, then Z, the same order as entity angles), so `[0, 0, 90]` lays a cylinder along X and `[90, 0, 0]`
+  along Z. `rotate_y` still turns about Y only.
+* `scatter` `paint`, `stroke` and `fill` take `exposed_only` (off by default) with `clearance` (512 units): points with
+  geometry above them within that height are skipped, so foliage filled over a terrain stays out from under slabs and
+  roofs. The Scatter panel has the same option in its Brush section.
+* Paths the tools return (`material_file`, map and project paths, `export_map`) always use forward slashes.
+* `validate_map` knows that inputs can call any method or set any property of the target's Godot class or script, as
+  the runtime does, so `set_visible` on a `func_illusionary` passes while a typo such as `set_visibel` is reported.
+  Classes whose Godot class is unknown are only checked against their declared inputs.
   An entry of `openings` can be `{min, max, count, step, rows, row_step}` to cut a whole grid of windows.
 * `run_action clip_apply` takes a plane (`point` and `normal`, or three `points`) and `keep: front|back|both`, and
   `move_vertices {vertices, offset}` runs the vertex tool on the selected brushes, so scripts can break edges without mouse input.
-* CSG ops (`csg_subtract`, `csg_hollow`) replace the brushes they touch, so ids saved before them no longer exist. Clip or
-  select those brushes before cutting.
+* CSG ops replace the brushes they touch and return `replaced` (see above), and inside scripts the saved ids follow.
+  `csg_subtract` takes `args.carve_material`: `cutter` (the default) gives the carved faces the cutter's material,
+  `target` gives them the material of the target face they are cut from, like the *Carved faces keep the target's
+  material* toggle in *Brush > CSG*.
