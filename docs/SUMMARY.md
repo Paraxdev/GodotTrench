@@ -32,15 +32,13 @@
 * [Materials](godot/materials.md)
 * [Night lighting](godot/night-lighting.md)
 * [Overlays](godot/overlays.md)
-* [Wiring overlays](godot/overlay-wiring.md)
 * [Project setup](godot/project-setup.md)
 * [Live link protocol](godot/live-link.md)
 
 ## Gameplay
 
 * [How entity I/O works](gameplay/io.md)
-* [Targets](gameplay/targets.md)
-* [Parameters and inputs](gameplay/parameters.md)
+* [Targets, parameters and inputs](gameplay/parameters.md)
 * [Placing and wiring](gameplay/placing.md)
 * [Debugging wiring](gameplay/debugging.md)
 * [I/O cheatsheet](gameplay/cheatsheet.md)
@@ -50,8 +48,7 @@
     * [Doors, movers and buttons](gameplay/entities/movers.md)
     * [Triggers](gameplay/entities/triggers.md)
     * [Spawners and paths](gameplay/entities/actors.md)
-    * [Props and explosions](gameplay/entities/props.md)
-    * [Text, lights and effects](gameplay/entities/effects.md)
+    * [Props, lights and effects](gameplay/entities/effects.md)
 * [Custom entities in GDScript](gameplay/custom-entities.md)
 * [C# entities](gameplay/csharp.md)
 

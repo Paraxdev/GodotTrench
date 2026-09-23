@@ -71,7 +71,7 @@ Each output:
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `output` | string | required | Signal on this entity |
-| `target` | string | required | See [Targets](../gameplay/targets.md) |
+| `target` | string | required | See [Targets](../gameplay/parameters.md#targets) |
 | `input` | string | required | Method to call on the target |
 | `parameter` | string | `""`, omitted | Value passed to the input |
 | `delay` | number | `0`, omitted | Seconds before the call |

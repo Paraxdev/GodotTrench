@@ -9,9 +9,9 @@ input on a target.
 | Field | Meaning |
 | --- | --- |
 | Output | The event on this entity, for example `pressed` |
-| Target | Who to call, usually a targetname, see [Targets](targets.md) |
+| Target | Who to call, usually a targetname, see [Targets](parameters.md#targets) |
 | Input | The method to call on each target, for example `open` |
-| Parameter | Optional value passed to the input, see [Parameters and inputs](parameters.md) |
+| Parameter | Optional value passed to the input, see [Parameters](parameters.md#parameters) |
 | Delay | Seconds to wait before calling |
 | Times | How often it may fire, -1 means no limit |
 

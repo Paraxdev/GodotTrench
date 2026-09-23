@@ -9,8 +9,7 @@ The entities that ship with the addon, grouped by use.
 | [Doors, movers and buttons](movers.md) | Doors, platforms, trains, buttons |
 | [Triggers](triggers.md) | Volumes that react to bodies entering them |
 | [Spawners and paths](actors.md) | Spawners, teleport destinations, path corners, NPC walkers |
-| [Props and explosions](props.md) | Physics props, model props, explosions |
-| [Text, lights and effects](effects.md) | Text, switchable lights, sound, particles |
+| [Props, lights and effects](effects.md) | Physics and model props, explosions, text, switchable lights, sound, particles |
 
 ## Reading the entries
 

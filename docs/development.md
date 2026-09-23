@@ -91,13 +91,7 @@ npx honkit build . _site      # the build CI runs, lands in docs/_site
 `.github/workflows/pages.yml` builds the book for pull requests that touch `docs/`, and publishes it to GitHub Pages
 when they reach `main`.
 
-## CI and releases
+## CI
 
 CI skips pushes that only change docs or Markdown. Every green push to `main` replaces the
-[rolling beta](https://github.com/Paraxdev/GodotTrench/releases/tag/beta) with editor builds for Linux, Windows and macOS, the addon zip and the demo project zip.
-
-To release, bump `version` in `Cargo.toml`, add `.github/release-notes/vX.Y.Z.md`, then push a `vX.Y.Z` tag. CI runs
-the full suite on the tag and publishes the release with the same downloads.
-
-With a `BUTLER_API_KEY` repository secret, both also go to [itch.io](https://paraxdev.itch.io/godottrench): releases on
-the channels `linux`, `windows`, `mac`, `addon` and `demo-project`, the rolling beta on the same names with `-beta`.
+[rolling beta](https://github.com/Paraxdev/GodotTrench/releases/tag/beta) with fresh editor, addon and demo downloads.

@@ -16,7 +16,7 @@ The editor's Lit Preview shows all of these except glow and reflections.
 `light` and `light_spot` take a `fixture` key. Put the targetname of the lamp's glowing geometry in it, a trailing `*`
 matches a prefix, and the geometry follows the light with no wiring: shown while the light is on, hidden while it is
 off. Set `fixture_off` to `dark` to keep it visible with its glow switched off instead. See
-[Text, lights and effects](../gameplay/entities/effects.md) for the other light keys.
+[Props, lights and effects](../gameplay/entities/effects.md) for the other light keys.
 
 `examples/mcp/night_district.json` and `examples/mcp/withered_city.json` are complete night maps built this way, see
 [MCP scripts](../mcp-scripts.md).

@@ -23,15 +23,3 @@ Untitled maps autosave to a temporary file. Find those under *File > Open Recent
 A map file damaged on disk still opens. The editor reads every intact part, puts objects whose layer, group or entity
 was lost into a layer named *Recovered*, and says in the status bar what could not be read. Saving keeps the damaged
 original as `<map>.gtm.bak`, so you can still restore it from version control.
-
-## Tabs
-
-| Key | Action |
-| --- | --- |
-| Ctrl+Shift+N | New tab |
-| Ctrl+Tab | Next tab |
-| Ctrl+W, or × on the tab | Close tab |
-
-The tab bar appears once two maps are open. *New Map* (Ctrl+N) and importing a `.map` open in a new tab when the
-current map has unsaved changes. Closing a modified tab asks to save, discard or cancel, and quitting lists every unsaved
-map and offers to save or discard them all.
