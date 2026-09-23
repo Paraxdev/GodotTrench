@@ -9,6 +9,10 @@ cargo run -p gt_editor --release -- map.gtm # open a map
 
 Requires a GPU with Vulkan, DX12 or Metal support. On Linux the window needs X11 or Wayland.
 
+Building needs Rust 1.95 or newer, the minimum egui 0.36 supports, and cargo stops an older compiler with a clear
+error. [rust-toolchain.toml](../rust-toolchain.toml) pins 1.98.1, the version CI uses, so with rustup the right
+toolchain installs itself on the first build. Clippy warns when code uses an API newer than 1.95.
+
 ## Formatting
 
 All Rust is formatted with the settings in [rustfmt.toml](../rustfmt.toml), so hand written and AI written commits share one
