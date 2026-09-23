@@ -417,8 +417,8 @@ fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mu
     ui.label(if mesh.is_closed() { "closed" } else { "open surface" });
     let mut decal = mesh.decal;
     if ui
-        .checkbox(&mut decal, "Decal (alpha cutout, double sided)")
-        .on_hover_text("Draw this thin mesh with its texture's alpha cut out, laid over the surface behind it")
+        .checkbox(&mut decal, "Decal (blended, double sided)")
+        .on_hover_text("Blend this sheet's texture over the surface behind it, Godot draws it without z-fighting")
         .changed()
     {
         state.doc.edit("Toggle Decal", |m, _| {

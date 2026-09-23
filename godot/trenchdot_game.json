@@ -3324,10 +3324,16 @@
       ],
       "properties": [
         {
+          "name": "material",
+          "type": "string",
+          "default": "",
+          "description": "Material to project, like a face's (base/stain) or a res:// path. Its textures, color and texture_size are used"
+        },
+        {
           "name": "texture",
           "type": "string",
           "default": "res://demo/textures/base/metal.png",
-          "description": "Albedo texture (res:// path)"
+          "description": "Albedo texture (res:// path), used without a material"
         },
         {
           "name": "size",
