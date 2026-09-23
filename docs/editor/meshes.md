@@ -1,48 +1,39 @@
-# Meshes and models
+# Meshes
 
-Brushes are great for architecture and poor for anything organic. Meshes can be concave, open and non-planar.
+Meshes can be concave, open and non-planar, for shapes that brushes cannot make.
 
-## Editing meshes
+Select brushes and press **Tab** (*Mesh > Edit Mesh*) to convert them to a mesh and start editing, Tab again goes back
+to objects. The Mesh tool button on the toolbar starts editing without converting anything. Ctrl+Shift+E only converts,
+Ctrl+Shift+J joins meshes into one.
 
-Select brushes and press Tab (or *Mesh > Edit Mesh*) to convert them and start editing. Picking the Mesh tool from the
-toolbar does not convert anything. The controls follow Blender:
+## Keys
+
+The keys follow Blender.
 
 | Key | Action |
 | --- | --- |
 | 1, 2, 3 | Vertex, edge, face mode |
+| A, Alt+A | Select all, none |
+| Alt+click | Select a loop |
+| Ctrl+L | Select linked |
 | G, R, S | Move, rotate, scale |
 | E | Extrude |
 | I | Inset |
-| Ctrl+R | Loop cut |
-| K | Knife |
-| Double click an element | Show the move, rotate and scale gizmo on it |
-| Esc | Hide the gizmo, the selection stays |
+| Ctrl+B, Ctrl+Shift+B | Bevel edges, bevel vertices |
+| Ctrl+R | Loop cut, the wheel or + and - set the number of cuts |
+| K | Knife, click two points |
+| M, F | Merge at center, fill |
+| X or Delete | Delete |
+| Shift+D | Duplicate and move |
+| P | Separate into a new mesh |
+| Alt+F | Flip normals |
 
-The gizmo is the clean way to slide a vertex along one axis, and it works in the 2D views too.
+While moving, rotating or scaling, press X, Y or Z to lock to that axis, or Shift with the letter to lock it out. Type
+a number for an exact amount. Click or Enter confirms, right click or Esc cancels.
 
-Ctrl+Shift+E converts brushes to a mesh, Ctrl+Shift+J joins meshes.
+## Gizmo
 
-## Importing models
+Double click an element to put a move, rotate and scale gizmo on it. It is the clean way to slide a vertex along one
+axis, and it works in the 2D views too. Esc hides it and keeps the selection.
 
-The Models panel lists everything under `res://models` and the installed nature models, with thumbnails. Drag a model
-into a view to place it, or use **Import…** for a file outside `res://`. glTF, OBJ, Blockbench and a few other formats
-work.
-
-There are two ways a model can end up in a map:
-
-| Placed as | What is stored | Use it for |
-| --- | --- | --- |
-| Editable mesh (drag from Models) | The geometry itself, a copy | Shapes you want to change |
-| `prop_model` entity | Only a `res://` path, Godot loads the file at runtime | Props you keep as they are |
-
-Placing a prop from outside the project offers to copy the file into `res://models` first.
-
-## Model packs and credits
-
-A `pack.json` in a model's folder, or a folder above it, names the pack it came from: a short name, author, license and
-url, and optionally the author of single models. The short name shows as a coloured slug on each thumbnail, hovering
-shows the full credit, and sorting by source shows each pack's license. Folders without one are listed under their top
-folder's name.
-
-**Sort** groups by folder by default and also offers name, source and most recent. The two menus next to the search
-field narrow the list to one folder or one source.
+The *Mesh* menu holds the rest, such as subdivide, triangulate, solidify, mirror and smooth shading.

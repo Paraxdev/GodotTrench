@@ -1,60 +1,53 @@
 # Brushes and CSG
 
-Brushes are convex solids. Almost all architecture starts as one.
+Brushes are convex solids. These inputs belong to the **Select** tool (Q).
 
-## Draw, move and copy
-
-All of this uses the **Select** tool (Q).
+## Draw and move
 
 | Input | Result |
 | --- | --- |
-| Drag on empty space | Draw a box brush. Height comes from the last brush you drew |
-| Drag in the 3D view | Draw on the surface under the cursor |
-| Drag the selection | Move it. Shift locks to the main axis |
-| Ctrl+drag the selection | Move a copy, leaving the original |
-| Alt+drag (3D) | Move vertically |
+| Drag off the selection | Draw a box brush. In 3D it starts on the surface under the cursor and is one grid step thick, in 2D it takes the depth of the last brush you drew |
+| Drag the selection | Move it, Shift locks to the main axis |
+| Ctrl+drag the selection | Move a copy |
+| Alt+drag the selection (3D) | Move vertically |
 | Arrow keys, Page Up, Page Down | Nudge by one grid step |
 | `[` and `]` | Halve and double the grid |
 
-The selection also shows a gizmo in the 3D view. Arrows move along an axis, squares move in a plane, rings rotate in
-15° steps (Shift for 1°) and the boxes scale. *View > Transform Gizmo* hides it.
+In 3D the selection also gets a gizmo. Arrows move along an axis, squares move in a plane, rings rotate in 15° steps
+(Shift for 1°) and the boxes scale. *View > Transform Gizmo* hides it.
 
 ## Reshape
 
 | Input | Result |
 | --- | --- |
-| Shift+drag a face (3D) | Push or pull that face |
-| Ctrl+Shift+drag a face (3D) | Extrude a new brush out of it |
+| Shift+drag a selected face (3D) | Push or pull that face |
+| Ctrl+Shift+drag a selected face (3D) | Extrude a new brush out of it |
 | Drag a selection edge (2D) | Resize |
 
-## Cut and bend
+**Clip** (C) cuts along a plane, for slopes, ramps and angled walls. Click two or three points, press Tab to cycle
+between keeping the front, the back or both halves, and Enter to cut. Backspace removes the last point.
 
-**Clip** (C) cuts a brush along a plane. Click two or three points, press Tab to choose which side to keep, Enter to
-cut. This is how you make slopes, ramps and angled walls.
-
-**Vertex** (V) moves corners and edges directly. The brush is rebuilt as a convex hull afterwards, so you can reshape
-it but never dent it. For concave shapes, convert to a [mesh](meshes.md).
+**Vertex** (V) drags corners, edge midpoints and face centers. A move that would make the brush concave is refused, so
+for dents and overhangs convert it to a [mesh](meshes.md). Delete removes the selected vertices.
 
 ## Shape Generator
 
-Ctrl+Shift+B builds cylinders, arches, stairs and other shapes that are tedious by hand. Its **Text** shape builds
-block letters from real brushes for signs and floor lettering. Set the letter height, depth and spacing, and choose
-upright or lying flat.
+*Brush > Shape Generator* (Ctrl+Shift+B) builds cylinders, arches, stairs and other shapes that are tedious by hand.
+Its **Text** shape builds block letters from brushes, for signs and floor lettering.
 
 ## CSG
 
-| Operation | Key | What it does |
+| Operation | Key | Result |
 | --- | --- | --- |
-| Hollow | Ctrl+Shift+K | Turns a brush into walls, 16 units thick by default (*Brush > CSG > Wall thickness*) |
-| Subtract | Ctrl+K | Carves the selection out of everything it touches, then deletes the selection |
+| Subtract | Ctrl+K | Carves the selection out of every brush it touches, then deletes the selection |
+| Hollow | Ctrl+Shift+K | Turns a brush into walls, 16 units thick unless you change *Wall thickness* in *Brush > CSG* |
 | Convex Merge | Ctrl+M | Fuses the selection into one convex brush |
 | Intersect | Ctrl+L | Keeps only the overlap |
 
-Subtract is how you punch doorways and windows: the selected brush acts as the cutter. The faces a cut opens up take
-the cutter's material. Tick *Carved faces keep the target's material* in *Brush > CSG* if you want a window reveal in a
-brick wall to stay brick.
+Subtract punches doorways and windows. The faces a cut opens take the cutter's material, unless you tick
+*Carved faces keep the target's material* in *Brush > CSG*.
 
 ## Displacements
 
-For a patch of uneven ground inside a brush level, turn a face into a displacement with *Brush > Displacement* and
-sculpt it with the Sculpt tool (G). Outdoor areas are better served by a [terrain](terrain.md).
+For uneven ground inside a brush level, select a four sided face, use *Brush > Displacement > Create* and sculpt it with
+G. Outdoor areas want a [terrain](terrain.md).
