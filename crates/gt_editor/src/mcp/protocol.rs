@@ -332,7 +332,8 @@ pub fn tool_definitions() -> Vec<Value> {
                 "sculpt_mode": { "type": "string" },
                 "ui_scale": { "type": "number", "description": "Interface scale, 1 is 100%" },
                 "follow_display_scaling": { "type": "boolean" },
-                "live_mode": { "type": "boolean", "description": "Send edits to a Godot editor that has the map open before saving" }
+                "live_mode": { "type": "boolean", "description": "Send edits to a Godot editor that has the map open before saving" },
+                "live_link_port": { "type": "integer", "description": "Port of the Godot live link, 7842 unless the Godot project changed godottrench/live_link_port" }
             } }
         }),
         json!({
@@ -349,11 +350,16 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "screenshot",
-            "description": "PNG of the whole window or of one viewport. Use after changes to verify them visually. width and height render a view's camera offscreen at that size (up to 4096), larger than its docked pane. overlays: false renders a beauty shot without the grid, entity boxes, trigger volumes, edges, selection outlines and tint, links and gizmos, the default for offscreen captures. A viewport capture without width and height shows the pane as it is unless overlays is false.",
+            "description": "PNG of the whole window or of one viewport. Use after changes to verify them visually. width and height render a view's camera offscreen at that size (up to 4096), larger than its docked pane. overlays: false renders a beauty shot without the grid, entity boxes, trigger volumes, edges, selection outlines and tint, links and gizmos, the default for offscreen captures. A viewport capture without width and height shows the pane as it is unless overlays is false. source: godot instead asks the Godot editor connected over the live link to render the scene using this map, with its real lights, environment, fog and post processing, from the 3d view's camera or from position and look_at (map units), 1280x720 unless width and height are given. It needs the map saved in the open project and a scene open in Godot whose FuncGodotMap builds it. Without live mode Godot first builds the map as shown here, like build_in_godot; build: false captures what Godot has. Errors and warnings Godot logged meanwhile come back as text.",
             "inputSchema": { "type": "object", "properties": {
                 "target": { "type": "string", "enum": view_enum, "default": "window" },
+                "source": { "type": "string", "enum": ["editor", "godot"], "default": "editor" },
                 "width": { "type": "integer" }, "height": { "type": "integer" },
-                "overlays": { "type": "boolean", "description": "Draw the editor overlays. Defaults to false with width and height, true without." }
+                "overlays": { "type": "boolean", "description": "Draw the editor overlays. Defaults to false with width and height, true without." },
+                "position": vec3_schema("godot source: camera position, default the 3d view's"),
+                "look_at": vec3_schema("godot source: look target, default along the 3d view"),
+                "fov": { "type": "number", "description": "godot source: horizontal field of view in degrees, default the 3d view's" },
+                "build": { "type": "boolean", "description": "godot source: build the map as shown here before capturing, default true unless live mode is on" }
             } }
         }),
         json!({

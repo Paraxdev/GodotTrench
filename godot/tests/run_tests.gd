@@ -90,6 +90,7 @@ func _initialize() -> void:
 	test_csharp_entities()
 	await test_live_session()
 	test_live_link_lines()
+	await test_capture()
 	test_threaded_build_matches()
 	await test_showcase_playthrough()
 	await test_night_district()
@@ -1275,6 +1276,29 @@ func test_live_link_lines() -> void:
 	var split := GodotTrenchEditorIntegration.take_lines(rest)
 	check(split[0] == PackedStringArray(["{\"a\":\"ü\"}", "{\"b\":1}"]), "complete lines decode whole, got %s" % [split[0]])
 	check(split[1].get_string_from_utf8() == "{\"c\"", "the unfinished line stays buffered")
+
+func test_capture() -> void:
+	print("- live link capture")
+	var map := FuncGodotMap.new()
+	map.map_settings = load(SETTINGS)
+	map.position = Vector3(10, 0, 0)
+	map.rotation_degrees = Vector3(0, 90, 0)
+	root.add_child(map)
+	var xform := GodotTrenchCapture.camera_transform(map, Vector3(64, 32, 0), Vector3(1, 0, 0))
+	var scale: float = map.map_settings.scale_factor
+	check(near(xform.origin, map.global_transform * Vector3(64 * scale, 32 * scale, 0)), "the camera sits at the map point in Godot units, got %s" % xform.origin)
+	check(near(-xform.basis.z, map.global_basis * Vector3(1, 0, 0)), "the camera looks along the map direction turned with the map node, got %s" % -xform.basis.z)
+	var down := GodotTrenchCapture.camera_transform(map, Vector3.ZERO, Vector3(0, -1, 0))
+	check(near(-down.basis.z, Vector3.DOWN) and down.basis.determinant() > 0.5, "a camera looking straight down still gets a valid basis")
+	var shot: Dictionary = await GodotTrenchCapture.render(map, map.get_world_3d(), xform, 90.0, Vector2i(64, 64))
+	check(not shot["ok"] and "headless" in str(shot["error"]), "a headless Godot says it cannot capture, got %s" % shot)
+	map.queue_free()
+	var collector := GodotTrenchCapture.Collector.new()
+	OS.add_logger(collector)
+	for i in 2:
+		push_warning("expected capture test warning")
+	OS.remove_logger(collector)
+	check(collector.lines.size() == 1 and "warning: expected capture test warning" in collector.lines[0], "warnings logged during a capture come back once, got %s" % collector.lines)
 
 func test_light() -> void:
 	print("- light switching")

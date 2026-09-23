@@ -45,6 +45,27 @@ python tools/mcp_client.py call screenshot '{"target":"3d","width":1280,"height"
 | `width`, `height` and `"overlays": true` | Offscreen, with the editor overlays |
 | `"overlays": false` | A clean shot at the docked size |
 
+### What Godot renders
+
+`"source": "godot"` asks the Godot editor to render the map with its real lights, environment, fog and post
+processing, and returns that PNG with any errors or warnings Godot logged while building it. Use it to judge lighting
+and materials without launching the game.
+
+```sh
+python tools/mcp_client.py call screenshot '{"source":"godot","position":[0,256,512],"look_at":[0,64,0]}' --out godot.png
+```
+
+1. Save the map inside the project that is open in GodotTrench.
+2. Open that project in the Godot editor, with a scene whose `FuncGodotMap` builds the map.
+3. Call `screenshot` with `"source": "godot"`. Without `position` and `look_at` it uses the 3D view's camera.
+
+Without [live mode](godot/live.md) Godot first builds the map as shown in GodotTrench, like *Build in Godot*, and
+`"build": false` captures the scene as Godot has it. `width` and `height` default to 1280 by 720, and `fov` to the
+3D view's.
+
+> **Note:** Godot needs a window to render, a headless Godot returns an error instead of an image. The window may be
+> in the background or minimized.
+
 ## Reading and reviewing a map
 
 | Step | Tool |
@@ -81,3 +102,4 @@ See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 | `terrain_edit` | `probe [x, z]` without `op` only reads the height |
 | `validate_map` | Accepts any method or property of the target's Godot class or script as an input. `coplanar_faces` flags faces that will flicker |
 | `run_action` `reload_materials` | Rescans the texture folder now, though new files are found on their own anyway |
+| `set_editor` `live_link_port` | Talks to a Godot editor whose project sets another `godottrench/live_link_port` |

@@ -84,6 +84,22 @@ fn png(img: &image::RgbaImage) -> Vec<u8> {
     out.into_inner()
 }
 
+fn godot_capture_result(result: Result<Value, String>, file: &str, source: &str) -> ToolResult {
+    use base64::Engine;
+    let reply = match result {
+        Ok(reply) => reply,
+        Err(e) => return err(e),
+    };
+    let Some(png) = reply["png"].as_str().and_then(|d| base64::engine::general_purpose::STANDARD.decode(d).ok()) else { return err("Godot sent no image") };
+    let mut note = format!("Godot view of {file} {}x{}, {source}", reply["width"], reply["height"]);
+    let warnings: Vec<&str> = reply["warnings"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    if !warnings.is_empty() {
+        note += &format!("\nGodot logged:\n{}", warnings.join("\n"));
+    }
+
+    ToolResult::Image { png, note }
+}
+
 fn err(msg: impl Into<String>) -> ToolResult {
     ToolResult::Error(msg.into())
 }
@@ -398,6 +414,10 @@ impl App {
     /// Runs a tool call from a transport. Window screenshots and input scripts keep `reply` and answer in a later frame.
     pub(crate) fn call_tool(&mut self, name: &str, args: Value, ctx: &egui::Context, reply: &Sender<ToolResult>) -> Reply {
         match name {
+            "screenshot" if args["source"].as_str() == Some("godot") => match self.godot_capture(&args, reply.clone()) {
+                Ok(()) => Reply::Deferred,
+                Err(e) => Reply::Now(err(e)),
+            },
             "screenshot" if args["target"].as_str().unwrap_or("window") == "window" => {
                 let token = NEXT_SHOT.fetch_add(1, Ordering::Relaxed);
                 ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::new(ShotToken(token))));
@@ -441,6 +461,44 @@ impl App {
             _ => format!("MCP: {call}, {} edits", steps.len()),
         });
         result
+    }
+
+    /// Asks the Godot editor for a capture of the current map over the live link, answering `reply` when it arrives.
+    fn godot_capture(&self, args: &Value, reply: Sender<ToolResult>) -> Result<(), String> {
+        let s = &self.state;
+        let Some(path) = s.doc.path.clone() else { return Err("save the map into the Godot project first, Godot builds maps from their file path".into()) };
+        if s.game.project_root.is_none() {
+            return Err("open the Godot project first with open_project".into());
+        }
+
+        let Some(link) = s.link.as_ref().filter(|_| s.prefs.live_link) else { return Err("the Godot live link is off, turn it on in Preferences".into()) };
+        let Some(vp) = self.viewports.iter().find(|v| v.kind() == ViewKind::Perspective) else { return Err("3d view not open".into()) };
+        let eye = vec3(&args["position"]).unwrap_or(vp.camera.position);
+        let forward = match vec3(&args["look_at"]) {
+            Some(target) => (target - eye).try_normalize().ok_or("look_at must differ from position")?,
+            None => vp.camera.forward(),
+        };
+        let fov = args["fov"].as_f64().unwrap_or(vp.camera.fov);
+        let size = [args["width"].as_u64().unwrap_or(1280).clamp(16, 4096) as u32, args["height"].as_u64().unwrap_or(720).clamp(16, 4096) as u32];
+        let live = s.live_active();
+        let build = args["build"].as_bool().unwrap_or(!live).then(|| s.doc.map.clone());
+        let source = match (build.is_some(), live) {
+            (true, _) => "built from the map as shown here",
+            (false, true) => "with the live edits",
+            (false, false) => "as Godot has it",
+        };
+        let file = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        link.request(crate::live_link::Request::Capture {
+            path: crate::live_link::godot_path(&path),
+            camera: json!({ "position": arr(eye), "forward": arr(forward), "fov": fov }),
+            size,
+            build,
+            live,
+            done: Box::new(move |result| {
+                let _ = reply.send(godot_capture_result(result, &file, source));
+            }),
+        });
+        Ok(())
     }
 
     /// Runs a tool that answers right away, as every tool inside run_script must.
@@ -538,6 +596,7 @@ impl App {
                 ctx.request_repaint();
                 ok(json!({ "ok": true }))
             }
+            "screenshot" if args["source"].as_str() == Some("godot") => err("Godot captures cannot run inside scripts"),
             "screenshot" => {
                 let target = args["target"].as_str().unwrap_or("window");
                 let Some(kind) = view_kind(target) else { return err("unknown target, or window screenshots, which cannot run inside scripts") };
@@ -1417,6 +1476,10 @@ impl App {
             self.state.prefs.live_mode = live;
         }
 
+        if let Some(port) = args["live_link_port"].as_u64() {
+            self.state.prefs.live_link_port = port.clamp(1024, 65535) as u16;
+        }
+
         let mut summary = self.state_summary();
         let mut editor = summary["editor"].take();
         editor["godot_live_mode"] = json!(self.state.prefs.live_mode);
@@ -1934,6 +1997,18 @@ mod tests {
         );
         assert_eq!(path_value(None::<&std::path::Path>), Value::Null);
         assert_eq!(id_list(&json!({ "ids": [[1, 2], 3, [[4]]] }), "ids"), Ok(vec![NodeId(1), NodeId(2), NodeId(3), NodeId(4)]), "joined id lists flatten");
+    }
+
+    #[test]
+    fn godot_captures_carry_the_image_and_what_godot_logged() {
+        use base64::Engine;
+        let reply = json!({ "ok": true, "width": 4, "height": 2, "png": base64::engine::general_purpose::STANDARD.encode([1, 2, 3]), "warnings": ["warning: no model"] });
+        let ToolResult::Image { png, note } = godot_capture_result(Ok(reply), "yard.gtm", "built from the map") else { panic!("an image") };
+        assert_eq!(png, vec![1, 2, 3]);
+        assert!(note.contains("yard.gtm 4x2") && note.contains("built from the map") && note.ends_with("warning: no model"), "{note}");
+        let ToolResult::Error(e) = godot_capture_result(Ok(json!({ "ok": true })), "yard.gtm", "") else { panic!("an error") };
+        assert!(e.contains("no image"));
+        assert!(matches!(godot_capture_result(Err("no scene".into()), "yard.gtm", ""), ToolResult::Error(e) if e == "no scene"));
     }
 
     #[test]

@@ -23,6 +23,9 @@ const CONNECT_TIMEOUT: Duration = Duration::from_millis(400);
 const QUICK_REPLY: Duration = Duration::from_secs(15);
 const BUILD_REPLY: Duration = Duration::from_secs(180);
 
+/// Called with Godot's reply to a capture, on the live link thread.
+pub type CaptureDone = Box<dyn FnOnce(Result<Value, String>) + Send>;
+
 pub fn send(port: u16, message: &Value) -> Result<Value, String> {
     send_timeout(port, message, Duration::from_secs(30))
 }
@@ -133,6 +136,16 @@ pub enum Request {
         live: bool,
     },
     Focus,
+    /// A PNG of the scene Godot has open, through `camera` (`position`, `forward`, `fov` in map units). With `build` Godot
+    /// builds that map first, otherwise a live session catches up first.
+    Capture {
+        path: String,
+        camera: Value,
+        size: [u32; 2],
+        build: Option<gt_doc::Map>,
+        live: bool,
+        done: CaptureDone,
+    },
     LiveEnd {
         path: String,
         revert: bool,
@@ -415,11 +428,16 @@ impl Worker {
     fn handle(&mut self, request: Request) {
         if !self.connect(true) {
             self.update(|s| s.connected = false);
-            if let Request::MapSaved { path, game_port, .. } = &request {
-                let message = saved_message(path);
-                self.say(format!("Live link: Godot is not running with the GodotTrench addon{}", game_status(*game_port, &message)));
-            } else if !matches!(request, Request::LiveEnd { .. }) {
-                self.say("Godot is not running with the GodotTrench addon".into());
+            match request {
+                Request::MapSaved { path, game_port, .. } => {
+                    let message = saved_message(&path);
+                    self.say(format!("Live link: Godot is not running with the GodotTrench addon{}", game_status(game_port, &message)));
+                }
+                Request::Capture { done, .. } => {
+                    done(Err(format!("Godot is not running with the GodotTrench addon on port {}, open the project in the Godot editor", self.port)))
+                }
+                Request::LiveEnd { .. } => {}
+                _ => self.say("Godot is not running with the GodotTrench addon".into()),
             }
 
             return;
@@ -463,6 +481,28 @@ impl Worker {
 
                 if let Err(e) = self.call(json!({ "event": "focus" }), QUICK_REPLY) {
                     self.say(format!("Could not reach Godot: {e}"));
+                }
+            }
+            Request::Capture { path, camera, size, build, live, done } => {
+                let key = path_key(&path);
+                let mut message = json!({ "event": "capture", "path": path, "camera": camera, "width": size[0], "height": size[1] });
+                let pending = self.shared.0.lock().unwrap_or_else(|e| e.into_inner()).live.take();
+                if let Some(map) = &build {
+                    self.sessions.remove(&key);
+                    message["text"] = json!(gt_doc::format::to_string(map));
+                } else if let Some(job) = pending {
+                    // Godot has to hold the latest edits before it draws them.
+                    self.live(job);
+                }
+
+                done(match self.long_call(message) {
+                    Ok(reply) if reply["ok"].as_bool() == Some(true) => Ok(reply),
+                    Ok(reply) if reply["error"] == "unknown event" => Err("the GodotTrench addon in Godot is too old to capture, update it".into()),
+                    Ok(reply) => Err(reply["error"].as_str().unwrap_or("unexpected reply").to_string()),
+                    Err(e) => Err(format!("Godot did not answer the capture: {e}")),
+                });
+                if live && let Some(map) = build {
+                    self.restart(&key, &path, map);
                 }
             }
             Request::LiveEnd { path, revert } => {
@@ -674,6 +714,33 @@ mod tests {
         map.insert(layer, gt_doc::NodeKind::Entity(gt_doc::Entity::new("light")));
         link.sync(&map_path, Frame { map: map.clone(), dragging: false, idle: false });
         wait_for("new session after a build outside live mode", || events(&log, "live_begin") == 3);
+    }
+
+    fn capture(link: &LiveLink, path: &Path, build: Option<gt_doc::Map>) -> Result<Value, String> {
+        let (tx, rx) = mpsc::channel();
+        let camera = json!({ "position": [0, 64, 0], "forward": [0, 0, -1], "fov": 90 });
+        link.request(Request::Capture { path: godot_path(path), camera, size: [64, 32], build, live: false, done: Box::new(move |r| tx.send(r).unwrap()) });
+        rx.recv_timeout(Duration::from_secs(10)).expect("capture answered")
+    }
+
+    #[test]
+    fn capture_builds_the_shown_map_first_and_reports_a_missing_godot() {
+        let map_path = std::env::temp_dir().join("gt_live_link_test").join("capture.gtm");
+        let (port, log) = fake_godot(godot_path(&map_path), Duration::ZERO);
+        let link = LiveLink::start(None);
+        link.configure(port, true);
+        assert!(capture(&link, &map_path, Some(gt_doc::Map::new())).is_ok());
+        assert!(capture(&link, &map_path, None).is_ok());
+        let sent: Vec<Value> = log.lock().unwrap().iter().filter(|m| m["event"] == "capture").cloned().collect();
+        assert_eq!(sent.len(), 2);
+        assert!(sent[0]["text"].is_string() && sent[1]["text"].is_null(), "only the first capture carries the map to build");
+        assert_eq!((sent[0]["width"].as_u64(), sent[0]["height"].as_u64()), (Some(64), Some(32)));
+        assert_eq!(sent[0]["camera"]["forward"], json!([0, 0, -1]));
+
+        let dead = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        link.configure(dead, true);
+        let e = capture(&link, &map_path, None).unwrap_err();
+        assert!(e.contains("not running") && e.contains(&dead.to_string()), "{e}");
     }
 
     #[test]

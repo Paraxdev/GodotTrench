@@ -26,6 +26,12 @@ answers `map_saved`.
 | `live_delta` | `path`, `ops` | `epoch`, or `ok: false, resync: true` when the ops do not fit |
 | `live_end` | `path`, `revert` | With `revert`, rebuilds from the saved file |
 | `inspect` | `path`, `ids` | `nodes` with name, class, child count and position per map node id, plus `live` and `pending` |
+| `capture` | `path`, `camera`, `width`, `height`, `text` | `png` (base64), `width`, `height` and `warnings`, the errors and warnings logged while building |
+
+`capture` renders the world of the first map node using `path`. `camera` holds `position` and `forward` in map units
+and axes and `fov`, the horizontal field of view in degrees. With `text` Godot builds that map first, otherwise it
+waits for a live session to catch up. The reply comes after about a dozen frames, and other messages are answered
+meanwhile.
 
 Paths are absolute with forward slashes, and only `FuncGodotMap` nodes in the edited scene with *Auto Rebuild On Save*
 on take part. `text` is the whole map as JSON. `content` is the content id in the END chunk of the saved file, so a
@@ -54,3 +60,5 @@ project. Edit the map through MCP, then send `inspect` to port 7842 to see what 
 godot --headless --editor --path godot res://path/scene.tscn
 godottrench --mcp-http --project godot
 ```
+
+A headless Godot draws nothing, so `capture` answers with an error there. Test captures with a windowed editor.

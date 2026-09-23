@@ -1282,3 +1282,87 @@ fn imports_convert_valve_and_quake_textures() {
     let (_, _, colors) = ed.screenshot("3d", "quake_room");
     assert!(colors > 2);
 }
+
+/// Answers the live link like a Godot editor with `map` open: status lists it and a capture returns a small red PNG.
+/// Every capture message is kept.
+fn fake_godot_capturing(project: &std::path::Path, map: &std::path::Path) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<Value>>>) {
+    use std::io::BufRead;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let slash = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
+    let (project, map) = (slash(project), slash(map));
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let log = seen.clone();
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::RgbaImage::from_pixel(8, 4, image::Rgba([220, 30, 30, 255])).write_to(&mut png, image::ImageFormat::Png).unwrap();
+    let png = base64::engine::general_purpose::STANDARD.encode(png.into_inner());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(stream) = stream else { return };
+            let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            while reader.read_line(&mut line).unwrap_or(0) > 0 {
+                let msg: Value = serde_json::from_str(&line).unwrap();
+                line.clear();
+                let mut reply = match msg["event"].as_str() {
+                    Some("status") => json!({ "ok": true, "project": project, "godot": "4.7", "pid": 1, "maps": [{ "path": map, "epoch": 1 }] }),
+                    Some("capture") => {
+                        log.lock().unwrap().push(msg.clone());
+                        json!({ "ok": true, "png": png, "width": 8, "height": 4, "warnings": ["warning: prop model res://gone.glb not found"] })
+                    }
+                    _ => json!({ "ok": false, "error": "unknown event" }),
+                };
+                reply["seq"] = msg["seq"].clone();
+                if writeln!(&stream, "{reply}").is_err() {
+                    break;
+                }
+            }
+        }
+    });
+    (port, seen)
+}
+
+/// `screenshot {source: godot}` asks the connected Godot editor for a picture of the map as shown in GodotTrench and
+/// returns it with what Godot logged, and says what is missing when it cannot.
+#[test]
+#[ignore]
+fn godot_captures_come_over_the_live_link() {
+    let dir = artifacts().join("godot_capture");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("maps")).unwrap();
+    std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+    let map = dir.join("maps/yard.gtm");
+    let (godot, captures) = fake_godot_capturing(&dir, &map);
+
+    let ed = Editor::launch("godot_capture");
+    ed.call("set_editor", json!({ "live_link_port": godot }));
+    ed.call("create_brush", json!({ "min": [0, 0, 0], "max": [256, 16, 256] }));
+    assert!(ed.call_err("screenshot", json!({ "source": "godot" })).contains("save the map"));
+    ed.call("open_project", json!({ "path": dir }));
+    ed.call("map_file", json!({ "op": "save", "path": map }));
+    let e = ed.call_err("screenshot", json!({ "source": "godot", "position": [0, 64, 0], "look_at": [0, 64, 0] }));
+    assert!(e.contains("look_at"), "{e}");
+
+    ed.call("set_camera", json!({ "view": "3d", "position": [0, 64, 512], "look_at": [0, 64, 0] }));
+    let r = ed.try_rpc("tools/call", json!({ "name": "screenshot", "arguments": { "source": "godot", "width": 320, "height": 200 } })).unwrap();
+    let content = &r["result"]["content"];
+    let png = base64::engine::general_purpose::STANDARD.decode(content[0]["data"].as_str().unwrap_or_else(|| panic!("no image in {r}"))).unwrap();
+    assert_eq!(image::load_from_memory(&png).unwrap().to_rgba8().get_pixel(0, 0).0, [220, 30, 30, 255]);
+    let note = content[1]["text"].as_str().unwrap();
+    assert!(note.contains("yard.gtm") && note.contains("built from the map") && note.contains("res://gone.glb"), "{note}");
+
+    let sent = captures.lock().unwrap().clone();
+    assert_eq!(sent.len(), 1);
+    assert_eq!((sent[0]["width"].as_u64(), sent[0]["height"].as_u64()), (Some(320), Some(200)));
+    let forward: Vec<f64> = sent[0]["camera"]["forward"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+    assert!(approx(&forward, &[0.0, 0.0, -1.0]), "the 3d view's camera looks down -Z: {forward:?}");
+    assert!(sent[0]["text"].as_str().is_some_and(|t| t.contains("godottrench-map")), "the map as shown goes along to build");
+
+    ed.call("screenshot", json!({ "source": "godot", "build": false, "position": [512, 64, 0], "look_at": [0, 64, 0] }));
+    let sent = captures.lock().unwrap().clone();
+    assert!(sent[1]["text"].is_null() && sent[1]["camera"]["position"] == json!([512.0, 64.0, 0.0]), "{}", sent[1]);
+
+    ed.call("set_editor", json!({ "live_link_port": free_port() }));
+    let e = ed.call_err("screenshot", json!({ "source": "godot" }));
+    assert!(e.contains("not running"), "{e}");
+}
