@@ -21,7 +21,7 @@ The repository's `.mcp.json` already points Claude Code at the HTTP server.
 
 | Area | Tools |
 | --- | --- |
-| Inspect | `get_state`, `list_nodes`, `get_node`, `validate_map`, `get_game_config`, `code_reference` |
+| Inspect | `get_state`, `summarize_map`, `list_nodes`, `get_node`, `changes_since`, `validate_map`, `get_game_config`, `code_reference` |
 | Create | `create_brush`, `create_mesh`, `create_terrain`, `create_entity`, `import_model` |
 | Edit | `update_entity`, `select`, `transform`, `duplicate`, `set_face`, `mesh_edit`, `texture`, `terrain_edit`, `hierarchy`, `set_map_properties` |
 | Paint and gameplay | `scatter`, `blend`, `gameplay` |
@@ -44,6 +44,18 @@ python tools/mcp_client.py call screenshot '{"target":"3d","width":1280,"height"
 | `width` and `height` | Rendered offscreen up to 4096 pixels, without grid, entity boxes, gizmos or selection |
 | `width`, `height` and `"overlays": true` | Offscreen, with the editor overlays |
 | `"overlays": false` | A clean shot at the docked size |
+
+## Reading and reviewing a map
+
+| Step | Tool |
+| --- | --- |
+| Get an overview | `summarize_map`: layers, entity classes, I/O links, materials, missing assets |
+| Find nodes | `list_nodes` with `layer`, `material`, `property` (`{"model": "*crate*"}`) or `box` |
+| Look at one | `get_node` with `compact: true` leaves out vertices and faces |
+| Show what you changed | `changes_since`, against the last save, `undo_steps` back or a map `file` |
+| Take it back | Each call and each `run_script` is one undo step named `MCP: ...`, `run_action undo` with `steps` undoes several |
+
+See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 
 ## Behaviour worth knowing
 

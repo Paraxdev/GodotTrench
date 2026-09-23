@@ -42,15 +42,9 @@ Do not time them with `build_showcase.gd`, it overwrites the committed showcase 
 
 ## Map files in git
 
-`.tdm` maps are binary, see [the .tdm map format](format/README.md). For readable diffs, tell git once per clone to print
-them as JSON with the editor, which has to be on your `PATH`:
-
-```sh
-git config diff.tdm.textconv "trenchdot --dump"
-```
-
-`trenchdot --to-json map.tdm map.json` writes the JSON to a file, and `trenchdot --to-gtm map.json map.tdm` turns
-it back into a binary map with the same content.
+`.tdm` maps are binary, see [the .tdm map format](format/README.md). The repository's `.gitattributes` already marks
+them, so for readable diffs run the `git config` line from [Reviewing changes](editor/reviewing.md#maps-in-git) once
+per clone.
 
 ## Generated content
 
