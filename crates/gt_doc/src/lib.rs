@@ -1,3 +1,4 @@
+pub mod binary;
 pub mod blend;
 pub mod document;
 pub mod entity;
@@ -10,6 +11,7 @@ pub mod ops;
 pub mod scatter;
 pub mod selection;
 pub mod terrain;
+mod variant;
 
 pub use document::{Document, History};
 pub use entity::{Entity, IoConnection};

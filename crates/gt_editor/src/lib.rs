@@ -51,6 +51,17 @@ pub struct CliArgs {
     pub mcp_http: Option<u16>,
     /// Start with default preferences and never write them back (automated tests).
     pub default_prefs: bool,
+    /// Convert a map file and exit instead of opening the editor.
+    pub convert: Option<Convert>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Convert {
+    /// Print any map file as readable JSON, for diffs and quick looks.
+    Dump(PathBuf),
+    ToJson(PathBuf, PathBuf),
+    /// Any map file to the binary `.gtm`, keeping its content exactly.
+    ToGtm(PathBuf, PathBuf),
 }
 
 pub const DEFAULT_MCP_PORT: u16 = 7841;
@@ -65,6 +76,12 @@ impl CliArgs {
                 "--project" => out.project = it.next().map(PathBuf::from),
                 "--mcp-http" => out.mcp_http = Some(DEFAULT_MCP_PORT),
                 "--default-prefs" => out.default_prefs = true,
+                "--dump" => out.convert = it.next().map(|p| Convert::Dump(p.into())),
+                "--to-json" | "--to-gtm" => {
+                    let (Some(from), Some(to)) = (it.next(), it.next()) else { continue };
+                    let (from, to) = (PathBuf::from(from), PathBuf::from(to));
+                    out.convert = Some(if arg == "--to-json" { Convert::ToJson(from, to) } else { Convert::ToGtm(from, to) });
+                }
                 a if a.starts_with("--mcp-http=") => out.mcp_http = a["--mcp-http=".len()..].parse().ok().or(Some(DEFAULT_MCP_PORT)),
                 a if !a.starts_with("--") => out.map = Some(PathBuf::from(a)),
                 _ => {}
@@ -72,6 +89,30 @@ impl CliArgs {
         }
 
         out
+    }
+}
+
+/// Runs a conversion, reporting what a damaged input lost on stderr.
+pub fn convert(c: &Convert) -> Result<(), String> {
+    let read = |path: &std::path::Path| std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()));
+    let report = |path: &std::path::Path, problems: &[String]| problems.iter().for_each(|p| eprintln!("{}: {p}", path.display()));
+    match c {
+        Convert::Dump(from) | Convert::ToJson(from, _) => {
+            let (text, problems) = gt_doc::format::file_to_json(&read(from)?).map_err(|e| format!("{}: {e}", from.display()))?;
+            report(from, &problems);
+            match c {
+                Convert::ToJson(_, to) => std::fs::write(to, text).map_err(|e| format!("{}: {e}", to.display())),
+                _ => {
+                    use std::io::Write;
+                    std::io::stdout().write_all(text.as_bytes()).map_err(|e| e.to_string())
+                }
+            }
+        }
+        Convert::ToGtm(from, to) => {
+            let (bytes, problems) = gt_doc::format::file_to_binary(&read(from)?).map_err(|e| format!("{}: {e}", from.display()))?;
+            report(from, &problems);
+            std::fs::write(to, bytes).map_err(|e| format!("{}: {e}", to.display()))
+        }
     }
 }
 
@@ -103,5 +144,28 @@ mod tests {
         assert_eq!(a.mcp_http, Some(9000));
         assert_eq!(a.project, Some(PathBuf::from("C:/game")));
         assert_eq!(CliArgs::parse(["--mcp-http".to_string()]).mcp_http, Some(DEFAULT_MCP_PORT));
+        assert_eq!(CliArgs::parse(["--dump", "a.gtm"].map(String::from)).convert, Some(Convert::Dump("a.gtm".into())));
+        let c = CliArgs::parse(["--to-json", "a.gtm", "a.json"].map(String::from));
+        assert_eq!(c.convert, Some(Convert::ToJson("a.gtm".into(), "a.json".into())));
+        assert_eq!(c.map, None);
+        let c = CliArgs::parse(["--to-gtm", "a.json", "b.gtm"].map(String::from)).convert;
+        assert_eq!(c, Some(Convert::ToGtm("a.json".into(), "b.gtm".into())));
+    }
+
+    #[test]
+    fn converts_between_binary_and_json() {
+        let dir = std::env::temp_dir().join(format!("gt_convert_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut map = gt_doc::Map::new();
+        map.properties.insert("message".into(), "hello".into());
+        gt_doc::format::save(&map, &dir.join("a.gtm")).unwrap();
+        assert!(gt_doc::binary::is_binary(&std::fs::read(dir.join("a.gtm")).unwrap()));
+
+        convert(&Convert::ToJson(dir.join("a.gtm"), dir.join("a.json"))).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("a.json")).unwrap(), gt_doc::format::to_string(&map));
+        convert(&Convert::ToGtm(dir.join("a.json"), dir.join("b.gtm"))).unwrap();
+        assert_eq!(std::fs::read(dir.join("b.gtm")).unwrap(), std::fs::read(dir.join("a.gtm")).unwrap());
+        assert!(convert(&Convert::Dump(dir.join("missing.gtm"))).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

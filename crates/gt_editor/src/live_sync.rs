@@ -1,7 +1,8 @@
 //! Live mode: edits reach a Godot editor that has the map open as small node level deltas, before the map is saved.
 //!
 //! Messages (one JSON line each, see `live_link`):
-//! - `live_begin {path, text}` and `live_resync {path, text}` hand Godot the whole map.
+//! - `live_begin {path, text, content}` and `live_resync {path, text}` hand Godot the whole map. `content` is the id
+//!   the map's file records in its END chunk, so a scene built from that file is not rebuilt.
 //! - `live_delta {path, ops}` with `remove {id}`, `set {id, parent, index, node}`, `translate {ids, offset}` and
 //!   `properties {properties}`. `node` is the node as stored in the `.gtm` file, without its children.
 
@@ -44,7 +45,7 @@ pub struct LiveSession {
 
 impl LiveSession {
     pub fn begin(path: String, map: Map) -> (Self, Value) {
-        let message = json!({ "event": "live_begin", "path": path, "text": format::to_string(&map) });
+        let message = json!({ "event": "live_begin", "path": path, "text": format::to_string(&map), "content": format::content_id(&map) });
         (Self { path, epoch: 0, base: map, unsettled: BTreeSet::new(), held: BTreeSet::new() }, message)
     }
 

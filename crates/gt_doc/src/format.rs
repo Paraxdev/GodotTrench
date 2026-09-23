@@ -29,6 +29,14 @@ pub enum FormatError {
     Invalid { id: u64, reason: String },
     #[error("paste target {0} does not exist")]
     MissingParent(u64),
+    #[error("{0}")]
+    Container(#[from] crate::binary::ContainerError),
+}
+
+/// A map read from a file, with what was lost or moved while reading a damaged one.
+pub struct Loaded {
+    pub map: Map,
+    pub problems: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -106,8 +114,19 @@ pub fn to_value(map: &Map) -> Value {
     serde_json::to_value(file).expect("map serializes")
 }
 
+/// The map as readable JSON, the layout of older `.gtm` files and of the clipboard and live link.
 pub fn to_string(map: &Map) -> String {
     crate::json_fmt::to_string(&to_value(map))
+}
+
+/// The map in the binary container that `.gtm` files are saved in.
+pub fn to_bytes(map: &Map) -> Vec<u8> {
+    crate::binary::encode(&to_value(map), &map.unknown_chunks)
+}
+
+/// Identifies the map content the way the END chunk of `to_bytes` records it.
+pub fn content_id(map: &Map) -> i64 {
+    crate::binary::content_id(&to_value(map)).as_i64()
 }
 
 /// One node as it appears in the file, without its children.
@@ -257,8 +276,47 @@ fn migrate(value: &mut Value, version: u32) {
     let _ = (value, version);
 }
 
+/// Reads a map saved as JSON text.
 pub fn from_str(text: &str) -> Result<Map, FormatError> {
-    let mut value: Value = serde_json::from_str(text)?;
+    from_value(serde_json::from_str(text.trim_start_matches('\u{feff}'))?)
+}
+
+/// Reads a map file of either kind, told apart by its first bytes.
+pub fn from_bytes(bytes: &[u8]) -> Result<Loaded, FormatError> {
+    let (value, problems, unknown) = file_value(bytes)?;
+    let mut map = from_value(value)?;
+    map.unknown_chunks = unknown;
+    Ok(Loaded { map, problems })
+}
+
+type FileValue = (Value, Vec<String>, Vec<crate::binary::RawChunk>);
+
+/// The file's content as the JSON value tree, without building a map.
+fn file_value(bytes: &[u8]) -> Result<FileValue, FormatError> {
+    if crate::binary::is_binary(bytes) {
+        let decoded = crate::binary::decode(bytes)?;
+        return Ok((decoded.value, decoded.problems, decoded.unknown));
+    }
+
+    let text = std::str::from_utf8(bytes).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    Ok((serde_json::from_str(text.trim_start_matches('\u{feff}'))?, Vec::new(), Vec::new()))
+}
+
+/// Any map file in the readable JSON layout, for `godottrench --dump` and `--to-json`.
+pub fn file_to_json(bytes: &[u8]) -> Result<(String, Vec<String>), FormatError> {
+    let (value, problems, _) = file_value(bytes)?;
+    Ok((crate::json_fmt::to_string(&value), problems))
+}
+
+/// Any map file as the binary container with exactly its content, for `godottrench --to-gtm`. Refuses a file the
+/// editor could not open.
+pub fn file_to_binary(bytes: &[u8]) -> Result<(Vec<u8>, Vec<String>), FormatError> {
+    let (value, problems, unknown) = file_value(bytes)?;
+    from_value(value.clone())?;
+    Ok((crate::binary::encode(&value, &unknown), problems))
+}
+
+fn from_value(mut value: Value) -> Result<Map, FormatError> {
     let format = value.get("format").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     if format != FORMAT_NAME {
         return Err(FormatError::WrongFormat(format));
@@ -275,7 +333,7 @@ pub fn from_str(text: &str) -> Result<Map, FormatError> {
     file.layers.iter().try_for_each(validate)?;
 
     let next_id = file.layers.iter().map(max_file_id).max().unwrap_or(0) + 1;
-    let mut map = Map { nodes: imbl::OrdMap::new(), layers: Vec::new(), properties: file.properties, next_id, editor: file.editor };
+    let mut map = Map { nodes: imbl::OrdMap::new(), layers: Vec::new(), properties: file.properties, next_id, editor: file.editor, unknown_chunks: Vec::new() };
     for layer in file.layers {
         if matches!(layer.kind, FileKind::Layer(_)) {
             insert_file_node(&mut map, None, layer);
@@ -289,14 +347,16 @@ pub fn from_str(text: &str) -> Result<Map, FormatError> {
     Ok(map)
 }
 
-pub fn load(path: &Path) -> Result<Map, FormatError> {
-    from_str(&std::fs::read_to_string(path)?)
+pub fn load(path: &Path) -> Result<Loaded, FormatError> {
+    from_bytes(&std::fs::read(path)?)
 }
 
-/// Writes atomically through a temp file so a crash never leaves a truncated map.
+/// Writes atomically through a temp file so a crash never leaves a truncated map. A `.json` path gets the readable
+/// JSON layout for hand editing, anything else the binary container.
 pub fn save(map: &Map, path: &Path) -> Result<(), FormatError> {
     let tmp = path.with_extension("gtm.tmp");
-    std::fs::write(&tmp, to_string(map))?;
+    let json = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("json"));
+    std::fs::write(&tmp, if json { to_string(map).into_bytes() } else { to_bytes(map) })?;
     std::fs::rename(&tmp, path)?;
     Ok(())
 }

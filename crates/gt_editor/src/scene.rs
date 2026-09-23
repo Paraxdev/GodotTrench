@@ -1530,6 +1530,11 @@ impl SceneCache {
             }
         }
 
+        if !state.prefabs.problems.is_empty() {
+            let problems = std::mem::take(&mut state.prefabs.problems);
+            state.set_status(problems.join("; "));
+        }
+
         for m in &prefab_models {
             register_model_textures(renderer, m);
         }

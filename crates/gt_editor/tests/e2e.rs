@@ -271,12 +271,22 @@ fn csg_entities_io_and_files() {
     let before = ed.state()["map"].clone();
     ed.call("map_file", json!({ "op": "new" }));
     assert_eq!(ed.brushes(), 0);
-    ed.call("map_file", json!({ "op": "open", "path": path }));
+    let opened = ed.call("map_file", json!({ "op": "open", "path": path }));
+    assert_eq!(opened["problems"], json!([]));
     let after = ed.state()["map"].clone();
     assert_eq!(before["brushes"], after["brushes"]);
     assert_eq!(before["entities"], after["entities"]);
-    let text = std::fs::read_to_string(&path).unwrap();
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(gt_doc::binary::is_binary(&bytes), "maps are saved in the binary container");
+    let (text, _) = gt_doc::format::file_to_json(&bytes).unwrap();
     assert!(text.contains("\"format\": \"godottrench-map\"") && text.contains("\"opened\""));
+
+    // A damaged save still opens, with what was lost reported.
+    let damaged = artifacts().join("csg_damaged.gtm");
+    std::fs::write(&damaged, &bytes[..bytes.len() - 8]).unwrap();
+    let opened = ed.call("map_file", json!({ "op": "open", "path": damaged }));
+    assert!(opened["problems"].as_array().is_some_and(|p| !p.is_empty()), "{opened}");
+    assert_eq!(ed.state()["map"]["brushes"], after["brushes"]);
 
     assert!(ed.call_err("get_node", json!({ "id": 999999 })).contains("no node"));
     let (_, _, colors) = ed.screenshot("3d", "csg");
@@ -558,7 +568,8 @@ fn example_mcp_scripts_replay() {
 
         let saved = out.join(format!("{script}.gtm"));
         let reloaded = gt_doc::format::load(&saved).unwrap_or_else(|e| panic!("{script}: {e}"));
-        assert_eq!(reloaded.scatters().count() as u64, scatters["total"].as_u64().unwrap());
+        assert!(reloaded.problems.is_empty(), "{script}: {:?}", reloaded.problems);
+        assert_eq!(reloaded.map.scatters().count() as u64, scatters["total"].as_u64().unwrap());
 
         ed.call("run_action", json!({ "action": "recall_camera", "args": { "slot": 1 } }));
         ed.call("set_editor", json!({ "shade": "lit" }));
@@ -568,7 +579,7 @@ fn example_mcp_scripts_replay() {
     }
 
     // The night map's roller door keeps the beacon outputs passed to make_door next to the ones the wizard wires.
-    let night = gt_doc::format::load(&out.join("night_district.gtm")).unwrap();
+    let night = gt_doc::format::load(&out.join("night_district.gtm")).unwrap().map;
     let (_, garage) = night.entities().find(|(_, e)| e.targetname() == Some("garage_door")).expect("garage door in the night map");
     assert_eq!(garage.outputs.iter().filter(|o| o.target == "garage_beacon").count(), 4, "{:?}", garage.outputs);
 

@@ -612,7 +612,10 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             state.switch_tab((active + 1) % titles.len());
         }
         Action::OpenMap => {
-            let mut dialog = rfd::FileDialog::new().add_filter("GodotTrench map", &["gtm"]).add_filter("Autosave (recover a map)", &["autosave"]);
+            let mut dialog = rfd::FileDialog::new()
+                .add_filter("GodotTrench map", &["gtm"])
+                .add_filter("Map as JSON", &["json"])
+                .add_filter("Autosave (recover a map)", &["autosave"]);
             if let Some(root) = &state.game.project_root {
                 dialog = dialog.set_directory(root);
             }
@@ -645,7 +648,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             None => execute(state, Action::SaveAs, ctx),
         },
         Action::SaveAs => {
-            let mut dialog = rfd::FileDialog::new().add_filter("GodotTrench map", &["gtm"]).set_file_name("map.gtm");
+            let mut dialog = rfd::FileDialog::new().add_filter("GodotTrench map", &["gtm"]).add_filter("Map as JSON", &["json"]).set_file_name("map.gtm");
             if let Some(root) = &state.game.project_root {
                 dialog = dialog.set_directory(root);
             }

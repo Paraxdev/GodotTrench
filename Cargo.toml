@@ -19,7 +19,7 @@ gt_render = { path = "crates/gt_render" }
 
 glam = { version = "0.33", features = ["serde", "bytemuck"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 thiserror = "2"
 anyhow = "1"
 bytemuck = { version = "1", features = ["derive"] }
@@ -37,6 +37,7 @@ notify = "8"
 tungstenite = "0.30"
 proptest = "1"
 base64 = "0.22"
+zstd = { version = "0.13", default-features = false }
 
 [profile.dev]
 opt-level = 1

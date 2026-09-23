@@ -658,6 +658,11 @@ impl EditorState {
         }
 
         match (&self.doc.recovered_from, &self.doc.path) {
+            _ if !self.doc.load_problems.is_empty() => self.set_status(format!(
+                "{} is damaged, opened what could be read: {}. Saving keeps only that, the old file is copied to .gtm.bak",
+                path.display(),
+                self.doc.load_problems.join("; ")
+            )),
             (Some(_), Some(map_path)) => self.set_status(format!("Recovered {} from its autosave, save to keep the changes", map_path.display())),
             (Some(_), None) => self.set_status("Recovered an untitled map from its autosave, save it to keep the changes"),
             _ => self.set_status(format!("Opened {}", path.display())),
@@ -926,14 +931,26 @@ pub fn autosave_source(path: &Path) -> Option<PathBuf> {
 
 /// Loads a map, turning an autosave into an unsaved recovery of the map it belongs to.
 pub fn load_document(path: &Path) -> Result<Document, String> {
-    let map = format::load(path).map_err(|e| e.to_string())?;
-    let Some(source) = autosave_source(path) else {
-        return Ok(Document::from_map(map, Some(path.to_path_buf())));
+    let format::Loaded { map, problems } = format::load(path).map_err(|e| e.to_string())?;
+    for p in &problems {
+        eprintln!("{}: {p}", path.display());
+    }
+
+    let mut doc = match autosave_source(path) {
+        None => Document::from_map(map, Some(path.to_path_buf())),
+        Some(source) => {
+            let untitled = source.file_stem().is_some_and(|s| s.to_string_lossy().to_lowercase().starts_with(UNTITLED_PREFIX));
+            let mut doc = Document::from_map(map, (!untitled).then_some(source));
+            doc.recovered_from = Some(path.to_path_buf());
+            doc.mark_unsaved();
+            doc
+        }
     };
-    let untitled = source.file_stem().is_some_and(|s| s.to_string_lossy().to_lowercase().starts_with(UNTITLED_PREFIX));
-    let mut doc = Document::from_map(map, (!untitled).then_some(source));
-    doc.recovered_from = Some(path.to_path_buf());
-    doc.mark_unsaved();
+    if !problems.is_empty() {
+        doc.load_problems = problems;
+        doc.mark_unsaved();
+    }
+
     Ok(doc)
 }
 

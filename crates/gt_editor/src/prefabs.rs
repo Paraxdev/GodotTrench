@@ -25,6 +25,8 @@ pub struct PrefabCache {
     pub generation: u64,
     /// Godot project root that res:// instance paths inside prefabs resolve against.
     pub project_root: Option<PathBuf>,
+    /// What loading damaged prefab files lost, until the editor shows it.
+    pub problems: Vec<String>,
 }
 
 pub fn instance_transform(i: &Instance) -> DMat4 {
@@ -69,7 +71,14 @@ impl PrefabCache {
         let stale = self.entries.get(path).is_none_or(|e| e.modified != modified);
         if stale {
             let entry = match format::load(path) {
-                Ok(map) => PrefabEntry { bounds: Aabb::EMPTY, map: Some(map), error: None, modified },
+                Ok(format::Loaded { map, problems }) => {
+                    for p in problems {
+                        eprintln!("prefab {}: {p}", path.display());
+                        self.problems.push(format!("Prefab {} is damaged: {p}", path.display()));
+                    }
+
+                    PrefabEntry { bounds: Aabb::EMPTY, map: Some(map), error: None, modified }
+                }
                 Err(e) => PrefabEntry { map: None, error: Some(e.to_string()), bounds: Aabb::EMPTY, modified },
             };
             self.entries.insert(path.to_path_buf(), entry);
