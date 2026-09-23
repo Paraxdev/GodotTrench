@@ -121,18 +121,34 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "list_nodes",
-            "description": "Lists map nodes (layers, groups, entities, brushes) with ids, names, parents and bounds.",
+            "description": "Lists map nodes (layers, groups, entities, brushes) with ids, names, parents and bounds. Filters combine: type, classname, layer (id or name), material (a face uses it), property ({key: value} on entities, * matches anything, so {\"model\": \"*crate*\"}; the matched keys are returned), box ({min, max}, nodes whose bounds touch it) and selected_only.",
             "inputSchema": { "type": "object", "properties": {
                 "type": { "type": "string", "enum": ["layer", "group", "entity", "brush", "instance", "mesh", "terrain", "scatter"] },
                 "classname": { "type": "string" },
+                "layer": { "type": ["integer", "string"] },
+                "material": { "type": "string" },
+                "property": { "type": "object" },
+                "box": { "type": "object", "properties": { "min": vec3_schema("box min"), "max": vec3_schema("box max") } },
                 "selected_only": { "type": "boolean" },
                 "limit": { "type": "integer", "default": 200 }
             } }
         }),
         json!({
             "name": "get_node",
-            "description": "Full data of one node exactly as stored in the .gtm file.",
-            "inputSchema": { "type": "object", "properties": { "id": { "type": "integer" } }, "required": ["id"] }
+            "description": "Full data of one node exactly as stored in the .gtm file. compact leaves out vertices, faces and heights and gives bounds, layer, materials and entity keys instead.",
+            "inputSchema": { "type": "object", "properties": { "id": { "type": "integer" }, "compact": { "type": "boolean" } }, "required": ["id"] }
+        }),
+        json!({
+            "name": "summarize_map",
+            "description": "One call overview of the open map: layers with bounds and contents, entity counts by class, the I/O links as \"source.output -> target.input\" (up to limit), materials in use with face counts, model paths in entity keys, missing materials and entity classes, and the worldspawn keys. Start here on a map you did not build, then use list_nodes filters and get_node compact.",
+            "inputSchema": { "type": "object", "properties": { "limit": { "type": "integer", "default": 100 } } }
+        }),
+        json!({
+            "name": "changes_since",
+            "description": "What changed in the open map: nodes added and removed (a new group is listed once with nodes_inside), and nodes changed with what changed (moved with offset, rotated, geometry, uv, materials, paint, properties with [old, new], outputs, parent, name, hidden, locked), plus counts by type and by layer. Compares with the last save by default, undo_steps back in the history (1 is before the last call or script, see get_state undo), or a map file (.gtm or .json, such as an older version from git). Use it to show the person what you changed.",
+            "inputSchema": { "type": "object", "properties": {
+                "undo_steps": { "type": "integer" }, "file": { "type": "string" }, "limit": { "type": "integer", "default": 100, "description": "most entries per list" }
+            } }
         }),
         json!({
             "name": "run_action",

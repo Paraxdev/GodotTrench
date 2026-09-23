@@ -451,7 +451,12 @@ impl App {
 
         match name {
             "get_state" => ok(self.state_summary()),
-            "list_nodes" => ok(self.list_nodes(&args)),
+            "list_nodes" => match self.list_nodes(&args) {
+                Ok(v) => ok(v),
+                Err(e) => err(e),
+            },
+            "summarize_map" => ok(super::review_tools::summarize(&self.state, args["limit"].as_u64().unwrap_or(100) as usize)),
+            "changes_since" => self.tool_changes_since(&args),
             "get_node" => {
                 let id = match require_id(&args, "id") {
                     Ok(id) => id,
@@ -459,6 +464,10 @@ impl App {
                 };
                 if !self.state.doc.map.contains(id) {
                     return err(format!("no node {id}"));
+                }
+
+                if args["compact"].as_bool().unwrap_or(false) {
+                    return ok(super::review_tools::compact_node(&self.state.doc.map, id));
                 }
 
                 let text = format::nodes_to_string(&self.state.doc.map, &[id]);
@@ -674,8 +683,9 @@ impl App {
         })
     }
 
-    fn list_nodes(&self, args: &Value) -> Value {
+    fn list_nodes(&self, args: &Value) -> Result<Value, String> {
         let map = &self.state.doc.map;
+        let filter = super::review_tools::NodeFilter::parse(map, args)?;
         let ty = args["type"].as_str();
         let classname = args["classname"].as_str();
         let selected_only = args["selected_only"].as_bool().unwrap_or(false);
@@ -697,24 +707,31 @@ impl App {
                 continue;
             }
 
+            let bounds = self.state.instance_bounds.get(&id).copied().unwrap_or_else(|| map.bounds(id));
+            if !filter.matches(map, id, &bounds) {
+                continue;
+            }
+
             total += 1;
             if nodes.len() >= limit {
                 continue;
             }
 
-            let bounds = self.state.instance_bounds.get(&id).copied().unwrap_or_else(|| map.bounds(id));
             let mut v = json!({
                 "id": id.0, "type": n.kind.type_name(), "name": n.name(), "parent": n.parent.map(|p| p.0),
                 "bounds": bounds_json(&bounds), "hidden": n.hidden, "locked": n.locked, "selected": selected, "children": n.children.len(),
             });
             if let Some(e) = n.entity() {
                 v["classname"] = json!(e.classname);
+                if let Some(p) = filter.matched_properties(e) {
+                    v["properties"] = p;
+                }
             }
 
             nodes.push(v);
         }
 
-        json!({ "total": total, "nodes": nodes })
+        Ok(json!({ "total": total, "nodes": nodes }))
     }
 
     /// The status line when this action set it, so a caller never sees the message of an earlier command.

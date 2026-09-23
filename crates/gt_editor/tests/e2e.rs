@@ -1028,6 +1028,67 @@ fn script_ids_follow_csg_and_night_map_options() {
     ed.screenshot("3d", "fixture_hidden_while_off");
 }
 
+/// An agent edits a saved map: every call and every script is one labelled undo step, and the person can read what
+/// changed and take the whole batch back.
+#[test]
+#[ignore]
+fn agent_edits_are_one_undo_step_and_can_be_reviewed() {
+    let ed = Editor::launch("review");
+    let floor = ed.box_brush([0.0, 0.0, 0.0], [256.0, 16.0, 256.0]);
+    assert_eq!(ed.state()["undo"][0], "MCP: Create Brush");
+    let path = artifacts().join("review.gtm");
+    ed.call("map_file", json!({ "op": "save", "path": path }));
+    let undo_before = ed.state()["undo"].as_array().unwrap().len();
+
+    let run = ed.call(
+        "run_script",
+        json!({ "label": "Add crates", "steps": [
+            { "tool": "create_brush", "args": { "min": [0, 16, 0], "max": [32, 48, 32], "material": "crate" } },
+            { "tool": "create_brush", "args": { "min": [64, 16, 0], "max": [96, 48, 32], "material": "crate" } },
+            { "tool": "create_entity", "args": { "classname": "light", "origin": [128, 64, 128], "properties": { "energy": "2" } } },
+            { "tool": "select", "args": { "ids": [floor] } },
+            { "tool": "transform", "args": { "translate": [0, -8, 0] } }
+        ] }),
+    );
+    assert_eq!(run["undo"], "MCP: Add crates, 5 steps");
+    let state = ed.state();
+    assert_eq!(state["undo"][0], "MCP: Add crates, 5 steps");
+    assert_eq!(state["undo"].as_array().unwrap().len(), undo_before + 1);
+
+    let changes = ed.call("changes_since", json!({}));
+    assert_eq!(changes["summary"], "3 added, 0 removed, 1 changed", "{changes}");
+    assert_eq!(changes["since"], "the last save");
+    assert_eq!(changes["changed"][0]["id"].as_u64(), Some(floor));
+    assert_eq!(changes["changed"][0]["changes"], json!(["moved"]));
+    assert_eq!(changes["changed"][0]["offset"], json!([0.0, -8.0, 0.0]));
+    assert_eq!(ed.call("changes_since", json!({ "undo_steps": 1 }))["summary"], changes["summary"]);
+    let from_file = ed.call("changes_since", json!({ "file": path }));
+    assert_eq!(from_file["summary"], changes["summary"], "{from_file}");
+    assert!(ed.call_err("changes_since", json!({ "undo_steps": 99 })).contains("only"));
+
+    let summary = ed.call("summarize_map", json!({}));
+    assert_eq!(summary["counts"]["brushes"], 3);
+    assert_eq!(summary["entities"]["light"], 1);
+    assert_eq!(summary["materials"]["crate"], 12);
+    let lights = ed.call("list_nodes", json!({ "property": { "energy": "2" } }));
+    assert_eq!(lights["total"], 1);
+    assert_eq!(lights["nodes"][0]["properties"]["energy"], "2");
+    let near = ed.call("list_nodes", json!({ "type": "brush", "box": { "min": [60, 20, 0], "max": [70, 30, 10] } }));
+    assert_eq!(near["total"], 1);
+    assert_eq!(ed.call("list_nodes", json!({ "material": "crate", "layer": "Default" }))["total"], 2);
+    let compact = ed.call("get_node", json!({ "id": floor, "compact": true }));
+    assert!(compact.get("vertices").is_none() && compact["faces"] == 6, "{compact}");
+
+    ed.call("run_action", json!({ "action": "undo" }));
+    assert_eq!(ed.brushes(), 1);
+    assert_eq!(ed.call("changes_since", json!({}))["summary"], "0 added, 0 removed, 0 changed");
+    assert!(!ed.state()["map"]["modified"].as_bool().unwrap());
+    ed.call("run_action", json!({ "action": "redo" }));
+    assert_eq!(ed.brushes(), 3);
+    ed.call("run_action", json!({ "action": "undo", "args": { "steps": 2 } }));
+    assert_eq!(ed.brushes(), 0);
+}
+
 /// A 4 x 4 BGRA8888 VTF 7.2 without mipmaps or thumbnail.
 fn tiny_vtf(bgra: [u8; 4]) -> Vec<u8> {
     let mut b = vec![0u8; 80];
