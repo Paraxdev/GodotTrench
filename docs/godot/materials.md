@@ -3,7 +3,8 @@
 A face's material is a path under the map settings' *Base Texture Dir* without an extension, for example
 `showcase/planks`. If `showcase/planks.tres` exists there, or in *Base Material Dir* when that is set, the build uses
 that material as it is. Otherwise the addon generates a plain material from the image. The editor previews the same
-`.tres`, so both sides look alike.
+`.tres`, so both sides look alike. A `.tres` with only an `albedo_color` and no texture is a valid material too, the
+editor draws it in that color.
 
 New textures and materials show up in the editor within a couple of seconds, no reload needed.
 
