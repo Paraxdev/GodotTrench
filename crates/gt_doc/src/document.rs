@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use crate::map::Map;
@@ -39,6 +40,16 @@ impl History {
     }
 }
 
+/// Where the undo history stood, see [`Document::squash_since`].
+#[derive(Clone, Copy, Debug)]
+pub struct HistoryMark {
+    doc: u64,
+    top: u64,
+    rewinds: u64,
+}
+
+static NEXT_DOCUMENT: AtomicU64 = AtomicU64::new(1);
+
 pub struct Document {
     pub map: Map,
     pub selection: Selection,
@@ -61,6 +72,10 @@ pub struct Document {
     transaction: Option<Snapshot>,
     last_command: Option<String>,
     last_edit: Option<(String, Instant)>,
+    uid: u64,
+    /// Undo steps dropped off the bottom of the history, and undo or redo calls, both for [`HistoryMark`].
+    evicted: u64,
+    rewinds: u64,
 }
 
 impl Default for Document {
@@ -90,6 +105,9 @@ impl Document {
             transaction: None,
             last_command: None,
             last_edit: None,
+            uid: NEXT_DOCUMENT.fetch_add(1, Ordering::Relaxed),
+            evicted: 0,
+            rewinds: 0,
         }
     }
 
@@ -147,6 +165,7 @@ impl Document {
         self.history.undo.push(snap);
         if self.history.undo.len() > self.history.limit {
             self.history.undo.remove(0);
+            self.evicted += 1;
         }
 
         self.history.redo.clear();
@@ -296,6 +315,7 @@ impl Document {
         self.commit();
         let snap = self.history.undo.pop()?;
         self.last_edit = None;
+        self.rewinds += 1;
         let current = self.swap_in(snap);
         let label = current.label.clone();
         self.history.redo.push(current);
@@ -306,6 +326,7 @@ impl Document {
         self.absorb_direct_changes();
         let snap = self.history.redo.pop()?;
         self.last_edit = None;
+        self.rewinds += 1;
         let current = self.swap_in(snap);
         let label = current.label.clone();
         self.history.undo.push(current);
@@ -326,6 +347,39 @@ impl Document {
 
     pub fn last_command(&self) -> Option<&str> {
         self.last_command.as_deref()
+    }
+
+    /// Whether `mark` was taken on this document.
+    pub fn owns(&self, mark: &HistoryMark) -> bool {
+        mark.doc == self.uid
+    }
+
+    pub fn mark(&self) -> HistoryMark {
+        HistoryMark { doc: self.uid, top: self.evicted + self.history.undo.len() as u64, rewinds: self.rewinds }
+    }
+
+    /// Merges the undo steps added since `mark` into one, named by `label` from their labels, oldest first. A merged
+    /// step that changed nothing is dropped. Returns the step's label, or None when no step was added, the mark is from
+    /// another document, or an undo or redo ran since, which leaves the history as it is.
+    pub fn squash_since(&mut self, mark: HistoryMark, label: impl FnOnce(&[&str]) -> String) -> Option<String> {
+        if !self.owns(&mark) || mark.rewinds != self.rewinds {
+            return None;
+        }
+
+        let added = (self.evicted + self.history.undo.len() as u64).checked_sub(mark.top).filter(|n| *n > 0)? as usize;
+        let undo = &mut self.history.undo;
+        let first = undo.len().saturating_sub(added);
+        let name = label(&undo[first..].iter().map(|s| s.label.as_str()).collect::<Vec<_>>());
+        undo.truncate(first + 1);
+        let step = undo.last_mut()?;
+        let m = &self.map;
+        if step.map.nodes == m.nodes && step.map.properties == m.properties && step.map.layers == m.layers && step.map.editor == m.editor {
+            self.state = undo.pop()?.state;
+            return None;
+        }
+
+        step.label = name.clone();
+        Some(name)
     }
 }
 
@@ -448,6 +502,59 @@ mod tests {
         assert_eq!(doc.history.undo_labels().collect::<Vec<_>>(), ["x", "move", "x", "add"]);
         doc.undo();
         assert_eq!(doc.map.entity(id).unwrap().origin, gt_core::DVec3::new(2.0, 8.0, 0.0));
+    }
+
+    #[test]
+    fn squashed_steps_undo_as_one() {
+        let mut doc = Document::new();
+        let layer = doc.map.default_layer();
+        let add = |doc: &mut Document, label: &str| doc.edit(label, |m, _| m.insert(layer, NodeKind::Entity(Entity::new("light"))));
+        add(&mut doc, "before");
+        doc.mark_saved();
+        let mark = doc.mark();
+        add(&mut doc, "a");
+        let b = add(&mut doc, "b");
+        assert_eq!(doc.squash_since(mark, |steps| format!("batch of {}", steps.join(" "))), Some("batch of a b".into()));
+        assert_eq!(doc.history.undo_labels().collect::<Vec<_>>(), ["batch of a b", "before"]);
+        doc.undo();
+        assert_eq!(doc.map.entity_count(), 1);
+        assert!(!doc.is_modified());
+        doc.redo();
+        assert!(doc.map.contains(b));
+
+        let mark = doc.mark();
+        assert_eq!(doc.squash_since(mark, |_| "nothing".into()), None);
+        let id = add(&mut doc, "add");
+        doc.edit("remove", |m, _| m.remove(id));
+        assert_eq!(doc.squash_since(mark, |_| "no-op".into()), None, "a batch that changed nothing leaves no step");
+        assert_eq!(doc.history.undo_labels().next(), Some("batch of a b"));
+
+        let mark = doc.mark();
+        add(&mut doc, "c");
+        doc.undo();
+        add(&mut doc, "d");
+        assert_eq!(doc.squash_since(mark, |_| "x".into()), None, "undo inside the batch keeps the steps apart");
+        let other = Document::new();
+        assert_eq!(doc.squash_since(other.mark(), |_| "x".into()), None);
+    }
+
+    #[test]
+    fn nested_squashes_and_a_full_history() {
+        let mut doc = Document::new();
+        doc.history.limit = 3;
+        let layer = doc.map.default_layer();
+        let add = |doc: &mut Document| doc.edit("add", |m, _| m.insert(layer, NodeKind::Entity(Entity::new("light"))));
+        add(&mut doc);
+        let outer = doc.mark();
+        let inner = doc.mark();
+        for _ in 0..5 {
+            add(&mut doc);
+        }
+
+        assert_eq!(doc.squash_since(inner, |s| format!("inner {}", s.len())), Some("inner 3".into()), "steps that fell off the bottom are not listed");
+        add(&mut doc);
+        assert_eq!(doc.squash_since(outer, |s| s.join(", ")), Some("inner 3, add".into()));
+        assert_eq!(doc.history.undo_labels().count(), 1);
     }
 
     #[test]

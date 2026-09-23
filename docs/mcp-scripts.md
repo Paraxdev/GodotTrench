@@ -23,13 +23,15 @@ python tools/mcp_script.py shot view.png --pos 4300,900,3300 --look 2200,700,120
 ```
 
 The scripts save into `godot/demo/maps/showcase`, `scripted_scene.json` into `godot/demo/maps`. A run stops at the
-first failed step unless you pass `--continue-on-error`.
+first failed step unless you pass `--continue-on-error`. Each run is one undo step, named after the script's `label`
+or its file.
 
 ## Script format
 
 ```json
 {
   "format": "godottrench-mcp-script",
+  "label": "Hollow room",
   "vars": { "save_dir": "${project}/maps" },
   "steps": [
     { "note": "A hollow room." },
