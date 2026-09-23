@@ -2,10 +2,16 @@
   "title": "GodotTrench",
   "description": "A brush based level editor for Godot",
   "language": "en",
-  "plugins": ["-sharing", "-livereload"],
+  "plugins": [
+    "-sharing",
+    "-livereload"
+  ],
   "pluginsConfig": {
     "theme-default": {
       "showLevel": false
+    },
+    "fontsettings": {
+      "theme": "night"
     }
   },
   "links": {
