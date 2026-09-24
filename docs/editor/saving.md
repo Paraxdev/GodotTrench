@@ -4,13 +4,15 @@
 
 | File | Written |
 | --- | --- |
-| `<map>.gtm.bak` | On every save, a copy of the previous version |
+| `<map>.gtm.bak` | On every save, a copy of the previous version. Rename it to `.gtm` to go back one save |
 | `<map>.gtm.autosave` | Every three minutes, for every tab with unsaved changes |
 
 Change the autosave interval in *File > Preferences*, 0 turns it off. Autosaves use an extension Godot does not
-import, and saving the map deletes its autosave.
+import, so a half finished map never shows up in your game, and saving the map deletes its autosave.
 
 ## Recovering a map
+
+If the editor closed before you saved, open the autosave:
 
 1. *File > Open Map…*
 2. Pick the **Autosave (recover a map)** filter and open the `.gtm.autosave` file.

@@ -1,17 +1,21 @@
 # Scripts and calls
 
-Point entities for code and animations that plain wiring cannot reach.
+Point entities for what plain wiring cannot reach: game state, your own game code, animations, and finding out why a
+chain does not fire.
 
 ## logic_script
 
-Runs a GDScript snippet when fired, for logic that wiring cannot express, like reading the player's health.
+Runs a GDScript snippet when fired, for a little logic no built in entity offers, like reading the player's health,
+without writing a custom entity.
 
 * **Inputs:** `run(activator)`, `run_with(parameter)`
 * **Outputs:** `ran(result)`, with the snippet's return value
 * **Keys:** `source` empty, `expression` empty (a one liner, used when `source` is empty)
 
-The snippet sees `this`, `activator`, `parameter`, `io` (the `GodotTrenchIO` class) and `tree`. A compile error is
-logged as a warning when the map loads. `run_with` always has a null `activator`.
+The snippet sees `this` (the entity itself), `activator` (whoever started the chain), `parameter` (the incoming
+value), `io` (the `GodotTrenchIO` helpers, for example to find entities by name) and `tree` (the `SceneTree`).
+`run_with` always has a null `activator`. A compile error is logged as a warning when the map loads. This snippet hurts
+the player:
 
 ```gdscript
 var p = io.find_targets(this, "!player", null)
@@ -23,16 +27,17 @@ if not p.is_empty():
 
 ## logic_call
 
-Calls a method on any target with fixed arguments, for game code such as a score autoload. Unlike a plain output it
-warns when the target or the method does not exist.
+Calls a method on any target with fixed arguments, to reach your game code, such as adding score on a `Game` autoload.
+Unlike a plain output it warns when the target or the method does not exist, so typos show up in the log. C# methods
+work under their PascalCase names.
 
 * **Inputs:** `trigger(activator)`, `call_with(parameter)`
 * **Outputs:** `called(result)`
 * **Keys:** `call_target` `/root/Game`, `method` empty, `arguments` `[]`
 
-`arguments` is a JSON array, like `["key_red", "$activator"]`, and takes the placeholders from
-[Parameters](../parameters.md), resolved on the `logic_call` itself. `call_with` puts its parameter where
-`"$parameter"` stands, or passes it as the only argument.
+`call_target` is a node path, a `@group`, a targetname, `!activator` or `!self`. `arguments` is a JSON array, like
+`["key_red", "$activator"]`, and takes the placeholders from [Parameters](../parameters.md), resolved on the
+`logic_call` itself. `call_with` puts its parameter where `"$parameter"` stands, or passes it as the only argument.
 
 ## logic_animate
 
@@ -45,8 +50,9 @@ animations. Set `target` to `!activator` to animate whoever started the chain.
 
 ## logic_debug
 
-Prints a line on `write` and shows its recent lines as a floating label in debug builds. With `trace_all` on it logs
-every output in the game, a quick way to watch a whole chain.
+Prints a line on `write` and shows its recent lines as a floating label in debug builds, so you can see in game whether
+a chain reaches it and with what parameter. With `trace_all` on it logs every output in the game, a quick way to watch a
+whole chain. See [Debugging](../debugging.md).
 
 * **Inputs:** `write(parameter)`, `toggle` (the label), `show`, `hide`
 * **Outputs:** `printed(text)`

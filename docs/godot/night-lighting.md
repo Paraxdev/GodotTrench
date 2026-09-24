@@ -1,22 +1,28 @@
 # Night lighting
 
-Lighting is set on worldspawn. Select nothing and edit it in the Inspector.
+For a night map, turn the global light down so the lamps you place do the work. It is set on worldspawn: select
+nothing and edit it in the Inspector.
 
-| Key | Effect |
-| --- | --- |
-| `sun_energy`, `sun_color` | A low, pale blue sun makes a moon |
-| `ambient_energy`, `sky_energy` | Darken the ambient light and the sky |
-| `glow_intensity` | Above 0, lamps and [glowing materials](materials.md#glowing-materials) bloom in Godot |
-| `ssr` | 1 turns on screen space reflections, so wet streets mirror the lamps |
+| Key | Default | What to do for night |
+| --- | --- | --- |
+| `sun_energy`, `sun_color` | 1.0, `255 244 225` | Lower the energy and pick a pale blue, and the sun reads as a moon |
+| `ambient_energy`, `sky_energy` | 1.0, 1.0 | Lower both, so unlit areas and the sky go dark |
+| `glow_intensity` | 0 | Above 0, lamps and [glowing materials](materials.md#glowing-materials) bloom in Godot |
+| `ssr` | 0 | 1 turns on screen space reflections, so wet streets and glossy floors mirror the lamps |
 
-The editor's Lit Preview shows all of these except glow and reflections.
+The editor's Lit Preview shows all of these except glow and reflections, so check those in Godot.
 
 ## Lamp fixtures
 
-`light` and `light_spot` take a `fixture` key. Put the targetname of the lamp's glowing geometry in it, a trailing `*`
-matches a prefix, and the geometry follows the light with no wiring: shown while the light is on, hidden while it is
-off. Set `fixture_off` to `dark` to keep it visible with its glow switched off instead. See
-[Props, lights and effects](../gameplay/entities/effects.md) for the other light keys.
+A lamp is a `light` or `light_spot` entity plus the geometry of the lamp with its glowing bulb. Put the targetname of
+that geometry in the light's `fixture` key, a trailing `*` matches a prefix. The geometry then follows the light with
+no wiring: shown while the light is on, hidden while it is off. Set `fixture_off` to `dark` to keep it visible with
+its glow switched off instead. See [Props, lights and effects](../gameplay/entities/effects.md) for the other light
+keys.
+
+{% mcp %}
 
 `examples/mcp/night_district.json` and `examples/mcp/withered_city.json` are complete night maps built this way, see
 [MCP scripts](../mcp-scripts.md).
+
+{% endmcp %}

@@ -1,7 +1,8 @@
 # Overlays
 
-An overlay keeps Godot content on a map through every rebuild: a vending machine with its own script, a particle effect
-tuned in Godot, a lamp with an AnimationPlayer.
+A build replaces everything the map generated, so anything you add by hand under the map node would be lost on the next
+save. An overlay is the place for Godot content that has to live on the map anyway and survive every rebuild: a vending
+machine with its own script, a particle effect tuned in Godot, a lamp with an AnimationPlayer.
 
 ![The night district courtyard: string lights, fireflies and a sign from the overlay, lamps from the map](../assets/overlays/night-district-courtyard.jpg)
 
@@ -18,14 +19,19 @@ GodotTrench shows `(64, 0, -96)`.
 
 ## What the level designer sees
 
-GodotTrench draws each direct child of an overlay as a dashed blue box with its name, so nobody builds a wall through
-the breaker box, and its targetnames count as real targets in the Issues panel and the output editor. *View > Godot
-Overlays* hides the boxes, and turning off *Share With Editor* on the overlay leaves it out.
+The level designer works in GodotTrench and never sees the Godot scene, so the editor shows each direct child of an
+overlay as a dashed blue box with its name. That way nobody builds a wall through the breaker box. The overlay's
+targetnames also count as real targets: the output editor offers them to pick, and the Issues panel does not flag
+outputs aimed at them. *View > Godot Overlays* hides the boxes, and turning off *Share With Editor* on the overlay
+leaves it out.
 
 The boxes come from `night_district.overlay.json` next to `night_district.gtm`, written when the map is built in the
 Godot editor and when the scene is saved. Commit it with the map.
 
 ## Wiring overlays
+
+Overlay nodes and map entities can trigger each other through the same outputs and inputs that map entities use among
+themselves.
 
 | You want | Do this |
 | --- | --- |

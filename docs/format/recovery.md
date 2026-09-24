@@ -1,9 +1,12 @@
 # Damaged files
 
-A damaged binary map loses only the chunks that are damaged, and everything else opens. A reader walks the
-[chunks](container.md#chunks) from byte 12. Where it finds no valid chunk header, meaning the sync marker, the header
-check, a raw size of at most 1 GiB and a printable tag, it searches forward for the next sync marker. A `HEAD`, `NODE`
-or `END` chunk whose payload does not decompress, fails its checksum, has the wrong size or does not decode is dropped.
+A damaged binary map loses only its damaged chunks, and everything else still opens. This page is what a reader has to
+do to match that behavior.
+
+A reader walks the [chunks](container.md#chunks) from byte 12. A valid chunk header has the sync marker, a matching
+header check, a raw size of at most 1 GiB and a printable tag. Where the reader finds no valid header, it searches
+forward for the next sync marker and carries on from there. A `HEAD`, `NODE` or `END` chunk is dropped when its payload
+does not decompress, fails its checksum, has the wrong size or does not decode.
 
 | Damage | Result |
 | --- | --- |
@@ -23,6 +26,6 @@ Each reader reports every loss:
 | Godot addon | Builds what it could read and prints a warning per loss, prefixed with `[GTM]` and the file path |
 | `godottrench --dump` | Prints what it could read and writes the losses to stderr |
 
-Before every save the editor copies the old file to `<map>.gtm.bak`, so saving a recovered map keeps the damaged
-original next to it. The new file is written to `<map>.gtm.tmp` and renamed over the map, so a crash during a save
-never leaves a truncated map.
+Before every save the editor copies the old file to `<map>.gtm.bak`, so saving a recovered map still keeps the damaged
+original next to it. The new file is written to `<map>.gtm.tmp` first and then renamed over the map, so a crash during
+a save never leaves a half written map behind.

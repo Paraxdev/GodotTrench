@@ -10,20 +10,20 @@ Select clears the selection.
 
 | Key | Tool |
 | --- | --- |
-| Q | Select, draw and move |
-| C | Clip |
-| V | Vertex |
+| Q | Select, draw brushes and move things |
+| C | Clip, to cut brushes along a plane |
+| V | Vertex, to drag the corners of brushes |
 | R | Rotate |
 | T | Scale |
-| Tab | Mesh editing, converting selected brushes |
-| Shift+T | Texture |
-| P | Vertex paint |
+| Tab | Mesh editing. Selected brushes are converted to a mesh first |
+| Shift+T | Texture, to align textures on faces |
+| P | Vertex paint, to paint colours onto vertices |
 | G | Sculpt terrain and displacements |
 | Shift+G | Blend terrain layers |
 | B | Scatter |
-| Shift+E | Volume |
-| Shift+P | Path |
-| M | Measure |
+| Shift+E | Volume, to drag out a trigger volume |
+| Shift+P | Path, to place a chain of `path_corner` entities |
+| M | Measure distances |
 
 ## Mouse in the views
 
@@ -36,7 +36,7 @@ Select clears the selection.
 | Shift+click, Ctrl+Shift+click | Select one face, add or remove a face |
 | Shift+drag a selected face (3D) | Push or pull it |
 | Ctrl+Shift+drag a selected face (3D) | Extrude a new brush |
-| Right drag (3D) | Look, WASD to move, Q and E for down and up |
+| Right drag (3D) | Look around. Hold it and use WASD to fly, Q and E to go down and up |
 | Middle drag | Pan |
 | Alt+left drag (3D, nothing selected) | Orbit |
 | Ctrl+wheel (Sculpt, Blend, Paint, Scatter) | Resize the brush |
@@ -48,25 +48,25 @@ Select clears the selection.
 | Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y | Undo, redo |
 | Ctrl+X, Ctrl+C, Ctrl+V | Cut, copy, paste under the mouse |
 | Ctrl+D, Ctrl+Shift+D | Duplicate, duplicate linked |
-| Ctrl+R | Repeat the last rotate, flip, nudge or duplicate. Loop cut in mesh editing |
+| Ctrl+R | Repeat the last rotate, flip, nudge or duplicate. In mesh editing it makes a loop cut |
 | Delete or Backspace | Delete |
 | Ctrl+A, Esc, Ctrl+I | Select all, none, inverse |
-| Ctrl+T, Ctrl+Shift+T | Select touching, select inside |
+| Ctrl+T, Ctrl+Shift+T | Use the selected brushes as a stencil and select what they touch, or what lies inside them. The stencil brushes are deleted |
 | Ctrl+G, Ctrl+Shift+G | Group, ungroup |
-| Ctrl+H, Ctrl+J, Ctrl+Shift+H | Hide, isolate, show all |
+| Ctrl+H, Ctrl+J, Ctrl+Shift+H | Hide the selection, isolate it by hiding everything else, show all |
 | Arrows, Page Up, Page Down | Nudge by one grid step |
 
 ## Brushes, meshes and textures
 
 | Key | Action |
 | --- | --- |
-| Ctrl+K, Ctrl+M, Ctrl+L | CSG subtract, convex merge, intersect |
-| Ctrl+Shift+K | Hollow |
-| Ctrl+Shift+B | Shape generator |
+| Ctrl+K, Ctrl+M, Ctrl+L | CSG subtract (carve the selection out of what it touches), convex merge, intersect |
+| Ctrl+Shift+K | Hollow, turn a solid brush into a room with walls |
+| Ctrl+Shift+B | Shape generator, for arches, cylinders, stairs and other ready-made shapes |
 | Ctrl+Shift+E, Ctrl+Shift+J | Convert brushes to mesh, join meshes |
-| Ctrl+Shift+W | Move brushes to world |
-| Ctrl+Shift+U | Toggle UV lock |
-| Alt+H | Hotspot fit |
+| Ctrl+Shift+W | Move brushes to world, taking them out of their entity so they become plain level geometry |
+| Ctrl+Shift+U | Toggle UV lock, which keeps textures attached to a brush while it moves |
+| Alt+H | Hotspot fit, which fits selected faces to the best matching rectangle of a trim sheet |
 
 ## View and files
 
@@ -74,7 +74,7 @@ Select clears the selection.
 | --- | --- |
 | F or Ctrl+U | Frame the selection, or the whole map |
 | `[` and `]`, or `-` and `=` | Halve or double the grid |
-| F2, F3 | Cycle shading, toggle Lit Preview |
+| F2, F3 | Cycle shading (textured, flat, lit, wireframe), toggle Lit Preview |
 | Shift+Space | Maximize the view under the pointer |
 | Ctrl+Shift+1 to 9, Ctrl+1 to 9 | Store, recall camera bookmarks |
 | Ctrl+=, Ctrl+-, Ctrl+0 | Interface scale up, down, reset |

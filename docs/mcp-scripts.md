@@ -1,8 +1,10 @@
 # MCP scripts
 
-An MCP script is a JSON list of tool calls that the editor replays with `run_script`. The showcase maps in
+An MCP script is a JSON file with a list of [MCP](mcp.md) tool calls that the editor replays in order with
+`run_script`. It records how a map was built as readable steps, so the map can be rebuilt from scratch, reviewed as
+text in a pull request and replayed by the tests. The showcase maps in
 [examples/mcp](https://github.com/Paraxdev/GodotTrench/tree/main/examples/mcp) are built this way and double as
-examples for every tool.
+examples for every tool. The runner below talks to the editor's HTTP MCP server, see [Starting it](mcp.md#starting-it).
 
 | Script | Builds |
 | --- | --- |
@@ -16,6 +18,9 @@ examples for every tool.
 
 ## Running them
 
+Start the editor with the demo project, then replay a script with `tools/mcp_script.py`. Its `shot` command saves a
+screenshot from a given camera position, with `--shade` picking the view's shading:
+
 ```sh
 godottrench --mcp-http --project godot                        # the editor with the demo project
 python tools/mcp_script.py run examples/mcp/sea_island.json   # replay a script
@@ -23,8 +28,8 @@ python tools/mcp_script.py shot view.png --pos 4300,900,3300 --look 2200,700,120
 ```
 
 The scripts save into `godot/demo/maps/showcase`, `scripted_scene.json` into `godot/demo/maps`. A run stops at the
-first failed step unless you pass `--continue-on-error`. Each run is one undo step, named after the script's `label`
-or its file.
+first failed step unless you pass `--continue-on-error`, and `--url` points the runner at an editor on another port.
+Each run is one undo step, named after the script's `label` or its file.
 
 ## Script format
 
@@ -44,10 +49,14 @@ or its file.
 }
 ```
 
-A step without `tool` is a comment. A step with `save` stores its result under that name for later steps.
-`screenshot`, `simulate_input` and `run_script` cannot run inside a script. `run_script`'s summary reports `steps`
-and `notes` separately, so a 286 line script with 12 comments reads as 274 steps, 12 notes rather than losing the
-comments from the count.
+`vars` sets default values for variables of your own. A `vars` object passed to `run_script` overrides them, so one
+script can save to different places.
+
+A step without `tool` is a comment. A step with `save` stores its result under that name, so later steps can use the
+ids it created. `screenshot`, `simulate_input` and `run_script` cannot run inside a script. The summary a run returns
+counts tool calls as `steps` and comments as `notes`.
+
+Strings in `args` can refer to saved results and a few built-in variables:
 
 | Write | Means |
 | --- | --- |
@@ -60,14 +69,15 @@ comments from the count.
 | `$$` | A literal `$`, so a node path is `"$$Player"` |
 
 An unknown name is an error. A `$` that cannot start a name, like `"$5"`, stays as it is. Ids given as text, such as
-`"42"`, work wherever a node id is expected. `$name/rest` without braces does not expand, an unbraced `$project/maps`
-is an error rather than a path nobody meant to write; use `"${project}/maps"`.
+`"42"`, work wherever a node id is expected. `$name/rest` without braces does not expand, so an unbraced
+`$project/maps` is an error rather than a path nobody meant to write. Use `"${project}/maps"`.
 
 ## Ids after CSG
 
-CSG and clip steps replace brushes, and the runner rewrites ids saved by earlier steps to match. So `"$wall.ids"`
-still means the whole wall after a window is cut into it, and a removed brush drops out. Only values under `id`,
-`ids`, `selection`, `letters`, `copies`, `entity` and keys ending in `_id` or `_ids` are rewritten.
+CSG and clip steps replace the brushes they cut with new ones that have new ids. The runner rewrites ids saved by
+earlier steps to match, so `"$wall.ids"` still means the whole wall after a window is cut into it, and a removed brush
+drops out. Only values under `id`, `ids`, `selection`, `letters`, `copies`, `entity` and keys ending in `_id` or `_ids`
+are rewritten.
 
 > **Tip:** Spell out every brush setting in `scatter` and `blend` calls. Anything left out comes from the editor's
 > current Scatter panel or Blend tool settings.

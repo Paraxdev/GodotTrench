@@ -1,6 +1,7 @@
 # Getting started
 
-Steps 1 to 3 are done once per project.
+Steps 1 to 3 connect a Godot project to the editor and are done once per project. Steps 4 and 5 build a first room and
+load it in Godot.
 
 ## What you need
 
@@ -31,13 +32,15 @@ to its built in entities.
 
 ## 4. Build a room
 
-The editor opens with four views: 3D, Top, Front and Side. The world is Y-up like Godot, and map units are 32 per meter.
+The editor opens with four views: a 3D view you fly around in, and Top, Front and Side views that look straight along
+one axis. The world is Y-up like Godot, and map units are 32 per meter.
 
-1. **Draw a box.** With the Select tool (Q), drag on empty space in the Top view. It snaps to the grid, 16 units by
-   default.
-2. **Hollow it.** Press Ctrl+Shift+K. The box becomes walls 16 units thick.
+1. **Draw a box.** With the Select tool (Q), drag on empty space in the Top view. It snaps to the grid, 16 units (half
+   a meter) by default.
+2. **Hollow it.** Press Ctrl+Shift+K. The solid box turns into walls, floor and ceiling 16 units thick, with the room
+   inside.
 3. **Texture it.** Click a texture in the Materials panel. To texture one wall only, Shift+click that face first.
-4. **Save.** Press Ctrl+S and save inside the Godot project, the addon loads maps by `res://` path.
+4. **Save.** Press Ctrl+S and save inside the Godot project, since the addon loads maps by their `res://` path.
 
 ## 5. See it in Godot
 
@@ -52,14 +55,15 @@ Leave that scene open in Godot and every save in GodotTrench rebuilds it. Save t
 ## Try the demo project
 
 The repository's `godot` folder, also in the release as `godottrench-demo-project.zip`, is a project with the addon
-installed. Its main scene plays the showcase maps, which are saved in `godot/demo/maps/showcase`.
+installed. Its main scene plays the showcase maps, which are saved in `godot/demo/maps/showcase`. Open them in the
+editor to see how a finished map is put together.
 
 | Key | Action |
 | --- | --- |
 | WASD, Space, Shift | Walk, jump, run |
 | E | Use doors and buttons |
 | 1 to 5 | Switch between the showcase maps |
-| F3 | Show the I/O debug overlay |
+| F3 | Show the I/O debug overlay, a log of every input and output as it fires, with trigger volumes drawn in |
 
 ## Next
 

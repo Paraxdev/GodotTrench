@@ -2,8 +2,8 @@
 
 ## The pier
 
-Click **Add Layer** in the Outliner, so the pier lands on its own layer, then draw plain brushes running out to sea
-from the middle of the beach:
+Click **Add Layer** in the Outliner, so the pier lands on its own layer and you can hide or lock it apart from the
+terrain. Then draw plain brushes running out to sea from the middle of the beach:
 
 | Part | Size | Material |
 | --- | --- | --- |
@@ -20,12 +20,13 @@ water. A prop references its model by `res://` path, so the file has to be insid
 ## See it in Godot
 
 Save the map inside your Godot project and build it with a `FuncGodotMap`, see [Building maps](../godot/building.md).
+Each part of the map turns into a different kind of node:
 
-| Map part | Godot result |
+| Map part | What you get in Godot |
 | --- | --- |
-| Terrain | `GodotTrenchTerrain`, chunked meshes with the four layer blend, each chunk with its own collision |
+| Terrain | A `GodotTrenchTerrain` split into chunks, each a mesh that blends the four layers and has its own collision |
 | Sea | The `func_illusionary` brush, visible without collision |
-| Tree, bush and boulder sets | MultiMeshes, with one static body per instance sharing a collision shape |
+| Tree, bush and boulder sets | MultiMeshes, which draw many copies of a model in one go, plus one static body per instance sharing a collision shape |
 | Grass sets | MultiMeshes without collision that fade out with distance |
 
 ![The finished island in Godot](../assets/sea-island/godot-overview.jpg)

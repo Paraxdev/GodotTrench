@@ -1,13 +1,20 @@
 # JSON layout
 
-The JSON form is what older editors saved, and what `--dump`, a `.json` save, the clipboard, the live link and the MCP
-tools use. Readers treat any file that does not start with `\x89GTM` as JSON, with or without a UTF-8 byte order mark.
-An old JSON map loads as it is and becomes binary on its next `.gtm` save.
+The JSON form is what older editors saved. It is also what `--dump`, a `.json` save, the clipboard and the live link
+use. Readers treat any file that does not start with `\x89GTM` as JSON, with or without a UTF-8 byte order mark. An old
+JSON map loads as it is and becomes binary on its next `.gtm` save.
 
-[`json_fmt.rs`](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_doc/src/json_fmt.rs) prints it for readable
-diffs. It indents by two spaces, keeps keys in the order the tables in these pages list them, and puts short arrays and
-objects on one line. Every face is one line, and so is a `vertices` array of up to 64 entries, so moving one brush
-changes only that brush's lines. Any valid JSON with the same content loads the same.
+{% mcp %}
+
+The MCP tools read and return nodes in this JSON form too.
+
+{% endmcp %}
+
+[`json_fmt.rs`](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_doc/src/json_fmt.rs) prints it so that
+diffs stay readable. It indents by two spaces, keeps keys in the order the tables in these pages list them, and puts
+short arrays and objects on one line. Every face is one line, and so is a `vertices` array of up to 64 entries, so
+moving one brush changes only that brush's lines. Any valid JSON with the same content loads the same, so a tool that
+writes JSON does not have to copy this layout.
 
 ## Converting
 
@@ -18,8 +25,8 @@ changes only that brush's lines. Any valid JSON with the same content loads the 
 | `godottrench --to-gtm map.json map.gtm` | Writes a binary map, refusing a file the editor could not open |
 
 The conversions copy the file content without loading it into the editor, so they keep keys the editor does not know.
-The editor also opens `.json` maps, and *Save As* with a `.json` name writes JSON. For JSON diffs in git, see
-[Map files in git](../development.md#map-files-in-git).
+The editor also opens `.json` maps, and *Save As* with a `.json` name writes JSON. To see JSON diffs of binary maps in
+git, see [Map files in git](../development.md#map-files-in-git).
 
 ## Clipboard
 

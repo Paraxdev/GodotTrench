@@ -22,8 +22,9 @@ hinge, how far it travels, or its radius, instead of typing numbers.
 
 ## Wiring
 
-Outputs are set in the **Inspector**, where each connection is one row, see [How entity I/O works](io.md). To connect
-two entities quickly, select both and use *Gameplay > Logic > Link Two Selected Entities...*.
+Outputs are set in the **Inspector**, where each connection is one row with the fields explained in
+[How entity I/O works](io.md). To connect two entities quickly, select both and use
+*Gameplay > Logic > Link Two Selected Entities...*, which opens a dialog to pick the output and input.
 
 > **Warning:** The Link dialog does not take the entity you clicked first as the source. Check the direction and press
 > ⇄ to swap it if needed.
@@ -32,7 +33,7 @@ two entities quickly, select both and use *Gameplay > Logic > Link Two Selected 
 
 Open the **Logic** panel (*View > Panels*), pick a named entity and one of its outputs, and press **Fire**. It lists
 every `source.output → target.input` step that would follow, with delays, so you can follow a long chain without
-building and running the game.
+building and running the game. Two colours point out steps worth a second look:
 
 | Colour | Meaning |
 | --- | --- |
@@ -42,5 +43,5 @@ building and running the game.
 ## Code for any entity
 
 The **Reference** panel (*View > Panels*) shows GDScript and C# snippets for any entity class, useful when game code
-has to talk to a map entity. It also offers a skeleton for writing your own class and its FGD resource. **Create in
-project** writes the file into `res://entities/`.
+has to talk to a map entity, for example to open a door or listen for a button. It also offers a skeleton for writing
+your own class and its FGD resource. **Create in project** writes the file into `res://entities/`.

@@ -1,7 +1,11 @@
 # Live link protocol
 
-The addon runs a server in the Godot editor that GodotTrench uses for rebuilds, live mode and status. You only need
-this page to write your own client or debug the connection.
+The live link is how GodotTrench and the Godot editor talk. The addon runs a small server inside the Godot editor, and
+GodotTrench connects to it to trigger rebuilds when you save, stream [live mode](live.md) edits and show whether Godot
+is running.
+
+Level designers and most Godot developers never need this page, the link just works once the addon is enabled. It is
+a reference for writing your own tool that drives Godot the same way, or for finding out why the connection fails.
 
 ## Transport
 
@@ -13,6 +17,9 @@ The [hot reload](live.md#hot-reload-in-a-running-game) autoload in a running gam
 answers `map_saved`.
 
 ## Events
+
+A client sends these events. The Reply column lists the fields Godot answers with besides `ok` and `seq`, or what it
+does.
 
 | Event | Fields | Reply |
 | --- | --- | --- |
@@ -33,6 +40,12 @@ answers `map_saved`.
 and axes and `fov`, the horizontal field of view in degrees. With `text` Godot builds that map first, otherwise it
 waits for a live session to catch up. The reply comes after about a dozen frames, and other messages are answered
 meanwhile.
+
+{% mcp %}
+
+The MCP `screenshot` tool uses `capture` when asked for a picture from Godot.
+
+{% endmcp %}
 
 `walkable` bakes the navigation mesh of the whole edited scene with `GodotTrenchNav` for `agent` (`radius`, `height`,
 `max_climb`, `max_slope` in meters and degrees) and returns it in the map's units and axes. With `text` Godot builds
@@ -58,12 +71,21 @@ Generated nodes carry their map node id in the `_gt_id` metadata, and layer and 
 
 ## Testing without a window
 
-Open a scene with a `FuncGodotMap` in a headless Godot editor and start GodotTrench with its MCP server on the same
-project. Edit the map through MCP, then send `inspect` to port 7842 to see what Godot built:
+The link also works with a headless Godot editor, which suits automated tests. Open a scene with a `FuncGodotMap` in
+it, then send `inspect` to port 7842 to see what Godot built:
 
 ```sh
 godot --headless --editor --path godot res://path/scene.tscn
+```
+
+{% mcp %}
+
+To drive the map edits too, start GodotTrench with its MCP server on the same project and edit the map through MCP:
+
+```sh
 godottrench --mcp-http --project godot
 ```
+
+{% endmcp %}
 
 A headless Godot draws nothing, so `capture` answers with an error there. Test captures with a windowed editor.

@@ -1,14 +1,20 @@
 # MCP server
 
-The editor embeds a [Model Context Protocol](https://modelcontextprotocol.io) server, so agents and scripts can
-inspect and edit maps, take screenshots and play input into the UI.
+MCP, the [Model Context Protocol](https://modelcontextprotocol.io), is a standard way for AI agents and scripts to call
+into an application. The editor has an MCP server built in, so an agent such as Claude Code, or a Python script, can
+inspect and edit maps, take screenshots and play input into the UI. You would use it to let an AI assistant build or
+review a level, to script repetitive edits, or to test the editor automatically. The server is off unless you start
+it, and it only listens on your own machine.
 
 ## Starting it
 
-| Transport | How |
+| Transport | How to start it |
 | --- | --- |
-| HTTP | `--mcp-http` (port 7841) or `--mcp-http=PORT`. Or tick *enable on startup* in *File > Preferences* and restart |
-| stdio | `--mcp`, the client launches the editor for each session |
+| HTTP | Launch the editor with `--mcp-http` for port 7841, or `--mcp-http=PORT` for another port. To have it start every time, tick *enable on startup* next to *MCP server* in *File > Preferences* and restart |
+| stdio | Launch with `--mcp`. The client starts the editor itself for each session and talks to it over standard input and output |
+
+HTTP suits an editor you keep open and work in yourself while an agent helps. stdio suits a client that should own
+its own editor. To connect Claude Code to either:
 
 ```sh
 claude mcp add --transport http godottrench http://127.0.0.1:7841/mcp   # HTTP
@@ -17,22 +23,22 @@ claude mcp add godottrench -- /path/to/godottrench --mcp                 # stdio
 
 The repository's `.mcp.json` already points Claude Code at the HTTP server.
 
-`GODOTTRENCH_MCP_URL` overrides the URL [tools/mcp_client.py](https://github.com/Paraxdev/GodotTrench/blob/main/tools/mcp_client.py)
+`GODOTTRENCH_MCP_URL` overrides the URL that [tools/mcp_client.py](https://github.com/Paraxdev/GodotTrench/blob/main/tools/mcp_client.py)
 and [tools/mcp_script.py](https://github.com/Paraxdev/GodotTrench/blob/main/tools/mcp_script.py) connect to, for an
 editor started on a different port than `.mcp.json` expects.
 
 ## Tools
 
-| Area | Tools |
-| --- | --- |
-| Inspect | `get_state`, `summarize_map`, `list_nodes`, `get_node`, `changes_since`, `validate_map`, `get_game_config`, `code_reference` |
-| Create | `create_brush`, `create_mesh`, `create_terrain`, `create_entity`, `import_model` |
-| Edit | `update_entity`, `select`, `transform`, `duplicate`, `set_face`, `mesh_edit`, `texture`, `terrain_edit`, `hierarchy`, `set_map_properties` |
-| Paint and gameplay | `scatter`, `blend`, `gameplay` |
-| Editor | `run_action`, `map_file`, `open_project`, `set_editor`, `set_camera`, `screenshot`, `simulate_input`, `walkability` |
-| Scripts | `run_script`, see [MCP scripts](mcp-scripts.md) |
+| Area | What it is for | Tools |
+| --- | --- | --- |
+| Inspect | Read the map, the editor state, the entity definitions and how to use an entity from game code, without changing anything | `get_state`, `summarize_map`, `list_nodes`, `get_node`, `changes_since`, `validate_map`, `get_game_config`, `code_reference` |
+| Create | Add brushes, meshes, terrains, entities and imported models | `create_brush`, `create_mesh`, `create_terrain`, `create_entity`, `import_model` |
+| Edit | Change what exists: entity keys, selection, placement, faces, textures, terrain, layers and groups, and worldspawn | `update_entity`, `select`, `transform`, `duplicate`, `set_face`, `mesh_edit`, `texture`, `terrain_edit`, `hierarchy`, `set_map_properties` |
+| Paint and gameplay | Scatter models, blend materials, and turn brushes into doors, platforms and buttons | `scatter`, `blend`, `gameplay` |
+| Editor | Run menu actions, open and save files, change editor settings, move the camera, take screenshots, send input and check where a player can walk | `run_action`, `map_file`, `open_project`, `set_editor`, `set_camera`, `screenshot`, `simulate_input`, `walkability` |
+| Scripts | Replay a saved list of tool calls, see [MCP scripts](mcp-scripts.md) | `run_script` |
 
-Each tool's description lists its operations and arguments.
+Each tool's description lists its operations and arguments, so an agent learns them from the server itself.
 [tools/mcp_client.py](https://github.com/Paraxdev/GodotTrench/blob/main/tools/mcp_client.py) prints them with
 `list`, and calls a tool from the shell:
 
@@ -41,6 +47,8 @@ python tools/mcp_client.py call screenshot '{"target":"3d","width":1280,"height"
 ```
 
 ## Screenshots
+
+`screenshot` returns a PNG of an editor view. Its arguments decide what the image shows:
 
 | Arguments | Result |
 | --- | --- |
@@ -74,11 +82,11 @@ Without [live mode](godot/live.md) Godot first builds the map as shown in GodotT
 
 | Step | Tool |
 | --- | --- |
-| Get an overview | `summarize_map`: layers, entity classes, I/O links, materials, missing assets |
-| Find nodes | `list_nodes` with `layer`, `material`, `property` (`{"model": "*crate*"}`) or `box` |
-| Look at one | `get_node` with `compact: true` leaves out vertices and faces |
-| Show what you changed | `changes_since`, against the last save, `undo_steps` back or a map `file` |
-| Take it back | Each call and each `run_script` is one undo step named `MCP: ...`, `run_action undo` with `steps` undoes several |
+| Get an overview | `summarize_map` lists the layers, entity classes, I/O links and materials, and any missing assets |
+| Find nodes | `list_nodes` filters by `layer`, `material`, `property` (`{"model": "*crate*"}`) or a `box` in the map |
+| Look at one | `get_node` returns one node. `compact: true` leaves out vertices and faces |
+| Show what you changed | `changes_since` compares against the last save, a number of `undo_steps` back, or a map `file` |
+| Take it back | Each call and each `run_script` is one undo step named `MCP: ...`. `run_action undo` with `steps` undoes several |
 
 See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 

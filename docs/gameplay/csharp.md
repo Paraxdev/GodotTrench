@@ -1,7 +1,7 @@
 # C# entities
 
-A C# class can be a placeable entity without a `.tres` definition. Signals become outputs, exported members become keys
-and marked methods become inputs.
+A C# class can be a placeable entity without a `.tres` definition. The addon reads your source files: signals become
+outputs, exported members become keys and marked methods become inputs.
 
 ## 1. Add the helper
 
@@ -25,10 +25,10 @@ public partial class NpcGuard : CharacterBody3D
 }
 ```
 
-| Part | Notes |
+| Part | Why it matters |
 | --- | --- |
 | `[GlobalClass]` | Required, the map build creates the node by its class name |
-| `Size` | Bounding box as mins then maxs, in map units |
+| `Size` | The box the editor draws for the entity, as mins then maxs in map units |
 | `Solid = true` | Makes a brush entity, like a door, instead of a point entity |
 | `[GodotTrenchInput]` | Marks inputs. If no method has it, every public `void` method with a capitalized name is an input |
 
@@ -37,6 +37,8 @@ Names are snake_case in the map and PascalCase in C#. To read keys yourself, imp
 `GodotTrench.Float(props, "walk_speed", 3.5f)`.
 
 ## Where the addon looks
+
+The editor and the map build each scan folders for C# entity classes, set in two places:
 
 | Used by | Setting |
 | --- | --- |
@@ -59,4 +61,10 @@ foreach (Node barrel in GodotTrench.FindTargets(this, "barrel"))
 GodotTrench.FireOutput(this, "alerted", player);
 ```
 
-The Reference panel and the MCP `code_reference` tool generate this code for any entity.
+The Reference panel generates this code for any entity.
+
+{% mcp %}
+
+Over MCP, the `code_reference` tool returns the same code.
+
+{% endmcp %}

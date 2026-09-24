@@ -76,8 +76,8 @@
 }
 
 .glossary-term,
-.markdown-section a.glossary-term {
-  color: inherit;
+.book .book-body .page-wrapper .page-inner section.normal a.glossary-term {
+  color: inherit !important;
   text-decoration: underline dotted;
   text-underline-offset: 3px;
   cursor: help;

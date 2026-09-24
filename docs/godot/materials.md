@@ -6,6 +6,7 @@ that material as it is. Otherwise the addon generates a plain material from the 
 `.tres`, so both sides look alike. A `.tres` with only an `albedo_color` and no texture is a valid material too, the
 editor draws it in that color.
 
+Write a `.tres` when a plain image is not enough, for example to set the scale, glow or transparency described below.
 New textures and materials show up in the editor within a couple of seconds, no reload needed.
 
 ## Texture size
@@ -42,8 +43,11 @@ Without a material file, an image named like the albedo with `_emission` added, 
 
 ## Transparency
 
-| `transparency` | Use it for | Watch out |
-| --- | --- | --- |
-| `1` blend | Glass, soft stains, smoke | Casts no shadows |
-| `2` scissor | Hard cutouts up close, like grates and leaves | Thin parts vanish at a distance |
-| `3` hash | Thin cutouts seen from afar, like wire fences | Soft edges turn into static |
+Set `transparency` in the material file when the texture's alpha channel should let things show through. Each mode
+trades quality for cost differently:
+
+| `transparency` | How it works | Use it for | Watch out |
+| --- | --- | --- | --- |
+| `1` blend | Mixes the surface with what is behind it | Glass, soft stains, smoke | Casts no shadows |
+| `2` scissor | Pixels are either fully shown or cut away | Hard cutouts up close, like grates and leaves | Thin parts vanish at a distance |
+| `3` hash | Dithers pixels, the lower the alpha the fewer are shown | Thin cutouts seen from afar, like wire fences | Soft edges turn into static |

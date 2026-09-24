@@ -1,14 +1,17 @@
 # Models
 
-The Models panel lists the models under `res://models` and the installed nature models under
-`res://godottrench/nature`. It reads glTF, OBJ, Blockbench, STL, MD2 and MD3 files.
+Models are 3D files made in another program, such as Blender or Blockbench. The Models panel lists the models under
+`res://models` and the installed nature models under `res://godottrench/nature`. It reads glTF, OBJ, Blockbench, STL,
+MD2 and MD3 files.
 
 ## Placing a model
 
+A model can go into the map in two ways. Pick by whether you want to change its shape in the editor.
+
 | Placed as | How | Stored in the map | Use it for |
 | --- | --- | --- | --- |
-| Editable mesh | Drag from the Models panel, or its **Import…** button for a file anywhere on disk | A copy of the geometry | Shapes you want to change |
-| `prop_model` entity | *File > Import > Model Prop* | Only a `res://` path, Godot loads the file | Props you keep as they are |
+| Editable mesh | Drag from the Models panel, or its **Import…** button for a file anywhere on disk | A copy of the geometry, which no longer follows the file | Shapes you want to edit with the [mesh tools](meshes.md) |
+| `prop_model` entity | *File > Import > Model Prop* | Only a `res://` path, Godot loads the file | Props you keep as they are. Every copy follows the file when you change it |
 
 A prop has to point at a file Godot can load. Picking one outside the project offers to copy it into `res://models`
 first.
@@ -17,7 +20,8 @@ Right click a thumbnail to place it at the cursor, copy its path or open its pac
 
 ## Pack credits
 
-A `pack.json` in a model's folder, or the nearest folder above it, says which pack the model came from.
+Free model packs usually ask for credit. A `pack.json` in a model's folder, or the nearest folder above it, says which
+pack the model came from, so the panel can show who made it and under which license.
 
 ```json
 {

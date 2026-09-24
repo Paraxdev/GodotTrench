@@ -1,7 +1,13 @@
 # Development
 
+This page is for people who build the editor from source, change the addon or write the docs.
+
+{% mcp %}
+
 Contributing with an AI agent? [AGENTS.md](https://github.com/Paraxdev/GodotTrench/blob/main/AGENTS.md) lists the rules
 and the checks a pull request has to pass.
+
+{% endmcp %}
 
 ## Building
 
@@ -33,9 +39,16 @@ godot --headless --path godot --script res://tests/run_tests.gd
 godot --headless --path godot --script res://tests/build_showcase.gd
 ```
 
-CI runs all of these. The e2e tests run on Linux with software Vulkan and drive the editor over MCP, and
-`example_mcp_scripts_replay` replays every script in `examples/mcp`. To test the live link without a window, see
-[Live link protocol](godot/live-link.md#testing-without-a-window).
+CI runs all of these. The e2e tests launch the real
+editor and drive it with simulated input. That needs a GPU and a desktop session, so `cargo test` skips them unless
+you pass `--ignored`. CI runs them on Linux with software Vulkan instead of a GPU. To test the live link without a
+window, see [Live link protocol](godot/live-link.md#testing-without-a-window).
+
+{% mcp %}
+
+The e2e tests drive the editor over MCP, and `example_mcp_scripts_replay` replays every script in `examples/mcp`.
+
+{% endmcp %}
 
 > **Note:** `godot --headless --script` renders nothing (screenshots and rendered checks come out black) and does not
 > run project autoloads, only the script itself. Write tests against data and nodes, not pixels or autoload state.
@@ -50,6 +63,9 @@ them, so for readable diffs run the `git config` line from [Reviewing changes](e
 per clone.
 
 ## Generated content
+
+Some files in the repository are produced by a script rather than edited by hand. Run the matching command again after
+changing what it reads.
 
 | Command | Regenerates |
 | --- | --- |

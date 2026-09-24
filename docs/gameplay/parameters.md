@@ -1,5 +1,8 @@
 # Targets, parameters and inputs
 
+A connection names its target, its input and an optional parameter as plain text. This page explains how that text
+turns into the nodes, the method and the values used in game.
+
 ## Targets
 
 The target of a connection, and of keys like `call_target`, decides which nodes receive the input. Most of the time
@@ -25,15 +28,22 @@ Groups, node paths and `!player` work across the whole tree, use them when one m
 
 Targetname lookups are cached per map for speed. After spawning or renaming named entities at runtime, call
 `GodotTrenchIO.invalidate(node)` with any node in that map so the next lookup sees them. Renaming means changing the
-`gt_targetname` meta, the node's `name` plays no part.
+`gt_targetname` meta, the node's `name` plays no part. Killing an entity needs no call, the cache notices freed nodes.
 
 Nodes made by a spawner have no targetname. Reach them through their group, for example `@enemies`.
 
 ## Parameters
 
 The parameter is a value typed into the connection and handed to the input, like `25` for `take_damage` or a speed
-for a door. A plain parameter becomes the first of these that fits: an integer, a float, `true` or `false`, three
-numbers as a `Vector3`, else a string.
+for a door. The text becomes the first type it fits:
+
+| You type | The input receives |
+| --- | --- |
+| `25` | The integer 25 |
+| `0.5` | The float 0.5 |
+| `true` or `false` | A bool |
+| `0 64 0` | A `Vector3`, from three numbers separated by spaces |
+| `hello` | The string `"hello"`, when nothing else fits |
 
 A JSON array like `[10, "$activator"]` spreads into several arguments, for inputs that take more than one. Values are
 converted to the types the method declares, so `1234` reaches a `String` argument as text. When the method takes a node
@@ -43,8 +53,8 @@ A parameter can also be one of these placeholders, filled in when the input is c
 
 | Placeholder | Becomes |
 | --- | --- |
-| `$activator` | The activator |
-| `$self`, `$caller` | The receiving entity |
+| `$activator` | The activator, the node that started the chain |
+| `$self`, `$caller` | The receiving entity itself |
 | `$position` | The receiving entity's global position |
 | `$caller_name` | The receiving entity's targetname, else its node name |
 

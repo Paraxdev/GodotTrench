@@ -9,9 +9,9 @@ With no options the editor opens, with the map when one is given. `godottrench -
 | Option | Does |
 | --- | --- |
 | `--project <dir>` | Loads the Godot project in `<dir>` or a folder above it. Without it the editor loads the last project |
-| `--mcp` | Serves the [MCP server](mcp.md) over stdin and stdout |
-| `--mcp-http[=<port>]` | Serves MCP over HTTP on 127.0.0.1, port 7841 by default |
-| `--default-prefs` | Starts with default preferences and never saves them, for scripts and tests |
+| `--mcp`<span class="gt-mcp-row"></span> | Serves the [MCP server](mcp.md) over stdin and stdout |
+| `--mcp-http[=<port>]`<span class="gt-mcp-row"></span> | Serves MCP over HTTP on 127.0.0.1, port 7841 by default |
+| `--default-prefs` | Starts with default preferences and never saves them. Useful for scripts and tests, and to check whether a problem comes from your own settings |
 | `--dump <map>` | Prints a map as JSON and exits |
 | `--to-json <map> <out>` | Writes a map as JSON and exits |
 | `--to-gtm <map> <out>` | Writes a map as a binary `.gtm` and exits |

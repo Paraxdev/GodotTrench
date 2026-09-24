@@ -11,9 +11,11 @@ Godot live link, which is on by default in *File > Preferences*.
 The map has to be saved inside the project, and the scene open in Godot needs a `FuncGodotMap` using it. The link
 button's tooltip says what it is still waiting for.
 
-Drags move nodes while you drag and most edits rebuild only what they touched. Layer omission and prefab instances
-rebuild the whole map once you pause. The preview is close to a full build but not always identical, saving always
-does a full build, and quitting without saving sends Godot back to the saved file.
+Drags move nodes while you drag, and most edits rebuild only what they touched, so the preview keeps up. Toggling
+*Omit From Export* on a layer and editing prefab instances rebuild the whole map instead, once you pause.
+
+The preview is close to a full build but not always identical. Saving always does a full build, and quitting without
+saving sends Godot back to the saved file, so nothing you tried in live mode sticks unless you save it.
 
 ## Hot reload in a running game
 

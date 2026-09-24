@@ -13,7 +13,7 @@ again after it.
 
 ## What counts
 
-The bake reads the map's collision, not its meshes.
+The bake reads the map's collision, not its meshes, so what a player can bump into is what an agent walks around.
 
 | In the map | In the navigation mesh |
 | --- | --- |
@@ -27,8 +27,19 @@ Paths lead through closed doors, so an agent has to open a door it walks into.
 
 ## Agent size
 
-`GodotTrenchNav.profile(radius, height, max_climb, max_slope)` returns the settings for one agent size, in meters and
-degrees. The default is 0.3, 1.8, 0.3 and 45 with 0.1 m cells. Pass it as the second argument:
+`GodotTrenchNav.profile(radius, height, max_climb, max_slope)` returns the settings for one agent size. The radius
+keeps paths away from walls, the height rules out low ceilings, *max_climb* is the tallest step the agent walks up and
+*max_slope* the steepest ramp. Sizes are in meters and the slope in degrees:
+
+| Argument | Default |
+| --- | --- |
+| `radius` | 0.3 |
+| `height` | 1.8 |
+| `max_climb` | 0.3 |
+| `max_slope` | 45 |
+
+The mesh uses 0.1 m cells and snaps the sizes to them. Pass a profile as the second argument, for example for a
+wide, low creature:
 
 ```gdscript
 var region := await GodotTrenchNav.bake_region(map, GodotTrenchNav.profile(0.5, 1.2))
@@ -61,11 +72,16 @@ over the [live link](live-link.md) and GodotTrench draws the result in the 3D an
 
 | Colour | Meaning |
 | --- | --- |
-| Bluish green | The biggest connected area |
-| Vermillion | Islands cut off from it: behind a step higher than *Max climb*, a gap narrower than twice the *Radius* or a slope steeper than *Max slope* |
+| Bluish green | The biggest connected area, where most agents will be |
+| Vermillion | Islands an agent on the green area cannot reach. Look for a step higher than *Max climb*, a gap narrower than twice the *Radius* or a slope steeper than *Max slope* |
 
 The agent size is set in the same menu. The overlay bakes again a moment after each edit. Without
-[live mode](live.md) Godot builds the map as shown first, like *Build in Godot*. Agents call the `walkability` MCP tool,
-which returns the islands with their areas and bounds in map units.
+[live mode](live.md) Godot builds the map as shown first, like *Build in Godot*.
 
 > **Tip:** Wall and roof tops show up as small vermillion islands. Look for vermillion floor next to green floor.
+
+{% mcp %}
+
+Agents call the `walkability` MCP tool, which returns the islands with their areas and bounds in map units.
+
+{% endmcp %}

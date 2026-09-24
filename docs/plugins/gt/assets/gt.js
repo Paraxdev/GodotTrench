@@ -45,9 +45,17 @@ require(["gitbook", "jQuery"], function (gitbook, $) {
   }
 
   // Glossary terms get a card on hover or focus instead of the browser's slow plain tooltip.
+  // Only the first use of each term on a page gets a card, the rest turn back into plain text.
   function glossaryCards() {
-    $(".glossary-term").each(function () {
+    var seen = {};
+    $(".page-inner .glossary-term").each(function () {
       var term = $(this);
+      var id = (term.attr("href") || "").split("#")[1] || term.text().toLowerCase();
+      if (seen[id]) {
+        term.replaceWith(document.createTextNode(term.text()));
+        return;
+      }
+      seen[id] = true;
       if (term.data("gt-card")) return;
       term.data("gt-card", term.attr("title") || "").removeAttr("title").attr("tabindex", "0");
     });

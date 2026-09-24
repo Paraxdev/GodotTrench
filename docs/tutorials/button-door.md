@@ -43,7 +43,7 @@ chain can then target `!activator` to act on whoever pressed the button.
 
 ## Variations
 
-| Want | Change |
+| You want | What to change |
 | --- | --- |
 | Door only opens from the button | Set the door's `interact` to 0. Otherwise pressing **E** on the door opens it too |
 | Door closes by itself | Set the door's `wait` to the seconds it stays open. The default, -1, keeps it open |

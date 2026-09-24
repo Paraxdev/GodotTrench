@@ -1,7 +1,14 @@
 # Reviewing changes
 
-Keep maps in git to see what changed between versions, and use the History panel and the MCP review tools to check
-what an AI agent did to your map.
+Keep maps in git to see what changed between versions, the same way you review changes to code. For changes inside the
+current session, the [History panel](organizing.md#history) lists every edit and undoes back to any of them.
+
+{% mcp %}
+
+The MCP review tools also show what an AI agent did to your map, see
+[Edits made by an AI agent](#edits-made-by-an-ai-agent).
+
+{% endmcp %}
 
 ## Maps in git
 
@@ -31,6 +38,8 @@ a file, and `godottrench --to-gtm map.json map.gtm` turns it back into a binary 
 
 > **Warning:** `godottrench` has to be on your `PATH`, or `git diff` fails on maps.
 
+{% mcp %}
+
 ## Edits made by an AI agent
 
 When an agent edits your map over [MCP](../mcp.md), every tool call is one undo step named `MCP: ...` in the
@@ -45,3 +54,5 @@ Undo that step to take the agent's work back.
 
 > **Tip:** Ask the agent to put a multi-step job in one `run_script` with a `label`, so the whole job undoes in one
 > step under a name you recognise.
+
+{% endmcp %}
