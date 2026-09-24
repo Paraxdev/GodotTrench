@@ -3,13 +3,6 @@
 A large island with two hills, cliffs, a beach, paths, woodland and a pier, in five parts. The numbers are the ones
 used for the pictures, in map units at 32 per meter.
 
-{% mcp %}
-
-[examples/mcp/sea_island.json](https://github.com/Paraxdev/GodotTrench/blob/main/examples/mcp/sea_island.json)
-builds the same island, so you can replay it to check a value.
-
-{% endmcp %}
-
 ![The finished island from the south](../assets/sea-island/island-finished.jpg)
 
 ## Create the terrain
@@ -44,3 +37,13 @@ The sea is a single flat brush the player can walk into.
 ![The generated island in the sea, before sculpting](../assets/sea-island/fresh-island.jpg)
 
 Next: [Sea island 2: sculpting](sea-island-sculpt.md).
+
+{% mcp %}
+
+## MCP
+
+The [MCP server](../mcp.md) lets agents and scripts drive the editor.
+[examples/mcp/sea_island.json](https://github.com/Paraxdev/GodotTrench/blob/main/examples/mcp/sea_island.json) is an
+MCP script that builds the same island, so you can replay it to check a value.
+
+{% endmcp %}

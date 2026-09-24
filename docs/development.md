@@ -2,13 +2,6 @@
 
 This page is for people who build the editor from source, change the addon or write the docs.
 
-{% mcp %}
-
-Contributing with an AI agent? [AGENTS.md](https://github.com/Paraxdev/GodotTrench/blob/main/AGENTS.md) lists the rules
-and the checks a pull request has to pass.
-
-{% endmcp %}
-
 ## Building
 
 The Godot addon in `godot/addons/func_godot` is a git submodule, so clone with
@@ -43,12 +36,6 @@ CI runs all of these. The e2e tests launch the real
 editor and drive it with simulated input. That needs a GPU and a desktop session, so `cargo test` skips them unless
 you pass `--ignored`. CI runs them on Linux with software Vulkan instead of a GPU. To test the live link without a
 window, see [Live link protocol](godot/live-link.md#testing-without-a-window).
-
-{% mcp %}
-
-The e2e tests drive the editor over MCP, and `example_mcp_scripts_replay` replays every script in `examples/mcp`.
-
-{% endmcp %}
 
 > **Note:** `godot --headless --script` renders nothing (screenshots and rendered checks come out black) and does not
 > run project autoloads, only the script itself. Write tests against data and nodes, not pixels or autoload state.
@@ -104,14 +91,8 @@ npx honkit serve              # live preview on http://localhost:4000
 npx honkit build . _site      # the build CI runs, lands in docs/_site
 ```
 
-Two conventions keep pages readable for people who never touch MCP:
-
-| For | Write |
-| --- | --- |
-| Text only MCP users need | {% raw %}`{% mcp %}` and `{% endmcp %}`{% endraw %} around it, or `<span class="gt-mcp-row"></span>` in the first cell of a table row. The **MCP** switch in the header shows it, it is off by default |
-| A term a newcomer would not know | An entry in `GLOSSARY.md`. Every page then shows its definition when you hover the term |
-
-Pages only about MCP belong in the **MCP** part of `SUMMARY.md`, which the switch hides too.
+A term a newcomer would not know gets an entry in `GLOSSARY.md`. Every page then shows its definition when you hover
+the term.
 
 `.github/workflows/pages.yml` builds the book for pull requests that touch `docs/`, and publishes it to GitHub Pages
 when they reach `main`.
@@ -120,3 +101,22 @@ when they reach `main`.
 
 CI skips pushes that only change docs or Markdown. Every green push to `main` replaces the
 [rolling beta](https://github.com/Paraxdev/GodotTrench/releases/tag/beta) with fresh editor, addon and demo downloads.
+
+{% mcp %}
+
+## MCP
+
+Contributing with an AI agent? [AGENTS.md](https://github.com/Paraxdev/GodotTrench/blob/main/AGENTS.md) lists the rules
+and the checks a pull request has to pass.
+
+The e2e tests drive the editor over the [MCP server](mcp.md), and `example_mcp_scripts_replay` replays every script in
+`examples/mcp`.
+
+### MCP in the docs
+
+The **MCP** switch in the header, off by default, hides everything about MCP so the pages stay readable for people who
+never touch it. On a page, put all MCP text in one `## MCP` section at the very end, wrapped in
+{% raw %}`{% mcp %}` and `{% endmcp %}`{% endraw %}. Pages only about MCP belong in the **MCP** part of `SUMMARY.md`,
+which the switch hides too.
+
+{% endmcp %}

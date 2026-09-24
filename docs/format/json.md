@@ -4,12 +4,6 @@ The JSON form is what older editors saved. It is also what `--dump`, a `.json` s
 use. Readers treat any file that does not start with `\x89GTM` as JSON, with or without a UTF-8 byte order mark. An old
 JSON map loads as it is and becomes binary on its next `.gtm` save.
 
-{% mcp %}
-
-The MCP tools read and return nodes in this JSON form too.
-
-{% endmcp %}
-
 [`json_fmt.rs`](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_doc/src/json_fmt.rs) prints it so that
 diffs stay readable. It indents by two spaces, keeps keys in the order the tables in these pages list them, and puts
 short arrays and objects on one line. Every face is one line, and so is a `vertices` array of up to 64 entries, so
@@ -109,3 +103,11 @@ an explosive barrel:
 
 The floor is a 640 by 640 unit slab 8 units thick with its top at Y 8. Its first face, `[0,1,2,3]`, is the +X side,
 wound counter-clockwise seen from +X.
+
+{% mcp %}
+
+## MCP
+
+The tools of the [MCP server](../mcp.md) read and return nodes in this JSON form too.
+
+{% endmcp %}

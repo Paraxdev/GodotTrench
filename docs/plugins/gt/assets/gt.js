@@ -48,7 +48,10 @@ require(["gitbook", "jQuery"], function (gitbook, $) {
   // Only the first use of each term on a page gets a card, the rest turn back into plain text.
   function glossaryCards() {
     var seen = {};
-    $(".page-inner .glossary-term").each(function () {
+    var terms = $(".page-inner .glossary-term");
+    // Terms in the MCP section come last, so a term used there first still gets its card in the visible text.
+    terms = terms.not(".gt-mcp .glossary-term").add(terms.filter(".gt-mcp .glossary-term"));
+    terms.each(function () {
       var term = $(this);
       var id = (term.attr("href") || "").split("#")[1] || term.text().toLowerCase();
       if (seen[id]) {

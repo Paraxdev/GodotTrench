@@ -78,7 +78,7 @@ This applies to code comments, docs, UI text, commit messages and pull request d
   GitHub URLs, since only `docs/` is published.
 * Verify facts against the code before writing them. Explain why and when, not only what.
 * Readers are people first. Wrap text only MCP users need in `{% mcp %}` blocks, see
-  [docs/development.md](docs/development.md#documentation), and write sentences a newcomer can follow rather than lists
+  [docs/development.md](docs/development.md#mcp-in-the-docs), and write sentences a newcomer can follow rather than lists
   of nouns. Define jargon once in `docs/GLOSSARY.md`, pages then explain it on hover.
 
 ## Godot gotchas

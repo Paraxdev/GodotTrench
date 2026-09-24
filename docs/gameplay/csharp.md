@@ -65,6 +65,9 @@ The Reference panel generates this code for any entity.
 
 {% mcp %}
 
-Over MCP, the `code_reference` tool returns the same code.
+## MCP
+
+An agent or script driving the editor over the [MCP server](../mcp.md) gets the same generated code from the
+`code_reference` tool.
 
 {% endmcp %}

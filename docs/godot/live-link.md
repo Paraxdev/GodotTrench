@@ -41,12 +41,6 @@ and axes and `fov`, the horizontal field of view in degrees. With `text` Godot b
 waits for a live session to catch up. The reply comes after about a dozen frames, and other messages are answered
 meanwhile.
 
-{% mcp %}
-
-The MCP `screenshot` tool uses `capture` when asked for a picture from Godot.
-
-{% endmcp %}
-
 `walkable` bakes the navigation mesh of the whole edited scene with `GodotTrenchNav` for `agent` (`radius`, `height`,
 `max_climb`, `max_slope` in meters and degrees) and returns it in the map's units and axes. With `text` Godot builds
 that map first unless it was last built from the same text.
@@ -78,14 +72,20 @@ it, then send `inspect` to port 7842 to see what Godot built:
 godot --headless --editor --path godot res://path/scene.tscn
 ```
 
+A headless Godot draws nothing, so `capture` answers with an error there. Test captures with a windowed editor.
+
 {% mcp %}
 
-To drive the map edits too, start GodotTrench with its MCP server on the same project and edit the map through MCP:
+## MCP
+
+The [MCP server](../mcp.md) lets agents and scripts drive the editor, and some of its tools go through the live link.
+The `screenshot` tool uses `capture` when asked for a picture from Godot.
+
+For headless tests that edit the map too, start GodotTrench with its MCP server on the same project as the headless
+Godot editor and edit the map through MCP:
 
 ```sh
 godottrench --mcp-http --project godot
 ```
 
 {% endmcp %}
-
-A headless Godot draws nothing, so `capture` answers with an error there. Test captures with a windowed editor.

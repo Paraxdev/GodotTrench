@@ -30,7 +30,6 @@ only shows up in the editor once the addon has written the game config again.
 | See edits in Godot before saving | [Live mode and hot reload](godot/live.md) |
 | Make doors, triggers and scripted scenes | [How entity I/O works](gameplay/io.md), then [Button opens a door](tutorials/button-door.md) |
 | Build outdoor terrain | [Terrain](editor/terrain.md), then the [sea island tutorial](tutorials/sea-island.md) |
-| Drive the editor from scripts or AI agents<span class="gt-mcp-row"></span> | [MCP server](mcp.md) |
 
 ## Download
 
@@ -38,3 +37,12 @@ The [latest release](https://github.com/Paraxdev/GodotTrench/releases/latest) ha
 macOS, the addon zip and a demo project. The [rolling beta](https://github.com/Paraxdev/GodotTrench/releases/tag/beta)
 has the newest changes from `main`, so it gets fixes sooner but is less tested. To build from source, see
 [Development](development.md).
+
+{% mcp %}
+
+## MCP
+
+The editor can also be driven from scripts or AI agents. The [MCP server](mcp.md) page explains how to connect one and
+which tools it offers.
+
+{% endmcp %}

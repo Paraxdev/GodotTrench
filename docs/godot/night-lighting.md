@@ -22,7 +22,10 @@ keys.
 
 {% mcp %}
 
-`examples/mcp/night_district.json` and `examples/mcp/withered_city.json` are complete night maps built this way, see
-[MCP scripts](../mcp-scripts.md).
+## MCP
+
+The showcase maps are built by [MCP scripts](../mcp-scripts.md) that drive the editor through its
+[MCP server](../mcp.md). `examples/mcp/night_district.json` and `examples/mcp/withered_city.json` are complete night
+maps built this way.
 
 {% endmcp %}

@@ -7,12 +7,6 @@ imported faces find it.
 The import offers this for the textures a map uses. For a whole folder, use *File > Import > Convert Textures (VTF/VMT,
 WAD, WAL)*.
 
-{% mcp %}
-
-Over MCP, call `map_file {op: convert_textures, path}`.
-
-{% endmcp %}
-
 ## Where they are found
 
 The editor searches the usual places each game keeps its textures, so a map copied along with its game folders finds
@@ -62,3 +56,12 @@ The converter reads VTF versions 7.0 to 7.5 in these pixel formats: DXT1 (with o
 RGB and RGBA orders, I8, IA88, A8, RGB565, BGR565, BGRA4444, BGRA5551, BGRX5551, UV88, UVWQ8888, UVLX8888 and the 16
 bit RGBA formats. Other formats, and VTF 7.6, are refused with the format named, so you know which file to convert by
 hand.
+
+{% mcp %}
+
+## MCP
+
+Over the [MCP server](../mcp.md), convert a folder of textures with `map_file {op: convert_textures, path}`. Add
+`only_missing` to convert only what the open map lacks, and `overwrite` to replace files already in the project.
+
+{% endmcp %}

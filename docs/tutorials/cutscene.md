@@ -4,13 +4,6 @@ The player walks into a room, a sign appears, a guide walks off, a barrel explod
 opens. Nothing here needs code of its own: a timer entity fires one output per beat, and each output is wired to the
 entity that should act. It is the `scripted_scene` map in the demo project.
 
-{% mcp %}
-
-The map is built by
-[examples/mcp/scripted_scene.json](https://github.com/Paraxdev/GodotTrench/blob/main/examples/mcp/scripted_scene.json).
-
-{% endmcp %}
-
 ## The timeline
 
 1. Cover the entrance with a `trigger_once` named `start_zone`. It fires `triggered` the first time the player walks
@@ -57,3 +50,12 @@ The scene script,
 [godot/demo/scenes/scripted_scene.gd](https://github.com/Paraxdev/GodotTrench/blob/main/godot/demo/scenes/scripted_scene.gd),
 only builds the map, spawns the player at the `info_player_start` and adds a `GodotTrenchDebugOverlay`. Press **F3**
 in game to watch each output fire, which is the quickest way to see a step that is wired to the wrong name.
+
+{% mcp %}
+
+## MCP
+
+The demo map is built by driving the editor through the [MCP server](../mcp.md). The calls are in
+[examples/mcp/scripted_scene.json](https://github.com/Paraxdev/GodotTrench/blob/main/examples/mcp/scripted_scene.json).
+
+{% endmcp %}
