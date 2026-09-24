@@ -1,16 +1,16 @@
 # Terrain layers
 
-A terrain has one to four layers, edited in the Inspector with the terrain selected. Each layer is a material, a
-**tile** size and two de-tiling settings. The layers share the ground between them, so painting sand onto grass takes
-weight away from grass.
+A terrain has one to four layers, edited in the Inspector with the terrain selected. Each layer is a material plus a
+**tile** size and two de-tiling settings that control how the texture repeats. The layers share the ground between
+them, so painting sand onto grass takes weight away from grass.
 
 ![The sea island's four layers in the Inspector](../assets/terrain-painting/layers-inspector.png)
 
 | To | Do this |
 | --- | --- |
-| Add a layer | *+ layer (current material)* |
+| Add a layer | *+ layer (current material)*, which uses the material you last clicked in the Materials panel |
 | Remove the last layer | *- last layer* |
-| Change a layer's material | Type its name, or drop a material on the terrain. With the Blend tool active it fills the layer the tool paints |
+| Change a layer's material | Type its name, or drop a material on the terrain. With the Blend tool active the drop fills the layer the tool paints |
 
 **Layer 0 is the base ground.** Unpainted ground shows layer 0 and erasing paints back to it, so put your most common
 ground there, usually grass.
@@ -20,11 +20,14 @@ terrain lacks adds it as the next layer.
 
 ## Tile and de-tiling
 
+Any texture repeated across a large area shows a visible grid pattern from a distance. These settings trade sharpness
+up close against hiding that pattern.
+
 | Setting | Meaning |
 | --- | --- |
-| tile | Map units one repeat covers. 128 to 384 works well for walkable ground |
+| tile | How many map units one repeat of the texture covers. 128 to 384 works well for ground you walk on |
 | detile | 0 to 1. Turns and shifts every repeat randomly so the grid stops showing |
-| sharpen | 0 to 1, shown once detile is above 0. 0 mixes the repeats evenly and looks soft, 1 mixes only where they join |
+| sharpen | 0 to 1, shown once detile is above 0. 0 blends the shifted repeats evenly, which looks soft. 1 blends them only along their seams, which keeps the texture crisp |
 
 A small tile is sharp up close but repeats visibly from afar, a large one blurs at your feet. Detile hides the repeat
 without a bigger tile, but it costs extra texture reads, so leave it at 0 where the repeat does not show.

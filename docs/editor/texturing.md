@@ -15,11 +15,12 @@ UV lock (Ctrl+Shift+U) is on by default, so textures stay attached to a brush wh
 
 ## The Texture tool
 
-**Shift+T** edits face alignment in place, like Hammer's face edit mode. It works on the faces you select with it.
+A face's alignment is where its texture sits on it: the offset, scale and rotation. **Shift+T** switches to the
+Texture tool, which edits alignment in place like Hammer's face edit mode. It works on the faces you select with it.
 
 | Input | Result |
 | --- | --- |
-| Click, Ctrl+click | Select a face, add or remove one |
+| Click, Ctrl+click | Click selects a face, Ctrl+click adds or removes one |
 | Drag a selected face | Slide the texture, the pixel under the cursor stays under it |
 | Arrow keys | Slide by the grid size in pixels, with Shift by one pixel |
 | Ctrl+wheel | Scale by 2, with Shift in fine steps |
@@ -30,23 +31,28 @@ UV lock (Ctrl+Shift+U) is on by default, so textures stay attached to a brush wh
 | Shift+right click | Paste the picked material and alignment |
 | Alt+right click | Apply the current material, continuing the selected face's alignment across the edge |
 
-Alt+right click is how a texture runs cleanly around a corner. In the tool options bar, *Treat as one* justifies
-several faces as a single area.
+Alt+right click is how a texture, like a trim or a row of bricks, runs cleanly around a corner.
+
+The tool options bar has **Justify** buttons that push the texture to a face's left, right, top, bottom or center, or
+fit it to the face. With *Treat as one* ticked they justify several faces as a single area, so one texture spans
+all of them. **Align to View** projects the texture along the 3D camera.
 
 For faces with explicit UVs, and for meshes, use the [UV Editor](uv-editor.md).
 
 ## Texture scale
 
-A texture repeats every as many map units as it has pixels, which is too small for high resolution photos. Set
-`metadata/texture_size` on the material to the world size one repeat should cover, see
-[Materials](../godot/materials.md).
+By default one texture pixel covers one map unit, so a 64 pixel texture repeats every two meters. That suits low
+resolution textures, but a 1024 pixel photo would stretch over 32 meters. Set `metadata/texture_size` on the material to
+the world size one repeat should cover, see [Texture size](../godot/materials.md#texture-size).
 
 ## Hotspots
 
-*Texture > Hotspot Fit* (Alt+H) fits the selected faces to the best matching rectangle of a trim sheet, read from
-`<texture>.hotspots.json`. *Texture > Hotspot Editor* draws those rectangles.
+A trim sheet is one texture holding many strips and panels, like trims, vents and door frames. *Texture > Hotspot Fit*
+(Alt+H) fits each selected face to the rectangle whose shape matches it best, preferring one that keeps the texture
+close to its normal scale. The rectangles are read from `<texture>.hotspots.json`, and
+*Texture > Hotspot Editor* draws them.
 
 ## Vertex paint
 
 The **Paint** tool (P) paints vertex colours onto brush faces, for dirt, tint and fake lighting. Pick the colour in the
-tool options bar, Ctrl+wheel resizes the brush.
+tool options bar, next to the brush radius and strength. Ctrl+wheel resizes the brush.

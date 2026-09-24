@@ -64,13 +64,16 @@ game with its own look always wins. When several maps share one scene, the first
 ## Build report
 
 `build()` returns a Dictionary, also kept in `build_report`. It tells you how long each step took, how many entities of
-each class were built and how many vertices the map has. More usefully, it lists what the build could not find:
+each class were built and how many vertices the map has. More usefully, it lists what the build could not find, which
+is usually a typo or a file that was renamed or never committed:
 
-* entity classes without a definition
-* model paths
-* materials
-* tool textures that the map settings name differently
-* targets that match nothing
+| Key | What it lists | What you see in the game |
+| --- | --- | --- |
+| `missing_classes` | Entity classes that no entity definition describes | The entity builds as a plain node without its script, a point entity as an empty `Marker3D` |
+| `missing_models` | Model paths that do not exist, with the entities using each | The prop has no model |
+| `missing_materials` | Face textures with neither a material file nor an image | The faces show the placeholder texture |
+| `unknown_tool_textures` | Tool textures like `special/clip` that the map settings name differently | The faces are drawn with the tool texture instead of being left out |
+| `unresolved_targets` | Outputs and target keys whose target matches no targetname in the map or its overlays | The output fires at nothing |
 
 Tick *Print Build Report* in *Build Flags*, or add `FuncGodotMap.BuildFlags.PRINT_REPORT` to `build_flags` in code, to
 print it after every build. A test or CI check can read the Dictionary instead:

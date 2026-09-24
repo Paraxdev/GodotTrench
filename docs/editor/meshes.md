@@ -1,10 +1,11 @@
 # Meshes
 
-Meshes can be concave, open and non-planar, for shapes that brushes cannot make.
+Unlike brushes, meshes can have dents, holes and bent faces, so use them for rocks, pipes, smooth arches and other
+shapes brushes cannot make.
 
 Select brushes and press **Tab** (*Mesh > Edit Mesh*) to convert them to a mesh and start editing, Tab again goes back
-to objects. The Mesh tool button on the toolbar starts editing without converting anything. Ctrl+Shift+E only converts,
-Ctrl+Shift+J joins meshes into one.
+to objects. The Mesh tool button on the toolbar starts editing without converting anything. Ctrl+Shift+E only
+converts, Ctrl+Shift+J joins meshes into one.
 
 ## Keys
 
@@ -12,21 +13,22 @@ The keys follow Blender.
 
 | Key | Action |
 | --- | --- |
-| 1, 2, 3 | Vertex, edge, face mode |
-| A, Alt+A | Select all, none |
-| Alt+click | Select a loop |
-| Ctrl+L | Select linked |
+| 1, 2, 3 | Work on vertices, edges or faces |
+| A, Alt+A | Select all, select none |
+| Alt+click, Ctrl+Alt+click | Select the edge loop through the clicked edge, or the ring across it |
+| Ctrl+L | Select everything connected to the selection |
 | G, R, S | Move, rotate, scale |
-| E | Extrude |
-| I | Inset |
-| Ctrl+B, Ctrl+Shift+B | Bevel edges, bevel vertices |
-| Ctrl+R | Loop cut, the wheel or + and - set the number of cuts |
-| K | Knife, click two points |
-| M, F | Merge at center, fill |
+| E | Extrude new geometry out of the selection |
+| I | Inset, a smaller face inside each selected face |
+| Ctrl+B, Ctrl+Shift+B | Bevel edges or vertices, cutting the corner off |
+| Ctrl+R | Loop cut, a new ring of edges across the mesh. The wheel or + and - set the number of cuts |
+| K | Knife, click two points to cut along that line |
+| M | Merge the selected vertices at their center |
+| F | Fill, a new face across the selected vertices |
 | X or Delete | Delete |
 | Shift+D | Duplicate and move |
-| P | Separate into a new mesh |
-| Alt+F | Flip normals |
+| P | Separate the selection into a new mesh |
+| Alt+F | Flip normals, for faces that show from the wrong side |
 
 While moving, rotating or scaling, press X, Y or Z to lock to that axis, or Shift with the letter to lock it out. Type
 a number for an exact amount. Click or Enter confirms, right click or Esc cancels.

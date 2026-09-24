@@ -2,17 +2,20 @@
 
 ## Layers
 
-The Outliner shows the map as a tree of layers, groups and objects. New objects go into the current layer, and clicking
-a layer makes it current. The eye hides an object or layer, the lock locks it.
+The Outliner shows the map as a tree of layers, groups and objects. Layers let you sort a map into parts, such as one
+building per layer, and hide or lock a part while you work on the rest. New objects go into the current layer, and
+clicking a layer makes it current. The eye hides an object or layer, the lock stops it from being selected or edited.
 
 For reference geometry that should never reach Godot, right click its layer and pick *Toggle Omit From Export*. Hiding
 is not enough, Godot still builds hidden objects.
 
 ## Groups
 
+A group keeps objects together so they select and move as one, like the brushes of a table.
+
 | Input | Result |
 | --- | --- |
-| Ctrl+G, Ctrl+Shift+G | Group, ungroup |
+| Ctrl+G, Ctrl+Shift+G | Group the selection, ungroup it |
 | Click | Select the object inside the group |
 | Double click | Select the whole group |
 
@@ -32,9 +35,15 @@ and every name inside it gets that prefix, so `door` becomes `p1-door` and each 
 
 ## Issues
 
-The Issues panel checks the map as you work, for brushes with no volume, faces with no material, outputs aimed at
-targetnames nothing has and more. Click an issue to select and frame the object. Many have a **Fix** button, and
-*Fix all* sits in the header. MCP's `validate_map` runs the same checks.
+The Issues panel checks the map as you work and lists problems that would break or look wrong in Godot, such as brushes
+with no volume, faces with no material, or outputs aimed at a targetname nothing has. Click an issue to select and
+frame the object. Many have a **Fix** button, and *Fix all* sits in the header.
+
+{% mcp %}
+
+MCP's `validate_map` runs the same checks.
+
+{% endmcp %}
 
 A `coplanar_faces` issue means two brushes have faces on the same plane that overlap, and they will flicker in Godot. Move
 one face off the plane or trim the overlap.
