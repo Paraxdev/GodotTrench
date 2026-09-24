@@ -39,12 +39,6 @@ The Issues panel checks the map as you work and lists problems that would break 
 with no volume, faces with no material, or outputs aimed at a targetname nothing has. Click an issue to select and
 frame the object. Many have a **Fix** button, and *Fix all* sits in the header.
 
-{% mcp %}
-
-MCP's `validate_map` runs the same checks.
-
-{% endmcp %}
-
 A `coplanar_faces` issue means two brushes have faces on the same plane that overlap, and they will flicker in Godot. Move
 one face off the plane or trim the overlap.
 
@@ -55,3 +49,12 @@ file of the same name with another extension exists, `chair.gltf` for `chair.glb
 
 The History panel lists every edit. Click an older entry to undo back to it, that entry included. Click a dimmed entry
 above the marker to redo up to it.
+
+{% mcp %}
+
+## MCP
+
+An agent or script driving the editor over the [MCP server](../mcp.md) can run the same checks as the Issues panel
+with the `validate_map` tool.
+
+{% endmcp %}

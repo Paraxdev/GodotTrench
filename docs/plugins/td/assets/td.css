@@ -8,6 +8,14 @@
   margin: 0 0 0.85em;
 }
 
+.td-mcp:has(> h2:first-child) {
+  margin-top: 2em;
+}
+
+.td-mcp:has(> h2:first-child)::before {
+  display: none;
+}
+
 .td-mcp:not(li):not(tr)::before {
   content: "MCP";
   display: block;

@@ -82,6 +82,9 @@ The agent size is set in the same menu. The overlay bakes again a moment after e
 
 {% mcp %}
 
-Agents call the `walkability` MCP tool, which returns the islands with their areas and bounds in map units.
+## MCP
+
+The [MCP server](../mcp.md) lets agents and scripts drive the editor. They check a map with the `walkability` tool,
+which returns the islands with their areas and bounds in map units.
 
 {% endmcp %}
