@@ -32,6 +32,10 @@ pub struct Viewport {
     /// A menu or popup was open when the frame started, see `App::ui`.
     pub(crate) popup_open: bool,
     press_modifiers: egui::Modifiers,
+    /// Where the last plain click in a 2D view landed, a second click there selects the next object under it.
+    last_click: Option<Pos2>,
+    /// The outer edge of the selected brushes a drag would resize, highlighted before the drag starts.
+    hover_edge: Option<[Pos2; 2]>,
     pub(crate) pixels_per_point: f32,
 }
 
@@ -53,6 +57,8 @@ impl Viewport {
             id: egui::Id::NULL,
             popup_open: false,
             press_modifiers: Default::default(),
+            last_click: None,
+            hover_edge: None,
             pixels_per_point: 1.0,
         }
     }
@@ -91,6 +97,7 @@ impl Viewport {
 
         self.handle_camera(ui, &response, cx);
         self.handle_keys(ui, cx);
+        self.hover_edge = None;
         // While a menu is open a click in the view only closes it, like in most programs.
         let closing_menu = self.popup_open && self.drag.is_none();
         if !closing_menu && (cx.state.tool == ToolKind::Select || self.is_camera_drag()) {
@@ -110,6 +117,10 @@ impl Viewport {
         }
 
         self.paint_overlay(ui, cx);
+        if let Some(edge) = self.hover_edge {
+            ui.painter_at(rect).line_segment(edge, egui::Stroke::new(3.0, crate::theme::YELLOW));
+        }
+
         cx.tools.paint_overlay(ui, &self.camera, rect, cx.state);
 
         // Right click applies materials in the texture tool.
@@ -139,7 +150,7 @@ impl Viewport {
                     self.drag = Some(Drag::Look);
                 } else if response.drag_started_by(PointerButton::Middle) {
                     self.drag = Some(Drag::Pan);
-                } else if response.drag_started_by(PointerButton::Primary) && modifiers.alt && cx.state.doc.selection.is_empty() {
+                } else if response.drag_started_by(PointerButton::Primary) && modifiers.alt && self.alt_drag_orbits(press_origin, cx) {
                     let pivot = press_origin
                         .and_then(|p| picking::pick(cx.state, &self.camera.ray(rect, p)))
                         .map(|h| h.point)
@@ -232,6 +243,30 @@ impl Viewport {
         }
     }
 
+    /// Alt+drag in the 3D view orbits. Only a drag in the Select tool that starts on the selection or one of its gizmos
+    /// moves the selection vertically instead, and other tools keep Alt+drag for themselves while something is selected.
+    fn alt_drag_orbits(&self, origin: Option<Pos2>, cx: &ViewCtx) -> bool {
+        if cx.state.doc.selection.is_empty() {
+            return true;
+        }
+
+        if cx.state.tool != ToolKind::Select {
+            return false;
+        }
+
+        origin.is_none_or(|p| !self.on_selection(p, cx))
+    }
+
+    fn on_selection(&self, pos: Pos2, cx: &ViewCtx) -> bool {
+        let state = &*cx.state;
+        if crate::gizmos::handle_at(state, &self.camera, self.rect, pos).is_some() || crate::transform_gizmo::hit(state, &self.camera, self.rect, pos).is_some()
+        {
+            return true;
+        }
+
+        self.pick(cx, pos).is_some_and(|h| is_selected(state, h.node))
+    }
+
     fn handle_keys(&mut self, ui: &Ui, cx: &mut ViewCtx) {
         if !self.hovered || ui.ctx().egui_wants_keyboard_input() || cx.state.tool != ToolKind::Select {
             return;
@@ -291,6 +326,20 @@ impl Viewport {
         picking::pick(cx.state, &self.camera.ray(self.rect, pos))
     }
 
+    /// The objects a click at `pos` can select, nearest first, one hit each. A 2D view sees through all of them.
+    fn click_targets(&self, cx: &ViewCtx, pos: Pos2) -> Vec<(NodeId, Hit)> {
+        let map = &cx.state.doc.map;
+        let mut out: Vec<(NodeId, Hit)> = Vec::new();
+        for h in picking::pick_all(cx.state, &self.camera.ray(self.rect, pos)) {
+            let target = map.click_target(h.node, &cx.state.open_groups);
+            if !out.iter().any(|(t, _)| *t == target) {
+                out.push((target, h));
+            }
+        }
+
+        out
+    }
+
     fn update_cursor_world(&self, response: &Response, cx: &mut ViewCtx) {
         let Some(pos) = response.hover_pos() else { return };
         let world = match self.camera.kind {
@@ -321,7 +370,24 @@ impl Viewport {
             && let Some(pos) = response.interact_pointer_pos()
             && crate::transform_gizmo::hit(cx.state, &self.camera, rect, pos).is_none()
         {
-            let hit = self.pick(cx, pos);
+            let mut hit = self.pick(cx, pos);
+            let plain = !modifiers.command && !modifiers.shift;
+            if self.camera.kind.is_2d() && plain {
+                // Clicking again at the same spot, or Alt+click, steps through everything under the cursor, so a
+                // wall under its ceiling in the Top view can be picked.
+                let again = self.last_click.is_some_and(|p| p.distance(pos) < 4.0);
+                let targets = self.click_targets(cx, pos);
+                let current = targets.iter().position(|(t, _)| cx.state.doc.selection.nodes.len() == 1 && cx.state.doc.selection.nodes.contains(t));
+                if (again || modifiers.alt) && targets.len() > 1 {
+                    let next = current.map_or(0, |i| (i + 1) % targets.len());
+                    hit = Some(targets[next].1);
+                    cx.state.set_status(format!("Object {} of {} under the cursor, click again for the next", next + 1, targets.len()));
+                } else if targets.len() > 1 {
+                    cx.state.set_status(format!("{} objects under the cursor, click again or Alt+click to select the next", targets.len()));
+                }
+            }
+
+            self.last_click = (self.camera.kind.is_2d() && plain).then_some(pos);
             let map = &cx.state.doc.map;
             match hit {
                 Some(h) if modifiers.shift && h.face.is_some() => {
@@ -402,10 +468,9 @@ impl Viewport {
             }
         }
 
-        if response.drag_started_by(PointerButton::Primary)
-            && !(modifiers.alt && self.camera.kind == ViewKind::Perspective && cx.state.doc.selection.is_empty())
-        {
+        if response.drag_started_by(PointerButton::Primary) && !matches!(self.drag, Some(Drag::Orbit { .. })) {
             self.press_modifiers = modifiers;
+            self.last_click = None;
             if let Some(origin) = press_origin {
                 self.drag = self.begin_primary_drag(origin, modifiers, cx);
             }
@@ -435,10 +500,11 @@ impl Viewport {
         if self.drag.is_none()
             && self.camera.kind.is_2d()
             && let Some(pos) = response.hover_pos()
-            && let Some((normal, _)) = self.edge_under_cursor(pos, cx)
+            && let Some(edge) = self.edge_under_cursor(pos, cx)
         {
-            let icon = if normal.dot(self.camera.kind.axes().0).abs() > 0.5 { CursorIcon::ResizeHorizontal } else { CursorIcon::ResizeVertical };
+            let icon = if edge.normal.dot(self.camera.kind.axes().0).abs() > 0.5 { CursorIcon::ResizeHorizontal } else { CursorIcon::ResizeVertical };
             ui.ctx().set_cursor_icon(icon);
+            self.hover_edge = Some(edge.segment);
         }
 
         let _ = rect;
@@ -458,25 +524,21 @@ impl Viewport {
 
         if self.camera.kind.is_2d()
             && !cx.state.doc.selection.nodes.is_empty()
-            && let Some((normal, faces)) = self.edge_under_cursor(origin, cx)
+            && let Some(edge) = self.edge_under_cursor(origin, cx)
         {
             let origin_world = self.camera.screen_to_plane(self.rect, origin);
             cx.state.doc.begin("Resize Brushes");
-            return Some(Drag::FaceResize { faces, origin: origin_world, normal });
+            return Some(Drag::FaceResize { faces: edge.faces, origin: origin_world, normal: edge.normal });
         }
 
         let state = &mut *cx.state;
         let map = &state.doc.map;
         let ray = self.camera.ray(self.rect, origin);
-        let open_groups = state.open_groups.clone();
-        let is_selected = |id: NodeId| {
-            let target = map.click_target(id, &open_groups);
-            state.doc.selection.nodes.contains(&target) || map.ancestors(id).iter().any(|a| state.doc.selection.nodes.contains(a))
-        };
+        let selected = |id: NodeId| is_selected(state, id);
         let hit = if self.camera.kind.is_2d() {
             // A 2D view sees through everything, so a selection under other objects (a floor under its ceiling) still drags.
             let hits = picking::pick_all(state, &ray);
-            hits.iter().copied().find(|h| is_selected(h.node)).or(hits.first().copied())
+            hits.iter().copied().find(|h| selected(h.node)).or(hits.first().copied())
         } else {
             picking::pick(state, &ray)
         };
@@ -484,7 +546,7 @@ impl Viewport {
         if let Some(h) = hit {
             if self.camera.kind == ViewKind::Perspective
                 && modifiers.shift
-                && is_selected(h.node)
+                && selected(h.node)
                 && let (Some(face), Some(brush)) = (h.face, map.brush(h.node))
             {
                 let plane = brush.faces[face].plane;
@@ -494,7 +556,7 @@ impl Viewport {
             }
 
             // Shift on a selected brush face in 3D resizes (above), anywhere else it moves locked to the main axis.
-            if is_selected(h.node) {
+            if selected(h.node) {
                 let plane = match self.camera.kind {
                     ViewKind::Perspective => {
                         if modifiers.alt {
@@ -685,7 +747,7 @@ impl Viewport {
     }
 
     /// 2D views: the side of the selection bounds under the cursor, with the faces lying on it.
-    fn edge_under_cursor(&self, pos: Pos2, cx: &ViewCtx) -> Option<(DVec3, Vec<(NodeId, usize)>)> {
+    fn edge_under_cursor(&self, pos: Pos2, cx: &ViewCtx) -> Option<EdgeGrab> {
         let state = &cx.state;
         let brushes = state.doc.selection.brushes(&state.doc.map);
         if brushes.is_empty() {
@@ -697,21 +759,22 @@ impl Viewport {
         let min = self.camera.project(self.rect, bounds.min)?;
         let max = self.camera.project(self.rect, bounds.max)?;
         let screen = Rect::from_two_pos(min, max);
-        const TOL: f32 = 5.0;
-        if !screen.expand(TOL).contains(pos) {
+        if !screen.expand(EDGE_GRAB).contains(pos) {
             return None;
         }
 
         // View axes can point along negative world axes, so the side of the screen the bounds minimum lands on picks the face.
         let (r, u) = (r.abs(), u.abs());
         let candidates = [
-            ((pos.x - screen.min.x).abs(), if min.x <= max.x { -r } else { r }),
-            ((pos.x - screen.max.x).abs(), if min.x <= max.x { r } else { -r }),
-            ((pos.y - screen.min.y).abs(), if min.y <= max.y { -u } else { u }),
-            ((pos.y - screen.max.y).abs(), if min.y <= max.y { u } else { -u }),
+            ((pos.x - screen.min.x).abs(), screen.width(), if min.x <= max.x { -r } else { r }, [screen.left_top(), screen.left_bottom()]),
+            ((pos.x - screen.max.x).abs(), screen.width(), if min.x <= max.x { r } else { -r }, [screen.right_top(), screen.right_bottom()]),
+            ((pos.y - screen.min.y).abs(), screen.height(), if min.y <= max.y { -u } else { u }, [screen.left_top(), screen.right_top()]),
+            ((pos.y - screen.max.y).abs(), screen.height(), if min.y <= max.y { u } else { -u }, [screen.left_bottom(), screen.right_bottom()]),
         ];
-        let (dist, normal) = candidates.into_iter().min_by(|a, b| a.0.total_cmp(&b.0))?;
-        if dist > TOL {
+        let (dist, extent, normal, segment) = candidates.into_iter().min_by(|a, b| a.0.total_cmp(&b.0))?;
+        // Inside a thin brush the edge zones leave its middle third for moving it.
+        let grab = if screen.contains(pos) { EDGE_GRAB.min(extent / 3.0) } else { EDGE_GRAB };
+        if dist > grab {
             return None;
         }
 
@@ -726,7 +789,7 @@ impl Viewport {
             }
         }
 
-        (!faces.is_empty()).then_some((normal, faces))
+        (!faces.is_empty()).then_some(EdgeGrab { normal, faces, segment })
     }
 
     /// Shows where a dragged payload lands: the faces a material goes on, or the surface point an entity rests on.
@@ -1106,6 +1169,23 @@ fn grid_lines(cam: &Camera, rect: Rect, grid: f64) -> Vec<LineVertex> {
     }
 
     out
+}
+
+/// Screen distance in points within which a drag grabs an outer edge of the selected brushes in a 2D view.
+const EDGE_GRAB: f32 = 8.0;
+
+struct EdgeGrab {
+    normal: DVec3,
+    faces: Vec<(NodeId, usize)>,
+    /// The edge on screen, highlighted while the pointer is near it.
+    segment: [Pos2; 2],
+}
+
+/// Whether clicking `id` would land on something selected: the object a click picks, or a group or entity around it.
+fn is_selected(state: &EditorState, id: NodeId) -> bool {
+    let map = &state.doc.map;
+    let target = map.click_target(id, &state.open_groups);
+    state.doc.selection.nodes.contains(&target) || map.ancestors(id).iter().any(|a| state.doc.selection.nodes.contains(a))
 }
 
 fn context_menu(ui: &mut Ui, cx: &mut ViewCtx) {

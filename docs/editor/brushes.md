@@ -10,7 +10,7 @@ the grid and become meshes with matching collision in Godot. These inputs belong
 | Drag off the selection | Draw a box brush. In 3D it starts on the surface under the cursor and is one grid step thick, in 2D it takes the depth of the last brush you drew, 128 units for the first |
 | Drag the selection | Move it, Shift locks to the main axis |
 | Ctrl+drag the selection | Move a copy, the original stays |
-| Alt+drag the selection (3D) | Move vertically |
+| Alt+drag the selection (3D) | Move vertically. Started off the selection, Alt+drag orbits the camera |
 | Arrow keys, Page Up, Page Down | Nudge by one grid step |
 | `[` and `]` | Halve and double the grid |
 
@@ -31,7 +31,7 @@ exactly. The same fields appear for a brush entity and for a selection of severa
 | --- | --- |
 | Shift+drag a selected face (3D) | Push or pull that face |
 | Ctrl+Shift+drag a selected face (3D) | Extrude a new brush out of it |
-| Drag a selection edge (2D) | Resize |
+| Drag a selection edge (2D) | Resize. The edge lights up yellow and the cursor changes when a drag there resizes |
 
 **Clip** (C) cuts along a plane, for slopes, ramps and angled walls. Click two or three points, press Tab to cycle
 between keeping the front, the back or both halves, and Enter to cut. Backspace removes the last point.
