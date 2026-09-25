@@ -43,9 +43,17 @@ blocks such as boxes and wedges.
    (3 m) of headroom inside, plenty for a player.
 3. **Cut a doorway.** Click empty space outside the room so nothing is selected, since dragging a selection moves
    it. In the Front view, drag a box 64 units wide from the top of the floor up 80 units. A new box takes its depth
-   from the last box you drew, so this one reaches through the whole room. In the Top view, drag the
-   top edge of the new box down until it only crosses the bottom wall. Then press Ctrl+K, *Brush > CSG > Subtract*,
-   which cuts the selected box out of every brush it overlaps and deletes it, leaving a hole in the wall.
+   from the last box you drew, so this one reaches through the whole room, from the back wall to the front wall.
+
+   ![The Front view with the hollow room and a new box 64 units wide and 80 tall standing on its floor](assets/getting-started/doorway-front.png)
+
+   The Top view looks down on the room with the front wall at the bottom. The new box is still selected, so drag its
+   top edge, which turns yellow under the pointer, down until the box only crosses the front wall.
+
+   ![The Top view with the new box shortened so it only crosses the front wall at the bottom of the room](assets/getting-started/doorway-top.png)
+
+   Then press Ctrl+K, *Brush > CSG > Subtract*, which cuts the selected box out of every brush it overlaps and
+   deletes it, leaving a hole in the wall.
 4. **Texture it.** Click a texture in the Materials panel. To texture one wall only, Shift+click that face first.
 5. **Save.** Press Ctrl+S and save inside the Godot project, since the addon loads maps by their `res://` path. The
    save dialog starts in the project folder.
@@ -55,8 +63,18 @@ blocks such as boxes and wedges.
 
 ## 5. See it in Godot
 
-Add a `FuncGodotMap` node to a scene, set its *Local Map File* to your `.gtm` and press **Build Map** in the Inspector.
+In Godot, a level is a scene: a tree of nodes, saved as a `.tscn` file, where each node is one thing such as a mesh, a
+light or a camera. Godot writes paths inside the project with `res://`, so `res://maps/room.gtm` is the file
+`maps/room.gtm` in your project folder. The map is turned into nodes by one node from the addon, `FuncGodotMap`.
+
+1. In the Godot editor, choose *Scene > New Scene* and click **3D Scene** in the Scene panel on the left.
+2. Press Ctrl+A (*Add Child Node*), search for `FuncGodotMap` and add it.
+3. With the new node selected, set *Local Map File* to your `.gtm` in Godot's own Inspector, the panel on the right of
+   the Godot editor. It works like the Inspector in GodotTrench but belongs to Godot.
+4. Press **Build Map** at the top of that Inspector, then save the scene with Ctrl+S.
+
 Brushes become meshes with collision and entities become nodes with their scripts, saved with the scene.
+[Building maps](godot/building.md) explains the node's other settings.
 
 Leave that scene open in Godot and every save in GodotTrench rebuilds it, straight away while its tab is the current
 one, or when you switch back to it. Save the scene in Godot to keep the result. If a save does not rebuild, the status

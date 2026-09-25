@@ -108,6 +108,9 @@ An entity that sits at a single spot instead of taking its shape from brushes, s
 ## prefab
 A reusable piece of a map saved as its own .gtm file and placed in other maps as instances. Editing the prefab file updates every instance of it.
 
+## res://
+Godot's way of writing a path inside the project folder, whatever the folder is called on disk. res://maps/room.gtm is the file room.gtm in the maps folder of your Godot project, which is why maps and models have to be saved inside the project for the addon to find them.
+
 ## scatter set
 A group of models painted together with the Scatter tool, such as a forest or a meadow of grass, with its own layer, density and target surfaces. Godot builds each set as MultiMeshes.
 

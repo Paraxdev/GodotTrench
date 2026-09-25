@@ -1,16 +1,19 @@
 # Interface and navigation
 
-GodotTrench follows TrenchBroom and Hammer, so most habits from either carry over.
+GodotTrench follows TrenchBroom and Hammer, so if you have used either, most habits carry over. If not, this page
+covers what you need.
 
 ## The window
+
+![The editor with a small room: the Outliner on the left, the 3D, Top, Front and Side views in the middle, the Inspector on the right and the Materials panel at the bottom](../assets/interface/window.png)
 
 A menu command sits under the kind of object it changes, and the command palette (Ctrl+Shift+P or F1) finds any
 command by name. Hovering a command with a jargon name, like *Hollow* or *UV Lock*, explains what it does, and the
 palette shows the same line under its list. Esc or a click outside closes the palette without running anything.
 The **tool options bar** under the toolbar holds the settings of the active tool.
 
-An empty map shows its first steps in the views, with a link to this guide and the maps of the open project.
-**Hide tips** turns them off, and *File > Preferences* brings them back.
+An empty map shows a card in the 3D view with its first steps, a link to this guide and the maps of the open project,
+and the 2D views say where to drag. **Hide tips** turns them off, and *File > Preferences* brings them back.
 
 | Panel | Dock | What it is for |
 | --- | --- | --- |
@@ -65,9 +68,10 @@ and undo does not touch them.
 
 ## Shading
 
-F2 cycles the 3D view through Textured, Flat, Lit Preview and Wireframe. F3 toggles **Lit Preview**, which shows the
-map's lights, sun shadows, sky and fog without building in Godot. It draws only the 64 strongest point and spot
-lights, so a map with many more can look darker here than in Godot.
+F2 cycles the 3D view through Textured, Flat, Lit Preview and Wireframe. F3 jumps straight to **Lit Preview** and back
+to Textured, without cycling through the others. Lit Preview shows the map's lights, sun shadows, sky and fog without
+building in Godot. It draws only the 64 strongest point and spot lights, so a map with many more can look darker here
+than in Godot.
 
 ## Interface scale
 

@@ -48,7 +48,8 @@ when the map already has `sky_top_color`.
 
 A Source map with its `skyname` skybox in `materials/skybox` gets a panorama, `skybox/<skyname>_panorama.png` in the
 texture folder, set as `sky_panorama`. Other maps get `sky_top_color` and `sky_horizon_color` from the texture in
-`sky_source`. `GodotTrenchEnvironment` builds a WorldEnvironment from these keys when the scene has none of its own.
+`sky_source`. `GodotTrenchEnvironment` builds a WorldEnvironment, the Godot node that holds a scene's sky, fog and
+ambient light, from these keys when the scene has none of its own.
 
 ## VTF formats
 

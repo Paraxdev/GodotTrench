@@ -53,6 +53,6 @@ radius above the terrain's cell size, a smaller brush only nudges the one vertex
 
 ## In Godot
 
-Every terrain becomes a `GodotTrenchTerrain` node, a `StaticBody3D` whose collision matches what it draws. For gameplay
-code, `height_at(x, z)` returns the ground height at a local position, handy for placing things on the ground at
-runtime.
+Every terrain becomes a `GodotTrenchTerrain` node, a `StaticBody3D` (Godot's node for solid ground that never moves)
+whose collision matches what it draws. For gameplay code, `height_at(x, z)` returns the ground height at a local
+position, handy for placing things on the ground at runtime.
