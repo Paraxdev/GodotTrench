@@ -757,10 +757,12 @@ impl App {
         None
     }
 
-    /// The shown view last under the pointer, else the first shown view.
+    /// The shown view under the pointer, which is where a shortcut was pressed, else the one last clicked or
+    /// scrolled in, else the first shown view, the 3D view when it is open.
     fn view_to_maximize(&self) -> usize {
         let open = open_views(&self.dock);
-        if open.contains(&self.active_view) { self.active_view } else { open.iter().copied().min().unwrap_or(0) }
+        let hovered = open.iter().copied().find(|i| self.viewports.get(*i).is_some_and(|v| v.hovered));
+        hovered.or(open.contains(&self.active_view).then_some(self.active_view)).unwrap_or_else(|| open.iter().copied().min().unwrap_or(0))
     }
 
     fn toggle_maximize(&mut self) {
@@ -780,8 +782,15 @@ impl App {
     }
 
     fn toggle_view(&mut self, view: usize) {
-        self.maximized = None;
         let mut open = open_views(&self.dock);
+        // With one view shown, naming another one swaps it in, the way a single pane is used.
+        if open.len() == 1 && !open.contains(&view) && view < self.viewports.len() {
+            set_views(&mut self.dock, &[view]);
+            self.active_view = view;
+            return;
+        }
+
+        self.maximized = None;
         if open.contains(&view) {
             if open.len() == 1 {
                 self.state.set_status("The last view stays open");
@@ -2199,7 +2208,9 @@ impl eframe::App for App {
                 self.dock.push_to_first_leaf(Tab::View(0));
             }
 
-            if let Some(hovered) = open.into_iter().find(|i| self.viewports.get(*i).is_some_and(|v| v.hovered)) {
+            // Only a click or a scroll makes a view the one worked in, passing over it on the way to a menu does not.
+            let touched = ui.input(|i| i.pointer.any_pressed() || i.raw.events.iter().any(|e| matches!(e, egui::Event::MouseWheel { .. })));
+            if touched && let Some(hovered) = open.into_iter().find(|i| self.viewports.get(*i).is_some_and(|v| v.hovered)) {
                 self.active_view = hovered;
             }
 

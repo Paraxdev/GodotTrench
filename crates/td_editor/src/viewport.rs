@@ -157,7 +157,12 @@ impl Viewport {
                         _ => cx.state.sculpt.radius = (cx.state.sculpt.radius * factor).clamp(2.0, 16384.0),
                     }
                 } else if self.hovered && scroll != 0.0 && !(brush_tool && modifiers.command) && !(cx.state.tool == ToolKind::Texture && modifiers.alt) {
-                    self.camera.position += self.camera.forward() * (scroll as f64) * fly_speed * 0.004;
+                    // Near geometry a notch moves a fixed step, from far away it covers a fifth of the distance to
+                    // the surface under the pointer, so it closes in quickly without flying through it.
+                    let step = fly_speed * 0.004;
+                    let hit = response.hover_pos().and_then(|p| picking::pick(cx.state, &self.camera.ray(rect, p)));
+                    let step = hit.map_or(step, |h| step.max(h.distance * WHEEL_DOLLY / NOTCH_POINTS));
+                    self.camera.position += self.camera.forward() * (scroll as f64) * step;
                 }
 
                 // Like TrenchBroom, the fly keys only steer while the right mouse look is held, otherwise they are tool shortcuts.
@@ -208,7 +213,7 @@ impl Viewport {
                     && scroll != 0.0
                     && let Some(pos) = response.hover_pos()
                 {
-                    self.camera.zoom_at(rect, pos, (1.0015f64).powf(scroll as f64));
+                    self.camera.zoom_at(rect, pos, WHEEL_ZOOM.powf(scroll as f64 / NOTCH_POINTS));
                 }
             }
         }
@@ -996,6 +1001,13 @@ impl Viewport {
         self.target.as_ref()
     }
 }
+
+/// Points of `smooth_scroll_delta` egui makes of one mouse wheel notch. Trackpads send smaller point deltas.
+const NOTCH_POINTS: f64 = 40.0;
+/// Zoom factor of one wheel notch in the 2D views.
+const WHEEL_ZOOM: f64 = 1.2;
+/// Share of the distance to the surface under the pointer that one wheel notch moves the 3D camera.
+const WHEEL_DOLLY: f64 = 0.2;
 
 /// Wheel movement this frame in notches, from the raw events whose modifiers pass `keep`. egui spreads one notch
 /// over several frames of `smooth_scroll_delta` and turns Ctrl+wheel into zoom, so tools that step or resize per
