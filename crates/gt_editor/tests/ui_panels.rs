@@ -492,7 +492,7 @@ fn outliner_shift_click_selects_a_range_and_ctrl_click_toggles() {
         ids.iter().map(|id| sel.contains(id)).collect::<Vec<_>>()
     };
     let click = |h: &mut Harness<Fixture>, i: usize, modifiers: egui::Modifiers| {
-        h.get_all_by_label_contains("brush").nth(i).unwrap().click_modifiers(modifiers);
+        h.get_all_by_label_contains("64x64x64 at").nth(i).unwrap().click_modifiers(modifiers);
         h.run();
     };
 
