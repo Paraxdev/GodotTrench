@@ -1122,7 +1122,12 @@ fn context_menu(ui: &mut Ui, cx: &mut ViewCtx) {
     for entry in entries {
         match entry {
             Some((label, action)) => {
-                if ui.add_enabled(has_sel, egui::Button::new(label)).clicked() {
+                let mut resp = ui.add_enabled(has_sel, egui::Button::new(label));
+                if let Some(help) = action.help() {
+                    resp = resp.on_hover_text(help);
+                }
+
+                if resp.clicked() {
                     out.push(action);
                     ui.close();
                 }

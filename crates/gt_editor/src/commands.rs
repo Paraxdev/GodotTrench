@@ -250,6 +250,57 @@ impl Action {
         }
     }
 
+    /// What a command does in plain words, for the ones whose name assumes level editor jargon.
+    pub fn help(&self) -> Option<&'static str> {
+        Some(match self {
+            Action::CsgSubtract => {
+                "Cuts the selected brushes out of every brush they overlap, then deletes them. Subtract a box that pokes through a wall to make a doorway"
+            }
+            Action::CsgMerge => "Replaces the selected brushes with one brush that wraps around all of them, like shrink wrap",
+            Action::CsgIntersect => "Keeps only the space the selected brushes share",
+            Action::CsgHollow => "Turns a solid brush into a room, with walls, floor and ceiling of the wall thickness around an empty inside",
+            Action::SnapVertices => "Moves every corner of the selected brushes to the nearest grid point",
+            Action::MoveToWorld => "Takes the selected brushes out of their door, trigger or other brush entity, back into plain level geometry",
+            Action::CreateBrushFromBounds => "Draws a box brush the size of the last selection",
+            Action::SelectTouching => "Uses the selected brushes as a selection box, selecting everything they touch and deleting the box",
+            Action::SelectInside => "Uses the selected brushes as a selection box, selecting everything fully inside and deleting the box",
+            Action::SelectSiblings => "Selects everything in the same group or brush entity as the selection",
+            Action::IsolateSelected => "Hides everything except the selection, Show All brings it back",
+            Action::DuplicateLinked => "Copies the selection as a linked group, editing one copy changes every copy",
+            Action::UnlinkGroups => "Makes the selected linked groups independent copies again",
+            Action::OpenGroup => "Lets you click and edit the objects inside the selected group",
+            Action::CreatePrefab => "Saves the selection as its own map file, a prefab, and puts an instance in its place that follows changes to that file",
+            Action::InsertPrefab => "Places an instance of another map file, a prefab, at the cursor",
+            Action::OpenPrefab => "Opens the map file of the selected prefab instance in its own tab, edits there update every instance",
+            Action::ExplodeInstances => "Replaces the selected prefab instances with plain copies of their contents",
+            Action::SetCordonFromSelection => "Hides everything outside the selection bounds, to work on one part of a big map",
+            Action::ToggleCordon => "Switches the cordon on or off without forgetting its box",
+            Action::ClearCordon => "Removes the cordon box and shows the whole map again",
+            Action::ExportQuakeMapCordon => "Exports only the objects that touch the cordon box",
+            Action::ToggleUvLock => {
+                "When on, textures stick to brushes as you move or rotate them. When off, they stay put in the world and slide across the faces"
+            }
+            Action::ToggleTreatAsOne => "Aligns textures across all selected faces as if they were one surface",
+            Action::HotspotTexture => "Fits the selected faces to the best matching rectangle of a trim sheet, read from <texture>.hotspots.json",
+            Action::TexelDensity(_) => "Sets how many texture pixels cover each map unit on the selected faces",
+            Action::SetBlendMaterial => "Uses the current material as a second texture on the selected faces, painted in with the Blend tool",
+            Action::CreateDisplacement(_) => "Splits the selected face into a grid of points you can raise and lower, for uneven ground",
+            Action::SewDisplacements => "Joins the edges of neighbouring displacements so they leave no gaps",
+            Action::RemoveDisplacement => "Turns displaced faces back into flat faces",
+            Action::EditMesh => {
+                "Converts the selection to a mesh and edits its vertices, edges and faces Blender style. Meshes can take any shape, brushes stay convex"
+            }
+            Action::ConvertToMesh => "Turns the selected brushes into meshes, which can take any shape but no longer work with CSG",
+            Action::ConvertToBrushes => "Turns the selected meshes back into brushes, split into convex pieces",
+            Action::MakePlatform => "Turns the selected brushes into a func_platform, a lift that moves up and down",
+            Action::ToggleLiveMode => "Sends every edit to the scene open in the Godot editor before you save",
+            Action::ToggleWalkable => "Shades the floors a player can walk on, baked by Godot",
+            Action::ToggleGodotOverlays => "Shows the nodes added on top of the built map in Godot as ghost boxes",
+            Action::RepeatLast => "Runs the last rotate, flip, nudge or duplicate again",
+            _ => return None,
+        })
+    }
+
     /// Stable identifier used by key binding overrides.
     pub fn binding_id(&self) -> String {
         format!("{self:?}").chars().filter(|c| c.is_alphanumeric() || *c == '_').collect()
