@@ -122,6 +122,10 @@ fn compare(id: NodeId, a: &Node, b: &Node) -> NodeChange {
         c.what.push("locked");
     }
 
+    if a.label != b.label {
+        c.what.push("name");
+    }
+
     let before = c.what.len();
     match (&a.kind, &b.kind) {
         (NodeKind::Entity(x), NodeKind::Entity(y)) => {

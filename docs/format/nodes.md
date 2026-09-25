@@ -7,12 +7,19 @@ A map's content is a tree of nodes. Every node has the same outer shape, with it
 | `id` | integer | always | Unique in the map |
 | `type` | string | always | `layer`, `group`, `entity`, `brush`, `mesh`, `terrain`, `scatter` or `instance` |
 | type fields | | | The keys of that node type, see below, [Geometry](geometry.md) and [Terrain and scatter](terrain-scatter.md) |
+| `label` | string | when set | Name given with *Rename*, see below |
 | `hidden` | bool | when `true` | Hidden in the editor |
 | `locked` | bool | when `true` | Cannot be selected or edited in the editor |
 | `children` | array of nodes | when not empty | Child nodes, in order |
 
 `hidden` and `locked` are editor state only, so Godot still builds a hidden node. To leave content out of the build,
 put it in a layer with `omit_from_export`.
+
+`label` is the name a brush, mesh, entity, instance or terrain was given in the editor, shown in place of its default
+name such as `brush12`. Layers, groups and scatter sets never have one, their `name` holds it. Godot names a terrain's
+node `terrain_<id>_<label>` and ignores the key elsewhere, since brushes and meshes merge into their entity and an
+entity takes its node name from `targetname`. Editors older than the key read files that carry it and drop it when they
+save.
 
 ## Ids
 

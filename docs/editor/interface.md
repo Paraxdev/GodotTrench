@@ -68,7 +68,7 @@ and undo does not touch them.
 
 ## Shading
 
-F2 cycles the 3D view through Textured, Flat, Lit Preview and Wireframe. F3 jumps straight to **Lit Preview** and back
+F4 cycles the 3D view through Textured, Flat, Lit Preview and Wireframe. F3 jumps straight to **Lit Preview** and back
 to Textured, without cycling through the others. Lit Preview shows the map's lights, sun shadows, sky and fog without
 building in Godot. It draws only the 64 strongest point and spot lights, so a map with many more can look darker here
 than in Godot.

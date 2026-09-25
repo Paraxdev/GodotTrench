@@ -870,13 +870,12 @@ impl App {
                 let Some(name) = name else { return err("name required") };
                 let renamed = self.state.doc.try_edit("Rename", |m, _| {
                     match m.get_mut(id).map(|n| &mut n.kind) {
-                        Some(NodeKind::Layer(l)) => l.name = name.clone(),
-                        Some(NodeKind::Group(g)) => g.name = name.clone(),
-                        Some(NodeKind::Scatter(s)) => s.name = name.clone(),
                         Some(NodeKind::Entity(e)) => {
                             e.properties.insert("targetname".into(), name.clone());
                         }
-                        Some(kind) => return Err(format!("a {} has no name, rename layers, groups, scatter sets or entities", kind.type_name())),
+                        Some(_) => {
+                            m.rename(id, &name);
+                        }
                         None => return Err(format!("no node {id}")),
                     }
 

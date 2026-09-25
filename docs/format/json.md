@@ -35,7 +35,7 @@ Copy and paste use the same node shape in another wrapper:
 ```
 
 `nodes` holds the copied subtrees without their parents. Pasting runs the same checks as loading, gives every node a
-fresh id and keeps `hidden` and `locked`. A copied layer pastes its children. The live link sends single nodes in the
+fresh id and keeps `label`, `hidden` and `locked`. A copied layer pastes its children. The live link sends single nodes in the
 same shape, without `children`.
 
 ## Example

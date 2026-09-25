@@ -60,6 +60,8 @@ struct FileNode {
     id: u64,
     #[serde(flatten)]
     kind: FileKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    label: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     hidden: bool,
     #[serde(default, skip_serializing_if = "is_false")]
@@ -100,7 +102,7 @@ fn leaf_file_node(node: &Node) -> FileNode {
         NodeKind::Terrain(t) => FileKind::Terrain(t.clone()),
         NodeKind::Scatter(s) => FileKind::Scatter(s.clone()),
     };
-    FileNode { id: node.id.0, kind, hidden: node.hidden, locked: node.locked, children: Vec::new() }
+    FileNode { id: node.id.0, kind, label: node.label.clone(), hidden: node.hidden, locked: node.locked, children: Vec::new() }
 }
 
 pub fn to_value(map: &Map) -> Value {
@@ -214,6 +216,7 @@ fn insert_fresh(map: &mut Map, parent: NodeId, node: FileNode, copies: &mut BTre
     if let Some(n) = map.get_mut(id) {
         n.hidden = node.hidden;
         n.locked = node.locked;
+        n.label = node.label;
     }
 
     for c in node.children {
@@ -239,7 +242,7 @@ fn insert_file_node(map: &mut Map, parent: Option<NodeId>, node: FileNode) {
             map.insert_with_id(id, p, kind);
         }
         None => {
-            map.nodes.insert(id, Node { id, parent: None, children: Vec::new(), kind, hidden: false, locked: false });
+            map.nodes.insert(id, Node { id, parent: None, children: Vec::new(), kind, hidden: false, locked: false, label: None });
             map.layers.push(id);
         }
     }
@@ -247,6 +250,7 @@ fn insert_file_node(map: &mut Map, parent: Option<NodeId>, node: FileNode) {
     if let Some(n) = map.get_mut(id) {
         n.hidden = node.hidden;
         n.locked = node.locked;
+        n.label = node.label;
     }
 
     for c in node.children {
@@ -415,6 +419,29 @@ mod tests {
         }
 
         assert_eq!(to_string(&back), text);
+    }
+
+    #[test]
+    fn labels_round_trip_in_both_layouts() {
+        let mut m = sample();
+        let layer = m.default_layer();
+        let brush = m.get(layer).unwrap().children[0];
+        assert!(m.rename(brush, " north wall "));
+        assert_eq!(m.get(brush).unwrap().name(), "north wall");
+        let value = to_value(&m);
+        assert_eq!(value["layers"][0]["children"][0]["label"], "north wall");
+        assert!(value["layers"][0].get("label").is_none(), "no key without a label");
+
+        let from_text = from_str(&to_string(&m)).unwrap();
+        let from_binary = from_bytes(&to_bytes(&m)).unwrap().map;
+        for back in [from_text, from_binary] {
+            assert_eq!(back.get(brush).unwrap().label.as_deref(), Some("north wall"));
+            assert_eq!(back.get(layer).unwrap().label, None);
+        }
+
+        assert!(m.rename(brush, ""));
+        assert_eq!(m.get(brush).unwrap().name(), format!("brush{}", brush.0), "an empty name brings the default back");
+        assert!(!m.rename(layer, ""), "a layer keeps its name");
     }
 
     #[test]

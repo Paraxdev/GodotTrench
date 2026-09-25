@@ -65,6 +65,7 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("Edit: Undo".into(), Action::Undo),
         ("Edit: Redo".into(), Action::Redo),
         ("Edit: Duplicate".into(), Action::Duplicate),
+        ("Edit: Rename".into(), Action::Rename),
         ("Edit: Delete".into(), Action::Delete),
         ("Edit: Copy".into(), Action::Copy),
         ("Edit: Cut".into(), Action::Cut),
