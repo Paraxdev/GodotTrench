@@ -132,6 +132,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
     let mut clicked: Option<(NodeId, bool)> = None;
     let mut set_layer: Option<NodeId> = None;
     let mut rename: Option<(NodeId, String)> = None;
+    let mut hovered: Option<NodeId> = None;
     let mut scroll = ScrollArea::vertical().auto_shrink([false, false]);
     if let Some(index) = reveal.and_then(|id| rows.iter().position(|(_, r)| *r == id)) {
         let step = row_h + ui.spacing().item_spacing.y;
@@ -204,7 +205,21 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                     }
                 }
 
-                let resp = ui.selectable_label(selected, label);
+                let resp = match outliner_hint(map, *id, node) {
+                    Some((size, at)) => {
+                        let mut job = egui::text::LayoutJob::default();
+                        let style = ui.style().clone();
+                        RichText::new(size).append_to(&mut job, &style, egui::FontSelection::Default, egui::Align::Center);
+                        RichText::new(format!(" at {at}")).weak().append_to(&mut job, &style, egui::FontSelection::Default, egui::Align::Center);
+                        ui.selectable_label(selected, job)
+                    }
+                    None => ui.selectable_label(selected, label),
+                };
+                if resp.hovered() {
+                    hovered = Some(*id);
+                }
+
+                let resp = if matches!(node.kind, NodeKind::Layer(_)) { resp } else { resp.on_hover_ui(|ui| outliner_tooltip(ui, map, *id, node)) };
                 if resp.clicked() {
                     // A layer click also makes it current; selecting it as well lets Delete and the other node ops act on it.
                     if matches!(node.kind, NodeKind::Layer(_)) {
@@ -312,6 +327,10 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
         }
     });
     ps.outliner_offset = output.state.offset.y;
+    if state.outliner_hover != hovered {
+        state.outliner_hover = hovered;
+        ui.ctx().request_repaint();
+    }
 
     for (id, kind) in toggles {
         match kind {
@@ -367,6 +386,42 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                 s.select_node(id);
             }
         });
+    }
+}
+
+fn xyz(v: DVec3, sep: &str) -> String {
+    [v.x, v.y, v.z].map(widgets::format_number).join(sep)
+}
+
+/// Size and lowest corner of a brush or mesh, which name its row in place of the "brush (6 faces)" every piece that
+/// Hollow or CSG leaves would share. Kept short since the outliner is narrow, the icon says what kind it is.
+fn outliner_hint(map: &gt_doc::Map, id: NodeId, node: &gt_doc::Node) -> Option<(String, String)> {
+    matches!(node.kind, NodeKind::Brush(_) | NodeKind::Mesh(_)).then(|| {
+        let b = map.bounds(id);
+        (xyz(b.size(), "x"), xyz(b.min, " "))
+    })
+}
+
+fn outliner_tooltip(ui: &mut Ui, map: &gt_doc::Map, id: NodeId, node: &gt_doc::Node) {
+    ui.label(RichText::new(node.name()).strong());
+    let materials: std::collections::BTreeSet<&str> = match &node.kind {
+        NodeKind::Brush(b) => b.faces.iter().map(|f| f.data.material.as_str()).collect(),
+        NodeKind::Mesh(m) => m.faces.iter().map(|f| f.data.material.as_str()).collect(),
+        _ => Default::default(),
+    };
+    if !materials.is_empty() {
+        ui.label(materials.into_iter().collect::<Vec<_>>().join(", "));
+    }
+
+    if let Some(e) = map.entity(id).filter(|_| map.is_point_entity(id)) {
+        ui.label(format!("Origin {}", xyz(e.origin, " ")));
+        return;
+    }
+
+    let b = map.bounds(id);
+    if !b.is_empty() {
+        ui.label(format!("Size {}", xyz(b.size(), " x ")));
+        ui.label(format!("From {} to {}", xyz(b.min, " "), xyz(b.max, " ")));
     }
 }
 

@@ -375,6 +375,26 @@ fn inspector_types_the_position_and_size_of_the_selection() {
 }
 
 #[test]
+fn outliner_rows_tell_brushes_apart_and_outline_the_hovered_one() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    let right = f.state.doc.edit("add", |m, _| {
+        m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::new(16.0, 128.0, 256.0)), "wall").unwrap()));
+        m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::new(240.0, 0.0, 0.0), DVec3::new(256.0, 128.0, 256.0)), "wall").unwrap()))
+    });
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(360.0, 400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::outliner(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    harness.get_by_label("Expand").click();
+    harness.run();
+    harness.get_by_label_contains("16x128x256 at 0 0 0");
+    harness.get_by_label_contains("16x128x256 at 240 0 0").hover();
+    harness.run();
+    assert_eq!(harness.state().state.outliner_hover, Some(right), "the views outline the hovered row's brush");
+}
+
+#[test]
 fn outliner_toggles_visibility_and_adds_layers() {
     let (fixture, id) = Fixture::with_light();
     let mut harness = Harness::builder()
@@ -408,7 +428,7 @@ fn outliner_context_menu_selects_and_acts_on_objects() {
     harness.run();
     harness.get_by_label("Expand").click();
     harness.run();
-    harness.get_by_label_contains("brush").click_secondary();
+    harness.get_by_label_contains("64x64x64 at 0 0 0").click_secondary();
     harness.run();
     assert!(harness.state().state.doc.selection.nodes.contains(&brush), "right click selects the row");
     for entry in ["Focus", "Hide", "Duplicate"] {

@@ -6,6 +6,9 @@ The Outliner shows the map as a tree of layers, groups and objects. Layers let y
 building per layer, and hide or lock a part while you work on the rest. New objects go into the current layer, and
 clicking a layer makes it current. The eye hides an object or layer, the lock stops it from being selected or edited.
 
+Brush and mesh rows show their size and lowest corner, so the walls a Hollow or a Subtract leaves behind can be told
+apart. Hold the pointer over a row to see its materials and bounds, and to outline the object in every view.
+
 For reference geometry that should never reach Godot, right click its layer and pick *Toggle Omit From Export*. Hiding
 is not enough, Godot still builds hidden objects.
 
