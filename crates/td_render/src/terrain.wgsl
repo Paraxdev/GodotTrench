@@ -190,7 +190,11 @@ fn fs_main(f: VOut) -> @location(0) vec4<f32> {
         // Like brushes, emission joins the light before the tonemap.
         rgb = tonemap(base * light_at(f.world, n) + glow);
     } else {
-        rgb = shade(base, f.world, n);
+        // The fixed face shading suits brush sides but barely changes over rolling ground, so terrains take light from
+        // a fixed direction instead. Flat ground keeps full brightness and slopes turned away darken, the relief shows.
+        let to_light = normalize(vec3<f32>(0.6, 1.0, 0.4));
+        let relief = clamp(1.0 - 0.9 * (1.0 - dot(n, to_light) / to_light.y), 0.35, 1.05);
+        rgb = base * relief;
         if (flat_mode < 0.5) {
             rgb = max(rgb, min(glow, vec3<f32>(1.0)) * 0.85);
         }
