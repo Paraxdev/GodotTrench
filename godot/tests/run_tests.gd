@@ -93,6 +93,7 @@ func _initialize() -> void:
 	test_csharp_entities()
 	await test_live_session()
 	test_live_link_lines()
+	test_live_link_port()
 	await test_capture()
 	test_threaded_build_matches()
 	await test_showcase_playthrough()
@@ -1352,6 +1353,12 @@ func test_live_link_lines() -> void:
 	var split := GodotTrenchEditorIntegration.take_lines(rest)
 	check(split[0] == PackedStringArray(["{\"a\":\"ü\"}", "{\"b\":1}"]), "complete lines decode whole, got %s" % [split[0]])
 	check(split[1].get_string_from_utf8() == "{\"c\"", "the unfinished line stays buffered")
+
+func test_live_link_port() -> void:
+	print("- live link port setting")
+	check(GodotTrenchEditorIntegration.live_link_port(7850) == 7850, "a valid port is kept")
+	check(GodotTrenchEditorIntegration.live_link_port(0) == GodotTrenchEditorIntegration.DEFAULT_PORT, "a cleared port falls back to the default")
+	check(GodotTrenchEditorIntegration.live_link_port(70000) == GodotTrenchEditorIntegration.DEFAULT_PORT, "a port above 65535 falls back to the default")
 
 func test_capture() -> void:
 	print("- live link capture")
