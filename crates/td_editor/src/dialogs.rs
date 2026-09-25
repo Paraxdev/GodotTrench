@@ -291,9 +291,11 @@ impl CommandPalette {
             spread: 0,
             color: egui::Color32::from_black_alpha(160),
         });
-        egui::Window::new("Command Palette").title_bar(false).frame(frame).anchor(egui::Align2::CENTER_TOP, [0.0, 80.0]).fixed_size([460.0, 380.0]).show(
-            ctx,
-            |ui| {
+        // Modal, so a click outside closes the palette instead of reaching the view under it.
+        let area = egui::Modal::default_area(egui::Id::new("command_palette")).anchor(egui::Align2::CENTER_TOP, [0.0, 80.0]);
+        let modal =
+            egui::Modal::new(egui::Id::new("command_palette")).area(area).frame(frame).backdrop_color(egui::Color32::from_black_alpha(60)).show(ctx, |ui| {
+                ui.set_width(460.0);
                 let edit = ui.add(egui::TextEdit::singleline(&mut self.query).hint_text("Type a command…").desired_width(f32::INFINITY));
                 edit.request_focus();
                 if edit.changed() {
@@ -323,8 +325,12 @@ impl CommandPalette {
                     ui.separator();
                     ui.label(RichText::new(help).weak());
                 }
-            },
-        );
+            });
+        if modal.should_close() {
+            self.open = false;
+            return;
+        }
+
         if let Some(a) = run {
             actions.push(a);
             self.open = false;
@@ -983,6 +989,42 @@ impl LinkDialog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn palette_frame(ctx: &egui::Context, palette: &mut CommandPalette, state: &EditorState, time: &mut f64, events: Vec<egui::Event>) -> Vec<Action> {
+        *time += 0.05;
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 800.0));
+        ctx.begin_pass(egui::RawInput { events, time: Some(*time), screen_rect: Some(screen), ..Default::default() });
+        let mut actions = Vec::new();
+        palette.show(ctx, state, &mut actions);
+        ctx.end_pass().drop_without_applying_deltas();
+        actions
+    }
+
+    #[test]
+    fn escape_or_a_click_outside_closes_the_palette_without_running_anything() {
+        let (ctx, state, mut time) = (egui::Context::default(), EditorState::new(Default::default()), 0.0);
+        let mut palette = CommandPalette::default();
+        let key = |key| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE };
+        palette.toggle();
+        for _ in 0..3 {
+            palette_frame(&ctx, &mut palette, &state, &mut time, vec![]);
+        }
+
+        assert!(palette_frame(&ctx, &mut palette, &state, &mut time, vec![key(egui::Key::Escape)]).is_empty());
+        assert!(!palette.open, "Escape closes it");
+
+        palette.toggle();
+        for _ in 0..3 {
+            palette_frame(&ctx, &mut palette, &state, &mut time, vec![]);
+        }
+
+        let outside = egui::pos2(40.0, 700.0);
+        let press = |pressed| egui::Event::PointerButton { pos: outside, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+        let mut ran = palette_frame(&ctx, &mut palette, &state, &mut time, vec![egui::Event::PointerMoved(outside)]);
+        ran.extend(palette_frame(&ctx, &mut palette, &state, &mut time, vec![press(true)]));
+        ran.extend(palette_frame(&ctx, &mut palette, &state, &mut time, vec![press(false)]));
+        assert!(ran.is_empty() && !palette.open, "a click outside closes it, ran {ran:?}");
+    }
 
     #[test]
     fn fuzzy_ranks_word_starts() {

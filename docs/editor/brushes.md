@@ -36,8 +36,9 @@ exactly. The same fields appear for a brush entity and for a selection of severa
 **Clip** (C) cuts along a plane, for slopes, ramps and angled walls. Click two or three points, press Tab to cycle
 between keeping the front, the back or both halves, and Enter to cut. Backspace removes the last point.
 
-**Vertex** (V) drags corners, edge midpoints and face centers. A move that would give the brush a dent is refused, so
-for dents and overhangs convert it to a [mesh](meshes.md). Delete removes the selected vertices.
+**Vertex** (V, or Tab with brushes selected) drags corners, edge midpoints and face centers. A move that would give
+the brush a dent is refused, so for dents and overhangs convert it to a [mesh](meshes.md). Delete removes the selected
+vertices.
 
 ## Shape Generator
 
