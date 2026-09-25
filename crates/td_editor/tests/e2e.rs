@@ -263,15 +263,25 @@ fn alt_orbit_click_cycling_and_edge_grab() {
     let ceiling = ed.box_brush([-64.0, 112.0, -64.0], [64.0, 128.0, 64.0]);
     ed.call("set_camera", json!({ "view": "top", "center": [0, 0, 0], "zoom": 1.0 }));
 
-    // In the Top view the ceiling covers the floor, clicking again at the same spot or Alt+click reaches it.
+    // In the Top view the ceiling covers the floor, clicking again soon at the same spot or Alt+click reaches it. The
+    // pauses keep separate clicks from reading as a double click, or later ones from cycling.
+    let pause = |seconds: f64| std::thread::sleep(std::time::Duration::from_secs_f64(seconds));
     ed.input("top", json!([{ "type": "click", "world": [0, 0, 0] }]));
     let first = selected(&ed);
+    pause(0.5);
     ed.input("top", json!([{ "type": "click", "world": [0, 0, 0] }]));
     let second = selected(&ed);
     assert!(first.len() == 1 && second.len() == 1 && first != second, "{first:?} then {second:?}");
     assert!([floor, ceiling].contains(&first[0]) && [floor, ceiling].contains(&second[0]));
+    pause(0.5);
     ed.input("top", json!([{ "type": "click", "world": [0, 0, 0], "modifiers": ["alt"] }]));
     assert_eq!(selected(&ed), first, "Alt+click steps on and wraps around");
+    pause(2.0);
+    ed.input("top", json!([{ "type": "click", "world": [0, 0, 0] }]));
+    assert_eq!(selected(&ed), first, "a click long after the last one picks the nearest object again");
+    pause(2.0);
+    ed.input("top", json!([{ "type": "double_click", "world": [0, 0, 0] }]));
+    assert_eq!(selected(&ed), first, "the second click of a double click does not cycle");
 
     // A drag a few pixels outside the edge still resizes instead of drawing a new brush.
     ed.call("select", json!({ "ids": [floor] }));
@@ -297,6 +307,15 @@ fn alt_orbit_click_cycling_and_edge_grab() {
     ed.input("3d", json!([{ "type": "drag", "world": [-200, 128, 200], "to_world": [-200, 200, 200], "modifiers": ["alt"], "steps": 12 }]));
     let (min, _) = ed.selection_bounds();
     assert!(min[1] > 112.0 && approx(&[min[0], min[2]], &[-384.0, -384.0]), "Alt+drag on the selection moves it up {min:?}");
+
+    // The wheel step follows the wall straight ahead, not the far ground under a pointer off to the side.
+    ed.box_brush([-20000.0, -16.0, -20000.0], [20000.0, -8.0, 20000.0]);
+    ed.box_brush([1936.0, 0.0, -8.0], [2064.0, 256.0, 8.0]);
+    ed.call("set_camera", json!({ "view": "3d", "position": [2000, 128, 400], "look_at": [2000, 128, 0] }));
+    ed.input("3d", json!([{ "type": "scroll", "world": [-2000, -8, -8000], "delta": 120 }]));
+    pause(0.5);
+    let z = camera(&ed)[2].as_f64().unwrap();
+    assert!(z > 8.0 && z < 400.0, "moved towards the wall without passing it, z {z}");
 }
 
 #[test]
