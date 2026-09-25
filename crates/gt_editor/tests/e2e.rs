@@ -136,11 +136,11 @@ fn approx(a: &[f64], b: &[f64]) -> bool {
 #[ignore]
 fn draw_select_move_delete_undo() {
     let ed = Editor::launch("basic");
-    // Draw a brush by dragging in the top view. Depth comes from the default 0..64 range.
+    // Draw a brush by dragging in the top view. The first brush is 128 units tall, a room once hollowed.
     ed.input("top", json!([{ "type": "drag", "world": [-64, 0, -64], "to_world": [64, 0, 32] }]));
     assert_eq!(ed.brushes(), 1);
     let (min, max) = ed.selection_bounds();
-    assert!(approx(&min, &[-64.0, 0.0, -64.0]) && approx(&max, &[64.0, 64.0, 32.0]), "{min:?} {max:?}");
+    assert!(approx(&min, &[-64.0, 0.0, -64.0]) && approx(&max, &[64.0, 128.0, 32.0]), "{min:?} {max:?}");
 
     // Click empty space deselects, clicking the brush selects it again.
     ed.input("top", json!([{ "type": "click", "world": [400, 0, 200] }]));
