@@ -1,6 +1,7 @@
 //! The first steps an empty map shows in its views, and the maps of the open Godot project.
 
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use egui::{Align2, FontId, Rect, RichText, Ui, Vec2};
@@ -24,36 +25,57 @@ pub fn map_is_empty(map: &Map) -> bool {
     map.layers.iter().all(|l| map.get(*l).is_none_or(|n| n.children.is_empty()))
 }
 
-/// The `.gtm` files of the open Godot project, rescanned now and then while something shows them.
+/// The `.gtm` files of the open Godot project. They are scanned on a thread when the project changes and again now and
+/// then while something shows them, so a map saved meanwhile turns up without the UI waiting on the disk.
 #[derive(Default)]
 pub struct ProjectMaps {
     root: Option<PathBuf>,
     scanned: Option<Instant>,
     maps: Vec<PathBuf>,
+    pending: Option<mpsc::Receiver<Vec<PathBuf>>>,
 }
 
 impl ProjectMaps {
-    pub fn get(&mut self, root: Option<&Path>) -> &[PathBuf] {
-        let stale = self.scanned.is_none_or(|t| t.elapsed() > RESCAN);
-        if self.root.as_deref() != root || stale {
-            self.root = root.map(Path::to_path_buf);
+    pub fn get(&mut self, ctx: &egui::Context, root: Option<&Path>) -> &[PathBuf] {
+        if self.root.as_deref() != root {
+            *self = Self { root: root.map(Path::to_path_buf), ..Default::default() };
+        }
+
+        if let Some(rx) = &self.pending {
+            match rx.try_recv() {
+                Ok(maps) => {
+                    self.maps = maps;
+                    self.pending = None;
+                }
+                Err(mpsc::TryRecvError::Disconnected) => self.pending = None,
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+        }
+
+        if let Some(root) = self.root.clone()
+            && self.pending.is_none()
+            && self.scanned.is_none_or(|t| t.elapsed() > RESCAN)
+        {
             self.scanned = Some(Instant::now());
-            self.maps = root.map(find_maps).unwrap_or_default();
+            let (tx, rx) = mpsc::channel();
+            let ctx = ctx.clone();
+            std::thread::spawn(move || {
+                if tx.send(find_maps(&root)).is_ok() {
+                    ctx.request_repaint();
+                }
+            });
+            self.pending = Some(rx);
         }
 
         &self.maps
     }
 }
 
-/// Every map under `root` except the addons' and Godot's own folders, sorted by path.
+/// The first maps under `root` by path, leaving out the addons' and Godot's own folders.
 pub fn find_maps(root: &Path) -> Vec<PathBuf> {
     fn walk(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
         let Ok(entries) = std::fs::read_dir(dir) else { return };
         for entry in entries.flatten() {
-            if out.len() >= MAX_MAPS {
-                return;
-            }
-
             let path = entry.path();
             let name = entry.file_name();
             let name = name.to_string_lossy();
@@ -70,6 +92,7 @@ pub fn find_maps(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     walk(root, 0, &mut out);
     out.sort_by(|a, b| a.parent().cmp(&b.parent()).then(a.cmp(b)));
+    out.truncate(MAX_MAPS);
     out
 }
 
@@ -90,7 +113,7 @@ pub fn maps_menu(ui: &mut Ui, root: Option<&Path>, maps: &[PathBuf], actions: &m
         let parent = path.parent();
         if parent != folder {
             folder = parent;
-            let shown = parent.zip(root).and_then(|(p, r)| p.strip_prefix(r).ok()).map(|p| p.display().to_string()).unwrap_or_default();
+            let shown = parent.zip(root).and_then(|(p, r)| p.strip_prefix(r).ok()).map(|p| p.to_string_lossy().replace('\\', "/")).unwrap_or_default();
             ui.label(RichText::new(if shown.is_empty() { "res://".to_string() } else { format!("res://{shown}") }).weak());
         }
 
@@ -132,16 +155,22 @@ pub fn view_hint(ui: &mut Ui, rect: Rect, kind: ViewKind, state: &mut EditorStat
     let root = state.game.project_root.clone();
     let shown = ui.scope_builder(egui::UiBuilder::new().max_rect(card), |ui| {
         egui::Frame::popup(ui.style()).show(ui, |ui| {
+            // Selectable labels would take the clicks, drags and wheel meant for the camera behind the card.
+            ui.style_mut().interaction.selectable_labels = false;
             ui.set_width(ui.available_width());
             ui.label(RichText::new("This map is empty").strong().size(16.0));
-            ui.label(
+            let hollow = match crate::commands::shortcut_text(ui.ctx(), &state.prefs, &Action::CsgHollow) {
+                Some(keys) => format!("Brush > CSG > Hollow ({keys})"),
+                None => "Brush > CSG > Hollow".into(),
+            };
+            ui.label(format!(
                 "Levels are built from brushes, solid blocks you draw and then shape. Drag in the Top, Front or Side view to draw your \
-                 first one, then hollow it into a room with Ctrl+Shift+K.",
-            );
+                 first one, then hollow it into a room with {hollow}."
+            ));
             ui.label(RichText::new(CAMERA_3D_HELP).weak());
             ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| {
-                let maps = maps.get(root.as_deref());
+                let maps = maps.get(ui.ctx(), root.as_deref());
                 if !maps.is_empty() {
                     ui.menu_button("Open a map from this project", |ui| maps_menu(ui, root.as_deref(), maps, actions))
                         .response
@@ -179,6 +208,23 @@ mod tests {
     }
 
     #[test]
+    fn a_long_map_list_keeps_the_first_maps_by_path() {
+        let dir = std::env::temp_dir().join(format!("gt_welcome_many_{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("a")).unwrap();
+        std::fs::create_dir_all(dir.join("b")).unwrap();
+        std::fs::write(dir.join("a/first.gtm"), "").unwrap();
+        for i in 0..MAX_MAPS + 20 {
+            std::fs::write(dir.join(format!("b/{i:03}.gtm")), "").unwrap();
+        }
+
+        let found = find_maps(&dir);
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(found.len(), MAX_MAPS);
+        assert_eq!(found[0], dir.join("a/first.gtm"));
+        assert_eq!(found[MAX_MAPS - 1], dir.join(format!("b/{:03}.gtm", MAX_MAPS - 2)));
+    }
+
+    #[test]
     fn the_3d_view_offers_the_project_maps_until_the_tips_are_hidden() {
         use egui_kittest::Harness;
         use egui_kittest::kittest::Queryable;
@@ -187,6 +233,7 @@ mod tests {
             state: EditorState,
             maps: ProjectMaps,
             actions: Vec<Action>,
+            view_hovered: bool,
         }
 
         let dir = std::env::temp_dir().join(format!("gt_welcome_hint_{}", std::process::id()));
@@ -194,18 +241,35 @@ mod tests {
         std::fs::write(dir.join("maps/church.gtm"), "").unwrap();
         let mut state = EditorState::new(Default::default());
         state.game.project_root = Some(dir.clone());
-        let fixture = Fixture { state, maps: ProjectMaps::default(), actions: Vec::new() };
+        let fixture = Fixture { state, maps: ProjectMaps::default(), actions: Vec::new(), view_hovered: false };
         let mut harness = Harness::builder().with_size(egui::vec2(800.0, 600.0)).build_ui_state(
             |ui, f: &mut Fixture| {
                 let rect = ui.max_rect();
+                f.view_hovered = ui.allocate_rect(rect, egui::Sense::click_and_drag()).hovered();
                 view_hint(ui, rect, ViewKind::Perspective, &mut f.state, &mut f.maps, &mut f.actions);
             },
             fixture,
         );
         harness.run();
-        assert!(harness.query_by_label("This map is empty").is_some());
+        assert!(harness.query_by_label_contains("with Brush > CSG > Hollow (").is_some(), "names the menu and the shortcut");
+        let title = harness.get_by_label("This map is empty").rect().center();
+        harness.hover_at(title);
+        harness.run();
+        assert!(harness.state().view_hovered, "the card's text lets the camera behind it take the mouse");
+
+        // The scan runs on a thread, the menu shows up once it is done.
+        for _ in 0..500 {
+            if harness.query_by_label("Open a map from this project").is_some() {
+                break;
+            }
+
+            std::thread::sleep(Duration::from_millis(10));
+            harness.step();
+        }
+
         harness.get_by_label("Open a map from this project").click();
         harness.run();
+        assert!(harness.query_by_label("res://maps").is_some());
         harness.get_by_label("church").click();
         harness.run();
         std::fs::remove_dir_all(&dir).ok();
