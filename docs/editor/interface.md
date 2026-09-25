@@ -37,7 +37,7 @@ With something selected, they print its width above it and its height beside it.
 | --- | --- |
 | Drag the point where the dividers cross | Resize all four views at once |
 | Shift+Space | Maximize the view under the pointer, again to restore |
-| *View > Views* | Switch between one, two and four views, or bring back a closed view |
+| *View > Views* | Switch between one, two and four views, or bring back a closed view. Single View keeps the view you last worked in, the 3D view to begin with, and while one view is shown picking another view's name switches to it |
 
 ## Tabs
 
@@ -51,7 +51,7 @@ modified tab asks to save, discard or cancel, and quitting lists every unsaved m
 | --- | --- | --- |
 | Right drag | Look around. WASD moves, Q and E go down and up, Shift triples the speed | Pan |
 | Middle drag | Pan | Pan |
-| Wheel | Move forward and back | Zoom towards the cursor |
+| Wheel | Move forward and back, faster the farther away the surface under the pointer is | Zoom towards the cursor |
 | Alt+left drag, nothing selected | Orbit | |
 
 WASD only flies while the right button is held, otherwise those keys are shortcuts. Hovering a view's tab shows its

@@ -1020,6 +1020,20 @@ fn view_panes_maximize_close_and_come_back() {
     assert!(maximized > docked * 3 / 2, "Shift+Space fills the view area with the front view, {docked} to {maximized}");
     ed.input("front", json!([{ "type": "move" }, { "type": "key", "key": "Space", "modifiers": ["shift"] }]));
     assert_eq!(width(&ed), docked, "Shift+Space again brings the four views back");
+
+    // Passing over a view on the way to a menu does not make it the one Single View keeps, clicking in it does.
+    let palette = |ed: &Editor, command: &str| {
+        ed.input("window", json!([{ "type": "move", "x": 10, "y": 10 }, { "type": "key", "key": "F1" }, { "type": "text", "text": command }, { "type": "key", "key": "Enter" }]));
+    };
+    ed.input("front", json!([{ "type": "move" }]));
+    palette(&ed, "single view layout");
+    assert!(ed.screenshot("3d", "single_3d").0 > docked * 3 / 2, "Single View starts with the 3D view");
+    palette(&ed, "four view layout");
+    assert_eq!(width(&ed), docked);
+    ed.input("front", json!([{ "type": "click", "button": "middle" }]));
+    palette(&ed, "single view layout");
+    assert!(width(&ed) > docked * 3 / 2, "Single View keeps the view worked in last");
+    palette(&ed, "four view layout");
 }
 
 /// Ctrl+click adds objects in the views. With the UV Editor tab showing it grabs all of a brush's faces instead, but
