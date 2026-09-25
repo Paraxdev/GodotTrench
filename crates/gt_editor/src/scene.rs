@@ -1146,9 +1146,9 @@ pub fn compute_lighting(map: &Map, game: &GameConfig) -> Lighting {
     let mut lighting = Lighting::default();
     let upm = game.units_per_meter as f32;
     let props = &map.properties;
-    if let Some(angles) =
-        props.get("sun_angles").map(|s| s.split_whitespace().filter_map(|p| p.parse::<f64>().ok()).collect::<Vec<_>>()).filter(|v| v.len() >= 2)
-    {
+    // Without the key the addon aims its sun at -40 -45, the preview follows it.
+    let angles: Vec<f64> = props.get("sun_angles").map_or("-40 -45", |s| s.as_str()).split_whitespace().filter_map(|p| p.parse().ok()).collect();
+    if angles.len() >= 2 {
         let q = gt_core::DQuat::from_euler(gt_core::EulerRot::YXZ, angles[1].to_radians(), angles[0].to_radians(), 0.0);
         lighting.sun_direction = (q * DVec3::NEG_Z).as_vec3();
     }

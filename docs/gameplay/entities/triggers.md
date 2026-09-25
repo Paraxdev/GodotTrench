@@ -5,8 +5,7 @@ a cutscene, a pit hurts, a pad launches. Draw one with the **Volume** tool (Shif
 
 ## Shared inputs, outputs and keys
 
-Every trigger below has these on top of its own, except [`trigger_call`](#triggercall), which has only `enable`,
-`disable` and `triggered`.
+Every trigger below has these on top of its own.
 
 * **Inputs:** `enable`, `disable`, `toggle`
 * **Outputs:** `triggered(activator)`, `entered(activator)`, `exited(activator)`
@@ -68,9 +67,7 @@ stops accelerating at `push` speed.
 ## trigger_call
 
 Calls a method when triggered, on `!activator` by default, so a trigger can call straight into the player's script, for
-example to save a checkpoint. `call_target` and `arguments` work as in [`logic_call`](scripting.md#logiccall). Of the
-shared inputs and outputs it has only `enable`, `disable` and `triggered`, so wire `triggered` where another trigger
-would use `entered`.
+example to save a checkpoint. `call_target` and `arguments` work as in [`logic_call`](scripting.md#logiccall).
 
 * **Inputs:** `trigger(activator)`
 * **Outputs:** `called(result)`
