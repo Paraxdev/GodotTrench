@@ -1359,6 +1359,12 @@ func test_live_link_port() -> void:
 	check(TrenchDotEditorIntegration.live_link_port(7850) == 7850, "a valid port is kept")
 	check(TrenchDotEditorIntegration.live_link_port(0) == TrenchDotEditorIntegration.DEFAULT_PORT, "a cleared port falls back to the default")
 	check(TrenchDotEditorIntegration.live_link_port(70000) == TrenchDotEditorIntegration.DEFAULT_PORT, "a port above 65535 falls back to the default")
+	var link := TrenchDotEditorIntegration.new()
+	check(link.warn_port_problem(0), "a bad port warns")
+	check(not link.warn_port_problem(0), "the same bad port warns once, whatever other setting changed")
+	check(not link.warn_port_problem(7850), "a good port does not warn")
+	check(link.warn_port_problem(0), "a port set bad again warns again")
+	link.free()
 
 func test_capture() -> void:
 	print("- live link capture")
