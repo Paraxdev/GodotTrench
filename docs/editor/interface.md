@@ -12,7 +12,7 @@ command by name. The **tool options bar** under the toolbar holds the settings o
 | Outliner | Left | The map as a tree of [layers, groups](organizing.md) and objects |
 | History | Left | Every edit, click one to undo back to it |
 | Issues | Left | Problems found as you work, like faces with no material |
-| Inspector | Right | The selection's properties, such as an entity's keys |
+| Inspector | Right | The selection's properties, such as an entity's keys or a brush's exact position and size |
 | Entities | Right | Entity classes to drag into a view |
 | UV Editor | Right | [Exact texture placement](uv-editor.md) |
 | Scatter | Right | The models the [Scatter](scatter.md) tool paints |

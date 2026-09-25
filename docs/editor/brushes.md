@@ -17,6 +17,14 @@ the grid and become meshes with matching collision in Godot. These inputs belong
 In 3D the selection also gets a move, rotate and scale gizmo. Rotation snaps to 15°, or 1° with Shift.
 *View > Transform Gizmo* hides it.
 
+## Exact position and size
+
+For an exact placement, such as a door cutter as deep as the wall, type the numbers into the **Inspector**. With
+brushes or meshes selected it shows the **position** and **size** of their bounds. Position is the lowest corner, the
+smallest X, Y and Z, which is the corner that usually sits on the grid. A new size scales the selection away from that
+corner, so the position stays put. Dragging a field steps by the grid while snapping is on, a typed value is kept
+exactly. The same fields appear for a brush entity and for a selection of several objects.
+
 ## Reshape
 
 | Input | Result |

@@ -347,6 +347,34 @@ fn selection_summary_offers_door_wizards() {
 }
 
 #[test]
+fn inspector_types_the_position_and_size_of_the_selection() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    let id = f.state.doc.edit("add", |m, s| {
+        let id = m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::new(64.0, 32.0, 16.0)), "wood").unwrap()));
+        s.select_node(id);
+        id
+    });
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(520.0, 700.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    let mut type_into = |field: usize, text: &str| {
+        harness.get_all_by_role(egui::accesskit::Role::SpinButton).nth(field).unwrap().click();
+        harness.run();
+        harness.get_all_by_role(egui::accesskit::Role::SpinButton).nth(field).unwrap().type_text(text);
+        harness.run();
+        harness.key_press(egui::Key::Enter);
+        harness.run();
+    };
+    type_into(4, "128");
+    type_into(0, "32");
+    let doc = &harness.state().state.doc;
+    assert_eq!(doc.map.bounds(id), Aabb::new(DVec3::new(32.0, 0.0, 0.0), DVec3::new(96.0, 128.0, 16.0)), "the size grows from the lowest corner");
+    assert_eq!(doc.history.undo_labels().take(2).collect::<Vec<_>>(), ["Set Position", "Set Size"]);
+}
+
+#[test]
 fn outliner_toggles_visibility_and_adds_layers() {
     let (fixture, id) = Fixture::with_light();
     let mut harness = Harness::builder()

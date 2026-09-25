@@ -65,6 +65,12 @@ pub fn drag_speed(values: &[f64]) -> f64 {
 
 /// X, Y and Z (or U and V with two values) fields sharing the width, each after its axis letter in the axis color.
 pub fn vector_input(ui: &mut Ui, values: &mut [f64], width: f32, speed: f64) -> bool {
+    vector_input_snapped(ui, values, width, speed, 0.0)
+}
+
+/// As [`vector_input`], but a value dragged with the mouse lands on multiples of `grid` when that is above zero. A
+/// typed value is kept exactly.
+pub fn vector_input_snapped(ui: &mut Ui, values: &mut [f64], width: f32, speed: f64, grid: f64) -> bool {
     let n = values.len().max(1) as f32;
     let field_w = ((width - AXIS_GAP * (n - 1.0)) / n - AXIS_LABEL - 2.0).max(28.0);
     let mut changed = false;
@@ -83,7 +89,12 @@ pub fn vector_input(ui: &mut Ui, values: &mut [f64], width: f32, speed: f64) -> 
             };
             ui.add_sized([AXIS_LABEL, ROW_HEIGHT - 2.0], egui::Label::new(RichText::new(letter).color(color).strong()));
             let drag = egui::DragValue::new(value).speed(speed).custom_formatter(|n, _| format_number(n));
-            changed |= ui.add_sized([field_w, ROW_HEIGHT - 2.0], drag).changed();
+            let response = ui.add_sized([field_w, ROW_HEIGHT - 2.0], drag);
+            if response.changed() && response.dragged() && grid > 0.0 {
+                *value = gt_core::snap_to_grid(*value, grid);
+            }
+
+            changed |= response.changed();
         }
     });
     changed

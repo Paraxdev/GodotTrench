@@ -434,9 +434,7 @@ fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mu
         ui.label(RichText::new("convex, exports to .map as a brush").weak());
     }
 
-    let bounds = mesh.bounds();
-    let s = bounds.size();
-    ui.label(format!("Size {:.1} x {:.1} x {:.1}", s.x, s.y, s.z));
+    bounds_rows(ui, state, widgets::label_width(ui), 0);
     let mut angle = mesh.smooth_angle;
     ui.horizontal(|ui| {
         ui.label("Smoothing angle");
@@ -474,6 +472,48 @@ fn section<R>(ui: &mut Ui, title: &str, open: bool, add_contents: impl FnOnce(&m
 
 fn sub_heading(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text).weak());
+}
+
+/// Editable position and size of the selection's bounds. Position is the lowest corner, the one that sits on the grid
+/// in TrenchBroom and Hammer habits, and a new size scales the selection away from it so the position stays put.
+fn bounds_rows(ui: &mut Ui, state: &mut EditorState, label_w: f32, first_row: usize) {
+    let map = &state.doc.map;
+    let bounds = map.bounds_of(state.doc.selection.nodes.iter().copied());
+    if bounds.is_empty() {
+        return;
+    }
+
+    let scalable = !state.doc.selection.brushes(map).is_empty() || !state.doc.selection.meshes(map).is_empty();
+    let grid = state.effective_grid();
+    let mut min = bounds.min.to_array();
+    let mut size = bounds.size().to_array();
+    let width = |ui: &Ui| ui.available_width() - widgets::TRAILING;
+    let moved = widgets::row(ui, first_row, "position", "Lowest corner of the bounds in map units, 32 per meter", label_w, |ui| {
+        widgets::vector_input_snapped(ui, &mut min, width(ui), 1.0, grid)
+    });
+    let resized = widgets::row(ui, first_row + 1, "size", "Width, height and depth of the bounds. A new size scales from the lowest corner", label_w, |ui| {
+        if scalable {
+            widgets::vector_input_snapped(ui, &mut size, width(ui), 1.0, grid)
+        } else {
+            let s = bounds.size();
+            ui.label(RichText::new(format!("{} x {} x {}", widgets::format_number(s.x), widgets::format_number(s.y), widgets::format_number(s.z))).weak())
+                .on_hover_text("Only brushes and meshes scale, move this selection with position");
+            false
+        }
+    });
+
+    let min = DVec3::from_array(min);
+    let old_size = bounds.size();
+    // A flat axis cannot be scaled up from nothing, and a size of zero would flatten the selection for good.
+    let size = DVec3::from_array(std::array::from_fn(|i| if old_size[i] < 1e-6 { old_size[i] } else { size[i].max(1.0) }));
+    let target = gt_core::Aabb::new(min, min + size);
+    let opts = state.opts();
+    if resized && !gt_core::vec_approx_eq(size, old_size) {
+        let m = gt_doc::ops::scale_bounds(&bounds, &target);
+        state.doc.edit_coalesced("Set Size", |map, s| gt_doc::ops::transform_selection(map, s, &m, opts));
+    } else if moved && !gt_core::vec_approx_eq(min, bounds.min) {
+        state.doc.edit_coalesced("Set Position", |map, s| gt_doc::ops::translate_selection(map, s, min - bounds.min, opts));
+    }
 }
 
 /// Brush entity classes grouped like the entity browser, collapsed by default since the list is long.
@@ -733,13 +773,15 @@ fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Act
     let brushes = state.doc.selection.brushes(map);
     let meshes = state.doc.selection.meshes(map);
     let entity_count = state.doc.selection.nodes.iter().filter(|id| map.entity(**id).is_some()).count();
-    let bounds = map.bounds_of(state.doc.selection.nodes.iter().copied());
-    ui.heading(format!("{} objects", state.doc.selection.nodes.len()));
-    ui.label(format!("{} brushes, {} meshes", brushes.len(), meshes.len()));
-    if !bounds.is_empty() {
-        let (s, c) = (bounds.size(), bounds.center());
-        ui.label(RichText::new(format!("Size {} x {} x {}, center {:.2} {:.2} {:.2}", s.x, s.y, s.z, c.x, c.y, c.z)).weak());
-    }
+    let count = state.doc.selection.nodes.len();
+    match state.doc.selection.nodes.first().and_then(|id| map.get(*id)).filter(|_| count == 1) {
+        Some(node) => ui.heading(node.name()),
+        None => {
+            ui.heading(format!("{count} objects"));
+            ui.label(format!("{} brushes, {} meshes", brushes.len(), meshes.len()))
+        }
+    };
+    bounds_rows(ui, state, widgets::label_width(ui), 0);
 
     let buttons = |ui: &mut Ui, actions: &mut Vec<Action>, list: Vec<(&str, &str, Action)>| {
         ui.horizontal_wrapped(|ui| {
@@ -960,6 +1002,15 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
                 }
             });
         }
+    }
+
+    let count = state.doc.selection.nodes.len();
+    if count > 1 {
+        sub_heading(ui, &format!("Bounds of all {count} selected objects"));
+    }
+
+    if !is_point || count > 1 {
+        bounds_rows(ui, state, label_w, 3);
     }
 
     let value_x = ui.cursor().left() + label_w;
