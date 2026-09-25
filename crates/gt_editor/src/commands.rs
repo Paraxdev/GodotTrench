@@ -644,7 +644,7 @@ pub fn file_dialog_in<T>(dir: Option<std::path::PathBuf>, show: impl FnOnce(rfd:
     let Some(dir) = dir.and_then(|d| std::path::absolute(d).ok()) else { return show(rfd::FileDialog::new()) };
     // Without a desktop portal rfd falls back to zenity, which ignores the start folder and opens the working directory.
     #[cfg(target_os = "linux")]
-    let restore = std::env::current_dir().ok().filter(|_| std::env::set_current_dir(&dir).is_ok());
+    let restore = std::env::current_dir().ok().filter(|_| dialogs_use_zenity() && std::env::set_current_dir(&dir).is_ok());
     let result = show(rfd::FileDialog::new().set_directory(&dir));
     #[cfg(target_os = "linux")]
     if let Some(cwd) = restore {
@@ -652,6 +652,25 @@ pub fn file_dialog_in<T>(dir: Option<std::path::PathBuf>, show: impl FnOnce(rfd:
     }
 
     result
+}
+
+/// Whether rfd will show zenity: it is installed and the session bus has no desktop portal. Checked once, an installed
+/// zenity counts when there is no `dbus-send` to ask the bus with.
+#[cfg(target_os = "linux")]
+fn dialogs_use_zenity() -> bool {
+    static ZENITY: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ZENITY.get_or_init(|| {
+        let installed = std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join("zenity").is_file()));
+        // A portal that D-Bus starts on demand is only listed among the activatable names.
+        let portal = ["ListNames", "ListActivatableNames"].iter().any(|method| {
+            std::process::Command::new("dbus-send")
+                .args(["--session", "--print-reply", "--reply-timeout=1000", "--dest=org.freedesktop.DBus", "/org/freedesktop/DBus"])
+                .arg(format!("org.freedesktop.DBus.{method}"))
+                .output()
+                .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("\"org.freedesktop.portal.Desktop\""))
+        });
+        installed && !portal
+    })
 }
 
 pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
@@ -1398,6 +1417,8 @@ pub fn time_seed() -> u64 {
 
 /// Opens a map in a new tab, or in the current one when it is an untouched empty map.
 pub fn open_map_in_tab(state: &mut EditorState, path: &std::path::Path) -> Result<(), String> {
+    let path = crate::state::absolute(path);
+    let path = path.as_path();
     let map_path = crate::state::autosave_source(path).unwrap_or_else(|| path.to_path_buf());
     let active = state.active_tab.min(state.tabs.len());
     let existing = (0..=state.tabs.len()).position(|i| {

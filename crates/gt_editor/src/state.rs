@@ -741,6 +741,7 @@ impl EditorState {
     }
 
     pub fn open_map(&mut self, path: &Path) -> Result<(), String> {
+        let path = &absolute(path);
         let doc = load_document(path)?;
         self.reset_document(doc);
         self.after_open(path);
@@ -749,6 +750,7 @@ impl EditorState {
 
     /// Recent files, project and status for a map just opened from `path`.
     pub fn after_open(&mut self, path: &Path) {
+        let path = &absolute(path);
         if let Some(map_path) = self.doc.path.clone() {
             self.add_recent(&map_path);
         }
@@ -772,6 +774,7 @@ impl EditorState {
     }
 
     pub fn save_map(&mut self, path: &Path) -> Result<(), String> {
+        let path = &absolute(path);
         if path.exists() {
             let _ = std::fs::copy(path, path.with_extension("gtm.bak"));
         }
@@ -908,6 +911,7 @@ impl EditorState {
 
     /// Loads the game config of a Godot project, falling back to built-in definitions.
     pub fn load_project(&mut self, root: &Path) {
+        let root = &absolute(root);
         // Taken before reading, so a file still being written when it was read counts as changed afterwards.
         self.game_file = game_file_stamp(root);
         let mut game = match GameConfig::discover(root) {
@@ -1074,8 +1078,15 @@ pub fn autosave_source(path: &Path) -> Option<PathBuf> {
     Some(path.with_file_name(format!("{}.gtm", name.get(..stem_len)?)))
 }
 
+/// Resolves `path` against the working directory once, so the watcher threads never depend on it and a file dialog may
+/// change it.
+pub fn absolute(path: &Path) -> PathBuf {
+    std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
 /// Loads a map, turning an autosave into an unsaved recovery of the map it belongs to.
 pub fn load_document(path: &Path) -> Result<Document, String> {
+    let path = &absolute(path);
     let format::Loaded { map, problems } = format::load(path).map_err(|e| e.to_string())?;
     for p in &problems {
         eprintln!("{}: {p}", path.display());
@@ -1192,6 +1203,25 @@ mod tests {
         state.load_project(&dir);
         assert_eq!(state.game.addon_version.as_deref(), Some("0.0.1-not-the-editor"));
         assert_ne!(state.game.addon_version.as_deref(), Some(crate::VERSION), "picked an addon version that differs from the editor's");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn project_and_map_paths_are_kept_absolute() {
+        let dir = std::env::temp_dir().join(format!("gt_absolute_paths_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("project.godot"), "").unwrap();
+        let map = dir.join("level.gtm");
+        format::save(&gt_doc::Map::new(), &map).unwrap();
+        let up: PathBuf = std::env::current_dir().unwrap().components().skip(1).map(|_| "..").collect();
+        let relative = up.join(map.strip_prefix("/").unwrap());
+        assert!(relative.is_relative());
+
+        let mut state = EditorState::new(Prefs::default());
+        state.open_map(&relative).unwrap();
+        assert!(state.doc.path.as_deref().is_some_and(Path::is_absolute), "{:?}", state.doc.path);
+        assert!(state.game.project_root.as_deref().is_some_and(Path::is_absolute), "{:?}", state.game.project_root);
         let _ = std::fs::remove_dir_all(dir);
     }
 
