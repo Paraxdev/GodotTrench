@@ -18,6 +18,9 @@ A script or scene that Godot loads once at startup and keeps alive for the whole
 ## bloom
 The soft glow that bright lamps and glowing materials spread into the pixels around them. It is switched on with the worldspawn key glow_intensity.
 
+## brush
+A convex solid, such as a box or a wedge, the basic building block of a level. You draw brushes in the views and combine them with CSG, and Godot turns each one into a mesh with matching collision.
+
 ## brush entity
 An entity that takes its shape from brushes you built, such as a door, a button or a trigger. You draw the brushes first and then turn them into the entity, unlike a point entity, which sits at a single spot.
 

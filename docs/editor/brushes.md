@@ -7,7 +7,7 @@ the grid and become meshes with matching collision in Godot. These inputs belong
 
 | Input | Result |
 | --- | --- |
-| Drag off the selection | Draw a box brush. In 3D it starts on the surface under the cursor and is one grid step thick, in 2D it takes the depth of the last brush you drew |
+| Drag off the selection | Draw a box brush. In 3D it starts on the surface under the cursor and is one grid step thick, in 2D it takes the depth of the last brush you drew, 128 units for the first |
 | Drag the selection | Move it, Shift locks to the main axis |
 | Ctrl+drag the selection | Move a copy, the original stays |
 | Alt+drag the selection (3D) | Move vertically |

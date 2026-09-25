@@ -34,6 +34,9 @@ pub struct Viewport {
 // Linear values, the targets are sRGB.
 const BG_LIT: [f64; 4] = [0.18, 0.28, 0.45, 1.0];
 const DROP_COLOR: Color32 = crate::theme::CYAN;
+/// Depth of the first brush drawn in a 2D view, 4 m. A box drawn in the Top view and hollowed with 16 unit walls
+/// leaves 3 m of headroom, enough for a player.
+const FIRST_BRUSH_DEPTH: f64 = 128.0;
 
 impl Viewport {
     pub fn new(kind: ViewKind) -> Self {
@@ -597,7 +600,7 @@ impl Viewport {
                 for i in 0..3 {
                     if i == depth_axis {
                         // The depth of the last brush drawn, not of whatever was clicked last.
-                        let lb = cx.tools.last_brush.unwrap_or(Aabb::new(DVec3::ZERO, DVec3::splat(64.0)));
+                        let lb = cx.tools.last_brush.unwrap_or(Aabb::new(DVec3::ZERO, DVec3::splat(FIRST_BRUSH_DEPTH)));
                         (a[i], b[i]) = if lb.is_empty() || lb.size()[i] < 1e-6 { (0.0, grid) } else { (lb.min[i], lb.max[i]) };
                     } else {
                         (a[i], b[i]) = cell_span(start[i], current[i], grid, state.snap);
