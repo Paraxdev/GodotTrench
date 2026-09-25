@@ -16,7 +16,8 @@ A model can go into the map in two ways. Pick by whether you want to change its 
 A prop has to point at a file Godot can load. Picking one outside the project offers to copy it into `res://models`
 first.
 
-Right click a thumbnail to place it at the cursor, copy its path or open its pack's page.
+Right click a thumbnail to place it at the cursor, copy its path, open its pack's page, or *Show in File Manager* to
+find the file on disk.
 
 ## Pack credits
 

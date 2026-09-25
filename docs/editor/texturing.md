@@ -11,6 +11,9 @@
 
 Dropping a material on a terrain sets a terrain layer instead, see [Terrain layers](terrain-layers.md).
 
+Right click a thumbnail for more: add it to your favourites, select the faces that use it, open the hotspot editor, or
+*Show in File Manager* to open the folder of its texture with the file selected, for example to edit it.
+
 UV lock (Ctrl+Shift+U) is on by default, so textures stay attached to a brush while you move it.
 
 ## Built in colours
