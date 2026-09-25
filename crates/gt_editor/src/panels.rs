@@ -1884,6 +1884,13 @@ fn material_interactions(resp: egui::Response, state: &mut EditorState, name: &s
             ui.ctx().copy_text(name.to_string());
             ui.close();
         }
+
+        if let Some(file) = state.materials.find(name).and_then(|e| e.path.clone().or_else(|| e.material_file.clone()))
+            && ui.button("Show in File Manager").clicked()
+        {
+            show_in_file_manager(&file);
+            ui.close();
+        }
     });
 }
 
@@ -2047,6 +2054,7 @@ fn model_cell(ui: &mut Ui, selected: bool, entry: &crate::models::ModelEntry, si
 
     let short = entry.name.rsplit('/').next().unwrap_or(&entry.name);
     ui.painter().text(egui::pos2(rect.center().x, rect.max.y - 9.0), egui::Align2::CENTER_CENTER, short, egui::FontId::proportional(11.0), theme::GRAY_6);
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, short));
     resp
 }
 
@@ -2335,6 +2343,11 @@ pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, 
 
                                 if ui.button("Copy path").clicked() {
                                     ui.ctx().copy_text(entry.path.display().to_string());
+                                    ui.close();
+                                }
+
+                                if ui.button("Show in File Manager").clicked() {
+                                    show_in_file_manager(&entry.path);
                                     ui.close();
                                 }
 
@@ -2927,6 +2940,56 @@ pub fn open_in_system(path: &std::path::Path) {
     // stdout carries the JSON-RPC stream when MCP runs over stdio.
     use std::process::Stdio;
     let _ = cmd.arg(path).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+}
+
+/// Opens the system file manager on the folder of `path` with the file selected. Linux file managers do that through
+/// the FileManager1 D-Bus interface, without one the folder opens with nothing selected.
+pub fn show_in_file_manager(path: &std::path::Path) {
+    let path = crate::state::absolute(path);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // Explorer only understands the path quoted after the comma, which Rust's own quoting would not produce.
+        let _ = std::process::Command::new("explorer").raw_arg(format!("/select,\"{}\"", path.display())).spawn();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Stdio;
+        let _ = std::process::Command::new("open").arg("-R").arg(&path).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    std::thread::spawn(move || {
+        use std::process::{Command, Stdio};
+        let uri = file_uri(&path);
+        let ran = |cmd: &mut Command| cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
+        let (object, method) = ("/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems");
+        let shown = ran(Command::new("dbus-send")
+            .args(["--session", "--print-reply", "--reply-timeout=3000", "--dest=org.freedesktop.FileManager1", object, method])
+            .arg(format!("array:string:{uri}"))
+            .arg("string:"))
+            || ran(Command::new("gdbus")
+                .args(["call", "--session", "--dest", "org.freedesktop.FileManager1", "--object-path", object, "--method", method])
+                .arg(format!("['{uri}']"))
+                .arg("''"));
+        if !shown {
+            open_in_system(path.parent().unwrap_or(&path));
+        }
+    });
+}
+
+/// A `file://` URI for an absolute path. Everything but unreserved characters, slashes and colons is percent encoded,
+/// which also keeps commas and quotes out of the D-Bus arguments.
+pub fn file_uri(path: &std::path::Path) -> String {
+    let text = path.to_string_lossy().replace('\\', "/");
+    let mut uri = String::from(if text.starts_with('/') { "file://" } else { "file:///" });
+    for b in text.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' | b':' => uri.push(b as char),
+            _ => uri.push_str(&format!("%{b:02X}")),
+        }
+    }
+
+    uri
 }
 
 // ------------------------------------------------------------------- history

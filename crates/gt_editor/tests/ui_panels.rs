@@ -770,3 +770,33 @@ fn model_browser_groups_by_source_with_a_header_per_pack() {
     assert!(harness.query_by_label("CC0").is_some(), "the header shows the pack's license");
     assert_eq!(harness.query_all_by_label("1 model").count(), 2, "each header shows its model count");
 }
+
+#[test]
+fn model_menu_offers_to_show_the_file() {
+    use gt_editor::models::{ModelEntry, PackInfo};
+
+    let mut f = Fixture::new();
+    let pack = std::sync::Arc::new(PackInfo { name: "Pack".into(), ..Default::default() });
+    f.state.model_library.entries = vec![ModelEntry {
+        name: "crate".into(),
+        folder: String::new(),
+        path: "/models/crate.glb".into(),
+        ext: "glb".into(),
+        source: pack,
+        credit: None,
+        mtime: None,
+    }];
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(700.0, 500.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::model_browser(ui, &mut f.state, &mut f.panels, &mut f.actions, None), f);
+    harness.run_steps(2);
+    harness.get_by_label("crate").click_secondary();
+    harness.run_steps(2);
+    harness.get_by_label("Show in File Manager");
+}
+
+#[test]
+fn file_uris_escape_what_a_uri_or_d_bus_would_misread() {
+    assert_eq!(panels::file_uri(std::path::Path::new("/home/a b/tex,1'.png")), "file:///home/a%20b/tex%2C1%27.png");
+    assert_eq!(panels::file_uri(std::path::Path::new("C:\\maps\\x.png")), "file:///C:/maps/x.png");
+}
