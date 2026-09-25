@@ -35,6 +35,7 @@ Select clears the selection.
 | Drag off the selection | Draw a brush |
 | Drag the selection | Move. Ctrl copies, Shift locks the axis, Alt moves vertically in 3D |
 | Click, double click | Select, select the whole group |
+| Click again at the same spot, or Alt+click (2D) | Select the next object under the cursor, such as a wall under its ceiling in the Top view |
 | Ctrl+click | Add to or remove from the selection, in the views and the Outliner |
 | Shift+click in the Outliner | Select the rows from the last clicked one |
 | Shift+click, Ctrl+Shift+click | Select one face, add or remove a face |
@@ -42,7 +43,7 @@ Select clears the selection.
 | Ctrl+Shift+drag a selected face (3D) | Extrude a new brush |
 | Right drag (3D) | Look around. Hold it and use WASD to fly, Q and E to go down and up |
 | Middle drag | Pan |
-| Alt+left drag (3D, nothing selected) | Orbit |
+| Alt+left drag (3D) | Orbit. In the Select tool a drag that starts on the selection or its gizmo moves it vertically instead |
 | Ctrl+wheel (Sculpt, Blend, Paint, Scatter) | Resize the brush |
 
 ## Editing

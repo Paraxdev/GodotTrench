@@ -2686,7 +2686,7 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
 pub const TOOL_HELP: [(&str, &str); 14] = [
     (
         "Select",
-        "Click selects the object, double click its whole group. Drag empty space draws a brush, drag the selection moves it (Alt vertical, Ctrl duplicates). In 3D the gizmo arrows, squares, rings and boxes move, rotate and scale. Entity gizmo handles (hinges, travel, radius) drag here.",
+        "Click selects the object, double click its whole group. In 2D click again or Alt+click for the object behind it. Drag empty space draws a brush, drag the selection moves it (Alt vertical, Ctrl duplicates) and in 2D a yellow edge resizes it. Alt+drag elsewhere in 3D orbits. In 3D the gizmo arrows, squares, rings and boxes move, rotate and scale. Entity gizmo handles (hinges, travel, radius) drag here.",
     ),
     ("Clip", "Click two or three points, Tab picks the side to keep, Enter clips."),
     ("Vertex", "Drag brush vertices, edge and face midpoints split. Del removes vertices."),

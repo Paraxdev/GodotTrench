@@ -257,6 +257,50 @@ fn keys_stay_with_windows_menus_and_the_palette() {
 
 #[test]
 #[ignore]
+fn alt_orbit_click_cycling_and_edge_grab() {
+    let ed = Editor::launch("picking");
+    let floor = ed.box_brush([-64.0, 0.0, -64.0], [64.0, 16.0, 64.0]);
+    let ceiling = ed.box_brush([-64.0, 112.0, -64.0], [64.0, 128.0, 64.0]);
+    ed.call("set_camera", json!({ "view": "top", "center": [0, 0, 0], "zoom": 1.0 }));
+
+    // In the Top view the ceiling covers the floor, clicking again at the same spot or Alt+click reaches it.
+    ed.input("top", json!([{ "type": "click", "world": [0, 0, 0] }]));
+    let first = selected(&ed);
+    ed.input("top", json!([{ "type": "click", "world": [0, 0, 0] }]));
+    let second = selected(&ed);
+    assert!(first.len() == 1 && second.len() == 1 && first != second, "{first:?} then {second:?}");
+    assert!([floor, ceiling].contains(&first[0]) && [floor, ceiling].contains(&second[0]));
+    ed.input("top", json!([{ "type": "click", "world": [0, 0, 0], "modifiers": ["alt"] }]));
+    assert_eq!(selected(&ed), first, "Alt+click steps on and wraps around");
+
+    // A drag a few pixels outside the edge still resizes instead of drawing a new brush.
+    ed.call("select", json!({ "ids": [floor] }));
+    ed.input("top", json!([{ "type": "drag", "world": [70, 0, 0], "to_world": [102, 0, 0] }]));
+    assert_eq!(ed.brushes(), 2, "no stray brush");
+    let (_, max) = ed.selection_bounds();
+    assert!(approx(&max, &[96.0, 16.0, 64.0]), "edge grabbed from 6 pixels off {max:?}");
+
+    // Alt+drag in 3D orbits unless it starts on the selection, which then moves vertically.
+    ed.call("select", json!({ "ids": [ceiling] }));
+    ed.call("set_camera", json!({ "view": "3d", "position": [-300, 250, 300], "look_at": [0, 64, 0] }));
+    let camera = |ed: &Editor| ed.state()["cameras"].as_array().unwrap().iter().find(|c| c["view"] == "3d").unwrap()["position"].clone();
+    let before = camera(&ed);
+    ed.input("3d", json!([{ "type": "drag", "x": 30, "y": 30, "to": [90, 40], "modifiers": ["alt"] }]));
+    assert_ne!(camera(&ed), before, "Alt+drag off the selection orbits");
+    let (min, _) = ed.selection_bounds();
+    assert!(approx(&min, &[-64.0, 112.0, -64.0]), "the selection stays put {min:?}");
+    assert_eq!(ed.brushes(), 2);
+    // A wide slab, so the drag can start on it well away from the transform gizmo in its middle.
+    let slab = ed.box_brush([-384.0, 112.0, -384.0], [384.0, 128.0, 384.0]);
+    ed.call("select", json!({ "ids": [slab] }));
+    ed.call("set_camera", json!({ "view": "3d", "position": [-300, 250, 300], "look_at": [0, 64, 0] }));
+    ed.input("3d", json!([{ "type": "drag", "world": [-200, 128, 200], "to_world": [-200, 200, 200], "modifiers": ["alt"], "steps": 12 }]));
+    let (min, _) = ed.selection_bounds();
+    assert!(min[1] > 112.0 && approx(&[min[0], min[2]], &[-384.0, -384.0]), "Alt+drag on the selection moves it up {min:?}");
+}
+
+#[test]
+#[ignore]
 fn clip_vertex_rotate_tools() {
     let ed = Editor::launch("tools");
     ed.box_brush([-64.0, 0.0, -32.0], [64.0, 64.0, 32.0]);
