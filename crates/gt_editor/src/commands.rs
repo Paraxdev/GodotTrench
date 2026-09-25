@@ -1287,6 +1287,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             }
         }
         Action::InstallNatureModels => match crate::scatter_tool::install_nature(state, false) {
+            Ok(0) => state.set_status(format!("The nature models are already installed in {}", gt_doc::scatter::NATURE_DIR)),
             Ok(n) => state.set_status(format!("Installed {n} nature models into {}", gt_doc::scatter::NATURE_DIR)),
             Err(e) => state.set_status(e),
         },
@@ -2371,6 +2372,19 @@ mod tests {
         assert!(import_model(&mut state, &outside, ModelImport::Prop, DVec3::ZERO).is_err());
         assert!(import_model(&mut state, &outside, ModelImport::Brushes, DVec3::ZERO).is_err());
         assert_eq!(state.doc.map.entity_count(), 0);
+    }
+
+    #[test]
+    fn installing_nature_models_twice_says_they_are_there() {
+        let dir = std::env::temp_dir().join(format!("gt_nature_{}", std::process::id()));
+        let mut state = EditorState::new(Default::default());
+        state.game.project_root = Some(dir.clone());
+        let ctx = egui::Context::default();
+        execute(&mut state, Action::InstallNatureModels, &ctx);
+        assert!(state.status.starts_with("Installed "), "{}", state.status);
+        execute(&mut state, Action::InstallNatureModels, &ctx);
+        assert!(state.status.contains("already installed"), "{}", state.status);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
