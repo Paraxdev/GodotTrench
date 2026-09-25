@@ -310,6 +310,8 @@ pub struct EditorState {
     pub last_bounds: Aabb,
     /// Node picked in a view that the outliner should expand to and scroll into sight.
     pub outliner_reveal: Option<NodeId>,
+    /// Object under the pointer in the outliner, outlined in the views.
+    pub outliner_hover: Option<NodeId>,
     /// World position under the mouse in the last hovered viewport.
     pub cursor_world: Option<DVec3>,
     pub focus_request: Option<Aabb>,
@@ -452,6 +454,7 @@ impl EditorState {
             status_time: Instant::now(),
             last_bounds: Aabb::new(DVec3::ZERO, DVec3::splat(64.0)),
             outliner_reveal: None,
+            outliner_hover: None,
             cursor_world: None,
             focus_request: None,
             hollow_thickness: 16.0,

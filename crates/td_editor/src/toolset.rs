@@ -141,6 +141,34 @@ fn screen_dist(cam: &Camera, rect: Rect, world: DVec3, pos: Pos2) -> f32 {
     cam.project(rect, world).map(|p| (p - pos).length()).unwrap_or(f32::MAX)
 }
 
+/// Outline of the object under the pointer in the outliner, so a row can be matched to what it is in the views.
+fn outliner_hover_lines(state: &EditorState, id: NodeId, out: &mut Vec<LineVertex>) {
+    const COLOR: [f32; 4] = [0.39, 0.76, 0.93, 1.0];
+    let map = &state.doc.map;
+    if map.layers.contains(&id) {
+        return;
+    }
+
+    let mut drew = false;
+    for n in std::iter::once(id).chain(map.descendants(id)) {
+        if let Some(b) = map.brush(n) {
+            for (a, c) in b.edges() {
+                line(out, b.vertices[a as usize], b.vertices[c as usize], COLOR);
+            }
+
+            drew = true;
+        }
+    }
+
+    let bounds = map.bounds(id);
+    if !drew && !bounds.is_empty() {
+        let c = bounds.corners();
+        for (i, j) in Aabb::EDGES {
+            line(out, c[i], c[j], COLOR);
+        }
+    }
+}
+
 fn line(out: &mut Vec<LineVertex>, a: DVec3, b: DVec3, color: [f32; 4]) {
     out.push(LineVertex { pos: v3(a), color });
     out.push(LineVertex { pos: v3(b), color });
@@ -945,6 +973,10 @@ impl ToolSet {
         }
 
         crate::gizmos::lines(state, &mut out);
+        if let Some(id) = state.outliner_hover {
+            outliner_hover_lines(state, id, &mut out);
+        }
+
         let _ = rect;
         out
     }
