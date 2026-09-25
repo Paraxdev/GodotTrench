@@ -33,7 +33,8 @@ pub struct Viewport {
     pub(crate) popup_open: bool,
     press_modifiers: egui::Modifiers,
     /// Where the last plain click in a 2D view landed, a second click there selects the next object under it.
-    last_click: Option<Pos2>,
+    /// Where and when (egui time) the last plain click in a 2D view landed, a quick click at the same spot cycles.
+    last_click: Option<(Pos2, f64)>,
     /// The outer edge of the selected brushes a drag would resize, highlighted before the drag starts.
     hover_edge: Option<[Pos2; 2]>,
     pub(crate) pixels_per_point: f32,
@@ -178,9 +179,11 @@ impl Viewport {
                     }
                 } else if self.hovered && scroll != 0.0 && !(brush_tool && modifiers.command) && !(cx.state.tool == ToolKind::Texture && modifiers.alt) {
                     // Near geometry a notch moves a fixed step, from far away it covers a fifth of the distance to
-                    // the surface under the pointer, so it closes in quickly without flying through it.
+                    // the surface straight ahead, so it closes in quickly without flying through it. With nothing
+                    // ahead, the ground under the pointer sets the pace.
                     let step = fly_speed * 0.004;
-                    let hit = response.hover_pos().and_then(|p| picking::pick(cx.state, &self.camera.ray(rect, p)));
+                    let hit = picking::pick(cx.state, &Ray::new(self.camera.position, self.camera.forward()))
+                        .or_else(|| response.hover_pos().and_then(|p| picking::pick(cx.state, &self.camera.ray(rect, p))));
                     let step = hit.map_or(step, |h| step.max(h.distance * WHEEL_DOLLY / NOTCH_POINTS));
                     self.camera.position += self.camera.forward() * (scroll as f64) * step;
                 }
@@ -340,6 +343,14 @@ impl Viewport {
         out
     }
 
+    /// What a double click acts on: the object its first click selected, which in a 2D view may lie under another.
+    fn double_click_hit(&self, cx: &ViewCtx, pos: Pos2) -> Option<Hit> {
+        let targets = self.click_targets(cx, pos);
+        let selection = &cx.state.doc.selection.nodes;
+        let chosen = targets.iter().find(|(t, _)| selection.len() == 1 && selection.contains(t)).or(targets.first());
+        chosen.map(|(_, h)| *h)
+    }
+
     fn update_cursor_world(&self, response: &Response, cx: &mut ViewCtx) {
         let Some(pos) = response.hover_pos() else { return };
         let world = match self.camera.kind {
@@ -372,13 +383,19 @@ impl Viewport {
         {
             let mut hit = self.pick(cx, pos);
             let plain = !modifiers.command && !modifiers.shift;
+            let now = ui.input(|i| i.time);
             if self.camera.kind.is_2d() && plain {
-                // Clicking again at the same spot, or Alt+click, steps through everything under the cursor, so a
+                // Clicking again soon at the same spot, or Alt+click, steps through everything under the cursor, so a
                 // wall under its ceiling in the Top view can be picked.
-                let again = self.last_click.is_some_and(|p| p.distance(pos) < 4.0);
+                let again = self.last_click.is_some_and(|(p, t)| p.distance(pos) < 4.0 && now - t < CLICK_CYCLE_SECONDS);
                 let targets = self.click_targets(cx, pos);
                 let current = targets.iter().position(|(t, _)| cx.state.doc.selection.nodes.len() == 1 && cx.state.doc.selection.nodes.contains(t));
-                if (again || modifiers.alt) && targets.len() > 1 {
+                if response.double_clicked() {
+                    // The second click of a double click keeps what the first one picked for the double click below.
+                    if let Some(i) = current {
+                        hit = Some(targets[i].1);
+                    }
+                } else if (again || modifiers.alt) && targets.len() > 1 {
                     let next = current.map_or(0, |i| (i + 1) % targets.len());
                     hit = Some(targets[next].1);
                     cx.state.set_status(format!("Object {} of {} under the cursor, click again for the next", next + 1, targets.len()));
@@ -387,7 +404,7 @@ impl Viewport {
                 }
             }
 
-            self.last_click = (self.camera.kind.is_2d() && plain).then_some(pos);
+            self.last_click = (self.camera.kind.is_2d() && plain).then_some((pos, now));
             let map = &cx.state.doc.map;
             match hit {
                 Some(h) if modifiers.shift && h.face.is_some() => {
@@ -444,7 +461,8 @@ impl Viewport {
         }
 
         if response.double_clicked()
-            && let Some(h) = response.interact_pointer_pos().and_then(|p| self.pick(cx, p))
+            && let Some(pos) = response.interact_pointer_pos()
+            && let Some(h) = self.double_click_hit(cx, pos)
         {
             // A click picks the object, a double click widens that to the whole group around it.
             let map = &cx.state.doc.map;
@@ -1088,6 +1106,9 @@ impl Viewport {
 }
 
 /// Points of `smooth_scroll_delta` egui makes of one mouse wheel notch. Trackpads send smaller point deltas.
+/// How soon a second click at the same spot in a 2D view has to follow to select the next object under the cursor.
+/// Longer than a double click, short enough that clicking the selection again later does not cycle away from it.
+const CLICK_CYCLE_SECONDS: f64 = 1.5;
 const NOTCH_POINTS: f64 = 40.0;
 /// Zoom factor of one wheel notch in the 2D views.
 const WHEEL_ZOOM: f64 = 1.2;

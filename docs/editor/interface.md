@@ -35,8 +35,8 @@ Open any panel from *View > Panels*, and *Reset Layout* in the same menu restore
 
 The views are 3D, Top, Front and Side. The 2D views look straight along one axis, which makes lining things up easier.
 With something selected, they print its width above it and its height beside it. A click in a 2D view selects the
-nearest object along the view, so a ceiling hides the walls under it in the Top view. Click again at the same spot, or
-Alt+click, to step to the next object under the cursor.
+nearest object along the view, so a ceiling hides the walls under it in the Top view. Click again at the same spot
+within a second or so, or Alt+click at any time, to step to the next object under the cursor.
 
 | Do this | To |
 | --- | --- |
@@ -56,7 +56,7 @@ modified tab asks to save, discard or cancel, and quitting lists every unsaved m
 | --- | --- | --- |
 | Right drag | Look around. WASD moves, Q and E go down and up, Shift triples the speed | Pan |
 | Middle drag | Pan | Pan |
-| Wheel | Move forward and back, faster the farther away the surface under the pointer is | Zoom towards the cursor |
+| Wheel | Move forward and back, faster the farther away the surface straight ahead is | Zoom towards the cursor |
 | Alt+left drag | Orbit, unless the drag starts on the selection, which then moves vertically | |
 
 WASD only flies while the right button is held, otherwise those keys are shortcuts. Hovering a view's tab shows its
