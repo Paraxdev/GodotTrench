@@ -41,6 +41,7 @@ pub struct PanelState {
     new_value: String,
     outliner_filter: String,
     outliner_offset: f32,
+    outliner_anchor: Option<NodeId>,
     issues: Vec<gt_doc::issues::Issue>,
     issues_revision: u64,
     issues_overlays: u64,
@@ -77,6 +78,7 @@ impl Default for PanelState {
             new_value: String::new(),
             outliner_filter: String::new(),
             outliner_offset: 0.0,
+            outliner_anchor: None,
             issues: Vec::new(),
             issues_revision: 0,
             issues_overlays: 0,
@@ -131,7 +133,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
 
     let row_h = 20.0;
     let mut toggles: Vec<(NodeId, u8)> = Vec::new();
-    let mut clicked: Option<(NodeId, bool)> = None;
+    let mut clicked: Option<(NodeId, egui::Modifiers)> = None;
     let mut set_layer: Option<NodeId> = None;
     let mut rename: Option<(NodeId, String)> = None;
     let mut hovered: Option<NodeId> = None;
@@ -228,7 +230,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                         set_layer = Some(*id);
                     }
 
-                    clicked = Some((*id, ui.input(|i| i.modifiers.command)));
+                    clicked = Some((*id, ui.input(|i| i.modifiers)));
                 }
 
                 if resp.double_clicked() {
@@ -236,7 +238,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                 }
 
                 if resp.secondary_clicked() && !selected && !matches!(node.kind, NodeKind::Layer(_)) {
-                    clicked = Some((*id, false));
+                    clicked = Some((*id, egui::Modifiers::NONE));
                 }
 
                 resp.context_menu(|ui| {
@@ -378,16 +380,45 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
         state.current_layer = l;
     }
 
-    if let Some((id, toggle)) = clicked {
-        state.last_bounds = state.doc.map.bounds(id);
-        state.doc.select(|_, s| {
-            if toggle {
-                s.toggle_node(id);
-            } else {
+    if let Some((id, modifiers)) = clicked {
+        let order: Vec<NodeId> = rows.iter().map(|(_, r)| *r).collect();
+        select_outliner_row(state, ps, &order, id, modifiers);
+    }
+}
+
+/// Plain click selects one row, Ctrl toggles it, Shift selects the rows from the last clicked one and Ctrl+Shift adds
+/// them. A range leaves out layers and rows whose group is already in it, those would move twice.
+fn select_outliner_row(state: &mut EditorState, ps: &mut PanelState, order: &[NodeId], id: NodeId, modifiers: egui::Modifiers) {
+    let map = &state.doc.map;
+    let anchor = ps.outliner_anchor.and_then(|a| order.iter().position(|r| *r == a));
+    let range: Option<Vec<NodeId>> = match (modifiers.shift, anchor, order.iter().position(|r| *r == id)) {
+        (true, Some(from), Some(to)) => {
+            let rows = &order[from.min(to)..=from.max(to)];
+            let objects = |r: &&NodeId| !matches!(map.get(**r).map(|n| &n.kind), Some(NodeKind::Layer(_)) | None);
+            let picked: Vec<NodeId> = rows.iter().filter(objects).copied().collect();
+            Some(picked.iter().copied().filter(|r| !map.ancestors(*r).iter().any(|a| picked.contains(a))).collect())
+        }
+        _ => None,
+    };
+
+    state.last_bounds = map.bounds(id);
+    state.doc.select(|_, s| match range {
+        Some(rows) => {
+            if !modifiers.command {
                 s.clear();
-                s.select_node(id);
             }
-        });
+
+            s.faces.clear();
+            s.nodes.extend(rows);
+        }
+        None if modifiers.command => s.toggle_node(id),
+        None => {
+            s.clear();
+            s.select_node(id);
+        }
+    });
+    if !modifiers.shift || anchor.is_none() {
+        ps.outliner_anchor = Some(id);
     }
 }
 

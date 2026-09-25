@@ -32,7 +32,8 @@ Select clears the selection.
 | Drag off the selection | Draw a brush |
 | Drag the selection | Move. Ctrl copies, Shift locks the axis, Alt moves vertically in 3D |
 | Click, double click | Select, select the whole group |
-| Ctrl+click | Add to or remove from the selection |
+| Ctrl+click | Add to or remove from the selection, in the views and the Outliner |
+| Shift+click in the Outliner | Select the rows from the last clicked one |
 | Shift+click, Ctrl+Shift+click | Select one face, add or remove a face |
 | Shift+drag a selected face (3D) | Push or pull it |
 | Ctrl+Shift+drag a selected face (3D) | Extrude a new brush |

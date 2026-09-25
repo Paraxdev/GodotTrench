@@ -470,6 +470,44 @@ fn outliner_toggles_visibility_and_adds_layers() {
 }
 
 #[test]
+fn outliner_shift_click_selects_a_range_and_ctrl_click_toggles() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    let ids: Vec<gt_core::NodeId> = f.state.doc.edit("add", |m, _| {
+        (0..4)
+            .map(|i| {
+                let min = DVec3::new(i as f64 * 128.0, 0.0, 0.0);
+                m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(min, min + DVec3::splat(64.0)), "dev/grey").unwrap()))
+            })
+            .collect()
+    });
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(360.0, 400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::outliner(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    harness.get_by_label("Expand").click();
+    harness.run();
+    let selected = |h: &Harness<Fixture>| {
+        let sel = &h.state().state.doc.selection.nodes;
+        ids.iter().map(|id| sel.contains(id)).collect::<Vec<_>>()
+    };
+    let click = |h: &mut Harness<Fixture>, i: usize, modifiers: egui::Modifiers| {
+        h.get_all_by_label_contains("brush").nth(i).unwrap().click_modifiers(modifiers);
+        h.run();
+    };
+
+    click(&mut harness, 0, egui::Modifiers::NONE);
+    click(&mut harness, 2, egui::Modifiers::SHIFT);
+    assert_eq!(selected(&harness), [true, true, true, false], "Shift selects the rows from the last clicked one");
+    click(&mut harness, 1, egui::Modifiers::COMMAND);
+    assert_eq!(selected(&harness), [true, false, true, false], "Ctrl takes one out");
+    click(&mut harness, 3, egui::Modifiers::COMMAND | egui::Modifiers::SHIFT);
+    assert_eq!(selected(&harness), [true, true, true, true], "Ctrl+Shift adds the range from the row Ctrl clicked");
+    click(&mut harness, 3, egui::Modifiers::NONE);
+    assert_eq!(selected(&harness), [false, false, false, true]);
+}
+
+#[test]
 fn outliner_context_menu_selects_and_acts_on_objects() {
     let mut f = Fixture::new();
     let layer = f.state.doc.map.default_layer();

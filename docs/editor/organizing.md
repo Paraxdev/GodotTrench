@@ -9,6 +9,10 @@ clicking a layer makes it current. The eye hides an object or layer, the lock st
 Brush and mesh rows show their size and lowest corner, so the walls a Hollow or a Subtract leaves behind can be told
 apart. Hold the pointer over a row to see its materials and bounds, and to outline the object in every view.
 
+Ctrl+click a row to add it to the selection or take it out, and Shift+click to select every row between the last
+clicked one and this one. Ctrl+Shift+click adds that range to what is already selected. The Outliner is often the
+easier place to pick objects that hide behind others in the views.
+
 For reference geometry that should never reach Godot, right click its layer and pick *Toggle Omit From Export*. Hiding
 is not enough, Godot still builds hidden objects.
 

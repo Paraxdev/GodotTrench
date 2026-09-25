@@ -1022,6 +1022,38 @@ fn view_panes_maximize_close_and_come_back() {
     assert_eq!(width(&ed), docked, "Shift+Space again brings the four views back");
 }
 
+/// Ctrl+click adds objects in the views. With the UV Editor tab showing it grabs all of a brush's faces instead, but
+/// only while the selection holds nothing but brushes and meshes, so a terrain or entity plus a brush still works.
+#[test]
+#[ignore]
+fn ctrl_click_adds_to_the_selection_with_the_uv_editor_showing() {
+    let ed = Editor::launch("ctrl_click");
+    let a = ed.box_brush([0.0, 0.0, 0.0], [64.0, 64.0, 64.0]);
+    let b = ed.box_brush([128.0, 0.0, 0.0], [192.0, 64.0, 64.0]);
+    let light = ed.call("create_entity", json!({ "classname": "light", "origin": [288, 32, 32] }))["id"].as_u64().unwrap();
+    ed.call("select", json!({ "ids": [] }));
+    ed.call("set_camera", json!({ "view": "top", "center": [150, 0, 32], "zoom": 1.0 }));
+    let nodes = |ed: &Editor| {
+        let mut n: Vec<u64> = ed.state()["selection"]["nodes"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap()).collect();
+        n.sort_unstable();
+        n
+    };
+    ed.input("top", json!([{ "type": "click", "world": [32, 64, 32] }]));
+    ed.input("top", json!([{ "type": "click", "world": [160, 64, 32], "modifiers": ["ctrl"] }]));
+    assert_eq!(nodes(&ed), vec![a, b]);
+
+    ed.input("window", json!([{ "type": "move", "x": 10, "y": 10 }, { "type": "key", "key": "F1" }, { "type": "text", "text": "texture: uv editor" }, { "type": "key", "key": "Enter" }]));
+    ed.input("top", json!([{ "type": "click", "world": [288, 32, 32] }]));
+    ed.input("top", json!([{ "type": "click", "world": [32, 64, 32], "modifiers": ["ctrl"] }]));
+    assert_eq!(nodes(&ed), vec![a, light], "an entity in the selection keeps Ctrl+click adding objects");
+
+    ed.call("select", json!({ "ids": [] }));
+    ed.input("top", json!([{ "type": "click", "world": [32, 64, 32], "modifiers": ["ctrl"] }]));
+    ed.input("top", json!([{ "type": "click", "world": [160, 64, 32], "modifiers": ["ctrl"] }]));
+    let state = ed.state();
+    assert_eq!(state["selection"]["faces"].as_array().unwrap().len(), 12, "both boxes' faces for UV work: {}", state["selection"]);
+}
+
 /// Script ergonomics found building the night maps: ids that follow CSG, joined id lists, carve materials, full mesh
 /// rotation, exposed-only scatter fills, forward slash paths, lamp fixtures and Node methods as inputs.
 #[test]
