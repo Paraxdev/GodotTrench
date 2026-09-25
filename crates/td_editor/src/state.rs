@@ -543,6 +543,11 @@ impl EditorState {
         if self.doc.map.layers.contains(&self.current_layer) { self.current_layer } else { self.doc.map.default_layer() }
     }
 
+    pub fn refresh_instance_extents(&mut self) {
+        self.prefabs.project_root = self.game.project_root.clone();
+        self.prefabs.refresh_extents(&mut self.doc.map, self.doc.path.as_deref());
+    }
+
     /// Drops open groups and a current layer that no longer exist. Undo restores `next_id`, so a removed layer's id can
     /// come back as a brush and new objects would nest under it.
     pub fn validate_insert_context(&mut self) {
