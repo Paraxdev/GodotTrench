@@ -34,6 +34,7 @@ pub struct PrefabCache {
 /// What [`PrefabCache::refresh_extents`] last filled in, so it only walks the map again when that could change.
 struct ExtentsSeen {
     nodes: imbl::OrdMap<NodeId, Node>,
+    paths: BTreeSet<String>,
     generation: u64,
     map_path: Option<PathBuf>,
     extents: Arc<BTreeMap<String, Aabb>>,
@@ -141,23 +142,15 @@ impl PrefabCache {
     /// Fills `map.instance_extents` with the bounds of every prefab the map instances, so bounds queries on an
     /// instance (the Inspector, framing, selection boxes) cover its content rather than a placeholder box.
     pub fn refresh_extents(&mut self, map: &mut Map, map_path: Option<&Path>) {
-        let is_instance = |n: &Node| matches!(n.kind, NodeKind::Instance(_));
-        if let Some(seen) = &mut self.extents_seen
-            && seen.generation == self.generation
-            && seen.map_path.as_deref() == map_path
-            && Arc::ptr_eq(&seen.extents, &map.instance_extents)
-        {
-            let instances_changed = !seen.nodes.ptr_eq(&map.nodes)
-                && seen.nodes.diff(&map.nodes).any(|d| match d {
-                    imbl::ordmap::DiffItem::Add(_, n) | imbl::ordmap::DiffItem::Remove(_, n) => is_instance(n),
-                    imbl::ordmap::DiffItem::Update { old, new } => is_instance(old.1) || is_instance(new.1),
-                });
-            seen.nodes = map.nodes.clone();
-            if !instances_changed {
-                return;
-            }
+        let generation = self.generation;
+        let current =
+            |seen: &ExtentsSeen| seen.generation == generation && seen.map_path.as_deref() == map_path && Arc::ptr_eq(&seen.extents, &map.instance_extents);
+        if self.extents_seen.as_ref().is_some_and(|seen| current(seen) && seen.nodes.ptr_eq(&map.nodes)) {
+            return;
         }
 
+        // Extents only depend on which prefab files are instanced. Collecting those is cheap, whereas diffing the nodes
+        // would compare every changed node in full, a sculpted terrain's heights included.
         let paths: BTreeSet<String> = map
             .nodes
             .values()
@@ -166,11 +159,19 @@ impl PrefabCache {
                 _ => None,
             })
             .collect();
+        if let Some(seen) = &mut self.extents_seen
+            && current(seen)
+            && seen.paths == paths
+        {
+            seen.nodes = map.nodes.clone();
+            return;
+        }
+
         let root = self.project_root.clone();
         let mut extents = BTreeMap::new();
-        for path in paths {
-            if let Some(file) = resolve(&path, map_path, root.as_deref()) {
-                extents.insert(path, self.get(&file).bounds);
+        for path in &paths {
+            if let Some(file) = resolve(path, map_path, root.as_deref()) {
+                extents.insert(path.clone(), self.get(&file).bounds);
             }
         }
 
@@ -180,6 +181,7 @@ impl PrefabCache {
 
         self.extents_seen = Some(ExtentsSeen {
             nodes: map.nodes.clone(),
+            paths,
             generation: self.generation,
             map_path: map_path.map(Path::to_path_buf),
             extents: map.instance_extents.clone(),
@@ -239,6 +241,18 @@ mod tests {
         older.instance_extents = Default::default();
         cache.refresh_extents(&mut older, Some(&main));
         assert_eq!(older.bounds(id).size(), DVec3::new(288.0, 64.0, 256.0));
+
+        let extents = map.instance_extents.clone();
+        map.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(16.0)), "m").unwrap()));
+        cache.refresh_extents(&mut map, Some(&main));
+        assert!(Arc::ptr_eq(&extents, &map.instance_extents), "other edits keep the extents");
+        let mut small = Map::new();
+        let small_layer = small.default_layer();
+        small.insert(small_layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(8.0)), "m").unwrap()));
+        format::save(&small, &dir.join("q.gtm")).unwrap();
+        let other = map.insert(layer, NodeKind::Instance(Instance { path: "q.gtm".into(), ..inst }));
+        cache.refresh_extents(&mut map, Some(&main));
+        assert_eq!(map.bounds(other).size(), DVec3::splat(8.0), "a newly instanced prefab gets its extents");
         let _ = std::fs::remove_dir_all(dir);
     }
 
