@@ -124,6 +124,7 @@ pub struct App {
     maximized: Option<DockState<Tab>>,
     /// The view last under the pointer, the one Maximize View fills the area with.
     active_view: usize,
+    project_maps: crate::welcome::ProjectMaps,
 }
 
 const PREFS_LABEL_WIDTH: f32 = 180.0;
@@ -621,6 +622,7 @@ impl App {
             last_tool: ToolKind::Select,
             maximized: None,
             active_view: 0,
+            project_maps: Default::default(),
         }
     }
 
@@ -831,6 +833,11 @@ impl App {
                             ui.close();
                         }
                     }
+                });
+                sub_menu(ui, None, "Maps in Project", |ui| {
+                    let root = self.state.game.project_root.clone();
+                    let maps = self.project_maps.get(root.as_deref());
+                    crate::welcome::maps_menu(ui, root.as_deref(), maps, m.actions);
                 });
                 ui.separator();
                 m.item(ui, Some(icons::SAVE), "Save", Action::Save);
@@ -1298,6 +1305,11 @@ impl App {
                 m.item(ui, Some(icons::COMMAND), "Command Palette", Action::ShowCommandPalette);
                 m.item(ui, Some(icons::KEYBOARD), "Keyboard Shortcuts…", Action::ShowKeymap);
                 m.item(ui, None, "Entity and Code Reference", Action::ShowReference);
+                if ui.add(menu_button(None, "Getting Started Guide", None)).on_hover_text(crate::welcome::GETTING_STARTED_URL).clicked() {
+                    ui.ctx().open_url(egui::OpenUrl::new_tab(crate::welcome::GETTING_STARTED_URL));
+                    ui.close();
+                }
+
                 ui.separator();
                 ui.label(RichText::new("GodotTrench, a brush and mesh level editor for Godot").strong());
                 for line in [
@@ -1842,6 +1854,9 @@ impl App {
                 ui.label("Invert look Y");
                 ui.checkbox(&mut p.invert_y, "");
                 ui.end_row();
+                ui.label("Tips on an empty map");
+                ui.checkbox(&mut p.start_hints, "");
+                ui.end_row();
                 ui.label("Grid opacity (3D)");
                 ui.add(egui::Slider::new(&mut p.grid_alpha, 0.0..=1.0));
                 ui.end_row();
@@ -2024,6 +2039,7 @@ struct Tabs<'a> {
     panels: &'a mut PanelState,
     tools: &'a mut ToolSet,
     actions: &'a mut Vec<Action>,
+    project_maps: &'a mut crate::welcome::ProjectMaps,
 }
 
 impl TabViewer for Tabs<'_> {
@@ -2039,6 +2055,11 @@ impl TabViewer for Tabs<'_> {
     fn on_tab_button(&mut self, tab: &mut Tab, response: &egui::Response) {
         if let Some(panel) = tab_panel(*tab) {
             response.clone().on_hover_text(panel.help());
+        } else if let Tab::View(i) = tab
+            && let Some(vp) = self.viewports.get(*i)
+        {
+            let help = if vp.kind().is_2d() { crate::welcome::CAMERA_2D_HELP } else { crate::welcome::CAMERA_3D_HELP };
+            response.clone().on_hover_text(help);
         }
     }
 
@@ -2048,6 +2069,7 @@ impl TabViewer for Tabs<'_> {
                 let Some(vp) = self.viewports.get_mut(*i) else { return };
                 let mut cx = ViewCtx { state: self.state, renderer: self.renderer, scene: self.scene, actions: self.actions, tools: self.tools };
                 vp.ui(ui, &mut cx);
+                crate::welcome::view_hint(ui, vp.rect, vp.kind(), self.state, self.project_maps, self.actions);
             }
             Tab::Outliner => panels::outliner(ui, self.state, self.panels, self.actions),
             Tab::Inspector => panels::inspector(ui, self.state, self.panels, self.actions),
@@ -2168,6 +2190,7 @@ impl eframe::App for App {
                 panels: &mut self.panels,
                 tools: &mut self.tools,
                 actions: &mut self.actions,
+                project_maps: &mut self.project_maps,
             };
             DockArea::new(&mut self.dock).show_leaf_collapse_buttons(false).show_inside(ui, &mut tabs);
             // Closing every tab of a leaf at once can take the last view with it.

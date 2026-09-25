@@ -5,7 +5,12 @@ GodotTrench follows TrenchBroom and Hammer, so most habits from either carry ove
 ## The window
 
 A menu command sits under the kind of object it changes, and the command palette (Ctrl+Shift+P or F1) finds any
-command by name. The **tool options bar** under the toolbar holds the settings of the active tool.
+command by name. Hovering a command with a jargon name, like *Hollow* or *UV Lock*, explains what it does, and the
+palette shows the same line under its list. The **tool options bar** under the toolbar holds the settings of the
+active tool.
+
+An empty map shows its first steps in the views, with a link to this guide and the maps of the open project.
+**Hide tips** turns them off, and *File > Preferences* brings them back.
 
 | Panel | Dock | What it is for |
 | --- | --- | --- |
@@ -49,7 +54,8 @@ modified tab asks to save, discard or cancel, and quitting lists every unsaved m
 | Wheel | Move forward and back | Zoom towards the cursor |
 | Alt+left drag, nothing selected | Orbit | |
 
-WASD only flies while the right button is held, otherwise those keys are shortcuts. **F** frames the selection in
+WASD only flies while the right button is held, otherwise those keys are shortcuts. Hovering a view's tab shows its
+controls. **F** frames the selection in
 every view, or the whole map when nothing is selected.
 
 Ctrl+Shift+1 to 9 stores the 3D camera as a bookmark and Ctrl+1 to 9 jumps back. Bookmarks are saved in the map,

@@ -124,7 +124,9 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
     if !filter.is_empty() && rows.iter().all(|(depth, _)| *depth == 0) {
         ui.label(RichText::new("No objects match the filter").weak());
     } else if map.layers.iter().all(|l| map.get(*l).is_none_or(|n| n.children.is_empty())) {
-        ui.label(RichText::new("The map is empty. Drag in a 2D view to draw a brush, or drag an entity in from the Entities panel.").weak());
+        ui.label(
+            RichText::new("The map is empty. Drag in the Top, Front or Side view to draw a box brush, or drag an entity in from the Entities panel.").weak(),
+        );
     }
 
     let row_h = 20.0;

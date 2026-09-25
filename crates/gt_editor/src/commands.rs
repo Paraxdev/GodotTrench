@@ -21,6 +21,8 @@ pub enum ModelImport {
 pub enum Action {
     NewMap,
     OpenMap,
+    /// Opens this map in a tab, without a file dialog.
+    OpenMapFile(std::path::PathBuf),
     OpenProject,
     Save,
     SaveAs,
@@ -683,6 +685,11 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             if let Some(path) = dialog.pick_file()
                 && let Err(e) = open_map_in_tab(state, &path)
             {
+                state.set_status(format!("Open failed: {e}"));
+            }
+        }
+        Action::OpenMapFile(path) => {
+            if let Err(e) = open_map_in_tab(state, &path) {
                 state.set_status(format!("Open failed: {e}"));
             }
         }
