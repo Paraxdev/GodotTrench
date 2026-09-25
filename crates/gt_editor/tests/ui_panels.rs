@@ -412,19 +412,37 @@ fn inspector_types_the_position_and_size_of_the_selection() {
         .with_size(egui::vec2(520.0, 700.0))
         .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
     harness.run();
-    let mut type_into = |field: usize, text: &str| {
+    // Digit by digit like a person types, nothing may change until Enter.
+    let type_digits = |harness: &mut Harness<Fixture>, field: usize, text: &str| {
         harness.get_all_by_role(egui::accesskit::Role::SpinButton).nth(field).unwrap().click();
         harness.run();
-        harness.get_all_by_role(egui::accesskit::Role::SpinButton).nth(field).unwrap().type_text(text);
+        harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
         harness.run();
-        harness.key_press(egui::Key::Enter);
-        harness.run();
+        let before = harness.state().state.doc.map.bounds(id);
+        for c in text.chars() {
+            harness.get_all_by_role(egui::accesskit::Role::SpinButton).nth(field).unwrap().type_text(&c.to_string());
+            harness.run();
+            assert_eq!(harness.state().state.doc.map.bounds(id), before, "typing {text} applied early");
+        }
     };
-    type_into(4, "128");
-    type_into(0, "32");
+    let undo_steps = |harness: &Harness<Fixture>| harness.state().state.doc.history.undo_labels().count();
+    let steps = undo_steps(&harness);
+    type_digits(&mut harness, 4, "128");
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    type_digits(&mut harness, 0, "32");
+    harness.key_press(egui::Key::Enter);
+    harness.run();
     let doc = &harness.state().state.doc;
     assert_eq!(doc.map.bounds(id), Aabb::new(DVec3::new(32.0, 0.0, 0.0), DVec3::new(96.0, 128.0, 16.0)), "the size grows from the lowest corner");
     assert_eq!(doc.history.undo_labels().take(2).collect::<Vec<_>>(), ["Set Position", "Set Size"]);
+    assert_eq!(undo_steps(&harness), steps + 2, "one undo step per typed value");
+
+    type_digits(&mut harness, 3, "0");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert_eq!(harness.state().state.doc.map.bounds(id).size(), DVec3::new(64.0, 128.0, 16.0), "Escape keeps the old size");
+    assert_eq!(undo_steps(&harness), steps + 2);
 }
 
 #[test]

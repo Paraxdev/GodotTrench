@@ -69,7 +69,8 @@ pub fn vector_input(ui: &mut Ui, values: &mut [f64], width: f32, speed: f64) -> 
 }
 
 /// As [`vector_input`], but a value dragged with the mouse lands on multiples of `grid` when that is above zero. A
-/// typed value is kept exactly.
+/// typed value is kept exactly and applies once on Enter or when the field loses focus, so typing 128 never passes
+/// through 1 and 12 on the way. Escape keeps the old value.
 pub fn vector_input_snapped(ui: &mut Ui, values: &mut [f64], width: f32, speed: f64, grid: f64) -> bool {
     let n = values.len().max(1) as f32;
     let field_w = ((width - AXIS_GAP * (n - 1.0)) / n - AXIS_LABEL - 2.0).max(28.0);
@@ -88,8 +89,20 @@ pub fn vector_input_snapped(ui: &mut Ui, values: &mut [f64], width: f32, speed: 
                 _ => ("Z", theme::AXIS[2]),
             };
             ui.add_sized([AXIS_LABEL, ROW_HEIGHT - 2.0], egui::Label::new(RichText::new(letter).color(color).strong()));
-            let drag = egui::DragValue::new(value).speed(speed).custom_formatter(|n, _| format_number(n));
+            let before = *value;
+            let drag = egui::DragValue::new(value).speed(speed).update_while_editing(false).custom_formatter(|n, _| format_number(n));
             let response = ui.add_sized([field_w, ROW_HEIGHT - 2.0], drag);
+            // egui still sees the lost focus one frame after Escape and applies the typed text then, so undo that.
+            let escaped = response.id.with("escaped");
+            if ui.data_mut(|d| d.remove_temp::<bool>(escaped)).is_some() && response.changed() {
+                *value = before;
+                continue;
+            }
+
+            if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                ui.data_mut(|d| d.insert_temp(escaped, true));
+            }
+
             if response.changed() && response.dragged() && grid > 0.0 {
                 *value = gt_core::snap_to_grid(*value, grid);
             }
