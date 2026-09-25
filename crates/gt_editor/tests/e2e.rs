@@ -196,6 +196,65 @@ fn resize_edges_and_faces() {
     ed.screenshot("3d", "after_face_drag");
 }
 
+fn selected(ed: &Editor) -> Vec<u64> {
+    ed.state()["selection"]["nodes"].as_array().unwrap().iter().map(|n| n.as_u64().unwrap()).collect()
+}
+
+#[test]
+#[ignore]
+fn keys_stay_with_windows_menus_and_the_palette() {
+    let ed = Editor::launch("key_scope");
+    let a = ed.box_brush([-64.0, 0.0, -64.0], [64.0, 32.0, 64.0]);
+    ed.box_brush([128.0, 0.0, -64.0], [192.0, 32.0, 64.0]);
+    ed.call("select", json!({ "ids": [a] }));
+    ed.call("set_camera", json!({ "view": "top", "center": [0, 0, 0], "zoom": 0.5 }));
+
+    // With the pointer over a floating window, keys meant for it must not delete, convert or reselect anything.
+    ed.input("top", json!([{ "type": "move" }, { "type": "key", "key": "B", "modifiers": ["ctrl", "shift"] }]));
+    // A new window is laid out on its first frame and shown on the next.
+    ed.input("top", json!([{ "type": "move" }]));
+    let state = ed.state();
+    let window = state["ui"]["windows"].as_array().unwrap().iter().find(|w| w["title"] == "Shape Generator").expect("Shape Generator open")["rect"].clone();
+    let r: Vec<f64> = window.as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+    let keys = ["Delete", "Backspace", "Tab", "Escape"].map(|k| json!({ "type": "key", "key": k }));
+    let mut events = vec![json!({ "type": "move", "x": (r[0] + r[2]) / 2.0, "y": r[3] - 6.0 })];
+    events.extend(keys);
+    events.push(json!({ "type": "key", "key": "A", "modifiers": ["ctrl"] }));
+    ed.input("window", Value::Array(events));
+    let state = ed.state();
+    assert_eq!((state["map"]["brushes"].as_u64(), state["map"]["meshes"].as_u64()), (Some(2), Some(0)), "nothing deleted or converted");
+    assert_eq!(state["editor"]["tool"], "Select");
+    assert_eq!(selected(&ed), vec![a], "the selection is untouched");
+
+    // Escape or a click outside closes the command palette without running anything or reaching the view.
+    ed.input("top", json!([{ "type": "move" }, { "type": "key", "key": "F1" }, { "type": "text", "text": "grid larger" }, { "type": "key", "key": "Escape" }]));
+    assert_eq!(selected(&ed), vec![a], "Escape only closed the palette");
+    ed.input("top", json!([{ "type": "move" }, { "type": "key", "key": "F1" }]));
+    ed.call("set_camera", json!({ "view": "front", "center": [0, 0, 0], "zoom": 0.5 }));
+    ed.input("front", json!([{ "type": "click", "world": [-300, 100, 0] }]));
+    assert_eq!(selected(&ed), vec![a], "the click outside only closed the palette");
+    assert_eq!(ed.state()["editor"]["grid"], 16.0);
+    ed.input("top", json!([{ "type": "move" }, { "type": "key", "key": "CloseBracket" }]));
+    assert_eq!(ed.state()["editor"]["grid"], 32.0, "keys reach the map again");
+
+    // Dismissing a context menu keeps the selection.
+    ed.input("top", json!([{ "type": "click", "world": [0, 0, 0], "button": "right" }, { "type": "key", "key": "Escape" }]));
+    assert_eq!(selected(&ed), vec![a], "Escape only closed the menu");
+    ed.input("top", json!([{ "type": "click", "world": [0, 0, 0], "button": "right" }]));
+    ed.input("top", json!([{ "type": "click", "world": [-300, 0, 150] }]));
+    assert_eq!(selected(&ed), vec![a], "the click outside only closed the menu");
+    ed.input("top", json!([{ "type": "click", "world": [-300, 0, 150] }]));
+    assert!(selected(&ed).is_empty(), "a click on empty space deselects again");
+
+    // Tab edits brushes in the Vertex tool and never converts them.
+    ed.call("select", json!({ "ids": [a] }));
+    ed.input("top", json!([{ "type": "move" }, { "type": "key", "key": "Tab" }]));
+    let state = ed.state();
+    assert_eq!((state["editor"]["tool"].as_str(), state["map"]["meshes"].as_u64()), (Some("Vertex"), Some(0)));
+    ed.input("top", json!([{ "type": "move" }, { "type": "key", "key": "Tab" }]));
+    assert_eq!(ed.state()["editor"]["tool"], "Select");
+}
+
 #[test]
 #[ignore]
 fn clip_vertex_rotate_tools() {

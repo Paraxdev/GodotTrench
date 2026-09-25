@@ -885,7 +885,11 @@ fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Act
             ui,
             actions,
             vec![
-                ("Edit Mesh", "Convert brushes to a mesh and edit it Blender style (Tab)", Action::EditMesh),
+                (
+                    "Edit Mesh",
+                    "Convert brushes to a mesh and edit it Blender style. Tab edits meshes this way, but on brushes it opens the Vertex tool and converts nothing",
+                    Action::EditMesh,
+                ),
                 ("To Mesh", "Convert the selected brushes to meshes", Action::ConvertToMesh),
                 ("Join Meshes", "Join the selected meshes and brushes into one mesh", Action::JoinMeshes),
                 ("Duplicate Linked", "Linked copies update together when one is edited", Action::DuplicateLinked),

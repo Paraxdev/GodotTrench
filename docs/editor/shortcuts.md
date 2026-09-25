@@ -3,6 +3,9 @@
 These are the defaults of the TrenchBroom preset. *Help > Keyboard Shortcuts…* lists every binding and rebinds any of
 them, and *File > Preferences > Keymap preset* switches to Hammer or Blender.
 
+Shortcuts wait while you type in a field or a menu is open. While the pointer is over a floating window, such as the
+Shape Generator, only save, undo and redo work, so a key meant for the window never deletes or changes the map.
+
 ## Tools
 
 Pressing a tool's key again goes back to Select. Esc cancels a drag or stroke, otherwise returns to Select, and in
@@ -15,7 +18,7 @@ Select clears the selection.
 | V | Vertex, to drag the corners of brushes |
 | R | Rotate |
 | T | Scale |
-| Tab | Mesh editing. Selected brushes are converted to a mesh first |
+| Tab | Edit the selection where it stands: meshes in the Mesh tool, brushes in the Vertex tool. It never converts a brush, *Mesh > Edit Mesh* does that |
 | Shift+T | Texture, to align textures on faces |
 | P | Vertex paint, to paint colours onto vertices |
 | G | Sculpt terrain and displacements |

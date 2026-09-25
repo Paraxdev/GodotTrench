@@ -27,6 +27,10 @@ pub struct Viewport {
     drag: Option<Drag>,
     pub rect: Rect,
     pub hovered: bool,
+    /// The id of the view's response, so the app can tell a drag in a view from a drag on a panel widget.
+    pub id: egui::Id,
+    /// A menu or popup was open when the frame started, see `App::ui`.
+    pub(crate) popup_open: bool,
     press_modifiers: egui::Modifiers,
     pub(crate) pixels_per_point: f32,
 }
@@ -46,6 +50,8 @@ impl Viewport {
             drag: None,
             rect: Rect::NOTHING,
             hovered: false,
+            id: egui::Id::NULL,
+            popup_open: false,
             press_modifiers: Default::default(),
             pixels_per_point: 1.0,
         }
@@ -60,6 +66,7 @@ impl Viewport {
         let response = ui.allocate_rect(rect, Sense::click_and_drag());
         self.rect = rect;
         self.hovered = response.hovered();
+        self.id = response.id;
         if rect.width() < 2.0 || rect.height() < 2.0 {
             return;
         }
@@ -84,9 +91,11 @@ impl Viewport {
 
         self.handle_camera(ui, &response, cx);
         self.handle_keys(ui, cx);
-        if cx.state.tool == ToolKind::Select || self.is_camera_drag() {
+        // While a menu is open a click in the view only closes it, like in most programs.
+        let closing_menu = self.popup_open && self.drag.is_none();
+        if !closing_menu && (cx.state.tool == ToolKind::Select || self.is_camera_drag()) {
             self.handle_select_tool(ui, &response, cx);
-        } else {
+        } else if !closing_menu {
             let hover = response.hover_pos();
             cx.tools.viewport_input(ui, &response, &self.camera, rect, hover, cx.state);
         }

@@ -6,8 +6,8 @@ GodotTrench follows TrenchBroom and Hammer, so most habits from either carry ove
 
 A menu command sits under the kind of object it changes, and the command palette (Ctrl+Shift+P or F1) finds any
 command by name. Hovering a command with a jargon name, like *Hollow* or *UV Lock*, explains what it does, and the
-palette shows the same line under its list. The **tool options bar** under the toolbar holds the settings of the
-active tool.
+palette shows the same line under its list. Esc or a click outside closes the palette without running anything.
+The **tool options bar** under the toolbar holds the settings of the active tool.
 
 An empty map shows its first steps in the views, with a link to this guide and the maps of the open project.
 **Hide tips** turns them off, and *File > Preferences* brings them back.

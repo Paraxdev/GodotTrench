@@ -3,9 +3,10 @@
 Unlike brushes, meshes can have dents, holes and bent faces, so use them for rocks, pipes, smooth arches and other
 shapes brushes cannot make.
 
-Select brushes and press **Tab** (*Mesh > Edit Mesh*) to convert them to a mesh and start editing, Tab again goes back
-to objects. The Mesh tool button on the toolbar starts editing without converting anything. Ctrl+Shift+E only
-converts, Ctrl+Shift+J joins meshes into one.
+*Mesh > Edit Mesh* converts the selected brushes to a mesh and starts editing it. With a mesh selected **Tab** does the
+same, and Tab again goes back to objects. Tab on brushes opens the Vertex tool instead, so a stray key press never
+turns a brush into a mesh. The Mesh tool button on the toolbar starts editing without converting anything.
+Ctrl+Shift+E only converts, Ctrl+Shift+J joins meshes into one.
 
 ## Keys
 

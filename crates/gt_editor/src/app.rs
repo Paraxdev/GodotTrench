@@ -125,6 +125,41 @@ pub struct App {
     /// The view last under the pointer, the one Maximize View fills the area with.
     active_view: usize,
     project_maps: crate::welcome::ProjectMaps,
+    /// A widget had the keyboard focus at the end of the last frame, see `key_scope`.
+    ui_had_focus: bool,
+    /// Floating windows shown this frame and where, reported by get_state so input scripts can click into them.
+    pub(crate) open_windows: Vec<(&'static str, egui::Rect)>,
+}
+
+const WINDOW_TITLES: [&str; 6] = ["Shape Generator", "Create Terrain", "Keyboard Shortcuts", "Link Entities", "Hotspot Editor", "Preferences"];
+
+/// Who this frame's keys belong to. Decided before any widget runs, so it reads what egui knew at the end of the last
+/// frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum KeyScope {
+    /// A text or number field or an open menu takes every key.
+    Ui,
+    /// The pointer is over a floating window, or a widget such as a number field is being dragged. Only save, undo
+    /// and redo run, so a key meant for the window cannot delete, convert or reselect anything in the map.
+    WindowHovered,
+    Editor,
+}
+
+/// `had_focus` is whether a widget had the keyboard at the end of the last frame. egui drops the focus on Escape
+/// before the frame starts, so without it the Escape that leaves a field would also clear the selection.
+pub(crate) fn key_scope(ctx: &egui::Context, had_focus: bool, view_hovered: bool, is_view: impl Fn(egui::Id) -> bool) -> KeyScope {
+    if had_focus || ctx.egui_wants_keyboard_input() || egui::Popup::is_any_open(ctx) {
+        return KeyScope::Ui;
+    }
+
+    match ctx.dragged_id() {
+        Some(id) if is_view(id) => return KeyScope::Editor,
+        Some(_) => return KeyScope::WindowHovered,
+        None => {}
+    }
+
+    let over_window = ctx.pointer_hover_pos().and_then(|p| ctx.layer_id_at(p)).is_some_and(|layer| layer.order != egui::Order::Background);
+    if over_window && !view_hovered { KeyScope::WindowHovered } else { KeyScope::Editor }
 }
 
 const PREFS_LABEL_WIDTH: f32 = 180.0;
@@ -623,6 +658,8 @@ impl App {
             maximized: None,
             active_view: 0,
             project_maps: Default::default(),
+            ui_had_focus: false,
+            open_windows: Vec::new(),
         }
     }
 
@@ -643,27 +680,38 @@ impl App {
     }
 
     fn collect_input_actions(&mut self, ctx: &egui::Context) {
-        if ctx.egui_wants_keyboard_input() || self.keymap.open {
+        let view_hovered = self.viewports.iter().any(|v| v.hovered);
+        let scope = key_scope(ctx, self.ui_had_focus || self.keymap.open, view_hovered, |id| self.viewports.iter().any(|v| v.id == id));
+        if scope == KeyScope::Ui {
             return;
         }
 
-        // While a view flies with WASD, Q and E, ToolSet::keys swallows plain keys so no single key shortcut fires.
-        self.tools.flying |= self.viewports.iter().any(|v| v.is_flying());
-        if self.panels.uv.take_escape(ctx) || self.tools.keys(ctx, &mut self.state) {
-            return;
-        }
+        if scope == KeyScope::Editor {
+            // Tab belongs to the tools and shortcuts here. Left to egui it would also move the keyboard focus into a
+            // panel, and every key after it would go there.
+            if ctx.input(|i| i.key_pressed(egui::Key::Tab)) {
+                ctx.memory_mut(|m| m.move_focus(egui::FocusDirection::None));
+            }
 
-        let events = ctx.input(|i| i.events.clone());
-        for e in events {
-            match e {
-                egui::Event::Copy => self.actions.push(Action::Copy),
-                egui::Event::Cut => self.actions.push(Action::Cut),
-                egui::Event::Paste(text) => self.actions.push(Action::Paste(text)),
-                _ => {}
+            // While a view flies with WASD, Q and E, ToolSet::keys swallows plain keys so no single key shortcut fires.
+            self.tools.flying |= self.viewports.iter().any(|v| v.is_flying());
+            if self.panels.uv.take_escape(ctx) || self.tools.keys(ctx, &mut self.state) {
+                return;
+            }
+
+            let events = ctx.input(|i| i.events.clone());
+            for e in events {
+                match e {
+                    egui::Event::Copy => self.actions.push(Action::Copy),
+                    egui::Event::Cut => self.actions.push(Action::Cut),
+                    egui::Event::Paste(text) => self.actions.push(Action::Paste(text)),
+                    _ => {}
+                }
             }
         }
 
         let mut shortcuts = commands::shortcuts(&self.state.prefs);
+        shortcuts.retain(|(_, action)| scope == KeyScope::Editor || matches!(action, Action::Save | Action::SaveAs | Action::Undo | Action::Redo));
         // Most specific modifier combinations first, so Ctrl+Shift+Z is not taken by Ctrl+Z.
         shortcuts.sort_by_key(|(s, _)| std::cmp::Reverse(s.modifiers.shift as u8 + s.modifiers.command as u8 + s.modifiers.alt as u8));
         for (shortcut, action) in shortcuts {
@@ -2136,6 +2184,12 @@ impl eframe::App for App {
         self.state.validate_insert_context();
         self.tools.sync(&self.state);
         self.collect_input_actions(&ctx);
+        // The click that closes a menu must not also select or draw in the view under it. Menus close as the frame
+        // runs, so the views need to know whether one was open when it started.
+        let popup_open = egui::Popup::is_any_open(&ctx);
+        for v in &mut self.viewports {
+            v.popup_open = popup_open;
+        }
 
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
         let margin = bar_margin(&ctx.global_style());
@@ -2224,6 +2278,13 @@ impl eframe::App for App {
         self.hotspot_editor.show(&ctx, &mut self.state, &mut self.actions);
         self.link_dialog.show(&ctx, &mut self.state);
         panels::dnd_preview(&ctx, &mut self.state);
+        // egui ids a window by its title text, which it holds as an Option.
+        let window_id = |title: &str| egui::Id::new(Some(title));
+        self.open_windows = WINDOW_TITLES
+            .into_iter()
+            .filter(|t| ctx.memory(|m| m.areas().is_visible(&egui::LayerId::new(egui::Order::Middle, window_id(t)))))
+            .filter_map(|t| Some((t, ctx.memory(|m| m.area_rect(window_id(t)))?)))
+            .collect();
 
         for action in std::mem::take(&mut self.actions) {
             let Some(action) = self.run_app_action(action) else { continue };
@@ -2257,6 +2318,7 @@ impl eframe::App for App {
         self.state.tick_autosave();
         self.state.poll_live_link();
         self.finish_input_script(&ctx);
+        self.ui_had_focus = ctx.egui_wants_keyboard_input();
 
         let title = format!("{} - GodotTrench", self.state.doc.title());
         if title != self.title {
@@ -2406,5 +2468,83 @@ mod tests {
     fn capitalizes_labels() {
         assert_eq!(capitalize("wireframe"), "Wireframe");
         assert_eq!(capitalize(""), "");
+    }
+
+    /// A floating window with a number field and a drop down, driven through egui's real input handling.
+    struct Dialog {
+        ctx: egui::Context,
+        had_focus: bool,
+        time: f64,
+        value: f64,
+        choice: u8,
+        field: egui::Rect,
+        combo: egui::Rect,
+    }
+
+    impl Dialog {
+        fn frame(&mut self, events: Vec<egui::Event>) -> KeyScope {
+            self.time += 0.05;
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+            self.ctx.begin_pass(egui::RawInput { events, time: Some(self.time), screen_rect: Some(screen), ..Default::default() });
+            let scope = key_scope(&self.ctx, self.had_focus, false, |_| false);
+            egui::Window::new("Dialog").fixed_pos([300.0, 200.0]).show(&self.ctx, |ui| {
+                self.field = ui.add(egui::DragValue::new(&mut self.value)).rect;
+                self.combo = egui::ComboBox::from_id_salt("choice")
+                    .selected_text(self.choice.to_string())
+                    .show_ui(ui, |ui| ui.selectable_value(&mut self.choice, 1, "1"))
+                    .response
+                    .rect;
+            });
+            self.had_focus = self.ctx.egui_wants_keyboard_input();
+            self.ctx.end_pass().drop_without_applying_deltas();
+            scope
+        }
+
+        fn click(&mut self, pos: egui::Pos2) -> KeyScope {
+            let button = |pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+            self.frame(vec![egui::Event::PointerMoved(pos)]);
+            self.frame(vec![button(true)]);
+            self.frame(vec![button(false)])
+        }
+
+        fn key(&mut self, key: egui::Key) -> KeyScope {
+            self.frame(vec![egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::NONE }])
+        }
+    }
+
+    #[test]
+    fn keys_meant_for_a_floating_window_never_reach_the_map() {
+        let mut d = Dialog {
+            ctx: egui::Context::default(),
+            had_focus: false,
+            time: 0.0,
+            value: 2.0,
+            choice: 0,
+            field: egui::Rect::NOTHING,
+            combo: egui::Rect::NOTHING,
+        };
+        d.frame(vec![]);
+        d.frame(vec![]);
+        assert_eq!(d.frame(vec![egui::Event::PointerMoved(egui::pos2(50.0, 50.0))]), KeyScope::Editor, "the pointer over the map");
+
+        let (field, combo) = (d.field.center(), d.combo.center());
+        assert_eq!(d.frame(vec![egui::Event::PointerMoved(field)]), KeyScope::WindowHovered, "hovering a window keeps plain keys from the map");
+        d.click(field);
+        assert_eq!(d.key(egui::Key::Backspace), KeyScope::Ui, "a clicked number field takes the keys");
+        assert_eq!(d.key(egui::Key::Tab), KeyScope::Ui);
+        d.click(field);
+        assert_eq!(d.key(egui::Key::Escape), KeyScope::Ui, "the Escape that leaves the field stays with it");
+        assert!(!d.ctx.egui_wants_keyboard_input());
+        assert_eq!(d.frame(vec![]), KeyScope::WindowHovered);
+
+        d.click(combo);
+        assert_eq!(d.frame(vec![egui::Event::PointerMoved(egui::pos2(50.0, 50.0))]), KeyScope::Ui, "an open drop down takes the keys");
+        assert_eq!(d.key(egui::Key::Escape), KeyScope::Ui, "the Escape that closes it does not clear the selection");
+        assert_eq!(d.frame(vec![]), KeyScope::Editor, "back to the map once it is closed");
+
+        d.frame(vec![egui::Event::PointerMoved(field)]);
+        d.frame(vec![egui::Event::PointerButton { pos: field, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE }]);
+        d.frame(vec![egui::Event::PointerMoved(egui::pos2(60.0, 60.0))]);
+        assert_eq!(d.frame(vec![egui::Event::PointerMoved(egui::pos2(70.0, 60.0))]), KeyScope::WindowHovered, "dragging a number field over the map");
     }
 }

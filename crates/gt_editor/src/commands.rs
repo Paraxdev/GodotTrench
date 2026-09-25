@@ -138,6 +138,9 @@ pub enum Action {
     JoinMeshes,
     /// Enters mesh editing, converting selected brushes first.
     EditMesh,
+    /// Tab: edits the selection where it stands, meshes in the Mesh tool and brushes in the Vertex tool, or goes back
+    /// to Select. Never converts, a reflex key press must not change what the objects are.
+    ToggleEditMode,
     MeshOp(MeshOp),
     DuplicateLinked,
     UnlinkGroups,
@@ -231,6 +234,7 @@ impl Action {
             Action::Justify(j) => format!("Justify Texture {}", j.label()),
             Action::TexelDensity(d) => format!("Texel Density {d}"),
             Action::MeshUv(k) => format!("Mesh UVs: {}", k.label()),
+            Action::ToggleEditMode => "Edit Mode".into(),
             Action::ToggleMaximizeView => "Maximize View".into(),
             Action::ViewLayout(1) => "Single View Layout".into(),
             Action::ViewLayout(2) => "Two View Layout".into(),
@@ -369,7 +373,7 @@ fn trenchbroom_bindings() -> Vec<(KeyboardShortcut, Action)> {
         (sc(NONE, Key::Q), Action::SetTool(ToolKind::Select)),
         (sc(NONE, Key::G), Action::SetTool(ToolKind::Sculpt)),
         (sc(NONE, Key::P), Action::SetTool(ToolKind::Paint)),
-        (sc(NONE, Key::Tab), Action::EditMesh),
+        (sc(NONE, Key::Tab), Action::ToggleEditMode),
         (sc(NONE, Key::B), Action::SetTool(ToolKind::Scatter)),
         (sc(SHIFT, Key::G), Action::SetTool(ToolKind::Blend)),
         (sc(SHIFT, Key::E), Action::SetTool(ToolKind::Volume)),
@@ -528,6 +532,7 @@ pub fn bindable_actions() -> Vec<Action> {
         Action::ImportModel(ModelImport::Brushes),
         Action::ImportModel(ModelImport::Prop),
         Action::ConvertToBrushes,
+        Action::EditMesh,
         Action::UnlinkGroups,
         Action::SetCordonFromSelection,
         Action::ToggleCordon,
@@ -934,6 +939,19 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 ));
             } else {
                 state.set_status("Mesh edit mode (Tab returns to object mode)");
+            }
+        }
+        Action::ToggleEditMode => {
+            if matches!(state.tool, ToolKind::Mesh | ToolKind::Vertex) {
+                state.tool = ToolKind::Select;
+                state.set_status("Object mode");
+            } else if !state.doc.selection.meshes(&state.doc.map).is_empty() {
+                execute(state, Action::EditMesh, ctx);
+            } else if !state.doc.selection.brushes(&state.doc.map).is_empty() {
+                state.tool = ToolKind::Vertex;
+                state.set_status("Vertex editing the selected brushes (Tab returns). To edit them as a mesh, use Mesh > Edit Mesh");
+            } else {
+                state.set_status("Select a brush or mesh, then Tab edits its vertices");
             }
         }
         Action::ConvertToMesh => {
@@ -2202,7 +2220,7 @@ mod tests {
     fn presets_and_overrides() {
         let mut prefs = Prefs::default();
         let tb = shortcuts(&prefs);
-        assert!(tb.iter().any(|(s, a)| *a == Action::EditMesh && s.logical_key == Key::Tab));
+        assert!(tb.iter().any(|(s, a)| *a == Action::ToggleEditMode && s.logical_key == Key::Tab));
         prefs.keymap_preset = "hammer".into();
         let hammer = shortcuts(&prefs);
         assert!(hammer.iter().any(|(s, a)| *a == Action::SetTool(ToolKind::Clip) && s.modifiers.shift && s.logical_key == Key::X));
