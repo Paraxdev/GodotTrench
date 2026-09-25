@@ -893,7 +893,7 @@ impl App {
                 });
                 sub_menu(ui, None, "Maps in Project", |ui| {
                     let root = self.state.game.project_root.clone();
-                    let maps = self.project_maps.get(root.as_deref());
+                    let maps = self.project_maps.get(ui.ctx(), root.as_deref());
                     crate::welcome::maps_menu(ui, root.as_deref(), maps, m.actions);
                 });
                 ui.separator();
