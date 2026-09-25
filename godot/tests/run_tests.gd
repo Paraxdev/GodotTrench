@@ -81,6 +81,7 @@ func _initialize() -> void:
 	await test_scripted_scene_map()
 	test_scatter_and_blend()
 	test_texture_size_override()
+	test_builtin_dev_textures()
 	test_emission()
 	await test_night_environment()
 	await test_sky_faces()
@@ -419,6 +420,15 @@ func test_warm_up() -> void:
 	check(not is_instance_valid(w), "the warm-up frees itself")
 	map.queue_free()
 	await process_frame
+
+func test_builtin_dev_textures() -> void:
+	print("- the editor's dev/ colours build as their colour without texture files")
+	var settings: FuncGodotMapSettings = load(SETTINGS)
+	var grey := FuncGodotUtil.load_texture("dev/grey", settings)
+	check(grey != null and grey.resource_path == FuncGodotUtil.builtin_texture_dir.path_join("dev/grey.png"), "dev/grey loads the addon's grey grid")
+	check(grey != null and grey.get_size() == Vector2(128, 128), "at the editor's size, so the UVs match")
+	check(FuncGodotUtil.load_texture("dev/nope", settings).resource_path == FuncGodotUtil.default_texture_path, "an unknown dev/ name gets the checker")
+	check(FuncGodotUtil.load_texture("base/floor", settings).resource_path.begins_with(settings.base_texture_dir), "project textures still load")
 
 func test_missing_map_settings() -> void:
 	print("- a map without settings builds with the project's default ones")
