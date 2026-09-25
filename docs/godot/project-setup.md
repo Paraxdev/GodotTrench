@@ -45,7 +45,7 @@ port.
 | `trenchdot/game_config` | the addon's config | The config that writes `trenchdot_game.json` |
 | `trenchdot/auto_export_game_config` | true | Export the game config again when files change |
 | `trenchdot/live_link_enabled` | true | Run the live link server that TrenchDot talks to |
-| `trenchdot/live_link_port` | 7842 | Must match *Godot live link* in the editor's preferences. Changes apply right away |
+| `trenchdot/live_link_port` | 7842 | Must match *Godot live link* in the editor's preferences. Changes apply right away. Between 1024 and 65535, anything else falls back to 7842 with a warning |
 | `trenchdot/threaded_build` | true | Convert brushes and terrain chunks on the WorkerThreadPool, so big maps build faster |
 | `trenchdot/live_chunk_size` | 16.0 | In live mode, worldspawn geometry is split into chunks of this size in meters, so an edit only rebuilds its chunk |
 | `trenchdot/csharp_entity_dirs` | `res://` | Where C# entities are found at build time |
