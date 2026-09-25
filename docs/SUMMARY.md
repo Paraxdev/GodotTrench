@@ -29,7 +29,7 @@
 * [Navigation](godot/navigation.md)
 * [Shader warm-up](godot/warm-up.md)
 * [Streaming big maps](godot/streaming.md)
-* [Live mode and hot reload](godot/live.md)
+* [Saving, live mode and hot reload](godot/live.md)
 * [Running Godot from the editor](godot/running-godot.md)
 * [Materials](godot/materials.md)
 * [Night lighting](godot/night-lighting.md)

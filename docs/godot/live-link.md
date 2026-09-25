@@ -23,9 +23,9 @@ does.
 
 | Event | Fields | Reply |
 | --- | --- | --- |
-| `status` | | `project`, `godot` (version), `pid`, `maps: [{path, epoch}]` for the edited scene |
-| `map_saved` | `path` | `rebuilt`, the number of map nodes rebuilt from the file |
-| `build` | `path`, `text` | `rebuilt`, built from `text` instead of the file |
+| `status` | | `project`, `godot` (version), `pid`, `scene` (the scene tab Godot shows) and `maps: [{path, epoch}]` for it |
+| `map_saved` | `path` | `rebuilt`, the number of map nodes rebuilt from the file, `scene` and `waiting` |
+| `build` | `path`, `text` | Like `map_saved`, built from `text` instead of the file |
 | `focus` | | Brings the Godot window to the front |
 | `export_game_config` | | Writes `godottrench_game.json` |
 | `live_begin` | `path`, `text`, `content` | `epoch` |
@@ -45,9 +45,14 @@ meanwhile.
 `max_climb`, `max_slope` in meters and degrees) and returns it in the map's units and axes. With `text` Godot builds
 that map first unless it was last built from the same text.
 
-Paths are absolute with forward slashes, and only `FuncGodotMap` nodes in the edited scene with *Auto Rebuild On Save*
-on take part. `text` is the whole map as JSON. `content` is the content id in the END chunk of the saved file, so a
-scene built from an unchanged file is not built again when a session starts.
+Paths are absolute with forward slashes, and only `FuncGodotMap` nodes in the edited scene, the scene tab Godot shows,
+with *Auto Rebuild On Save* on take part. `scene` is its `res://` path, or empty with no scene open. `waiting` lists the
+other open scene tabs that use the map. After a `map_saved` they build the file when their tab is shown, after a
+`build` they do not. `text` is the whole map as JSON. `content` is the content id in the END chunk of the saved file,
+so a scene built from an unchanged file is not built again when a session starts.
+
+When the port is taken, usually by a second Godot editor with the same project, the addon warns once in the Output
+panel and tries the port again every three seconds, so it takes over when the other editor closes.
 
 ## Live ops
 
@@ -73,6 +78,10 @@ godot --headless --editor --path godot res://path/scene.tscn
 ```
 
 A headless Godot draws nothing, so `capture` answers with an error there. Test captures with a windowed editor.
+
+The addon tests do this in
+[`godot/tests/editor/live_link_tabs.gd`](https://github.com/Paraxdev/GodotTrench/blob/main/godot/tests/editor/live_link_tabs.gd),
+which opens, closes, reloads and switches scene tabs in a headless editor and checks what the link reports.
 
 {% mcp %}
 

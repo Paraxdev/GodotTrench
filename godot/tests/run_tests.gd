@@ -100,6 +100,7 @@ func _initialize() -> void:
 	await test_withered_city_playthrough()
 	await preload("res://tests/gt_editor_parity_test.gd").run(self)
 	await load("res://tests/overlay_tests.gd").run(self)
+	await load("res://tests/live_link_tests.gd").run(self)
 	await load("res://tests/nav_tests.gd").run(self)
 	await load("res://tests/gtm_file_tests.gd").run(self)
 	await load("res://tests/entity_tests.gd").new().run(self)

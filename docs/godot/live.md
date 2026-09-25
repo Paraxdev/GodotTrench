@@ -1,4 +1,23 @@
-# Live mode and hot reload
+# Saving, live mode and hot reload
+
+## Rebuild on save
+
+Every save in GodotTrench rebuilds the scene tab Godot shows, when that scene has a `FuncGodotMap` for the saved map
+with *Auto Rebuild On Save* on. A scene in another tab that uses the map rebuilds when you switch to its tab. Closing
+and reopening a tab or reloading a scene does not break this. The status bar says what Godot did:
+
+| The status bar says | Do this |
+| --- | --- |
+| Godot rebuilt 1 map node(s) | Nothing. Save the scene in Godot to keep the result |
+| The scene is not the current scene tab in Godot | Switch to that tab, it rebuilds then |
+| The current scene tab has no `FuncGodotMap` for the map | Open the scene that builds the map, or turn on *Auto Rebuild On Save* on its map node |
+| Godot has no scene open | Open the scene with the map in Godot, and if it is open, read on |
+| Godot is not running with the GodotTrench addon | Open the project in the Godot editor with the addon enabled |
+
+Only one Godot editor can hold the live link port. A second editor with the same project warns in its Output panel
+that the live link could not listen, and GodotTrench keeps talking to the first one, which may have no scene open.
+Close the editor you do not use and the other takes the link over within a few seconds. *Godot > Open Project in
+Godot Editor* shows an editor that already has the project instead of starting a second one.
 
 ## Live mode
 

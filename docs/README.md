@@ -27,7 +27,7 @@ only shows up in the editor once the addon has written the game config again.
 | Set up a project and build a first room | [Getting started](getting-started.md) |
 | Find your way around the editor | [Interface and navigation](editor/interface.md), [Shortcuts](editor/shortcuts.md) |
 | Understand what happens in Godot | [Building maps](godot/building.md) |
-| See edits in Godot before saving | [Live mode and hot reload](godot/live.md) |
+| See edits in Godot before saving | [Saving, live mode and hot reload](godot/live.md) |
 | Make doors, triggers and scripted scenes | [How entity I/O works](gameplay/io.md), then [Button opens a door](tutorials/button-door.md) |
 | Build outdoor terrain | [Terrain](editor/terrain.md), then the [sea island tutorial](tutorials/sea-island.md) |
 

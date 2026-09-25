@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/map/func_godot_map.gd" id="1_map"]
+[ext_resource type="Resource" path="res://demo/demo_map_settings.tres" id="2_settings"]
+
+[node name="LiveLinkMap" type="Node3D"]
+
+[node name="Map" type="Node3D" parent="."]
+script = ExtResource("1_map")
+local_map_file = "res://tests/maps/basic.gtm"
+map_settings = ExtResource("2_settings")

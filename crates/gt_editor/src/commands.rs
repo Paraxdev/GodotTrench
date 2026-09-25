@@ -1054,9 +1054,15 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         | Action::MeshOp(_)
         | Action::StoreCamera(_)
         | Action::RecallCamera(_) => {}
-        Action::OpenGodotEditor | Action::RunGodotProject => launch_godot(state, action == Action::OpenGodotEditor),
-        Action::FocusGodot => match &state.link {
-            Some(link) if state.godot_has_project() => link.request(crate::live_link::Request::Focus),
+        Action::RunGodotProject => launch_godot(state, false),
+        // A second Godot editor with the project could not take the live link port, so show the one that has it.
+        Action::OpenGodotEditor | Action::FocusGodot => match &state.link {
+            Some(link) if state.godot_has_project() => {
+                link.request(crate::live_link::Request::Focus);
+                if action == Action::OpenGodotEditor {
+                    state.set_status("The Godot editor already has this project open, showing it");
+                }
+            }
             _ => launch_godot(state, true),
         },
         Action::BuildInGodot => build_in_godot(state),
@@ -2132,6 +2138,23 @@ mod tests {
         state.doc.path = Some(maps.join("level.gtm"));
         assert_eq!(dialog_dir(&state).as_deref(), Some(maps.as_path()), "a saved map starts in its own folder");
         std::fs::remove_dir_all(&project).ok();
+    }
+
+    #[test]
+    fn open_in_godot_shows_the_editor_that_has_the_project() {
+        let mut state = EditorState::new(Default::default());
+        let root = std::path::PathBuf::from("/games/court");
+        state.game.project_root = Some(root.clone());
+        state.link_state = crate::live_link::LinkState {
+            connected: true,
+            project: Some(crate::live_link::path_key(&crate::live_link::godot_path(&root))),
+            ..Default::default()
+        };
+        state.link = Some(crate::live_link::LiveLink::idle());
+        execute(&mut state, Action::OpenGodotEditor, &egui::Context::default());
+        let requests = state.link.as_ref().unwrap().take_requests();
+        assert!(matches!(requests[..], [crate::live_link::Request::Focus]), "asks Godot to come forward, once");
+        assert_eq!(state.status, "The Godot editor already has this project open, showing it", "no second editor is launched");
     }
 
     #[test]

@@ -58,7 +58,9 @@ blocks such as boxes and wedges.
 Add a `FuncGodotMap` node to a scene, set its *Local Map File* to your `.gtm` and press **Build Map** in the Inspector.
 Brushes become meshes with collision and entities become nodes with their scripts, saved with the scene.
 
-Leave that scene open in Godot and every save in GodotTrench rebuilds it. Save the scene in Godot to keep the result.
+Leave that scene open in Godot and every save in GodotTrench rebuilds it, straight away while its tab is the current
+one, or when you switch back to it. Save the scene in Godot to keep the result. If a save does not rebuild, the status
+bar says why, see [Rebuild on save](godot/live.md#rebuild-on-save).
 
 > **Warning:** A build deletes the children of the `FuncGodotMap` first. Put your own nodes next to the map node, or in
 > an [overlay](godot/overlays.md).

@@ -60,11 +60,43 @@ fn saved_message(path: &str) -> Value {
     json!({ "event": "map_saved", "path": path })
 }
 
-fn rebuilt_status(reply: &Value) -> String {
+fn rebuilt_status(reply: &Value, path: &str) -> String {
     match reply["rebuilt"].as_u64() {
-        Some(0) => "Live link: Godot has no open scene using this map".to_string(),
+        Some(0) => format!("Live link: {}", nothing_built(reply, path, true)),
         Some(n) => format!("Live link: Godot rebuilt {n} map node(s)"),
         None => format!("Live link: {}", reply["error"].as_str().unwrap_or("unexpected reply")),
+    }
+}
+
+/// Why Godot built nothing for the map at `path`, and what to do about it. Godot only builds the scene tab it shows, and
+/// with `saved` a background tab that uses the map builds the saved file once it is shown.
+fn nothing_built(reply: &Value, path: &str, saved: bool) -> String {
+    let file = |p: &str| p.rsplit('/').next().unwrap_or(p).to_string();
+    let map = file(path);
+    let waiting: Vec<String> = reply["waiting"].as_array().into_iter().flatten().filter_map(Value::as_str).map(file).collect();
+    match &waiting[..] {
+        [] => {}
+        [scene] => {
+            let then = if saved { "it rebuilds when you switch to it" } else { "switch to it and build again" };
+            return format!("{scene} uses {map} but is not the current scene tab in Godot, {then}");
+        }
+        [first @ .., last] => {
+            let then = if saved { "each rebuilds when you switch to it" } else { "switch to one and build again" };
+            return format!("{} and {last} use {map} but are not the current scene tab in Godot, {then}", first.join(", "));
+        }
+    }
+
+    match reply["scene"].as_str() {
+        Some("") => {
+            format!("Godot has no scene open. Open the scene with the FuncGodotMap for {map}, or if it is open, close any second Godot editor of this project")
+        }
+        Some(scene) => {
+            format!(
+                "{} is the current scene tab in Godot but has no FuncGodotMap for {map} with Auto Rebuild On Save on, open the scene that builds it",
+                file(scene)
+            )
+        }
+        None => format!("Godot has no open scene using {map}, open the scene with its FuncGodotMap in Godot"),
     }
 }
 
@@ -86,7 +118,7 @@ pub fn notify_saved_all(port: u16, game_port: Option<u16>, path: &Path) -> Recei
     let message = saved_message(&godot_path(path));
     std::thread::spawn(move || {
         let status = match send(port, &message) {
-            Ok(reply) => rebuilt_status(&reply),
+            Ok(reply) => rebuilt_status(&reply, message["path"].as_str().unwrap_or_default()),
             Err(e) => format!("Live link: {e}"),
         };
         let _ = tx.send(status + &game_status(game_port, &message));
@@ -225,6 +257,18 @@ impl LiveLink {
 
     pub fn poll_status(&self) -> Option<String> {
         self.statuses.try_recv().ok()
+    }
+}
+
+#[cfg(test)]
+impl LiveLink {
+    /// A link without a worker, so its requests stay queued for a test to look at.
+    pub(crate) fn idle() -> Self {
+        Self { shared: Arc::default(), statuses: mpsc::channel().1 }
+    }
+
+    pub(crate) fn take_requests(&self) -> Vec<Request> {
+        self.with(|s| s.requests.drain(..).collect())
     }
 }
 
@@ -457,7 +501,7 @@ impl Worker {
                 self.sessions.remove(&key);
                 let message = saved_message(&path);
                 let status = match self.long_call(message.clone()) {
-                    Ok(reply) => rebuilt_status(&reply),
+                    Ok(reply) => rebuilt_status(&reply, &path),
                     Err(e) => format!("Live link: {e}"),
                 };
                 self.say(status + &game_status(game_port, &message));
@@ -471,7 +515,7 @@ impl Worker {
                 let text = gt_doc::format::to_string(&map);
                 let status = match self.long_call(json!({ "event": "build", "path": path, "text": text, "force": true })) {
                     Ok(reply) if reply["ok"].as_bool() == Some(true) => match reply["rebuilt"].as_u64() {
-                        Some(0) | None => "Godot has no open scene using this map".to_string(),
+                        Some(0) | None => nothing_built(&reply, &path, false),
                         Some(n) => format!("Godot built {n} map node(s) from the map as shown here"),
                     },
                     Ok(reply) => format!("Build in Godot failed: {}", reply["error"].as_str().unwrap_or("unexpected reply")),
@@ -628,6 +672,25 @@ mod tests {
         let rx = notify_saved(port, Path::new("maps/level.gtm"));
         let status = rx.recv_timeout(Duration::from_secs(5)).unwrap();
         assert!(status.contains("rebuilt 2"), "{status}");
+    }
+
+    #[test]
+    fn explains_why_godot_built_nothing() {
+        let path = "C:/game/maps/shop.gtm";
+        let status = |reply: Value| rebuilt_status(&reply, path);
+        assert_eq!(status(json!({ "ok": true, "rebuilt": 2 })), "Live link: Godot rebuilt 2 map node(s)");
+        let waiting = status(json!({ "ok": true, "rebuilt": 0, "scene": "res://menu.tscn", "waiting": ["res://levels/shop.tscn"] }));
+        assert!(waiting.contains("shop.tscn uses shop.gtm") && waiting.contains("rebuilds when you switch to it"), "{waiting}");
+        let other = status(json!({ "ok": true, "rebuilt": 0, "scene": "res://menu.tscn" }));
+        assert!(other.contains("menu.tscn is the current scene tab") && other.contains("FuncGodotMap for shop.gtm"), "{other}");
+        let none = status(json!({ "ok": true, "rebuilt": 0, "scene": "" }));
+        assert!(none.contains("no scene open") && none.contains("second Godot editor"), "{none}");
+        let old_addon = status(json!({ "ok": true, "rebuilt": 0 }));
+        assert!(old_addon.contains("no open scene using shop.gtm"), "{old_addon}");
+        let several = status(json!({ "ok": true, "rebuilt": 0, "scene": "res://menu.tscn", "waiting": ["res://a.tscn", "res://b.tscn", "res://c.tscn"] }));
+        assert!(several.contains("a.tscn, b.tscn and c.tscn use shop.gtm but are not"), "{several}");
+        let build = nothing_built(&json!({ "ok": true, "rebuilt": 0, "waiting": ["res://shop.tscn"] }), path, false);
+        assert!(build.contains("build again"), "a build from unsaved edits is not kept for later: {build}");
     }
 
     #[test]

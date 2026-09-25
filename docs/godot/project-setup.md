@@ -44,8 +44,8 @@ port.
 | `func_godot/default_inverse_scale_factor` | 32 | Map units per meter |
 | `godottrench/game_config` | the addon's config | The config that writes `godottrench_game.json` |
 | `godottrench/auto_export_game_config` | true | Export the game config again when files change |
-| `godottrench/live_link_enabled` | true | Run the live link server that GodotTrench talks to, read when the Godot editor starts |
-| `godottrench/live_link_port` | 7842 | Must match *Godot live link* in the editor's preferences, read when the Godot editor starts |
+| `godottrench/live_link_enabled` | true | Run the live link server that GodotTrench talks to |
+| `godottrench/live_link_port` | 7842 | Must match *Godot live link* in the editor's preferences. Changes apply right away |
 | `godottrench/threaded_build` | true | Convert brushes and terrain chunks on the WorkerThreadPool, so big maps build faster |
 | `godottrench/live_chunk_size` | 16.0 | In live mode, worldspawn geometry is split into chunks of this size in meters, so an edit only rebuilds its chunk |
 | `godottrench/csharp_entity_dirs` | `res://` | Where C# entities are found at build time |
