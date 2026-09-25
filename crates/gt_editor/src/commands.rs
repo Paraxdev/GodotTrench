@@ -31,6 +31,8 @@ pub enum Action {
     RepeatLast,
     Delete,
     Duplicate,
+    /// Names the selected object in its Outliner row.
+    Rename,
     SelectAll,
     SelectNone,
     SelectInverse,
@@ -382,7 +384,8 @@ fn trenchbroom_bindings() -> Vec<(KeyboardShortcut, Action)> {
         (sc(SHIFT, Key::T), Action::SetTool(ToolKind::Texture)),
         (sc(CTRL, Key::U), Action::FocusSelection),
         (sc(NONE, Key::F), Action::FocusSelection),
-        (sc(NONE, Key::F2), Action::ToggleTextured),
+        (sc(NONE, Key::F2), Action::Rename),
+        (sc(NONE, Key::F4), Action::ToggleTextured),
         (sc(NONE, Key::F3), Action::SetShade(Shade::Lit)),
         (sc(CTRL_SHIFT, Key::W), Action::MoveToWorld),
         (sc(CTRL_SHIFT, Key::P), Action::ShowCommandPalette),
@@ -790,6 +793,13 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             let n = state.doc.edit("Delete", ops::delete_selection);
             state.set_status(format!("Deleted {n} objects"));
         }
+        Action::Rename => match state.doc.selection.nodes.first().copied().filter(|_| state.doc.selection.nodes.len() == 1) {
+            Some(id) => {
+                state.renaming = Some(id);
+                state.outliner_reveal = Some(id);
+            }
+            None => state.set_status("Select one object to rename it"),
+        },
         Action::Duplicate => {
             let offset = DVec3::new(grid, 0.0, grid);
             state.doc.edit("Duplicate", |m, s| ops::duplicate_selection(m, s, offset, opts));
@@ -2258,6 +2268,40 @@ mod tests {
         let ids: Vec<String> = bindable_actions().iter().map(|a| a.binding_id()).collect();
         let unique: std::collections::BTreeSet<&String> = ids.iter().collect();
         assert_eq!(ids.len(), unique.len());
+    }
+
+    #[test]
+    fn f2_renames_in_every_preset_and_shading_keeps_a_key() {
+        for preset in PRESETS {
+            let bindings = preset_bindings(preset);
+            let key = |action: &Action| bindings.iter().filter(|(_, a)| a == action).map(|(s, _)| shortcut_to_text(s)).collect::<Vec<_>>();
+            assert_eq!(key(&Action::Rename), ["F2"], "{preset}");
+            assert!(!key(&Action::ToggleTextured).is_empty(), "{preset}");
+        }
+
+        assert!(preset_bindings("trenchbroom").contains(&(sc(NONE, Key::F4), Action::ToggleTextured)));
+    }
+
+    #[test]
+    fn rename_needs_one_selected_object() {
+        let mut state = EditorState::new(Prefs::default());
+        let ctx = egui::Context::default();
+        let layer = state.doc.map.default_layer();
+        let (a, _) = state.doc.edit("add", |m, s| {
+            let a = m.insert(layer, gt_doc::NodeKind::Entity(gt_doc::Entity::new("light")));
+            let b = m.insert(layer, gt_doc::NodeKind::Entity(gt_doc::Entity::new("light")));
+            s.select_node(a);
+            s.select_node(b);
+            (a, b)
+        });
+        execute(&mut state, Action::Rename, &ctx);
+        assert_eq!(state.renaming, None);
+        state.doc.select(|_, s| {
+            s.clear();
+            s.select_node(a);
+        });
+        execute(&mut state, Action::Rename, &ctx);
+        assert_eq!((state.renaming, state.outliner_reveal), (Some(a), Some(a)), "the Outliner shows the row with its name field");
     }
 
     #[test]

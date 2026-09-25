@@ -1248,7 +1248,8 @@ fn context_menu(ui: &mut Ui, cx: &mut ViewCtx) {
             }
         });
     });
-    let entries: [Option<(&str, Action)>; 15] = [
+    let entries: [Option<(&str, Action)>; 16] = [
+        Some(("Rename", Action::Rename)),
         Some(("Move Brushes to World", Action::MoveToWorld)),
         None,
         Some(("Create Prefab from Selection…", Action::CreatePrefab)),

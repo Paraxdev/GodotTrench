@@ -42,6 +42,10 @@ pub struct PanelState {
     outliner_filter: String,
     outliner_offset: f32,
     outliner_anchor: Option<NodeId>,
+    /// The node the rename field was filled for, its text, and whether it still has to take the keyboard focus.
+    rename_for: Option<NodeId>,
+    rename_text: String,
+    rename_focus: bool,
     issues: Vec<gt_doc::issues::Issue>,
     issues_revision: u64,
     issues_overlays: u64,
@@ -79,6 +83,9 @@ impl Default for PanelState {
             outliner_filter: String::new(),
             outliner_offset: 0.0,
             outliner_anchor: None,
+            rename_for: None,
+            rename_text: String::new(),
+            rename_focus: false,
             issues: Vec::new(),
             issues_revision: 0,
             issues_overlays: 0,
@@ -114,12 +121,19 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
         ps.expanded.extend(map.ancestors(id));
     }
 
+    let renaming = state.renaming.filter(|id| map.contains(*id));
+    if renaming != ps.rename_for {
+        ps.rename_for = renaming;
+        ps.rename_text = renaming.and_then(|id| map.get(id)).map(|n| n.name()).unwrap_or_default();
+        ps.rename_focus = true;
+    }
+
     let filter = ps.outliner_filter.to_lowercase();
     let mut rows: Vec<(usize, NodeId)> = Vec::new();
     for layer in &map.layers {
         rows.push((0, *layer));
         if ps.expanded.contains(layer) || !filter.is_empty() {
-            push_rows(map, *layer, 1, &ps.expanded, &filter, &mut rows);
+            push_rows(map, *layer, 1, &ps.expanded, &filter, renaming, &mut rows);
         }
     }
 
@@ -136,6 +150,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
     let mut clicked: Option<(NodeId, egui::Modifiers)> = None;
     let mut set_layer: Option<NodeId> = None;
     let mut rename: Option<(NodeId, String)> = None;
+    let mut renamed: Option<(NodeId, Option<String>)> = None;
     let mut hovered: Option<NodeId> = None;
     let mut scroll = ScrollArea::vertical().auto_shrink([false, false]);
     if let Some(index) = reveal.and_then(|id| rows.iter().position(|(_, r)| *r == id)) {
@@ -209,6 +224,23 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                     }
                 }
 
+                if renaming == Some(*id) {
+                    let mut field = egui::TextEdit::singleline(&mut ps.rename_text).desired_width(f32::INFINITY).show(ui);
+                    if std::mem::take(&mut ps.rename_focus) {
+                        field.response.request_focus();
+                        let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(ps.rename_text.chars().count()));
+                        field.state.cursor.set_char_range(Some(all));
+                        field.state.store(ui.ctx(), field.response.id);
+                    }
+
+                    if field.response.lost_focus() {
+                        let cancelled = ui.input(|i| i.key_pressed(egui::Key::Escape));
+                        renamed = Some((*id, (!cancelled).then(|| ps.rename_text.clone())));
+                    }
+
+                    return;
+                }
+
                 let resp = ui.selectable_label(selected, label);
                 if resp.hovered() {
                     hovered = Some(*id);
@@ -259,19 +291,13 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                             ui.close();
                         }
                     } else {
-                        let editable_name = match &node.kind {
-                            NodeKind::Group(g) => Some(g.name.clone()),
-                            NodeKind::Scatter(s) => Some(s.name.clone()),
-                            _ => None,
-                        };
-                        if let Some(mut name) = editable_name {
-                            if ui.text_edit_singleline(&mut name).changed() {
-                                rename = Some((*id, name));
-                            }
-
-                            ui.separator();
+                        if ui.button("Rename").clicked() {
+                            renamed = Some((*id, None));
+                            clicked = Some((*id, egui::Modifiers::NONE));
+                            ui.close();
                         }
 
+                        ui.separator();
                         let mut item = |ui: &mut Ui, label: &str, action: Action| {
                             if ui.button(label).clicked() {
                                 actions.push(action);
@@ -359,12 +385,23 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
     }
 
     if let Some((id, name)) = rename {
-        state.doc.edit_coalesced("Rename", |m, _| match m.get_mut(id).map(|n| &mut n.kind) {
-            Some(NodeKind::Layer(l)) => l.name = name,
-            Some(NodeKind::Group(g)) => g.name = name,
-            Some(NodeKind::Scatter(s)) => s.name = name,
-            _ => {}
+        state.doc.edit_coalesced("Rename", |m, _| {
+            if let Some(NodeKind::Layer(l)) = m.get_mut(id).map(|n| &mut n.kind) {
+                l.name = name;
+            }
         });
+    }
+
+    // The row menu's Rename arrives without a name and opens the field, a field that lost focus brings one or nothing.
+    match renamed {
+        Some((id, None)) if state.renaming != Some(id) => state.renaming = Some(id),
+        Some((id, name)) => {
+            state.renaming = None;
+            if let Some(name) = name {
+                let _ = state.doc.try_edit("Rename", |m, _| if m.rename(id, &name) { Ok(()) } else { Err(()) });
+            }
+        }
+        None => {}
     }
 
     if let Some(l) = set_layer {
@@ -420,6 +457,10 @@ fn xyz(v: DVec3, sep: &str) -> String {
 
 fn outliner_tooltip(ui: &mut Ui, map: &gt_doc::Map, id: NodeId, node: &gt_doc::Node) {
     ui.label(RichText::new(node.name()).strong());
+    if node.label.is_some() && !node.kind.has_own_name() {
+        ui.label(RichText::new(node.default_name()).weak());
+    }
+
     let materials: std::collections::BTreeSet<&str> = match &node.kind {
         NodeKind::Brush(b) => b.faces.iter().map(|f| f.data.material.as_str()).collect(),
         NodeKind::Mesh(m) => m.faces.iter().map(|f| f.data.material.as_str()).collect(),
@@ -441,17 +482,17 @@ fn outliner_tooltip(ui: &mut Ui, map: &gt_doc::Map, id: NodeId, node: &gt_doc::N
     }
 }
 
-fn push_rows(map: &gt_doc::Map, id: NodeId, depth: usize, expanded: &HashSet<NodeId>, filter: &str, rows: &mut Vec<(usize, NodeId)>) {
+fn push_rows(map: &gt_doc::Map, id: NodeId, depth: usize, expanded: &HashSet<NodeId>, filter: &str, renaming: Option<NodeId>, rows: &mut Vec<(usize, NodeId)>) {
     let Some(node) = map.get(id) else { return };
     for c in &node.children {
         let Some(child) = map.get(*c) else { continue };
-        let matches = filter.is_empty() || child.name().to_lowercase().contains(filter);
-        if matches {
+        let matches = |name: String| name.to_lowercase().contains(filter);
+        if filter.is_empty() || matches(child.name()) || matches(child.default_name()) || renaming == Some(*c) {
             rows.push((depth, *c));
         }
 
         if expanded.contains(c) || (!filter.is_empty() && !child.children.is_empty()) {
-            push_rows(map, *c, depth + 1, expanded, filter, rows);
+            push_rows(map, *c, depth + 1, expanded, filter, renaming, rows);
         }
     }
 }

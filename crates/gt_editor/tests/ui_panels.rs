@@ -568,6 +568,51 @@ fn outliner_ctrl_shift_range_leaves_out_the_children_of_a_selected_group() {
 }
 
 #[test]
+fn outliner_renames_the_selected_object_in_its_row() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    let brush = f.state.doc.edit("add", |m, s| {
+        let id = m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "dev/grey").unwrap()));
+        s.select_node(id);
+        id
+    });
+    gt_editor::commands::execute(&mut f.state, Action::Rename, &egui::Context::default());
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(360.0, 400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::outliner(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    let steps = harness.state().state.doc.history.undo_labels().count();
+    let field = harness.get_all_by_role(egui::accesskit::Role::TextInput).last().unwrap().value();
+    assert_eq!(field, Some(format!("brush{}", brush.0)), "F2 opens the row's name field after the filter");
+    for c in ["n", "orth wall"] {
+        harness.get_all_by_role(egui::accesskit::Role::TextInput).last().unwrap().type_text(c);
+        harness.run();
+    }
+
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    let state = &harness.state().state;
+    assert_eq!(state.doc.map.get(brush).unwrap().name(), "north wall", "typing replaces the whole default name");
+    assert_eq!(state.doc.history.undo_labels().count(), steps + 1, "one undo step");
+    assert_eq!(state.doc.history.undo_labels().next(), Some("Rename"));
+    assert_eq!(state.renaming, None);
+    harness.get_by_label("north wall");
+
+    // The row menu opens the field too, and Escape leaves the name alone.
+    harness.get_by_label("north wall").click_secondary();
+    harness.run();
+    harness.get_by_label("Rename").click();
+    harness.run();
+    harness.get_all_by_role(egui::accesskit::Role::TextInput).last().unwrap().type_text("cellar");
+    harness.run();
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    assert_eq!(harness.state().state.doc.map.get(brush).unwrap().name(), "north wall");
+    assert_eq!(harness.state().state.doc.history.undo_labels().count(), steps + 1);
+    assert_eq!(harness.state().state.renaming, None);
+}
+
+#[test]
 fn outliner_context_menu_selects_and_acts_on_objects() {
     let mut f = Fixture::new();
     let layer = f.state.doc.map.default_layer();

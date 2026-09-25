@@ -96,6 +96,7 @@ func _initialize() -> void:
 	test_live_link_port()
 	await test_capture()
 	test_threaded_build_matches()
+	test_terrain_node_names()
 	await test_showcase_playthrough()
 	await test_night_district()
 	await test_withered_city_playthrough()
@@ -1319,6 +1320,12 @@ func test_live_session() -> void:
 	check(GodotTrenchLiveSession.building == 0 and not session.pending(), "the session is idle again")
 	map.queue_free()
 	await process_frame
+
+func test_terrain_node_names() -> void:
+	print("- terrain node names")
+	check(GodotTrenchTerrain.node_name({}, 12) == "terrain_12", "a terrain without a name is named after its id")
+	check(GodotTrenchTerrain.node_name({ "label": "north cliffs" }, 12) == "terrain_12_north_cliffs", "a renamed terrain keeps its id and adds the name")
+	check(GodotTrenchTerrain.node_name({ "label": "a/b:c" }, 3) == "terrain_3_a_b_c", "characters Godot refuses in node names are replaced, got %s" % GodotTrenchTerrain.node_name({ "label": "a/b:c" }, 3))
 
 func test_threaded_build_matches() -> void:
 	print("- threaded building matches single threaded")

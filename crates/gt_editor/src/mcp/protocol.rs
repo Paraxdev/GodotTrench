@@ -449,7 +449,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "hierarchy",
-            "description": "Layers and groups. New objects go into the innermost open group, else the current layer. ops: add_layer {name, default Layer N} (becomes current), add_group {name, parent, open (default true)}, open_group {id} (a group), close_group {all}, set_current_layer {id}, reparent {ids, parent} (into a layer or group, brushes and meshes also into a brush entity), rename {id, name} (entities get a targetname), set_flags {ids, hidden, locked, omit_from_export}. Locked layers and groups accept no new objects.",
+            "description": "Layers and groups. New objects go into the innermost open group, else the current layer. ops: add_layer {name, default Layer N} (becomes current), add_group {name, parent, open (default true)}, open_group {id} (a group), close_group {all}, set_current_layer {id}, reparent {ids, parent} (into a layer or group, brushes and meshes also into a brush entity), rename {id, name} (entities get a targetname, brushes, meshes, instances and terrains a name shown in place of brush12 and the like), set_flags {ids, hidden, locked, omit_from_export}. Locked layers and groups accept no new objects.",
             "inputSchema": { "type": "object", "properties": {
                 "op": { "type": "string" }, "name": { "type": "string" }, "id": { "type": "integer" }, "parent": { "type": "integer" },
                 "ids": { "type": "array", "items": { "type": "integer" } }, "open": { "type": "boolean" }, "all": { "type": "boolean" },

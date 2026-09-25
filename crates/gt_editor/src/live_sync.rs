@@ -176,9 +176,10 @@ fn depth(map: &Map, id: NodeId) -> usize {
     std::iter::successors(map.get(id).and_then(|n| n.parent), |p| map.get(*p).and_then(|n| n.parent)).count()
 }
 
-/// Differences Godot does not build: child order, hidden, locked, layer colors and linked group bookkeeping.
+/// Differences Godot does not build: child order, hidden, locked, layer colors, linked group bookkeeping and labels
+/// other than a terrain's, which names its Godot node.
 fn same_for_godot(old: &Node, new: &Node) -> bool {
-    if old.parent != new.parent {
+    if old.parent != new.parent || (old.label != new.label && matches!(new.kind, NodeKind::Terrain(_))) {
         return false;
     }
 

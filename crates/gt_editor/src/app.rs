@@ -55,7 +55,7 @@ impl Panel {
     pub fn help(self) -> &'static str {
         match self {
             Panel::Outliner => {
-                "Every layer, group, brush, mesh and entity in the map as a tree. Click to select, the eye hides and the lock locks. Clicking a layer makes it the current layer new objects go into, right click it to rename or omit it from the build."
+                "Every layer, group, brush, mesh and entity in the map as a tree. Click to select, the eye hides and the lock locks. F2 renames the selected object. Clicking a layer makes it the current layer new objects go into, right click it to rename or omit it from the build."
             }
             Panel::Inspector => {
                 "Edits whatever is selected: entity properties and outputs, face materials and UVs, scatter sets and terrains. With nothing selected it shows the map's own settings (worldspawn), like sun, sky and fog."
@@ -745,6 +745,13 @@ impl App {
             }
             Action::ToggleView(view) => self.toggle_view(view),
             Action::ShowUvEditor => show_tab(&mut self.dock, Tab::Uv),
+            Action::Rename => {
+                if self.state.doc.selection.nodes.len() == 1 {
+                    reveal_tab(&mut self.dock, Tab::Outliner, Tab::History);
+                }
+
+                return Some(action);
+            }
             Action::MeshOp(op) => {
                 if self.state.tool != ToolKind::Mesh {
                     self.state.tool = ToolKind::Mesh;
@@ -937,6 +944,7 @@ impl App {
                 }
 
                 m.item(ui, None, "Duplicate", Action::Duplicate);
+                m.item(ui, None, "Rename", Action::Rename);
                 m.item(ui, Some(icons::DELETE), "Delete", Action::Delete);
                 ui.separator();
                 sub_menu(ui, Some(icons::SELECT), "Select", |ui| {

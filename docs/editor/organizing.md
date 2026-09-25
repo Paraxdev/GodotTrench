@@ -10,6 +10,11 @@ Brushes and meshes are listed by kind and id, such as `brush12` or `mesh40`, so 
 leaves behind can be told apart. The id stays the same when the object moves and across saves. Hold the pointer over a
 row to see its materials, size and bounds, and to outline the object in every view.
 
+To give an object a name of its own, select it and press F2, or right click it in the Outliner or a view and pick
+*Rename*. The row turns into a text field: Enter keeps the name, Esc cancels, and an empty name brings back the default
+one. Names are saved with the map. Entities keep their `targetname` apart from this name, so renaming never changes what
+an output reaches.
+
 Ctrl+click a row to add it to the selection or take it out, and Shift+click to select every row between the last
 clicked one and this one. Ctrl+Shift+click adds that range to what is already selected. The Outliner is often the
 easier place to pick objects that hide behind others in the views.

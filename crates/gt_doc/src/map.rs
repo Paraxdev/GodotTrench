@@ -127,6 +127,11 @@ impl NodeKind {
         }
     }
 
+    /// Layers, groups and scatter sets carry a name in their own data, other kinds use the node's label.
+    pub fn has_own_name(&self) -> bool {
+        matches!(self, NodeKind::Layer(_) | NodeKind::Group(_) | NodeKind::Scatter(_))
+    }
+
     /// Geometry leaves that can live in the world or inside brush entities.
     pub fn is_geometry(&self) -> bool {
         matches!(self, NodeKind::Brush(_) | NodeKind::Mesh(_) | NodeKind::Terrain(_))
@@ -141,6 +146,9 @@ pub struct Node {
     pub kind: NodeKind,
     pub hidden: bool,
     pub locked: bool,
+    /// Name given with Rename, shown in place of [`Node::default_name`]. Layers, groups and scatter sets keep their
+    /// name in their own data instead.
+    pub label: Option<String>,
 }
 
 impl Node {
@@ -173,6 +181,14 @@ impl Node {
     }
 
     pub fn name(&self) -> String {
+        match &self.label {
+            Some(label) if !self.kind.has_own_name() => label.clone(),
+            _ => self.default_name(),
+        }
+    }
+
+    /// The name from the node's kind and content, used while it has no label.
+    pub fn default_name(&self) -> String {
         match &self.kind {
             NodeKind::Layer(l) => l.name.clone(),
             NodeKind::Group(g) if g.link_id.is_some() => format!("{} (linked)", g.name),
@@ -255,6 +271,7 @@ impl Map {
                 kind: NodeKind::Layer(Layer { name: name.into(), color, omit_from_export: false }),
                 hidden: false,
                 locked: false,
+                label: None,
             },
         );
         self.layers.push(id);
@@ -362,7 +379,7 @@ impl Map {
         let Some(p) = self.nodes.get_mut(&parent) else { return false };
         p.children.push(id);
         self.next_id = self.next_id.max(id.0 + 1);
-        self.nodes.insert(id, Node { id, parent: Some(parent), children: Vec::new(), kind, hidden: false, locked: false });
+        self.nodes.insert(id, Node { id, parent: Some(parent), children: Vec::new(), kind, hidden: false, locked: false, label: None });
         true
     }
 
@@ -590,6 +607,32 @@ impl Map {
         target
     }
 
+    /// Names a node. Layers, groups and scatter sets take it as their own name and ignore an empty one, other nodes get
+    /// it as their label, and an empty or default name takes the label off again. Returns false when nothing changed.
+    pub fn rename(&mut self, id: NodeId, name: &str) -> bool {
+        let name = name.trim();
+        let Some(node) = self.get_mut(id) else { return false };
+        let default = node.default_name();
+        let slot = match &mut node.kind {
+            NodeKind::Layer(Layer { name: own, .. }) | NodeKind::Group(Group { name: own, .. }) | NodeKind::Scatter(Scatter { name: own, .. }) => Some(own),
+            _ => None,
+        };
+        match slot {
+            Some(_) if name.is_empty() => false,
+            Some(own) if own == name => false,
+            Some(own) => {
+                *own = name.to_string();
+                true
+            }
+            None => {
+                let label = (!name.is_empty() && name != default).then(|| name.to_string());
+                let changed = node.label != label;
+                node.label = label;
+                changed
+            }
+        }
+    }
+
     /// Deep copies a subtree under a new parent with fresh ids. Returns the new root id.
     pub fn duplicate_subtree(&mut self, id: NodeId, parent: NodeId) -> Option<NodeId> {
         let mut copies = BTreeMap::new();
@@ -607,6 +650,7 @@ impl Map {
         if let Some(n) = self.get_mut(new_id) {
             n.hidden = node.hidden;
             n.locked = node.locked;
+            n.label = node.label;
         }
 
         for c in node.children {

@@ -54,6 +54,7 @@ Select clears the selection.
 | Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y | Undo, redo |
 | Ctrl+X, Ctrl+C, Ctrl+V | Cut, copy, paste under the mouse |
 | Ctrl+D, Ctrl+Shift+D | Duplicate, duplicate linked |
+| F2 | Rename the selected object in the Outliner |
 | Ctrl+R | Repeat the last rotate, flip, nudge or duplicate. In mesh editing it makes a loop cut |
 | Delete or Backspace | Delete |
 | Ctrl+A, Esc, Ctrl+I | Select all, none, inverse |
@@ -80,7 +81,7 @@ Select clears the selection.
 | --- | --- |
 | F or Ctrl+U | Frame the selection, or the whole map |
 | `[` and `]`, or `-` and `=` | Halve or double the grid |
-| F2, F3 | Cycle shading (textured, flat, lit, wireframe), toggle Lit Preview |
+| F4, F3 | Cycle shading (textured, flat, lit, wireframe), toggle Lit Preview |
 | Shift+Space | Maximize the view under the pointer |
 | Ctrl+Shift+1 to 9, Ctrl+1 to 9 | Store, recall camera bookmarks |
 | Ctrl+=, Ctrl+-, Ctrl+0 | Interface scale up, down, reset |
@@ -89,6 +90,9 @@ Select clears the selection.
 | Ctrl+S, Ctrl+Shift+S | Save, save as |
 | Ctrl+Shift+N, Ctrl+Tab, Ctrl+W | New tab, next tab, close tab |
 | F5 | Run the Godot project |
+
+> **Note:** F2 used to cycle the shading. It now renames, as in Godot, Blender and most file managers, and shading
+> moved to F4. A binding you set yourself in the shortcuts window stays as it was.
 
 ## Other presets
 
