@@ -6,16 +6,22 @@ the button fires an output named `pressed`, and a link turns that into a call of
 
 ## Wire it
 
-1. Draw a door sized brush in a doorway. Right click it, *Create Brush Entity > func_door*, and set its `targetname`
-   to `main_door` in the Inspector. The name is how other entities find the door. The default `travel` of `0 64 0`
-   slides it up 64 units, 2 m, when it opens.
+1. Draw a door sized brush in a doorway, [Getting started](../getting-started.md#4-build-a-room) shows how to cut
+   one. Right click the brush, *Create Brush Entity > func_door*, and set its `targetname` to `main_door` in the
+   Inspector. The name is how other entities find the door. The default `travel` of `0 64 0` slides it up 64 units,
+   2 m, when it opens.
 2. Draw a small brush on the wall next to it and make it a `func_button` the same way.
-3. Select both entities and choose *Gameplay > Logic > Link Two Selected Entities...*. The entity that fires, the
-   button, must be on the left, press ⇄ if it is not. Pick `pressed` under *When* and `open` under *call*, then
-   **Link**.
+3. Select both entities: click the button, then Ctrl+click the door, in a view or in the Outliner. Typing `func` in
+   the Outliner's *Filter* box lists only these two, which helps when walls are in the way. Then choose
+   *Gameplay > Logic > Link Two Selected Entities...*. The entity that fires, the button, must be on the left, press
+   ⇄ if it is not. Pick `pressed` under *When* and `open` under *call*, then **Link**.
 
 The status bar confirms the new output, `pressed > main_door.open`, which reads "when pressed, call open on
 main_door".
+
+> **Tip:** *Gameplay > Doors and Movers*, also in the Inspector's *Gameplay* section, turns the selected brush into
+> a hinged or sliding door in one click. It names the door, sets how it opens and adds a `trigger_multiple` in front
+> of it that opens the door when the player walks up. Delete that trigger when only the button should open the door.
 
 ## Let the player press it
 

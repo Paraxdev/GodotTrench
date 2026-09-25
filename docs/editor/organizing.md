@@ -36,6 +36,16 @@ replaces it with an instance. Every instance updates when the prefab file change
 Placing a prefab twice would give two entities the same targetname. Set each instance's **fixup**, for example `p1`,
 and every name inside it gets that prefix, so `door` becomes `p1-door` and each copy's wiring stays separate.
 
+## Cordon
+
+A cordon limits the editor to one part of a big map. Select what you want to work on and choose *View > Cordon > Set
+Cordon from Selection*, or **Cordon** in the Inspector. Everything that does not touch the cordon's box, drawn in
+yellow, is hidden and cannot be selected. *Cordon Enabled* in the same menu switches it off and on again, and *Clear
+Cordon* removes it. The cordon is saved with the map.
+
+It only changes what the editor shows, Godot still builds the whole map. To hand one area to another tool, *File >
+Export > .map, cordon only* writes just the objects inside it.
+
 ## Issues
 
 The Issues panel checks the map as you work and lists problems that would break or look wrong in Godot, such as brushes
