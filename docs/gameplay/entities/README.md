@@ -38,5 +38,6 @@ them in your own project, or they build as plain nodes and the build logs "No en
 
 **The player** is not an entity, it is a scene from your own game. The library expects it in the `player` group and on
 collision layer 1, where triggers look, with a `take_damage(amount, source)` method that hurt triggers and explosions
-call. See [`godot/demo/player.gd`](https://github.com/Paraxdev/GodotTrench/blob/main/godot/demo/player.gd) for a
+call. A player on another layer needs that layer in *Trigger Collision Mask*, see
+[Triggers](triggers.md#shared-inputs-outputs-and-keys). See [`godot/demo/player.gd`](https://github.com/Paraxdev/GodotTrench/blob/main/godot/demo/player.gd) for a
 complete one.

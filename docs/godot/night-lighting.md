@@ -5,7 +5,7 @@ nothing and edit it in the Inspector.
 
 | Key | Default | What to do for night |
 | --- | --- | --- |
-| `sun_energy`, `sun_color` | 1.0, `255 244 225` | Lower the energy and pick a pale blue, and the sun reads as a moon |
+| `sun_energy`, `sun_color` | 1.1, `255 245 224` | Lower the energy and pick a pale blue, and the sun reads as a moon |
 | `ambient_energy`, `sky_energy` | 1.0, 1.0 | Lower both, so unlit areas and the sky go dark |
 | `glow_intensity` | 0 | Above 0, lamps and [glowing materials](materials.md#glowing-materials) bloom in Godot |
 | `ssr` | 0 | 1 turns on screen space reflections, so wet streets and glossy floors mirror the lamps |

@@ -12,7 +12,7 @@ Add a `FuncGodotMap` to a scene and set it up in the Inspector:
 | --- | --- |
 | Local Map File | The `res://` path of the `.gtm` to build. This is the normal choice. |
 | Global Map File | A map file outside the project. When both are set, this one wins. |
-| Auto Rebuild On Save | Rebuilds the node whenever GodotTrench saves this map. On by default. |
+| Auto Rebuild On Save | Rebuilds the node whenever GodotTrench saves this map, while its scene is the current tab in the Godot editor, see [Rebuild on save](live.md#rebuild-on-save). On by default. |
 | Map Settings | Where textures, materials and entity definitions come from and how big a map unit is. Left empty, it uses the project setting `func_godot/default_map_settings`, see [Project setup](project-setup.md). |
 | Warm Up Shaders | Compiles the map's shaders while it loads, so the first seconds of play do not stutter. See [Shader warm-up](warm-up.md). |
 
