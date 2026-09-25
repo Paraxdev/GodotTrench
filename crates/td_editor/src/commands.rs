@@ -631,7 +631,12 @@ pub fn dialog_dir(state: &EditorState) -> Option<std::path::PathBuf> {
 
 /// Shows a file dialog that starts in `dialog_dir`.
 pub fn file_dialog<T>(state: &EditorState, show: impl FnOnce(rfd::FileDialog) -> T) -> T {
-    let Some(dir) = dialog_dir(state) else { return show(rfd::FileDialog::new()) };
+    file_dialog_in(dialog_dir(state), show)
+}
+
+/// Shows a file dialog that starts in `dir`.
+pub fn file_dialog_in<T>(dir: Option<std::path::PathBuf>, show: impl FnOnce(rfd::FileDialog) -> T) -> T {
+    let Some(dir) = dir.and_then(|d| std::path::absolute(d).ok()) else { return show(rfd::FileDialog::new()) };
     // Without a desktop portal rfd falls back to zenity, which ignores the start folder and opens the working directory.
     #[cfg(target_os = "linux")]
     let restore = std::env::current_dir().ok().filter(|_| std::env::set_current_dir(&dir).is_ok());
