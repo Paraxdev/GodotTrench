@@ -111,6 +111,23 @@ pub struct BrushStrokeTool {
     stroking: bool,
     last_dab: Option<DVec3>,
     dabs: u32,
+    /// Seconds the current stroke has been held.
+    held: f64,
+}
+
+/// A click or a quick flick is topped up to this much hold time on release, so a single dab always shows.
+const MIN_STROKE_SECONDS: f64 = 0.25;
+
+/// The brush one sculpt dab applies for `seconds` of holding. At strength 1 heights grow by a tenth of the radius per
+/// second, so a stroke leaves the same shape whatever the brush size, on a garden or on a whole island.
+pub fn timed_sculpt_brush(mut brush: gt_doc::terrain::SculptBrush, seconds: f64) -> gt_doc::terrain::SculptBrush {
+    use gt_doc::terrain::SculptMode;
+    brush.strength = match brush.mode {
+        m if m.is_paint() => (brush.strength * seconds * 2.0).min(1.0),
+        SculptMode::Raise | SculptMode::Lower | SculptMode::Noise => brush.strength * brush.radius * seconds / 10.0,
+        _ => brush.strength * seconds * 8.0,
+    };
+    brush
 }
 
 #[derive(Default)]
@@ -364,22 +381,36 @@ impl ToolSet {
         });
 
         let modifiers = ui.input(|i| i.modifiers);
+        // A quick click can press and release within one frame, which only shows up as a click.
         if (response.drag_started_by(PointerButton::Primary)
-            || (response.is_pointer_button_down_on() && !self.stroke.stroking && ui.input(|i| i.pointer.primary_pressed())))
+            || response.clicked_by(PointerButton::Primary)
+            || (response.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_pressed())))
+            && !self.stroke.stroking
             && let Some((p, n)) = self.stroke.hover
         {
             self.stroke.stroking = true;
             self.stroke.last_dab = None;
+            self.stroke.held = 0.0;
             state.sculpt.flatten_height = p.dot(n);
             state.doc.begin(if sculpting { "Sculpt" } else { "Vertex Paint" });
+            let cell = terrains.iter().filter_map(|id| state.doc.map.terrain(*id)).map(|t| t.cell_size).fold(0.0, f64::max);
+            if sculpting && state.sculpt.radius < cell {
+                state.set_status(format!(
+                    "The brush radius {:.0} is smaller than the terrain's {cell:.0} unit cells, so it barely moves a vertex. Ctrl+wheel makes it bigger",
+                    state.sculpt.radius
+                ));
+            }
         }
 
         if self.stroke.stroking {
             let dt = ui.input(|i| i.stable_dt as f64).min(0.05);
+            let released = !ui.input(|i| i.pointer.primary_down());
+            let seconds = if released { dt.max(MIN_STROKE_SECONDS - self.stroke.held) } else { dt };
+            self.stroke.held += dt;
             if let Some((p, _)) = self.stroke.hover {
                 let spacing = state.sculpt.radius * 0.15;
                 let moved_enough = self.stroke.last_dab.is_none_or(|last| (last - p).length() >= spacing);
-                if moved_enough || sculpting {
+                if moved_enough || sculpting || seconds > dt {
                     let mut brush = state.sculpt;
                     if modifiers.shift {
                         brush.mode = match brush.mode {
@@ -394,11 +425,9 @@ impl ToolSet {
                         brush.mode = gt_doc::terrain::SculptMode::Smooth;
                     }
 
-                    // Continuous brushes scale with frame time so the result does not depend on frame rate.
-                    let is_alpha = brush.mode.is_paint();
+                    // Continuous brushes scale with the time held so the result does not depend on frame rate.
                     self.stroke.dabs = self.stroke.dabs.wrapping_add(1);
-                    brush.seed = self.stroke.dabs;
-                    brush.strength = if is_alpha { (brush.strength * dt * 2.0).min(1.0) } else { brush.strength * dt * 8.0 };
+                    let brush = gt_doc::terrain::SculptBrush { seed: self.stroke.dabs, ..timed_sculpt_brush(brush, seconds) };
                     let color = state.paint_color;
                     let radius = state.sculpt.radius;
                     let strength = state.sculpt.strength;
@@ -407,7 +436,7 @@ impl ToolSet {
                             gt_doc::terrain::sculpt(m, &faces, p, &brush);
                             gt_doc::terrain::sculpt_terrains(m, &terrains, p, &brush);
                         } else {
-                            gt_doc::terrain::paint_vertices(m, &targets, p, radius, color, (strength * dt).min(1.0));
+                            gt_doc::terrain::paint_vertices(m, &targets, p, radius, color, (strength * seconds).min(1.0));
                         }
                     });
                     self.stroke.last_dab = Some(p);
@@ -415,7 +444,7 @@ impl ToolSet {
                 }
             }
 
-            if !ui.input(|i| i.pointer.primary_down()) {
+            if released {
                 self.stroke.stroking = false;
                 state.doc.commit();
             }
@@ -1342,5 +1371,73 @@ mod tests {
         tools.settle(&mut state);
         assert!(tools.path.last.is_none(), "the next path corner does not link into another map's node");
         assert!(tools.mesh.selection.is_empty());
+    }
+
+    /// A flat 4096 unit terrain around the origin and a camera looking straight down at it.
+    fn terrain_under_camera() -> (EditorState, NodeId, Camera) {
+        let mut state = EditorState::new(Default::default());
+        let layer = state.doc.map.default_layer();
+        let terrain = gt_geom::Terrain::new(DVec3::new(-2048.0, 0.0, -2048.0), [65, 65], 64.0, "dev/grey");
+        let id = state.doc.edit("terrain", |m, _| m.insert(layer, gt_doc::NodeKind::Terrain(terrain)));
+        state.tool = ToolKind::Sculpt;
+        let mut cam = Camera::new(ViewKind::Perspective);
+        cam.position = DVec3::new(0.0, 3000.0, 0.0);
+        cam.pitch = (-89.0f64).to_radians();
+        (state, id, cam)
+    }
+
+    /// Runs one frame of the viewport tools over a 400 by 400 view with the pointer at its center.
+    fn view_frame(ctx: &egui::Context, tools: &mut ToolSet, state: &mut EditorState, cam: &Camera, pressed: Option<bool>) {
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(400.0));
+        let mut events = vec![egui::Event::PointerMoved(rect.center())];
+        if let Some(pressed) = pressed {
+            events.push(egui::Event::PointerButton { pos: rect.center(), button: PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+        }
+
+        let raw = egui::RawInput { screen_rect: Some(rect), events, ..Default::default() };
+        let mut output = ctx.run_ui(raw, |ui| {
+            let response = ui.allocate_rect(rect, egui::Sense::click_and_drag());
+            let hover = response.hover_pos();
+            tools.viewport_input(ui, &response, cam, rect, hover, state);
+        });
+        output.textures_delta.clear();
+    }
+
+    fn click(tools: &mut ToolSet, state: &mut EditorState, cam: &Camera) {
+        let ctx = egui::Context::default();
+        for pressed in [None, Some(true), Some(false), None] {
+            view_frame(&ctx, tools, state, cam, pressed);
+        }
+    }
+
+    #[test]
+    fn a_sculpt_click_raises_a_visible_bump_and_a_no_op_stroke_leaves_no_undo_step() {
+        let (mut state, id, cam) = terrain_under_camera();
+        let mut tools = ToolSet::default();
+        state.sculpt.radius = 256.0;
+        state.sculpt.strength = 4.0;
+        click(&mut tools, &mut state, &cam);
+        let top = state.doc.map.terrain(id).unwrap().heights.iter().copied().fold(0.0f32, f32::max);
+        let expected = timed_sculpt_brush(state.sculpt, MIN_STROKE_SECONDS).strength as f32;
+        assert!(top >= expected * 0.9, "a click raises the ground by a quarter second of holding, {top} of {expected}");
+        assert!(expected >= 16.0, "{expected}");
+        assert_eq!(state.doc.history.undo_labels().next(), Some("Sculpt"));
+
+        let steps = state.doc.history.undo_labels().count();
+        state.sculpt.mode = gt_doc::terrain::SculptMode::Flatten;
+        state.doc.edit("level", |m, _| m.terrain_mut(id).unwrap().heights.fill(0.0));
+        let steps = steps + 1;
+        click(&mut tools, &mut state, &cam);
+        assert_eq!(state.doc.history.undo_labels().count(), steps, "flattening flat ground changes nothing and records nothing");
+    }
+
+    #[test]
+    fn sculpt_speed_follows_the_brush_size() {
+        let small = gt_doc::terrain::SculptBrush { radius: 100.0, strength: 4.0, ..Default::default() };
+        let big = gt_doc::terrain::SculptBrush { radius: 1000.0, ..small };
+        let (a, b) = (timed_sculpt_brush(small, 0.5).strength, timed_sculpt_brush(big, 0.5).strength);
+        assert!((b / a - 10.0).abs() < 1e-9, "ten times the radius raises ten times as fast, so the shape stays the same");
+        let smooth = gt_doc::terrain::SculptBrush { mode: gt_doc::terrain::SculptMode::Smooth, ..big };
+        assert_eq!(timed_sculpt_brush(smooth, 0.5).strength, timed_sculpt_brush(gt_doc::terrain::SculptBrush { radius: 100.0, ..smooth }, 0.5).strength);
     }
 }

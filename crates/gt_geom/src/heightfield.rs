@@ -480,8 +480,9 @@ impl Terrain {
         for j in z0..=z1 {
             for i in x0..=x1 {
                 let w = (self.weight_at(i, j, center, radius) * t.clamp(0.0, 1.0)) as f32;
-                if w > 0.0 {
-                    let k = self.index(i, j);
+                let k = self.index(i, j);
+                // The target comes from a picked point, ground already at its height is left exactly as it was.
+                if w > 0.0 && (local_target - self.heights[k]).abs() > 1e-3 {
                     self.heights[k] += (local_target - self.heights[k]) * w;
                     changed = true;
                 }

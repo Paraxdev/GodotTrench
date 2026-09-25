@@ -36,7 +36,7 @@ Press **G** and drag over the terrain. It works on the selected terrains, or on 
 
 | Mode | What it does |
 | --- | --- |
-| Raise, Lower | Builds height up or digs it down for as long as you hold the button |
+| Raise, Lower | Builds height up or digs it down for as long as you hold the button. A click makes a small bump |
 | Smooth | Relaxes each vertex towards its neighbours, to soften lumps and sharp ridges |
 | Flatten | Pulls the ground to the height where the stroke started, for building pads, roads and plateaus |
 | Noise | Adds small random bumps, so flat ground looks less artificial |
@@ -44,6 +44,10 @@ Press **G** and drag over the terrain. It works on the selected terrains, or on 
 | Hole, Unhole | Cuts whole cells out or fills them back, collision included. Use it for cave or bunker entrances |
 
 Ctrl+wheel resizes the brush, Shift swaps raise and lower, and Ctrl smooths whatever the mode.
+
+Strength sets how fast the brush works. Raise, Lower and Noise also scale with the radius, at strength 1 the centre
+moves a tenth of the radius per second, so a stroke leaves the same shape on a garden as on a whole island. Keep the
+radius above the terrain's cell size, a smaller brush only nudges the one vertex under it.
 
 > **Tip:** Use a large brush at low strength and smooth after every rough pass. Small brushes leave lumps.
 
