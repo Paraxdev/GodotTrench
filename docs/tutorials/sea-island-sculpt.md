@@ -7,8 +7,8 @@ position, and its middle number is the height, which helps you judge how far you
 
 ## Hills
 
-1. **Raise**, radius 2800, strength 1. Hold west of the centre for a few seconds, until the hill stands about 1500
-   units above the sea.
+1. **Raise**, radius 2800, strength 32. Hold west of the centre for about six seconds, until the hill stands about
+   1500 units above the sea.
 2. Radius 1300 on the same spot for a steeper top. A smaller brush lifts a narrower area, so the top gets pointier.
 3. Radius 1900 for a lower second hill to the south east.
 

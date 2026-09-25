@@ -45,14 +45,24 @@ Press **G** and drag over the terrain. It works on the selected terrains, or on 
 
 Ctrl+wheel resizes the brush, Shift swaps raise and lower, and Ctrl smooths whatever the mode.
 
-Strength sets how fast the brush works. Raise, Lower and Noise also scale with the radius, at strength 1 the centre
-moves a tenth of the radius per second, so a stroke leaves the same shape on a garden as on a whole island. Keep the
-radius above the terrain's cell size, a smaller brush only nudges the one vertex under it.
+Strength sets how fast the brush works. Raise and Lower move the centre of the brush 8 units a second per point of
+strength whatever the radius, so the default strength 4 builds 32 units a second. For hills and islands turn the
+strength up rather than holding for a minute. Keep the radius above the terrain's cell size, a smaller brush only
+nudges the one vertex under it.
 
-> **Tip:** Use a large brush at low strength and smooth after every rough pass. Small brushes leave lumps.
+> **Tip:** Shape with a large brush and smooth after every rough pass. Small brushes leave lumps.
 
 ## In Godot
 
 Every terrain becomes a `GodotTrenchTerrain` node, a `StaticBody3D` (Godot's node for solid ground that never moves)
 whose collision matches what it draws. For gameplay code, `height_at(x, z)` returns the ground height at a local
 position, handy for placing things on the ground at runtime.
+
+{% mcp %}
+
+## MCP
+
+The `terrain_edit` tool's `sculpt` op applies a single dab, and its strength is how far that dab moves the centre, again
+whatever the radius. Holding a stroke for one second at strength 4 matches a dab of strength 32.
+
+{% endmcp %}

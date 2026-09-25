@@ -118,15 +118,14 @@ pub struct BrushStrokeTool {
 /// A click or a quick flick is topped up to this much hold time on release, so a single dab always shows.
 const MIN_STROKE_SECONDS: f64 = 0.25;
 
-/// The brush one sculpt dab applies for `seconds` of holding. At strength 1 heights grow by a tenth of the radius per
-/// second, so a stroke leaves the same shape whatever the brush size, on a garden or on a whole island.
+/// Units a raise or lower stroke moves the brush centre per second of holding, per point of strength. It does not
+/// depend on the radius, so resizing mid stroke keeps the speed, like the MCP `sculpt` op whose strength is one dab's
+/// height whatever the radius.
+const SCULPT_UNITS_PER_SECOND: f64 = 8.0;
+
+/// The brush one sculpt dab applies for `seconds` of holding.
 pub fn timed_sculpt_brush(mut brush: gt_doc::terrain::SculptBrush, seconds: f64) -> gt_doc::terrain::SculptBrush {
-    use gt_doc::terrain::SculptMode;
-    brush.strength = match brush.mode {
-        m if m.is_paint() => (brush.strength * seconds * 2.0).min(1.0),
-        SculptMode::Raise | SculptMode::Lower | SculptMode::Noise => brush.strength * brush.radius * seconds / 10.0,
-        _ => brush.strength * seconds * 8.0,
-    };
+    brush.strength = if brush.mode.is_paint() { (brush.strength * seconds * 2.0).min(1.0) } else { brush.strength * seconds * SCULPT_UNITS_PER_SECOND };
     brush
 }
 
@@ -1415,12 +1414,11 @@ mod tests {
         let (mut state, id, cam) = terrain_under_camera();
         let mut tools = ToolSet::default();
         state.sculpt.radius = 256.0;
-        state.sculpt.strength = 4.0;
         click(&mut tools, &mut state, &cam);
         let top = state.doc.map.terrain(id).unwrap().heights.iter().copied().fold(0.0f32, f32::max);
         let expected = timed_sculpt_brush(state.sculpt, MIN_STROKE_SECONDS).strength as f32;
         assert!(top >= expected * 0.9, "a click raises the ground by a quarter second of holding, {top} of {expected}");
-        assert!(expected >= 16.0, "{expected}");
+        assert!(expected >= 8.0, "{expected}");
         assert_eq!(state.doc.history.undo_labels().next(), Some("Sculpt"));
 
         let steps = state.doc.history.undo_labels().count();
@@ -1432,12 +1430,10 @@ mod tests {
     }
 
     #[test]
-    fn sculpt_speed_follows_the_brush_size() {
-        let small = gt_doc::terrain::SculptBrush { radius: 100.0, strength: 4.0, ..Default::default() };
-        let big = gt_doc::terrain::SculptBrush { radius: 1000.0, ..small };
-        let (a, b) = (timed_sculpt_brush(small, 0.5).strength, timed_sculpt_brush(big, 0.5).strength);
-        assert!((b / a - 10.0).abs() < 1e-9, "ten times the radius raises ten times as fast, so the shape stays the same");
-        let smooth = gt_doc::terrain::SculptBrush { mode: gt_doc::terrain::SculptMode::Smooth, ..big };
-        assert_eq!(timed_sculpt_brush(smooth, 0.5).strength, timed_sculpt_brush(gt_doc::terrain::SculptBrush { radius: 100.0, ..smooth }, 0.5).strength);
+    fn sculpt_speed_keeps_the_default_brush_fast_and_ignores_the_radius() {
+        let default = gt_doc::terrain::SculptBrush::default();
+        assert!(timed_sculpt_brush(default, 1.0).strength >= 32.0, "the default brush raises at least 32 units a second");
+        let big = gt_doc::terrain::SculptBrush { radius: 2800.0, ..default };
+        assert_eq!(timed_sculpt_brush(big, 0.5).strength, timed_sculpt_brush(default, 0.5).strength, "a big brush is not faster");
     }
 }

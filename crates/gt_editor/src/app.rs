@@ -1612,7 +1612,8 @@ impl App {
                     }
 
                     ui.add(egui::DragValue::new(&mut self.state.sculpt.radius).range(1.0..=8192.0).prefix("radius "));
-                    ui.add(egui::DragValue::new(&mut self.state.sculpt.strength).range(0.01..=256.0).speed(0.1).prefix("strength "));
+                    ui.add(egui::DragValue::new(&mut self.state.sculpt.strength).range(0.01..=256.0).speed(0.1).prefix("strength "))
+                        .on_hover_text("How fast the brush works. Raise and Lower move the brush centre 8 units a second per point, whatever the radius");
                 }
                 ToolKind::Texture => {
                     ui.label("Justify");
