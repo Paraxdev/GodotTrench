@@ -322,17 +322,25 @@ impl Viewport {
                     });
                 }
 
-                // With the UV editor open, ctrl+click grabs every face of the object so all sides are
-                // edited at once. Repeating on another object adds its faces.
-                Some(h) if cx.state.uv_panel_open && modifiers.command && h.face.is_some() => {
-                    let id = h.node;
-                    let count = map.brush(id).map(|b| b.faces.len()).or_else(|| map.mesh(id).map(|m| m.faces.len())).unwrap_or(0);
-                    cx.state.outliner_reveal = Some(id);
+                // With the UV editor open, ctrl+click grabs every face of the object so all sides are edited at
+                // once. Repeating on another object adds its faces, and selected brushes and meshes turn into their
+                // faces too. A selection holding anything without faces keeps the usual add or remove.
+                Some(h)
+                    if cx.state.uv_panel_open
+                        && modifiers.command
+                        && h.face.is_some()
+                        && cx.state.doc.selection.nodes.iter().all(|id| map.brush(*id).is_some() || map.mesh(*id).is_some()) =>
+                {
+                    let face_count = |id: NodeId| map.brush(id).map(|b| b.faces.len()).or_else(|| map.mesh(id).map(|m| m.faces.len())).unwrap_or(0);
+                    let mut objects: Vec<NodeId> = cx.state.doc.selection.nodes.iter().copied().collect();
+                    objects.push(h.node);
+                    let faces: Vec<(NodeId, usize)> = objects.into_iter().flat_map(|id| (0..face_count(id)).map(move |f| (id, f))).collect();
+                    cx.state.outliner_reveal = Some(h.node);
                     cx.state.doc.select(|_, s| {
-                        for f in 0..count {
-                            s.select_face(id, f);
-                        }
+                        s.nodes.clear();
+                        s.faces.extend(faces);
                     });
+                    cx.state.set_status("Selected every face for UV work. Ctrl+click adds whole objects again once the UV Editor tab is hidden");
                 }
                 Some(h) => {
                     let target = map.click_target(h.node, &open_groups);

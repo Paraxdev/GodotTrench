@@ -8,7 +8,8 @@ A brush face normally gets its texture from one offset, scale and rotation. A fa
 texture position for each corner instead, which is what meshes need.
 
 > **Tip:** While the UV Editor is the visible tab in its panel, Ctrl+click on a brush or mesh selects all its faces, so
-> every side can be textured at once.
+> every side can be textured at once. Brushes and meshes that were already selected turn into their faces as well. When
+> the selection holds anything else, such as a terrain or an entity, Ctrl+click adds and removes objects as usual.
 
 ## Controls
 
