@@ -6,14 +6,14 @@
       "classname": "worldspawn", "type": "solid", "description": "The map itself. Sky, fog and sun keys build a WorldEnvironment in Godot.", "color": "#ffffffff",
       "properties": [
         { "name": "message", "type": "string", "description": "Map title" },
-        { "name": "sun_angles", "type": "string", "default": "-40 -60", "description": "Sun pitch and yaw in degrees" },
-        { "name": "sun_color", "type": "color", "default": "255 244 225", "description": "Sun color" },
-        { "name": "sun_energy", "type": "float", "default": "1.0", "description": "Sun brightness" },
-        { "name": "ambient_color", "type": "color", "default": "70 80 100", "description": "Ambient light" },
-        { "name": "sky_top_color", "type": "color", "default": "80 128 196", "description": "Sky zenith" },
-        { "name": "sky_horizon_color", "type": "color", "default": "196 210 224", "description": "Sky horizon" },
-        { "name": "sky_ground_color", "type": "color", "default": "100 104 108", "description": "Below the horizon" },
-        { "name": "fog_color", "type": "color", "default": "190 204 218", "description": "Fog color" },
+        { "name": "sun_angles", "type": "string", "default": "-40 -45", "description": "Sun pitch and yaw in degrees" },
+        { "name": "sun_color", "type": "color", "default": "255 245 224", "description": "Sun color" },
+        { "name": "sun_energy", "type": "float", "default": "1.1", "description": "Sun brightness" },
+        { "name": "ambient_color", "type": "color", "default": "66 71 84", "description": "Ambient light" },
+        { "name": "sky_top_color", "type": "color", "default": "82 128 199", "description": "Sky zenith" },
+        { "name": "sky_horizon_color", "type": "color", "default": "184 204 224", "description": "Sky horizon" },
+        { "name": "sky_ground_color", "type": "color", "default": "107 112 117", "description": "Below the horizon" },
+        { "name": "fog_color", "type": "color", "default": "179 199 219", "description": "Fog color" },
         { "name": "fog_density", "type": "float", "default": "0", "description": "Fog density per meter, 0 disables fog" },
         { "name": "ambient_energy", "type": "float", "default": "1.0", "description": "Ambient light brightness, low for night maps" },
         { "name": "sky_energy", "type": "float", "default": "1.0", "description": "Sky brightness, low for night maps" },
@@ -208,8 +208,8 @@
         { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body calls again" },
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
-      "outputs": [{ "name": "called", "parameter": "result" }, { "name": "triggered", "parameter": "activator" }],
-      "inputs": [{ "name": "trigger", "parameter": "activator" }, { "name": "enable" }, { "name": "disable" }]
+      "outputs": [{ "name": "called", "parameter": "result" }, { "name": "triggered", "parameter": "activator" }, { "name": "entered", "parameter": "activator" }, { "name": "exited", "parameter": "activator" }],
+      "inputs": [{ "name": "trigger", "parameter": "activator" }, { "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
     },
     {
       "classname": "trigger_spawn_area", "type": "solid", "description": "Spawns scenes at random spots inside its volume, when a body of filter_group enters or on input", "color": "#e64d4dff", "node_class": "Area3D",
@@ -228,8 +228,8 @@
         { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body fires it again" },
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
-      "outputs": [{ "name": "spawned", "parameter": "node" }, { "name": "all_dead" }, { "name": "exhausted" }],
-      "inputs": [{ "name": "spawn" }, { "name": "start" }, { "name": "stop" }, { "name": "toggle" }, { "name": "kill_all" }]
+      "outputs": [{ "name": "spawned", "parameter": "node" }, { "name": "all_dead" }, { "name": "exhausted" }, { "name": "triggered", "parameter": "activator" }, { "name": "entered", "parameter": "activator" }, { "name": "exited", "parameter": "activator" }],
+      "inputs": [{ "name": "spawn" }, { "name": "start" }, { "name": "stop" }, { "name": "toggle" }, { "name": "kill_all" }, { "name": "enable" }, { "name": "disable" }]
     },
     {
       "classname": "trigger_hurt", "type": "solid", "description": "Damages bodies inside by calling their damage method", "color": "#ff3333ff", "node_class": "Area3D",
@@ -242,7 +242,7 @@
         { "name": "filter_group", "type": "string", "default": "", "description": "Only bodies in this group, empty hurts any body" },
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
-      "outputs": [{ "name": "hurt", "parameter": "activator" }],
+      "outputs": [{ "name": "hurt", "parameter": "activator" }, { "name": "triggered", "parameter": "activator" }, { "name": "entered", "parameter": "activator" }, { "name": "exited", "parameter": "activator" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
     },
     {
@@ -256,7 +256,7 @@
         { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body fires it again" },
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
-      "outputs": [{ "name": "teleported", "parameter": "activator" }],
+      "outputs": [{ "name": "teleported", "parameter": "activator" }, { "name": "triggered", "parameter": "activator" }, { "name": "entered", "parameter": "activator" }, { "name": "exited", "parameter": "activator" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
     },
     {
@@ -269,7 +269,7 @@
         { "name": "once", "type": "bool", "default": "1", "description": "One impulse on entering instead of a steady push" },
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
-      "outputs": [{ "name": "pushed", "parameter": "activator" }],
+      "outputs": [{ "name": "pushed", "parameter": "activator" }, { "name": "triggered", "parameter": "activator" }, { "name": "entered", "parameter": "activator" }, { "name": "exited", "parameter": "activator" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }],
       "gizmos": [{ "type": "travel", "property": "push" }]
     },
