@@ -301,7 +301,8 @@ impl CommandPalette {
                 }
 
                 ui.separator();
-                egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+                let help = matches.get(self.selected).and_then(|(_, _, a)| a.help());
+                egui::ScrollArea::vertical().max_height(if help.is_some() { 270.0 } else { 320.0 }).show(ui, |ui| {
                     for (i, (_, label, action)) in matches.iter().enumerate().take(200) {
                         let shortcut = commands::shortcut_text(ctx, &state.prefs, action).unwrap_or_default();
                         let resp = ui.horizontal(|ui| {
@@ -318,6 +319,10 @@ impl CommandPalette {
                         }
                     }
                 });
+                if let Some(help) = help {
+                    ui.separator();
+                    ui.label(RichText::new(help).weak());
+                }
             },
         );
         if let Some(a) = run {
@@ -1021,6 +1026,17 @@ mod tests {
             palette_entries(&state).into_iter().filter_map(|(label, action)| fuzzy_score("grid larger", &label).map(|s| (s, label, action))).collect();
         matches.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
         assert_eq!(matches[0].2, Action::GridUp);
+    }
+
+    #[test]
+    fn jargon_commands_explain_themselves() {
+        let state = EditorState::new(crate::state::Prefs::default());
+        for (label, action) in palette_entries(&state) {
+            let jargon = ["CSG", "Hollow", "UV Lock", "Displacement", "Cordon", "Prefab", "Duplicate Linked", "Convex"].iter().any(|j| label.contains(j));
+            let help = action.help();
+            assert!(!jargon || help.is_some(), "{label} needs a help line");
+            assert!(help.is_none_or(|h| !h.contains(['\u{2013}', '\u{2014}']) && !h.contains(" - ")), "{label}: no dashes as punctuation");
+        }
     }
 
     #[test]

@@ -332,7 +332,7 @@ impl MenuCx<'_> {
     }
 
     fn push_if_clicked(&mut self, ui: &mut Ui, button: egui::Button, action: Action) {
-        if ui.add(button).clicked() {
+        if with_help(ui.add(button), &action).clicked() {
             self.actions.push(action);
             ui.close();
         }
@@ -346,7 +346,7 @@ impl MenuCx<'_> {
     /// Menu item that is greyed out with `why` on hover when `enabled` is false.
     fn item_enabled(&mut self, ui: &mut Ui, icon: Option<icons::Icon>, label: &str, action: Action, enabled: bool, why: &str) {
         let shortcut = self.shortcut(&action);
-        let response = ui.add_enabled(enabled, menu_button(icon, label, shortcut)).on_disabled_hover_text(why);
+        let response = with_help(ui.add_enabled(enabled, menu_button(icon, label, shortcut)), &action).on_disabled_hover_text(why);
         if response.clicked() {
             self.actions.push(action);
             ui.close();
@@ -365,7 +365,7 @@ impl MenuCx<'_> {
 
     fn toggle_enabled(&mut self, ui: &mut Ui, label: &str, on: bool, action: Action, enabled: bool, why: &str) {
         let shortcut = self.shortcut(&action);
-        if ui.add_enabled(enabled, menu_button(on.then_some(icons::CHECK), label, shortcut)).on_disabled_hover_text(why).clicked() {
+        if with_help(ui.add_enabled(enabled, menu_button(on.then_some(icons::CHECK), label, shortcut)), &action).on_disabled_hover_text(why).clicked() {
             self.actions.push(action);
             ui.close();
         }
@@ -381,6 +381,13 @@ impl MenuCx<'_> {
         if !any {
             empty_hint(ui, "Not defined by this game config");
         }
+    }
+}
+
+fn with_help(response: egui::Response, action: &Action) -> egui::Response {
+    match action.help() {
+        Some(help) => response.on_hover_text(help),
+        None => response,
     }
 }
 
