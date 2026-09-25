@@ -78,6 +78,11 @@ pub struct Instance {
 pub const FIXUP_KEYS: [&str; 4] = ["targetname", "target", "destination", "call_target"];
 
 impl Instance {
+    pub fn transform(&self) -> DMat4 {
+        let q = gt_core::DQuat::from_euler(gt_core::EulerRot::YXZ, self.angles.y.to_radians(), self.angles.x.to_radians(), self.angles.z.to_radians());
+        DMat4::from_rotation_translation(q, self.origin)
+    }
+
     /// `name` as it is inside this instance. Special (`!self`), group (`@doors`) and node path targets are left
     /// alone. The Godot importer applies the same rule in `gtm_parser.gd`.
     pub fn fixup_name(&self, name: &str) -> Option<String> {
@@ -202,6 +207,9 @@ pub struct Map {
     pub editor: EditorData,
     /// Chunks of a newer editor read from the file, written back unchanged on save.
     pub unknown_chunks: Vec<crate::binary::RawChunk>,
+    /// Bounds of the prefab behind each instance path, in the prefab's own space. The editor fills this from the
+    /// prefab files so instance bounds match what renders. Not saved.
+    pub instance_extents: std::sync::Arc<BTreeMap<String, Aabb>>,
 }
 
 impl Default for Map {
@@ -219,6 +227,7 @@ impl Map {
             next_id: 1,
             editor: EditorData::default(),
             unknown_chunks: Vec::new(),
+            instance_extents: Default::default(),
         };
         map.add_layer("Default");
         map
@@ -524,7 +533,13 @@ impl Map {
             NodeKind::Terrain(t) => t.bounds(),
             NodeKind::Scatter(s) => s.bounds(),
             NodeKind::Entity(e) if node.children.is_empty() => Aabb::from_center_size(e.origin, DVec3::splat(16.0)),
-            NodeKind::Instance(i) => Aabb::from_center_size(i.origin, DVec3::splat(16.0)),
+            NodeKind::Instance(i) => match self.instance_extents.get(&i.path).filter(|b| !b.is_empty()) {
+                Some(b) => {
+                    let m = i.transform();
+                    Aabb::from_points(b.corners().iter().map(|c| m.transform_point3(*c)))
+                }
+                None => Aabb::from_center_size(i.origin, DVec3::splat(16.0)),
+            },
             _ => {
                 let mut b = Aabb::EMPTY;
                 for c in &node.children {

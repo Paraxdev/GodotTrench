@@ -2094,6 +2094,7 @@ impl eframe::App for App {
         }
 
         self.process_mcp(&ctx);
+        self.state.refresh_instance_extents();
         self.state.validate_insert_context();
         self.tools.sync(&self.state);
         self.collect_input_actions(&ctx);

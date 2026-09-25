@@ -333,7 +333,15 @@ fn from_value(mut value: Value) -> Result<Map, FormatError> {
     file.layers.iter().try_for_each(validate)?;
 
     let next_id = file.layers.iter().map(max_file_id).max().unwrap_or(0) + 1;
-    let mut map = Map { nodes: imbl::OrdMap::new(), layers: Vec::new(), properties: file.properties, next_id, editor: file.editor, unknown_chunks: Vec::new() };
+    let mut map = Map {
+        nodes: imbl::OrdMap::new(),
+        layers: Vec::new(),
+        properties: file.properties,
+        next_id,
+        editor: file.editor,
+        unknown_chunks: Vec::new(),
+        instance_extents: Default::default(),
+    };
     for layer in file.layers {
         if matches!(layer.kind, FileKind::Layer(_)) {
             insert_file_node(&mut map, None, layer);

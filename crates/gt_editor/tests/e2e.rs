@@ -326,6 +326,9 @@ fn prefabs_and_command_palette() {
     let max: Vec<f64> = inst["bounds"]["max"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
     // Brush rotated 90° spans x 100..116, z -64..0. The light's 16 unit box at (100, 48, -32) widens x and y.
     assert!(approx(&min, &[92.0, 0.0, -64.0]) && approx(&max, &[116.0, 56.0, 0.0]), "rotated instance bounds {min:?} {max:?}");
+    ed.call("select", json!({ "ids": [inst["id"]] }));
+    let (sel_min, sel_max) = ed.selection_bounds();
+    assert!(approx(&sel_min, &min) && approx(&sel_max, &max), "selection bounds cover the prefab content, got {sel_min:?} {sel_max:?}");
     ed.screenshot("3d", "instance");
 
     ed.call("run_action", json!({ "action": "explode_instances" }));

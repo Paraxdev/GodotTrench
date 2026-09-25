@@ -1,10 +1,11 @@
 //! Loaded prefab maps referenced by instance nodes, reloaded when their file changes.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
 
-use gt_core::{Aabb, DMat4, DQuat, EulerRot, NodeId};
+use gt_core::{Aabb, DMat4, NodeId};
 use gt_doc::map::Instance;
 use gt_doc::{Map, Node, NodeKind, format};
 
@@ -27,11 +28,19 @@ pub struct PrefabCache {
     pub project_root: Option<PathBuf>,
     /// What loading damaged prefab files lost, until the editor shows it.
     pub problems: Vec<String>,
+    extents_seen: Option<ExtentsSeen>,
+}
+
+/// What [`PrefabCache::refresh_extents`] last filled in, so it only walks the map again when that could change.
+struct ExtentsSeen {
+    nodes: imbl::OrdMap<NodeId, Node>,
+    generation: u64,
+    map_path: Option<PathBuf>,
+    extents: Arc<BTreeMap<String, Aabb>>,
 }
 
 pub fn instance_transform(i: &Instance) -> DMat4 {
-    let q = DQuat::from_euler(EulerRot::YXZ, i.angles.y.to_radians(), i.angles.x.to_radians(), i.angles.z.to_radians());
-    DMat4::from_rotation_translation(q, i.origin)
+    i.transform()
 }
 
 /// Resolves an instance path relative to the referencing map, or through res:// in the Godot project.
@@ -129,6 +138,54 @@ impl PrefabCache {
         if b.is_empty() { fallback } else { transformed_bounds(&b, &instance_transform(i)) }
     }
 
+    /// Fills `map.instance_extents` with the bounds of every prefab the map instances, so bounds queries on an
+    /// instance (the Inspector, framing, selection boxes) cover its content rather than a placeholder box.
+    pub fn refresh_extents(&mut self, map: &mut Map, map_path: Option<&Path>) {
+        let is_instance = |n: &Node| matches!(n.kind, NodeKind::Instance(_));
+        if let Some(seen) = &mut self.extents_seen
+            && seen.generation == self.generation
+            && seen.map_path.as_deref() == map_path
+            && Arc::ptr_eq(&seen.extents, &map.instance_extents)
+        {
+            let instances_changed = !seen.nodes.ptr_eq(&map.nodes)
+                && seen.nodes.diff(&map.nodes).any(|d| match d {
+                    imbl::ordmap::DiffItem::Add(_, n) | imbl::ordmap::DiffItem::Remove(_, n) => is_instance(n),
+                    imbl::ordmap::DiffItem::Update { old, new } => is_instance(old.1) || is_instance(new.1),
+                });
+            seen.nodes = map.nodes.clone();
+            if !instances_changed {
+                return;
+            }
+        }
+
+        let paths: BTreeSet<String> = map
+            .nodes
+            .values()
+            .filter_map(|n| match &n.kind {
+                NodeKind::Instance(i) => Some(i.path.clone()),
+                _ => None,
+            })
+            .collect();
+        let root = self.project_root.clone();
+        let mut extents = BTreeMap::new();
+        for path in paths {
+            if let Some(file) = resolve(&path, map_path, root.as_deref()) {
+                extents.insert(path, self.get(&file).bounds);
+            }
+        }
+
+        if *map.instance_extents != extents {
+            map.instance_extents = Arc::new(extents);
+        }
+
+        self.extents_seen = Some(ExtentsSeen {
+            nodes: map.nodes.clone(),
+            generation: self.generation,
+            map_path: map_path.map(Path::to_path_buf),
+            extents: map.instance_extents.clone(),
+        });
+    }
+
     pub fn loaded(&self, path: &Path) -> Option<&PrefabEntry> {
         self.entries.get(path)
     }
@@ -154,6 +211,34 @@ mod tests {
         let b = cache.instance_bounds(&inst, Some(&dir.join("main.gtm")), None);
         assert!(gt_core::vec_approx_eq(b.min, DVec3::new(100.0, 0.0, -64.0)), "{b:?}");
         assert!(gt_core::vec_approx_eq(b.max, DVec3::new(116.0, 16.0, 0.0)), "{b:?}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn map_bounds_of_an_instance_cover_the_prefab() {
+        let dir = std::env::temp_dir().join(format!("gt_prefab_extents_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut prefab = Map::new();
+        let layer = prefab.default_layer();
+        prefab.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::new(-144.0, 0.0, -128.0), DVec3::new(144.0, 64.0, 128.0)), "m").unwrap()));
+        format::save(&prefab, &dir.join("p.gtm")).unwrap();
+
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        let inst = Instance { path: "p.gtm".into(), origin: DVec3::new(0.0, 32.0, 0.0), angles: DVec3::ZERO, fixup: String::new() };
+        let id = map.insert(layer, NodeKind::Instance(inst.clone()));
+        assert_eq!(map.bounds(id).size(), DVec3::splat(16.0), "unknown prefab content falls back to a small box");
+
+        let mut cache = PrefabCache::default();
+        let main = dir.join("main.gtm");
+        cache.refresh_extents(&mut map, Some(&main));
+        assert_eq!(map.bounds(id), Aabb::new(DVec3::new(-144.0, 32.0, -128.0), DVec3::new(144.0, 96.0, 128.0)));
+
+        // An undo brings back a map whose extents predate the instance, the next refresh fills them in again.
+        let mut older = map.clone();
+        older.instance_extents = Default::default();
+        cache.refresh_extents(&mut older, Some(&main));
+        assert_eq!(older.bounds(id).size(), DVec3::new(288.0, 64.0, 256.0));
         let _ = std::fs::remove_dir_all(dir);
     }
 
