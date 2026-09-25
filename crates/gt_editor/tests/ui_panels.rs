@@ -463,6 +463,13 @@ fn outliner_rows_tell_brushes_apart_and_outline_the_hovered_one() {
     harness.get_by_label_contains("16x128x256 at 240 0 0").hover();
     harness.run();
     assert_eq!(harness.state().state.outliner_hover, Some(right), "the views outline the hovered row's brush");
+
+    harness.get_by_role(egui::accesskit::Role::TextInput).click();
+    harness.run();
+    harness.get_by_role(egui::accesskit::Role::TextInput).type_text("at 240");
+    harness.run();
+    harness.get_by_label_contains("16x128x256 at 240 0 0");
+    assert!(harness.query_by_label_contains("16x128x256 at 0 0 0").is_none(), "the filter matches what the rows show");
 }
 
 #[test]
@@ -523,6 +530,38 @@ fn outliner_shift_click_selects_a_range_and_ctrl_click_toggles() {
     assert_eq!(selected(&harness), [true, true, true, true], "Ctrl+Shift adds the range from the row Ctrl clicked");
     click(&mut harness, 3, egui::Modifiers::NONE);
     assert_eq!(selected(&harness), [false, false, false, true]);
+}
+
+#[test]
+fn outliner_ctrl_shift_range_leaves_out_the_children_of_a_selected_group() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    let cube = |m: &mut gt_doc::Map, parent, x: f64, size: f64| {
+        let min = DVec3::new(x, 0.0, 0.0);
+        m.insert(parent, NodeKind::Brush(Brush::from_aabb(&Aabb::new(min, min + DVec3::splat(size)), "dev/grey").unwrap()))
+    };
+    let (group, a, b) = f.state.doc.edit("add", |m, _| {
+        let group = m.insert(layer, NodeKind::Group(gt_doc::Group::new("crates")));
+        cube(m, group, 0.0, 32.0);
+        cube(m, group, 64.0, 32.0);
+        (group, cube(m, layer, 256.0, 64.0), cube(m, layer, 512.0, 64.0))
+    });
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(360.0, 400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::outliner(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    harness.get_by_label("Expand").click();
+    harness.run();
+    harness.get_by_label("Expand").click();
+    harness.run();
+    harness.get_by_label("crates").click();
+    harness.run();
+    harness.get_by_label_contains("64x64x64 at 512").click_modifiers(egui::Modifiers::COMMAND);
+    harness.run();
+    harness.get_by_label_contains("32x32x32 at 0 0 0").click_modifiers(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT);
+    harness.run();
+    let selected: Vec<_> = harness.state().state.doc.selection.nodes.iter().copied().collect();
+    assert_eq!(selected, [group, a, b], "the group's children would move twice");
 }
 
 #[test]

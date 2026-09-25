@@ -387,7 +387,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
 }
 
 /// Plain click selects one row, Ctrl toggles it, Shift selects the rows from the last clicked one and Ctrl+Shift adds
-/// them. A range leaves out layers and rows whose group is already in it, those would move twice.
+/// them. A range leaves out layers and keeps no row together with its group, those would move twice.
 fn select_outliner_row(state: &mut EditorState, ps: &mut PanelState, order: &[NodeId], id: NodeId, modifiers: egui::Modifiers) {
     let map = &state.doc.map;
     let anchor = ps.outliner_anchor.and_then(|a| order.iter().position(|r| *r == a));
@@ -395,14 +395,13 @@ fn select_outliner_row(state: &mut EditorState, ps: &mut PanelState, order: &[No
         (true, Some(from), Some(to)) => {
             let rows = &order[from.min(to)..=from.max(to)];
             let objects = |r: &&NodeId| !matches!(map.get(**r).map(|n| &n.kind), Some(NodeKind::Layer(_)) | None);
-            let picked: Vec<NodeId> = rows.iter().filter(objects).copied().collect();
-            Some(picked.iter().copied().filter(|r| !map.ancestors(*r).iter().any(|a| picked.contains(a))).collect())
+            Some(rows.iter().filter(objects).copied().collect())
         }
         _ => None,
     };
 
     state.last_bounds = map.bounds(id);
-    state.doc.select(|_, s| match range {
+    state.doc.select(|map, s| match range {
         Some(rows) => {
             if !modifiers.command {
                 s.clear();
@@ -410,6 +409,8 @@ fn select_outliner_row(state: &mut EditorState, ps: &mut PanelState, order: &[No
 
             s.faces.clear();
             s.nodes.extend(rows);
+            let all = s.nodes.clone();
+            s.nodes.retain(|r| !map.ancestors(*r).iter().any(|a| all.contains(a)));
         }
         None if modifiers.command => s.toggle_node(id),
         None => {
@@ -462,7 +463,8 @@ fn push_rows(map: &gt_doc::Map, id: NodeId, depth: usize, expanded: &HashSet<Nod
     let Some(node) = map.get(id) else { return };
     for c in &node.children {
         let Some(child) = map.get(*c) else { continue };
-        let matches = filter.is_empty() || child.name().to_lowercase().contains(filter);
+        let shown = || outliner_hint(map, *c, child).map(|(size, at)| format!("{size} at {at}"));
+        let matches = filter.is_empty() || child.name().to_lowercase().contains(filter) || shown().is_some_and(|s| s.contains(filter));
         if matches {
             rows.push((depth, *c));
         }
