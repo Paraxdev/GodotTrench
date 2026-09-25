@@ -13,6 +13,13 @@ Dropping a material on a terrain sets a terrain layer instead, see [Terrain laye
 
 UV lock (Ctrl+Shift+U) is on by default, so textures stay attached to a brush while you move it.
 
+## Built in colours
+
+The Materials panel always offers `dev/grey`, `dev/dark`, `dev/orange`, `dev/blue` and `dev/green`, grid textures
+for blocking out a level before it has art. Color coding rooms with them survives the build, since the addon ships the
+same grids and Godot uses them when the project has no texture of that name. A texture of your own at, for example,
+`res://textures/dev/grey.png` replaces one.
+
 ## The Texture tool
 
 A face's alignment is where its texture sits on it: the offset, scale and rotation. **Shift+T** switches to the

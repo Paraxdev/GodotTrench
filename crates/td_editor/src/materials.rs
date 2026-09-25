@@ -674,7 +674,7 @@ fn grid_texture(base: [u8; 3], line: [u8; 3]) -> image::RgbaImage {
         let c = if major {
             line
         } else if minor {
-            [(base[0] as u16 + line[0] as u16) as u8 / 2, (base[1] as u16 + line[1] as u16) as u8 / 2, (base[2] as u16 + line[2] as u16) as u8 / 2]
+            [0, 1, 2].map(|i| ((base[i] as u16 + line[i] as u16) / 2) as u8)
         } else {
             base
         };
