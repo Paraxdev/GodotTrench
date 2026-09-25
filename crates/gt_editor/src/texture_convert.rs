@@ -180,7 +180,7 @@ pub fn convert_folder_dialog(state: &mut EditorState) {
         return;
     }
 
-    let Some(folder) = rfd::FileDialog::new().set_title("Folder with .vmt/.vtf, .wad or .wal textures").pick_folder() else { return };
+    let Some(folder) = crate::commands::file_dialog(state, |d| d.set_title("Folder with .vmt/.vtf, .wad or .wal textures").pick_folder()) else { return };
     let lib = texture_import::scan(std::slice::from_ref(&folder));
     if lib.is_empty() {
         state.set_status(format!("No .vmt, .wad or .wal textures in {}", folder.display()));

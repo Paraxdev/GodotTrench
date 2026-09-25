@@ -623,6 +623,27 @@ fn selection_bounds(state: &EditorState) -> Aabb {
     map.bounds_of(state.doc.selection.nodes.iter().copied())
 }
 
+/// The folder file dialogs start in: the current map's, else the Godot project's, since maps have to live inside it.
+pub fn dialog_dir(state: &EditorState) -> Option<std::path::PathBuf> {
+    let map_dir = state.doc.path.as_deref().and_then(std::path::Path::parent).filter(|d| d.is_dir());
+    map_dir.or(state.game.project_root.as_deref()).and_then(|d| std::path::absolute(d).ok())
+}
+
+/// Shows a file dialog that starts in `dialog_dir`.
+pub fn file_dialog<T>(state: &EditorState, show: impl FnOnce(rfd::FileDialog) -> T) -> T {
+    let Some(dir) = dialog_dir(state) else { return show(rfd::FileDialog::new()) };
+    // Without a desktop portal rfd falls back to zenity, which ignores the start folder and opens the working directory.
+    #[cfg(target_os = "linux")]
+    let restore = std::env::current_dir().ok().filter(|_| std::env::set_current_dir(&dir).is_ok());
+    let result = show(rfd::FileDialog::new().set_directory(&dir));
+    #[cfg(target_os = "linux")]
+    if let Some(cwd) = restore {
+        let _ = std::env::set_current_dir(cwd);
+    }
+
+    result
+}
+
 pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
     state.validate_insert_context();
     run(state, action, ctx);
@@ -674,15 +695,10 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             state.switch_tab((active + 1) % titles.len());
         }
         Action::OpenMap => {
-            let mut dialog = rfd::FileDialog::new()
-                .add_filter("GodotTrench map", &["gtm"])
-                .add_filter("Map as JSON", &["json"])
-                .add_filter("Autosave (recover a map)", &["autosave"]);
-            if let Some(root) = &state.game.project_root {
-                dialog = dialog.set_directory(root);
-            }
-
-            if let Some(path) = dialog.pick_file()
+            let picked = file_dialog(state, |d| {
+                d.add_filter("GodotTrench map", &["gtm"]).add_filter("Map as JSON", &["json"]).add_filter("Autosave (recover a map)", &["autosave"]).pick_file()
+            });
+            if let Some(path) = picked
                 && let Err(e) = open_map_in_tab(state, &path)
             {
                 state.set_status(format!("Open failed: {e}"));
@@ -715,12 +731,9 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             None => execute(state, Action::SaveAs, ctx),
         },
         Action::SaveAs => {
-            let mut dialog = rfd::FileDialog::new().add_filter("GodotTrench map", &["gtm"]).add_filter("Map as JSON", &["json"]).set_file_name("map.gtm");
-            if let Some(root) = &state.game.project_root {
-                dialog = dialog.set_directory(root);
-            }
-
-            if let Some(path) = dialog.save_file()
+            let name = state.doc.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "map.gtm".into());
+            let picked = file_dialog(state, |d| d.add_filter("GodotTrench map", &["gtm"]).add_filter("Map as JSON", &["json"]).set_file_name(name).save_file());
+            if let Some(path) = picked
                 && let Err(e) = state.save_map(&path)
             {
                 state.set_status(format!("Save failed: {e}"));
@@ -1099,7 +1112,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             });
         }
         Action::ImportQuakeMap => {
-            if let Some(path) = rfd::FileDialog::new().add_filter("Quake / TrenchBroom map", &["map"]).pick_file() {
+            if let Some(path) = file_dialog(state, |d| d.add_filter("Quake / TrenchBroom map", &["map"]).pick_file()) {
                 match import_quake_map(state, &path) {
                     Ok(_) => crate::texture_convert::offer_for_map(state, &path),
                     Err(e) => state.set_status(format!("Import failed: {e}")),
@@ -1107,7 +1120,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             }
         }
         Action::ImportVmf => {
-            if let Some(path) = rfd::FileDialog::new().add_filter("Hammer map", &["vmf"]).pick_file() {
+            if let Some(path) = file_dialog(state, |d| d.add_filter("Hammer map", &["vmf"]).pick_file()) {
                 match import_vmf(state, &path) {
                     Ok(_) => crate::texture_convert::offer_for_map(state, &path),
                     Err(e) => state.set_status(format!("Import failed: {e}")),
@@ -1117,7 +1130,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::ConvertTextures => crate::texture_convert::convert_folder_dialog(state),
         Action::ExportQuakeMap | Action::ExportQuakeMapCordon => {
             let name = state.doc.path.as_ref().and_then(|p| p.file_stem()).map(|s| format!("{}.map", s.to_string_lossy())).unwrap_or_else(|| "map.map".into());
-            if let Some(path) = rfd::FileDialog::new().add_filter("Quake / TrenchBroom map", &["map"]).set_file_name(name).save_file() {
+            if let Some(path) = file_dialog(state, |d| d.add_filter("Quake / TrenchBroom map", &["map"]).set_file_name(name).save_file()) {
                 let options = gt_formats::quake_map::ExportOptions { cordon: action == Action::ExportQuakeMapCordon, ..Default::default() };
                 match std::fs::write(&path, gt_formats::quake_map::export_with(&state.doc.map, options)) {
                     Ok(()) => state.set_status(format!("Exported {}", path.display())),
@@ -1126,7 +1139,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             }
         }
         Action::ImportModel(mode) => {
-            let Some(picked) = rfd::FileDialog::new().add_filter("Models", &crate::models::MODEL_EXTS).pick_file() else { return };
+            let Some(picked) = file_dialog(state, |d| d.add_filter("Models", &crate::models::MODEL_EXTS).pick_file()) else { return };
             let path = if mode == ModelImport::Prop { prop_model_in_project(state, &picked) } else { Some(picked) };
             if let Some(path) = path {
                 let at = state.snap(state.cursor_world.unwrap_or(DVec3::ZERO));
@@ -1213,12 +1226,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::CreatePrefab => create_prefab(state),
         Action::ExplodeInstances => explode_instances(state),
         Action::InsertPrefab => {
-            let mut dialog = rfd::FileDialog::new().add_filter("GodotTrench map", &["gtm"]);
-            if let Some(dir) = state.doc.path.as_ref().and_then(|p| p.parent()) {
-                dialog = dialog.set_directory(dir);
-            }
-
-            if let Some(path) = dialog.pick_file() {
+            if let Some(path) = file_dialog(state, |d| d.add_filter("GodotTrench map", &["gtm"]).pick_file()) {
                 let reference = prefab_reference(&path, state.doc.path.as_deref(), state.game.project_root.as_deref());
                 let origin = state.snap(state.cursor_world.unwrap_or(DVec3::ZERO));
                 state.doc.edit("Insert Prefab", |m, s| {
@@ -1413,12 +1421,7 @@ fn create_prefab(state: &mut EditorState) {
         state.set_status("Save the map first, prefab paths are stored relative to it");
         return;
     };
-    let Some(path) = rfd::FileDialog::new()
-        .add_filter("GodotTrench map", &["gtm"])
-        .set_directory(map_path.parent().unwrap_or(std::path::Path::new(".")))
-        .set_file_name("prefab.gtm")
-        .save_file()
-    else {
+    let Some(path) = file_dialog(state, |d| d.add_filter("GodotTrench map", &["gtm"]).set_file_name("prefab.gtm").save_file()) else {
         return;
     };
 
@@ -2111,6 +2114,20 @@ fn first_selected_material(state: &EditorState) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn file_dialogs_start_in_the_map_folder_else_the_project() {
+        let mut state = EditorState::new(Default::default());
+        assert_eq!(dialog_dir(&state), None);
+        let project = std::env::temp_dir().join(format!("gt_dialog_dir_{}", std::process::id()));
+        let maps = project.join("maps");
+        std::fs::create_dir_all(&maps).unwrap();
+        state.game.project_root = Some(project.clone());
+        assert_eq!(dialog_dir(&state).as_deref(), Some(project.as_path()), "an unsaved map starts in the project");
+        state.doc.path = Some(maps.join("level.gtm"));
+        assert_eq!(dialog_dir(&state).as_deref(), Some(maps.as_path()), "a saved map starts in its own folder");
+        std::fs::remove_dir_all(&project).ok();
+    }
 
     #[test]
     fn a_preset_starts_a_new_scatter_set_on_its_own_layer() {
