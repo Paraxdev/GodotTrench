@@ -6,6 +6,10 @@ Point entities are things that sit at one spot, like lights, spawn points and so
 panel into a view, or double click its card to place it at the cursor. Ctrl or Shift click selects several cards, and
 dragging them drops them all in a row.
 
+A 2D view cannot show depth, so a drop there looks past the roof or the near wall of a room. In the Top view the
+entity lands on the floor inside, in the Front and Side views halfway across the room. Over solid ground with nothing
+enclosed below, it lands on top.
+
 Doors, buttons and triggers are brush entities: they take their shape from brushes you built. Select the brushes, then
 pick a class from *Create Brush Entity* in the view's right click menu or from *Brush > Brush Entity*. The common ones
 have quicker routes:

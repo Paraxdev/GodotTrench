@@ -1476,6 +1476,31 @@ pub fn place_entities(state: &mut EditorState, classnames: &[String], at: Option
     });
 }
 
+/// Where an entity or model dropped into a view lands, with the normal of the surface it rests on. A 2D view shows no
+/// depth, so a drop over a closed space passes the solid in front, a roof or the near wall, and lands in the space
+/// behind it: on its floor in the Top view, halfway across it in the Front and Side views.
+pub fn drop_target(state: &EditorState, ray: &gt_core::Ray, kind: crate::camera::ViewKind) -> Option<(DVec3, Option<DVec3>)> {
+    let hits = crate::picking::pick_all(state, ray);
+    let first = hits.first()?;
+    let map = &state.doc.map;
+    let solid = |h: &&crate::picking::Hit| match map.get(h.node).map(|n| &n.kind) {
+        Some(gt_doc::NodeKind::Brush(b)) => !b.faces.iter().all(|f| state.game.is_tool_texture(&f.data.material)),
+        Some(gt_doc::NodeKind::Mesh(_) | gt_doc::NodeKind::Terrain(_)) => true,
+        _ => false,
+    };
+    if kind.is_2d()
+        && let Some(front) = hits.iter().find(solid)
+    {
+        let b = map.bounds(front.node);
+        let exit = ((b.min - ray.origin) / ray.dir).max((b.max - ray.origin) / ray.dir).min_element();
+        if let Some(back) = hits.iter().filter(solid).find(|h| h.distance > exit + 1.0 && h.normal.dot(ray.dir) < 0.0) {
+            return Some(if kind == crate::camera::ViewKind::Top { (back.point, Some(back.normal)) } else { (ray.at((exit + back.distance) / 2.0), None) });
+        }
+    }
+
+    Some((first.point, Some(first.normal)))
+}
+
 /// Opens a Quake `.map` as a new, unsaved GodotTrench document, in a tab when the current map has unsaved changes.
 pub fn import_quake_map(state: &mut EditorState, path: &std::path::Path) -> Result<gt_formats::quake_map::ImportReport, String> {
     let text = gt_formats::vmf::read_text(path).map_err(|e| e.to_string())?;
@@ -2270,5 +2295,38 @@ mod tests {
         assert_eq!(state.tabs.len(), 1);
         assert!(state.modified_tabs().is_empty());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_drop_in_a_2d_view_lands_inside_the_room_under_the_roof() {
+        use crate::camera::ViewKind;
+        use gt_core::Ray;
+        let mut state = EditorState::new(Default::default());
+        let layer = state.doc.map.default_layer();
+        let room = Aabb::new(DVec3::ZERO, DVec3::new(256.0, 128.0, 256.0));
+        state.doc.edit("room", |m, _| {
+            for part in gt_geom::csg::hollow(&gt_geom::Brush::from_aabb(&room, "wall").unwrap(), 16.0) {
+                m.insert(layer, gt_doc::NodeKind::Brush(part));
+            }
+
+            m.insert(
+                layer,
+                gt_doc::NodeKind::Brush(gt_geom::Brush::from_aabb(&Aabb::new(DVec3::new(512.0, 0.0, 0.0), DVec3::new(576.0, 64.0, 64.0)), "crate").unwrap()),
+            );
+        });
+
+        let down = |x: f64, z: f64| Ray::new(DVec3::new(x, 4096.0, z), -DVec3::Y);
+        let (at, normal) = drop_target(&state, &down(128.0, 128.0), ViewKind::Top).unwrap();
+        assert_eq!((at, normal), (DVec3::new(128.0, 16.0, 128.0), Some(DVec3::Y)), "on the floor, not the roof");
+
+        let (at, normal) = drop_target(&state, &Ray::new(DVec3::new(128.0, 64.0, 4096.0), -DVec3::Z), ViewKind::Front).unwrap();
+        assert_eq!((at, normal), (DVec3::new(128.0, 64.0, 128.0), None), "halfway between the front and back walls");
+
+        let (at, _) = drop_target(&state, &down(128.0, 128.0), ViewKind::Perspective).unwrap();
+        assert_eq!(at.y, 128.0, "the 3D view drops on the surface it shows");
+
+        let (at, _) = drop_target(&state, &down(544.0, 32.0), ViewKind::Top).unwrap();
+        assert_eq!(at.y, 64.0, "a solid block with nothing enclosed under it takes the drop on top");
+        assert!(drop_target(&state, &down(2000.0, 0.0), ViewKind::Top).is_none());
     }
 }
