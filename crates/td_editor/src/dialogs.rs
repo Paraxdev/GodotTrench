@@ -725,7 +725,7 @@ impl TerrainDialog {
                             .unwrap_or_else(|| "procedural".into()),
                     );
                     if ui.button("Import PNG…").clicked() {
-                        self.heightmap = rfd::FileDialog::new().add_filter("Heightmap", &["png", "tga", "bmp"]).pick_file();
+                        self.heightmap = commands::file_dialog(state, |d| d.add_filter("Heightmap", &["png", "tga", "bmp"]).pick_file());
                     }
 
                     if self.heightmap.is_some() && ui.button("clear").clicked() {

@@ -167,16 +167,12 @@ fn models_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>, 
     }
 
     ui.horizontal_wrapped(|ui| {
-        if ui.small_button("Add models…").on_hover_text("Pick .bbmodel, .glb, .gltf or .tscn files").clicked() {
-            let mut dialog = rfd::FileDialog::new().add_filter("Models and scenes", &["bbmodel", "glb", "gltf", "tscn", "scn"]);
-            if let Some(root) = &state.game.project_root {
-                dialog = dialog.set_directory(root);
-            }
-
-            if let Some(paths) = dialog.pick_files() {
-                let (_, added) = tool::add_model_files(state, &paths);
-                state.set_status(format!("Added {added} models to the scatter set"));
-            }
+        if ui.small_button("Add models…").on_hover_text("Pick .bbmodel, .glb, .gltf or .tscn files").clicked()
+            && let Some(paths) =
+                crate::commands::file_dialog(state, |d| d.add_filter("Models and scenes", &["bbmodel", "glb", "gltf", "tscn", "scn"]).pick_files())
+        {
+            let (_, added) = tool::add_model_files(state, &paths);
+            state.set_status(format!("Added {added} models to the scatter set"));
         }
 
         if ui.small_button("Add selected props").on_hover_text("The models (or classnames) of the selected entities").clicked() {

@@ -1,5 +1,8 @@
 # Saving and recovery
 
+File dialogs start in the current map's folder, or in the Godot project for a map that was never saved, since the
+addon loads maps by their `res://` path. *File > Maps in Project* lists every map in the project for quick opening.
+
 ## Backups and autosave
 
 | File | Written |
