@@ -40,6 +40,7 @@ pub mod validate;
 pub mod viewport;
 pub mod volume_tool;
 pub mod walkable;
+pub mod welcome;
 pub mod widgets;
 pub mod zfight;
 

@@ -222,6 +222,8 @@ pub struct Prefs {
     pub godot_overlays: bool,
     /// Agent the walkable area overlay is baked for.
     pub walk_agent: crate::walkable::Agent,
+    /// Show first steps in the views while the map is empty.
+    pub start_hints: bool,
 }
 
 pub const UI_SCALE_MIN: f32 = 0.5;
@@ -286,6 +288,7 @@ impl Default for Prefs {
             transform_gizmo: true,
             godot_overlays: true,
             walk_agent: Default::default(),
+            start_hints: true,
         }
     }
 }
