@@ -794,11 +794,12 @@ impl Viewport {
 
     /// Shows where a dragged payload lands: the faces a material goes on, or the surface point an entity rests on.
     fn paint_drop_target(&self, ui: &Ui, cx: &ViewCtx, payload: &DndPayload, pos: egui::Pos2) {
-        let Some(hit) = picking::pick(cx.state, &self.camera.ray(self.rect, pos)) else { return };
+        let ray = self.camera.ray(self.rect, pos);
         let painter = ui.painter().with_clip_rect(self.rect);
         let stroke = egui::Stroke::new(2.0, DROP_COLOR);
         match payload {
             DndPayload::Material(_) => {
+                let Some(hit) = picking::pick(cx.state, &ray) else { return };
                 let map = &cx.state.doc.map;
                 let whole = ui.input(|i| i.modifiers.shift);
                 let polygons: Vec<Vec<DVec3>> = match (map.brush(hit.node), map.mesh(hit.node), hit.face) {
@@ -819,9 +820,19 @@ impl Viewport {
                 }
             }
             DndPayload::Entities(_) | DndPayload::Model(_) => {
-                let at = crate::commands::drop_target(cx.state, &self.camera.ray(self.rect, pos), self.camera.kind).map_or(hit.point, |(p, _)| p);
-                if let Some(point) = self.camera.project(self.rect, at) {
-                    painter.circle(point, 5.0, DROP_COLOR.gamma_multiply(0.4), stroke);
+                let through = ui.input(|i| i.modifiers.alt);
+                let Some((at, _)) = crate::commands::drop_target(cx.state, &ray, self.camera.kind, through) else { return };
+                let Some(point) = self.camera.project(self.rect, at) else { return };
+                painter.circle(point, 5.0, DROP_COLOR.gamma_multiply(0.4), stroke);
+                // The marker alone shows no depth in a 2D view, so say how deep the drop lands.
+                if self.camera.kind.is_2d() {
+                    let axis = self.camera.kind.depth_axis();
+                    let mut text = format!("{} {}", ["X", "Y", "Z"][axis], at[axis].round() + 0.0);
+                    if !through {
+                        text += ", hold Alt to drop through";
+                    }
+
+                    painter.text(point + Vec2::new(10.0, -10.0), Align2::LEFT_BOTTOM, text, FontId::proportional(13.0), ui.visuals().strong_text_color());
                 }
             }
         }
@@ -893,7 +904,8 @@ impl Viewport {
                 }
             }
             DndPayload::Entities(classnames) => {
-                let (at, normal) = match (self.camera.kind, crate::commands::drop_target(cx.state, &ray, self.camera.kind)) {
+                let through = ui.input(|i| i.modifiers.alt);
+                let (at, normal) = match (self.camera.kind, crate::commands::drop_target(cx.state, &ray, self.camera.kind, through)) {
                     (_, Some(target)) => target,
                     (ViewKind::Perspective, None) => (cx.state.cursor_world.unwrap_or(ray.at(256.0)), None),
                     (_, None) => (self.camera.screen_to_plane(self.rect, pos), None),
@@ -904,7 +916,8 @@ impl Viewport {
                 cx.actions.push(Action::PlaceEntities { classnames: classnames.clone(), at: Some(at), normal, row });
             }
             DndPayload::Model(path) => {
-                let at = match (self.camera.kind, crate::commands::drop_target(cx.state, &ray, self.camera.kind)) {
+                let through = ui.input(|i| i.modifiers.alt);
+                let at = match (self.camera.kind, crate::commands::drop_target(cx.state, &ray, self.camera.kind, through)) {
                     (_, Some((p, _))) => p,
                     (ViewKind::Perspective, None) => cx.state.cursor_world.unwrap_or(ray.at(256.0)),
                     (_, None) => self.camera.screen_to_plane(self.rect, pos),
