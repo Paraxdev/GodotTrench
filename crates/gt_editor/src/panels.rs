@@ -1163,6 +1163,7 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &gt_doc::
         state.doc.map.entities().filter_map(|(_, e)| e.targetname().map(|n| (n.to_string(), e.classname.clone()))).collect();
     // Godot overlay nodes have no class the editor knows, so they offer no inputs to pick from.
     targetnames.extend(state.overlay_ghosts.targetnames().into_iter().map(|n| (n, String::new())));
+    let target_options = target_options(state);
     let mut outputs = entity.outputs.clone();
     let mut changed = false;
     let mut remove = None;
@@ -1174,18 +1175,18 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &gt_doc::
                     ui,
                     egui::Id::new(("out", i)),
                     &mut conn.output,
-                    def.map(|d| d.outputs.iter().map(|o| o.name.clone()).collect()).unwrap_or_default(),
+                    def.map(|d| d.outputs.iter().map(|o| (o.name.clone(), "")).collect()).unwrap_or_default(),
                     110.0,
                 );
                 ui.end_row();
                 ui.label("target");
-                changed |= combo_or_text(ui, egui::Id::new(("target", i)), &mut conn.target, targetnames.iter().map(|(n, _)| n.clone()).collect(), 110.0);
+                changed |= combo_or_text(ui, egui::Id::new(("target", i)), &mut conn.target, target_options.clone(), 110.0);
                 ui.end_row();
-                let target_inputs: Vec<String> = targetnames
+                let target_inputs: Vec<(String, &str)> = targetnames
                     .iter()
                     .filter(|(n, _)| *n == conn.target)
                     .filter_map(|(_, c)| state.game.entity(c))
-                    .flat_map(|d| d.inputs.iter().map(|i| i.name.clone()))
+                    .flat_map(|d| d.inputs.iter().map(|i| (i.name.clone(), "")))
                     .collect();
                 ui.label("input");
                 changed |= combo_or_text(ui, egui::Id::new(("input", i)), &mut conn.input, target_inputs, 110.0);
@@ -1238,15 +1239,31 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &gt_doc::
     }
 }
 
-fn combo_or_text(ui: &mut Ui, salt: egui::Id, value: &mut String, options: Vec<String>, width: f32) -> bool {
+/// Every targetname an output or a target key can point at, sorted and listed once, with Godot overlay targets marked.
+fn target_options(state: &EditorState) -> Vec<(String, &'static str)> {
+    let mut options: Vec<(String, &str)> = state.doc.map.entities().filter_map(|(_, e)| e.targetname().map(|n| (n.to_string(), ""))).collect();
+    options.extend(state.overlay_ghosts.targetnames().into_iter().map(|n| (n, "Godot overlay")));
+    options.sort_unstable();
+    options.dedup_by(|a, b| a.0 == b.0);
+    options
+}
+
+/// A text field with a drop down of `options`, each a value and a note shown after it. The drop down only lists the
+/// options containing what was typed, unless that is empty, already one of them or matches none.
+fn combo_or_text(ui: &mut Ui, salt: egui::Id, value: &mut String, options: Vec<(String, &str)>, width: f32) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
         changed |= ui.add(egui::TextEdit::singleline(value).desired_width(width)).changed();
         if !options.is_empty() {
+            let typed = value.to_lowercase();
+            let exact = options.iter().any(|(o, _)| *o == *value);
+            let matching: Vec<&(String, &str)> = options.iter().filter(|(o, _)| o.to_lowercase().contains(&typed)).collect();
+            let shown = if exact || matching.is_empty() { options.iter().collect() } else { matching };
             egui::ComboBox::from_id_salt(salt).selected_text("▾").width(24.0).show_ui(ui, |ui| {
-                for o in options {
-                    if ui.selectable_label(*value == o, &o).clicked() {
-                        *value = o;
+                for (o, note) in shown {
+                    let label = if note.is_empty() { o.clone() } else { format!("{o}   ({note})") };
+                    if ui.selectable_label(*value == *o, label).clicked() {
+                        *value = o.clone();
                         changed = true;
                     }
                 }
@@ -1323,10 +1340,7 @@ fn property_editor(ui: &mut Ui, ty: PropertyType, options: &[(String, String)], 
 
             changed
         }
-        PropertyType::TargetDestination => {
-            let names: Vec<String> = state.doc.map.entities().filter_map(|(_, e)| e.targetname().map(str::to_string)).collect();
-            combo_or_text(ui, ui.next_auto_id(), value, names, width - 36.0)
-        }
+        PropertyType::TargetDestination => combo_or_text(ui, ui.next_auto_id(), value, target_options(state), width - 36.0),
         PropertyType::Resource => {
             let browse = state.game.project_root.is_some();
             let mut changed = widgets::text_field(ui, value, if browse { width - 28.0 } else { width });

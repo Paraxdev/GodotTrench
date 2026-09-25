@@ -142,6 +142,59 @@ fn inspector_adds_io_output() {
 }
 
 #[test]
+fn output_target_drop_down_lists_overlay_targets_sorted_and_filtered() {
+    let (mut f, id) = Fixture::with_light();
+    let layer = f.state.doc.map.default_layer();
+    f.state.doc.edit("wire", |m, _| {
+        for i in 0..30 {
+            let lamp = ops::create_point_entity(m, layer, "light", DVec3::new(i as f64 * 32.0, 0.0, 0.0));
+            m.entity_mut(lamp).unwrap().properties.insert("targetname".into(), format!("lamp_{:02}", i % 15));
+        }
+
+        let conn = gt_doc::IoConnection { output: "on".into(), target: "COURT".into(), input: String::new(), parameter: String::new(), delay: 0.0, times: -1 };
+        m.entity_mut(id).unwrap().outputs = vec![conn];
+    });
+    let sidecar = r#"{ "format": "godottrench-overlay", "overlays": [{ "name": "Court", "items": [
+        { "name": "Breaker", "min": [0, 0, 0], "max": [8, 8, 8], "targetnames": ["court_breaker"] },
+        { "name": "Fireflies", "min": [0, 0, 0], "max": [8, 8, 8], "targetnames": ["court_fireflies"] }
+    ] }] }"#;
+    f.state.overlay_ghosts.items = gt_editor::overlays::parse(sidecar).unwrap();
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(420.0, 1200.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+
+    let drop_down = |harness: &Harness<'_, Fixture>, label: &str| {
+        let row = harness.get_by_label(label).rect().center().y;
+        harness.get_all_by_value("▾").min_by(|a, b| (a.rect().center().y - row).abs().total_cmp(&(b.rect().center().y - row).abs())).unwrap().click();
+    };
+    let target_drop_down = |harness: &Harness<'_, Fixture>| drop_down(harness, "target");
+    target_drop_down(&harness);
+    harness.run();
+    assert!(harness.query_by_label_contains("lamp_").is_none(), "what was typed filters the list");
+    assert!(harness.query_by_label("court_fireflies   (Godot overlay)").is_some());
+    harness.get_by_label("court_breaker   (Godot overlay)").click();
+    harness.run();
+    assert_eq!(harness.state().state.doc.map.entity(id).unwrap().outputs[0].target, "court_breaker");
+
+    target_drop_down(&harness);
+    harness.run();
+    assert_eq!(harness.get_all_by_label("lamp_03").count(), 1, "a targetname shared by several entities is listed once");
+    let overlay = harness.get_by_label("court_breaker   (Godot overlay)").rect();
+    let first_lamp = harness.get_by_label("lamp_00").rect();
+    assert!(overlay.min.y < first_lamp.min.y, "the list is sorted by name, overlay targets are not left at the end");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+
+    drop_down(&harness, "fixture");
+    harness.run();
+    assert_eq!(harness.get_all_by_label("lamp_03").count(), 1, "target keys list the same targets");
+    harness.get_by_label("court_fireflies   (Godot overlay)").click();
+    harness.run();
+    assert_eq!(harness.state().state.doc.map.entity(id).unwrap().properties.get("fixture").map(String::as_str), Some("court_fireflies"));
+}
+
+#[test]
 fn inspector_shows_worldspawn_without_selection() {
     let mut harness = Harness::new_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), Fixture::new());
     harness.run();

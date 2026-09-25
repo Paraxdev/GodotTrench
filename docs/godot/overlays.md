@@ -17,12 +17,30 @@ in the scene can point at its map with *Map Path* instead, and then follows the 
 Overlay content uses the map's local space in meters. At 32 units per meter, a child at `(2, 0, -3)` sits where
 GodotTrench shows `(64, 0, -96)`.
 
+## An overlay in its own scene
+
+An overlay can also be a scene of its own. Make a scene whose root is a `GodotTrenchOverlay`, then instance it as a
+direct child of the `FuncGodotMap` by dragging the `.tscn` onto the map node. This pays off when several scenes use
+the same map and should share the overlay, when one person works on the level scene and another on the overlay, or
+when a script generates the level scene, as in the demo.
+
+Godot shows an instanced scene as a single node with no arrow to expand it. To get at its content:
+
+| You want to | Do this |
+| --- | --- |
+| Edit the overlay everywhere it is used | Click the *Open in Editor* icon next to the node in the Scene dock, or double click the `.tscn` in the FileSystem dock |
+| See or change its nodes in this scene only | Right click the node and turn on *Editable Children* |
+
+Opened by itself, the overlay scene shows a warning on its root because it is not under a map. That is expected. The
+dashed boxes in GodotTrench catch up the next time the scene with the map is built or saved, since only there does the
+overlay know its map.
+
 ## What the level designer sees
 
 The level designer works in GodotTrench and never sees the Godot scene, so the editor shows each direct child of an
 overlay as a dashed blue box with its name. That way nobody builds a wall through the breaker box. The overlay's
-targetnames also count as real targets: the output editor offers them to pick, and the Issues panel does not flag
-outputs aimed at them. *View > Godot Overlays* hides the boxes, and turning off *Share With Editor* on the overlay
+targetnames also count as real targets: the output editor's target list offers them, marked *Godot overlay*, and
+the Issues panel does not flag outputs aimed at them. *View > Godot Overlays* hides the boxes, and turning off *Share With Editor* on the overlay
 leaves it out.
 
 The boxes come from `night_district.overlay.json` next to `night_district.gtm`, written when the map is built in the
@@ -68,5 +86,7 @@ warning sign goes up with its roller door.
 > **Warning:** Wiring survives rebuilds, state does not. Map entities come back in their starting state, so connect to
 > the overlay's `map_rebuilt(map)` signal and push your state back, for example switch the lamps on again.
 
-`godot/demo/overlays/night_district_overlay.tscn` has all of this: a breaker box that switches the courtyard lamps,
-string lights that a map trigger turns on, and a sign riding the garage roller door.
+The demo project's night district has all of this. Its scene `res://demo/showcase/night_district.scn` instances the
+overlay scene `res://demo/overlays/night_district_overlay.tscn` under its map, because a script rebuilds the showcase
+scenes. Open the overlay scene to find a breaker box that switches the courtyard lamps, string lights that a map
+trigger turns on, and a sign riding the garage roller door.
