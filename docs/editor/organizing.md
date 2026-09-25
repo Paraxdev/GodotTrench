@@ -6,8 +6,9 @@ The Outliner shows the map as a tree of layers, groups and objects. Layers let y
 building per layer, and hide or lock a part while you work on the rest. New objects go into the current layer, and
 clicking a layer makes it current. The eye hides an object or layer, the lock stops it from being selected or edited.
 
-Brush and mesh rows show their size and lowest corner, so the walls a Hollow or a Subtract leaves behind can be told
-apart. Hold the pointer over a row to see its materials and bounds, and to outline the object in every view.
+Brushes and meshes are listed by kind and id, such as `brush12` or `mesh40`, so the walls a Hollow or a Subtract
+leaves behind can be told apart. The id stays the same when the object moves and across saves. Hold the pointer over a
+row to see its materials, size and bounds, and to outline the object in every view.
 
 Ctrl+click a row to add it to the selection or take it out, and Shift+click to select every row between the last
 clicked one and this one. Ctrl+Shift+click adds that range to what is already selected. The Outliner is often the
