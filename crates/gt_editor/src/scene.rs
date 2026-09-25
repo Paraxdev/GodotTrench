@@ -289,6 +289,11 @@ fn push_line(list: &mut Vec<LineVertex>, a: DVec3, b: DVec3, color: [f32; 4]) {
     list.push(LineVertex { pos: v3(b), color });
 }
 
+/// A trigger or other Area3D entity, whose brushes are volumes drawn see-through rather than solid walls.
+pub fn is_volume(game: &GameConfig, e: &Entity) -> bool {
+    e.classname.starts_with("trigger") || game.entity(&e.classname).is_some_and(|d| d.node_class == "Area3D")
+}
+
 /// Striped stand-in textures for tool materials a project does not provide (special/trigger, special/clip, ...).
 pub fn tool_texture(name: &str) -> Option<image::RgbaImage> {
     let tool = name.strip_prefix("special/").or_else(|| name.strip_prefix("gt/"))?;
@@ -1290,7 +1295,7 @@ fn build_bucket<'a>(ctx: &BucketCtx<'a>, ids: &[NodeId]) -> Builder<'a> {
             [1.0; 4]
         };
         let edge_2d = entity_def.map(|d| [d.color.r, d.color.g, d.color.b, 0.9]).unwrap_or(EDGE_COLOR_2D);
-        let is_trigger = entity.is_some_and(|e| e.classname.starts_with("trigger")) || entity_def.is_some_and(|d| d.node_class == "Area3D");
+        let is_trigger = entity.is_some_and(|e| is_volume(ctx.game, e));
         builder.volume = is_trigger;
         builder.dark = in_set(&ctx.fixtures.dark);
         match &node.kind {

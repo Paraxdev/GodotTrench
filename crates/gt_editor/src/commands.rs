@@ -1567,21 +1567,23 @@ pub fn place_entities(state: &mut EditorState, classnames: &[String], at: Option
     });
 }
 
-/// Where an entity or model dropped into a view lands, with the normal of the surface it rests on. A 2D view shows no
-/// depth, so a drop over a closed space passes the solid in front, a roof or the near wall, and lands in the space
-/// behind it: on its floor in the Top view, halfway across it in the Front and Side views.
-pub fn drop_target(state: &EditorState, ray: &gt_core::Ray, kind: crate::camera::ViewKind) -> Option<(DVec3, Option<DVec3>)> {
+/// Where an entity or model dropped into a view lands, with the normal of the surface it rests on: the first solid
+/// surface under the pointer, past trigger volumes and entities. A 2D view shows no depth, so with `through` (Alt held) the drop passes the solid in front, a roof
+/// or the near wall, and lands in the space behind it: on its floor in the Top view, halfway across it in the Front
+/// and Side views.
+pub fn drop_target(state: &EditorState, ray: &gt_core::Ray, kind: crate::camera::ViewKind, through: bool) -> Option<(DVec3, Option<DVec3>)> {
     let hits = crate::picking::pick_all(state, ray);
     let first = hits.first()?;
     let map = &state.doc.map;
+    let volume = |id| map.owning_entity(id).and_then(|e| map.entity(e)).is_some_and(|e| crate::scene::is_volume(&state.game, e));
     let solid = |h: &&crate::picking::Hit| match map.get(h.node).map(|n| &n.kind) {
-        Some(gt_doc::NodeKind::Brush(b)) => !b.faces.iter().all(|f| state.game.is_tool_texture(&f.data.material)),
-        Some(gt_doc::NodeKind::Mesh(_) | gt_doc::NodeKind::Terrain(_)) => true,
+        Some(gt_doc::NodeKind::Brush(b)) => !volume(h.node) && !b.faces.iter().all(|f| state.game.is_tool_texture(&f.data.material)),
+        Some(gt_doc::NodeKind::Mesh(_)) => !volume(h.node),
+        Some(gt_doc::NodeKind::Terrain(_)) => true,
         _ => false,
     };
-    if kind.is_2d()
-        && let Some(front) = hits.iter().find(solid)
-    {
+    let Some(front) = hits.iter().find(solid) else { return Some((first.point, Some(first.normal))) };
+    if through && kind.is_2d() {
         let b = map.bounds(front.node);
         let exit = ((b.min - ray.origin) / ray.dir).max((b.max - ray.origin) / ray.dir).min_element();
         if let Some(back) = hits.iter().filter(solid).find(|h| h.distance > exit + 1.0 && h.normal.dot(ray.dir) < 0.0) {
@@ -1589,7 +1591,7 @@ pub fn drop_target(state: &EditorState, ray: &gt_core::Ray, kind: crate::camera:
         }
     }
 
-    Some((first.point, Some(first.normal)))
+    Some((front.point, Some(front.normal)))
 }
 
 /// Opens a Quake `.map` as a new, unsaved GodotTrench document, in a tab when the current map has unsaved changes.
@@ -2433,35 +2435,52 @@ mod tests {
     }
 
     #[test]
-    fn a_drop_in_a_2d_view_lands_inside_the_room_under_the_roof() {
+    fn a_drop_lands_on_the_first_surface_and_alt_passes_the_roof_in_2d() {
         use crate::camera::ViewKind;
         use gt_core::Ray;
         let mut state = EditorState::new(Default::default());
         let layer = state.doc.map.default_layer();
         let room = Aabb::new(DVec3::ZERO, DVec3::new(256.0, 128.0, 256.0));
+        let block = |m: &mut gt_doc::Map, min: DVec3, max: DVec3| {
+            m.insert(layer, gt_doc::NodeKind::Brush(gt_geom::Brush::from_aabb(&Aabb::new(min, max), "crate").unwrap()));
+        };
         state.doc.edit("room", |m, _| {
             for part in gt_geom::csg::hollow(&gt_geom::Brush::from_aabb(&room, "wall").unwrap(), 16.0) {
                 m.insert(layer, gt_doc::NodeKind::Brush(part));
             }
 
-            m.insert(
-                layer,
-                gt_doc::NodeKind::Brush(gt_geom::Brush::from_aabb(&Aabb::new(DVec3::new(512.0, 0.0, 0.0), DVec3::new(576.0, 64.0, 64.0)), "crate").unwrap()),
-            );
+            block(m, DVec3::new(512.0, 0.0, 0.0), DVec3::new(576.0, 64.0, 64.0));
+            let trigger = m.insert(layer, gt_doc::NodeKind::Entity(gt_doc::Entity::new("trigger_once")));
+            let volume = Aabb::new(DVec3::new(512.0, 64.0, 0.0), DVec3::new(576.0, 256.0, 64.0));
+            m.insert(trigger, gt_doc::NodeKind::Brush(gt_geom::Brush::from_aabb(&volume, "tools/trigger").unwrap()));
+            // An upper floor over the ground floor, with nothing around them.
+            block(m, DVec3::new(1024.0, 0.0, 0.0), DVec3::new(1280.0, 16.0, 256.0));
+            block(m, DVec3::new(1024.0, 128.0, 0.0), DVec3::new(1280.0, 144.0, 256.0));
         });
 
         let down = |x: f64, z: f64| Ray::new(DVec3::new(x, 4096.0, z), -DVec3::Y);
-        let (at, normal) = drop_target(&state, &down(128.0, 128.0), ViewKind::Top).unwrap();
-        assert_eq!((at, normal), (DVec3::new(128.0, 16.0, 128.0), Some(DVec3::Y)), "on the floor, not the roof");
+        let (at, normal) = drop_target(&state, &down(128.0, 128.0), ViewKind::Top, false).unwrap();
+        assert_eq!((at, normal), (DVec3::new(128.0, 128.0, 128.0), Some(DVec3::Y)), "on the roof, the first surface under the pointer");
+        let (at, normal) = drop_target(&state, &down(128.0, 128.0), ViewKind::Top, true).unwrap();
+        assert_eq!((at, normal), (DVec3::new(128.0, 16.0, 128.0), Some(DVec3::Y)), "Alt passes the roof and lands on the floor");
 
-        let (at, normal) = drop_target(&state, &Ray::new(DVec3::new(128.0, 64.0, 4096.0), -DVec3::Z), ViewKind::Front).unwrap();
+        let front = Ray::new(DVec3::new(128.0, 64.0, 4096.0), -DVec3::Z);
+        assert_eq!(drop_target(&state, &front, ViewKind::Front, false).unwrap().0, DVec3::new(128.0, 64.0, 256.0), "on the near wall");
+        let (at, normal) = drop_target(&state, &front, ViewKind::Front, true).unwrap();
         assert_eq!((at, normal), (DVec3::new(128.0, 64.0, 128.0), None), "halfway between the front and back walls");
 
-        let (at, _) = drop_target(&state, &down(128.0, 128.0), ViewKind::Perspective).unwrap();
+        let (at, _) = drop_target(&state, &down(128.0, 128.0), ViewKind::Perspective, true).unwrap();
         assert_eq!(at.y, 128.0, "the 3D view drops on the surface it shows");
 
-        let (at, _) = drop_target(&state, &down(544.0, 32.0), ViewKind::Top).unwrap();
-        assert_eq!(at.y, 64.0, "a solid block with nothing enclosed under it takes the drop on top");
-        assert!(drop_target(&state, &down(2000.0, 0.0), ViewKind::Top).is_none());
+        for through in [false, true] {
+            let (at, _) = drop_target(&state, &down(544.0, 32.0), ViewKind::Top, through).unwrap();
+            assert_eq!(at.y, 64.0, "a solid block takes the drop on top, under the trigger volume around it");
+        }
+
+        let (at, _) = drop_target(&state, &down(1152.0, 128.0), ViewKind::Top, false).unwrap();
+        assert_eq!(at.y, 144.0, "on the upper floor, not the one under it");
+        let (at, _) = drop_target(&state, &down(1152.0, 128.0), ViewKind::Top, true).unwrap();
+        assert_eq!(at.y, 16.0, "Alt reaches the floor below");
+        assert!(drop_target(&state, &down(2000.0, 0.0), ViewKind::Top, false).is_none());
     }
 }
