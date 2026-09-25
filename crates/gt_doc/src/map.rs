@@ -181,9 +181,9 @@ impl Node {
                 Some(n) => format!("{} ({n})", e.classname),
                 None => e.classname.clone(),
             },
-            NodeKind::Brush(b) => format!("brush ({} faces)", b.faces.len()),
+            NodeKind::Brush(_) => format!("brush{}", self.id.0),
             NodeKind::Instance(i) => format!("instance {}", i.path),
-            NodeKind::Mesh(m) => format!("mesh ({} faces)", m.faces.len()),
+            NodeKind::Mesh(_) => format!("mesh{}", self.id.0),
             NodeKind::Terrain(t) => format!("terrain {}x{}", t.resolution[0], t.resolution[1]),
             NodeKind::Scatter(s) => format!("scatter {} ({})", s.name, s.instances.len()),
         }

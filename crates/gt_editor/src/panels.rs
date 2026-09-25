@@ -209,16 +209,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                     }
                 }
 
-                let resp = match outliner_hint(map, *id, node) {
-                    Some((size, at)) => {
-                        let mut job = egui::text::LayoutJob::default();
-                        let style = ui.style().clone();
-                        RichText::new(size).append_to(&mut job, &style, egui::FontSelection::Default, egui::Align::Center);
-                        RichText::new(format!(" at {at}")).weak().append_to(&mut job, &style, egui::FontSelection::Default, egui::Align::Center);
-                        ui.selectable_label(selected, job)
-                    }
-                    None => ui.selectable_label(selected, label),
-                };
+                let resp = ui.selectable_label(selected, label);
                 if resp.hovered() {
                     hovered = Some(*id);
                 }
@@ -427,15 +418,6 @@ fn xyz(v: DVec3, sep: &str) -> String {
     [v.x, v.y, v.z].map(widgets::format_number).join(sep)
 }
 
-/// Size and lowest corner of a brush or mesh, which name its row in place of the "brush (6 faces)" every piece that
-/// Hollow or CSG leaves would share. Kept short since the outliner is narrow, the icon says what kind it is.
-fn outliner_hint(map: &gt_doc::Map, id: NodeId, node: &gt_doc::Node) -> Option<(String, String)> {
-    matches!(node.kind, NodeKind::Brush(_) | NodeKind::Mesh(_)).then(|| {
-        let b = map.bounds(id);
-        (xyz(b.size(), "x"), xyz(b.min, " "))
-    })
-}
-
 fn outliner_tooltip(ui: &mut Ui, map: &gt_doc::Map, id: NodeId, node: &gt_doc::Node) {
     ui.label(RichText::new(node.name()).strong());
     let materials: std::collections::BTreeSet<&str> = match &node.kind {
@@ -463,8 +445,7 @@ fn push_rows(map: &gt_doc::Map, id: NodeId, depth: usize, expanded: &HashSet<Nod
     let Some(node) = map.get(id) else { return };
     for c in &node.children {
         let Some(child) = map.get(*c) else { continue };
-        let shown = || outliner_hint(map, *c, child).map(|(size, at)| format!("{size} at {at}"));
-        let matches = filter.is_empty() || child.name().to_lowercase().contains(filter) || shown().is_some_and(|s| s.contains(filter));
+        let matches = filter.is_empty() || child.name().to_lowercase().contains(filter);
         if matches {
             rows.push((depth, *c));
         }

@@ -449,9 +449,9 @@ fn inspector_types_the_position_and_size_of_the_selection() {
 fn outliner_rows_tell_brushes_apart_and_outline_the_hovered_one() {
     let mut f = Fixture::new();
     let layer = f.state.doc.map.default_layer();
-    let right = f.state.doc.edit("add", |m, _| {
-        m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::new(16.0, 128.0, 256.0)), "wall").unwrap()));
-        m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::new(240.0, 0.0, 0.0), DVec3::new(256.0, 128.0, 256.0)), "wall").unwrap()))
+    let (left, right) = f.state.doc.edit("add", |m, _| {
+        let left = m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::new(16.0, 128.0, 256.0)), "wall").unwrap()));
+        (left, m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::new(240.0, 0.0, 0.0), DVec3::new(256.0, 128.0, 256.0)), "wall").unwrap())))
     });
     let mut harness = Harness::builder()
         .with_size(egui::vec2(360.0, 400.0))
@@ -459,17 +459,20 @@ fn outliner_rows_tell_brushes_apart_and_outline_the_hovered_one() {
     harness.run();
     harness.get_by_label("Expand").click();
     harness.run();
-    harness.get_by_label_contains("16x128x256 at 0 0 0");
-    harness.get_by_label_contains("16x128x256 at 240 0 0").hover();
+    harness.get_by_label(&format!("brush{}", left.0));
+    harness.get_by_label(&format!("brush{}", right.0)).hover();
     harness.run();
     assert_eq!(harness.state().state.outliner_hover, Some(right), "the views outline the hovered row's brush");
+    harness.run_steps(60);
+    harness.get_by_label("Size 16 x 128 x 256");
+    harness.get_by_label("From 240 0 0 to 256 128 256");
 
     harness.get_by_role(egui::accesskit::Role::TextInput).click();
     harness.run();
-    harness.get_by_role(egui::accesskit::Role::TextInput).type_text("at 240");
+    harness.get_by_role(egui::accesskit::Role::TextInput).type_text(&format!("brush{}", right.0));
     harness.run();
-    harness.get_by_label_contains("16x128x256 at 240 0 0");
-    assert!(harness.query_by_label_contains("16x128x256 at 0 0 0").is_none(), "the filter matches what the rows show");
+    harness.get_by_label(&format!("brush{}", right.0));
+    assert!(harness.query_by_label(&format!("brush{}", left.0)).is_none(), "the filter matches what the rows show");
 }
 
 #[test]
@@ -517,7 +520,7 @@ fn outliner_shift_click_selects_a_range_and_ctrl_click_toggles() {
         ids.iter().map(|id| sel.contains(id)).collect::<Vec<_>>()
     };
     let click = |h: &mut Harness<Fixture>, i: usize, modifiers: egui::Modifiers| {
-        h.get_all_by_label_contains("64x64x64 at").nth(i).unwrap().click_modifiers(modifiers);
+        h.get_by_label(&format!("brush{}", ids[i].0)).click_modifiers(modifiers);
         h.run();
     };
 
@@ -540,11 +543,11 @@ fn outliner_ctrl_shift_range_leaves_out_the_children_of_a_selected_group() {
         let min = DVec3::new(x, 0.0, 0.0);
         m.insert(parent, NodeKind::Brush(Brush::from_aabb(&Aabb::new(min, min + DVec3::splat(size)), "dev/grey").unwrap()))
     };
-    let (group, a, b) = f.state.doc.edit("add", |m, _| {
+    let (group, first, a, b) = f.state.doc.edit("add", |m, _| {
         let group = m.insert(layer, NodeKind::Group(gt_doc::Group::new("crates")));
-        cube(m, group, 0.0, 32.0);
+        let first = cube(m, group, 0.0, 32.0);
         cube(m, group, 64.0, 32.0);
-        (group, cube(m, layer, 256.0, 64.0), cube(m, layer, 512.0, 64.0))
+        (group, first, cube(m, layer, 256.0, 64.0), cube(m, layer, 512.0, 64.0))
     });
     let mut harness = Harness::builder()
         .with_size(egui::vec2(360.0, 400.0))
@@ -556,9 +559,9 @@ fn outliner_ctrl_shift_range_leaves_out_the_children_of_a_selected_group() {
     harness.run();
     harness.get_by_label("crates").click();
     harness.run();
-    harness.get_by_label_contains("64x64x64 at 512").click_modifiers(egui::Modifiers::COMMAND);
+    harness.get_by_label(&format!("brush{}", b.0)).click_modifiers(egui::Modifiers::COMMAND);
     harness.run();
-    harness.get_by_label_contains("32x32x32 at 0 0 0").click_modifiers(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT);
+    harness.get_by_label(&format!("brush{}", first.0)).click_modifiers(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT);
     harness.run();
     let selected: Vec<_> = harness.state().state.doc.selection.nodes.iter().copied().collect();
     assert_eq!(selected, [group, a, b], "the group's children would move twice");
@@ -576,7 +579,7 @@ fn outliner_context_menu_selects_and_acts_on_objects() {
     harness.run();
     harness.get_by_label("Expand").click();
     harness.run();
-    harness.get_by_label_contains("64x64x64 at 0 0 0").click_secondary();
+    harness.get_by_label(&format!("brush{}", brush.0)).click_secondary();
     harness.run();
     assert!(harness.state().state.doc.selection.nodes.contains(&brush), "right click selects the row");
     for entry in ["Focus", "Hide", "Duplicate"] {
