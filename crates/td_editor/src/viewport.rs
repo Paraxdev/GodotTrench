@@ -731,7 +731,8 @@ impl Viewport {
                 }
             }
             DndPayload::Entities(_) | DndPayload::Model(_) => {
-                if let Some(point) = self.camera.project(self.rect, hit.point) {
+                let at = crate::commands::drop_target(cx.state, &self.camera.ray(self.rect, pos), self.camera.kind).map_or(hit.point, |(p, _)| p);
+                if let Some(point) = self.camera.project(self.rect, at) {
                     painter.circle(point, 5.0, DROP_COLOR.gamma_multiply(0.4), stroke);
                 }
             }
@@ -804,8 +805,8 @@ impl Viewport {
                 }
             }
             DndPayload::Entities(classnames) => {
-                let (at, normal) = match (self.camera.kind, hit) {
-                    (_, Some(h)) => (h.point, Some(h.normal)),
+                let (at, normal) = match (self.camera.kind, crate::commands::drop_target(cx.state, &ray, self.camera.kind)) {
+                    (_, Some(target)) => target,
                     (ViewKind::Perspective, None) => (cx.state.cursor_world.unwrap_or(ray.at(256.0)), None),
                     (_, None) => (self.camera.screen_to_plane(self.rect, pos), None),
                 };
@@ -815,8 +816,8 @@ impl Viewport {
                 cx.actions.push(Action::PlaceEntities { classnames: classnames.clone(), at: Some(at), normal, row });
             }
             DndPayload::Model(path) => {
-                let at = match (self.camera.kind, hit) {
-                    (_, Some(h)) => h.point,
+                let at = match (self.camera.kind, crate::commands::drop_target(cx.state, &ray, self.camera.kind)) {
+                    (_, Some((p, _))) => p,
                     (ViewKind::Perspective, None) => cx.state.cursor_world.unwrap_or(ray.at(256.0)),
                     (_, None) => self.camera.screen_to_plane(self.rect, pos),
                 };
