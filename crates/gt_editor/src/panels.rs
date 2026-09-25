@@ -1332,7 +1332,7 @@ fn property_editor(ui: &mut Ui, ty: PropertyType, options: &[(String, String)], 
             let mut changed = widgets::text_field(ui, value, if browse { width - 28.0 } else { width });
             if let Some(root) = &state.game.project_root
                 && ui.small_button("…").clicked()
-                && let Some(p) = rfd::FileDialog::new().set_directory(root).pick_file()
+                && let Some(p) = crate::commands::file_dialog_in(Some(root.clone()), rfd::FileDialog::pick_file)
                 && let Some(res) = gt_formats::game::to_res_path(root, &p)
             {
                 *value = res;
