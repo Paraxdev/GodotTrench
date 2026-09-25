@@ -1,8 +1,10 @@
 # Button opens a door
 
 A button on the wall slides a door open when the player presses it. This is the smallest useful piece of entity I/O:
-the button fires an output named `pressed`, and a link turns that into a call of the door's `open` input. See
-[How entity I/O works](../gameplay/io.md) for the model behind it.
+the button fires an output named `pressed`, and a link turns that into a call of the door's `open` input.
+
+> **Tip:** If outputs, inputs and `targetname` are new to you, read [How entity I/O works](../gameplay/io.md) first. It
+> takes a few minutes and this page builds on it.
 
 ## Wire it
 
