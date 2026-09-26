@@ -892,3 +892,18 @@ fn file_uris_escape_what_a_uri_or_d_bus_would_misread() {
     assert_eq!(panels::file_uri(std::path::Path::new("/home/a b/tex,1'.png")), "file:///home/a%20b/tex%2C1%27.png");
     assert_eq!(panels::file_uri(std::path::Path::new("C:\\maps\\x.png")), "file:///C:/maps/x.png");
 }
+
+#[test]
+fn only_a_file_manager_call_that_timed_out_counts_as_shown() {
+    let timed_out = [
+        "Error org.freedesktop.DBus.Error.NoReply: Did not receive a reply. Possible causes include: the remote application did not send a reply",
+        "Error: Timeout was reached",
+    ];
+    assert!(timed_out.iter().all(|e| panels::dbus_timed_out(e)));
+    let failed = [
+        "Error org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.FileManager1 was not provided by any .service files",
+        "Error: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.FileManager1 was not provided by any .service files",
+        "Failed to open connection to \"session\" message bus: Failed to connect to socket /run/user/1000/bus: Connection refused",
+    ];
+    assert!(!failed.iter().any(|e| panels::dbus_timed_out(e)), "these open the folder instead");
+}
