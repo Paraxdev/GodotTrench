@@ -17,8 +17,10 @@ shot, or hand a blockout to an artist who builds the final meshes over it.
 3. In Blender, *File > Import > glTF 2.0 (.glb/.gltf)* and pick the file. The defaults are right, the importer turns
    the model Z up on its own.
 
-The status bar says how many objects, materials and triangles went out, and names any material the project has no
-image for. Those come out untextured.
+The export runs in the background with a progress window, so you can keep editing, and **Cancel** stops it without
+writing anything. It exports the map as it was when you clicked **Export…**. Unsaved changes are autosaved first, unless
+autosave is off in *File > Preferences*. The status bar then says how many objects, materials and triangles went out,
+and names any material the project has no image for. Those come out untextured.
 
 | Option | Does |
 | --- | --- |

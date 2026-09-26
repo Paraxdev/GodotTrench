@@ -260,6 +260,28 @@ impl MaterialLibrary {
         lib
     }
 
+    /// A copy for work on another thread, such as an export, without the thumbnails and the file watcher.
+    pub fn detached(&self) -> Self {
+        Self {
+            entries: self.entries.clone(),
+            root: self.root.clone(),
+            project_root: self.project_root.clone(),
+            material_root: self.material_root.clone(),
+            material_ext: self.material_ext.clone(),
+            image_exts: self.image_exts.clone(),
+            thumbnails: HashMap::new(),
+            sizes: self.sizes.clone(),
+            world_sizes: self.world_sizes.clone(),
+            infos: self.infos.clone(),
+            generation: self.generation,
+            scanned: self.scanned,
+            missed: self.missed.clone(),
+            checked_at: self.checked_at,
+            repaint: None,
+            watch: None,
+        }
+    }
+
     pub fn rescan(&mut self, game: &GameConfig) {
         self.entries.clear();
         self.thumbnails.clear();

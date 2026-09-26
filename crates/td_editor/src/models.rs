@@ -140,7 +140,7 @@ impl Model {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ModelCache {
     entries: HashMap<PathBuf, (Option<SystemTime>, Option<Arc<Model>>)>,
     /// Bumped whenever a model is (re)loaded, so the scene rebuilds.
