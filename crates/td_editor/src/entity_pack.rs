@@ -232,6 +232,16 @@ pub fn install(root: &Path) -> Result<Report, String> {
     Ok(report)
 }
 
+/// Installs or updates the pack in the open project, and lets the editor know its entities right away.
+pub fn install_in_project(state: &mut crate::state::EditorState) -> Result<Report, String> {
+    let root = state.game.project_root.clone().ok_or("Open a Godot project first, the Gameplay entities pack goes into it.")?;
+    let report = install(&root);
+    state.gameplay_pack = Status::check(&root);
+    let report = report?;
+    add_unexported(&mut state.game, &root);
+    Ok(report)
+}
+
 /// The pack's classnames that the project's maps use, for a project that has not installed the pack.
 pub fn used_by_maps(root: &Path) -> BTreeSet<String> {
     let pack = GameConfig::gameplay_pack();
