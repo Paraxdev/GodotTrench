@@ -37,6 +37,8 @@ pub struct Viewport {
     /// The outer edge of the selected brushes a drag would resize, highlighted before the drag starts.
     hover_edge: Option<[Pos2; 2]>,
     pub(crate) pixels_per_point: f32,
+    /// The 3D camera was looked around with this session, so the hint on how to do it is no longer shown.
+    looked: bool,
 }
 
 // Linear values, the targets are sRGB.
@@ -60,6 +62,7 @@ impl Viewport {
             last_click: None,
             hover_edge: None,
             pixels_per_point: 1.0,
+            looked: false,
         }
     }
 
@@ -148,6 +151,7 @@ impl Viewport {
             ViewKind::Perspective => {
                 if response.drag_started_by(PointerButton::Secondary) {
                     self.drag = Some(Drag::Look);
+                    self.looked = true;
                 } else if response.drag_started_by(PointerButton::Middle) {
                     self.drag = Some(Drag::Pan);
                 } else if response.drag_started_by(PointerButton::Primary) && modifiers.alt && self.alt_drag_orbits(press_origin, cx) {
@@ -1023,9 +1027,32 @@ impl Viewport {
         let label_color = Color32::from_rgb(200, 200, 210);
         let text = match self.camera.kind {
             ViewKind::Perspective => format!("{}  {}", self.camera.kind.label(), cx.state.prefs.shade.label()),
-            k => format!("{}  zoom {:.2}", k.label(), self.camera.zoom),
+            // Two significant digits, so a notch of the wheel shows when zoomed far out too.
+            k => format!(
+                "{}  zoom {:.*}",
+                k.label(),
+                if self.camera.zoom < 0.01 {
+                    4
+                } else if self.camera.zoom < 0.1 {
+                    3
+                } else {
+                    2
+                },
+                self.camera.zoom
+            ),
         };
-        painter.text(self.rect.min + Vec2::new(8.0, 6.0), Align2::LEFT_TOP, text, FontId::proportional(12.0), label_color);
+        let label = painter.text(self.rect.min + Vec2::new(8.0, 6.0), Align2::LEFT_TOP, text, FontId::proportional(12.0), label_color);
+        // Until the first right drag. An empty map's card says the same, and Hide tips turns both off.
+        if self.camera.kind == ViewKind::Perspective
+            && self.hovered
+            && !self.looked
+            && cx.state.prefs.start_hints
+            && !crate::welcome::map_is_empty(&cx.state.doc.map)
+        {
+            let hint =
+                painter.layout(crate::welcome::CAMERA_3D_HELP.into(), FontId::proportional(12.0), label_color.gamma_multiply(0.6), self.rect.width() - 16.0);
+            painter.galley(label.left_bottom() + Vec2::new(0.0, 4.0), hint, label_color);
+        }
 
         let state = &cx.state;
         let active = match &self.drag {

@@ -77,8 +77,10 @@ modified tab asks to save, discard or cancel, and quitting lists every unsaved m
 | Alt+left drag | Orbit, unless the drag starts on the selection, which then moves vertically | |
 
 WASD only flies while the right button is held, otherwise those keys are shortcuts. Hovering a view's tab shows its
-controls. **F** frames the selection in
-every view, or the whole map when nothing is selected.
+controls, and until you first look around the 3D view shows them under its name while the pointer is over it (**Hide
+tips** on the empty map card turns that off). **F** frames the selection in every view, or the whole map when nothing
+is selected. A wheel notch zooms a 2D view by the same factor at any zoom, so going from a whole large terrain to a
+single room takes about 20 notches, and **F** on the room is quicker.
 
 Ctrl+Shift+1 to 9 stores the 3D camera as a bookmark and Ctrl+1 to 9 jumps back. Bookmarks are saved in the map,
 and undo does not touch them.
