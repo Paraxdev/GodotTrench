@@ -1881,7 +1881,9 @@ fn edit_mesh_weight(state: &EditorState) -> (usize, usize) {
 /// PNG data and the texture's key in the `model` preview, which gets a Godot material in the project's material folder
 /// where the plain image does not draw like the model, see [`crate::models::Model::material_tres`]. Nothing already
 /// there is overwritten: a folder holding other images under the same names is left for the next free number, and a
-/// material file is kept, it may have been tuned in Godot. The error says why the model stays untextured.
+/// material file is kept, it may have been tuned in Godot. Images count as the same by their pixels, so a texture that
+/// was only saved again is reused, while one painted over is forked into a new folder. The error says why the model
+/// stays untextured.
 fn write_model_textures(
     state: &EditorState,
     path: &std::path::Path,
@@ -1910,7 +1912,7 @@ fn write_model_textures(
     let mut folder = base.clone();
     for n in 2.. {
         let dir = target.texture_dir.join("models").join(&folder);
-        if images.iter().all(|(file, png)| std::fs::read(dir.join(file)).ok().is_none_or(|old| old == *png)) {
+        if images.iter().all(|(file, png)| std::fs::read(dir.join(file)).ok().is_none_or(|old| same_pixels(&old, png))) {
             break;
         }
 
@@ -1947,6 +1949,16 @@ fn write_model_textures(
     }
 
     Ok(names)
+}
+
+/// Whether two image files hold the same pixels. PNG encoders differ in their bytes, an image crate update or a tool
+/// saving the file again must not make a placed model's textures look new.
+fn same_pixels(a: &[u8], b: &[u8]) -> bool {
+    a == b
+        || match (image::load_from_memory(a), image::load_from_memory(b)) {
+            (Ok(a), Ok(b)) => a.width() == b.width() && a.height() == b.height() && a.to_rgba8().as_raw() == b.to_rgba8().as_raw(),
+            _ => false,
+        }
 }
 
 fn encode_png(image: &image::RgbaImage) -> Result<Vec<u8>, String> {
@@ -2791,6 +2803,39 @@ mod tests {
         let oak = std::fs::read(dir.join("textures/models/tree/bark_0.png")).unwrap();
         assert_ne!(std::fs::read(dir.join("textures/models/tree_2/bark_0.png")).unwrap(), oak, "the first tree keeps its bark");
         assert!(std::fs::read_dir(&tex).unwrap().all(|f| !f.unwrap().file_name().to_string_lossy().ends_with(".tmp")), "no temporary files are left");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn placing_again_compares_pixels_not_file_bytes() {
+        use image::ImageEncoder;
+        let (mut state, dir) = fresh_project("place_same_pixels");
+        let models = dir.join("models");
+        std::fs::create_dir_all(&models).unwrap();
+        std::fs::copy(nature_model("grass_tall"), models.join("tuft.bbmodel")).unwrap();
+        state.model_library.rescan(&state.game);
+        place_model_mesh(&mut state, &models.join("tuft.bbmodel"), DVec3::ZERO).unwrap();
+        assert_eq!(placed_materials(&state), ["models/tuft/tex0"]);
+
+        // Saved again by another program: other bytes, the same pixels.
+        let png = dir.join("textures/models/tuft/tex0.png");
+        let img = image::open(&png).unwrap().to_rgba8();
+        let mut resaved = Vec::new();
+        let encoder =
+            image::codecs::png::PngEncoder::new_with_quality(&mut resaved, image::codecs::png::CompressionType::Best, image::codecs::png::FilterType::Paeth);
+        encoder.write_image(img.as_raw(), img.width(), img.height(), image::ExtendedColorType::Rgba8).unwrap();
+        assert_ne!(resaved, std::fs::read(&png).unwrap());
+        std::fs::write(&png, &resaved).unwrap();
+        place_model_mesh(&mut state, &models.join("tuft.bbmodel"), DVec3::ZERO).unwrap();
+        assert_eq!(placed_materials(&state), ["models/tuft/tex0"], "the same pixels are the same texture");
+
+        // Painted over, it no longer shows the model, so the next placement gets copies of its own.
+        let mut retouched = img.clone();
+        retouched.put_pixel(0, 0, image::Rgba([255, 0, 255, 255]));
+        retouched.save(&png).unwrap();
+        place_model_mesh(&mut state, &models.join("tuft.bbmodel"), DVec3::ZERO).unwrap();
+        assert_eq!(placed_materials(&state), ["models/tuft_2/tex0"]);
+        assert_eq!(image::open(&png).unwrap().to_rgba8(), retouched, "the retouched texture is kept");
         let _ = std::fs::remove_dir_all(dir);
     }
 

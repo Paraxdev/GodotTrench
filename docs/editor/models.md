@@ -27,6 +27,11 @@ Godot. When another model's textures already sit in the folder, like those of `r
 ones go into a numbered folder such as `models/rock_2`. Undoing a placement leaves the files in place. If the textures
 cannot be written, for example in a read-only project, the mesh is placed untextured and the status bar says why.
 
+Textures count as the same by their pixels, so one that another program only saved again is still reused. A texture
+you painted over no longer matches the model: meshes placed before keep your version, and the next placement gets fresh
+copies in a numbered folder, with a new material. To give later placements your changes, apply your material to them
+from the Materials panel.
+
 > **Note:** FuncGodot only builds a face's material from the project's `default_material` when there is no material
 > file of the same name. Faces of a placed model that got a material file draw with that file, so a custom shader set as
 > `default_material` does not reach them. Edit the file in Godot to change them. A project whose material extension is
