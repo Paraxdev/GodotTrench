@@ -9,6 +9,7 @@ pub mod commands;
 pub mod content;
 pub mod content_wizard;
 pub mod dialogs;
+pub mod entity_pack;
 pub mod entity_wizards;
 pub mod export3d;
 pub mod extra_tools;
