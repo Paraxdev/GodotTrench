@@ -1000,6 +1000,12 @@ impl EditorState {
         self.prefs.recent_projects.truncate(8);
         if let Some(status) = crate::entity_pack::install_for_maps(self) {
             self.set_status(status);
+        } else if let Some(clash) = self.game.clashes.first() {
+            let more = match self.game.clashes.len() {
+                1 => String::new(),
+                n => format!(" {} more classnames are defined twice, the Issues panel lists the ones a map uses.", n - 1),
+            };
+            self.set_status(format!("{}.{more}", clash.describe()));
         } else if self.gameplay_pack.update() {
             self.set_status("The addon has a newer Gameplay entities pack. Gameplay > Update Gameplay Entities installs it and keeps the files you edited.");
         }

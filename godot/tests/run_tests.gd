@@ -63,6 +63,7 @@ func _initialize() -> void:
 	test_bbmodel()
 	test_default_fgd()
 	test_entity_pack()
+	test_clashes()
 	test_build_report()
 	await test_game_config()
 	test_game_config_lint()
@@ -669,6 +670,26 @@ func test_entity_pack() -> void:
 			DirAccess.remove_absolute(to.path_join(dir).path_join(f))
 		DirAccess.remove_absolute(to.path_join(dir))
 	DirAccess.remove_absolute(to)
+
+func test_clashes() -> void:
+	print("- classnames defined twice are exported as clashes, the last one wins")
+	var door := FuncGodotFGDSolidClass.new()
+	door.classname = "func_door"
+	door.description = "my door"
+	door.take_over_path("res://tests/my_func_door.tres")
+	var fgd := FuncGodotFGDFile.new()
+	fgd.base_fgd_files = [load("res://addons/func_godot/fgd/func_godot_fgd.tres"), load("res://addons/func_godot/fgd/godottrench/godottrench_fgd.tres")]
+	fgd.entity_definitions = [door]
+	var config := GodotTrenchGameConfig.new()
+	config.fgd_file = fgd
+	config.csharp_source_dirs = []
+	var clashes: Array = config.build_config().get("clashes", [])
+	check(clashes.size() == 1 and clashes[0]["classname"] == "func_door", "the project's func_door clashes with the pack's, got %s" % [clashes])
+	if clashes.size() == 1:
+		check(clashes[0]["definitions"] == ["res://godottrench/entities/definitions/func_door.tres", "res://tests/my_func_door.tres"], "listed in merge order, got %s" % [clashes[0]["definitions"]])
+	check(fgd.get_entity_definitions()["func_door"].description == "my door", "the later definition is the one maps get")
+	var demo: GodotTrenchGameConfig = load("res://demo/demo_game_config.tres")
+	check(not demo.build_config().has("clashes"), "the demo defines each classname once")
 
 func test_build_report() -> void:
 	print("- the build report names what is missing, once each")

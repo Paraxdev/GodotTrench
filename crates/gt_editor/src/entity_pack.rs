@@ -464,6 +464,17 @@ mod tests {
     }
 
     #[test]
+    fn opening_a_project_tells_about_classnames_defined_twice() {
+        let dir = project();
+        let config = r#"{"format": "godottrench-game", "version": 1, "entities": [{"classname": "func_door", "type": "solid"}],
+            "clashes": [{"classname": "func_door", "definitions": ["res://godottrench/entities/definitions/func_door.tres", "res://my_door.tres"]}]}"#;
+        write(&dir.path().join(gt_formats::game::GAME_FILE_NAME), config);
+        let mut state = crate::state::EditorState::new(Default::default());
+        state.load_project(dir.path());
+        assert_eq!(state.status, "func_door is defined more than once. res://my_door.tres wins over res://godottrench/entities/definitions/func_door.tres.");
+    }
+
+    #[test]
     fn finds_the_pack_classes_maps_use() {
         let dir = project();
         write(&dir.path().join("maps/a.gtm"), r#"{"classname": "func_door", "x": {"classname":"light"}}"#);

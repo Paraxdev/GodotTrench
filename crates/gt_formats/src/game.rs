@@ -29,6 +29,9 @@ pub struct GameConfig {
     pub tool_textures: ToolTextures,
     #[serde(default)]
     pub entities: Vec<EntityDef>,
+    /// Classnames that more than one FGD resource defines, as the addon's export found them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clashes: Vec<Clash>,
     /// Absolute path of the Godot project folder, filled in when loading.
     #[serde(skip)]
     pub project_root: Option<PathBuf>,
@@ -234,6 +237,26 @@ impl GizmoDef {
             | GizmoDef::Point { property, .. } => property.clone(),
             GizmoDef::Cone { range, .. } => range.clone(),
         }
+    }
+}
+
+/// One classname defined more than once. Godot merges FGD files in order, so the last definition is the one maps get.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Clash {
+    pub classname: String,
+    /// res:// paths of the definitions in the order they were read, the last one wins.
+    pub definitions: Vec<String>,
+}
+
+impl Clash {
+    pub fn winner(&self) -> &str {
+        self.definitions.last().map(String::as_str).unwrap_or_default()
+    }
+
+    /// One sentence for the status bar and the Issues panel.
+    pub fn describe(&self) -> String {
+        let hidden = &self.definitions[..self.definitions.len().saturating_sub(1)];
+        format!("{} is defined more than once. {} wins over {}", self.classname, self.winner(), hidden.join(" and "))
     }
 }
 
@@ -557,6 +580,18 @@ mod tests {
                 def.classname
             );
         }
+    }
+
+    #[test]
+    fn reads_the_clashes_the_export_found() {
+        let text = r#"{"format": "godottrench-game", "version": 1, "clashes": [{"classname": "func_door", "definitions": ["res://godottrench/entities/definitions/func_door.tres", "res://my/door.tres"]}]}"#;
+        let cfg: GameConfig = serde_json::from_str(text).unwrap();
+        assert_eq!(cfg.clashes[0].winner(), "res://my/door.tres");
+        assert_eq!(
+            cfg.clashes[0].describe(),
+            "func_door is defined more than once. res://my/door.tres wins over res://godottrench/entities/definitions/func_door.tres"
+        );
+        assert!(GameConfig::builtin().clashes.is_empty());
     }
 
     #[test]

@@ -70,6 +70,12 @@ pub fn map_issues(map: &Map, game: &GameConfig, materials: &mut MaterialLibrary,
         }
     }
 
+    for clash in &game.clashes {
+        if map.entities().any(|(_, e)| e.classname == clash.classname) {
+            list.push(Issue { node: None, severity: Severity::Warning, code: "entity_clash", message: clash.describe() });
+        }
+    }
+
     list.extend(crate::texture_convert::missing_material_issues(map, game, materials));
     list.extend(missing_model_issues(map, game));
     list.extend(crate::zfight::coplanar_issues(map, game, materials));
@@ -249,6 +255,22 @@ mod tests {
                 "No entity definition for 'my_thing'"
             ]
         );
+    }
+
+    #[test]
+    fn a_class_defined_twice_is_a_warning_where_a_map_uses_it() {
+        let mut game = GameConfig::with_gameplay_pack();
+        let definitions = vec!["res://godottrench/entities/definitions/func_door.tres".to_string(), "res://doors/func_door.tres".to_string()];
+        game.clashes.push(gt_formats::Clash { classname: "func_door".into(), definitions });
+        game.clashes.push(gt_formats::Clash { classname: "logic_relay".into(), definitions: vec!["a.tres".into(), "b.tres".into()] });
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        map.insert(layer, NodeKind::Entity(Entity::new("func_door")));
+        let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &BTreeSet::new());
+        let clashes: Vec<&Issue> = found.iter().filter(|i| i.code == "entity_clash").collect();
+        assert_eq!(clashes.len(), 1, "only the class the map uses: {found:?}");
+        assert_eq!(clashes[0].severity, Severity::Warning);
+        assert!(clashes[0].message.contains("res://doors/func_door.tres wins over res://godottrench/entities/definitions/func_door.tres"));
     }
 
     #[test]
