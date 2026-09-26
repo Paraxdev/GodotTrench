@@ -182,7 +182,10 @@ pub enum Action {
     /// A new scatter set holding a built-in preset.
     ScatterPreset(String),
     ShowScatterPanel,
+    /// Opens the content wizard on the nature models.
     InstallNatureModels,
+    /// Opens the content wizard, which adds the nature models or the demo to the project.
+    ShowProjectContent,
     /// Replaces the selected scatter sets with prop entities.
     ScatterToEntities,
     /// Uses the current material as the blend material of the selected faces.
@@ -259,6 +262,7 @@ impl Action {
             Action::ToggleLiveMode => "Toggle Godot Live Mode".into(),
             Action::ExportGlb => "Export glTF Binary (.glb)".into(),
             Action::ExportObj => "Export Wavefront OBJ (.obj)".into(),
+            Action::ShowProjectContent => "Add Content to Project".into(),
             other => format!("{other:?}"),
         }
     }
@@ -313,6 +317,10 @@ impl Action {
             Action::ToggleWalkable => "Shades the floors a player can walk on, baked by Godot",
             Action::ToggleGodotOverlays => "Shows the nodes added on top of the built map in Godot as ghost boxes",
             Action::RepeatLast => "Runs the last rotate, flip, nudge or duplicate again",
+            Action::ShowProjectContent => {
+                "Adds the nature models, or the demo maps, models and textures, to the open Godot project. They are downloaded from the GodotTrench release"
+            }
+            Action::InstallNatureModels => "Adds the trees, bushes, rocks and grass the scatter presets use to res://godottrench/nature",
             _ => return None,
         })
     }
@@ -1352,14 +1360,11 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             }
         }
         Action::ScatterPreset(name) => {
-            if crate::scatter_tool::new_set_from_preset(state, &name).is_some() {
-                state.set_status(format!("New scatter set from the {name} preset on its own layer"));
-            }
+            crate::scatter_tool::new_set_from_preset(state, &name);
         }
-        Action::InstallNatureModels => match crate::scatter_tool::install_nature(state, false) {
-            Ok(written) => state.set_status(crate::scatter_tool::install_summary(&written)),
-            Err(e) => state.set_status(e),
-        },
+
+        // The app opens the content wizard for these.
+        Action::InstallNatureModels | Action::ShowProjectContent => {}
         Action::ScatterToEntities => {
             let sets: Vec<NodeId> = state.doc.selection.nodes.iter().copied().filter(|id| state.doc.map.scatter(*id).is_some()).collect();
             let n: usize = sets.into_iter().map(|id| crate::scatter_tool::bake_to_entities(state, id)).sum();
@@ -2523,15 +2528,61 @@ mod tests {
         (state, dir)
     }
 
+    /// Copies the demo project's nature folder into the project, as the content wizard's download does.
+    fn add_nature_pack(dir: &std::path::Path) {
+        fn copy(from: &std::path::Path, to: &std::path::Path) {
+            std::fs::create_dir_all(to).unwrap();
+            for entry in std::fs::read_dir(from).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    copy(&path, &to.join(path.file_name().unwrap()));
+                } else if path.extension().is_none_or(|e| e != "import") {
+                    std::fs::copy(&path, to.join(path.file_name().unwrap())).unwrap();
+                }
+            }
+        }
+
+        copy(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../godot/godottrench/nature"), &dir.join("godottrench/nature"));
+    }
+
     #[test]
-    fn installing_nature_models_brings_their_textures() {
-        let (mut state, dir) = fresh_project("nature_install");
-        let ctx = egui::Context::default();
-        execute(&mut state, Action::InstallNatureModels, &ctx);
-        assert!(state.status.starts_with("Installed ") && state.status.contains(" and 25 textures"), "{}", state.status);
+    fn a_blockbench_preset_adds_only_the_models_it_lacks() {
+        let (mut state, dir) = fresh_project("preset_rocks");
+        let nature = dir.join("godottrench/nature");
+        std::fs::create_dir_all(&nature).unwrap();
+        std::fs::write(nature.join("rock.bbmodel"), gt_formats::nature::all()[0].1.as_str()).unwrap();
+        execute(&mut state, Action::ScatterPreset("rocks".into()), &egui::Context::default());
+        assert_eq!(state.doc.map.scatters().count(), 1);
+        assert!(state.status.ends_with("its 3 missing models were added to res://godottrench/nature"), "{}", state.status);
+        let mut files: Vec<String> = std::fs::read_dir(&nature).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        files.sort();
+        assert_eq!(files, ["boulder.bbmodel", "boulder_mossy.bbmodel", "rock.bbmodel", "rock_flat.bbmodel"], "nothing the preset does not use");
+        assert_eq!(std::fs::read_to_string(nature.join("rock.bbmodel")).unwrap(), gt_formats::nature::all()[0].1, "a file already there is kept");
         let names: Vec<&str> = state.model_library.entries.iter().map(|e| e.name.as_str()).collect();
-        assert!(names.contains(&"nature/pine") && names.contains(&"nature/trees/pine"), "the Models panel lists them right away: {names:?}");
+        assert!(names.contains(&"nature/boulder"), "the Models panel lists them right away: {names:?}");
+
+        execute(&mut state, Action::ScatterPreset("rocks".into()), &egui::Context::default());
+        assert!(state.status.ends_with("on its own layer"), "{}", state.status);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_pack_preset_asks_for_the_download_instead_of_pointing_at_missing_models() {
+        let (mut state, dir) = fresh_project("preset_forest");
+        execute(&mut state, Action::ScatterPreset("forest".into()), &egui::Context::default());
+        assert_eq!(state.doc.map.scatters().count(), 0);
+        assert!(state.status.contains("Add Content to Project"), "{}", state.status);
+        assert!(matches!(&state.content_request, Some(crate::state::ContentRequest::NaturePack(why)) if why.contains("forest")));
+        assert!(!dir.join("godottrench").exists(), "nothing is written");
+        state.content_request = None;
+        assert_eq!(state.prefs.scatter.preset, "forest", "the template painting starts a set from");
+        assert_eq!(crate::scatter_tool::active_or_new_set(&mut state), None, "painting without a set asks too");
+        assert!(state.content_request.is_some() && state.doc.map.scatters().count() == 0);
+
+        add_nature_pack(&dir);
+        state.content_request = None;
         for preset in gt_doc::scatter::PRESETS {
+            execute(&mut state, Action::ScatterPreset(preset.to_string()), &egui::Context::default());
             for item in gt_doc::scatter::preset(preset).unwrap().1 {
                 let path = dir.join(item.source.trim_start_matches("res://"));
                 let model = state.models.get(&path, 32.0).unwrap_or_else(|| panic!("{preset}: {} does not load", item.source));
@@ -2540,30 +2591,17 @@ mod tests {
             }
         }
 
-        execute(&mut state, Action::InstallNatureModels, &ctx);
-        assert!(state.status.contains("already installed"), "{}", state.status);
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn a_preset_completes_a_nature_pack_installed_by_an_older_version() {
-        let (mut state, dir) = fresh_project("nature_older");
-        let nature = dir.join("godottrench/nature");
-        gt_formats::nature::install(&nature, false).unwrap();
-        for sub in ["trees", "trees_detailed", "bushes", "textures"] {
-            std::fs::remove_dir_all(nature.join(sub)).unwrap();
-        }
-
-        execute(&mut state, Action::ScatterPreset("forest".into()), &egui::Context::default());
-        assert!(nature.join("trees/pine.glb").is_file() && nature.join("textures/bark_pine_albedo.jpg").is_file());
+        assert_eq!(state.doc.map.scatters().count(), gt_doc::scatter::PRESETS.len());
+        assert_eq!(state.content_request, None);
         let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
     fn placed_models_keep_their_textures_in_a_fresh_project() {
         let (mut state, dir) = fresh_project("place_textures");
-        let ctx = egui::Context::default();
-        execute(&mut state, Action::InstallNatureModels, &ctx);
+        add_nature_pack(&dir);
+        let game = state.game.clone();
+        state.model_library.rescan(&game);
         assert!(state.game.texture_root().is_some_and(|t| !t.exists()), "a fresh project has no texture folder");
         let nature = dir.join("godottrench/nature");
         let materials = |state: &EditorState| -> Vec<String> {

@@ -36,6 +36,7 @@ editor started on a different port than `.mcp.json` expects.
 | Edit | Change what exists: entity keys, selection, placement, faces, textures, terrain, layers and groups, and worldspawn | `update_entity`, `select`, `transform`, `duplicate`, `set_face`, `mesh_edit`, `texture`, `terrain_edit`, `hierarchy`, `set_map_properties` |
 | Paint and gameplay | Scatter models, blend materials, and turn brushes into doors, platforms and buttons | `scatter`, `blend`, `gameplay` |
 | Editor | Run menu actions, open and save files, change editor settings, move the camera, take screenshots, send input and check where a player can walk | `run_action`, `map_file`, `open_project`, `set_editor`, `set_camera`, `screenshot`, `simulate_input`, `walkability` |
+| Project | Add the nature models or the demo to the open Godot project | `project_content` |
 | Scripts | Replay a saved list of tool calls, see [MCP scripts](mcp-scripts.md) | `run_script` |
 
 Each tool's description lists its operations and arguments, so an agent learns them from the server itself.
@@ -100,7 +101,8 @@ See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 | Map paths | `map_file open` and `open_tab` resolve the path to an absolute one before opening, so a later `save` cannot land somewhere else because the process directory changed |
 | Selection | `select` refuses unknown ids and skips hidden or locked nodes, listing them in `skipped` |
 | CSG | `csg_subtract`, `csg_merge`, `csg_intersect`, `csg_hollow` and `clip_apply` return `replaced`, old ids mapped to new ones |
-| Timeouts | Calls time out after 120 s, except `run_script` |
+| Timeouts | Calls time out after 120 s, except `run_script` and `project_content` |
+| Content question | The question a new project gets about ready made content closes on the first call other than `get_state`, `screenshot` and `simulate_input`, and does not open again in that session |
 | Script variables | `$name/rest` (unbraced) is an error when `name` is a known variable, since only `$name` alone or `${name}/rest` expand it. Write `${project}/maps` |
 
 ## Tool notes
@@ -117,3 +119,5 @@ See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 | `validate_map` | Accepts any method or property of the target's Godot class or script as an input. `coplanar_faces` flags faces that will flicker. Every issue has `bounds`. `path` checks a saved map without opening it, `project: true` checks every map in the project |
 | `run_action` `reload_materials` | Rescans the texture folder now, though new files are found on their own anyway |
 | `set_editor` `live_link_port` | Talks to a Godot editor whose project sets another `godottrench/live_link_port` |
+| `scatter` `preset` | Adds the embedded Blockbench models a preset needs. A glTF preset in a project without the nature pack is an error that names `project_content` |
+| `project_content` | `install: "nature"` or `"demo"` downloads from the release and answers once the files are in. Without arguments it says what the project has |

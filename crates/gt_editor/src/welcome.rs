@@ -37,6 +37,11 @@ pub struct ProjectMaps {
 }
 
 impl ProjectMaps {
+    /// Scans again the next time the maps are shown, for maps that were just added.
+    pub fn rescan(&mut self) {
+        self.scanned = None;
+    }
+
     pub fn get(&mut self, ctx: &egui::Context, root: Option<&Path>) -> &[PathBuf] {
         if self.root.as_deref() != root {
             *self = Self { root: root.map(Path::to_path_buf), ..Default::default() };
@@ -235,6 +240,33 @@ mod tests {
         let found: Vec<String> = find_maps(&dir).iter().map(|p| p.strip_prefix(&dir).unwrap().to_string_lossy().replace('\\', "/")).collect();
         std::fs::remove_dir_all(&dir).ok();
         assert_eq!(found, ["maps/b.gtm", "maps/z.gtm", "maps/showcase/a.gtm"], "a folder's maps stay together");
+    }
+
+    #[test]
+    fn maps_added_meanwhile_show_up_after_a_rescan() {
+        let dir = std::env::temp_dir().join(format!("gt_welcome_rescan_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ctx = egui::Context::default();
+        let mut maps = ProjectMaps::default();
+        let wait = |maps: &mut ProjectMaps| {
+            for _ in 0..500 {
+                if maps.pending.is_none() && maps.scanned.is_some() {
+                    break;
+                }
+
+                std::thread::sleep(Duration::from_millis(5));
+                maps.get(&ctx, Some(&dir));
+            }
+
+            maps.get(&ctx, Some(&dir)).to_vec()
+        };
+        assert!(wait(&mut maps).is_empty());
+        std::fs::create_dir_all(dir.join("demo/maps")).unwrap();
+        std::fs::write(dir.join("demo/maps/demo.gtm"), "").unwrap();
+        assert!(wait(&mut maps).is_empty(), "the list is kept for a few seconds");
+        maps.rescan();
+        assert_eq!(wait(&mut maps), [dir.join("demo/maps/demo.gtm")], "an install asks for a new scan");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

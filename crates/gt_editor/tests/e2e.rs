@@ -1812,3 +1812,86 @@ fn the_walkable_area_comes_from_godot() {
     let e = ed.call_err("run_action", json!({ "action": "toggle_walkable" }));
     assert!(e.contains("Cannot show the walkable area") && e.contains("not running"), "{e}");
 }
+
+/// Answers the GitHub release API with a rolling beta that holds `asset`, and serves its download. Returns the API url.
+fn fake_release(asset: &'static str, bytes: Vec<u8>) -> String {
+    use std::io::BufRead;
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let release = json!({ "tag_name": "beta", "assets": [{ "name": asset, "size": bytes.len(), "browser_download_url": format!("{url}/download/{asset}") }] });
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            let _ = reader.read_line(&mut line);
+            while reader.read_line(&mut String::new()).unwrap_or(0) > 2 {}
+            let path = line.split(' ').nth(1).unwrap_or_default();
+            let (status, body) = match path {
+                "/releases/tags/beta" => (200, release.to_string().into_bytes()),
+                p if p.ends_with(asset) => (200, bytes.clone()),
+                _ => (404, b"{}".to_vec()),
+            };
+            let _ = write!(stream, "HTTP/1.1 {status} X\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+            let _ = stream.write_all(&body);
+        }
+    });
+    url
+}
+
+fn window_titles(ed: &Editor) -> Vec<String> {
+    ed.state()["ui"]["windows"].as_array().unwrap().iter().map(|w| w["title"].as_str().unwrap().to_string()).collect()
+}
+
+/// A project opened for the first time asks what content it should get, and the question gets out of an agent's way on
+/// its first edit. project_content downloads the same content, here from a local stand-in for the release.
+#[test]
+#[ignore]
+fn a_new_project_asks_about_content_but_not_an_agent_at_work() {
+    let dir = artifacts().join("content_project");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+    let mut pack = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (name, bytes) in [
+        ("godottrench/nature/trees/pack.json", &b"{}"[..]),
+        ("godottrench/nature/trees_detailed/pack.json", b"{}"),
+        ("godottrench/nature/bushes/pack.json", b"{}"),
+        ("godottrench/nature/trees/oak.glb", include_bytes!("../../../godot/godottrench/nature/trees/oak.glb")),
+    ] {
+        pack.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+        pack.write_all(bytes).unwrap();
+    }
+
+    let api = fake_release("godottrench-nature-pack.zip", pack.finish().unwrap().into_inner());
+    let ed = Editor::launch_env("content", &["--project", dir.to_str().unwrap()], &[("GODOTTRENCH_RELEASES_API", &api)]);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !window_titles(&ed).contains(&"Set up this project".to_string()) {
+        assert!(Instant::now() < deadline, "the content question shows for a new project: {:?}", window_titles(&ed));
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    ed.input("window", json!([{ "type": "move", "x": 20, "y": 20 }]));
+    ed.screenshot("window", "wizard");
+    assert!(window_titles(&ed).contains(&"Set up this project".to_string()), "looking and moving the mouse leave it open");
+    ed.box_brush([0.0, 0.0, 0.0], [64.0, 64.0, 64.0]);
+    assert_eq!(window_titles(&ed), Vec::<String>::new(), "an agent's first edit closes it");
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "the question alone writes nothing into the project");
+
+    let added = ed.call("project_content", json!({ "install": "nature" }));
+    assert_eq!(added["releases"], json!(["beta"]), "{added}");
+    assert!(dir.join("godottrench/nature/trees/oak.glb").is_file());
+    let status = ed.call("project_content", json!({}));
+    assert_eq!(
+        (status["nature_pack"].as_bool(), status["demo"].as_bool(), status["wizard_open"].as_bool()),
+        (Some(true), Some(false), Some(false)),
+        "{status}"
+    );
+    assert!(ed.call_err("scatter", json!({ "op": "new_set", "preset": "bushes" })).contains("project_content"), "the pack here lacks the bushes");
+    drop(ed);
+
+    let demo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../godot").canonicalize().unwrap();
+    let ed = Editor::launch_with("content_demo", &["--project", demo.to_str().unwrap()]);
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(window_titles(&ed), Vec::<String>::new(), "the demo project has its content");
+}

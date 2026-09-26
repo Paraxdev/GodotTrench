@@ -2,7 +2,8 @@
 
 Models are 3D files made in another program, such as Blender or Blockbench. The Models panel lists the models under
 `res://models` and the installed nature models under `res://godottrench/nature`. It reads glTF, OBJ, Blockbench, STL,
-MD2 and MD3 files.
+MD2 and MD3 files. A new project has neither, *Godot > Add Content to Project…* adds the nature models, and with the
+demo the showcase props in `res://models/polyhaven`.
 
 ## Placing a model
 

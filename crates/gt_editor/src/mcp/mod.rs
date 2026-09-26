@@ -38,10 +38,11 @@ pub struct ToolCall {
     pub reply: Sender<ToolResult>,
 }
 
-/// How long a transport waits for the UI thread. Scripts replay whole maps, so they get no limit.
+/// How long a transport waits for the UI thread.
 pub fn reply_timeout(tool: &str) -> Option<Duration> {
     match tool {
-        "run_script" => None,
+        // Scripts replay whole maps and project_content downloads, neither has a sensible limit.
+        "run_script" | "project_content" => None,
         _ => Some(Duration::from_secs(120)),
     }
 }

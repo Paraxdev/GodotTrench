@@ -169,6 +169,15 @@ impl Default for ModelImportPrefs {
     }
 }
 
+/// Why the content wizard should open.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ContentRequest {
+    /// The project at this path opened in GodotTrench for the first time.
+    FirstStart(PathBuf),
+    /// Something needs the nature pack, which the project lacks. Says what.
+    NaturePack(String),
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Prefs {
@@ -226,6 +235,9 @@ pub struct Prefs {
     pub walk_agent: crate::walkable::Agent,
     /// Show first steps in the views while the map is empty.
     pub start_hints: bool,
+    /// Projects, by absolute path, whose content wizard a person has answered or closed. It opens by itself only for
+    /// a project that is neither here nor among the recent projects.
+    pub content_asked: std::collections::BTreeSet<PathBuf>,
 }
 
 pub const UI_SCALE_MIN: f32 = 0.5;
@@ -292,6 +304,7 @@ impl Default for Prefs {
             godot_overlays: true,
             walk_agent: Default::default(),
             start_hints: true,
+            content_asked: Default::default(),
         }
     }
 }
@@ -332,6 +345,8 @@ pub struct EditorState {
     autosave: Autosave,
     /// MCP runs over stdin and stdout, so launched programs must not write to them.
     pub stdio_mcp: bool,
+    /// Asks the app to open the content wizard.
+    pub content_request: Option<ContentRequest>,
     live_link_status: Option<std::sync::mpsc::Receiver<String>>,
     pub godot: crate::godot::GodotStatus,
     /// Started by the app, tests and tools run without it.
@@ -472,6 +487,7 @@ impl EditorState {
             last_autosave: Instant::now(),
             autosave: Autosave::default(),
             stdio_mcp: false,
+            content_request: None,
             live_link_status: None,
             godot: Default::default(),
             link: None,
@@ -958,6 +974,11 @@ impl EditorState {
         self.game = game;
         self.restart_game_watch();
         let p = root.to_path_buf();
+        let known = self.prefs.recent_projects.contains(&p) || self.prefs.content_asked.contains(&p);
+        if !known && !crate::content::has_content(&p) {
+            self.content_request = Some(ContentRequest::FirstStart(p.clone()));
+        }
+
         self.prefs.recent_projects.retain(|r| r != &p);
         self.prefs.recent_projects.insert(0, p);
         self.prefs.recent_projects.truncate(8);
@@ -1234,6 +1255,38 @@ mod tests {
         state.open_map(&relative).unwrap();
         assert!(state.doc.path.as_deref().is_some_and(Path::is_absolute), "{:?}", state.doc.path);
         assert!(state.game.project_root.as_deref().is_some_and(Path::is_absolute), "{:?}", state.game.project_root);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_project_is_offered_content_on_its_first_start_only() {
+        let dir = std::env::temp_dir().join(format!("gt_first_start_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+        let root = absolute(&dir);
+        let mut state = EditorState::new(Prefs::default());
+        state.load_project(&dir);
+        assert_eq!(state.content_request, Some(ContentRequest::FirstStart(root.clone())));
+        state.content_request = None;
+        state.load_project(&dir);
+        assert_eq!(state.content_request, None, "a recent project has had its first start");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "asking writes nothing into the project");
+
+        // Remembered per project in the preferences, so it survives the project leaving the recent list.
+        let mut prefs = Prefs::default();
+        prefs.content_asked.insert(root.clone());
+        let mut state = EditorState::new(prefs);
+        state.load_project(&dir);
+        assert_eq!(state.content_request, None);
+
+        std::fs::create_dir_all(dir.join("godottrench/nature")).unwrap();
+        let mut state = EditorState::new(Prefs::default());
+        state.load_project(&dir);
+        assert_eq!(state.content_request, None, "a project with the nature models has its content, like the demo project");
+        let demo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../godot");
+        state.load_project(&demo);
+        assert_eq!(state.content_request, None);
         let _ = std::fs::remove_dir_all(dir);
     }
 

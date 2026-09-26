@@ -27,6 +27,18 @@ editor reloads the file within a second of each export.
 Choose *Godot > Open Godot Project…*, or the **Open Godot project…** button in the toolbar, and pick the project
 folder or any folder inside it. The editor reopens it on the next start.
 
+The first time a project opens, the editor asks whether it should get ready made content. Nothing is written into the
+project until you pick something, and *Godot > Add Content to Project…* brings the question back later.
+
+| Choice | What it adds |
+| --- | --- |
+| Nothing extra | Nothing. The built in entities and materials work without any files |
+| Nature models, about 23 MB | Trees, bushes, rocks, grass and flowers with their textures in `res://godottrench/nature`, for [Scatter](editor/scatter.md) and the [Models](editor/models.md) panel |
+| Nature models and the demo, about 130 MB | Also the showcase maps, demo models and textures, overlays and demo scenes in `res://demo` and `res://models` |
+
+The downloads come from the GodotTrench release that matches the editor, or the rolling beta when that release lacks
+them. Files the project already has are kept, and `project.godot`, the addon and your own files are never touched.
+
 If the status bar says there is no `godottrench_game.json` in the project, step 2 has not run and the editor falls back
 to its built in entities.
 
@@ -92,6 +104,11 @@ The repository's `godot` folder, also in the release as `godottrench-demo-projec
 installed. Its main scene plays the showcase maps, which are saved in `godot/demo/maps/showcase`. Open the project in
 the editor and pick one under *File > Maps in Project* to see how a finished map is put together.
 
+The demo choice of *Godot > Add Content to Project…* puts the same maps and scenes into your own project. In Godot,
+open `res://demo/demo.tscn` and press F6 to play them. Opened in GodotTrench from your project they show without their
+textures, because they use the demo's texture folder `res://demo/textures` rather than your project's. The demo project
+shows them as they were built.
+
 | Key | Action |
 | --- | --- |
 | WASD, Space, Shift | Walk, jump, run |
@@ -103,3 +120,13 @@ the editor and pick one under *File > Maps in Project* to see how a finished map
 
 To make the room do something, read [How entity I/O works](gameplay/io.md) and build
 [Button opens a door](tutorials/button-door.md).
+
+{% mcp %}
+
+## MCP
+
+The content question does not open by itself in an editor that an MCP client drives: the first tool call other than
+`get_state`, `screenshot` and `simulate_input` closes it, and a project opened with `open_project` is not asked about.
+`project_content` adds the same content, see [MCP](mcp.md).
+
+{% endmcp %}

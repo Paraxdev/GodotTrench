@@ -4,6 +4,8 @@ pub mod brand;
 pub mod camera;
 pub mod code_refs;
 pub mod commands;
+pub mod content;
+pub mod content_wizard;
 pub mod dialogs;
 pub mod entity_wizards;
 pub mod export3d;

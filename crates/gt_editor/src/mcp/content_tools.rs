@@ -126,13 +126,57 @@ fn next_layer_name(map: &gt_doc::Map) -> String {
     format!("Layer {}", map.layers.len() + 1)
 }
 
+/// The reply to project_content {install} once the install is done.
+pub fn content_result(outcome: &crate::content::Outcome) -> ToolResult {
+    if outcome.error.is_some() {
+        return err(outcome.summary());
+    }
+
+    ok(json!({
+        "written": outcome.added.written.len(), "kept": outcome.added.kept, "releases": outcome.tags, "summary": outcome.summary(),
+    }))
+}
+
 impl App {
+    pub(crate) fn content_status(&self) -> Value {
+        let root = self.state.game.project_root.clone();
+        let has = |f: fn(&std::path::Path) -> bool| root.as_deref().is_some_and(f);
+        let nature = root.as_deref().map(crate::content::nature_dir);
+        let models = nature.as_ref().is_some_and(|dir| gt_formats::nature::names().iter().all(|n| dir.join(format!("{n}.bbmodel")).is_file()));
+        json!({
+            "project_root": root.as_ref().map(|p| p.to_string_lossy().replace('\\', "/")),
+            "blockbench_models": models, "nature_pack": has(crate::content::has_nature_pack), "demo": has(crate::content::has_demo),
+            "wizard_open": self.content_wizard.open,
+            "running": self.content_wizard.progress().map(|p| json!({ "stage": p.stage, "done": p.done, "total": p.total, "bytes": p.bytes })),
+        })
+    }
+
+    /// Starts project_content {install}, which is answered when the install is done.
+    pub(crate) fn start_content(&mut self, args: &Value, ctx: &egui::Context) -> Result<(), String> {
+        let choice = match args["install"].as_str() {
+            Some("nature") => crate::content::Choice::Nature,
+            Some("demo") => crate::content::Choice::Demo,
+            _ => return Err("install must be nature or demo".into()),
+        };
+        self.content_wizard.start(&self.state, choice, Some(ctx.clone()))
+    }
+
     /// Applies scatter settings present in `args` to the tool settings.
     fn apply_scatter_args(&mut self, a: &Value) -> Result<(), String> {
-        if let Some(preset) = a["preset"].as_str()
-            && !crate::scatter_tool::apply_preset(&mut self.state, preset)
-        {
-            return Err(format!("unknown preset {preset}, use one of {}", gt_doc::scatter::PRESETS.join(", ")));
+        if let Some(preset) = a["preset"].as_str() {
+            use crate::scatter_tool::PresetProblem;
+            match crate::scatter_tool::prepare_preset(&mut self.state, preset) {
+                Ok(_) => {}
+                Err(PresetProblem::Unknown) => return Err(format!("unknown preset {preset}, use one of {}", gt_doc::scatter::PRESETS.join(", "))),
+                Err(PresetProblem::NeedsPack) => {
+                    return Err(format!(
+                        "the {preset} preset uses the glTF models of the nature pack, which this project lacks, install it with project_content {{install: \"nature\"}}"
+                    ));
+                }
+                Err(PresetProblem::Write(e)) => return Err(format!("could not add the {preset} models to the project: {e}")),
+            }
+
+            crate::scatter_tool::apply_preset(&mut self.state, preset);
         }
 
         let s = &mut self.state.prefs.scatter;
@@ -259,7 +303,16 @@ impl App {
                 ok(json!({ "palette": palette, "kind": self.state.prefs.scatter.kind.label(), "set": set.map(|id| self.scatter_summary(id)) }))
             }
             "install_models" => match crate::scatter_tool::install_nature(&mut self.state, args["overwrite"].as_bool().unwrap_or(false)) {
-                Ok(written) => ok(json!({ "written": written.len(), "dir": gt_doc::scatter::NATURE_DIR, "models": gt_formats::nature::models() })),
+                Ok(written) => {
+                    let pack = self.state.game.project_root.as_deref().is_some_and(crate::content::has_nature_pack);
+                    let models: Vec<String> = gt_formats::nature::names().iter().map(|n| format!("{n}.bbmodel")).collect();
+                    let mut result = json!({ "written": written.len(), "dir": gt_doc::scatter::NATURE_DIR, "models": models, "gltf_pack": pack });
+                    if !pack {
+                        result["note"] = json!("the glTF trees and bushes are a download, project_content {install: \"nature\"} adds them");
+                    }
+
+                    ok(result)
+                }
                 Err(e) => err(e),
             },
             "new_set" => {

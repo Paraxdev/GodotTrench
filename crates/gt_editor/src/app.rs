@@ -143,6 +143,9 @@ pub struct App {
     pub(crate) tool_buttons: Vec<(ToolKind, egui::Rect)>,
     /// The manual page of what the pointer was over at the end of the last frame, for F1.
     manual_under_pointer: Option<String>,
+    pub(crate) content_wizard: crate::content_wizard::ContentWizard,
+    /// project_content calls waiting for the running install.
+    pub(crate) content_replies: Vec<std::sync::mpsc::Sender<crate::mcp::ToolResult>>,
 }
 
 const WINDOW_TITLES: [&str; 7] =
@@ -726,6 +729,8 @@ impl App {
             open_windows: Vec::new(),
             tool_buttons: Vec::new(),
             manual_under_pointer: None,
+            content_wizard: Default::default(),
+            content_replies: Vec::new(),
         }
     }
 
@@ -748,7 +753,8 @@ impl App {
     fn collect_input_actions(&mut self, ctx: &egui::Context) {
         help::open_on_f1(ctx, self.manual_under_pointer.as_deref());
         let view_hovered = self.viewports.iter().any(|v| v.hovered);
-        let scope = key_scope(ctx, self.ui_had_focus || self.keymap.open, view_hovered, |id| self.viewports.iter().any(|v| v.id == id));
+        let scope =
+            key_scope(ctx, self.ui_had_focus || self.keymap.open || self.content_wizard.open, view_hovered, |id| self.viewports.iter().any(|v| v.id == id));
         if scope == KeyScope::Ui {
             return;
         }
@@ -806,6 +812,8 @@ impl App {
             }
             Action::ShowReference => show_tab(&mut self.dock, Tab::Reference),
             Action::ShowPreferences => self.show_prefs = true,
+            Action::ShowProjectContent => self.content_wizard.open_from_menu(&mut self.state, None),
+            Action::InstallNatureModels => self.content_wizard.open_from_menu(&mut self.state, Some(crate::content::Choice::Nature)),
             Action::ToggleMaximizeView => self.toggle_maximize(),
             Action::ViewLayout(n) => {
                 self.maximized = None;
@@ -1229,7 +1237,7 @@ impl App {
                     m.item(ui, None, "Fill Scatter Targets", Action::ScatterFill);
                     m.item(ui, None, "Scatter Sets to Entities", Action::ScatterToEntities);
                     ui.separator();
-                    m.item(ui, None, "Install Nature Models", Action::InstallNatureModels);
+                    m.item(ui, None, "Install Nature Models…", Action::InstallNatureModels);
                 });
             });
             menu(ui, "Gameplay", |ui| {
@@ -1432,6 +1440,8 @@ impl App {
                         }
                     }
                 });
+                let has_project = self.state.game.project_root.is_some();
+                m.item_enabled(ui, Some(icons::IMPORT), "Add Content to Project…", Action::ShowProjectContent, has_project, "Open a Godot project first");
                 ui.separator();
                 sub_menu(ui, None, "Reload", |ui| {
                     m.item(ui, None, "Game Config", Action::ReloadProject);
@@ -2377,6 +2387,18 @@ impl eframe::App for App {
             .filter(|t| ctx.memory(|m| m.areas().is_visible(&egui::LayerId::new(egui::Order::Middle, window_id(t)))))
             .filter_map(|t| Some((t, ctx.memory(|m| m.area_rect(window_id(t)))?)))
             .collect();
+        self.content_wizard.take_request(&mut self.state);
+        let (wizard, finished) = self.content_wizard.show(&ctx, &mut self.state);
+        if let Some(rect) = wizard {
+            self.open_windows.push((crate::content_wizard::TITLE, rect));
+        }
+
+        if let Some(outcome) = finished {
+            self.project_maps.rescan();
+            for reply in self.content_replies.drain(..) {
+                let _ = reply.send(crate::mcp::content_tools::content_result(&outcome));
+            }
+        }
 
         for action in std::mem::take(&mut self.actions) {
             let Some(action) = self.run_app_action(action) else { continue };

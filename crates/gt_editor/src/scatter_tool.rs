@@ -77,30 +77,106 @@ pub fn new_set(state: &mut EditorState, name: Option<&str>) -> NodeId {
     create_set(state, &label, kind, items)
 }
 
+/// The active set, or a new one from the template. A template that is still a preset gets its models the way picking the
+/// preset does, and when it needs the nature pack the project lacks, no set is made and the status says why.
+pub fn active_or_new_set(state: &mut EditorState) -> Option<NodeId> {
+    if let Some(id) = active_set(state) {
+        return Some(id);
+    }
+
+    let preset = state.prefs.scatter.preset.clone();
+    let unchanged = gt_doc::scatter::preset(&preset).is_some_and(|(_, items)| items == state.prefs.scatter.palette);
+    if unchanged {
+        match prepare_preset(state, &preset) {
+            Ok(_) | Err(PresetProblem::Unknown) => {}
+            Err(PresetProblem::NeedsPack) => {
+                ask_for_pack(state, &preset);
+                return None;
+            }
+            Err(PresetProblem::Write(e)) => {
+                state.set_status(format!("Could not add the models of the {preset} preset to the project: {e}"));
+                return None;
+            }
+        }
+    }
+
+    Some(new_set(state, None))
+}
+
 /// An empty set to drop models into.
 pub fn new_empty_set(state: &mut EditorState) -> NodeId {
     let name = unique_name(state, "scatter");
     create_set(state, &name, ScatterKind::Props, Vec::new())
 }
 
-/// A new set holding a built-in preset, with the nature models installed when the project lacks them.
+/// A new set holding a built-in preset. The embedded Blockbench models it uses are written into the project when they
+/// are missing. A preset of the downloadable nature pack in a project without it creates nothing, and asks for the
+/// content wizard instead.
 pub fn new_set_from_preset(state: &mut EditorState, preset: &str) -> Option<NodeId> {
-    if !apply_preset(state, preset) {
-        return None;
-    }
-
-    // Checks every model, a project installed by an older version has the Blockbench models but not the glTF trees.
-    let root = state.game.project_root.clone();
-    let missing = state.prefs.scatter.palette.iter().any(|i| {
-        let rel = i.source.strip_prefix("res://");
-        root.as_ref().zip(rel).is_some_and(|(root, rel)| !root.join(rel).is_file())
-    });
-    if missing {
-        let _ = install_nature(state, false);
-    }
-
+    let installed = match prepare_preset(state, preset) {
+        Ok(installed) => installed,
+        Err(PresetProblem::NeedsPack) => {
+            ask_for_pack(state, preset);
+            return None;
+        }
+        Err(PresetProblem::Unknown) => return None,
+        Err(PresetProblem::Write(e)) => {
+            state.set_status(format!("Could not add the models of the {preset} preset to the project: {e}"));
+            return None;
+        }
+    };
+    apply_preset(state, preset);
     let name = unique_name(state, preset);
-    Some(new_set(state, Some(&name)))
+    let id = new_set(state, Some(&name));
+    let dir = gt_doc::scatter::NATURE_DIR;
+    state.set_status(match installed {
+        0 => format!("New scatter set from the {preset} preset on its own layer"),
+        n => format!("New scatter set from the {preset} preset on its own layer, its {n} missing models were added to {dir}"),
+    });
+    Some(id)
+}
+
+/// Says why a preset cannot be used yet and asks for the content wizard, which offers the nature pack.
+fn ask_for_pack(state: &mut EditorState, preset: &str) {
+    let why = format!("The {preset} preset uses the glTF trees and bushes of the nature pack, which this project does not have yet.");
+    state.set_status(format!("{why} Godot > Add Content to Project adds it, the other presets work without it"));
+    state.content_request = Some(crate::state::ContentRequest::NaturePack(why));
+}
+
+#[derive(Debug, PartialEq)]
+pub enum PresetProblem {
+    Unknown,
+    /// The preset uses models of the downloadable nature pack that the project lacks.
+    NeedsPack,
+    Write(String),
+}
+
+/// Makes sure the project has the models of a preset: the embedded ones it lacks are written, nothing else is. Returns
+/// how many were written. Without a project nothing can be checked, and the preset is used as it is.
+pub fn prepare_preset(state: &mut EditorState, preset: &str) -> Result<usize, PresetProblem> {
+    let (_, items) = gt_doc::scatter::preset(preset).ok_or(PresetProblem::Unknown)?;
+    let Some(root) = state.game.project_root.clone() else { return Ok(0) };
+    let nature = crate::content::nature_dir(&root);
+    let prefix = format!("{}/", gt_doc::scatter::NATURE_DIR);
+    let missing: Vec<&str> = items.iter().filter_map(|i| i.source.strip_prefix(&prefix)).filter(|rel| !nature.join(rel).is_file()).collect();
+    if missing.iter().any(|rel| gt_formats::nature::embedded(rel).is_none()) {
+        return Err(PresetProblem::NeedsPack);
+    }
+
+    let names: Vec<&str> = missing.iter().filter_map(|rel| rel.strip_suffix(".bbmodel")).collect();
+    if names.is_empty() {
+        return Ok(0);
+    }
+
+    let written = gt_formats::nature::install(&nature, &names, false).map_err(|e| PresetProblem::Write(e.to_string()))?;
+    refresh_models(state);
+    Ok(written.len())
+}
+
+fn refresh_models(state: &mut EditorState) {
+    state.models.clear();
+    let game = state.game.clone();
+    state.model_library.rescan(&game);
 }
 
 /// Adds models to a set, enabling the ones it already holds. Returns how many were new.
@@ -212,8 +288,8 @@ pub fn eyedrop_target(state: &mut EditorState, node: NodeId) -> Result<bool, Str
         return Err(format!("{node} is not a surface, targets are brushes, meshes, terrains and scatter sets"));
     }
 
-    if active_set(state).is_none() {
-        new_set(state, None);
+    if active_or_new_set(state).is_none() {
+        return Err(state.status.clone());
     }
 
     if Some(node) == active_set(state) {
@@ -262,7 +338,7 @@ pub fn paint(state: &mut EditorState, center: DVec3, normal: DVec3, under: Optio
         return paint_entities(state, &items, center, normal, settings.radius, &settings.rules, rng).len();
     }
 
-    let id = active_set(state).unwrap_or_else(|| new_set(state, None));
+    let Some(id) = active_or_new_set(state) else { return 0 };
     let Some(mut set) = state.doc.map.scatter(id).cloned() else { return 0 };
     let enabled = set.enabled_items();
     if enabled.is_empty() {
@@ -327,7 +403,7 @@ pub fn erase(state: &mut EditorState, center: DVec3, rng: &mut Rng) -> usize {
 /// Fills the whole area of the active set's targets (or the selected surfaces and sets) with its enabled models.
 pub fn fill(state: &mut EditorState, rng: &mut Rng) -> Result<usize, String> {
     let settings = state.prefs.scatter.clone();
-    let id = active_set(state).unwrap_or_else(|| new_set(state, None));
+    let Some(id) = active_or_new_set(state) else { return Err(state.status.clone()) };
     let Some(mut set) = state.doc.map.scatter(id).cloned() else { return Err("scatter set vanished".into()) };
     if set.targets.is_empty() {
         let map = &state.doc.map;
@@ -508,32 +584,16 @@ pub fn bake_to_entities(state: &mut EditorState, id: NodeId) -> usize {
     n
 }
 
-/// Writes the built-in nature models and their textures into the project so the presets resolve. Returns the files
-/// written.
+/// Writes the embedded Blockbench nature models into the project, the glTF part of the pack is a download. Returns the
+/// files written.
 pub fn install_nature(state: &mut EditorState, overwrite: bool) -> Result<Vec<std::path::PathBuf>, String> {
     let dir = state.game.resolve_res(gt_doc::scatter::NATURE_DIR).ok_or("Open a Godot project first, models are installed into it")?;
-    let written = gt_formats::nature::install(&dir, overwrite).map_err(|e| e.to_string())?;
+    let written = gt_formats::nature::install(&dir, &[], overwrite).map_err(|e| e.to_string())?;
     if !written.is_empty() {
-        state.models.clear();
-        let game = state.game.clone();
-        state.model_library.rescan(&game);
+        refresh_models(state);
     }
 
     Ok(written)
-}
-
-/// Status line for a nature install, counting models and textures apart.
-pub fn install_summary(written: &[std::path::PathBuf]) -> String {
-    let dir = gt_doc::scatter::NATURE_DIR;
-    let ext = |p: &std::path::PathBuf| p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-    let models = written.iter().filter(|p| crate::models::MODEL_EXTS.contains(&ext(p).as_str())).count();
-    let textures = written.iter().filter(|p| matches!(ext(p).as_str(), "png" | "jpg")).count();
-    match (models, textures) {
-        _ if written.is_empty() => format!("The nature models are already installed in {dir}"),
-        (0, _) => format!("Installed {} missing files of the nature pack into {dir}", written.len()),
-        (m, 0) => format!("Installed {m} nature models into {dir}"),
-        (m, t) => format!("Installed {m} nature models and {t} textures into {dir}"),
-    }
 }
 
 /// Makes a built-in preset the template new sets start from.

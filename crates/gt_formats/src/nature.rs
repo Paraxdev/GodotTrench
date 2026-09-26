@@ -1,7 +1,7 @@
-//! Built-in nature pack: low poly Blockbench trees, bushes, rocks and foliage with embedded pixel textures, plus the
-//! procedural glTF trees and bushes with the bark and leaf textures they share. The Blockbench models in `assets/nature`
-//! are authored in Blockbench, the glTF part is the one in the demo project's `godot/godottrench/nature`. The editor
-//! installs the whole pack into a project so every scatter preset works without any assets.
+//! The nature models. The low poly Blockbench trees, bushes, rocks and foliage in `assets/nature` are small and embedded
+//! in the editor, so the scatter presets built from them work in any project, offline. The procedural glTF trees and
+//! bushes with the bark and leaf textures they share, the rest of the demo project's `godot/godottrench/nature`, are too
+//! big to embed and ship as a release download that the editor's content wizard installs.
 
 macro_rules! models {
     ($($name:literal),* $(,)?) => {
@@ -9,14 +9,8 @@ macro_rules! models {
     };
 }
 
-macro_rules! files {
-    ($($path:literal),* $(,)?) => {
-        [$(($path, include_bytes!(concat!("../../../godot/godottrench/nature/", $path)) as &[u8])),*]
-    };
-}
-
 /// The first nine are the original pack names that saved maps and presets refer to.
-const MODELS: [(&str, &str); 18] = models!(
+static MODELS: [(&str, &str); 18] = models!(
     "pine",
     "oak",
     "birch",
@@ -37,76 +31,10 @@ const MODELS: [(&str, &str); 18] = models!(
     "mushrooms",
 );
 
-/// Everything else in the pack by its path inside the pack folder: the glTF models, the textures they load by relative
-/// URI, and the `pack.json` files that credit the scanned textures.
-const FILES: [(&str, &[u8]); 64] = files!(
-    "pack.json",
-    "bushes/pack.json",
-    "bushes/bush_flowering.glb",
-    "bushes/bush_hedge.glb",
-    "bushes/bush_red.glb",
-    "bushes/bush_round.glb",
-    "bushes/bush_round_b.glb",
-    "bushes/fern_clump.glb",
-    "bushes/fern_clump_b.glb",
-    "trees/pack.json",
-    "trees/beech.glb",
-    "trees/beech_b.glb",
-    "trees/beech_young.glb",
-    "trees/birch.glb",
-    "trees/birch_b.glb",
-    "trees/birch_young.glb",
-    "trees/dead_oak.glb",
-    "trees/dead_oak_b.glb",
-    "trees/maple.glb",
-    "trees/maple_autumn.glb",
-    "trees/maple_b.glb",
-    "trees/oak.glb",
-    "trees/oak_b.glb",
-    "trees/oak_young.glb",
-    "trees/pine.glb",
-    "trees/pine_b.glb",
-    "trees/pine_young.glb",
-    "trees/poplar.glb",
-    "trees/poplar_b.glb",
-    "trees/willow.glb",
-    "trees/willow_b.glb",
-    "trees_detailed/pack.json",
-    "trees_detailed/beech.glb",
-    "trees_detailed/birch.glb",
-    "trees_detailed/maple.glb",
-    "trees_detailed/maple_autumn.glb",
-    "trees_detailed/oak.glb",
-    "trees_detailed/pine.glb",
-    "trees_detailed/willow.glb",
-    "textures/bark_beech_albedo.jpg",
-    "textures/bark_beech_normal.jpg",
-    "textures/bark_birch_albedo.jpg",
-    "textures/bark_birch_normal.jpg",
-    "textures/bark_dead_albedo.jpg",
-    "textures/bark_dead_normal.jpg",
-    "textures/bark_oak_albedo.jpg",
-    "textures/bark_oak_normal.jpg",
-    "textures/bark_pine_albedo.jpg",
-    "textures/bark_pine_normal.jpg",
-    "textures/bark_willow_albedo.jpg",
-    "textures/bark_willow_normal.jpg",
-    "textures/leaf_beech.png",
-    "textures/leaf_birch.png",
-    "textures/leaf_box.png",
-    "textures/leaf_fern.png",
-    "textures/leaf_flowering.png",
-    "textures/leaf_maple.png",
-    "textures/leaf_maple_autumn.png",
-    "textures/leaf_oak.png",
-    "textures/leaf_pine.png",
-    "textures/leaf_poplar.png",
-    "textures/leaf_red.png",
-    "textures/leaf_shrub.png",
-    "textures/leaf_willow.png",
-);
+/// The folders of the downloadable pack inside the nature folder, next to the embedded Blockbench models.
+pub const PACK_FOLDERS: [&str; 4] = ["trees", "trees_detailed", "bushes", "textures"];
 
-/// Every model as (name, bbmodel text).
+/// Every embedded model as (name, bbmodel text).
 pub fn all() -> Vec<(&'static str, String)> {
     MODELS.iter().map(|(name, text)| (*name, text.to_string())).collect()
 }
@@ -115,29 +43,27 @@ pub fn names() -> Vec<&'static str> {
     MODELS.iter().map(|(name, _)| *name).collect()
 }
 
-/// Every model of the pack by its path inside the pack folder, the Blockbench ones first.
-pub fn models() -> Vec<String> {
-    let glb = FILES.iter().map(|(path, _)| *path).filter(|p| p.ends_with(".glb")).map(str::to_string);
-    MODELS.iter().map(|(name, _)| format!("{name}.bbmodel")).chain(glb).collect()
+/// The embedded model a path inside the nature folder names, such as `rock.bbmodel`.
+pub fn embedded(rel: &str) -> Option<&'static str> {
+    let name = rel.strip_suffix(".bbmodel")?;
+    MODELS.iter().find(|(n, _)| *n == name).map(|(_, text)| *text)
 }
 
-/// Every file of the pack as (path inside the pack folder, contents).
-fn files() -> impl Iterator<Item = (String, &'static [u8])> {
-    MODELS.iter().map(|(name, text)| (format!("{name}.bbmodel"), text.as_bytes())).chain(FILES.iter().map(|(path, bytes)| (path.to_string(), *bytes)))
+/// Whether the downloadable part of the pack is in the nature folder `dir`, judged by the credits file of every folder
+/// that has models.
+pub fn pack_installed(dir: &std::path::Path) -> bool {
+    PACK_FOLDERS.iter().filter(|f| **f != "textures").all(|f| dir.join(f).join("pack.json").is_file())
 }
 
-/// Writes missing (or all, with `overwrite`) files of the pack into `dir`, models and textures alike. Returns the files
-/// written.
-pub fn install(dir: &std::path::Path, overwrite: bool) -> std::io::Result<Vec<std::path::PathBuf>> {
+/// Writes the embedded models `names` (all of them when empty) into `dir`, skipping the ones already there unless
+/// `overwrite`. Returns the files written.
+pub fn install(dir: &std::path::Path, names: &[&str], overwrite: bool) -> std::io::Result<Vec<std::path::PathBuf>> {
     let mut out = Vec::new();
-    for (rel, bytes) in files() {
-        let path = dir.join(&rel);
+    for (name, text) in MODELS.iter().filter(|(n, _)| names.is_empty() || names.contains(n)) {
+        let path = dir.join(format!("{name}.bbmodel"));
         if overwrite || !path.exists() {
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-
-            crate::write_atomic(&path, &mut &bytes[..])?;
+            std::fs::create_dir_all(dir)?;
+            crate::write_atomic(&path, &mut text.as_bytes())?;
             out.push(path);
         }
     }
@@ -180,98 +106,95 @@ mod tests {
         assert!(height("grass") < 1.0 && height("mushrooms") < 1.0);
     }
 
+    /// The demo project's nature folder, which CI zips as the downloadable pack.
+    fn repo_pack() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../godot/godottrench/nature")
+    }
+
+    /// A preset uses either embedded models only, or glTF models of the downloadable pack only, so picking one knows
+    /// whether it can work offline.
     #[test]
-    fn every_preset_item_is_installed() {
+    fn every_preset_item_is_embedded_or_in_the_pack() {
         let prefix = format!("{}/", gt_doc::scatter::NATURE_DIR);
-        let models = models();
         for preset in gt_doc::scatter::PRESETS {
             let (_, items) = gt_doc::scatter::preset(preset).unwrap();
-            for item in items {
-                let rel = item.source.strip_prefix(&prefix).unwrap_or(&item.source);
-                assert!(models.iter().any(|m| m == rel), "{preset}: {} is not part of the installed pack", item.source);
+            let rels: Vec<&str> = items.iter().map(|i| i.source.strip_prefix(&prefix).unwrap_or(&i.source)).collect();
+            let embedded_count = rels.iter().filter(|r| embedded(r).is_some()).count();
+            assert!(embedded_count == 0 || embedded_count == rels.len(), "{preset} mixes embedded and downloaded models");
+            for rel in rels {
+                let folder = rel.split('/').next().unwrap();
+                assert!(embedded(rel).is_some() || PACK_FOLDERS.contains(&folder), "{preset}: {rel} is neither embedded nor in a pack folder");
+                assert!(repo_pack().join(rel).is_file(), "{preset}: {rel} is not in godot/godottrench/nature");
             }
         }
     }
 
-    /// The glTF models load their textures by relative URI, so a model installed without them draws untextured.
+    /// The glTF models load their textures by relative URI, so the pack must carry them.
     #[test]
-    fn every_gltf_texture_is_installed() {
-        let installed: Vec<String> = files().map(|(path, _)| path).collect();
+    fn every_gltf_texture_is_in_the_pack() {
         let mut used = std::collections::BTreeSet::new();
-        for (path, bytes) in FILES.iter().filter(|(p, _)| p.ends_with(".glb")) {
-            assert_eq!(&bytes[..4], b"glTF", "{path}");
-            let len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
-            let json: serde_json::Value = serde_json::from_slice(&bytes[20..20 + len]).unwrap_or_else(|e| panic!("{path}: {e}"));
-            let images = json["images"].as_array().cloned().unwrap_or_default();
-            assert!(!images.is_empty(), "{path} has textures");
-            for uri in images.iter().filter_map(|i| i["uri"].as_str()) {
-                let mut parts: Vec<&str> = path.split('/').collect();
-                parts.pop();
-                for part in uri.split('/') {
-                    match part {
-                        ".." => {
-                            parts.pop();
-                        }
-                        "." => {}
-                        _ => parts.push(part),
-                    }
+        for folder in PACK_FOLDERS {
+            for entry in std::fs::read_dir(repo_pack().join(folder)).unwrap() {
+                let path = entry.unwrap().path();
+                if path.extension().is_none_or(|e| e != "glb") {
+                    continue;
                 }
 
-                let rel = parts.join("/");
-                assert!(installed.contains(&rel), "{path} loads {uri}, which the pack does not install");
-                used.insert(rel);
+                let bytes = std::fs::read(&path).unwrap();
+                assert_eq!(&bytes[..4], b"glTF", "{}", path.display());
+                let len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+                let json: serde_json::Value = serde_json::from_slice(&bytes[20..20 + len]).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+                let images = json["images"].as_array().cloned().unwrap_or_default();
+                assert!(!images.is_empty(), "{} has textures", path.display());
+                for uri in images.iter().filter_map(|i| i["uri"].as_str()) {
+                    let texture = path.parent().unwrap().join(uri);
+                    assert!(texture.is_file(), "{} loads {uri}, which the pack does not have", path.display());
+                    used.insert(texture.canonicalize().unwrap());
+                }
             }
         }
 
-        for rel in used {
-            let (_, bytes) = FILES.iter().find(|(p, _)| *p == rel).unwrap();
-            let img = image::load_from_memory(bytes).unwrap_or_else(|e| panic!("{rel}: {e}"));
-            assert!(img.width() >= 64 && img.height() >= 64, "{rel}");
+        for texture in used {
+            let img = image::open(&texture).unwrap_or_else(|e| panic!("{}: {e}", texture.display()));
+            assert!(img.width() >= 64 && img.height() >= 64, "{}", texture.display());
+            assert!(texture.starts_with(repo_pack().join("textures").canonicalize().unwrap()));
         }
     }
 
-    /// The demo project ships the same pack the editor installs, so what a map shows there is what a new project gets.
+    /// The demo project ships the embedded models too, so what a map shows there is what a new project gets.
     #[test]
-    fn the_installed_pack_matches_the_demo_project() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../godot/godottrench/nature");
-        fn walk(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<String>) {
-            for entry in std::fs::read_dir(dir).unwrap() {
-                let path = entry.unwrap().path();
-                if path.is_dir() {
-                    walk(root, &path, out);
-                } else if path.extension().is_none_or(|e| e != "import") {
-                    out.push(path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"));
-                }
-            }
-        }
-
-        let mut on_disk = Vec::new();
-        walk(&root, &root, &mut on_disk);
-        on_disk.sort();
-        let mut installed: Vec<String> = files().map(|(path, _)| path).collect();
-        installed.sort();
-        assert_eq!(installed, on_disk, "list new or removed files of godot/godottrench/nature in FILES");
+    fn the_embedded_models_match_the_demo_project() {
+        let mut loose: Vec<String> = std::fs::read_dir(repo_pack())
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p.extension().is_some_and(|e| e == "bbmodel"))
+            .map(|p| p.file_stem().unwrap().to_string_lossy().into_owned())
+            .collect();
+        loose.sort();
+        let mut names: Vec<String> = names().iter().map(|n| n.to_string()).collect();
+        names.sort();
+        assert_eq!(loose, names, "embed new Blockbench models of godot/godottrench/nature in MODELS");
         for (name, text) in MODELS {
-            let demo = std::fs::read_to_string(root.join(format!("{name}.bbmodel"))).unwrap();
+            let demo = std::fs::read_to_string(repo_pack().join(format!("{name}.bbmodel"))).unwrap();
             assert!(demo == text, "godot/godottrench/nature/{name}.bbmodel differs from assets/nature, copy it over");
         }
+
+        assert!(pack_installed(&repo_pack()));
     }
 
     #[test]
-    fn install_writes_only_missing_files_unless_overwriting() {
+    fn install_writes_only_missing_models_unless_overwriting() {
         let dir = std::env::temp_dir().join(format!("gt_nature_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let all = MODELS.len() + FILES.len();
-        assert_eq!(install(&dir, false).unwrap().len(), all);
-        for model in models() {
-            assert!(dir.join(&model).is_file(), "{model}");
-        }
-
-        assert_eq!(std::fs::read_dir(dir.join("textures")).unwrap().count(), 25, "the glTF models find their textures");
-        assert!(install(&dir, false).unwrap().is_empty());
-        std::fs::remove_file(dir.join("textures/leaf_pine.png")).unwrap();
-        assert_eq!(install(&dir, false).unwrap(), [dir.join("textures/leaf_pine.png")], "an older install gets what it lacks");
-        assert_eq!(install(&dir, true).unwrap().len(), all);
+        assert_eq!(install(&dir, &["rock", "grass"], false).unwrap(), [dir.join("rock.bbmodel"), dir.join("grass.bbmodel")]);
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 2, "only what was asked for, and no partial files left");
+        assert_eq!(install(&dir, &[], false).unwrap().len(), MODELS.len() - 2);
+        assert!(install(&dir, &[], false).unwrap().is_empty());
+        std::fs::write(dir.join("oak.bbmodel"), "mine").unwrap();
+        assert!(install(&dir, &["oak"], false).unwrap().is_empty());
+        assert_eq!(std::fs::read_to_string(dir.join("oak.bbmodel")).unwrap(), "mine", "a file already there is kept");
+        assert_eq!(install(&dir, &[], true).unwrap().len(), MODELS.len());
+        assert!(!pack_installed(&dir), "the glTF part is a separate download");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
