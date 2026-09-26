@@ -400,64 +400,60 @@ pub fn fgd_resource(def: &EntityDef) -> String {
     out
 }
 
-/// Classnames whose definitions ship with the Godot addon in `addons/func_godot/fgd/godottrench/`.
-pub const ADDON_ENTITIES: [&str; 35] = [
-    "info_teleport_destination",
-    "path_corner",
-    "light",
-    "prop_model",
-    "func_door",
-    "func_door_rotating",
-    "func_gate",
-    "func_platform",
-    "func_train",
-    "func_button",
-    "trigger_once",
-    "trigger_multiple",
-    "trigger_call",
-    "trigger_spawn_area",
-    "trigger_hurt",
-    "trigger_teleport",
-    "trigger_push",
-    "info_spawner",
-    "logic_call",
-    "logic_relay",
-    "logic_timer",
-    "logic_counter",
-    "logic_auto",
-    "logic_debug",
-    "logic_script",
-    "logic_sequence",
-    "logic_animate",
-    "game_text",
-    "env_explosion",
-    "prop_physics",
-    "npc_walker",
-    "light_spot",
-    "env_sound",
-    "env_particles",
-    "logic_branch",
-];
+/// Classnames whose definitions ship with the Godot addon in `addons/func_godot/fgd/godottrench/`. The other core
+/// entities come from FuncGodot's own FGD.
+pub const CORE_ENTITIES: [&str; 3] = ["info_player_start", "light", "light_spot"];
 
-/// Every addon FGD file as (file name, text): one resource per entity plus the FuncGodotFGDFile listing them.
+/// The folders of the addon that hold only generated definitions.
+pub const GENERATED_DIRS: [&str; 2] = ["fgd/godottrench", "gameplay_pack/definitions"];
+
+/// A FuncGodotFGDFile of `script` (a class of that name) listing the definitions at the res:// paths `defs`.
+fn fgd_file(script_class: &str, script: &str, defs: &[(String, String)]) -> String {
+    let mut file = format!("[gd_resource type=\"Resource\" script_class=\"{script_class}\" load_steps={} format=3]\n\n", defs.len() + 2);
+    file += &format!("[ext_resource type=\"Script\" path=\"{script}\" id=\"1_fgd\"]\n");
+    for (i, (class, path)) in defs.iter().enumerate() {
+        file += &format!("[ext_resource type=\"Resource\" path=\"{path}\" id=\"{}_{class}\"]\n", i + 2);
+    }
+
+    let refs: Vec<String> = defs.iter().enumerate().map(|(i, (class, _))| format!("ExtResource(\"{}_{class}\")", i + 2)).collect();
+    file += &format!("\n[resource]\nscript = ExtResource(\"1_fgd\")\nentity_definitions = Array[Resource]([{}])\n", refs.join(", "));
+    file
+}
+
+/// Every generated file of the addon as (path inside `addons/func_godot`, text): the core definitions with the FGD file
+/// listing them, and the Gameplay entities pack template with its definitions, FGD file and manifest.
 pub fn addon_fgd_files() -> Vec<(String, String)> {
-    let cfg = gt_formats::GameConfig::builtin();
+    let core = gt_formats::GameConfig::builtin();
     let mut out = Vec::new();
-    for class in ADDON_ENTITIES {
-        if let Some(def) = cfg.entity(class) {
-            out.push((format!("{class}.tres"), fgd_resource(def)));
+    let mut listed = Vec::new();
+    for class in CORE_ENTITIES {
+        if let Some(def) = core.entity(class) {
+            out.push((format!("fgd/godottrench/{class}.tres"), fgd_resource(def)));
+            listed.push((class.to_string(), format!("res://addons/func_godot/fgd/godottrench/{class}.tres")));
         }
     }
 
-    let mut file = format!("[gd_resource type=\"Resource\" script_class=\"FuncGodotFGDFile\" load_steps={} format=3]\n\n", ADDON_ENTITIES.len() + 2);
-    file += "[ext_resource type=\"Script\" path=\"res://addons/func_godot/src/fgd/func_godot_fgd_file.gd\" id=\"1_fgd\"]\n";
-    for (i, class) in ADDON_ENTITIES.iter().enumerate() {
-        file += &format!("[ext_resource type=\"Resource\" path=\"res://addons/func_godot/fgd/godottrench/{class}.tres\" id=\"{}_{class}\"]\n", i + 2);
+    out.push((
+        "fgd/godottrench/godottrench_fgd.tres".into(),
+        fgd_file("GodotTrenchFGDFile", "res://addons/func_godot/src/godottrench/godottrench_fgd_file.gd", &listed),
+    ));
+
+    let pack = gt_formats::GameConfig::gameplay_pack();
+    let mut listed = Vec::new();
+    for def in &pack.entities {
+        let class = &def.classname;
+        out.push((format!("{}/definitions/{class}.tres", crate::entity_pack::TEMPLATE_IN_ADDON), fgd_resource(def)));
+        listed.push((class.clone(), format!("{}/definitions/{class}.tres", crate::entity_pack::RES_DIR)));
     }
 
-    let refs: Vec<String> = ADDON_ENTITIES.iter().enumerate().map(|(i, class)| format!("ExtResource(\"{}_{class}\")", i + 2)).collect();
-    file += &format!("\n[resource]\nscript = ExtResource(\"1_fgd\")\nentity_definitions = Array[Resource]([{}])\n", refs.join(", "));
-    out.push(("godottrench_fgd.tres".into(), file));
+    out.push((
+        format!("{}/{}", crate::entity_pack::TEMPLATE_IN_ADDON, crate::entity_pack::FGD),
+        fgd_file("FuncGodotFGDFile", "res://addons/func_godot/src/fgd/func_godot_fgd_file.gd", &listed),
+    ));
+    out.push((
+        format!("{}/{}", crate::entity_pack::TEMPLATE_IN_ADDON, crate::entity_pack::MANIFEST),
+        crate::entity_pack::Manifest::template(pack.entities).to_json(),
+    ));
     out
 }
 
@@ -531,7 +527,7 @@ mod tests {
 
     #[test]
     fn generated_code_mentions_every_io_and_property() {
-        let cfg = gt_formats::GameConfig::builtin();
+        let cfg = gt_formats::GameConfig::gameplay_pack();
         let door = cfg.entity("func_door_rotating").unwrap();
         let gd = gdscript_class(door);
         assert!(gd.contains("class_name FuncDoorRotating extends AnimatableBody3D"));
@@ -550,7 +546,7 @@ mod tests {
 
     #[test]
     fn generates_code_for_the_new_entities() {
-        let cfg = gt_formats::GameConfig::builtin();
+        let cfg = gt_formats::GameConfig::gameplay_pack();
         let barrel = cfg.entity("prop_physics").unwrap();
         let cs = csharp_class(barrel);
         assert!(cs.contains("public partial class PropPhysics : RigidBody3D"), "{cs}");

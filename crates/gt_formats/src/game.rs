@@ -402,22 +402,48 @@ impl GameConfig {
         m == self.tool_textures.clip || m == self.tool_textures.skip || m == self.tool_textures.origin || m == self.tool_textures.sky
     }
 
-    /// Used when no project is open, so the editor is usable out of the box. Lists the GodotTrench gameplay entities
-    /// that ship with the Godot addon (doors, lifts, triggers, spawners, logic and debug helpers).
+    /// Used when no project is open, and for a project that has not exported its config yet. Lists the core entities
+    /// every project has with the Godot addon: worldspawn, the func_ helpers, lights and the player start.
     pub fn builtin() -> Self {
-        let mut cfg: GameConfig = serde_json::from_str(BUILTIN_ENTITIES).expect("built-in entity definitions parse");
+        Self::parse_library(BUILTIN_ENTITIES)
+    }
+
+    /// The Gameplay entities pack: doors, buttons, lifts, triggers, logic, spawners, props and effects. A project gets
+    /// them by installing the pack, which copies them into the project.
+    pub fn gameplay_pack() -> Self {
+        Self::parse_library(GAMEPLAY_ENTITIES)
+    }
+
+    /// The core entities and the Gameplay entities pack, what a project with the pack offers.
+    pub fn with_gameplay_pack() -> Self {
+        let mut cfg = Self::builtin();
+        cfg.entities.extend(Self::gameplay_pack().entities);
+        cfg
+    }
+
+    fn parse_library(json: &str) -> Self {
+        let mut cfg: GameConfig = serde_json::from_str(json).expect("built-in entity definitions parse");
         for e in &mut cfg.entities {
-            if e.group.is_empty() {
-                e.group = e.classname.split('_').next().unwrap_or_default().into();
-            }
+            e.fill_group();
         }
 
         cfg
     }
 }
 
-/// The entity library of the Godot addon, mirrored by `addons/func_godot/fgd/godottrench/` in Godot.
+impl EntityDef {
+    /// Groups an entity without one by the first word of its classname, as the addon's export does.
+    pub fn fill_group(&mut self) {
+        if self.group.is_empty() {
+            self.group = self.classname.split('_').next().unwrap_or_default().into();
+        }
+    }
+}
+
+/// The core entities of the Godot addon, mirrored by `addons/func_godot/fgd/godottrench/` and FuncGodot's own FGD.
 pub const BUILTIN_ENTITIES: &str = include_str!("builtin_entities.json");
+/// The Gameplay entities pack, mirrored by the pack template in `addons/func_godot/gameplay_pack/`.
+pub const GAMEPLAY_ENTITIES: &str = include_str!("gameplay_entities.json");
 /// Walks up from a file until a folder containing project.godot is found.
 pub fn find_project_root(start: &Path) -> Option<PathBuf> {
     let mut dir = if start.is_dir() { Some(start) } else { start.parent() };
@@ -518,8 +544,24 @@ mod tests {
     }
 
     #[test]
+    fn builtin_holds_only_the_core_and_the_pack_the_rest() {
+        let mut core: Vec<String> = GameConfig::builtin().entities.into_iter().map(|e| e.classname).collect();
+        core.sort();
+        assert_eq!(core, ["func_detail", "func_geo", "func_illusionary", "info_player_start", "light", "light_spot", "worldspawn"]);
+        let pack = GameConfig::gameplay_pack();
+        assert!(pack.entities.iter().all(|e| !core.contains(&e.classname)), "no classname is in both");
+        for def in &pack.entities {
+            assert!(
+                !def.script.contains("/entities/gt_") || def.script.starts_with("res://godottrench/entities/scripts/"),
+                "{} runs its own copy",
+                def.classname
+            );
+        }
+    }
+
+    #[test]
     fn builtin_round_trips_through_json() {
-        let cfg = GameConfig::builtin();
+        let cfg = GameConfig::with_gameplay_pack();
         let text = serde_json::to_string_pretty(&cfg).unwrap();
         let back: GameConfig = serde_json::from_str(&text).unwrap();
         assert_eq!(back.entities.len(), cfg.entities.len());
@@ -553,7 +595,7 @@ mod tests {
 
     #[test]
     fn gizmos_are_declared_or_inferred() {
-        let cfg = GameConfig::builtin();
+        let cfg = GameConfig::with_gameplay_pack();
         let door = cfg.entity("func_door_rotating").unwrap();
         assert!(matches!(&door.gizmos(32.0)[..], [GizmoDef::Hinge { angle, axis, .. }] if angle == "open_angle" && axis == "axis"));
         let light = cfg.entity("light").unwrap();

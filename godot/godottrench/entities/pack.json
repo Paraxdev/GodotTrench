@@ -1,0 +1,2922 @@
+{
+  "format": "godottrench-entity-pack",
+  "name": "Gameplay entities",
+  "entities": [
+    {
+      "classname": "info_teleport_destination",
+      "type": "point",
+      "description": "Where trigger_teleport sends bodies. Its yaw becomes their facing.",
+      "color": "#66ddffff",
+      "size": [
+        [
+          -16.0,
+          0.0,
+          -16.0
+        ],
+        [
+          16.0,
+          56.0,
+          16.0
+        ]
+      ],
+      "node_class": "Marker3D",
+      "group": "info",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name trigger_teleport refers to"
+        }
+      ]
+    },
+    {
+      "classname": "path_corner",
+      "type": "point",
+      "description": "One stop of a func_train path. target names the next corner.",
+      "color": "#aaccffff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Marker3D",
+      "script": "res://godottrench/entities/scripts/gt_path_corner.gd",
+      "group": "path",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name of this corner"
+        },
+        {
+          "name": "target",
+          "type": "target_destination",
+          "default": "",
+          "description": "Next corner"
+        },
+        {
+          "name": "wait",
+          "type": "float",
+          "default": "0",
+          "description": "Seconds the train waits here"
+        },
+        {
+          "name": "speed",
+          "type": "float",
+          "default": "0",
+          "description": "New train speed in m/s from here on, 0 keeps it"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "reached",
+          "parameter": "train",
+          "description": "A train arrived here"
+        }
+      ]
+    },
+    {
+      "classname": "prop_model",
+      "type": "point",
+      "description": "Model prop (.bbmodel, .glb, .gltf, .tscn) with optional collision",
+      "color": "#8cd973ff",
+      "size": [
+        [
+          -16.0,
+          0.0,
+          -16.0
+        ],
+        [
+          16.0,
+          32.0,
+          16.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://addons/func_godot/src/godottrench/runtime/godottrench_prop.gd",
+      "group": "prop",
+      "properties": [
+        {
+          "name": "model",
+          "type": "resource",
+          "default": "",
+          "description": "res:// path of the model"
+        },
+        {
+          "name": "model_node",
+          "type": "string",
+          "default": "",
+          "description": "Name of one node in the model to use, placed at the origin, for files that hold several variants side by side"
+        },
+        {
+          "name": "collision",
+          "type": "choices",
+          "default": "convex",
+          "description": "Collision shape",
+          "options": [
+            [
+              "none",
+              "none"
+            ],
+            [
+              "convex",
+              "convex"
+            ],
+            [
+              "trimesh",
+              "trimesh"
+            ]
+          ]
+        },
+        {
+          "name": "scale",
+          "type": "float",
+          "default": "1.0",
+          "description": "Uniform scale"
+        }
+      ]
+    },
+    {
+      "classname": "func_door",
+      "type": "solid",
+      "description": "Sliding door. Moves by travel when opened, back when closed.",
+      "color": "#4db3ffff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "AnimatableBody3D",
+      "script": "res://godottrench/entities/scripts/gt_door.gd",
+      "group": "func",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name other entities use to open it"
+        },
+        {
+          "name": "travel",
+          "type": "vector3",
+          "default": "0 64 0",
+          "description": "Offset the door slides by, in map units"
+        },
+        {
+          "name": "speed",
+          "type": "float",
+          "default": "2.0",
+          "description": "Meters per second"
+        },
+        {
+          "name": "wait",
+          "type": "float",
+          "default": "-1",
+          "description": "Seconds before it closes again, -1 stays open"
+        },
+        {
+          "name": "locked",
+          "type": "bool",
+          "default": "0",
+          "description": "Ignores open and use until unlocked"
+        },
+        {
+          "name": "start_open",
+          "type": "bool",
+          "default": "0",
+          "description": "Starts in the open position"
+        },
+        {
+          "name": "interact",
+          "type": "bool",
+          "default": "1",
+          "description": "Opens when a player calls use() on it"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "opened"
+        },
+        {
+          "name": "closed"
+        },
+        {
+          "name": "started_opening"
+        },
+        {
+          "name": "started_closing"
+        },
+        {
+          "name": "locked_use",
+          "parameter": "activator"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "open"
+        },
+        {
+          "name": "close"
+        },
+        {
+          "name": "toggle"
+        },
+        {
+          "name": "lock"
+        },
+        {
+          "name": "unlock"
+        },
+        {
+          "name": "use",
+          "parameter": "activator"
+        }
+      ],
+      "gizmos": [
+        {
+          "type": "travel",
+          "property": "travel"
+        }
+      ]
+    },
+    {
+      "classname": "func_door_rotating",
+      "type": "solid",
+      "description": "Door or gate swinging around a hinge. Drag the hinge handle in the viewport.",
+      "color": "#d99a4dff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "AnimatableBody3D",
+      "script": "res://godottrench/entities/scripts/gt_door_rotating.gd",
+      "group": "func",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name other entities use to open it"
+        },
+        {
+          "name": "hinge",
+          "type": "vector3",
+          "default": "0 0 0",
+          "description": "Hinge position relative to the door center, map units"
+        },
+        {
+          "name": "axis",
+          "type": "choices",
+          "default": "y",
+          "description": "Hinge axis",
+          "options": [
+            [
+              "vertical (y)",
+              "y"
+            ],
+            [
+              "x",
+              "x"
+            ],
+            [
+              "z",
+              "z"
+            ]
+          ]
+        },
+        {
+          "name": "open_angle",
+          "type": "float",
+          "default": "95",
+          "description": "Degrees to swing, negative swings the other way"
+        },
+        {
+          "name": "speed",
+          "type": "float",
+          "default": "120",
+          "description": "Degrees per second"
+        },
+        {
+          "name": "open_away",
+          "type": "bool",
+          "default": "1",
+          "description": "Swings away from whoever opens it"
+        },
+        {
+          "name": "wait",
+          "type": "float",
+          "default": "-1",
+          "description": "Seconds before it closes again, -1 stays open"
+        },
+        {
+          "name": "locked",
+          "type": "bool",
+          "default": "0",
+          "description": "Ignores open and use until unlocked"
+        },
+        {
+          "name": "start_open",
+          "type": "bool",
+          "default": "0",
+          "description": "Starts open"
+        },
+        {
+          "name": "interact",
+          "type": "bool",
+          "default": "1",
+          "description": "Opens when a player calls use() on it"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "opened"
+        },
+        {
+          "name": "closed"
+        },
+        {
+          "name": "started_opening"
+        },
+        {
+          "name": "started_closing"
+        },
+        {
+          "name": "locked_use",
+          "parameter": "activator"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "open",
+          "parameter": "activator"
+        },
+        {
+          "name": "close"
+        },
+        {
+          "name": "toggle",
+          "parameter": "activator"
+        },
+        {
+          "name": "lock"
+        },
+        {
+          "name": "unlock"
+        },
+        {
+          "name": "use",
+          "parameter": "activator"
+        }
+      ],
+      "gizmos": [
+        {
+          "type": "hinge",
+          "property": "hinge",
+          "angle": "open_angle",
+          "axis": "axis"
+        }
+      ]
+    },
+    {
+      "classname": "func_gate",
+      "type": "solid",
+      "description": "Alias of func_door_rotating kept for older maps",
+      "color": "#d99a4dff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "AnimatableBody3D",
+      "script": "res://godottrench/entities/scripts/gt_door_rotating.gd",
+      "group": "func",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "hinge",
+          "type": "vector3",
+          "default": "0 0 0",
+          "description": "Hinge position relative to the leaf center, map units"
+        },
+        {
+          "name": "open_angle",
+          "type": "float",
+          "default": "100",
+          "description": "Degrees to swing"
+        },
+        {
+          "name": "speed",
+          "type": "float",
+          "default": "90",
+          "description": "Degrees per second"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "opened"
+        },
+        {
+          "name": "closed"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "open"
+        },
+        {
+          "name": "close"
+        },
+        {
+          "name": "toggle"
+        }
+      ],
+      "gizmos": [
+        {
+          "type": "hinge",
+          "property": "hinge",
+          "angle": "open_angle",
+          "axis": ""
+        }
+      ]
+    },
+    {
+      "classname": "func_platform",
+      "type": "solid",
+      "description": "Lift or moving platform travelling between its start and start + travel. Riders move with it.",
+      "color": "#66ccb3ff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "AnimatableBody3D",
+      "script": "res://godottrench/entities/scripts/gt_platform.gd",
+      "group": "func",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "travel",
+          "type": "vector3",
+          "default": "0 128 0",
+          "description": "Offset to the end position, map units"
+        },
+        {
+          "name": "speed",
+          "type": "float",
+          "default": "2.0",
+          "description": "Meters per second"
+        },
+        {
+          "name": "wait",
+          "type": "float",
+          "default": "1.0",
+          "description": "Seconds spent at each end"
+        },
+        {
+          "name": "mode",
+          "type": "choices",
+          "default": "0",
+          "description": "toggle moves on input, ping pong loops, once goes to the end",
+          "options": [
+            [
+              "toggle",
+              "0"
+            ],
+            [
+              "ping pong",
+              "1"
+            ],
+            [
+              "once",
+              "2"
+            ]
+          ]
+        },
+        {
+          "name": "start_active",
+          "type": "bool",
+          "default": "0",
+          "description": "Starts moving on map load"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "reached_end"
+        },
+        {
+          "name": "reached_start"
+        },
+        {
+          "name": "started"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "start"
+        },
+        {
+          "name": "stop"
+        },
+        {
+          "name": "toggle"
+        },
+        {
+          "name": "go_to_end"
+        },
+        {
+          "name": "go_to_start"
+        }
+      ],
+      "gizmos": [
+        {
+          "type": "travel",
+          "property": "travel"
+        }
+      ]
+    },
+    {
+      "classname": "func_train",
+      "type": "solid",
+      "description": "Moves along a chain of path_corner entities",
+      "color": "#80b3ffff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "AnimatableBody3D",
+      "script": "res://godottrench/entities/scripts/gt_train.gd",
+      "group": "func",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "target",
+          "type": "target_destination",
+          "default": "",
+          "description": "First path_corner"
+        },
+        {
+          "name": "speed",
+          "type": "float",
+          "default": "3.0",
+          "description": "Meters per second"
+        },
+        {
+          "name": "loop",
+          "type": "bool",
+          "default": "1",
+          "description": "Returns to the first corner after the last"
+        },
+        {
+          "name": "start_active",
+          "type": "bool",
+          "default": "1",
+          "description": "Starts moving on map load"
+        },
+        {
+          "name": "orient",
+          "type": "bool",
+          "default": "0",
+          "description": "Turns to face its direction of travel"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "arrived",
+          "parameter": "corner"
+        },
+        {
+          "name": "finished"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "start"
+        },
+        {
+          "name": "stop"
+        },
+        {
+          "name": "toggle"
+        }
+      ]
+    },
+    {
+      "classname": "func_button",
+      "type": "solid",
+      "description": "Pressable button. Moves by travel while pressed and fires pressed.",
+      "color": "#ff8033ff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "AnimatableBody3D",
+      "script": "res://godottrench/entities/scripts/gt_button.gd",
+      "group": "func",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "travel",
+          "type": "vector3",
+          "default": "0 -2 0",
+          "description": "Press movement in map units"
+        },
+        {
+          "name": "wait",
+          "type": "float",
+          "default": "1.0",
+          "description": "Seconds before it pops out again, -1 stays pressed"
+        },
+        {
+          "name": "locked",
+          "type": "bool",
+          "default": "0",
+          "description": "Fires locked_use instead of pressed"
+        },
+        {
+          "name": "interact",
+          "type": "bool",
+          "default": "1",
+          "description": "Pressed when a player calls use() on it"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pressed",
+          "parameter": "activator"
+        },
+        {
+          "name": "released"
+        },
+        {
+          "name": "locked_use",
+          "parameter": "activator"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "press",
+          "parameter": "activator"
+        },
+        {
+          "name": "release"
+        },
+        {
+          "name": "lock"
+        },
+        {
+          "name": "unlock"
+        },
+        {
+          "name": "use",
+          "parameter": "activator"
+        }
+      ],
+      "gizmos": [
+        {
+          "type": "travel",
+          "property": "travel"
+        }
+      ]
+    },
+    {
+      "classname": "trigger_area",
+      "type": "solid",
+      "description": "Plain Area3D volume firing body_entered and body_exited",
+      "color": "#e6991aff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Area3D",
+      "group": "trigger",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "body_entered",
+          "parameter": "body"
+        },
+        {
+          "name": "body_exited",
+          "parameter": "body"
+        }
+      ]
+    },
+    {
+      "classname": "trigger_once",
+      "type": "solid",
+      "description": "Fires triggered the first time a body of filter_group enters, then disables itself",
+      "color": "#e6991aff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Area3D",
+      "script": "res://godottrench/entities/scripts/gt_trigger.gd",
+      "group": "trigger",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "filter_group",
+          "type": "string",
+          "default": "player",
+          "description": "Only bodies in this group, empty accepts any body"
+        },
+        {
+          "name": "start_disabled",
+          "type": "bool",
+          "default": "0",
+          "description": "Needs an enable input first"
+        },
+        {
+          "name": "once",
+          "type": "bool",
+          "default": "1",
+          "description": "Disables itself after firing"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "triggered",
+          "parameter": "activator"
+        },
+        {
+          "name": "entered",
+          "parameter": "activator"
+        },
+        {
+          "name": "exited",
+          "parameter": "activator"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "enable"
+        },
+        {
+          "name": "disable"
+        },
+        {
+          "name": "toggle"
+        }
+      ]
+    },
+    {
+      "classname": "trigger_multiple",
+      "type": "solid",
+      "description": "Fires triggered every time a body of filter_group enters, at most once per cooldown",
+      "color": "#e6991aff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Area3D",
+      "script": "res://godottrench/entities/scripts/gt_trigger.gd",
+      "group": "trigger",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "filter_group",
+          "type": "string",
+          "default": "player",
+          "description": "Only bodies in this group, empty accepts any body"
+        },
+        {
+          "name": "cooldown",
+          "type": "float",
+          "default": "0.5",
+          "description": "Seconds before the same body fires it again"
+        },
+        {
+          "name": "start_disabled",
+          "type": "bool",
+          "default": "0",
+          "description": "Needs an enable input first"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "triggered",
+          "parameter": "activator"
+        },
+        {
+          "name": "entered",
+          "parameter": "activator"
+        },
+        {
+          "name": "exited",
+          "parameter": "activator"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "enable"
+        },
+        {
+          "name": "disable"
+        },
+        {
+          "name": "toggle"
+        }
+      ]
+    },
+    {
+      "classname": "trigger_call",
+      "type": "solid",
+      "description": "Calls a method in your game code (GDScript or C#) when a body enters. call_target is a node path like /root/Game, @group, a targetname or !activator.",
+      "color": "#f2c233ff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Area3D",
+      "script": "res://godottrench/entities/scripts/gt_trigger_call.gd",
+      "group": "trigger",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "filter_group",
+          "type": "string",
+          "default": "player",
+          "description": "Only bodies in this group, empty accepts any body"
+        },
+        {
+          "name": "call_target",
+          "type": "string",
+          "default": "!activator",
+          "description": "Node path (/root/Game), @group, targetname, !activator or !self"
+        },
+        {
+          "name": "method",
+          "type": "string",
+          "default": "",
+          "description": "Method to call, C# PascalCase names work too"
+        },
+        {
+          "name": "arguments",
+          "type": "string",
+          "default": "[]",
+          "description": "JSON array. $activator, $self and $position are replaced"
+        },
+        {
+          "name": "once",
+          "type": "bool",
+          "default": "0",
+          "description": "Only calls the first time"
+        },
+        {
+          "name": "cooldown",
+          "type": "float",
+          "default": "0.5",
+          "description": "Seconds before the same body calls again"
+        },
+        {
+          "name": "start_disabled",
+          "type": "bool",
+          "default": "0",
+          "description": "Needs an enable input first"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "called",
+          "parameter": "result"
+        },
+        {
+          "name": "triggered",
+          "parameter": "activator"
+        },
+        {
+          "name": "entered",
+          "parameter": "activator"
+        },
+        {
+          "name": "exited",
+          "parameter": "activator"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "trigger",
+          "parameter": "activator"
+        },
+        {
+          "name": "enable"
+        },
+        {
+          "name": "disable"
+        },
+        {
+          "name": "toggle"
+        }
+      ]
+    },
+    {
+      "classname": "trigger_spawn_area",
+      "type": "solid",
+      "description": "Spawns scenes at random spots inside its volume, when a body of filter_group enters or on input",
+      "color": "#e64d4dff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Area3D",
+      "script": "res://godottrench/entities/scripts/gt_spawn_area.gd",
+      "group": "trigger",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "scene",
+          "type": "resource",
+          "default": "",
+          "description": "res:// scene to spawn (enemy, pickup, prop)"
+        },
+        {
+          "name": "count",
+          "type": "int",
+          "default": "3",
+          "description": "Instances per spawn"
+        },
+        {
+          "name": "max_alive",
+          "type": "int",
+          "default": "10",
+          "description": "Never more alive at once"
+        },
+        {
+          "name": "total",
+          "type": "int",
+          "default": "0",
+          "description": "Stops after this many, 0 is unlimited"
+        },
+        {
+          "name": "interval",
+          "type": "float",
+          "default": "0",
+          "description": "Seconds between spawns while active, 0 spawns only on events"
+        },
+        {
+          "name": "spawn_on_enter",
+          "type": "bool",
+          "default": "1",
+          "description": "Spawns when a body of filter_group enters"
+        },
+        {
+          "name": "filter_group",
+          "type": "string",
+          "default": "player",
+          "description": "Group that activates the area"
+        },
+        {
+          "name": "spawn_group",
+          "type": "string",
+          "default": "enemies",
+          "description": "Group added to spawned nodes"
+        },
+        {
+          "name": "snap_to_ground",
+          "type": "bool",
+          "default": "1",
+          "description": "Drops spawns onto the floor below"
+        },
+        {
+          "name": "cooldown",
+          "type": "float",
+          "default": "0.5",
+          "description": "Seconds before the same body fires it again"
+        },
+        {
+          "name": "start_disabled",
+          "type": "bool",
+          "default": "0",
+          "description": "Needs an enable input first"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "spawned",
+          "parameter": "node"
+        },
+        {
+          "name": "all_dead"
+        },
+        {
+          "name": "exhausted"
+        },
+        {
+          "name": "triggered",
+          "parameter": "activator"
+        },
+        {
+          "name": "entered",
+          "parameter": "activator"
+        },
+        {
+          "name": "exited",
+          "parameter": "activator"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "spawn"
+        },
+        {
+          "name": "start"
+        },
+        {
+          "name": "stop"
+        },
+        {
+          "name": "toggle"
+        },
+        {
+          "name": "kill_all"
+        },
+        {
+          "name": "enable"
+        },
+        {
+          "name": "disable"
+        }
+      ]
+    },
+    {
+      "classname": "trigger_hurt",
+      "type": "solid",
+      "description": "Damages bodies inside by calling their damage method",
+      "color": "#ff3333ff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Area3D",
+      "script": "res://godottrench/entities/scripts/gt_hurt.gd",
+      "group": "trigger",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "damage",
+          "type": "float",
+          "default": "10",
+          "description": "Damage per second"
+        },
+        {
+          "name": "damage_method",
+          "type": "string",
+          "default": "take_damage",
+          "description": "Method called on the body with (amount, source)"
+        },
+        {
+          "name": "interval",
+          "type": "float",
+          "default": "0.5",
+          "description": "Seconds between damage ticks"
+        },
+        {
+          "name": "filter_group",
+          "type": "string",
+          "default": "",
+          "description": "Only bodies in this group, empty hurts any body"
+        },
+        {
+          "name": "start_disabled",
+          "type": "bool",
+          "default": "0",
+          "description": "Needs an enable input first"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "hurt",
+          "parameter": "activator"
+        },
+        {
+          "name": "triggered",
+          "parameter": "activator"
+        },
+        {
+          "name": "entered",
+          "parameter": "activator"
+        },
+        {
+          "name": "exited",
+          "parameter": "activator"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "enable"
+        },
+        {
+          "name": "disable"
+        },
+        {
+          "name": "toggle"
+        }
+      ]
+    },
+    {
+      "classname": "trigger_teleport",
+      "type": "solid",
+      "description": "Moves bodies to its destination entity",
+      "color": "#66ddffff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Area3D",
+      "script": "res://godottrench/entities/scripts/gt_teleport.gd",
+      "group": "trigger",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "destination",
+          "type": "target_destination",
+          "default": "",
+          "description": "info_teleport_destination or any named entity"
+        },
+        {
+          "name": "filter_group",
+          "type": "string",
+          "default": "player",
+          "description": "Only bodies in this group"
+        },
+        {
+          "name": "keep_velocity",
+          "type": "bool",
+          "default": "0",
+          "description": "Keeps the body's velocity"
+        },
+        {
+          "name": "cooldown",
+          "type": "float",
+          "default": "0.5",
+          "description": "Seconds before the same body fires it again"
+        },
+        {
+          "name": "start_disabled",
+          "type": "bool",
+          "default": "0",
+          "description": "Needs an enable input first"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "teleported",
+          "parameter": "activator"
+        },
+        {
+          "name": "triggered",
+          "parameter": "activator"
+        },
+        {
+          "name": "entered",
+          "parameter": "activator"
+        },
+        {
+          "name": "exited",
+          "parameter": "activator"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "enable"
+        },
+        {
+          "name": "disable"
+        },
+        {
+          "name": "toggle"
+        }
+      ]
+    },
+    {
+      "classname": "trigger_push",
+      "type": "solid",
+      "description": "Pushes bodies: jump pads, wind, conveyors",
+      "color": "#99e6ffff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Area3D",
+      "script": "res://godottrench/entities/scripts/gt_push.gd",
+      "group": "trigger",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "push",
+          "type": "vector3",
+          "default": "0 384 0",
+          "description": "Velocity in map units per second"
+        },
+        {
+          "name": "filter_group",
+          "type": "string",
+          "default": "",
+          "description": "Only bodies in this group"
+        },
+        {
+          "name": "once",
+          "type": "bool",
+          "default": "1",
+          "description": "One impulse on entering instead of a steady push"
+        },
+        {
+          "name": "start_disabled",
+          "type": "bool",
+          "default": "0",
+          "description": "Needs an enable input first"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "pushed",
+          "parameter": "activator"
+        },
+        {
+          "name": "triggered",
+          "parameter": "activator"
+        },
+        {
+          "name": "entered",
+          "parameter": "activator"
+        },
+        {
+          "name": "exited",
+          "parameter": "activator"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "enable"
+        },
+        {
+          "name": "disable"
+        },
+        {
+          "name": "toggle"
+        }
+      ],
+      "gizmos": [
+        {
+          "type": "travel",
+          "property": "push"
+        }
+      ]
+    },
+    {
+      "classname": "info_spawner",
+      "type": "point",
+      "description": "Spawns scenes (enemies, pickups) around itself on input or on a timer",
+      "color": "#e64d4dff",
+      "size": [
+        [
+          -16.0,
+          0.0,
+          -16.0
+        ],
+        [
+          16.0,
+          48.0,
+          16.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_spawner.gd",
+      "group": "info",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "scene",
+          "type": "resource",
+          "default": "",
+          "description": "res:// scene to spawn"
+        },
+        {
+          "name": "count",
+          "type": "int",
+          "default": "1",
+          "description": "Instances per spawn"
+        },
+        {
+          "name": "max_alive",
+          "type": "int",
+          "default": "5",
+          "description": "Never more alive at once"
+        },
+        {
+          "name": "total",
+          "type": "int",
+          "default": "0",
+          "description": "Stops after this many, 0 is unlimited"
+        },
+        {
+          "name": "interval",
+          "type": "float",
+          "default": "0",
+          "description": "Seconds between spawns while active, 0 spawns only on input"
+        },
+        {
+          "name": "radius",
+          "type": "float",
+          "default": "64",
+          "description": "Random spread around the spawner, map units"
+        },
+        {
+          "name": "start_active",
+          "type": "bool",
+          "default": "0",
+          "description": "Timer runs from map load"
+        },
+        {
+          "name": "spawn_on_ready",
+          "type": "bool",
+          "default": "0",
+          "description": "Spawns once when the map loads"
+        },
+        {
+          "name": "spawn_group",
+          "type": "string",
+          "default": "enemies",
+          "description": "Group added to spawned nodes"
+        },
+        {
+          "name": "snap_to_ground",
+          "type": "bool",
+          "default": "1",
+          "description": "Drops spawns onto the floor below"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "spawned",
+          "parameter": "node"
+        },
+        {
+          "name": "all_dead"
+        },
+        {
+          "name": "exhausted"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "spawn"
+        },
+        {
+          "name": "start"
+        },
+        {
+          "name": "stop"
+        },
+        {
+          "name": "toggle"
+        },
+        {
+          "name": "kill_all"
+        }
+      ],
+      "gizmos": [
+        {
+          "type": "radius",
+          "property": "radius",
+          "scale": 1.0
+        }
+      ]
+    },
+    {
+      "classname": "logic_call",
+      "type": "point",
+      "description": "Calls a method in your game code (GDScript or C#) when its trigger input fires",
+      "color": "#f2c233ff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_logic_call.gd",
+      "group": "logic",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "call_target",
+          "type": "string",
+          "default": "/root/Game",
+          "description": "Node path (/root/Game), @group, targetname, !activator or !self"
+        },
+        {
+          "name": "method",
+          "type": "string",
+          "default": "",
+          "description": "Method to call, C# PascalCase names work too"
+        },
+        {
+          "name": "arguments",
+          "type": "string",
+          "default": "[]",
+          "description": "JSON array. $activator, $self, $position and $parameter are replaced"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "called",
+          "parameter": "result"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "trigger",
+          "parameter": "activator"
+        },
+        {
+          "name": "call_with",
+          "parameter": "parameter"
+        }
+      ]
+    },
+    {
+      "classname": "logic_relay",
+      "type": "point",
+      "description": "Forwards trigger to its outputs, can be disabled",
+      "color": "#c0c0c0ff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_relay.gd",
+      "group": "logic",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "start_disabled",
+          "type": "bool",
+          "default": "0",
+          "description": "Ignores trigger until enabled"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "triggered",
+          "parameter": "activator"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "trigger",
+          "parameter": "activator"
+        },
+        {
+          "name": "enable"
+        },
+        {
+          "name": "disable"
+        },
+        {
+          "name": "toggle"
+        }
+      ]
+    },
+    {
+      "classname": "logic_timer",
+      "type": "point",
+      "description": "Fires timer every interval, optionally randomized",
+      "color": "#c0c0c0ff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_timer.gd",
+      "group": "logic",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "interval",
+          "type": "float",
+          "default": "1.0",
+          "description": "Seconds between firings"
+        },
+        {
+          "name": "random_min",
+          "type": "float",
+          "default": "0",
+          "description": "With random_max above it, picks a random interval in range"
+        },
+        {
+          "name": "random_max",
+          "type": "float",
+          "default": "0",
+          "description": "Upper end of the random interval"
+        },
+        {
+          "name": "start_on",
+          "type": "bool",
+          "default": "1",
+          "description": "Runs from map load"
+        },
+        {
+          "name": "once",
+          "type": "bool",
+          "default": "0",
+          "description": "Stops after firing once"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "timer"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "start"
+        },
+        {
+          "name": "stop"
+        },
+        {
+          "name": "toggle"
+        },
+        {
+          "name": "fire"
+        }
+      ]
+    },
+    {
+      "classname": "logic_counter",
+      "type": "point",
+      "description": "Counts inputs and fires when it reaches its limits",
+      "color": "#c0c0c0ff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_counter.gd",
+      "group": "logic",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "min",
+          "type": "int",
+          "default": "0",
+          "description": "Lower limit"
+        },
+        {
+          "name": "max",
+          "type": "int",
+          "default": "3",
+          "description": "Upper limit"
+        },
+        {
+          "name": "start_value",
+          "type": "int",
+          "default": "0",
+          "description": "Initial value"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "hit_max"
+        },
+        {
+          "name": "hit_min"
+        },
+        {
+          "name": "changed",
+          "parameter": "value"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "add",
+          "parameter": "amount"
+        },
+        {
+          "name": "subtract",
+          "parameter": "amount"
+        },
+        {
+          "name": "set_value",
+          "parameter": "value"
+        },
+        {
+          "name": "reset"
+        }
+      ]
+    },
+    {
+      "classname": "logic_auto",
+      "type": "point",
+      "description": "Fires map_spawn once the map is loaded",
+      "color": "#c0c0c0ff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_auto.gd",
+      "group": "logic",
+      "properties": [],
+      "outputs": [
+        {
+          "name": "map_spawn"
+        }
+      ]
+    },
+    {
+      "classname": "logic_debug",
+      "type": "point",
+      "description": "Debug helper: prints inputs with their activator and shows a label in debug builds. trace_all logs every I/O event.",
+      "color": "#ff66ffff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_debug.gd",
+      "group": "logic",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "default": "{name} received {parameter} from {activator}",
+          "description": "Printed text. {name}, {parameter}, {activator} and {time} are replaced"
+        },
+        {
+          "name": "show_label",
+          "type": "bool",
+          "default": "1",
+          "description": "Floating label in debug builds"
+        },
+        {
+          "name": "trace_all",
+          "type": "bool",
+          "default": "0",
+          "description": "Print every I/O event in the map"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "printed",
+          "parameter": "text"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "write",
+          "parameter": "parameter"
+        },
+        {
+          "name": "show"
+        },
+        {
+          "name": "hide"
+        },
+        {
+          "name": "toggle"
+        }
+      ]
+    },
+    {
+      "classname": "logic_script",
+      "type": "point",
+      "description": "Runs an inline GDScript snippet when fired, for logic the built-in inputs cannot express. Its snippet can read and change data like a player's health. Author provided code, runs at the map's trust level.",
+      "color": "#ff5c8aff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_script.gd",
+      "group": "logic",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "source",
+          "type": "string",
+          "default": "",
+          "description": "GDScript body. In scope: this, activator, parameter, io (GodotTrenchIO), tree (SceneTree). Example: activator.take_damage(25, this)"
+        },
+        {
+          "name": "expression",
+          "type": "string",
+          "default": "",
+          "description": "A single expression used when source is empty, same names in scope"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "ran",
+          "parameter": "result"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "run",
+          "parameter": "activator"
+        },
+        {
+          "name": "run_with",
+          "parameter": "parameter"
+        }
+      ]
+    },
+    {
+      "classname": "logic_sequence",
+      "type": "point",
+      "description": "Cutscene timeline. On start it fires step_1 up to step_8 in order with a delay between them, so a scene can be scripted by wiring each step.",
+      "color": "#c0c0c0ff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_sequence.gd",
+      "group": "logic",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "steps",
+          "type": "int",
+          "default": "3",
+          "description": "How many steps to fire, 1 to 8"
+        },
+        {
+          "name": "interval",
+          "type": "float",
+          "default": "1.0",
+          "description": "Seconds between steps without a time of their own"
+        },
+        {
+          "name": "times",
+          "type": "string",
+          "default": "",
+          "description": "Space separated per step delays, e.g. 0 1 0.5, overriding interval where present"
+        },
+        {
+          "name": "start_active",
+          "type": "bool",
+          "default": "0",
+          "description": "Runs from map load"
+        },
+        {
+          "name": "loop",
+          "type": "bool",
+          "default": "0",
+          "description": "Restarts after the last step"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "step_1"
+        },
+        {
+          "name": "step_2"
+        },
+        {
+          "name": "step_3"
+        },
+        {
+          "name": "step_4"
+        },
+        {
+          "name": "step_5"
+        },
+        {
+          "name": "step_6"
+        },
+        {
+          "name": "step_7"
+        },
+        {
+          "name": "step_8"
+        },
+        {
+          "name": "step",
+          "parameter": "index"
+        },
+        {
+          "name": "finished"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "start"
+        },
+        {
+          "name": "stop"
+        },
+        {
+          "name": "reset"
+        }
+      ]
+    },
+    {
+      "classname": "logic_animate",
+      "type": "point",
+      "description": "Plays animations on the AnimationPlayer under a target entity, so I/O can drive animated doors, props or characters.",
+      "color": "#8a7cffff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_animate.gd",
+      "group": "logic",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "target",
+          "type": "string",
+          "default": "!self",
+          "description": "Entity whose AnimationPlayer to play: targetname, !self, !activator, @group or a node path"
+        },
+        {
+          "name": "animation",
+          "type": "string",
+          "default": "",
+          "description": "Animation played when play has no name"
+        },
+        {
+          "name": "speed",
+          "type": "float",
+          "default": "1.0",
+          "description": "Playback speed scale"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "finished",
+          "parameter": "anim"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "play",
+          "parameter": "name"
+        },
+        {
+          "name": "stop"
+        },
+        {
+          "name": "queue",
+          "parameter": "name"
+        },
+        {
+          "name": "seek",
+          "parameter": "time"
+        }
+      ]
+    },
+    {
+      "classname": "game_text",
+      "type": "point",
+      "description": "Shows a line of text in the world and/or on the HUD.",
+      "color": "#66d9c2ff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_text.gd",
+      "group": "game",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "text",
+          "type": "string",
+          "default": "",
+          "description": "Text to display"
+        },
+        {
+          "name": "place",
+          "type": "choices",
+          "default": "world",
+          "description": "Where to show it",
+          "options": [
+            [
+              "world",
+              "world"
+            ],
+            [
+              "hud",
+              "hud"
+            ],
+            [
+              "both",
+              "both"
+            ]
+          ]
+        },
+        {
+          "name": "start_visible",
+          "type": "bool",
+          "default": "0",
+          "description": "Visible from map load"
+        },
+        {
+          "name": "duration",
+          "type": "float",
+          "default": "0",
+          "description": "Seconds to stay up before hiding on its own, 0 stays until hide"
+        },
+        {
+          "name": "text_color",
+          "type": "color",
+          "default": "255 255 255",
+          "description": "Text color"
+        },
+        {
+          "name": "world_size",
+          "type": "float",
+          "default": "0.01",
+          "description": "World label size in meters per pixel"
+        },
+        {
+          "name": "billboard",
+          "type": "bool",
+          "default": "1",
+          "description": "Turns to face the camera and draws over walls. Off keeps the entity's angles and hides behind walls, for signs"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "shown"
+        },
+        {
+          "name": "hidden"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "show"
+        },
+        {
+          "name": "hide"
+        },
+        {
+          "name": "set_text",
+          "parameter": "text"
+        },
+        {
+          "name": "flash",
+          "parameter": "seconds"
+        }
+      ]
+    },
+    {
+      "classname": "env_explosion",
+      "type": "point",
+      "description": "On explode it pushes rigid bodies away and calls take_damage on nodes within radius, then spawns an optional effect.",
+      "color": "#ff7a33ff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_explosion.gd",
+      "group": "env",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "radius",
+          "type": "float",
+          "default": "256",
+          "description": "Blast radius in map units"
+        },
+        {
+          "name": "damage",
+          "type": "float",
+          "default": "50",
+          "description": "Damage at the center, falling off to the edge"
+        },
+        {
+          "name": "force",
+          "type": "float",
+          "default": "8",
+          "description": "Impulse at the center in meters per second, scaled by mass"
+        },
+        {
+          "name": "damage_method",
+          "type": "string",
+          "default": "take_damage",
+          "description": "Method called on bodies with (amount, source)"
+        },
+        {
+          "name": "effect_scene",
+          "type": "resource",
+          "default": "",
+          "description": "res:// scene spawned at the blast for particles or sound"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "exploded"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "explode",
+          "parameter": "activator"
+        }
+      ],
+      "gizmos": [
+        {
+          "type": "radius",
+          "property": "radius",
+          "scale": 1.0
+        }
+      ]
+    },
+    {
+      "classname": "prop_physics",
+      "type": "point",
+      "description": "A throwable, breakable physics prop such as a crate or barrel. Damage, a hard impact or a smash breaks it, and an explosive prop blasts when broken.",
+      "color": "#b9803dff",
+      "size": [
+        [
+          -16.0,
+          0.0,
+          -16.0
+        ],
+        [
+          16.0,
+          32.0,
+          16.0
+        ]
+      ],
+      "node_class": "RigidBody3D",
+      "script": "res://godottrench/entities/scripts/gt_prop_physics.gd",
+      "group": "prop",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "model",
+          "type": "resource",
+          "default": "",
+          "description": "res:// scene for the visual, a box collision is built from size"
+        },
+        {
+          "name": "size",
+          "type": "vector3",
+          "default": "16 16 16",
+          "description": "Half extents of the box collision in map units"
+        },
+        {
+          "name": "mass",
+          "type": "float",
+          "default": "5.0",
+          "description": "Mass in kilograms"
+        },
+        {
+          "name": "health",
+          "type": "float",
+          "default": "30",
+          "description": "Damage it takes before breaking"
+        },
+        {
+          "name": "explosive",
+          "type": "bool",
+          "default": "0",
+          "description": "Fires a blast when it breaks"
+        },
+        {
+          "name": "explosion_radius",
+          "type": "float",
+          "default": "192",
+          "description": "Blast radius in map units when explosive"
+        },
+        {
+          "name": "explosion_damage",
+          "type": "float",
+          "default": "40",
+          "description": "Blast damage when explosive"
+        },
+        {
+          "name": "fuse",
+          "type": "float",
+          "default": "0.6",
+          "description": "Seconds an ignited prop burns before it breaks"
+        },
+        {
+          "name": "impact_speed",
+          "type": "float",
+          "default": "0",
+          "description": "Breaks when it hits something faster than this in m/s, 0 never breaks on impact"
+        },
+        {
+          "name": "debris_scene",
+          "type": "resource",
+          "default": "",
+          "description": "res:// scene spawned where it broke"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "damaged",
+          "parameter": "hp"
+        },
+        {
+          "name": "broken"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "smash"
+        },
+        {
+          "name": "ignite",
+          "parameter": "activator"
+        },
+        {
+          "name": "push",
+          "parameter": "direction"
+        },
+        {
+          "name": "take_damage",
+          "parameter": "amount"
+        }
+      ]
+    },
+    {
+      "classname": "npc_walker",
+      "type": "point",
+      "description": "A scripted actor that walks a chain of path_corner entities playing animations, for in game cutscenes.",
+      "color": "#ff4d6dff",
+      "size": [
+        [
+          -16.0,
+          0.0,
+          -16.0
+        ],
+        [
+          16.0,
+          64.0,
+          16.0
+        ]
+      ],
+      "node_class": "CharacterBody3D",
+      "script": "res://godottrench/entities/scripts/gt_npc.gd",
+      "group": "npc",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "model",
+          "type": "resource",
+          "default": "",
+          "description": "res:// scene giving the actor its mesh and AnimationPlayer"
+        },
+        {
+          "name": "target",
+          "type": "target_destination",
+          "default": "",
+          "description": "First path_corner to walk to"
+        },
+        {
+          "name": "speed",
+          "type": "float",
+          "default": "2.0",
+          "description": "Meters per second"
+        },
+        {
+          "name": "loop",
+          "type": "bool",
+          "default": "0",
+          "description": "Returns to the first corner after the last"
+        },
+        {
+          "name": "start_active",
+          "type": "bool",
+          "default": "0",
+          "description": "Walks from map load"
+        },
+        {
+          "name": "walk_anim",
+          "type": "string",
+          "default": "walk",
+          "description": "Animation played while walking"
+        },
+        {
+          "name": "idle_anim",
+          "type": "string",
+          "default": "idle",
+          "description": "Animation played while stopped"
+        },
+        {
+          "name": "face_travel",
+          "type": "bool",
+          "default": "1",
+          "description": "Turns to face its direction of travel"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "arrived",
+          "parameter": "corner"
+        },
+        {
+          "name": "reached_goal"
+        },
+        {
+          "name": "finished"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "start"
+        },
+        {
+          "name": "stop"
+        },
+        {
+          "name": "walk_to",
+          "parameter": "corner"
+        },
+        {
+          "name": "play_anim",
+          "parameter": "name"
+        },
+        {
+          "name": "face",
+          "parameter": "target"
+        }
+      ]
+    },
+    {
+      "classname": "env_sound",
+      "type": "point",
+      "description": "A positional sound played through I/O",
+      "color": "#66b3ffff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "AudioStreamPlayer3D",
+      "script": "res://godottrench/entities/scripts/gt_sound.gd",
+      "group": "env",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "sound",
+          "type": "resource",
+          "default": "",
+          "description": "res:// audio stream"
+        },
+        {
+          "name": "volume_db",
+          "type": "float",
+          "default": "0",
+          "description": "Volume in decibels"
+        },
+        {
+          "name": "max_distance",
+          "type": "float",
+          "default": "0",
+          "description": "Falloff distance in meters, 0 is unlimited"
+        },
+        {
+          "name": "autoplay_on",
+          "type": "bool",
+          "default": "0",
+          "description": "Plays from map load"
+        },
+        {
+          "name": "loop_sound",
+          "type": "bool",
+          "default": "0",
+          "description": "Replays when it finishes"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "finished"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "play"
+        },
+        {
+          "name": "stop"
+        },
+        {
+          "name": "toggle"
+        }
+      ]
+    },
+    {
+      "classname": "env_particles",
+      "type": "point",
+      "description": "A particle effect toggled through I/O: fire, smoke, sparks, rising puffs or rain",
+      "color": "#b366ffff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          24.0,
+          8.0
+        ]
+      ],
+      "node_class": "GPUParticles3D",
+      "script": "res://godottrench/entities/scripts/gt_particles.gd",
+      "group": "env",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "amount",
+          "type": "int",
+          "default": "32",
+          "description": "Particles alive at once"
+        },
+        {
+          "name": "lifetime",
+          "type": "float",
+          "default": "2.0",
+          "description": "Seconds each particle lives"
+        },
+        {
+          "name": "one_shot",
+          "type": "bool",
+          "default": "0",
+          "description": "Emits one burst instead of continuously"
+        },
+        {
+          "name": "start_emitting",
+          "type": "bool",
+          "default": "0",
+          "description": "Emits from map load"
+        },
+        {
+          "name": "effect",
+          "type": "choices",
+          "default": "rise",
+          "description": "Built in look: glowing puffs rising, a flame, smoke, falling sparks, or rain from a box above the entity",
+          "options": [
+            [
+              "rise",
+              "rise"
+            ],
+            [
+              "fire",
+              "fire"
+            ],
+            [
+              "smoke",
+              "smoke"
+            ],
+            [
+              "sparks",
+              "sparks"
+            ],
+            [
+              "rain",
+              "rain"
+            ]
+          ]
+        },
+        {
+          "name": "color",
+          "type": "color",
+          "default": "255 255 255",
+          "description": "Tints the effect, white keeps its own colors"
+        },
+        {
+          "name": "size",
+          "type": "float",
+          "default": "0",
+          "description": "Particle size in meters, a spark's or raindrop's length. 0 uses the effect's own"
+        },
+        {
+          "name": "blend",
+          "type": "choices",
+          "default": "auto",
+          "description": "How particles mix with what is behind: additive glow, or mixed like smoke. auto uses the effect's own",
+          "options": [
+            [
+              "auto",
+              "auto"
+            ],
+            [
+              "add",
+              "add"
+            ],
+            [
+              "mix",
+              "mix"
+            ]
+          ]
+        },
+        {
+          "name": "area",
+          "type": "string",
+          "default": "10 1 10",
+          "description": "Rain: width, height and depth in meters of the box the drops start in"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "finished"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "start"
+        },
+        {
+          "name": "stop"
+        },
+        {
+          "name": "toggle"
+        },
+        {
+          "name": "burst"
+        }
+      ]
+    },
+    {
+      "classname": "logic_branch",
+      "type": "point",
+      "description": "Stores a boolean and, on test, fires on_true or on_false, for conditional wiring",
+      "color": "#c0c0c0ff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_branch.gd",
+      "group": "logic",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "start_value",
+          "type": "bool",
+          "default": "0",
+          "description": "Initial boolean value"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "on_true"
+        },
+        {
+          "name": "on_false"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "set_true"
+        },
+        {
+          "name": "set_false"
+        },
+        {
+          "name": "toggle"
+        },
+        {
+          "name": "test"
+        },
+        {
+          "name": "set_and_test",
+          "parameter": "value"
+        }
+      ]
+    }
+  ],
+  "files": {
+    "definitions/env_explosion.tres": "9c8bcf6217b00a18da9be6776cfee5c58387f49981e36f7377f21c2cc5909af0",
+    "definitions/env_particles.tres": "be60bfdaf1c2953691df409273e8f47406399f5c7125f1d79d9dc044ba5864b7",
+    "definitions/env_sound.tres": "91a426fde8315e3fb68033316cc221327ffef74ccabed7a111209a2aa17cab6c",
+    "definitions/func_button.tres": "c2a86cc6ba73439917f159b3aec1eee3dac9b3007d92285989147110c07c6d9d",
+    "definitions/func_door.tres": "09205d1926afe4eae735ea6536ad769ea4c46a4bdc5b5f21156cc372bf9a5d49",
+    "definitions/func_door_rotating.tres": "0a3952ab5ba12de041e18ef2c70c3b05d63c02d545c6d2f6c1a4c6a0689cd6f8",
+    "definitions/func_gate.tres": "bf7c90f0c8d171275f3675a487d061db3f4395e89a048964439be02942b9400e",
+    "definitions/func_platform.tres": "70e99e797d91d75e11536b868c006983eedb1204b33f7ae6b00606b9904b65da",
+    "definitions/func_train.tres": "d13d3ee0f30dcc94f6186b9b77505bc8a6766384151024e585e5a84641dff53d",
+    "definitions/game_text.tres": "6c5b7e37e8f29c41c97e8f3a1df5926fa3a8920530a437fdf547861ec2d9a866",
+    "definitions/info_spawner.tres": "873dd96a484f093e93c85b18bb741e080bc5f650eba3947e81e5b91e3e9241ed",
+    "definitions/info_teleport_destination.tres": "edd3f0a451318aa29c807bb4c8d704f190c0096b2e31022acabe991934f047e8",
+    "definitions/logic_animate.tres": "32c6ba99cc6e3821745f86544bdc3c2e901944367f30f28d8f65153d5f2a6db7",
+    "definitions/logic_auto.tres": "3f3ad0ff9205c261b64b1de24259f9b8bdcd7f5328105d0ec15bd4c003fe8a46",
+    "definitions/logic_branch.tres": "bca1ac578df6d47790491d11608cfb92c4d413069dfaa1bc646e38891c7fec10",
+    "definitions/logic_call.tres": "1acddd5e9f887d8963bcba4cbc0e338939c06b953ee686abed750f0a051d1932",
+    "definitions/logic_counter.tres": "386c33f3de147ab46dbaf6543e8c95364954af0d4753e90a4dad1e7e30855058",
+    "definitions/logic_debug.tres": "fb2b93409ca207b358165a5f7a2ba50c7a4b37581908e42db1eaf73d3b4036af",
+    "definitions/logic_relay.tres": "0678ada7d0397708eebb38c28e75933c74192b3e77496fd7a08ae1f50c2ed70c",
+    "definitions/logic_script.tres": "bb955d3d1f643c62bfb8aadb34fea8b2a7db025fe08fba7c67042e2a04e12e3a",
+    "definitions/logic_sequence.tres": "77871af1a97efb51bd4de165c22e00901e95f6f1a1317a6000e7578692c2894d",
+    "definitions/logic_timer.tres": "6915a2a5609b0b6b886890e4518fa81cb5476e0f47ad242e5de51d779fcbedb7",
+    "definitions/npc_walker.tres": "06cfbcbaf4790a7b42752dcb898b839c7fffc06873d1cafbf34e7c16c38f0a0d",
+    "definitions/path_corner.tres": "f2fdb8043ea2a7820cff7b8605ef0e15c42cefa386fda1ad6e2b02ac37c70564",
+    "definitions/prop_model.tres": "ac5acfbd0c6c43f93b408e3e54e0878b897910fb360240cdf385d457a0ce38d0",
+    "definitions/prop_physics.tres": "17720f38ca0adf060d5838c165689192e6d9a6f7968ec2532a3521f1a7be6a32",
+    "definitions/trigger_area.tres": "bdefa1cd8ffafff83f7ac277d2f7994b0ee46cb5acd36f1e6ac4fb9f207d65f6",
+    "definitions/trigger_call.tres": "620b49a2c602f2dab69079fbcc917adf82dd4529028b37bfec11c2e91fbd176c",
+    "definitions/trigger_hurt.tres": "c831312a298b83dc747350afc7c43a6bf9dcc37543aee05e0ebc5d82a268191c",
+    "definitions/trigger_multiple.tres": "dba91cf500e66fab58293ba5406dc91298f50dbae7e06ad94ff793147fe5b8c8",
+    "definitions/trigger_once.tres": "dc0f99f5eef44a13d5f48a9239931a44618ffa949847e11f365b9d11ba72bfe8",
+    "definitions/trigger_push.tres": "ed357b87e9306f466c9eaf9da422be3e9baf2b3414e6da9bbdcbf5115f111578",
+    "definitions/trigger_spawn_area.tres": "ec0bf93bda90ff67cb08f0c22bfd1b71127125f755af0beac092ed0e2e789aa3",
+    "definitions/trigger_teleport.tres": "d9becda8571efebbc7b3323aa3a7f83e02029e0bf69ec4f882ef6a554a8e2269",
+    "gameplay_fgd.tres": "bdaeb3b2e5073cd12407a3b9c5dee9519f374518777543824ba7d38851d95880",
+    "scripts/gt_animate.gd": "e2a89d1457bb13fff22b01fcc40ab7310676ab6429c18acbbc3d5d75eacc726e",
+    "scripts/gt_auto.gd": "b5f11ac5da18b8b48b1cde59c69f5dee070f033cbed63886b763a23a48957a9b",
+    "scripts/gt_branch.gd": "c42e7e15ffaf3ecce3e7623a71956c9da3e41a1476724d2e2f10888a54419858",
+    "scripts/gt_button.gd": "76c3864c432d02819bd0e38e1d73f0eb2a8c446c6e8cd6fc4d414e7c0d8542ed",
+    "scripts/gt_counter.gd": "aeb9763330d0174aa041171ca6d44ceb37cc8b473aabadca5f95bee3cf72afc4",
+    "scripts/gt_debug.gd": "5f004a0fa24bcd6f02d55e18e66fe589b68aad91119b3628790ebabf84891759",
+    "scripts/gt_door.gd": "960cd436cd6d1f576d3f2c92ab5e5f44e67df0c73f226db79e42486bb0f35b02",
+    "scripts/gt_door_rotating.gd": "7d94a5ed5f37de2825af87840aae3b84ae1a71c58d001a9f4f0589c0a53dd3b5",
+    "scripts/gt_explosion.gd": "4e2a331af23b21e609a2f18471e03eb1e41b95d218c1192b00a236deacb792ab",
+    "scripts/gt_hurt.gd": "275c6da6850a236d327939f5f4d6c2555ed35def6334fbbc447ac9c01520ac33",
+    "scripts/gt_logic_call.gd": "457b852274de6845d26eb9aed95ffc9a23281feb4e8006afeec1ab4636f42d36",
+    "scripts/gt_npc.gd": "75613fbf3569750a3cc13c41cddb9376e4e896e0705353700be68b9392aa5935",
+    "scripts/gt_particles.gd": "a62105e4f0ec5aea1406c729866bc23dfa7c5085a49e3914259968b9108fd171",
+    "scripts/gt_path_corner.gd": "8c5190e519c254a57fb65ebbab2a087d686c6b92c9a9e7ba4a0b231886813685",
+    "scripts/gt_platform.gd": "2451ccc36ed56dd22dfd99624830115d8f4cdc1f0dd546293b60ef437db29177",
+    "scripts/gt_prop_physics.gd": "63cd8ed9a5f558051594eb39816628eb7c1ed6fa6b38a37eec3bc97ad6b0f9cd",
+    "scripts/gt_push.gd": "14ff503af03324adbb2dc87d075555d8db2e8c9ab3dcfa882c6aae3523aef080",
+    "scripts/gt_relay.gd": "8f558b5dff7a574e8e6cd182329e72045c0d47e9c40bce82198b65779e855868",
+    "scripts/gt_script.gd": "7362481c5be1de6455f6830ea33f630787666338e0b28e2094fac1b9109cd901",
+    "scripts/gt_sequence.gd": "22f9072e887ea44973594fcdad44be84a5b47dc7d2e9f9daf466927544253967",
+    "scripts/gt_sound.gd": "817077251862517d36da9fca744f8accc4c0d57f34b01348490efb8aa5d7d632",
+    "scripts/gt_spawn_area.gd": "6c5dda770fbdd431a6dc11408c93980b7cfcc56821d6a8cf37e61484f742dc4f",
+    "scripts/gt_spawn_logic.gd": "c6655575bd5759d737fa19aa207b0c2554d92bdfc297a5a3264e6a58692a852f",
+    "scripts/gt_spawner.gd": "7f68858c98856697b0e08a94c4a1c5ff61a606f539e844275307c18462e9c1f9",
+    "scripts/gt_teleport.gd": "ee3ce1245f75bb4716cf8dfc5920fe4d16f5f4400befea8d8668ebc19238358d",
+    "scripts/gt_text.gd": "99a8b8862354c900f6132c05f82d825d731943f344b510a3d89670287e104bef",
+    "scripts/gt_timer.gd": "ec53e05748f7445fa2af0d1917f08c92184272ee4dee034a827706d7d150cbe4",
+    "scripts/gt_train.gd": "2a5df9c3529b43996f3f9250c6d596c176368b089900908125edc24ee2c25d49",
+    "scripts/gt_trigger.gd": "0a130de65726b996f4ea7f7e9edf56599826eebc769446b20a2875b4447e747b",
+    "scripts/gt_trigger_call.gd": "a73aa3d43ec7ac562656c21909dace9369bfab69e61a0b5cbb2c7d17f48fe23d"
+  }
+}

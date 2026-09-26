@@ -441,6 +441,7 @@ mod tests {
 
     fn door_state() -> (EditorState, NodeId) {
         let mut state = EditorState::new(Default::default());
+        state.game = gt_formats::GameConfig::with_gameplay_pack();
         let layer = state.doc.map.default_layer();
         let id = state.doc.edit("door", |m, s| {
             let mut e = gt_doc::Entity::new("func_door_rotating");

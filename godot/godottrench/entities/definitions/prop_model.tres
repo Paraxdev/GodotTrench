@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/godottrench/runtime/godottrench_prop.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "prop_model"
+description = "Model prop (.bbmodel, .glb, .gltf, .tscn) with optional collision"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"model": "",
+"model_node": "",
+"collision": {
+"none": "none",
+"convex": "convex",
+"trimesh": "trimesh"
+},
+"scale": 1.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"model": "res:// path of the model",
+"model_node": "Name of one node in the model to use, placed at the origin, for files that hold several variants side by side",
+"collision": ["Collision shape", "convex"],
+"scale": "Uniform scale"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.54901963, 0.8509804, 0.4509804, 1),
+"size": AABB(-16, -16, 0, 16, 16, 32),
+"property_types": {"model": "resource"}
+})
+node_class = "Node3D"

@@ -332,10 +332,10 @@
       "inputs": []
     },
     {
-      "classname": "info_teleport_destination",
+      "classname": "info_player_start",
       "type": "point",
-      "description": "Where trigger_teleport sends bodies. Its yaw becomes their facing.",
-      "color": "#66ddffff",
+      "description": "Player spawn point",
+      "color": "#33ff33ff",
       "node_class": "Marker3D",
       "group": "info",
       "size": [
@@ -350,69 +350,8 @@
           16.0
         ]
       ],
-      "properties": [
-        {
-          "name": "targetname",
-          "type": "target_source",
-          "default": "",
-          "description": "Name trigger_teleport refers to"
-        }
-      ],
+      "properties": [],
       "outputs": [],
-      "inputs": []
-    },
-    {
-      "classname": "path_corner",
-      "type": "point",
-      "description": "One stop of a func_train path. target names the next corner.",
-      "color": "#aaccffff",
-      "node_class": "Marker3D",
-      "group": "path",
-      "size": [
-        [
-          -8.0,
-          -8.0,
-          -8.0
-        ],
-        [
-          8.0,
-          8.0,
-          8.0
-        ]
-      ],
-      "properties": [
-        {
-          "name": "targetname",
-          "type": "target_source",
-          "default": "",
-          "description": "Name of this corner"
-        },
-        {
-          "name": "target",
-          "type": "target_destination",
-          "default": "",
-          "description": "Next corner"
-        },
-        {
-          "name": "wait",
-          "type": "float",
-          "default": "0.0",
-          "description": "Seconds the train waits here"
-        },
-        {
-          "name": "speed",
-          "type": "float",
-          "default": "0.0",
-          "description": "New train speed in m/s from here on, 0 keeps it"
-        }
-      ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_path_corner.gd",
-      "outputs": [
-        {
-          "name": "reached",
-          "parameter": "train"
-        }
-      ],
       "inputs": []
     },
     {
@@ -515,6 +454,197 @@
           "parameter": ""
         }
       ]
+    },
+    {
+      "classname": "light_spot",
+      "type": "point",
+      "description": "Switchable spot light",
+      "color": "#ffe64dff",
+      "node_class": "SpotLight3D",
+      "group": "light",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "light_energy",
+          "type": "float",
+          "default": "1.5",
+          "description": "Brightness"
+        },
+        {
+          "name": "light_color",
+          "type": "color",
+          "default": "255 255 255",
+          "description": "Color"
+        },
+        {
+          "name": "spot_range",
+          "type": "float",
+          "default": "15.0",
+          "description": "Range in meters"
+        },
+        {
+          "name": "spot_angle",
+          "type": "float",
+          "default": "35.0",
+          "description": "Cone half angle in degrees"
+        },
+        {
+          "name": "start_on",
+          "type": "bool",
+          "default": "1",
+          "description": "Starts switched on"
+        },
+        {
+          "name": "shadows",
+          "type": "bool",
+          "default": "0",
+          "description": "Casts shadows, costs more to render"
+        },
+        {
+          "name": "fixture",
+          "type": "target_destination",
+          "default": "",
+          "description": "Targetname of the lamp geometry (* for a prefix) that follows the light: shown while on, hidden or dark while off"
+        },
+        {
+          "name": "fixture_off",
+          "type": "choices",
+          "default": "hide",
+          "description": "What a fixture does while the light is off",
+          "options": [
+            [
+              "hide",
+              "hide"
+            ],
+            [
+              "dark (emission off)",
+              "dark"
+            ]
+          ]
+        }
+      ],
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_spot_light.gd",
+      "outputs": [
+        {
+          "name": "switched",
+          "parameter": "on"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "turn_on",
+          "parameter": ""
+        },
+        {
+          "name": "turn_off",
+          "parameter": ""
+        },
+        {
+          "name": "toggle",
+          "parameter": ""
+        }
+      ]
+    },
+    {
+      "classname": "info_teleport_destination",
+      "type": "point",
+      "description": "Where trigger_teleport sends bodies. Its yaw becomes their facing.",
+      "color": "#66ddffff",
+      "node_class": "Marker3D",
+      "group": "info",
+      "size": [
+        [
+          -16.0,
+          0.0,
+          -16.0
+        ],
+        [
+          16.0,
+          56.0,
+          16.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name trigger_teleport refers to"
+        }
+      ],
+      "outputs": [],
+      "inputs": []
+    },
+    {
+      "classname": "path_corner",
+      "type": "point",
+      "description": "One stop of a func_train path. target names the next corner.",
+      "color": "#aaccffff",
+      "node_class": "Marker3D",
+      "group": "path",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name of this corner"
+        },
+        {
+          "name": "target",
+          "type": "target_destination",
+          "default": "",
+          "description": "Next corner"
+        },
+        {
+          "name": "wait",
+          "type": "float",
+          "default": "0.0",
+          "description": "Seconds the train waits here"
+        },
+        {
+          "name": "speed",
+          "type": "float",
+          "default": "0.0",
+          "description": "New train speed in m/s from here on, 0 keeps it"
+        }
+      ],
+      "script": "res://godottrench/entities/scripts/gt_path_corner.gd",
+      "outputs": [
+        {
+          "name": "reached",
+          "parameter": "train"
+        }
+      ],
+      "inputs": []
     },
     {
       "classname": "prop_model",
@@ -641,7 +771,7 @@
           "property": "travel"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_door.gd",
+      "script": "res://godottrench/entities/scripts/gt_door.gd",
       "outputs": [
         {
           "name": "opened",
@@ -782,7 +912,7 @@
           "axis": "axis"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_door_rotating.gd",
+      "script": "res://godottrench/entities/scripts/gt_door_rotating.gd",
       "outputs": [
         {
           "name": "opened",
@@ -873,7 +1003,7 @@
           "axis": ""
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_door_rotating.gd",
+      "script": "res://godottrench/entities/scripts/gt_door_rotating.gd",
       "outputs": [
         {
           "name": "opened",
@@ -964,7 +1094,7 @@
           "property": "travel"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_platform.gd",
+      "script": "res://godottrench/entities/scripts/gt_platform.gd",
       "outputs": [
         {
           "name": "reached_end",
@@ -1047,7 +1177,7 @@
           "description": "Turns to face its direction of travel"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_train.gd",
+      "script": "res://godottrench/entities/scripts/gt_train.gd",
       "outputs": [
         {
           "name": "arrived",
@@ -1118,7 +1248,7 @@
           "property": "travel"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_button.gd",
+      "script": "res://godottrench/entities/scripts/gt_button.gd",
       "outputs": [
         {
           "name": "pressed",
@@ -1157,6 +1287,33 @@
       ]
     },
     {
+      "classname": "trigger_area",
+      "type": "solid",
+      "description": "Plain Area3D volume firing body_entered and body_exited",
+      "color": "#e6991aff",
+      "node_class": "Area3D",
+      "group": "trigger",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "body_entered",
+          "parameter": "body"
+        },
+        {
+          "name": "body_exited",
+          "parameter": "body"
+        }
+      ],
+      "inputs": []
+    },
+    {
       "classname": "trigger_once",
       "type": "solid",
       "description": "Fires triggered the first time a body of filter_group enters, then disables itself",
@@ -1189,7 +1346,7 @@
           "description": "Disables itself after firing"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_trigger.gd",
+      "script": "res://godottrench/entities/scripts/gt_trigger.gd",
       "outputs": [
         {
           "name": "triggered",
@@ -1252,7 +1409,7 @@
           "description": "Needs an enable input first"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_trigger.gd",
+      "script": "res://godottrench/entities/scripts/gt_trigger.gd",
       "outputs": [
         {
           "name": "triggered",
@@ -1339,7 +1496,7 @@
           "description": "Needs an enable input first"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_trigger_call.gd",
+      "script": "res://godottrench/entities/scripts/gt_trigger_call.gd",
       "outputs": [
         {
           "name": "called",
@@ -1347,6 +1504,14 @@
         },
         {
           "name": "triggered",
+          "parameter": "activator"
+        },
+        {
+          "name": "entered",
+          "parameter": "activator"
+        },
+        {
+          "name": "exited",
           "parameter": "activator"
         }
       ],
@@ -1361,6 +1526,10 @@
         },
         {
           "name": "disable",
+          "parameter": ""
+        },
+        {
+          "name": "toggle",
           "parameter": ""
         }
       ]
@@ -1446,7 +1615,7 @@
           "description": "Needs an enable input first"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_spawn_area.gd",
+      "script": "res://godottrench/entities/scripts/gt_spawn_area.gd",
       "outputs": [
         {
           "name": "spawned",
@@ -1459,6 +1628,18 @@
         {
           "name": "exhausted",
           "parameter": ""
+        },
+        {
+          "name": "triggered",
+          "parameter": "activator"
+        },
+        {
+          "name": "entered",
+          "parameter": "activator"
+        },
+        {
+          "name": "exited",
+          "parameter": "activator"
         }
       ],
       "inputs": [
@@ -1480,6 +1661,14 @@
         },
         {
           "name": "kill_all",
+          "parameter": ""
+        },
+        {
+          "name": "enable",
+          "parameter": ""
+        },
+        {
+          "name": "disable",
           "parameter": ""
         }
       ]
@@ -1529,10 +1718,22 @@
           "description": "Needs an enable input first"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_hurt.gd",
+      "script": "res://godottrench/entities/scripts/gt_hurt.gd",
       "outputs": [
         {
           "name": "hurt",
+          "parameter": "activator"
+        },
+        {
+          "name": "triggered",
+          "parameter": "activator"
+        },
+        {
+          "name": "entered",
+          "parameter": "activator"
+        },
+        {
+          "name": "exited",
           "parameter": "activator"
         }
       ],
@@ -1596,10 +1797,22 @@
           "description": "Needs an enable input first"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_teleport.gd",
+      "script": "res://godottrench/entities/scripts/gt_teleport.gd",
       "outputs": [
         {
           "name": "teleported",
+          "parameter": "activator"
+        },
+        {
+          "name": "triggered",
+          "parameter": "activator"
+        },
+        {
+          "name": "entered",
+          "parameter": "activator"
+        },
+        {
+          "name": "exited",
           "parameter": "activator"
         }
       ],
@@ -1663,10 +1876,22 @@
           "property": "push"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_push.gd",
+      "script": "res://godottrench/entities/scripts/gt_push.gd",
       "outputs": [
         {
           "name": "pushed",
+          "parameter": "activator"
+        },
+        {
+          "name": "triggered",
+          "parameter": "activator"
+        },
+        {
+          "name": "entered",
+          "parameter": "activator"
+        },
+        {
+          "name": "exited",
           "parameter": "activator"
         }
       ],
@@ -1779,7 +2004,7 @@
           "scale": 1.0
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_spawner.gd",
+      "script": "res://godottrench/entities/scripts/gt_spawner.gd",
       "outputs": [
         {
           "name": "spawned",
@@ -1862,7 +2087,7 @@
           "description": "JSON array. $activator, $self, $position and $parameter are replaced"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_logic_call.gd",
+      "script": "res://godottrench/entities/scripts/gt_logic_call.gd",
       "outputs": [
         {
           "name": "called",
@@ -1913,7 +2138,7 @@
           "description": "Ignores trigger until enabled"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_relay.gd",
+      "script": "res://godottrench/entities/scripts/gt_relay.gd",
       "outputs": [
         {
           "name": "triggered",
@@ -1996,7 +2221,7 @@
           "description": "Stops after firing once"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_timer.gd",
+      "script": "res://godottrench/entities/scripts/gt_timer.gd",
       "outputs": [
         {
           "name": "timer",
@@ -2067,7 +2292,7 @@
           "description": "Initial value"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_counter.gd",
+      "script": "res://godottrench/entities/scripts/gt_counter.gd",
       "outputs": [
         {
           "name": "hit_max",
@@ -2121,7 +2346,7 @@
         ]
       ],
       "properties": [],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_auto.gd",
+      "script": "res://godottrench/entities/scripts/gt_auto.gd",
       "outputs": [
         {
           "name": "map_spawn",
@@ -2175,7 +2400,7 @@
           "description": "Print every I/O event in the map"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_debug.gd",
+      "script": "res://godottrench/entities/scripts/gt_debug.gd",
       "outputs": [
         {
           "name": "printed",
@@ -2240,7 +2465,7 @@
           "description": "A single expression used when source is empty, same names in scope"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_script.gd",
+      "script": "res://godottrench/entities/scripts/gt_script.gd",
       "outputs": [
         {
           "name": "ran",
@@ -2315,7 +2540,7 @@
           "description": "Restarts after the last step"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_sequence.gd",
+      "script": "res://godottrench/entities/scripts/gt_sequence.gd",
       "outputs": [
         {
           "name": "step_1",
@@ -2418,7 +2643,7 @@
           "description": "Playback speed scale"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_animate.gd",
+      "script": "res://godottrench/entities/scripts/gt_animate.gd",
       "outputs": [
         {
           "name": "finished",
@@ -2527,7 +2752,7 @@
           "description": "Turns to face the camera and draws over walls. Off keeps the entity's angles and hides behind walls, for signs"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_text.gd",
+      "script": "res://godottrench/entities/scripts/gt_text.gd",
       "outputs": [
         {
           "name": "shown",
@@ -2621,7 +2846,7 @@
           "scale": 1.0
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_explosion.gd",
+      "script": "res://godottrench/entities/scripts/gt_explosion.gd",
       "outputs": [
         {
           "name": "exploded",
@@ -2722,7 +2947,7 @@
           "description": "res:// scene spawned where it broke"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_prop_physics.gd",
+      "script": "res://godottrench/entities/scripts/gt_prop_physics.gd",
       "outputs": [
         {
           "name": "damaged",
@@ -2827,7 +3052,7 @@
           "description": "Turns to face its direction of travel"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_npc.gd",
+      "script": "res://godottrench/entities/scripts/gt_npc.gd",
       "outputs": [
         {
           "name": "arrived",
@@ -2862,113 +3087,6 @@
         {
           "name": "play_anim",
           "parameter": "anim"
-        }
-      ]
-    },
-    {
-      "classname": "light_spot",
-      "type": "point",
-      "description": "Switchable spot light",
-      "color": "#ffe64dff",
-      "node_class": "SpotLight3D",
-      "group": "light",
-      "size": [
-        [
-          -8.0,
-          -8.0,
-          -8.0
-        ],
-        [
-          8.0,
-          8.0,
-          8.0
-        ]
-      ],
-      "properties": [
-        {
-          "name": "targetname",
-          "type": "target_source",
-          "default": "",
-          "description": "Name"
-        },
-        {
-          "name": "light_energy",
-          "type": "float",
-          "default": "1.5",
-          "description": "Brightness"
-        },
-        {
-          "name": "light_color",
-          "type": "color",
-          "default": "255 255 255",
-          "description": "Color"
-        },
-        {
-          "name": "spot_range",
-          "type": "float",
-          "default": "15.0",
-          "description": "Range in meters"
-        },
-        {
-          "name": "spot_angle",
-          "type": "float",
-          "default": "35.0",
-          "description": "Cone half angle in degrees"
-        },
-        {
-          "name": "start_on",
-          "type": "bool",
-          "default": "1",
-          "description": "Starts switched on"
-        },
-        {
-          "name": "shadows",
-          "type": "bool",
-          "default": "0",
-          "description": "Casts shadows, costs more to render"
-        },
-        {
-          "name": "fixture",
-          "type": "target_destination",
-          "default": "",
-          "description": "Targetname of the lamp geometry (* for a prefix) that follows the light: shown while on, hidden or dark while off"
-        },
-        {
-          "name": "fixture_off",
-          "type": "choices",
-          "default": "hide",
-          "description": "What a fixture does while the light is off",
-          "options": [
-            [
-              "hide",
-              "hide"
-            ],
-            [
-              "dark (emission off)",
-              "dark"
-            ]
-          ]
-        }
-      ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_spot_light.gd",
-      "outputs": [
-        {
-          "name": "switched",
-          "parameter": "on"
-        }
-      ],
-      "inputs": [
-        {
-          "name": "turn_on",
-          "parameter": ""
-        },
-        {
-          "name": "turn_off",
-          "parameter": ""
-        },
-        {
-          "name": "toggle",
-          "parameter": ""
         }
       ]
     },
@@ -3029,7 +3147,7 @@
           "description": "Replays when it finishes"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_sound.gd",
+      "script": "res://godottrench/entities/scripts/gt_sound.gd",
       "outputs": [
         {
           "name": "finished",
@@ -3168,7 +3286,7 @@
           "description": "Rain: width, height and depth in meters of the box the drops start in"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_particles.gd",
+      "script": "res://godottrench/entities/scripts/gt_particles.gd",
       "outputs": [
         {
           "name": "finished",
@@ -3227,7 +3345,7 @@
           "description": "Initial boolean value"
         }
       ],
-      "script": "res://addons/func_godot/src/godottrench/entities/gt_branch.gd",
+      "script": "res://godottrench/entities/scripts/gt_branch.gd",
       "outputs": [
         {
           "name": "on_true",
@@ -3260,92 +3378,6 @@
           "parameter": "new_value"
         }
       ]
-    },
-    {
-      "classname": "info_player_start",
-      "type": "point",
-      "description": "Player spawn point",
-      "color": "#33ff33ff",
-      "node_class": "Marker3D",
-      "group": "info",
-      "size": [
-        [
-          -16.0,
-          0.0,
-          -16.0
-        ],
-        [
-          16.0,
-          56.0,
-          16.0
-        ]
-      ],
-      "properties": [],
-      "outputs": [],
-      "inputs": []
-    },
-    {
-      "classname": "trigger_area",
-      "type": "solid",
-      "description": "Invisible volume, fires body_entered and body_exited",
-      "color": "#e6991aff",
-      "node_class": "Area3D",
-      "group": "trigger",
-      "properties": [
-        {
-          "name": "targetname",
-          "type": "target_source",
-          "default": "",
-          "description": ""
-        }
-      ],
-      "outputs": [
-        {
-          "name": "body_shape_entered",
-          "parameter": "body_rid, body, body_shape_index, local_shape_index"
-        },
-        {
-          "name": "body_shape_exited",
-          "parameter": "body_rid, body, body_shape_index, local_shape_index"
-        },
-        {
-          "name": "body_entered",
-          "parameter": "body"
-        },
-        {
-          "name": "body_exited",
-          "parameter": "body"
-        },
-        {
-          "name": "area_shape_entered",
-          "parameter": "area_rid, area, area_shape_index, local_shape_index"
-        },
-        {
-          "name": "area_shape_exited",
-          "parameter": "area_rid, area, area_shape_index, local_shape_index"
-        },
-        {
-          "name": "area_entered",
-          "parameter": "area"
-        },
-        {
-          "name": "area_exited",
-          "parameter": "area"
-        },
-        {
-          "name": "input_event",
-          "parameter": "camera, event, event_position, normal, shape_idx"
-        },
-        {
-          "name": "mouse_entered",
-          "parameter": ""
-        },
-        {
-          "name": "mouse_exited",
-          "parameter": ""
-        }
-      ],
-      "inputs": []
     },
     {
       "classname": "infodecal",

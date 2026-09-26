@@ -420,6 +420,7 @@ mod tests {
     #[test]
     fn summaries_count_layers_classes_materials_and_io() {
         let mut state = EditorState::new(Default::default());
+        state.game = gt_formats::GameConfig::with_gameplay_pack();
         let layer = state.doc.map.default_layer();
         state.doc.edit("build", |m, _| {
             cube(m, layer, DVec3::ZERO, "brick");

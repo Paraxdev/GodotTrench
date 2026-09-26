@@ -604,6 +604,18 @@ func test_default_fgd() -> void:
 	var settings: FuncGodotMapSettings = load("res://addons/func_godot/func_godot_default_map_settings.tres")
 	var defs := settings.entity_fgd.get_entity_definitions()
 	check(defs.has("func_door") and defs.has("logic_relay") and defs.has("worldspawn"), "default map settings know func_door, logic_relay and worldspawn")
+	check(defs["func_door"].script_class.resource_path.begins_with("res://godottrench/entities/"), "the pack's entities run the project's copies")
+	# A project without the pack, like a blank one, has only the core.
+	var core := GodotTrenchFGDFile.new()
+	var addon_core: GodotTrenchFGDFile = load("res://addons/func_godot/fgd/godottrench/godottrench_fgd.tres")
+	core.base_fgd_files = [load("res://addons/func_godot/fgd/func_godot_fgd.tres")]
+	core.entity_definitions = addon_core.entity_definitions
+	core.pack_fgd_path = ""
+	var core_defs := core.get_entity_definitions()
+	for classname in ["worldspawn", "func_detail", "func_illusionary", "func_geo", "light", "light_spot", "info_player_start"]:
+		check(core_defs.has(classname), "the core has %s" % classname)
+	check(not core_defs.has("func_door") and not core_defs.has("trigger_once") and not core_defs.has("prop_model"), "the core leaves the gameplay entities to the pack")
+	check(not DirAccess.dir_exists_absolute("res://addons/func_godot/gameplay_pack") or FileAccess.file_exists("res://addons/func_godot/gameplay_pack/.gdignore"), "Godot skips the pack template")
 	var config: GodotTrenchGameConfig = load(GodotTrenchEditorIntegration.DEFAULT_CONFIG)
 	check(config.fgd_file.get_entity_definitions().has("trigger_once"), "default game config exports trigger_once")
 	# The editor names its tool textures special/..., so a fresh project has to agree or clip brushes draw.

@@ -496,10 +496,10 @@ static func near(a: float, b: float) -> bool:
 func test_definitions() -> void:
 	print("- trigger definitions and the demo lights")
 	for classname in ["trigger_hurt", "trigger_teleport", "trigger_push", "trigger_call", "trigger_spawn_area"]:
-		var def: FuncGodotFGDEntityClass = load("res://addons/func_godot/fgd/godottrench/%s.tres" % classname)
+		var def: FuncGodotFGDEntityClass = load("res://godottrench/entities/definitions/%s.tres" % classname)
 		check(def.class_properties.has("start_disabled"), "%s exposes start_disabled" % classname)
 	for classname in ["trigger_teleport", "trigger_spawn_area", "trigger_call", "trigger_multiple"]:
-		var def: FuncGodotFGDEntityClass = load("res://addons/func_godot/fgd/godottrench/%s.tres" % classname)
+		var def: FuncGodotFGDEntityClass = load("res://godottrench/entities/definitions/%s.tres" % classname)
 		check(def.class_properties.has("cooldown"), "%s exposes cooldown" % classname)
 	var demo: FuncGodotFGDFile = load("res://demo/demo_fgd.tres")
 	var defs := demo.get_entity_definitions()

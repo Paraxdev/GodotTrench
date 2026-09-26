@@ -16,8 +16,11 @@ struct Fixture {
 }
 
 impl Fixture {
+    /// A state that knows the Gameplay entities pack, like a project that installed it.
     fn new() -> Self {
-        Self { state: EditorState::new(Prefs::default()), panels: PanelState::default(), actions: Vec::new() }
+        let mut state = EditorState::new(Prefs::default());
+        state.game = gt_formats::GameConfig::with_gameplay_pack();
+        Self { state, panels: PanelState::default(), actions: Vec::new() }
     }
 
     fn with_light() -> (Self, gt_core::NodeId) {
