@@ -3,8 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-    # A version tag publishes a release, see the publish job.
-    tags: ["v*"]
     # The docs have their own build and deploy workflow (pages.yml). Without this, a docs only
     # commit runs the full Rust/E2E/Godot suite, replaces the rolling beta release, and pushes to itch.
     paths-ignore:
@@ -110,7 +108,7 @@ jobs:
 
   package:
     name: Package (${{ matrix.name }})
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [rust, e2e, godot]
     runs-on: ${{ matrix.os }}
     strategy:
@@ -140,9 +138,9 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y $LINUX_DEPS
       - name: Build editor
-        # A beta keeps the version of the last release, so it has to know to take its downloads from the rolling beta.
+        # GodotTrench ships only as the rolling beta, so the editor takes its downloads from there.
         env:
-          GODOTTRENCH_CHANNEL: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'beta' }}
+          GODOTTRENCH_CHANNEL: beta
         run: cargo build --release -p gt_editor
       - name: Package
         shell: bash
@@ -208,16 +206,6 @@ jobs:
           ![Lighthouse and Forest in Godot](${shots}/lighthouse_forest.png)
           ![Church and School in Godot](${shots}/church_school.png)
           ![Mountain Hanging House in Godot](${shots}/mountain_house.png)"
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            notes=".github/release-notes/${GITHUB_REF_NAME}.md"
-            if [ ! -f "$notes" ]; then
-              echo "add $notes before tagging"
-              exit 1
-            fi
-            { cat "$notes"; printf '\n## Downloads\n\n%s\n' "$downloads"; } > notes.md
-            gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "GodotTrench ${GITHUB_REF_NAME}" --notes-file notes.md
-            exit 0
-          fi
           # GitHub refuses the workflow token a tag on an older commit whose workflow files differ from main, and a newer run
           # publishes anyway. A newer docs only commit starts no run, so only step aside when the workflows changed.
           head=$(git ls-remote origin refs/heads/main | cut -f1)
@@ -228,9 +216,11 @@ jobs:
               exit 0
             fi
           fi
-          notes="Rolling beta built from ${GITHUB_SHA::7} on $(date -u +%Y-%m-%d), ahead of the latest release. It passed every test, but may still have rough edges.
+          notes="Rolling beta built from ${GITHUB_SHA::7} on $(date -u +%Y-%m-%d). It passed every test, but may still have rough edges.
 
           ${downloads}"
+          # GodotTrench ships only as the rolling beta, so any other release, like the old v0.1.0, goes with its tag.
+          gh release list --json tagName --jq '.[].tagName' | grep -vx beta | xargs -r -I{} gh release delete {} --yes --cleanup-tag
           gh release delete beta --yes --cleanup-tag || true
           gh release create beta dist/* --prerelease --target "$GITHUB_SHA" --title "GodotTrench rolling beta" --notes "$notes"
       - name: Push to itch.io
@@ -241,12 +231,8 @@ jobs:
           unzip -q butler.zip -d butler-bin && chmod +x butler-bin/butler
           butler=butler-bin/butler
           "$butler" -V
-          # Releases fill the plain channels, the rolling beta its -beta twins, so itch's default downloads stay on a release.
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            version="${GITHUB_REF_NAME#v}"; suffix=""
-          else
-            version="beta-$(date -u +%Y%m%d)-${GITHUB_SHA::7}"; suffix="-beta"
-          fi
+          # The rolling beta is the only build, so it fills the plain channels.
+          version="beta-$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
           push() {
             archive="$1"; channel="$2"; out="itch/$channel"
             rm -rf "$out" && mkdir -p "$out"
@@ -257,14 +243,14 @@ jobs:
             # butler wants the build root, so drop the single wrapping folder the archives carry.
             inner=$(find "$out" -mindepth 1 -maxdepth 1 -type d | head -n1)
             [ -n "$inner" ] && out="$inner"
-            "$butler" push "$out" "paraxdev/godottrench:$channel$suffix" --userversion "$version"
+            "$butler" push "$out" "paraxdev/godottrench:$channel" --userversion "$version"
           }
           push dist/godottrench-linux-x86_64.tar.gz linux
           push dist/godottrench-windows-x86_64.zip windows
           push dist/godottrench-macos-arm64.tar.gz mac
           # The addon, demo project and content ship as their own zips so their folder layout (addons/func_godot, the
           # project, godottrench/nature, demo and models) survives.
-          "$butler" push dist/func_godot-godottrench-addon.zip "paraxdev/godottrench:addon$suffix" --userversion "$version"
-          "$butler" push dist/godottrench-demo-project.zip "paraxdev/godottrench:demo-project$suffix" --userversion "$version"
-          "$butler" push dist/godottrench-nature-pack.zip "paraxdev/godottrench:nature-pack$suffix" --userversion "$version"
-          "$butler" push dist/godottrench-demo-content.zip "paraxdev/godottrench:demo-content$suffix" --userversion "$version"
+          "$butler" push dist/func_godot-godottrench-addon.zip "paraxdev/godottrench:addon" --userversion "$version"
+          "$butler" push dist/godottrench-demo-project.zip "paraxdev/godottrench:demo-project" --userversion "$version"
+          "$butler" push dist/godottrench-nature-pack.zip "paraxdev/godottrench:nature-pack" --userversion "$version"
+          "$butler" push dist/godottrench-demo-content.zip "paraxdev/godottrench:demo-content" --userversion "$version"

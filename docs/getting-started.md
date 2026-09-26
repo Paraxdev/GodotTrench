@@ -6,7 +6,7 @@ load it in Godot.
 ## What you need
 
 Godot 4.7, CI tests the addon on 4.7.2. Use the .NET build if you want to write entities in C#. The editor is in the
-[latest release](https://github.com/Paraxdev/GodotTrench/releases/latest), and it installs the addon for you.
+[rolling beta](https://github.com/Paraxdev/GodotTrench/releases/tag/beta), and it installs the addon for you.
 
 ## 1. Open the project in the editor
 

@@ -111,9 +111,9 @@ Project…* downloads into a project, next to `func_godot-godottrench-addon.zip`
 Addon…* installs. The folders they hold are listed in
 [content.rs](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_editor/src/content.rs) and
 [addon_install.rs](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_editor/src/addon_install.rs), and tests
-check the zip commands in `ci.yml` against them. The editor looks the zips up through the GitHub API, in the release of
-its own version first and then in the rolling beta. CI builds the beta with `GODOTTRENCH_CHANNEL=beta`, which turns that
-order around, since a beta carries the version of the last release. The `GODOTTRENCH_RELEASES_API` environment variable
+check the zip commands in `ci.yml` against them. The editor looks the zips up through the GitHub API. CI builds it
+with `GODOTTRENCH_CHANNEL=beta`, so it looks in the rolling beta first. A local build tries a release named after its own
+version first and then falls back to the beta. The `GODOTTRENCH_RELEASES_API` environment variable
 points the editor at another server, for trying a zip before it is published.
 
 {% mcp %}
