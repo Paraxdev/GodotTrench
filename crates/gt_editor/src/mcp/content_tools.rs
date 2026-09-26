@@ -868,23 +868,13 @@ impl App {
                     Err(e) => return err(e),
                 };
                 let Some(name) = name else { return err("name required") };
-                let renamed = self.state.doc.try_edit("Rename", |m, _| {
-                    match m.get_mut(id).map(|n| &mut n.kind) {
-                        Some(NodeKind::Entity(e)) => {
-                            e.properties.insert("targetname".into(), name.clone());
-                        }
-                        Some(_) => {
-                            m.rename(id, &name);
-                        }
-                        None => return Err(format!("no node {id}")),
-                    }
-
-                    Ok(())
-                });
-                match renamed {
-                    Ok(()) => ok(json!({ "id": id.0, "name": name })),
-                    Err(e) => err(e),
+                if !self.state.doc.map.contains(id) {
+                    return err(format!("no node {id}"));
                 }
+
+                let _ = self.state.doc.try_edit("Rename", |m, _| if m.rename(id, &name) { Ok(()) } else { Err(()) });
+                let name = self.state.doc.map.get(id).map(|n| n.name()).unwrap_or_default();
+                ok(json!({ "id": id.0, "name": name }))
             }
             "set_flags" => {
                 let list = match id_list(args, "ids") {

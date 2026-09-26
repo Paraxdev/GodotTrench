@@ -642,9 +642,15 @@ impl EditorState {
         self.tabs = all;
         self.active_tab = index;
         self.scene_reset = true;
-        // Node ids restart per map, the active set would name another map's node.
-        self.active_scatter = None;
+        self.forget_nodes();
         self.validate_insert_context();
+    }
+
+    /// Node ids restart per map, so state naming a node of the map being left would point at another map's node.
+    fn forget_nodes(&mut self) {
+        self.active_scatter = None;
+        self.renaming = None;
+        self.outliner_reveal = None;
     }
 
     /// Makes tab `index` (in tab order) the active map.
@@ -736,7 +742,7 @@ impl EditorState {
         self.autosave = Autosave::for_doc(&doc);
         self.doc = doc;
         self.scene_reset = true;
-        self.active_scatter = None;
+        self.forget_nodes();
         let bounds = self.doc.map.bounds_of(self.doc.map.layers.clone());
         if !bounds.is_empty() {
             self.focus_request = Some(bounds);

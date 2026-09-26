@@ -32,13 +32,14 @@ pub fn clip_selection(state: &mut EditorState, plane: &Plane, side: ClipSide) {
             let cap = gt_geom::brush::best_face_data(&plane.flipped(), &template).cloned().unwrap_or_default();
             let (front, back) = b.split(plane, &cap);
             let parent = m.get(id).and_then(|n| n.parent).unwrap_or(m.default_layer());
+            let label = m.get(id).and_then(|n| n.label.clone());
             m.remove(id);
             let keep: Vec<Brush> = match side {
                 ClipSide::Front => front.into_iter().collect(),
                 ClipSide::Back => back.into_iter().collect(),
                 ClipSide::Both => front.into_iter().chain(back).collect(),
             };
-            let new_ids: Vec<_> = keep.into_iter().map(|k| m.insert(parent, gt_doc::NodeKind::Brush(k))).collect();
+            let new_ids: Vec<_> = keep.into_iter().map(|k| m.insert_labeled(parent, gt_doc::NodeKind::Brush(k), label.clone())).collect();
             s.nodes.extend(new_ids.iter().copied());
             replaced.insert(id, new_ids);
         }
@@ -1301,6 +1302,16 @@ mod tests {
         let m = ops::rotation_about(DVec3::splat(32.0), DVec3::Y, 90.0);
         let opts = state.opts();
         state.doc.edit("Rotate", |map, s| ops::transform_selection(map, s, &m, opts));
+    }
+
+    #[test]
+    fn clip_pieces_keep_the_brush_name() {
+        let (mut state, id) = state_with_brush();
+        state.doc.edit("name", |m, _| m.rename(id, "ramp"));
+        clip_selection(&mut state, &Plane::from_point_normal(DVec3::splat(32.0), DVec3::Z), ClipSide::Both);
+        let pieces = &state.replaced[&id];
+        assert_eq!(pieces.len(), 2);
+        assert!(pieces.iter().all(|p| state.doc.map.get(*p).unwrap().name() == "ramp"));
     }
 
     #[test]

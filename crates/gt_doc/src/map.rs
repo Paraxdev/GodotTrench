@@ -187,6 +187,15 @@ impl Node {
         }
     }
 
+    /// The name Rename starts from and stores: a layer's, group's or scatter set's own name without the extras
+    /// [`Node::default_name`] adds, else the shown name.
+    pub fn editable_name(&self) -> String {
+        match &self.kind {
+            NodeKind::Layer(Layer { name, .. }) | NodeKind::Group(Group { name, .. }) | NodeKind::Scatter(Scatter { name, .. }) => name.clone(),
+            _ => self.name(),
+        }
+    }
+
     /// The name from the node's kind and content, used while it has no label.
     pub fn default_name(&self) -> String {
         match &self.kind {
@@ -371,6 +380,16 @@ impl Map {
     pub fn insert(&mut self, parent: NodeId, kind: NodeKind) -> NodeId {
         let id = self.alloc_id();
         self.insert_with_id(id, parent, kind);
+        id
+    }
+
+    /// Inserts a node that replaces others, like a clip piece or a merged brush, keeping the name they were given.
+    pub fn insert_labeled(&mut self, parent: NodeId, kind: NodeKind, label: Option<String>) -> NodeId {
+        let id = self.insert(parent, kind);
+        if let Some(n) = self.get_mut(id) {
+            n.label = label.filter(|_| !n.kind.has_own_name());
+        }
+
         id
     }
 
@@ -691,6 +710,22 @@ impl Map {
 mod tests {
     use super::*;
     use gt_geom::Brush;
+
+    #[test]
+    fn rename_starts_from_the_bare_name() {
+        let mut m = Map::new();
+        let layer = m.default_layer();
+        let room = m.insert(layer, NodeKind::Group(Group { link_id: Some(2), ..Group::new("room") }));
+        let grass = m.insert(layer, NodeKind::Scatter(Scatter::new("grass", crate::scatter::ScatterKind::Foliage, Vec::new())));
+        for id in [room, grass] {
+            let node = m.get(id).unwrap();
+            assert_ne!(node.name(), node.editable_name());
+            let bare = node.editable_name();
+            assert!(!m.rename(id, &bare), "confirming the field unchanged changes nothing");
+        }
+
+        assert_eq!(m.get(room).unwrap().name(), "room (linked)");
+    }
 
     #[test]
     fn instance_fixups() {

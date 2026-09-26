@@ -613,6 +613,66 @@ fn outliner_renames_the_selected_object_in_its_row() {
 }
 
 #[test]
+fn renaming_a_linked_group_keeps_its_name_whole() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    f.state.doc.edit("add", |m, s| {
+        let id = m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "dev/grey").unwrap()));
+        s.select_node(id);
+    });
+    f.state.doc.edit("group", |m, s| ops::group_selection(m, s, "room", layer));
+    let copy = f.state.doc.edit("link", |m, s| ops::duplicate_linked(m, s, DVec3::new(128.0, 0.0, 0.0), Default::default()))[0];
+    f.state.doc.select(|_, s| {
+        s.clear();
+        s.select_node(copy);
+    });
+    gt_editor::commands::execute(&mut f.state, Action::Rename, &egui::Context::default());
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(360.0, 400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::outliner(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    let field = harness.get_all_by_role(egui::accesskit::Role::TextInput).last().unwrap().value();
+    assert_eq!(field.as_deref(), Some("room"), "the field holds the group's own name, not the (linked) note");
+    harness.get_all_by_role(egui::accesskit::Role::TextInput).last().unwrap().type_text("hall");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(harness.state().state.doc.map.get(copy).unwrap().name(), "hall (linked)");
+}
+
+#[test]
+fn a_pending_rename_stays_with_its_map() {
+    let mut f = Fixture::new();
+    let add = |doc: &mut gt_doc::Document| {
+        let layer = doc.map.default_layer();
+        doc.edit("add", |m, s| {
+            let id = m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "dev/grey").unwrap()));
+            s.select_node(id);
+            id
+        })
+    };
+    let brush = add(&mut f.state.doc);
+    gt_editor::commands::execute(&mut f.state, Action::Rename, &egui::Context::default());
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(360.0, 400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::outliner(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    harness.get_all_by_role(egui::accesskit::Role::TextInput).last().unwrap().type_text("cellar");
+    harness.run();
+
+    let mut other = gt_doc::Document::new();
+    assert_eq!(add(&mut other), brush, "both maps number their first brush alike");
+    harness.state_mut().state.open_tab(other);
+    harness.run();
+    assert_eq!(harness.state().state.renaming, None);
+    assert_eq!(harness.get_all_by_role(egui::accesskit::Role::TextInput).count(), 1, "only the filter is left");
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(harness.state().state.doc.map.get(brush).unwrap().label, None, "the other map's brush kept its name");
+    assert_eq!(harness.state().state.tab_doc(0).map.get(brush).unwrap().label, None);
+}
+
+#[test]
 fn outliner_context_menu_selects_and_acts_on_objects() {
     let mut f = Fixture::new();
     let layer = f.state.doc.map.default_layer();

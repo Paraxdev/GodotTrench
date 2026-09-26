@@ -32,7 +32,7 @@ fn group_transform(map: &Map, id: NodeId) -> DMat4 {
 }
 
 /// Descendants in depth-first order with their depth, leaves expressed in the link set's shared space.
-fn normalized(map: &Map, group: NodeId) -> Vec<(usize, NodeKind)> {
+fn normalized(map: &Map, group: NodeId) -> Vec<(usize, NodeKind, Option<String>)> {
     let inverse = group_transform(map, group).inverse();
     let mut out = Vec::new();
     let mut stack: Vec<(NodeId, usize)> = map.get(group).map(|n| n.children.iter().rev().map(|c| (*c, 1)).collect()).unwrap_or_default();
@@ -62,7 +62,7 @@ fn normalized(map: &Map, group: NodeId) -> Vec<(usize, NodeKind)> {
             }
             other => other.clone(),
         };
-        out.push((depth, kind));
+        out.push((depth, kind, node.label.clone()));
         stack.extend(node.children.iter().rev().map(|c| (*c, depth + 1)));
     }
 
@@ -118,7 +118,7 @@ fn subtree_changed(before: &Map, after: &Map, group: NodeId) -> bool {
     }
 
     now.iter().any(|id| match (before.get(*id), after.get(*id)) {
-        (Some(a), Some(b)) => a.kind != b.kind || a.children != b.children,
+        (Some(a), Some(b)) => a.kind != b.kind || a.children != b.children || a.label != b.label,
         _ => true,
     })
 }
@@ -146,7 +146,7 @@ pub fn sync(before: &Map, after: &mut Map) -> usize {
 
             let target_content = normalized(after, target);
             let same = target_content.len() == source_content.len()
-                && target_content.iter().zip(&source_content).all(|((da, ka), (db, kb))| da == db && kinds_match(ka, kb));
+                && target_content.iter().zip(&source_content).all(|((da, ka, la), (db, kb, lb))| da == db && la == lb && kinds_match(ka, kb));
             if same {
                 continue;
             }
@@ -251,6 +251,23 @@ mod tests {
             ops::translate_selection(m, s, DVec3::new(0.0, 32.0, 0.0), EditOptions::default());
         });
         assert_eq!(doc.map.get(copy).unwrap().children, before, "moving a whole linked group rebuilds nothing");
+    }
+
+    #[test]
+    fn names_propagate_but_each_copy_keeps_its_own() {
+        let mut doc = Document::new();
+        let (brush, group, copy) = linked_pair(&mut doc);
+        doc.edit("rename", |m, _| m.rename(brush, "sill"));
+        let other = doc.map.get(copy).unwrap().children[0];
+        assert_eq!(doc.map.get(other).unwrap().name(), "sill");
+
+        doc.edit("rename", |m, _| m.rename(other, ""));
+        let rebuilt = doc.map.get(group).unwrap().children[0];
+        assert_eq!(doc.map.get(rebuilt).unwrap().label, None, "clearing a name in a copy clears it in the others");
+
+        doc.edit("rename", |m, _| m.rename(copy, "east window"));
+        assert_eq!(doc.map.get(copy).unwrap().editable_name(), "east window");
+        assert_eq!(doc.map.get(group).unwrap().editable_name(), "window", "a copy is named on its own");
     }
 
     fn assert_tree_consistent(map: &Map) {

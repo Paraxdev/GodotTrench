@@ -381,6 +381,14 @@ fn csg_entities_io_and_files() {
     ed.call("run_action", json!({ "action": "create_brush_entity", "args": { "classname": "func_door" } }));
     let door_entity = ed.state()["selection"]["nodes"][0].as_u64().unwrap();
     ed.call("update_entity", json!({ "id": door_entity, "properties": { "targetname": "door1" }, "outputs": [{ "output": "opened", "target": "lamp", "input": "turn_on", "delay": 0.5 }] }));
+    let renamed = ed.call("hierarchy", json!({ "op": "rename", "id": door_entity, "name": "front door" }));
+    assert_eq!(renamed["name"], "front door");
+    let node = ed.call("get_node", json!({ "id": door_entity }));
+    assert_eq!(
+        (&node["label"], &node["properties"]["targetname"]),
+        (&json!("front door"), &json!("door1")),
+        "renaming over MCP names it like the Outliner does"
+    );
     let issues = ed.call("validate_map", json!({}));
     assert!(issues["issues"].as_array().unwrap().iter().any(|i| i["code"] == "io_missing_target"));
     ed.call("create_entity", json!({ "classname": "light", "origin": [0, 96, 96], "properties": { "targetname": "lamp" } }));
