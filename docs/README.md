@@ -33,11 +33,10 @@ only shows up in the editor once the addon has written the game config again.
 
 ## Download
 
-The [latest release](https://github.com/Paraxdev/TrenchDot/releases/latest) has the editor for Linux, Windows and
-macOS, the addon zip and a demo project, and [itch.io](https://paraxdev.itch.io/trenchdot) has the same files. The
-editor installs the addon into a project itself. The [rolling beta](https://github.com/Paraxdev/TrenchDot/releases/tag/beta)
-has the newest changes from `main`, so it gets fixes sooner but is less tested. To build from source, see
-[Development](development.md).
+TrenchDot ships as a [rolling beta](https://github.com/Paraxdev/TrenchDot/releases/tag/beta), rebuilt from `main`
+whenever every test passes. It has the editor for Linux, Windows and macOS, the addon zip and a demo project, and
+[itch.io](https://paraxdev.itch.io/trenchdot) has the same files. The editor installs the addon into a project itself.
+To build from source, see [Development](development.md).
 
 {% mcp %}
 
