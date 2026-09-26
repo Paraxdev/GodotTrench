@@ -21,6 +21,7 @@
 * [Reviewing changes](editor/reviewing.md)
 * [Importing Hammer and TrenchBroom maps](editor/importing.md)
 * [Converting textures](editor/importing-textures.md)
+* [Exporting to Blender and other 3D tools](editor/exporting.md)
 * [Shortcuts](editor/shortcuts.md)
 
 ## Godot
