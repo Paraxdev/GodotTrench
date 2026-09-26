@@ -489,6 +489,11 @@ fn ensure_tab(dock: &mut DockState<Tab>, tab: Tab, beside: Tab) {
     }
 }
 
+/// Whether `tab` is open and the one showing in its leaf.
+fn tab_shown(dock: &DockState<Tab>, tab: &Tab) -> bool {
+    dock.find_tab(tab).is_some_and(|p| dock.leaf(egui_dock::NodePath { surface: p.surface, node: p.node }).is_ok_and(|leaf| leaf.active == p.tab))
+}
+
 /// The views shown in the dock.
 fn open_views(dock: &DockState<Tab>) -> Vec<usize> {
     dock.iter_all_tabs()
@@ -2106,6 +2111,7 @@ impl App {
 
 struct Tabs<'a> {
     views_open: usize,
+    start_view: Option<ViewKind>,
     state: &'a mut EditorState,
     renderer: &'a mut Renderer,
     scene: &'a SceneCache,
@@ -2145,7 +2151,7 @@ impl TabViewer for Tabs<'_> {
                 let Some(vp) = self.viewports.get_mut(*i) else { return };
                 let mut cx = ViewCtx { state: self.state, renderer: self.renderer, scene: self.scene, actions: self.actions, tools: self.tools };
                 vp.ui(ui, &mut cx);
-                crate::welcome::view_hint(ui, vp.rect, vp.kind(), self.state, self.project_maps, self.actions);
+                crate::welcome::view_hint(ui, vp.rect, vp.kind(), self.start_view, self.state, self.project_maps, self.actions);
             }
             Tab::Outliner => panels::outliner(ui, self.state, self.panels, self.actions),
             Tab::Inspector => panels::inspector(ui, self.state, self.panels, self.actions),
@@ -2258,13 +2264,14 @@ impl eframe::App for App {
         // The viewports read this to know a ctrl+click should grab all of a brush's faces for UV work. The UV
         // Editor is docked by default, so only its being the visible tab counts, else ctrl+click could never
         // add objects to the selection.
-        self.state.uv_panel_open = self
-            .dock
-            .find_tab(&Tab::Uv)
-            .is_some_and(|p| self.dock.leaf(egui_dock::NodePath { surface: p.surface, node: p.node }).is_ok_and(|leaf| leaf.active == p.tab));
+        self.state.uv_panel_open = tab_shown(&self.dock, &Tab::Uv);
+        let start_view = [ViewKind::Top, ViewKind::Front, ViewKind::Side]
+            .into_iter()
+            .find(|k| self.viewports.iter().position(|v| v.kind() == *k).is_some_and(|i| tab_shown(&self.dock, &Tab::View(i))));
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
             let mut tabs = Tabs {
                 views_open: open_views(&self.dock).len(),
+                start_view,
                 state: &mut self.state,
                 renderer: &mut self.renderer,
                 scene: &self.scene,
