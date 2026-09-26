@@ -108,6 +108,21 @@ pub struct LoadedMaterial {
     pub info: GodotMaterial,
 }
 
+/// Image files of one material, see [`MaterialLibrary::material_files`]. Built-in placeholders and color only
+/// materials have no albedo file, [`MaterialLibrary::load_image`] draws them.
+#[derive(Default)]
+pub struct MaterialFiles {
+    pub albedo: Option<PathBuf>,
+    pub normal: Option<PathBuf>,
+    pub emission: Option<PathBuf>,
+    pub roughness: Option<PathBuf>,
+    pub metallic: Option<PathBuf>,
+    pub ao: Option<PathBuf>,
+    pub orm: Option<PathBuf>,
+    /// Settings of the material resource, None for a material FuncGodot generates from the images.
+    pub info: Option<GodotMaterial>,
+}
+
 /// How often the watcher looks at the texture folder for new or changed files.
 const WATCH_INTERVAL: Duration = Duration::from_secs(1);
 /// A material that was still missing after a look at the disk is looked for again at most this often.
@@ -503,6 +518,49 @@ impl MaterialLibrary {
             ..Default::default()
         };
         Some(LoadedMaterial { albedo, normal, emission, info })
+    }
+
+    /// The image files the Godot build uses for a material, as found on disk, for the glTF and OBJ exports. Like
+    /// [`Self::load_material`], a material resource is taken as is and companion maps only count without one.
+    pub fn material_files(&mut self, name: &str) -> MaterialFiles {
+        if let Some(info) = self.info(name) {
+            let res = |r: &Option<String>| r.as_deref().and_then(|r| self.resolve_res(r));
+            let albedo = match res(&info.albedo_texture) {
+                Some(a) => Some(a),
+                None if self.is_color_only(name) => None,
+                None => self.image_path(name),
+            };
+            return MaterialFiles {
+                albedo,
+                normal: res(&info.normal_texture),
+                emission: res(&info.emission_texture),
+                roughness: res(&info.roughness_texture),
+                metallic: res(&info.metallic_texture),
+                ao: res(&info.ao_texture),
+                orm: res(&info.orm_texture),
+                info: Some(info),
+            };
+        }
+
+        MaterialFiles {
+            albedo: self.image_path(name),
+            normal: self.normal_companion(name),
+            emission: self.companion(name, EMISSION_SUFFIX),
+            roughness: self.companion(name, "_roughness"),
+            metallic: self.companion(name, "_metallic"),
+            ao: self.companion(name, "_ao"),
+            orm: self.companion(name, "_orm"),
+            info: None,
+        }
+    }
+
+    /// The albedo image file of a material name, None for built-in placeholders and color only materials.
+    fn image_path(&self, name: &str) -> Option<PathBuf> {
+        if let Some(rel) = name.strip_prefix("res://") {
+            return Some(self.project_root.as_ref()?.join(rel)).filter(|p| p.is_file());
+        }
+
+        self.find(name).and_then(|e| e.path.clone())
     }
 
     pub fn remember_size(&mut self, name: &str, size: [u32; 2]) {
