@@ -44,8 +44,45 @@ fn the_app_takes_the_links_to_open_and_only_opens_web_links() {
     let out = ctx.end_pass();
     let commands = out.platform_output.commands.clone();
     out.drop_without_applying_deltas();
-    assert!(state.status.starts_with("Could not open file:///etc/passwd"), "{}", state.status);
+    assert!(state.status.starts_with("Only web links open in the browser, file:///etc/passwd is copied"), "{}", state.status);
     assert_eq!(commands, [egui::OutputCommand::CopyText("file:///etc/passwd".into())], "nothing is left for eframe, which cannot open links");
+}
+
+#[test]
+fn a_link_no_browser_opened_is_copied() {
+    let ctx = egui::Context::default();
+    let mut state = EditorState::new(Prefs::default());
+    // What the app does each frame, returning what it copied.
+    let frame = |state: &mut EditorState| {
+        ctx.begin_pass(Default::default());
+        panels::copy_unopened_links(state, &ctx);
+        let out = ctx.end_pass();
+        let commands = out.platform_output.commands.clone();
+        out.drop_without_applying_deltas();
+        commands
+    };
+    let (tx, opened) = std::sync::mpsc::channel();
+    panels::open_link_with(&mut state, &ctx, "https://example.com/?a=1&b=2", move |url| {
+        tx.send(url.to_string()).unwrap();
+        Ok(())
+    });
+    assert_eq!(opened.recv_timeout(std::time::Duration::from_secs(5)).unwrap(), "https://example.com/?a=1&b=2", "the opener gets the whole link");
+    assert_eq!(state.status, "Opening https://example.com/?a=1&b=2 in your browser");
+    assert!(frame(&mut state).is_empty(), "an opened link is not copied");
+
+    // Like xdg-open exiting with 3 when it finds no browser, after it started fine.
+    panels::open_link_with(&mut state, &ctx, "https://example.com/guide", |_| Err(std::io::Error::other("xdg-open exit status: 3")));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let copied = loop {
+        let commands = frame(&mut state);
+        if !commands.is_empty() || std::time::Instant::now() > deadline {
+            break commands;
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
+    assert_eq!(copied, [egui::OutputCommand::CopyText("https://example.com/guide".into())]);
+    assert_eq!(state.status, "No browser opened https://example.com/guide, the link is copied to the clipboard");
 }
 
 #[test]

@@ -2986,49 +2986,82 @@ pub fn take_open_urls(ctx: &egui::Context) -> Vec<String> {
 }
 
 /// Opens a web link in the system browser. Other schemes are refused because a model pack's page link comes from a
-/// file in the project. When the browser cannot be started the link is copied instead, so it is never lost.
+/// file in the project. A refused link, or one no browser opened, is copied instead, so it is never lost.
 pub fn open_link(state: &mut EditorState, ctx: &egui::Context, url: &str) {
+    open_link_with(state, ctx, url, |url| open_with_system(url.as_ref()));
+}
+
+/// [`open_link`] with the opener to run, on a thread of its own. It fails when no browser took the link.
+pub fn open_link_with(state: &mut EditorState, ctx: &egui::Context, url: &str, open: impl FnOnce(&str) -> std::io::Result<()> + Send + 'static) {
     let lower = url.to_ascii_lowercase();
-    let web = lower.starts_with("https://") || lower.starts_with("http://");
-    if web && open_with_system(url.as_ref()).is_ok() {
+    if lower.starts_with("https://") || lower.starts_with("http://") {
         state.set_status(format!("Opening {url} in your browser"));
+        let (url, ctx, unopened) = (url.to_string(), ctx.clone(), state.unopened_links.0.clone());
+        std::thread::spawn(move || {
+            let started = std::time::Instant::now();
+            // A browser that xdg-open runs in the foreground reports its own exit status when it quits, maybe much later.
+            if open(&url).is_err() && started.elapsed() < std::time::Duration::from_secs(10) && unopened.send(url).is_ok() {
+                ctx.request_repaint();
+            }
+        });
     } else {
         ctx.copy_text(url.to_string());
-        state.set_status(format!("Could not open {url} in a browser, the link is copied to the clipboard"));
+        state.set_status(format!("Only web links open in the browser, {url} is copied to the clipboard"));
     }
 
     // The status bar is drawn before the links are handled.
     ctx.request_repaint();
 }
 
-/// Opens a file or folder with the operating system's default application.
-pub fn open_in_system(path: &std::path::Path) {
-    let _ = open_with_system(path.as_os_str());
+/// Copies the links [`open_link`] found no browser for.
+pub fn copy_unopened_links(state: &mut EditorState, ctx: &egui::Context) {
+    while let Ok(url) = state.unopened_links.1.try_recv() {
+        ctx.copy_text(url.clone());
+        state.set_status(format!("No browser opened {url}, the link is copied to the clipboard"));
+    }
 }
 
-/// Only starting the opener can fail here, whether it then finds an application is not reported back.
+/// Opens a file or folder with the operating system's default application.
+pub fn open_in_system(path: &std::path::Path) {
+    let path = path.to_path_buf();
+    std::thread::spawn(move || open_with_system(path.as_os_str()));
+}
+
+/// Hands `target` to the system opener and waits for its answer, so call it off the UI thread. It fails when the opener
+/// found no application for it.
 fn open_with_system(target: &std::ffi::OsStr) -> std::io::Result<()> {
     #[cfg(windows)]
     {
         use std::os::windows::ffi::OsStrExt;
-        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        use windows_sys::Win32::System::Com::{COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx};
+        use windows_sys::Win32::UI::Shell::{
+            OAIF_ALLOW_REGISTRATION, OAIF_EXEC, OAIF_REGISTER_EXT, OPENASINFO, SE_ERR_NOASSOC, SHOpenWithDialog, ShellExecuteW,
+        };
         use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
         // `cmd /C start` would cut a link at its first `&` and flash a console window.
         let wide = |s: &std::ffi::OsStr| s.encode_wide().chain([0]).collect::<Vec<u16>>();
         let (verb, file) = (wide("open".as_ref()), wide(target));
-        let code = unsafe { ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL) };
-        // Values up to 32 are error codes.
-        if code as usize > 32 { Ok(()) } else { Err(std::io::Error::last_os_error()) }
+        // The shell extensions ShellExecute may hand the file to expect COM on the calling thread.
+        unsafe { CoInitializeEx(std::ptr::null(), (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32) };
+        let code = unsafe { ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL) } as usize;
+        // A file type without an application gets the Open With dialog, like a double click in Explorer.
+        if code == SE_ERR_NOASSOC as usize && std::path::Path::new(target).exists() {
+            let info =
+                OPENASINFO { pcszFile: file.as_ptr(), pcszClass: std::ptr::null(), oaifInFlags: OAIF_ALLOW_REGISTRATION | OAIF_REGISTER_EXT | OAIF_EXEC };
+            let result = unsafe { SHOpenWithDialog(std::ptr::null_mut(), &info) };
+            return if result >= 0 { Ok(()) } else { Err(std::io::Error::other(format!("the Open With dialog failed with {result:#x}"))) };
+        }
+
+        // Values up to 32 are error codes, which ShellExecute does not leave for GetLastError.
+        if code > 32 { Ok(()) } else { Err(std::io::Error::other(format!("ShellExecute failed with error {code}"))) }
     }
     #[cfg(not(windows))]
     {
         use std::process::Stdio;
         let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
         // stdout carries the JSON-RPC stream when MCP runs over stdio.
-        let mut child = std::process::Command::new(opener).arg(target).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
-        // Waited for, or every opener that exits stays behind as a zombie until the editor quits.
-        std::thread::spawn(move || child.wait());
-        Ok(())
+        let status = std::process::Command::new(opener).arg(target).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status()?;
+        if status.success() { Ok(()) } else { Err(std::io::Error::other(format!("{opener} {status}"))) }
     }
 }
 
@@ -3043,10 +3076,10 @@ pub fn show_in_file_manager(path: &std::path::Path) {
         let _ = std::process::Command::new("explorer").raw_arg(format!("/select,\"{}\"", path.display())).spawn();
     }
     #[cfg(target_os = "macos")]
-    {
+    std::thread::spawn(move || {
         use std::process::Stdio;
-        let _ = std::process::Command::new("open").arg("-R").arg(&path).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
-    }
+        std::process::Command::new("open").arg("-R").arg(&path).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status()
+    });
     #[cfg(all(unix, not(target_os = "macos")))]
     std::thread::spawn(move || {
         use std::process::{Command, Stdio};

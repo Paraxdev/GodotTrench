@@ -45,8 +45,8 @@ same, and a tooltip ending in *F1: manual* has a page behind it. Over anything e
 Once you know your way around, untick *Help text* in *File > Preferences* to hide the short guidance lines in the tool
 options bar and the panels. Their tooltips stay.
 
-Links in the editor open in your web browser. If no browser starts, the status bar says so and the link is copied to
-the clipboard.
+Links in the editor open in your web browser. If no browser opens a link, the status bar says so and the link is
+copied to the clipboard.
 
 ## Views
 
