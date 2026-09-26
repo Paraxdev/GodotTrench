@@ -58,8 +58,8 @@ hand drawn brushes. Some are always made as a smooth [mesh](meshes.md), and cyli
 
 | Operation | Key | Result |
 | --- | --- | --- |
-| Subtract | Ctrl+K | Carves the selection out of every brush it touches, then deletes the selection |
-| Hollow | Ctrl+Shift+K | Turns a brush into walls around its old volume, 16 units thick unless you change *Wall thickness* in *Brush > CSG* |
+| Subtract | Ctrl+K | Carves the selection out of every brush it touches, then deletes the selection. A selection that touches no other brush is kept and the status bar says so |
+| Hollow | Ctrl+Shift+K | Turns a brush into walls around its old volume, 16 units thick unless you change *Wall thickness* in *Brush > CSG*. A brush too thin for two walls is left alone |
 | Convex Merge | Ctrl+M | Fuses the selection into one convex brush that wraps it |
 | Intersect | Ctrl+L | Keeps only where the selected brushes overlap |
 
