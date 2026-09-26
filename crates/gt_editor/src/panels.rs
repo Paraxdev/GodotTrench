@@ -2961,10 +2961,15 @@ pub fn show_in_file_manager(path: &std::path::Path) {
     std::thread::spawn(move || {
         use std::process::{Command, Stdio};
         let uri = file_uri(&path);
-        let ran = |cmd: &mut Command| cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
+        let ran = |cmd: &mut Command| {
+            cmd.stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .output()
+                .is_ok_and(|out| file_manager_shown(out.status.success(), &String::from_utf8_lossy(&out.stderr)))
+        };
         let (object, method) = ("/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems");
         let shown = ran(Command::new("dbus-send")
-            .args(["--session", "--print-reply", "--reply-timeout=3000", "--dest=org.freedesktop.FileManager1", object, method])
+            .args(["--session", "--print-reply", "--reply-timeout=10000", "--dest=org.freedesktop.FileManager1", object, method])
             .arg(format!("array:string:{uri}"))
             .arg("string:"))
             || ran(Command::new("gdbus")
@@ -2975,6 +2980,12 @@ pub fn show_in_file_manager(path: &std::path::Path) {
             open_in_system(path.parent().unwrap_or(&path));
         }
     });
+}
+
+/// Whether a ShowItems call reached a file manager. One that D-Bus starts cold can answer after the timeout and still
+/// show the file, so a missing reply counts as shown rather than opening the folder in a second window.
+pub fn file_manager_shown(success: bool, stderr: &str) -> bool {
+    success || stderr.contains("NoReply") || stderr.contains("Timeout was reached")
 }
 
 /// A `file://` URI for an absolute path. Everything but unreserved characters, slashes and colons is percent encoded,

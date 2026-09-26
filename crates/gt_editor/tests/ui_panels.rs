@@ -860,3 +860,12 @@ fn file_uris_escape_what_a_uri_or_d_bus_would_misread() {
     assert_eq!(panels::file_uri(std::path::Path::new("/home/a b/tex,1'.png")), "file:///home/a%20b/tex%2C1%27.png");
     assert_eq!(panels::file_uri(std::path::Path::new("C:\\maps\\x.png")), "file:///C:/maps/x.png");
 }
+
+#[test]
+fn a_file_manager_that_starts_slowly_is_not_opened_twice() {
+    assert!(panels::file_manager_shown(true, ""));
+    assert!(panels::file_manager_shown(false, "Error org.freedesktop.DBus.Error.NoReply: Did not receive a reply."));
+    assert!(panels::file_manager_shown(false, "Error: Timeout was reached"));
+    assert!(!panels::file_manager_shown(false, "Error org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable"));
+    assert!(!panels::file_manager_shown(false, "Failed to open connection to \"session\" message bus"));
+}
