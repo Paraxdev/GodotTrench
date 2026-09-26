@@ -198,9 +198,11 @@ jobs:
           fi
           shots="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_SHA}/docs/screenshots"
           downloads="* godottrench-*: the editor for Linux, Windows and macOS.
-          * func_godot-godottrench-addon.zip: the Godot addon, extract into your Godot project so it becomes res://addons/func_godot.
+          * func_godot-godottrench-addon.zip: the Godot addon. The editor installs it into a project from its setup window, or extract it into your Godot project so it becomes res://addons/func_godot.
           * godottrench-demo-project.zip: the demo Godot project with the showcase maps.
           * godottrench-nature-pack.zip and godottrench-demo-content.zip: the nature models and the demo content that the editor's Godot > Add Content to Project adds to a project, no need to download them by hand.
+
+          The same files are on itch.io at https://paraxdev.itch.io/godottrench, the editor itself only downloads from these GitHub releases.
 
           ![Editor](${shots}/editor.png)
           ![Lighthouse and Forest in Godot](${shots}/lighthouse_forest.png)
@@ -260,6 +262,9 @@ jobs:
           push dist/godottrench-linux-x86_64.tar.gz linux
           push dist/godottrench-windows-x86_64.zip windows
           push dist/godottrench-macos-arm64.tar.gz mac
-          # The addon and demo project ship as their own zips so their folder layout (addons/func_godot, the project) survives.
+          # The addon, demo project and content ship as their own zips so their folder layout (addons/func_godot, the
+          # project, godottrench/nature, demo and models) survives.
           "$butler" push dist/func_godot-godottrench-addon.zip "paraxdev/godottrench:addon$suffix" --userversion "$version"
           "$butler" push dist/godottrench-demo-project.zip "paraxdev/godottrench:demo-project$suffix" --userversion "$version"
+          "$butler" push dist/godottrench-nature-pack.zip "paraxdev/godottrench:nature-pack$suffix" --userversion "$version"
+          "$butler" push dist/godottrench-demo-content.zip "paraxdev/godottrench:demo-content$suffix" --userversion "$version"
