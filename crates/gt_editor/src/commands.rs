@@ -1945,9 +1945,7 @@ fn write_model_textures(
     let dir = target.texture_dir.join("models").join(&folder);
     std::fs::create_dir_all(&dir).map_err(|e| failed(format!("{}: {e}", dir.display())))?;
     for (file, png) in &images {
-        if !dir.join(file).exists() {
-            write_atomic(&dir.join(file), png).map_err(failed)?;
-        }
+        write_new(&dir.join(file), png).map_err(failed)?;
     }
 
     // Only a .tres is text. Without a file FuncGodot builds the material from its default one.
@@ -1966,7 +1964,7 @@ fn write_model_textures(
             })
         {
             material.parent().map_or(Ok(()), std::fs::create_dir_all).map_err(|e| failed(format!("{}: {e}", material.display())))?;
-            write_atomic(&material, text.as_bytes()).map_err(failed)?;
+            write_new(&material, text.as_bytes()).map_err(failed)?;
         }
 
         names.push(name);
@@ -1981,16 +1979,12 @@ fn encode_png(image: &image::RgbaImage) -> Result<Vec<u8>, String> {
     Ok(png.into_inner())
 }
 
-/// Writes through a temporary file next to `path`, so a failed write never leaves a partial file that later looks done.
-fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let written = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, path));
-    if written.is_err() {
-        let _ = std::fs::remove_file(&tmp);
+/// Writes a file that is not there yet, see [`gt_formats::write_new`]. One that is there already stays as it is.
+fn write_new(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    match gt_formats::write_new(path, &mut &bytes[..]) {
+        Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => Err(format!("{}: {e}", path.display())),
+        _ => Ok(()),
     }
-
-    written.map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// Places a model from the Models panel into the scene as one editable mesh at `at`. The model's textures are written
