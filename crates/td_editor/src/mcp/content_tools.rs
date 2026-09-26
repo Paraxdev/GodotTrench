@@ -146,6 +146,7 @@ impl App {
         json!({
             "project_root": root.as_ref().map(|p| p.to_string_lossy().replace('\\', "/")),
             "blockbench_models": models, "nature_pack": has(crate::content::has_nature_pack), "demo": has(crate::content::has_demo),
+            "gameplay_pack": { "available": self.state.gameplay_pack.available, "installed": self.state.gameplay_pack.installed, "changes": self.state.gameplay_pack.changes },
             "wizard_open": self.content_wizard.open,
             "running": self.content_wizard.progress().map(|p| json!({ "stage": p.stage, "done": p.done, "total": p.total, "bytes": p.bytes })),
         })
