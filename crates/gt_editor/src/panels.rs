@@ -2910,7 +2910,8 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
         ui.horizontal_wrapped(|ui| {
             ui.label("script");
             ui.code(&def.script);
-            if let Some(path) = state.game.resolve_res(&def.script).filter(|p| p.is_file())
+            // The game config comes with the project, so only a script is handed to the system opener, never a program.
+            if let Some(path) = state.game.resolve_res(&def.script).filter(|p| is_script(p) && p.is_file())
                 && ui.small_button("Open").clicked()
             {
                 open_in_system(&path);
@@ -3039,6 +3040,11 @@ pub fn open_link_with(state: &mut EditorState, ctx: &egui::Context, url: &str, o
     ctx.request_repaint();
 }
 
+/// A GDScript or C# file, what the Reference panel's Open button may open.
+fn is_script(path: &std::path::Path) -> bool {
+    path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gd") || e.eq_ignore_ascii_case("cs"))
+}
+
 /// Copies the links [`open_link`] found no browser for.
 pub fn copy_unopened_links(state: &mut EditorState, ctx: &egui::Context) {
     while let Ok(url) = state.unopened_links.1.try_recv() {
@@ -3059,7 +3065,7 @@ fn open_with_system(target: &std::ffi::OsStr) -> std::io::Result<()> {
     #[cfg(windows)]
     {
         use std::os::windows::ffi::OsStrExt;
-        use windows_sys::Win32::System::Com::{COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx};
+        use windows_sys::Win32::System::Com::{COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx, CoUninitialize};
         use windows_sys::Win32::UI::Shell::{
             OAIF_ALLOW_REGISTRATION, OAIF_EXEC, OAIF_REGISTER_EXT, OPENASINFO, SE_ERR_NOASSOC, SHOpenWithDialog, ShellExecuteW,
         };
@@ -3067,8 +3073,17 @@ fn open_with_system(target: &std::ffi::OsStr) -> std::io::Result<()> {
         // `cmd /C start` would cut a link at its first `&` and flash a console window.
         let wide = |s: &std::ffi::OsStr| s.encode_wide().chain([0]).collect::<Vec<u16>>();
         let (verb, file) = (wide("open".as_ref()), wide(target));
-        // The shell extensions ShellExecute may hand the file to expect COM on the calling thread.
-        unsafe { CoInitializeEx(std::ptr::null(), (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32) };
+        // The shell extensions ShellExecute may hand the file to expect COM on the calling thread. Every call that
+        // succeeded, S_FALSE for a thread that had COM already included, needs its CoUninitialize.
+        struct Com;
+        impl Drop for Com {
+            fn drop(&mut self) {
+                unsafe { CoUninitialize() };
+            }
+        }
+
+        let hr = unsafe { CoInitializeEx(std::ptr::null(), (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32) };
+        let _com = (hr >= 0).then_some(Com);
         let code = unsafe { ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL) } as usize;
         // A file type without an application gets the Open With dialog, like a double click in Explorer.
         if code == SE_ERR_NOASSOC as usize && std::path::Path::new(target).exists() {

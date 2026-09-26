@@ -520,15 +520,16 @@ fn help_menu_links(ui: &mut Ui) {
         "Tab edits meshes Blender style: 1/2/3 modes, G/R/S, E extrude, I inset, Ctrl+R loop cut, K knife",
     ]
     .join("\n");
-    let manual = "F1 over a tool, panel tab, menu or Inspector section opens its page, and so does Ctrl+click on a toolbar tool";
-    for (label, tip) in [("Getting Started Guide", crate::welcome::GETTING_STARTED_URL.to_string()), ("Manual", manual.to_string()), ("Mouse and Keys", mouse)]
-    {
-        let response = ui.add(menu_button(None, label, None)).on_hover_text(tip);
-        if response.clicked() {
+    let manual = format!("F1 over a tool, panel tab, menu or Inspector section opens its page, and so does {} on a toolbar tool", help::MANUAL_CLICK);
+    let link = |ui: &mut Ui, label: &str, tip: &str| {
+        if ui.add(menu_button(None, label, None)).on_hover_text(tip).clicked() {
             help::open(ui.ctx(), Topic::Menu(label));
             ui.close();
         }
-    }
+    };
+    link(ui, "Getting Started Guide", crate::welcome::GETTING_STARTED_URL);
+    link(ui, "Manual", &manual);
+    link(ui, "Mouse and Keys", &mouse);
 }
 
 fn capitalize(text: &str) -> String {
@@ -2626,6 +2627,28 @@ mod tests {
         assert!(help::url(Topic::Panel("View")).is_some());
         for menu in ["File", "Edit", "Brush", "Mesh", "Texture", "Terrain", "Gameplay", "Tools", "View", "Godot"] {
             assert!(help::url(Topic::Menu(menu)).is_some(), "F1 over the {menu} menu");
+        }
+    }
+
+    /// The manual's menu pages are found by label, so a renamed menu entry would quietly lose its page. Menus only build
+    /// their entries while open, so the labels are read from the calls in this file that make them.
+    #[test]
+    fn every_menu_label_with_a_page_is_still_in_the_menus() {
+        let calls = ["menu(ui, ", "item(ui, ", "item_enabled(ui, ", "item_keys(ui, ", "toggle(ui, ", "toggle_enabled(ui, ", "link(ui, "];
+        let mut labels = std::collections::BTreeSet::new();
+        for line in include_str!("app.rs").lines() {
+            for call in calls {
+                for (at, _) in line.match_indices(call) {
+                    labels.extend(line[at + call.len()..].split('"').nth(1));
+                }
+            }
+        }
+
+        assert!(labels.contains("Open Recent") && labels.contains("Manual"), "{labels:?}");
+        for (topic, ..) in help::PAGES {
+            if let Topic::Menu(label) = topic {
+                assert!(labels.contains(label), "help::PAGES links \"{label}\", which no menu entry is called");
+            }
         }
     }
 

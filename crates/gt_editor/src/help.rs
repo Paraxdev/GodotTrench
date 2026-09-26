@@ -1,5 +1,5 @@
 //! Help inside the editor: the short guidance lines, and the manual page behind each tool, panel, menu and Inspector
-//! section. F1 over one of them opens its page, and so does a Ctrl+click on a tool in the toolbar.
+//! section. F1 over one of them opens its page, and so does a Ctrl+click (Cmd+click on macOS) on a tool in the toolbar.
 
 use egui::{Context, Key, Modifiers, Response, RichText, Ui, WidgetText};
 
@@ -9,8 +9,11 @@ use crate::tools::ToolKind;
 pub const SITE: &str = "https://paraxdev.github.io/GodotTrench/";
 /// Ends the tooltip of anything F1 opens the manual for.
 pub const F1_HINT: &str = "F1: manual";
+/// The click on a toolbar tool that opens its page. egui's command modifier is Cmd on macOS, where Ctrl+click is a right
+/// click.
+pub const MANUAL_CLICK: &str = if cfg!(target_os = "macos") { "Cmd+click" } else { "Ctrl+click" };
 /// Ends the tooltip of a toolbar tool.
-pub const TOOL_HINT: &str = "F1 or Ctrl+click: manual";
+pub const TOOL_HINT: &str = if cfg!(target_os = "macos") { "F1 or Cmd+click: manual" } else { "F1 or Ctrl+click: manual" };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Topic<'a> {
@@ -168,7 +171,7 @@ pub fn open(ctx: &Context, topic: Topic) {
     }
 }
 
-/// A Ctrl+click on a toolbar tool opens its page instead of picking the tool.
+/// A Ctrl+click, Cmd+click on macOS, on a toolbar tool opens its page instead of picking the tool.
 pub fn open_on_ctrl_click(response: &Response, topic: Topic) -> bool {
     if !response.clicked() || !response.ctx.input(|i| i.modifiers.command) {
         return false;

@@ -355,6 +355,33 @@ fn reference_panel_shows_code_for_the_selected_entity() {
 }
 
 #[test]
+fn reference_panel_opens_only_scripts() {
+    let dir = std::env::temp_dir().join(format!("gt_reference_open_{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("scripts")).unwrap();
+    std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+    std::fs::write(dir.join("scripts/door.gd"), "extends Node3D\n").unwrap();
+    std::fs::write(dir.join("scripts/setup.bat"), "echo hi\n").unwrap();
+    let mut f = Fixture::new();
+    f.state.game.project_root = Some(dir.clone());
+    for (class, script) in [("door_script", "res://scripts/door.gd"), ("door_program", "res://scripts/setup.bat")] {
+        let def = serde_json::json!({ "classname": class, "type": "point", "script": script });
+        f.state.game.entities.push(serde_json::from_value(def).unwrap());
+    }
+
+    f.panels.reference_class = "door_script".into();
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(900.0, 800.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::reference(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    assert_eq!(harness.query_all_by_label("Open").count(), 1, "a GDScript opens in the script editor");
+
+    harness.state_mut().panels.reference_class = "door_program".into();
+    harness.run();
+    assert_eq!(harness.query_all_by_label("Open").count(), 0, "a project's game config cannot make the button run a program");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn reference_list_fits_the_names_and_the_divider_drags() {
     let mut f = Fixture::new();
     f.panels.reference_class = "info_spawner".into();
