@@ -60,7 +60,7 @@ changing what it reads.
 | `python tools/fetch_demo_textures.py` | The demo's CC0 photo textures, see [texture size](godot/materials.md#texture-size) |
 | `python tools/fetch_demo_props.py` | The CC0 Poly Haven props in `godot/models/polyhaven`, with the alpha maps of glass and flames restored. `--fix-alpha` only restores them |
 | `cargo run -p gt_samples --bin showcase --release` | The demo Blockbench models |
-| `cargo run -p gt_editor --example export_addon_fgd` | The addon's FGD files from the built in entity definitions, written into the addon submodule |
+| `cargo run -p gt_editor --example export_addon_fgd` | The addon's core FGD files and the Gameplay entities pack template from `builtin_entities.json` and `gameplay_entities.json`, written into the addon submodule, then the demo project's installed copy of the pack |
 | `python tools/gen_licenses.py` | The Rust crate table in [LICENSES.md](https://github.com/Paraxdev/GodotTrench/blob/main/LICENSES.md) |
 
 ## The Godot addon

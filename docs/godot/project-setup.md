@@ -29,6 +29,58 @@ If a download fails, the window links to the [releases](https://github.com/Parax
 [itch.io](https://paraxdev.itch.io/godottrench), which carry the same `func_godot-godottrench-addon.zip`. Extract it
 into the project folder so it becomes `addons/func_godot`, replacing the old folder rather than unpacking over it.
 
+## Core entities and the Gameplay entities pack
+
+The addon ships a small core that every project has: worldspawn, `func_detail`, `func_illusionary`, `func_geo`,
+`light`, `light_spot` and `info_player_start`. Doors, buttons, lifts, trains, triggers, logic, spawners, teleports,
+path corners, props, effects and the rest of the [entity reference](../gameplay/entities/README.md) are the
+Gameplay entities pack, which a project installs when it wants them.
+
+Installing copies the pack's definitions and scripts from the addon into `res://godottrench/entities`:
+
+| Path | Holds |
+| --- | --- |
+| `gameplay_fgd.tres` | The pack's FGD file, listing every definition |
+| `definitions/` | One definition per entity: its keys, inputs, outputs and editor gizmos |
+| `scripts/` | The GDScript each entity runs |
+| `pack.json` | What was installed, so updates can tell your edits apart. Leave it as it is |
+
+The copies belong to the project. Change a script or a definition, delete the entities you do not use, or add your
+own definitions to `gameplay_fgd.tres`. The addon itself never defines these classnames or script classes, so nothing
+you do there clashes with it, and an addon update does not undo it.
+
+### Installing and updating the pack
+
+1. Press **Install Gameplay Entities** in the *Set up this project* window, below the addon. *Gameplay > Install
+   Gameplay Entities* and the button in the Entities panel do the same while the project only has the core.
+2. The editor offers the new entities right away. Godot picks up the new files and exports the game config again on its
+   own.
+3. When an addon update brings a newer pack, the window and the Gameplay menu offer **Update Gameplay Entities**. The
+   update adds new files and replaces the ones you did not change. Files you edited stay as they are and the editor names
+   them, and files you deleted stay deleted. Nothing is updated until you ask.
+
+Maps made before the entities left the addon keep working. When a project's maps use entities of the pack that nothing
+in the project defines, the pack is installed by itself, when the editor opens the project and when Godot starts with
+the updated addon. A `.gtm` file keeps every entity either way, with or without a definition.
+
+> **Note:** The template in the addon, `addons/func_godot/gameplay_pack`, has a `.gdignore` file so that Godot skips
+> it. Keep that file, or Godot finds every script class of the pack twice once it is installed.
+
+### Which definition wins
+
+The core FGD, `res://addons/func_godot/fgd/godottrench/godottrench_fgd.tres`, reads the installed pack by itself, so
+every FGD built on the addon's defaults gets the pack without listing it. When two definitions share a classname, the
+later one wins, in this order:
+
+1. FuncGodot's classes and the addon's core
+2. The installed pack in `res://godottrench/entities`
+3. The entities of your own FGD file
+
+To change an entity, edit its copy in the pack, or define the same classname in your own FGD. Both work, but a
+classname defined twice is easy to forget, so the editor tells you. When the project opens, the status bar names the
+definition that wins, and the Issues panel warns about each doubly defined class a map uses. Delete one of the two
+definitions to settle it.
+
 ## Your own resources
 
 Three resources work together. The FGD file lists the entities your maps can use. The map settings tell a build where
@@ -39,7 +91,7 @@ The quickest route is to copy `demo_fgd.tres`, `demo_map_settings.tres` and `dem
 into your project and adjust the paths. To make them from scratch:
 
 1. Create a `FuncGodotFGDFile`. Set *Base Fgd Files* to `res://addons/func_godot/fgd/godottrench_default_fgd.tres`,
-   so you keep the built in entities, and add your own entities under *Entity Definitions*.
+   so you keep the core and the installed pack, and add your own entities under *Entity Definitions*.
 2. Create a `FuncGodotMapSettings`. Set *Entity Fgd* to the FGD from step 1 and *Base Texture Dir* to your texture
    folder (default `res://textures`).
 3. Create a `GodotTrenchGameConfig`. Set its *Fgd File* and *Map Settings* to the two resources above.

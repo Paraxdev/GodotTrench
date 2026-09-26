@@ -6,6 +6,9 @@ entity that should act. It is the `scripted_scene` map in the demo project.
 
 ## The timeline
 
+Every entity here comes with the Gameplay entities pack. Install it first if the project does not have it, with
+*Gameplay > Install Gameplay Entities*.
+
 1. Cover the entrance with a `trigger_once` named `start_zone`. It fires `triggered` the first time the player walks
    into it, then switches itself off, so the scene only plays once.
 2. Add a `logic_sequence` named `cutscene` with `steps` 5 and `interval` 1.5. When started it fires `step_1`, `step_2`

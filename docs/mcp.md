@@ -36,7 +36,7 @@ editor started on a different port than `.mcp.json` expects.
 | Edit | Change what exists: entity keys, selection, placement, faces, textures, terrain, layers and groups, and worldspawn | `update_entity`, `select`, `transform`, `duplicate`, `set_face`, `mesh_edit`, `texture`, `terrain_edit`, `hierarchy`, `set_map_properties` |
 | Paint and gameplay | Scatter models, blend materials, and turn brushes into doors, platforms and buttons | `scatter`, `blend`, `gameplay` |
 | Editor | Run menu actions, open and save files, change editor settings, move the camera, take screenshots, send input and check where a player can walk | `run_action`, `map_file`, `open_project`, `set_editor`, `set_camera`, `screenshot`, `simulate_input`, `walkability` |
-| Project | Add the nature models or the demo to the open Godot project | `project_content` |
+| Project | Add the Gameplay entities pack, the nature models or the demo to the open Godot project | `project_content` |
 | Scripts | Replay a saved list of tool calls, see [MCP scripts](mcp-scripts.md) | `run_script` |
 
 Each tool's description lists its operations and arguments, so an agent learns them from the server itself.
@@ -120,4 +120,4 @@ See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 | `run_action` `reload_materials` | Rescans the texture folder now, though new files are found on their own anyway |
 | `set_editor` `live_link_port` | Talks to a Godot editor whose project sets another `godottrench/live_link_port` |
 | `scatter` `preset` | Adds the embedded Blockbench models a preset needs. A glTF preset in a project without the nature pack is an error that names `project_content` |
-| `project_content` | `install: "nature"` or `"demo"` downloads from the release and answers once the files are in. Without arguments it says what the project has |
+| `project_content` | `install: "nature"` or `"demo"` downloads from the release and answers once the files are in. `install: "gameplay"` copies the Gameplay entities pack from the project's addon, also inside scripts. Without arguments it says what the project has |

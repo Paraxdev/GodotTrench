@@ -1,5 +1,8 @@
 # Triggers
 
+> **Note:** These entities come with the Gameplay entities pack, see
+> [Installing and customizing](README.md#installing-and-customizing).
+
 Invisible brush volumes that react when a body enters them. They are how a level notices the player: a doorway starts
 a cutscene, a pit hurts, a pad launches. Draw one with the **Volume** tool (Shift+E).
 
@@ -83,3 +86,11 @@ above 0, and `toggle` here switches that timer rather than the trigger.
 * **Outputs:** `spawned(node)`, `all_dead`, `exhausted` (once, the first time `total` is reached)
 * **Keys:** `scene`, `count` 3, `max_alive` 10, `total` 0, `interval` 0, `spawn_on_enter` 1, `spawn_group` enemies,
   `snap_to_ground` 1, `cooldown` 0.5
+
+## trigger_area
+
+A plain `Area3D` volume without a script, for wiring a room's enter and leave events straight to other entities. It
+has none of the shared keys above and fires for every body, so filter in the entity it calls when that matters.
+
+* **Outputs:** `body_entered(body)`, `body_exited(body)`
+* **Keys:** `targetname`

@@ -1,8 +1,8 @@
 # Entity reference
 
-The entities that ship with the addon, grouped by what you would use them for. Each entry says what the entity is for,
-then lists its inputs (what other entities can tell it to do), its outputs (events you can wire onward) and its keys
-(the settings in the Inspector). How outputs connect to inputs is explained in [Inputs and outputs](../io.md).
+The entities of the Gameplay entities pack, grouped by what you would use them for. Each entry says what the entity is
+for, then lists its inputs (what other entities can tell it to do), its outputs (events you can wire onward) and its
+keys (the settings in the Inspector). How outputs connect to inputs is explained in [Inputs and outputs](../io.md).
 
 | Page | What you find there |
 | --- | --- |
@@ -12,6 +12,18 @@ then lists its inputs (what other entities can tell it to do), its outputs (even
 | [Triggers](triggers.md) | Invisible volumes that react when a body walks into them, to start events, hurt, teleport, push or spawn |
 | [Spawners and paths](actors.md) | Spawning enemies or pickups, teleport destinations, path corners and scripted cutscene characters |
 | [Props, lights and effects](effects.md) | Breakable physics props, static models, explosions, on screen text, switchable lights, sound and particles |
+
+## Installing and customizing
+
+The pack is not part of the addon itself. Press **Install Gameplay Entities** in the *Set up this project* window, or
+choose *Gameplay > Install Gameplay Entities*, and its definitions and scripts are copied into
+`res://godottrench/entities`. Until then the Entities panel only lists the core: worldspawn, the `func_` helpers,
+`light`, `light_spot` and `info_player_start`.
+
+The copies belong to your project. Change an entity's script in `scripts/` or its keys and defaults in `definitions/`,
+delete the entities you do not use, or add your own. An addon update offers a newer pack but never overwrites a file you
+edited. [Project setup](../../godot/project-setup.md#core-entities-and-the-gameplay-entities-pack) explains updates and
+what happens when two definitions share a classname.
 
 ## Reading the entries
 
@@ -27,16 +39,14 @@ then lists its inputs (what other entities can tell it to do), its outputs (even
 
 To add your own classes, see [Custom entities in GDScript](../custom-entities.md).
 
-## Not in the library
+## Not in the pack
 
-**Worldspawn** and the plain FuncGodot classes `func_geo`, `func_detail`, `func_detail_illusionary` and
-`func_illusionary` come from FuncGodot. Worldspawn holds the sun, ambient light, sky, fog and streaming settings, and
-the Inspector shows it when nothing is selected.
+**The core** comes with the addon and needs no pack. Worldspawn holds the sun, ambient light, sky, fog and streaming
+settings, and the Inspector shows it when nothing is selected. The FuncGodot classes `func_geo`, `func_detail`,
+`func_detail_illusionary` and `func_illusionary` build plain geometry. `info_player_start` marks where the player
+spawns, and [`light` and `light_spot`](effects.md) are the switchable lights.
 
-**`info_player_start` and `trigger_area`** are known to the editor, but only the demo project defines them. Define
-them in your own project, or they build as plain nodes and the build logs "No entity definition found".
-
-**The player** is not an entity, it is a scene from your own game. The library expects it in the `player` group and on
+**The player** is not an entity, it is a scene from your own game. The pack expects it in the `player` group and on
 collision layer 1, where triggers look, with a `take_damage(amount, source)` method that hurt triggers and explosions
 call. A player on another layer needs that layer in *Trigger Collision Mask*, see
 [Triggers](triggers.md#shared-inputs-outputs-and-keys). See [`godot/demo/player.gd`](https://github.com/Paraxdev/GodotTrench/blob/main/godot/demo/player.gd) for a

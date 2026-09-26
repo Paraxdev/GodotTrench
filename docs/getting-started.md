@@ -27,13 +27,21 @@ the file as it was. Close Godot first if it has the project open, or it writes i
 > the project folder so it ends up in `addons/func_godot`, then enable **GodotTrench** in Godot under *Project > Project
 > Settings > Plugins*.
 
+### Gameplay entities
+
+The addon itself brings a small core: worldspawn, the `func_` helpers, `light`, `light_spot` and `info_player_start`.
+Doors, buttons, lifts, triggers, logic, spawners, props and effects come as the Gameplay entities pack. Press **Install
+Gameplay Entities** in the same window to copy them into `res://godottrench/entities`, where they belong to your
+project and you can change them freely. The tutorials use them, so install the pack unless you want to write every
+entity yourself. [Project setup](godot/project-setup.md#core-entities-and-the-gameplay-entities-pack) explains
+updates.
+
 ## 3. Open the project in Godot once
 
 The addon then writes `godottrench_game.json` to the project root, which is how the editor learns your entities and
 textures, and the editor loads it within a second. From then on the addon exports again whenever files change. Until
-then the status bar says there is no `godottrench_game.json` and the editor uses its built in entities. Doors,
-triggers, lights and the other built in entities work out of the box, [Project setup](godot/project-setup.md) covers
-replacing them with your own.
+then the status bar says there is no `godottrench_game.json`, and the editor offers the core entities and the pack if
+you installed it. [Project setup](godot/project-setup.md) covers adding your own.
 
 ### Ready made content
 
@@ -42,7 +50,7 @@ pick something, and *Godot > Add Content to Project…* brings the question back
 
 | Choice | What it adds |
 | --- | --- |
-| Nothing extra | Nothing. The built in entities and materials work without any files |
+| Nothing extra | Nothing. The entities above and the built in materials need no download |
 | Nature models, about 23 MB | Trees, bushes, rocks, grass and flowers with their textures in `res://godottrench/nature`, for [Scatter](editor/scatter.md) and the [Models](editor/models.md) panel |
 | Nature models and the demo, about 130 MB | Also the showcase maps, demo models and textures, overlays and demo scenes in `res://demo` and `res://models` |
 
