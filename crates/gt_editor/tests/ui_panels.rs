@@ -33,6 +33,22 @@ impl Fixture {
 }
 
 #[test]
+fn the_app_takes_the_links_to_open_and_only_opens_web_links() {
+    let ctx = egui::Context::default();
+    let mut state = EditorState::new(Prefs::default());
+    ctx.begin_pass(Default::default());
+    ctx.open_url(egui::OpenUrl::new_tab("file:///etc/passwd"));
+    let urls = panels::take_open_urls(&ctx);
+    assert_eq!(urls, ["file:///etc/passwd"]);
+    panels::open_link(&mut state, &ctx, &urls[0]);
+    let out = ctx.end_pass();
+    let commands = out.platform_output.commands.clone();
+    out.drop_without_applying_deltas();
+    assert!(state.status.starts_with("Could not open file:///etc/passwd"), "{}", state.status);
+    assert_eq!(commands, [egui::OutputCommand::CopyText("file:///etc/passwd".into())], "nothing is left for eframe, which cannot open links");
+}
+
+#[test]
 fn entity_browser_selects_several_cards_and_places_them() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(700.0, 1400.0))

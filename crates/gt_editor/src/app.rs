@@ -2334,6 +2334,10 @@ impl eframe::App for App {
         self.prefs_window(&ctx);
         self.close_dialog(&ctx);
         self.close_tab_dialog(&ctx);
+        for url in panels::take_open_urls(&ctx) {
+            panels::open_link(&mut self.state, &ctx, &url);
+        }
+
         self.state.tick_autosave();
         self.state.poll_live_link();
         self.finish_input_script(&ctx);

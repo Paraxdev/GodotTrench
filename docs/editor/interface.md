@@ -15,6 +15,9 @@ The **tool options bar** under the toolbar holds the settings of the active tool
 An empty map shows a card in the 3D view with its first steps, a link to this guide and the maps of the open project,
 and the 2D views say where to drag. **Hide tips** turns them off, and *File > Preferences* brings them back.
 
+Links in the editor open in your web browser. If no browser starts, the status bar says so and the link is copied to
+the clipboard.
+
 | Panel | Dock | What it is for |
 | --- | --- | --- |
 | Outliner | Left | The map as a tree of [layers, groups](organizing.md) and objects |
