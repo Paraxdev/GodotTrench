@@ -239,15 +239,20 @@ impl ContentWizard {
     }
 
     fn running_ui(&mut self, ui: &mut Ui, progress: Progress) {
-        let stage = if progress.stage.is_empty() { "Starting".to_string() } else { progress.stage.clone() };
+        let cancelling = self.job.as_ref().is_some_and(Job::cancelling);
+        let stage = match progress.stage.as_str() {
+            _ if cancelling => "Cancelling…",
+            "" => "Starting",
+            stage => stage,
+        };
         ui.label(stage);
         ui.add(egui::ProgressBar::new(progress.fraction()).text(progress.amount()).animate(progress.total == 0));
         ui.add_space(6.0);
-        if ui.button("Cancel").on_hover_text("Stops after the file being added, the files added so far stay").clicked()
-            && let Some(job) = self.job.take()
+        let cancel = ui.add_enabled(!cancelling, egui::Button::new("Cancel"));
+        if cancel.on_hover_text("Stops after the file being added, the files added so far stay").clicked()
+            && let Some(job) = &self.job
         {
             job.cancel();
-            self.outcome = Some(Outcome { choice: job.choice, error: Some(crate::content::Error::Cancelled), ..Default::default() });
         }
     }
 
