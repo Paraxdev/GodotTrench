@@ -28,6 +28,8 @@ pub struct ContentWizard {
     outcome: Option<Outcome>,
     /// Where the releases are looked up, [`crate::content::api_url`] unless a test serves them.
     pub api: Option<String>,
+    /// A preset asked for the nature pack this session, later ones only say so in the status bar.
+    pack_offered: bool,
 }
 
 impl ContentWizard {
@@ -62,8 +64,9 @@ impl ContentWizard {
             }
 
             // An agent learns it from the status and the tool's error, a wizard would only be in its way.
-            Some(ContentRequest::NaturePack(why)) if !self.driven => {
+            Some(ContentRequest::NaturePack(why)) if !self.driven && !self.pack_offered => {
                 if let Some(root) = state.game.project_root.clone() {
+                    self.pack_offered = true;
                     self.open_for(root, Choice::Nature, Some(why), false);
                 }
             }
@@ -421,6 +424,12 @@ mod tests {
         harness.run();
         assert!(harness.query_by_label("Nature models, about 23 MB to download (already in this project)").is_some());
         assert!(harness.query_by_label_contains("The bushes preset uses the glTF trees and bushes").is_some());
+        harness.get_by_label("Cancel").click();
+        harness.run();
+        assert!(crate::scatter_tool::new_set_from_preset(&mut harness.state_mut().state, "bushes").is_none());
+        harness.run();
+        assert!(!harness.state().wizard.open, "the pack is offered once a session, after that the status bar says it");
+        assert!(harness.state().state.status.contains("Add Content to Project"));
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

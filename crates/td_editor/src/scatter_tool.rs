@@ -77,8 +77,13 @@ pub fn new_set(state: &mut EditorState, name: Option<&str>) -> NodeId {
     create_set(state, &label, kind, items)
 }
 
+/// Where a set starts when the template's preset needs the nature pack the project lacks. Its models are built into the
+/// editor.
+pub const FALLBACK_PRESET: &str = "low-poly trees";
+
 /// The active set, or a new one from the template. A template that is still a preset gets its models the way picking the
-/// preset does, and when it needs the nature pack the project lacks, no set is made and the status says why.
+/// preset does. When it needs the nature pack the project lacks, the set gets [`FALLBACK_PRESET`] and the status says
+/// why, so painting works without asking each time.
 pub fn active_or_new_set(state: &mut EditorState) -> Option<NodeId> {
     if let Some(id) = active_set(state) {
         return Some(id);
@@ -90,8 +95,11 @@ pub fn active_or_new_set(state: &mut EditorState) -> Option<NodeId> {
         match prepare_preset(state, &preset) {
             Ok(_) | Err(PresetProblem::Unknown) => {}
             Err(PresetProblem::NeedsPack) => {
-                ask_for_pack(state, &preset);
-                return None;
+                let id = new_set_from_preset(state, FALLBACK_PRESET)?;
+                state.set_status(format!(
+                    "The {preset} preset needs the nature pack, which this project does not have, so the set uses the {FALLBACK_PRESET} preset. Godot > Add Content to Project adds the pack"
+                ));
+                return Some(id);
             }
             Err(PresetProblem::Write(e)) => {
                 state.set_status(format!("Could not add the models of the {preset} preset to the project: {e}"));
@@ -136,7 +144,8 @@ pub fn new_set_from_preset(state: &mut EditorState, preset: &str) -> Option<Node
     Some(id)
 }
 
-/// Says why a preset cannot be used yet and asks for the content wizard, which offers the nature pack.
+/// Says why a preset cannot be used yet and asks for the content wizard, which offers the nature pack the first time
+/// in a session.
 fn ask_for_pack(state: &mut EditorState, preset: &str) {
     let why = format!("The {preset} preset uses the glTF trees and bushes of the nature pack, which this project does not have yet.");
     state.set_status(format!("{why} Godot > Add Content to Project adds it, the other presets work without it"));
