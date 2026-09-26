@@ -150,11 +150,8 @@ fn models_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>, 
             None => {
                 ui.add_space(12.0);
                 ui.vertical_centered(|ui| {
-                    ui.label(RichText::new("No scatter set is active").strong());
-                    ui.label(
-                        RichText::new("Drop models here from the Models panel to start one, or use + and Preset above. Painting without a set starts one from the last preset.")
-                            .weak(),
-                    );
+                    ui.label(RichText::new("No scatter set is active").strong())
+                        .on_hover_text("Drop models here to start one, or use + and Preset above. Painting without a set starts one from the last preset");
                 });
                 ui.add_space(12.0);
             }
