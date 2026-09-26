@@ -38,9 +38,9 @@ Open any panel from *View > Panels*, and *Reset Layout* in the same menu restore
 ## Help and the manual
 
 Tooltips explain buttons, tabs and settings. For more, point at a tool, a panel tab, a menu entry or an Inspector
-section and press **F1**, which opens the matching page of this manual. A Ctrl+click on a tool in the toolbar does the
-same, and a tooltip ending in *F1: manual* has a page behind it. Over anything else F1 opens the command palette.
-*Help > Manual* opens the start of the manual.
+section and press **F1**, which opens the matching page of this manual. A Ctrl+click on a tool in the toolbar, Cmd+click
+on macOS, does the same, and a tooltip ending in *F1: manual* has a page behind it. Over anything else F1 opens the
+command palette. *Help > Manual* opens the start of the manual.
 
 Once you know your way around, untick *Help text* in *File > Preferences* to hide the short guidance lines in the tool
 options bar and the panels. Their tooltips stay.
