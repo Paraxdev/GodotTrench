@@ -102,11 +102,17 @@ when they reach `main`.
 CI skips pushes that only change docs or Markdown. Every green push to `main` replaces the
 [rolling beta](https://github.com/Paraxdev/GodotTrench/releases/tag/beta) with fresh editor, addon and demo downloads.
 
+The GitHub releases are where the editor downloads the addon and content from. itch.io is a storefront that gets the
+same files on its own channels, `addon`, `nature-pack`, `demo-content` and so on, with a `-beta` twin for the rolling
+beta. The editor never downloads from it.
+
 The releases also carry `godottrench-nature-pack.zip` and `godottrench-demo-content.zip`, which *Godot > Add Content to
-Project…* downloads into a project. The folders they hold are listed in
-[content.rs](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_editor/src/content.rs), and a test checks the
-zip commands in `ci.yml` against that list. The editor looks the zips up through the GitHub API, in the release of its
-own version first and then in the rolling beta. CI builds the beta with `GODOTTRENCH_CHANNEL=beta`, which turns that
+Project…* downloads into a project, next to `func_godot-godottrench-addon.zip`, which *Godot > Install or Update
+Addon…* installs. The folders they hold are listed in
+[content.rs](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_editor/src/content.rs) and
+[addon_install.rs](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_editor/src/addon_install.rs), and tests
+check the zip commands in `ci.yml` against them. The editor looks the zips up through the GitHub API, in the release of
+its own version first and then in the rolling beta. CI builds the beta with `GODOTTRENCH_CHANNEL=beta`, which turns that
 order around, since a beta carries the version of the last release. The `GODOTTRENCH_RELEASES_API` environment variable
 points the editor at another server, for trying a zip before it is published.
 

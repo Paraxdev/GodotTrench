@@ -3,6 +3,32 @@
 The addon's defaults are enough for a first map, but updating the addon replaces them. Once you write your own
 entities or want another texture folder, give the project its own resources.
 
+## Installing and updating the addon
+
+The editor checks the addon each time it opens a project. When `addons/func_godot` is missing, or its `plugin.cfg`
+version differs from the editor's, the *Set up this project* window says so once, and the status bar keeps a yellow
+note you can click. *Godot > Install or Update Addon…* opens the same window at any time.
+
+| The project has | The window offers |
+| --- | --- |
+| No addon | **Install the addon**, then **Enable the plugin** |
+| An older or newer addon | **Update the addon to** the editor's version |
+| The addon, not enabled | **Enable the plugin**, which adds it to `[editor_plugins]` in `project.godot` and changes nothing else |
+| The addon as a git checkout or submodule | Nothing. Update it with git, the editor never replaces it |
+
+An update downloads the whole addon, unpacks it beside the project and only then swaps the folders, so a failed or
+cancelled download leaves the old addon in place. The old one moves to `.godottrench/addon-backups/func_godot-<version>`
+in the project. Godot skips folders whose names start with a dot, so it neither imports the backup nor lists it as a
+second plugin. Delete it once the new addon works.
+
+Close Godot before updating. It keeps running the old addon until it restarts, and the window waits while the live link
+shows Godot with the project open. Godot also writes its own copy of `project.godot` back, so enable the plugin with
+Godot closed too, or tick it in Godot under *Project > Project Settings > Plugins*.
+
+If a download fails, the window links to the [releases](https://github.com/Paraxdev/GodotTrench/releases) and
+[itch.io](https://paraxdev.itch.io/godottrench), which carry the same `func_godot-godottrench-addon.zip`. Extract it
+into the project folder so it becomes `addons/func_godot`, replacing the old folder rather than unpacking over it.
+
 ## Your own resources
 
 Three resources work together. The FGD file lists the entities your maps can use. The map settings tell a build where

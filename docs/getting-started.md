@@ -5,30 +5,40 @@ load it in Godot.
 
 ## What you need
 
-Godot 4.7, CI tests the addon on 4.7.2. Use the .NET build if you want to write entities in C#. The editor and the
-addon are in the [latest release](https://github.com/Paraxdev/GodotTrench/releases/latest).
+Godot 4.7, CI tests the addon on 4.7.2. Use the .NET build if you want to write entities in C#. The editor is in the
+[latest release](https://github.com/Paraxdev/GodotTrench/releases/latest), and it installs the addon for you.
 
-## 1. Install the addon
-
-Extract `func_godot-godottrench-addon.zip` into your project folder so the addon ends up in `addons/func_godot`, then
-enable **GodotTrench** under *Project > Project Settings > Plugins*.
-
-Doors, triggers, lights and the other built in entities work out of the box. [Project setup](godot/project-setup.md)
-covers replacing them with your own.
-
-## 2. Export the game config
-
-Run *Project > Tools > GodotTrench: Export Game Config*. It writes `godottrench_game.json` to the project root, which is
-how the editor learns your entities and textures. From then on the addon exports again whenever files change, and the
-editor reloads the file within a second of each export.
-
-## 3. Open the project in the editor
+## 1. Open the project in the editor
 
 Choose *Godot > Open Godot Project…*, or the **Open Godot project…** button in the toolbar, and pick the project
 folder or any folder inside it. The editor reopens it on the next start.
 
-The first time a project opens, the editor asks whether it should get ready made content. Nothing is written into the
-project until you pick something, and *Godot > Add Content to Project…* brings the question back later.
+## 2. Install the addon
+
+The addon is the Godot plugin that turns maps into scenes. The first time a project opens, the *Set up this project*
+window offers it: press **Install the addon**, then **Enable the plugin**. The editor downloads the addon from the
+GodotTrench release into `addons/func_godot` and adds it to the enabled plugins in `project.godot`, leaving the rest of
+the file as it was. Close Godot first if it has the project open, or it writes its own copy of that file back.
+*Godot > Install or Update Addon…* brings the window back, and
+[Project setup](godot/project-setup.md#installing-and-updating-the-addon) explains updates.
+
+> **Tip:** To install by hand, extract `func_godot-godottrench-addon.zip` from the
+> [releases](https://github.com/Paraxdev/GodotTrench/releases) or [itch.io](https://paraxdev.itch.io/godottrench) into
+> the project folder so it ends up in `addons/func_godot`, then enable **GodotTrench** in Godot under *Project > Project
+> Settings > Plugins*.
+
+## 3. Open the project in Godot once
+
+The addon then writes `godottrench_game.json` to the project root, which is how the editor learns your entities and
+textures, and the editor loads it within a second. From then on the addon exports again whenever files change. Until
+then the status bar says there is no `godottrench_game.json` and the editor uses its built in entities. Doors,
+triggers, lights and the other built in entities work out of the box, [Project setup](godot/project-setup.md) covers
+replacing them with your own.
+
+### Ready made content
+
+Below the addon, the same window asks whether the project should get ready made content. Nothing is written until you
+pick something, and *Godot > Add Content to Project…* brings the question back later.
 
 | Choice | What it adds |
 | --- | --- |
@@ -36,11 +46,8 @@ project until you pick something, and *Godot > Add Content to Project…* brings
 | Nature models, about 23 MB | Trees, bushes, rocks, grass and flowers with their textures in `res://godottrench/nature`, for [Scatter](editor/scatter.md) and the [Models](editor/models.md) panel |
 | Nature models and the demo, about 130 MB | Also the showcase maps, demo models and textures, overlays and demo scenes in `res://demo` and `res://models` |
 
-The downloads come from the GodotTrench release that matches the editor, or the rolling beta when that release lacks
-them. Files the project already has are kept, and `project.godot`, the addon and your own files are never touched.
-
-If the status bar says there is no `godottrench_game.json` in the project, step 2 has not run and the editor falls back
-to its built in entities.
+The downloads come from the same release as the addon. They keep the files the project already has, and never touch
+`project.godot`, the addon or your own files.
 
 ## 4. Build a room
 

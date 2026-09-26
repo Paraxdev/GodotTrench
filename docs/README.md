@@ -34,7 +34,8 @@ only shows up in the editor once the addon has written the game config again.
 ## Download
 
 The [latest release](https://github.com/Paraxdev/GodotTrench/releases/latest) has the editor for Linux, Windows and
-macOS, the addon zip and a demo project. The [rolling beta](https://github.com/Paraxdev/GodotTrench/releases/tag/beta)
+macOS, the addon zip and a demo project, and [itch.io](https://paraxdev.itch.io/godottrench) has the same files. The
+editor installs the addon into a project itself. The [rolling beta](https://github.com/Paraxdev/GodotTrench/releases/tag/beta)
 has the newest changes from `main`, so it gets fixes sooner but is less tested. To build from source, see
 [Development](development.md).
 

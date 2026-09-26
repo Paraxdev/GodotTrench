@@ -28,4 +28,4 @@ The Godot robot at the right end of the toolbar shows the connection.
 | Cyan | A Godot editor has this project open | Brings it to the front |
 
 A spinner next to it shows while Godot is building. If the tooltip says the running Godot has an older addon, update
-the addon to get live mode.
+it with *Godot > Install or Update Addon…* to get live mode.
