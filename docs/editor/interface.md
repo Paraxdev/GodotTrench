@@ -1,7 +1,7 @@
 # Interface and navigation
 
 GodotTrench follows TrenchBroom and Hammer, so if you have used either, most habits carry over. If not, this page
-covers what you need.
+covers what you need, and [Coming from Unity or Blender](coming-from-unity-blender.md) maps the ideas you know.
 
 ## The window
 
@@ -18,7 +18,7 @@ and the 2D views say where to drag. **Hide tips** turns them off, and *File > Pr
 | Panel | Dock | What it is for |
 | --- | --- | --- |
 | Outliner | Left | The map as a tree of [layers, groups](organizing.md) and objects |
-| History | Left | Every edit, click one to undo back to it |
+| History | Left | Every edit. Clicking one undoes it and everything after it, clicking a dimmed one redoes up to it |
 | Issues | Left | Problems found as you work, like faces with no material |
 | Inspector | Right | The selection's properties, such as an entity's keys or a brush's exact position and size |
 | Entities | Right | Entity classes to drag into a view |
