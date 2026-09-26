@@ -1,3 +1,5 @@
+pub mod addon_install;
+pub mod addon_wizard;
 pub mod app;
 pub mod blend_tool;
 pub mod brand;

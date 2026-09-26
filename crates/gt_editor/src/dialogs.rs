@@ -137,6 +137,7 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("Help: Keyboard Shortcuts".into(), Action::ShowKeymap),
         ("Godot: Reload Models".into(), Action::ReloadModels),
         ("Godot: Add Content to Project".into(), Action::ShowProjectContent),
+        ("Godot: Install or Update the GodotTrench Addon".into(), Action::ShowAddonSetup),
         ("Group: Duplicate Linked".into(), Action::DuplicateLinked),
         ("Group: Unlink".into(), Action::UnlinkGroups),
         ("Mesh: Edit Mode".into(), Action::EditMesh),

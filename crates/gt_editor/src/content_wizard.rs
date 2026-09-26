@@ -1,5 +1,6 @@
-//! The content wizard: asks what ready made content a Godot project should get, by itself on the project's first start
-//! in GodotTrench, and whenever Godot > Add Content to Project opens it.
+//! The setup wizard: sets up the GodotTrench addon and asks what ready made content a Godot project should get. It opens
+//! by itself on the project's first start in GodotTrench, on the addon alone when a known project's addon is missing or
+//! does not match the editor, and whenever Godot > Add Content to Project or Install or Update Addon opens it.
 
 use std::path::{Path, PathBuf};
 
@@ -30,6 +31,9 @@ pub struct ContentWizard {
     pub api: Option<String>,
     /// A preset asked for the nature pack this session, later ones only say so in the status bar.
     pack_offered: bool,
+    /// The content choices show below the addon, else the wizard is only about the addon.
+    pub content: bool,
+    pub addon: crate::addon_wizard::AddonWizard,
 }
 
 impl ContentWizard {
@@ -42,7 +46,28 @@ impl ContentWizard {
         self.note = note;
         self.project = Some(root);
         self.automatic = automatic;
+        self.content = true;
+        self.addon.reset();
         self.open = true;
+    }
+
+    /// Opens on the addon alone, without the content choices.
+    pub fn open_addon(&mut self, root: PathBuf, automatic: bool) {
+        if !self.open {
+            self.content = false;
+        }
+
+        self.project = Some(root);
+        self.automatic = automatic;
+        self.addon.reset();
+        self.open = true;
+    }
+
+    pub fn open_addon_from_menu(&mut self, state: &mut EditorState) {
+        match state.game.project_root.clone() {
+            Some(root) => self.open_addon(root, false),
+            None => state.set_status("Open a Godot project first, the addon goes into it"),
+        }
     }
 
     /// Opens on the choice that adds something the project lacks.
@@ -55,12 +80,15 @@ impl ContentWizard {
         self.open_for(root, choice, None, false);
     }
 
-    /// Opens for what the editor asked: a project's first start, unless an agent drives the editor, or a preset that
-    /// needs the nature pack.
+    /// Opens for what the editor asked: a project's first start or an addon that is missing or does not match, unless
+    /// an agent drives the editor, or a preset that needs the nature pack.
     pub fn take_request(&mut self, state: &mut EditorState) {
         match state.content_request.take() {
             Some(ContentRequest::FirstStart(root)) if !self.driven && !self.open && state.game.project_root.as_ref() == Some(&root) => {
                 self.open_for(root, Choice::Nothing, None, true);
+            }
+            Some(ContentRequest::Addon(root)) if !self.driven && !self.open && state.game.project_root.as_ref() == Some(&root) => {
+                self.open_addon(root, true);
             }
 
             // An agent learns it from the status and the tool's error, a wizard would only be in its way.
@@ -82,7 +110,7 @@ impl ContentWizard {
         }
 
         self.driven = true;
-        if self.open && self.automatic && self.job.is_none() {
+        if self.open && self.automatic && self.job.is_none() && !self.addon.running() {
             self.open = false;
         }
     }
@@ -133,7 +161,11 @@ impl ContentWizard {
     fn close(&mut self, state: &mut EditorState) {
         self.open = false;
         if let Some(root) = &self.project {
-            state.prefs.content_asked.insert(root.clone());
+            if self.content {
+                state.prefs.content_asked.insert(root.clone());
+            }
+
+            self.addon.dismiss(state, root);
         }
     }
 
@@ -141,6 +173,7 @@ impl ContentWizard {
     /// outcome of an install that finished this frame.
     pub fn show(&mut self, ctx: &egui::Context, state: &mut EditorState) -> (Option<egui::Rect>, Option<Outcome>) {
         let finished = self.poll(state);
+        self.addon.poll(state);
         if !self.open {
             return (None, finished);
         }
@@ -149,6 +182,21 @@ impl ContentWizard {
             ui.set_width(540.0);
             ui.heading(TITLE);
             ui.add_space(4.0);
+            if let Some(root) = self.project.clone() {
+                self.addon.ui(ui, state, &root);
+                ui.add_space(6.0);
+                if !self.content {
+                    if ui.button("Close").clicked() {
+                        self.close(state);
+                    }
+
+                    return;
+                }
+
+                ui.separator();
+                ui.label(RichText::new("Ready made content").strong());
+            }
+
             match (&self.job, &self.project) {
                 (Some(job), _) => self.running_ui(ui, job.progress()),
                 (None, None) => {
@@ -167,7 +215,7 @@ impl ContentWizard {
                 }
             }
         });
-        if modal.should_close() && self.job.is_none() {
+        if modal.should_close() && self.job.is_none() && !self.addon.running() {
             self.close(state);
         }
 
@@ -215,7 +263,7 @@ impl ContentWizard {
         }
 
         if self.choice == Choice::Demo && state.game.addon_version.is_none() {
-            ui.label(RichText::new("The demo scenes need the GodotTrench addon in res://addons/func_godot, step 1 of Getting started.").color(theme::YELLOW));
+            ui.label(RichText::new("The demo scenes need the GodotTrench addon, install it above.").color(theme::YELLOW));
         }
 
         ui.add_space(4.0);
@@ -264,6 +312,11 @@ impl ContentWizard {
         let color = if outcome.error.is_some() { theme::WARNING } else { theme::SUCCESS };
         let summary = outcome.summary();
         ui.label(RichText::new(if summary.is_empty() { "Nothing to add.".to_string() } else { summary }).color(color));
+        if outcome.error.as_ref().is_some_and(crate::content::Error::is_download) {
+            let assets: Vec<&str> = outcome.choice.downloads().iter().map(|d| d.asset).collect();
+            crate::addon_wizard::download_links(ui, &assets);
+        }
+
         if outcome.error.is_none() && outcome.choice == Choice::Demo {
             ui.label("In Godot, open res://demo/demo.tscn and press F6 to walk through the showcase maps. File > Maps in Project opens them here.");
         }
@@ -336,6 +389,10 @@ mod tests {
         assert!(harness.state().wizard.open && harness.state().wizard.automatic);
         assert!(harness.query_by_label(TITLE).is_some());
         assert!(harness.query_by_label_contains("is new to GodotTrench").is_some());
+        assert!(
+            harness.query_by_label(crate::addon_wizard::HEADING).is_some() && harness.query_by_label("Install the addon").is_some(),
+            "the addon comes first"
+        );
         for label in ["Nothing extra", "Nature models, about 23 MB to download", "Nature models and the demo, about 130 MB to download"] {
             assert!(harness.query_by_label(label).is_some(), "{label}");
         }
@@ -344,6 +401,7 @@ mod tests {
         harness.run();
         assert!(!harness.state().wizard.open);
         assert!(harness.state().state.prefs.content_asked.contains(&root), "the answer is remembered for this project");
+        assert!(harness.state().state.prefs.addon_dismissed.contains_key(&root), "and so is letting the addon be");
         assert_eq!(listing(&root), ["project.godot"]);
 
         harness.state_mut().state.load_project(&root);

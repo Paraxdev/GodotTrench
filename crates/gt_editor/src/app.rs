@@ -823,6 +823,7 @@ impl App {
             Action::ShowReference => show_tab(&mut self.dock, Tab::Reference),
             Action::ShowPreferences => self.show_prefs = true,
             Action::ShowProjectContent => self.content_wizard.open_from_menu(&mut self.state, None),
+            Action::ShowAddonSetup => self.content_wizard.open_addon_from_menu(&mut self.state),
             Action::InstallNatureModels => self.content_wizard.open_from_menu(&mut self.state, Some(crate::content::Choice::Nature)),
             Action::ToggleMaximizeView => self.toggle_maximize(),
             Action::ViewLayout(n) => {
@@ -1452,6 +1453,7 @@ impl App {
                 });
                 let has_project = self.state.game.project_root.is_some();
                 m.item_enabled(ui, Some(icons::IMPORT), "Add Content to Project…", Action::ShowProjectContent, has_project, "Open a Godot project first");
+                m.item_enabled(ui, None, "Install or Update Addon…", Action::ShowAddonSetup, has_project, "Open a Godot project first");
                 ui.separator();
                 sub_menu(ui, None, "Reload", |ui| {
                     m.item(ui, None, "Game Config", Action::ReloadProject);
@@ -1632,7 +1634,11 @@ impl App {
             let version = if s.link_state.godot.is_empty() { String::new() } else { format!(" {}", s.link_state.godot) };
             (true, format!("Godot{version} has this project open, click to show it"), Some(Action::FocusGodot))
         } else if s.godot.found() {
-            let hint = if s.link_state.outdated { "\nThe running Godot has an older GodotTrench addon, update it for live mode" } else { "" };
+            let hint = if s.link_state.outdated {
+                "\nThe running Godot has an older GodotTrench addon, update it with Godot > Install or Update Addon for live mode"
+            } else {
+                ""
+            };
             (true, format!("Open project in Godot{hint}"), Some(Action::OpenGodotEditor))
         } else {
             (false, commands::GODOT_NOT_FOUND.to_string(), None)
@@ -1930,6 +1936,14 @@ impl App {
                 if !s.open_groups.is_empty() {
                     ui.separator();
                     ui.label(RichText::new(format!("{} open groups", s.open_groups.len())).color(crate::theme::CYAN));
+                }
+
+                if let Some((text, tip)) = crate::addon_wizard::status_warning(s) {
+                    ui.separator();
+                    let chip = egui::Button::new(RichText::new(text).color(crate::theme::YELLOW)).frame(false);
+                    if ui.add(chip).on_hover_text(tip).clicked() {
+                        self.actions.push(Action::ShowAddonSetup);
+                    }
                 }
 
                 // The message gets the width the counts leave, so a long one is cut short instead of running under them.

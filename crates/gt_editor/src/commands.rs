@@ -186,6 +186,8 @@ pub enum Action {
     InstallNatureModels,
     /// Opens the content wizard, which adds the nature models or the demo to the project.
     ShowProjectContent,
+    /// Opens the setup wizard on the GodotTrench addon, which it installs, updates or enables.
+    ShowAddonSetup,
     /// Replaces the selected scatter sets with prop entities.
     ScatterToEntities,
     /// Uses the current material as the blend material of the selected faces.
@@ -263,6 +265,7 @@ impl Action {
             Action::ExportGlb => "Export glTF Binary (.glb)".into(),
             Action::ExportObj => "Export Wavefront OBJ (.obj)".into(),
             Action::ShowProjectContent => "Add Content to Project".into(),
+            Action::ShowAddonSetup => "Install or Update the GodotTrench Addon".into(),
             other => format!("{other:?}"),
         }
     }
@@ -321,6 +324,9 @@ impl Action {
                 "Adds the nature models, or the demo maps, models and textures, to the open Godot project. They are downloaded from the GodotTrench release"
             }
             Action::InstallNatureModels => "Adds the trees, bushes, rocks and grass the scatter presets use to res://godottrench/nature",
+            Action::ShowAddonSetup => {
+                "Shows whether the Godot project has the GodotTrench addon in the editor's version and enabled, and installs, updates or enables it"
+            }
             _ => return None,
         })
     }
@@ -1360,7 +1366,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         }
 
         // The app opens the content wizard for these.
-        Action::InstallNatureModels | Action::ShowProjectContent => {}
+        Action::InstallNatureModels | Action::ShowProjectContent | Action::ShowAddonSetup => {}
         Action::ScatterToEntities => {
             let sets: Vec<NodeId> = state.doc.selection.nodes.iter().copied().filter(|id| state.doc.map.scatter(*id).is_some()).collect();
             let n: usize = sets.into_iter().map(|id| crate::scatter_tool::bake_to_entities(state, id)).sum();

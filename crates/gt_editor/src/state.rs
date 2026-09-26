@@ -176,6 +176,8 @@ pub enum ContentRequest {
     FirstStart(PathBuf),
     /// Something needs the nature pack, which the project lacks. Says what.
     NaturePack(String),
+    /// The project at this path opened with the GodotTrench addon missing or not matching the editor.
+    Addon(PathBuf),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -238,6 +240,9 @@ pub struct Prefs {
     /// Projects, by absolute path, whose content wizard a person has answered or closed. It opens by itself only for
     /// a project that is neither here nor among the recent projects.
     pub content_asked: std::collections::BTreeSet<PathBuf>,
+    /// Projects whose missing or mismatched addon a person let be, with the editor version and the addon they had then
+    /// ([`crate::addon_install::Status::dismiss_key`]). The addon part of the wizard opens again once either changes.
+    pub addon_dismissed: std::collections::BTreeMap<PathBuf, String>,
 }
 
 pub const UI_SCALE_MIN: f32 = 0.5;
@@ -305,6 +310,7 @@ impl Default for Prefs {
             walk_agent: Default::default(),
             start_hints: true,
             content_asked: Default::default(),
+            addon_dismissed: Default::default(),
         }
     }
 }
@@ -980,6 +986,8 @@ impl EditorState {
         let known = self.prefs.recent_projects.contains(&p) || self.prefs.content_asked.contains(&p);
         if !known && !crate::content::has_content(&p) {
             self.content_request = Some(ContentRequest::FirstStart(p.clone()));
+        } else if crate::addon_install::should_ask(&p, &self.prefs.addon_dismissed) {
+            self.content_request = Some(ContentRequest::Addon(p.clone()));
         }
 
         self.prefs.recent_projects.retain(|r| r != &p);
@@ -1270,11 +1278,20 @@ mod tests {
         let root = absolute(&dir);
         let mut state = EditorState::new(Prefs::default());
         state.load_project(&dir);
-        assert_eq!(state.content_request, Some(ContentRequest::FirstStart(root.clone())));
+        assert_eq!(state.content_request, Some(ContentRequest::FirstStart(root.clone())), "the first start also covers the addon");
         state.content_request = None;
         state.load_project(&dir);
-        assert_eq!(state.content_request, None, "a recent project has had its first start");
+        assert_eq!(state.content_request, Some(ContentRequest::Addon(root.clone())), "a missing addon is brought up again");
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "asking writes nothing into the project");
+        let status = crate::addon_install::Status::check(&root);
+        state.prefs.addon_dismissed.insert(root.clone(), status.dismiss_key());
+        state.content_request = None;
+        state.load_project(&dir);
+        assert_eq!(state.content_request, None, "a recent project has had its first start, and the addon was let be");
+        std::fs::create_dir_all(dir.join("addons/func_godot")).unwrap();
+        std::fs::write(dir.join("addons/func_godot/plugin.cfg"), format!("[plugin]\nversion=\"{}\"\n", crate::VERSION)).unwrap();
+        state.load_project(&dir);
+        assert_eq!(state.content_request, None);
 
         // Remembered per project in the preferences, so it survives the project leaving the recent list.
         let mut prefs = Prefs::default();

@@ -1917,5 +1917,26 @@ fn a_new_project_asks_about_content_but_not_an_agent_at_work() {
     let demo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../godot").canonicalize().unwrap();
     let ed = Editor::launch_with("content_demo", &["--project", demo.to_str().unwrap()]);
     std::thread::sleep(Duration::from_millis(500));
-    assert_eq!(window_titles(&ed), Vec::<String>::new(), "the demo project has its content");
+    assert_eq!(window_titles(&ed), Vec::<String>::new(), "the demo project has its content and its addon matches");
+    drop(ed);
+
+    // A project with content but an old addon is offered the update alone, which also gets out of an agent's way.
+    let old = artifacts().join("content_old_addon");
+    let _ = std::fs::remove_dir_all(&old);
+    std::fs::create_dir_all(old.join("godottrench/nature")).unwrap();
+    std::fs::create_dir_all(old.join("addons/func_godot")).unwrap();
+    std::fs::write(old.join("project.godot"), "config_version=5\n").unwrap();
+    std::fs::write(old.join("addons/func_godot/plugin.cfg"), "[plugin]\nversion=\"0.0.1\"\n").unwrap();
+    let ed = Editor::launch_with("content_addon", &["--project", old.to_str().unwrap()]);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !window_titles(&ed).contains(&"Set up this project".to_string()) {
+        assert!(Instant::now() < deadline, "an old addon brings up the wizard: {:?}", window_titles(&ed));
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    ed.screenshot("window", "addon_wizard");
+    ed.box_brush([0.0, 0.0, 0.0], [64.0, 64.0, 64.0]);
+    assert_eq!(window_titles(&ed), Vec::<String>::new(), "an agent's first edit closes it");
+    assert_eq!(std::fs::read_to_string(old.join("addons/func_godot/plugin.cfg")).unwrap(), "[plugin]\nversion=\"0.0.1\"\n");
+    assert!(!old.join(".godottrench").exists(), "nothing changes without a click");
 }
