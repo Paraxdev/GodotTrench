@@ -1612,9 +1612,9 @@ pub fn place_entities(state: &mut EditorState, classnames: &[String], at: Option
 }
 
 /// Where an entity or model dropped into a view lands, with the normal of the surface it rests on: the first solid
-/// surface under the pointer, past trigger volumes and entities. A 2D view shows no depth, so with `through` (Alt held) the drop passes the solid in front, a roof
-/// or the near wall, and lands in the space behind it: on its floor in the Top view, halfway across it in the Front
-/// and Side views.
+/// surface under the pointer, past trigger volumes and entities. A 2D view shows no depth, so with `through` (Alt held)
+/// the drop passes the solid in front, a roof or the near wall, and lands in the space behind it: on its floor in the
+/// Top view, halfway across it in the Front and Side views.
 pub fn drop_target(state: &EditorState, ray: &gt_core::Ray, kind: crate::camera::ViewKind, through: bool) -> Option<(DVec3, Option<DVec3>)> {
     let hits = crate::picking::pick_all(state, ray);
     let first = hits.first()?;
