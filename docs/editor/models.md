@@ -13,6 +13,12 @@ A model can go into the map in two ways. Pick by whether you want to change its 
 | Editable mesh | Drag from the Models panel, or its **Import…** button for a file anywhere on disk | A copy of the geometry, which no longer follows the file | Shapes you want to edit with the [mesh tools](meshes.md) |
 | `prop_model` entity | *File > Import > Model Prop* | Only a `res://` path, Godot loads the file | Props you keep as they are. Every copy follows the file when you change it |
 
+An editable mesh keeps the model's look. Its textures are copied into `models/<name in the Models panel>` in the
+project's texture folder, which a new project gets the first time a model is placed, with a Godot material next to each
+one where needed, so cut out leaves, pixel art and glowing parts draw in Godot like they do here. The Inspector lists
+the materials a mesh draws with. A material clicked in the Materials panel while the mesh is still selected replaces
+them, *Edit > Undo* brings them back.
+
 A prop has to point at a file Godot can load. Picking one outside the project offers to copy it into `res://models`
 first.
 

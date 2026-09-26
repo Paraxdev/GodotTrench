@@ -569,6 +569,35 @@ func test_bbmodel() -> void:
 	for file in ["pine", "bush_berries", "boulder_mossy", "fern", "log"]:
 		var nature := GodotTrenchBBModel.parse(FileAccess.get_file_as_string("res://godottrench/nature/%s.bbmodel" % file))
 		check(nature.has("polygons") and nature["polygons"].size() > 8 and not (nature["textures"][0]["image"] as Image).is_empty(), "nature %s parses with its texture" % file)
+	# Every model the project ships, as the import plugin and Godot's glTF importer bring it in, draws with its own
+	# texture instead of Godot's untextured white.
+	var shipped := []
+	for dir in ["res://demo/models", "res://godottrench/nature", "res://godottrench/nature/trees", "res://godottrench/nature/trees_detailed", "res://godottrench/nature/bushes"]:
+		for file in DirAccess.get_files_at(dir):
+			if file.get_extension() in ["bbmodel", "glb"]:
+				shipped.append(dir.path_join(file))
+	check(shipped.size() >= 57, "every shipped model is checked, found %d" % shipped.size())
+	for path in shipped:
+		var untextured := untextured_surfaces(load(path))
+		check(untextured.is_empty(), "%s draws with its own textures, not on %s" % [path, untextured])
+
+## Surfaces of a model scene whose material has no albedo texture with pixels in it.
+func untextured_surfaces(scene: PackedScene) -> Array:
+	if scene == null:
+		return ["a scene that does not load"]
+	var out := []
+	var inst := scene.instantiate()
+	for mi: MeshInstance3D in collect(inst, func(n): return n is MeshInstance3D and n.mesh):
+		for s in mi.mesh.get_surface_count():
+			if not has_albedo(mi.get_active_material(s)):
+				out.append("%s surface %d" % [mi.name, s])
+	inst.free()
+	return out
+
+func has_albedo(material: Material) -> bool:
+	var tex: Texture2D = material.albedo_texture if material is BaseMaterial3D else null
+	var image: Image = tex.get_image() if tex else null
+	return image != null and not image.is_empty()
 
 func test_default_fgd() -> void:
 	print("- addon defaults include the entity library")
@@ -893,6 +922,7 @@ func test_scatter_and_blend() -> void:
 	check(near(t.origin, Vector3(10, 0, 0)) and near(t.basis.get_scale(), Vector3(2, 2, 2), 0.001), "instance position in meters and scale, got %s" % t)
 	check(near(t.basis * Vector3.FORWARD, Vector3.LEFT * 2.0, 0.001), "instance yaw 90 degrees")
 	check((multimeshes[0] as MultiMeshInstance3D).material_override == null, "without an override the models keep their own materials")
+	check(has_albedo((multimeshes[0] as MultiMeshInstance3D).multimesh.mesh.surface_get_material(0)), "the scattered pine draws its own texture")
 
 	# A material on the set retextures every model, one on a palette entry wins for that entry.
 	var retextured: Dictionary = data.duplicate(true)
@@ -919,6 +949,12 @@ func test_scatter_and_blend() -> void:
 		for c in scatter.get_children():
 			c.owner = scatter
 		check(packed.pack(scatter) == OK, "scatter packs into a scene")
+		var saved := OS.get_temp_dir().path_join("gt_scatter_texture_test.scn")
+		check(ResourceSaver.save(packed, saved) == OK, "scatter scene saves")
+		var reloaded := (ResourceLoader.load(saved, "", ResourceLoader.CACHE_MODE_IGNORE) as PackedScene).instantiate()
+		check(has_albedo((reloaded.get_child(0) as MultiMeshInstance3D).multimesh.mesh.surface_get_material(0)), "a saved scatter scene keeps the model's texture")
+		reloaded.free()
+		DirAccess.remove_absolute(saved)
 		var copy := packed.instantiate() as GodotTrenchScatter
 		copy.restore_buffers()
 		var restored := (copy.get_child(0) as MultiMeshInstance3D).multimesh

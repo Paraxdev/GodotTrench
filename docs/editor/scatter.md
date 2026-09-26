@@ -28,8 +28,10 @@ The set's models show as cards in the Scatter panel, which opens with the tool.
 | random yaw | Turns each instance to a random direction |
 | material | Drawn instead of the model's own materials. Left empty, the set's material applies, if it has one |
 
-No foliage in the project yet? *Terrain > Scatter > Install Nature Models* copies the bundled trees and rocks into
-`res://godottrench/nature`.
+No foliage in the project yet? *Terrain > Scatter > Install Nature Models* copies the bundled nature pack into
+`res://godottrench/nature`: the low poly Blockbench trees, rocks and plants, the glTF trees and bushes, and the bark and
+leaf textures those glTF models load from `textures`. Picking a preset does the same for whatever the project lacks, so
+a project set up by an older version gets the glTF trees too. Files already there are never overwritten.
 
 ## Targets
 

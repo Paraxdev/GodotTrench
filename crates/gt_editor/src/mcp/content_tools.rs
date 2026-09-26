@@ -259,7 +259,7 @@ impl App {
                 ok(json!({ "palette": palette, "kind": self.state.prefs.scatter.kind.label(), "set": set.map(|id| self.scatter_summary(id)) }))
             }
             "install_models" => match crate::scatter_tool::install_nature(&mut self.state, args["overwrite"].as_bool().unwrap_or(false)) {
-                Ok(n) => ok(json!({ "written": n, "dir": gt_doc::scatter::NATURE_DIR, "models": gt_formats::nature::names() })),
+                Ok(written) => ok(json!({ "written": written.len(), "dir": gt_doc::scatter::NATURE_DIR, "models": gt_formats::nature::models() })),
                 Err(e) => err(e),
             },
             "new_set" => {

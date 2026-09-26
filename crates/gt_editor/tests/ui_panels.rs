@@ -907,3 +907,25 @@ fn only_a_file_manager_call_that_timed_out_counts_as_shown() {
     ];
     assert!(!failed.iter().any(|e| panels::dbus_timed_out(e)), "these open the folder instead");
 }
+
+#[test]
+fn mesh_inspector_names_the_materials_a_placed_model_draws_with() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    let mut mesh = gt_geom::mesh_shapes::cuboid(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "models/nature/pine/tex0");
+    mesh.faces[0].data.material = "models/nature/pine/tex1".into();
+    f.state.doc.edit("add", |m, s| {
+        let id = m.insert(layer, NodeKind::Mesh(mesh));
+        s.select_node(id);
+    });
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(520.0, 700.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    harness.get_by_label("Materials: models/nature/pine/tex0, models/nature/pine/tex1");
+    // A material clicked in the Materials panel while the model is still selected replaces its own, and says so.
+    let state = &mut harness.state_mut().state;
+    state.doc.edit("Apply Material", |m, s| ops::apply_material(m, s, "dev/grey"));
+    harness.run();
+    harness.get_by_label("Materials: dev/grey");
+}

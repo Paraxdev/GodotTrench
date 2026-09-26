@@ -89,7 +89,12 @@ pub fn new_set_from_preset(state: &mut EditorState, preset: &str) -> Option<Node
         return None;
     }
 
-    let missing = state.game.resolve_res(gt_doc::scatter::NATURE_DIR).is_some_and(|d| !d.join("pine.bbmodel").is_file());
+    // Checks every model, a project installed by an older version has the Blockbench models but not the glTF trees.
+    let root = state.game.project_root.clone();
+    let missing = state.prefs.scatter.palette.iter().any(|i| {
+        let rel = i.source.strip_prefix("res://");
+        root.as_ref().zip(rel).is_some_and(|(root, rel)| !root.join(rel).is_file())
+    });
     if missing {
         let _ = install_nature(state, false);
     }
@@ -503,15 +508,32 @@ pub fn bake_to_entities(state: &mut EditorState, id: NodeId) -> usize {
     n
 }
 
-/// Writes the built-in nature models into the project so the presets resolve. Returns how many files were written.
-pub fn install_nature(state: &mut EditorState, overwrite: bool) -> Result<usize, String> {
+/// Writes the built-in nature models and their textures into the project so the presets resolve. Returns the files
+/// written.
+pub fn install_nature(state: &mut EditorState, overwrite: bool) -> Result<Vec<std::path::PathBuf>, String> {
     let dir = state.game.resolve_res(gt_doc::scatter::NATURE_DIR).ok_or("Open a Godot project first, models are installed into it")?;
     let written = gt_formats::nature::install(&dir, overwrite).map_err(|e| e.to_string())?;
     if !written.is_empty() {
         state.models.clear();
+        let game = state.game.clone();
+        state.model_library.rescan(&game);
     }
 
-    Ok(written.len())
+    Ok(written)
+}
+
+/// Status line for a nature install, counting models and textures apart.
+pub fn install_summary(written: &[std::path::PathBuf]) -> String {
+    let dir = gt_doc::scatter::NATURE_DIR;
+    let ext = |p: &std::path::PathBuf| p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    let models = written.iter().filter(|p| crate::models::MODEL_EXTS.contains(&ext(p).as_str())).count();
+    let textures = written.iter().filter(|p| matches!(ext(p).as_str(), "png" | "jpg")).count();
+    match (models, textures) {
+        _ if written.is_empty() => format!("The nature models are already installed in {dir}"),
+        (0, _) => format!("Installed {} missing files of the nature pack into {dir}", written.len()),
+        (m, 0) => format!("Installed {m} nature models into {dir}"),
+        (m, t) => format!("Installed {m} nature models and {t} textures into {dir}"),
+    }
 }
 
 /// Makes a built-in preset the template new sets start from.

@@ -77,6 +77,47 @@ impl Model {
 
         desc
     }
+
+    /// Godot material written next to one of `textures` when the model is placed as a mesh, so Godot and the editor
+    /// draw the mesh like the model: cut out where its texture is transparent, pixel art kept sharp, leaf cards drawn
+    /// from both sides and glowing textures glowing. None when the plain image already looks that way.
+    pub fn material_tres(&self, key: &str, image: &image::RgbaImage, pixelated: bool, albedo_res: &str) -> Option<String> {
+        let desc = self.material_desc(key, image, pixelated);
+        let mut body = String::new();
+        match desc.alpha {
+            gt_render::AlphaMode::Opaque => {}
+            gt_render::AlphaMode::Blend => body += "transparency = 1\n",
+            gt_render::AlphaMode::Scissor(t) => body += &format!("transparency = 2\nalpha_scissor_threshold = {t}\n"),
+            gt_render::AlphaMode::Hash => body += "transparency = 3\n",
+        }
+
+        if desc.tint[3] < 1.0 {
+            body += &format!("albedo_color = Color(1, 1, 1, {})\n", desc.tint[3]);
+        }
+
+        if desc.double_sided {
+            body += "cull_mode = 2\n";
+        }
+
+        if pixelated {
+            body += "texture_filter = 2\n";
+        }
+
+        if desc.emission_texture.is_some_and(|e| e == image) && desc.emission == [0.0; 3] {
+            body += &format!(
+                "emission_enabled = true\nemission = Color(0, 0, 0, 1)\nemission_energy_multiplier = {}\nemission_texture = ExtResource(\"1_albedo\")\n",
+                desc.emission_energy
+            );
+        }
+
+        if body.is_empty() {
+            return None;
+        }
+
+        Some(format!(
+            "[gd_resource type=\"StandardMaterial3D\" format=3]\n\n[ext_resource type=\"Texture2D\" path=\"{albedo_res}\" id=\"1_albedo\"]\n\n[resource]\nalbedo_texture = ExtResource(\"1_albedo\")\n{body}"
+        ))
+    }
 }
 
 #[derive(Default)]

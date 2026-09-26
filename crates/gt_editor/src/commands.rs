@@ -1347,8 +1347,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             }
         }
         Action::InstallNatureModels => match crate::scatter_tool::install_nature(state, false) {
-            Ok(0) => state.set_status(format!("The nature models are already installed in {}", gt_doc::scatter::NATURE_DIR)),
-            Ok(n) => state.set_status(format!("Installed {n} nature models into {}", gt_doc::scatter::NATURE_DIR)),
+            Ok(written) => state.set_status(crate::scatter_tool::install_summary(&written)),
             Err(e) => state.set_status(e),
         },
         Action::ScatterToEntities => {
@@ -1684,6 +1683,15 @@ fn sanitize(name: &str) -> String {
     name.chars().map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c.to_ascii_lowercase() } else { '_' }).collect()
 }
 
+/// Folder under `models/` in the texture folder that a placed model's textures go to. It follows the model's name in
+/// the Models panel, so models sharing a file name, like nature/oak.bbmodel and nature/trees/oak.glb, never overwrite
+/// each other's textures.
+fn model_texture_folder(state: &EditorState, path: &std::path::Path) -> String {
+    let stem = || path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into());
+    let name = state.model_library.entries.iter().find(|e| e.path == path).map(|e| e.name.clone()).unwrap_or_else(stem);
+    name.split('/').filter(|part| !part.is_empty()).map(sanitize).collect::<Vec<_>>().join("/")
+}
+
 /// The file a prop entity can reference: the model itself when it is inside the Godot project, else a copy under
 /// res://models made after asking. `None` with a status when there is no project or the user declines.
 fn prop_model_in_project(state: &mut EditorState, path: &std::path::Path) -> Option<std::path::PathBuf> {
@@ -1771,10 +1779,13 @@ pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: Model
 
     let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let model = gt_formats::bbmodel::parse(&text).map_err(|e| e.to_string())?;
+    let preview = state.models.get(path, state.game.units_per_meter);
     let stem = sanitize(&path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into()));
+    let folder = model_texture_folder(state, path);
     let mut materials = Vec::new();
     let mut sizes = Vec::new();
-    let texture_root = state.game.texture_root().filter(|p| p.is_dir());
+    // A fresh project has no texture folder yet, it is made here rather than leaving the model untextured.
+    let texture_root = state.game.texture_root();
     for (i, tex) in model.textures.iter().enumerate() {
         let png =
             if tex.png.is_empty() { path.parent().map(|d| d.join(&tex.path)).and_then(|p| std::fs::read(p).ok()).unwrap_or_default() } else { tex.png.clone() };
@@ -1783,10 +1794,15 @@ pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: Model
         let file_name = format!("{}_{i}.png", sanitize(&tex.name));
         let name = match &texture_root {
             Some(root) => {
-                let dir = root.join("models").join(&stem);
+                let dir = root.join("models").join(&folder);
                 std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
                 std::fs::write(dir.join(&file_name), &png).map_err(|e| e.to_string())?;
-                format!("models/{stem}/{}", file_name.trim_end_matches(".png"))
+                // The preview lists the Blockbench textures in file order.
+                if let Some((preview, (key, ..))) = preview.as_ref().and_then(|p| Some((p, p.textures.get(i)?))) {
+                    write_model_material(state, preview, key, &dir.join(&file_name))?;
+                }
+
+                format!("models/{folder}/{}", file_name.trim_end_matches(".png"))
             }
             None => {
                 let file = path.with_file_name(format!("{stem}_{file_name}"));
@@ -1853,22 +1869,35 @@ fn edit_mesh_weight(state: &EditorState) -> (usize, usize) {
     (verts, tris)
 }
 
+/// Writes the Godot material that makes the texture image `png` of a placed model draw like the model, see
+/// [`crate::models::Model::material_tres`]. Nothing is written when the plain image is enough.
+fn write_model_material(state: &EditorState, model: &crate::models::Model, key: &str, png: &std::path::Path) -> Result<(), String> {
+    let res = state.game.project_root.as_deref().and_then(|root| gt_formats::game::to_res_path(root, png));
+    let text = model.textures.iter().find(|(k, ..)| k == key).zip(res).and_then(|((_, img, pixelated), res)| model.material_tres(key, img, *pixelated, &res));
+    match text {
+        Some(text) => std::fs::write(png.with_extension("tres"), text).map_err(|e| e.to_string()),
+        None => Ok(()),
+    }
+}
+
 /// Places a model from the Models panel into the scene as one editable mesh at `at`. The model's
-/// textures are written into `res://textures/models/<stem>/` and registered as materials so the mesh
-/// keeps its look. Large results are warned about but never blocked.
+/// textures are written into `res://textures/models/<name in the Models panel>/` and registered as
+/// materials so the mesh keeps its look. Large results are warned about but never blocked.
 pub fn place_model_mesh(state: &mut EditorState, path: &std::path::Path, at: DVec3) -> Result<String, String> {
     let upm = state.game.units_per_meter;
     let model = state.models.get(path, upm).ok_or_else(|| "could not load model".to_string())?;
-    let stem = sanitize(&path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into()));
-    let texture_root = state.game.texture_root().filter(|p| p.is_dir());
+    let folder = model_texture_folder(state, path);
+    // A fresh project has no texture folder yet, it is made here rather than leaving the mesh untextured.
+    let texture_root = state.game.texture_root();
     let mut key_to_material: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     if let Some(root) = &texture_root {
-        let dir = root.join("models").join(&stem);
+        let dir = root.join("models").join(&folder);
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         for (i, (key, img, _pixelated)) in model.textures.iter().enumerate() {
             let file = dir.join(format!("tex{i}.png"));
             img.save(&file).map_err(|e| e.to_string())?;
-            key_to_material.insert(key.clone(), format!("models/{stem}/tex{i}"));
+            write_model_material(state, &model, key, &file)?;
+            key_to_material.insert(key.clone(), format!("models/{folder}/tex{i}"));
         }
 
         let game = state.game.clone();
@@ -1890,11 +1919,12 @@ pub fn place_model_mesh(state: &mut EditorState, path: &std::path::Path, at: DVe
     });
     let name = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into());
     let scaled = if (scale - 1.0).abs() > 1e-3 { format!(", scaled {scale:.3}x to fit") } else { String::new() };
+    let untextured = if texture_root.is_none() && !model.textures.is_empty() { ". Open a Godot project to keep its textures" } else { "" };
     // Warn but do not hinder: heavy meshes stay placeable, the user just gets a heads up.
     if verts > HEAVY_VERTS || tris > HEAVY_TRIS {
-        Ok(format!("Placed {name} as an editable mesh, {verts} vertices, {tris} triangles{scaled}. That is a lot, editing may be slow."))
+        Ok(format!("Placed {name} as an editable mesh, {verts} vertices, {tris} triangles{scaled}{untextured}. That is a lot, editing may be slow."))
     } else {
-        Ok(format!("Placed {name} as an editable mesh ({verts} vertices, {tris} triangles){scaled}"))
+        Ok(format!("Placed {name} as an editable mesh ({verts} vertices, {tris} triangles){scaled}{untextured}"))
     }
 }
 
@@ -2472,16 +2502,96 @@ mod tests {
         assert_eq!(state.doc.map.entity_count(), 0);
     }
 
-    #[test]
-    fn installing_nature_models_twice_says_they_are_there() {
-        let dir = std::env::temp_dir().join(format!("gt_nature_{}", std::process::id()));
+    /// A Godot project with nothing in it but `project.godot`, like one made in the Godot project manager.
+    fn fresh_project(name: &str) -> (EditorState, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("gt_{name}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
         let mut state = EditorState::new(Default::default());
         state.game.project_root = Some(dir.clone());
+        (state, dir)
+    }
+
+    #[test]
+    fn installing_nature_models_brings_their_textures() {
+        let (mut state, dir) = fresh_project("nature_install");
         let ctx = egui::Context::default();
         execute(&mut state, Action::InstallNatureModels, &ctx);
-        assert!(state.status.starts_with("Installed "), "{}", state.status);
+        assert!(state.status.starts_with("Installed ") && state.status.contains(" and 25 textures"), "{}", state.status);
+        let names: Vec<&str> = state.model_library.entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"nature/pine") && names.contains(&"nature/trees/pine"), "the Models panel lists them right away: {names:?}");
+        for preset in gt_doc::scatter::PRESETS {
+            for item in gt_doc::scatter::preset(preset).unwrap().1 {
+                let path = dir.join(item.source.trim_start_matches("res://"));
+                let model = state.models.get(&path, 32.0).unwrap_or_else(|| panic!("{preset}: {} does not load", item.source));
+                let textured = |p: &crate::models::ModelPart| model.textures.iter().any(|(k, img, _)| *k == p.material && img.width() > 4);
+                assert!(model.parts.iter().all(textured), "{preset}: {} draws without its texture", item.source);
+            }
+        }
+
         execute(&mut state, Action::InstallNatureModels, &ctx);
         assert!(state.status.contains("already installed"), "{}", state.status);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_preset_completes_a_nature_pack_installed_by_an_older_version() {
+        let (mut state, dir) = fresh_project("nature_older");
+        let nature = dir.join("godottrench/nature");
+        gt_formats::nature::install(&nature, false).unwrap();
+        for sub in ["trees", "trees_detailed", "bushes", "textures"] {
+            std::fs::remove_dir_all(nature.join(sub)).unwrap();
+        }
+
+        execute(&mut state, Action::ScatterPreset("forest".into()), &egui::Context::default());
+        assert!(nature.join("trees/pine.glb").is_file() && nature.join("textures/bark_pine_albedo.jpg").is_file());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn placed_models_keep_their_textures_in_a_fresh_project() {
+        let (mut state, dir) = fresh_project("place_textures");
+        let ctx = egui::Context::default();
+        execute(&mut state, Action::InstallNatureModels, &ctx);
+        assert!(state.game.texture_root().is_some_and(|t| !t.exists()), "a fresh project has no texture folder");
+        let nature = dir.join("godottrench/nature");
+        let materials = |state: &EditorState| -> Vec<String> {
+            let mesh = state.doc.selection.nodes.iter().find_map(|id| state.doc.map.mesh(*id)).expect("the model is placed and selected");
+            let mut names: Vec<String> = mesh.faces.iter().map(|f| f.data.material.clone()).collect();
+            names.sort();
+            names.dedup();
+            names
+        };
+
+        let placed = place_model_mesh(&mut state, &nature.join("oak.bbmodel"), DVec3::ZERO).unwrap();
+        assert!(!placed.contains("Open a Godot project"), "{placed}");
+        assert_eq!(materials(&state), ["models/nature/oak/tex0"], "not the grey placeholder");
+        for (file, folder) in [("trees/oak.glb", "models/nature/trees/oak/"), ("bushes/fern_clump.glb", "models/nature/bushes/fern_clump/")] {
+            place_model_mesh(&mut state, &nature.join(file), DVec3::ZERO).unwrap();
+            let names = materials(&state);
+            assert!(names.iter().all(|m| m.starts_with(folder) && state.materials.find(m).is_some()), "{file}: {names:?}");
+        }
+
+        let small = state.materials.load_image("models/nature/oak/tex0").unwrap();
+        assert_eq!(small.width(), 64, "the glTF oak did not overwrite the Blockbench oak's texture");
+
+        // Godot draws the placed mesh like the model: grass cards cut out and pixel sharp, not black squares.
+        place_model_mesh(&mut state, &nature.join("grass_tall.bbmodel"), DVec3::ZERO).unwrap();
+        let grass = state.materials.info("models/nature/grass_tall/tex0").expect("a material resource next to the image");
+        assert_eq!(grass.transparency, gt_formats::godot_material::Transparency::Scissor(0.5));
+        assert_eq!(grass.nearest, Some(true));
+        assert_eq!(grass.albedo_texture.as_deref(), Some("res://textures/models/nature/grass_tall/tex0.png"));
+        assert_eq!(materials(&state), ["models/nature/grass_tall/tex0"]);
+        let oak: Vec<_> = ["models/nature/trees/oak/tex0", "models/nature/trees/oak/tex1", "models/nature/trees/oak/tex2"]
+            .into_iter()
+            .filter_map(|m| state.materials.info(m).map(|i| (i.transparency, i.nearest)))
+            .collect();
+        assert!(oak.iter().any(|(t, _)| matches!(t, gt_formats::godot_material::Transparency::Scissor(_))), "the oak's leaf cards are cut out: {oak:?}");
+        assert!(oak.iter().all(|(_, nearest)| *nearest != Some(true)), "photo textures stay smooth");
+        import_model(&mut state, &nature.join("pine.bbmodel"), ModelImport::Mesh, DVec3::ZERO).unwrap();
+        assert_eq!(materials(&state), ["models/nature/pine/pine_0"]);
+        assert!(state.materials.load_image("models/nature/pine/pine_0").is_some());
         let _ = std::fs::remove_dir_all(dir);
     }
 

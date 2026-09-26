@@ -315,6 +315,11 @@ fn item_cards(ui: &mut Ui, state: &mut EditorState, id: NodeId, set: gt_doc::Sca
                             item.material = Some(current_material.clone());
                             changed = true;
                         }
+
+                        if item.material.is_some() && ui.small_button("×").on_hover_text("Back to the model's own materials").clicked() {
+                            item.material = None;
+                            changed = true;
+                        }
                     });
                     ui.end_row();
                 });
