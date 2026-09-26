@@ -869,3 +869,14 @@ fn a_file_manager_that_starts_slowly_is_not_opened_twice() {
     assert!(!panels::file_manager_shown(false, "Error org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable"));
     assert!(!panels::file_manager_shown(false, "Failed to open connection to \"session\" message bus"));
 }
+
+#[test]
+fn entity_browser_headings_say_what_their_entities_are_for() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(700.0, 1400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::entity_browser(ui, &mut f.state, &mut f.panels, &mut f.actions), Fixture::new());
+    harness.run();
+    harness.get_by_label("trigger").hover();
+    harness.run_steps(60);
+    harness.get_by_label("Invisible volumes that fire outputs when a body enters or leaves them");
+}
