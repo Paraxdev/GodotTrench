@@ -137,7 +137,7 @@ pub fn install(dir: &std::path::Path, overwrite: bool) -> std::io::Result<Vec<st
                 std::fs::create_dir_all(parent)?;
             }
 
-            std::fs::write(&path, bytes)?;
+            crate::write_atomic(&path, &mut &bytes[..])?;
             out.push(path);
         }
     }
