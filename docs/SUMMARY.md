@@ -6,6 +6,7 @@
 ## Editor
 
 * [Interface and navigation](editor/interface.md)
+* [Coming from Unity or Blender](editor/coming-from-unity-blender.md)
 * [Brushes and CSG](editor/brushes.md)
 * [Meshes](editor/meshes.md)
 * [Models](editor/models.md)

@@ -2553,7 +2553,7 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
         ui,
         state.prefs.help_text,
         "Drag a card into a view, or double click it",
-        "Double click places at the cursor. Ctrl or Shift click selects several cards to drag in together",
+        "Double click places at the cursor. Ctrl or Shift click selects several cards to drag in together. Hover a heading to see what its entities are for",
     );
     ui.separator();
     let filter = ps.entity_filter.to_lowercase();
@@ -2586,7 +2586,7 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
     let mut to_reference: Option<String> = None;
     ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for (group, defs) in &groups {
-            egui::CollapsingHeader::new(group).default_open(true).show(ui, |ui| {
+            let section = egui::CollapsingHeader::new(group).default_open(true).show(ui, |ui| {
                 let cols = ((ui.available_width() / cell_width).floor() as usize).max(1);
                 for chunk in defs.chunks(cols) {
                     ui.horizontal(|ui| {
@@ -2630,6 +2630,9 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
                     });
                 }
             });
+            if let Some(hint) = entity_group_hint(group) {
+                section.header_response.on_hover_text(hint);
+            }
         }
     });
     if let Some((classname, modifiers)) = clicked {
@@ -2975,6 +2978,23 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
     ui.add(egui::TextEdit::multiline(&mut text).code_editor().desired_width(f32::INFINITY));
 }
 
+/// What the entities of a group are for, since a newcomer cannot tell a func_ from an info_ by the name alone.
+fn entity_group_hint(group: &str) -> Option<&'static str> {
+    Some(match group {
+        "func" => "Brush entities: brushes that do something, such as doors, buttons, lifts, or walls without collision",
+        "info" => "Markers for spots in the level, such as where the player starts, a teleport arrives or enemies spawn",
+        "trigger" => "Invisible volumes that fire outputs when a body enters or leaves them",
+        "logic" => "Invisible helpers that wire outputs together: relays, timers, counters and scripts",
+        "path" => "Stops of a route that trains and walkers follow",
+        "light" => "Lights, placed as points",
+        "prop" => "Models placed in the level, static or with physics",
+        "env" => "Effects such as sounds, particles and explosions",
+        "game" => "Text shown to the player in the world or on the HUD",
+        "npc" => "Scripted characters that walk a path, for cutscenes",
+        _ => return None,
+    })
+}
+
 /// Takes the links widgets asked egui to open this frame out of its output. eframe is built without its `links`
 /// feature, so nothing opens them unless the app passes them to `open_link`.
 pub fn take_open_urls(ctx: &egui::Context) -> Vec<String> {
@@ -3072,7 +3092,7 @@ fn open_with_system(target: &std::ffi::OsStr) -> std::io::Result<()> {
 }
 
 /// Opens the system file manager on the folder of `path` with the file selected. Linux file managers do that through
-/// the FileManager1 D-Bus interface, without one, or without a session bus, the folder opens with nothing selected.
+/// the FileManager1 D-Bus interface, without one the folder opens with nothing selected.
 pub fn show_in_file_manager(path: &std::path::Path) {
     let path = crate::state::absolute(path);
     #[cfg(windows)]
@@ -3082,42 +3102,39 @@ pub fn show_in_file_manager(path: &std::path::Path) {
         let _ = std::process::Command::new("explorer").raw_arg(format!("/select,\"{}\"", path.display())).spawn();
     }
     #[cfg(target_os = "macos")]
-    std::thread::spawn(move || {
+    {
         use std::process::Stdio;
-        std::process::Command::new("open").arg("-R").arg(&path).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status()
-    });
+        let _ = std::process::Command::new("open").arg("-R").arg(&path).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    }
     #[cfg(all(unix, not(target_os = "macos")))]
     std::thread::spawn(move || {
         use std::process::{Command, Stdio};
         let uri = file_uri(&path);
+        let ran = |cmd: &mut Command| {
+            cmd.stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .output()
+                .is_ok_and(|out| file_manager_shown(out.status.success(), &String::from_utf8_lossy(&out.stderr)))
+        };
         let (object, method) = ("/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems");
-        let mut dbus_send = Command::new("dbus-send");
-        dbus_send
-            .args(["--session", "--print-reply", "--reply-timeout=3000", "--dest=org.freedesktop.FileManager1", object, method])
+        let shown = ran(Command::new("dbus-send")
+            .args(["--session", "--print-reply", "--reply-timeout=10000", "--dest=org.freedesktop.FileManager1", object, method])
             .arg(format!("array:string:{uri}"))
-            .arg("string:");
-        let mut gdbus = Command::new("gdbus");
-        gdbus
-            .args(["call", "--session", "--dest", "org.freedesktop.FileManager1", "--object-path", object, "--method", method])
-            .arg(format!("['{uri}']"))
-            .arg("''");
-        // gdbus is only asked when there is no dbus-send, since a call that timed out while the file manager starts may
-        // still open its window.
-        let reply = crate::commands::session_bus()
-            .then(|| [dbus_send, gdbus].into_iter().find_map(|mut cmd| cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped()).output().ok()))
-            .flatten();
-        if reply.is_none_or(|r| !r.status.success() && !dbus_timed_out(&String::from_utf8_lossy(&r.stderr))) {
+            .arg("string:"))
+            || ran(Command::new("gdbus")
+                .args(["call", "--session", "--dest", "org.freedesktop.FileManager1", "--object-path", object, "--method", method])
+                .arg(format!("['{uri}']"))
+                .arg("''"));
+        if !shown {
             open_in_system(path.parent().unwrap_or(&path));
         }
     });
 }
 
-/// Whether a failed `dbus-send` or `gdbus` call only ran out of time. A file manager that D-Bus is still starting gets
-/// the call anyway and opens a window later, unlike after an error such as no file manager on the bus.
-pub fn dbus_timed_out(stderr: &str) -> bool {
-    ["org.freedesktop.DBus.Error.NoReply", "org.freedesktop.DBus.Error.Timeout", "org.freedesktop.DBus.Error.TimedOut", "Timeout was reached"]
-        .iter()
-        .any(|e| stderr.contains(e))
+/// Whether a ShowItems call reached a file manager. One that D-Bus starts cold can answer after the timeout and still
+/// show the file, so a missing reply counts as shown rather than opening the folder in a second window.
+pub fn file_manager_shown(success: bool, stderr: &str) -> bool {
+    success || stderr.contains("NoReply") || stderr.contains("Timeout was reached")
 }
 
 /// A `file://` URI for an absolute path. Everything but unreserved characters, slashes and colons is percent encoded,

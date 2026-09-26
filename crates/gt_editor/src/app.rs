@@ -1907,8 +1907,6 @@ impl App {
         ui.horizontal(|ui| {
             let s = &self.state;
             let stats = self.scene.stats;
-            let alpha = if s.status_age() > 6.0 { 120 } else { 230 };
-            ui.label(RichText::new(&s.status).color(crate::theme::FG.gamma_multiply_u8(alpha)));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(stats_text(&stats));
                 ui.separator();
@@ -1933,6 +1931,12 @@ impl App {
                     ui.separator();
                     ui.label(RichText::new(format!("{} open groups", s.open_groups.len())).color(crate::theme::CYAN));
                 }
+
+                // The message gets the width the counts leave, so a long one is cut short instead of running under them.
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    let alpha = if s.status_age() > 6.0 { 120 } else { 230 };
+                    ui.add(egui::Label::new(RichText::new(&s.status).color(crate::theme::FG.gamma_multiply_u8(alpha))).truncate());
+                });
             });
         });
     }

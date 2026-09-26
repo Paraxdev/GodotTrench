@@ -661,9 +661,11 @@ pub fn file_dialog<T>(state: &EditorState, show: impl FnOnce(rfd::FileDialog) ->
 /// Shows a file dialog that starts in `dir`.
 pub fn file_dialog_in<T>(dir: Option<std::path::PathBuf>, show: impl FnOnce(rfd::FileDialog) -> T) -> T {
     let Some(dir) = dir.and_then(|d| std::path::absolute(d).ok()) else { return show(rfd::FileDialog::new()) };
-    // Without a desktop portal rfd falls back to zenity, which ignores the start folder and opens the working directory.
+    // rfd falls back to zenity when the desktop portal is missing or has no file chooser, and zenity ignores the start
+    // folder and opens the working directory. Which one shows cannot be told beforehand, the portal ignores the working
+    // directory, so it is set for both.
     #[cfg(target_os = "linux")]
-    let restore = std::env::current_dir().ok().filter(|_| dialogs_use_zenity() && std::env::set_current_dir(&dir).is_ok());
+    let restore = std::env::current_dir().ok().filter(|_| std::env::set_current_dir(&dir).is_ok());
     let result = show(rfd::FileDialog::new().set_directory(&dir));
     #[cfg(target_os = "linux")]
     if let Some(cwd) = restore {
@@ -671,38 +673,6 @@ pub fn file_dialog_in<T>(dir: Option<std::path::PathBuf>, show: impl FnOnce(rfd:
     }
 
     result
-}
-
-/// Whether rfd will show zenity: it is installed and no desktop portal offers a file chooser. Checked once, when the
-/// first dialog opens, and an installed zenity counts when there is no `dbus-send` to ask the bus with.
-#[cfg(target_os = "linux")]
-fn dialogs_use_zenity() -> bool {
-    static ZENITY: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ZENITY.get_or_init(|| {
-        if !std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join("zenity").is_file())) {
-            return false;
-        }
-
-        // The portal only has the FileChooser interface with a desktop backend behind it. Asking starts a portal that
-        // D-Bus activates on demand, which rfd's own call would do a moment later anyway.
-        let chooser = session_bus()
-            && std::process::Command::new("dbus-send")
-                .args(["--session", "--print-reply", "--reply-timeout=1000", "--dest=org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop"])
-                .arg("org.freedesktop.DBus.Introspectable.Introspect")
-                .output()
-                .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("\"org.freedesktop.portal.FileChooser\""));
-        !chooser
-    })
-}
-
-/// Whether `dbus-send` and `gdbus` find a session bus: the address in the environment, or the user bus socket both fall
-/// back to. Without either they would start a bus daemon of their own, which stays around after the editor quits.
-#[cfg(all(unix, not(target_os = "macos")))]
-pub(crate) fn session_bus() -> bool {
-    use std::os::unix::fs::FileTypeExt;
-    std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some_and(|a| !a.is_empty())
-        || std::env::var_os("XDG_RUNTIME_DIR")
-            .is_some_and(|d| std::fs::symlink_metadata(std::path::Path::new(&d).join("bus")).is_ok_and(|m| m.file_type().is_socket()))
 }
 
 pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {

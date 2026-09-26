@@ -1066,18 +1066,23 @@ fn file_uris_escape_what_a_uri_or_d_bus_would_misread() {
 }
 
 #[test]
-fn only_a_file_manager_call_that_timed_out_counts_as_shown() {
-    let timed_out = [
-        "Error org.freedesktop.DBus.Error.NoReply: Did not receive a reply. Possible causes include: the remote application did not send a reply",
-        "Error: Timeout was reached",
-    ];
-    assert!(timed_out.iter().all(|e| panels::dbus_timed_out(e)));
-    let failed = [
-        "Error org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.FileManager1 was not provided by any .service files",
-        "Error: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.FileManager1 was not provided by any .service files",
-        "Failed to open connection to \"session\" message bus: Failed to connect to socket /run/user/1000/bus: Connection refused",
-    ];
-    assert!(!failed.iter().any(|e| panels::dbus_timed_out(e)), "these open the folder instead");
+fn a_file_manager_that_starts_slowly_is_not_opened_twice() {
+    assert!(panels::file_manager_shown(true, ""));
+    assert!(panels::file_manager_shown(false, "Error org.freedesktop.DBus.Error.NoReply: Did not receive a reply."));
+    assert!(panels::file_manager_shown(false, "Error: Timeout was reached"));
+    assert!(!panels::file_manager_shown(false, "Error org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable"));
+    assert!(!panels::file_manager_shown(false, "Failed to open connection to \"session\" message bus"));
+}
+
+#[test]
+fn entity_browser_headings_say_what_their_entities_are_for() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(700.0, 1400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::entity_browser(ui, &mut f.state, &mut f.panels, &mut f.actions), Fixture::new());
+    harness.run();
+    harness.get_by_label("trigger").hover();
+    harness.run_steps(60);
+    harness.get_by_label("Invisible volumes that fire outputs when a body enters or leaves them");
 }
 
 #[test]
