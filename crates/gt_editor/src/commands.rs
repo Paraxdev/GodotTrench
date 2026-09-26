@@ -934,10 +934,26 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             state.set_status(format!("Shading: {}", state.prefs.shade.label()));
         }
         Action::CsgSubtract => {
+            let cutters = state.doc.selection.brushes(&state.doc.map);
             let carve = state.carve_material;
-            let (n, replaced) = state.doc.edit("CSG Subtract", |m, s| ops::csg_subtract(m, s, carve));
-            state.replaced = replaced;
-            state.set_status(format!("Subtracted from {n} brushes"));
+            // A cutter that overlaps nothing would only be deleted, often a brush a stray click selected instead.
+            let cut = state.doc.try_edit("CSG Subtract", |m, s| Some(ops::csg_subtract(m, s, carve)).filter(|(n, _)| *n > 0).ok_or(()));
+            match (cut, &cutters[..]) {
+                (Ok((n, replaced)), _) => {
+                    state.replaced = replaced;
+                    state.set_status(format!("Subtracted from {n} brushes"));
+                }
+                (Err(()), []) => state.set_status("Select the box to cut out, then Subtract. It cuts every brush it overlaps"),
+                (Err(()), [one]) => {
+                    let name = state.doc.map.get(*one).map(|n| n.name()).unwrap_or_default();
+                    state.set_status(format!(
+                        "Nothing to cut, the selected {name} overlaps no other brush and was kept. Select the box that pokes into the wall"
+                    ));
+                }
+                (Err(()), _) => state.set_status(
+                    "Nothing to cut, the selected brushes overlap no other brush and were kept. Select only the boxes to cut out, every selected brush cuts",
+                ),
+            }
         }
         Action::CsgMerge | Action::CsgIntersect => {
             let before = state.doc.selection.brushes(&state.doc.map);
@@ -953,7 +969,17 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         }
         Action::CsgHollow => {
             let t = state.hollow_thickness.max(state.grid.min(state.hollow_thickness));
-            state.replaced = state.doc.edit("Hollow", |m, s| ops::csg_hollow(m, s, t));
+            if state.doc.selection.brushes(&state.doc.map).is_empty() {
+                state.set_status("Select a solid brush to hollow it into a room");
+                return;
+            }
+
+            match state.doc.try_edit("Hollow", |m, s| Some(ops::csg_hollow(m, s, t)).filter(|r| !r.is_empty()).ok_or(())) {
+                Ok(replaced) => state.replaced = replaced,
+                Err(()) => state.set_status(format!(
+                    "Nothing to hollow, the selection is too thin for walls {t} units thick on each side. Lower Wall thickness in Brush > CSG"
+                )),
+            }
         }
         Action::Rotate { axis, degrees } => {
             let center = ops::selection_center(&state.doc.map, &state.doc.selection, grid);
@@ -2709,6 +2735,34 @@ mod tests {
         assert_eq!(materials(&state), ["models/nature/pine/pine_0"]);
         assert!(state.materials.load_image("models/nature/pine/pine_0").is_some());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn csg_that_changes_nothing_says_why_and_keeps_the_selection() {
+        let mut state = EditorState::new(Default::default());
+        let ctx = egui::Context::default();
+        let layer = state.doc.map.default_layer();
+        let add = |state: &mut EditorState, min: f64, max: f64| {
+            let b = gt_geom::Brush::from_aabb(&Aabb::new(DVec3::splat(min), DVec3::splat(max)), "dev/grey").unwrap();
+            state.doc.edit("add", |m, _| m.insert(layer, gt_doc::NodeKind::Brush(b)))
+        };
+        let (wall, ceiling) = (add(&mut state, 0.0, 64.0), add(&mut state, 200.0, 264.0));
+        execute(&mut state, Action::CsgSubtract, &ctx);
+        assert!(state.status.starts_with("Select the box to cut out"), "{}", state.status);
+
+        // Like a refocus click that picked the ceiling instead of the door cutter.
+        state.doc.select(|_, s| s.select_node(ceiling));
+        let steps = state.doc.history.undo_labels().count();
+        execute(&mut state, Action::CsgSubtract, &ctx);
+        assert!(state.status.starts_with(&format!("Nothing to cut, the selected brush{} overlaps no other brush", ceiling.0)), "{}", state.status);
+        assert!(state.doc.map.contains(ceiling) && state.doc.map.contains(wall), "the brush is not deleted");
+        assert_eq!(state.doc.history.undo_labels().count(), steps, "no undo step");
+        assert!(state.doc.selection.nodes.contains(&ceiling));
+
+        state.hollow_thickness = 40.0;
+        execute(&mut state, Action::CsgHollow, &ctx);
+        assert!(state.status.starts_with("Nothing to hollow"), "{}", state.status);
+        assert_eq!(state.doc.history.undo_labels().count(), steps);
     }
 
     /// The face materials of the selected mesh, sorted.
