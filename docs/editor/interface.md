@@ -12,8 +12,11 @@ command by name. Hovering a command with a jargon name, like *Hollow* or *UV Loc
 palette shows the same line under its list. Esc or a click outside closes the palette without running anything.
 The **tool options bar** under the toolbar holds the settings of the active tool.
 
-An empty map shows a card in the 3D view with its first steps, a link to this guide and the maps of the open project,
-and the 2D views say where to drag. **Hide tips** turns them off, and *File > Preferences* brings them back.
+A new, empty map shows a card in the 3D view that says where to start: drag in the Top view to draw your first box,
+and the Top view marks the spot with a yellow label. Below that the card explains the 3D camera, links the
+[getting started guide](../getting-started.md) and lists the maps of the open project, so you can open a finished one
+instead. The card goes away once the map has something in it. **Hide tips** turns the tips off, and *Tips on an empty
+map* in *File > Preferences* brings them back.
 
 Links in the editor open in your web browser. If no browser starts, the status bar says so and the link is copied to
 the clipboard.

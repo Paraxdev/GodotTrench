@@ -34,7 +34,10 @@ to its built in entities.
 
 The editor opens with four views: a 3D view you fly around in, and Top, Front and Side views that look straight along
 one axis. The world is Y-up like Godot, and map units are 32 per meter. Levels are built from brushes, solid convex
-blocks such as boxes and wedges.
+blocks such as boxes and wedges. While the map is empty, a card in the 3D view names the first step below and the Top
+view marks where to drag.
+
+![A new map: the card in the 3D view says to drag in the Top view to draw the first box, and the Top view shows a yellow "Drag here to draw your first box" label](assets/getting-started/empty-map.png)
 
 1. **Draw a box.** With the Select tool (Q), drag on empty space in the Top view, about 384 units wide and 256 deep.
    The Top view prints the size as you drag, and the box snaps to the grid, 16 units (half a meter) by default. The

@@ -4,12 +4,13 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use egui::{Align2, FontId, Rect, RichText, Ui, Vec2};
+use egui::{Align2, FontId, Rect, RichText, Stroke, StrokeKind, Ui, Vec2};
 use gt_doc::Map;
 
 use crate::camera::ViewKind;
 use crate::commands::Action;
 use crate::state::EditorState;
+use crate::theme;
 use crate::tools::ToolKind;
 
 pub const GETTING_STARTED_URL: &str = "https://paraxdev.github.io/GodotTrench/getting-started.html";
@@ -125,20 +126,36 @@ pub fn maps_menu(ui: &mut Ui, root: Option<&Path>, maps: &[PathBuf], actions: &m
     }
 }
 
-/// Tells a newcomer where to start while the map is empty: how to draw in the 2D views, and in the 3D view how to
-/// look around, where the guide is and which maps of the project show a finished level.
-pub fn view_hint(ui: &mut Ui, rect: Rect, kind: ViewKind, state: &mut EditorState, maps: &mut ProjectMaps, actions: &mut Vec<Action>) {
+/// Tells a newcomer where to start while the map is empty. A card in the 3D view names the first step and the help
+/// around it, and the 2D views say where to drag. `start_view` is the 2D view the card sends people to, the Top view
+/// unless it is closed, and it says so most clearly.
+pub fn view_hint(
+    ui: &mut Ui,
+    rect: Rect,
+    kind: ViewKind,
+    start_view: Option<ViewKind>,
+    state: &mut EditorState,
+    maps: &mut ProjectMaps,
+    actions: &mut Vec<Action>,
+) {
     if !state.prefs.start_hints || !map_is_empty(&state.doc.map) {
         return;
     }
 
     if kind.is_2d() {
         if state.tool == ToolKind::Select && rect.width() > 160.0 && rect.height() > 80.0 {
+            let start = start_view == Some(kind);
+            let (text, color) =
+                if start { ("Drag here to draw your first box", theme::YELLOW) } else { ("Drag here to draw a box", ui.visuals().text_color()) };
             let painter = ui.painter_at(rect);
-            let galley = painter.layout_no_wrap("Drag here to draw a box".into(), FontId::proportional(15.0), ui.visuals().text_color());
+            let galley = painter.layout_no_wrap(text.into(), FontId::proportional(15.0), color);
             let back = Rect::from_center_size(rect.center(), galley.size() + Vec2::new(20.0, 12.0));
             painter.rect_filled(back, 6.0, ui.visuals().extreme_bg_color.gamma_multiply(0.85));
-            painter.galley(back.center() - galley.size() / 2.0, galley, ui.visuals().text_color());
+            if start {
+                painter.rect_stroke(back, 6.0, Stroke::new(1.5, theme::YELLOW), StrokeKind::Inside);
+            }
+
+            painter.galley(back.center() - galley.size() / 2.0, galley, color);
         }
 
         return;
@@ -148,28 +165,42 @@ pub fn view_hint(ui: &mut Ui, rect: Rect, kind: ViewKind, state: &mut EditorStat
         return;
     }
 
-    let width = (rect.width() - 32.0).min(440.0);
+    let width = (rect.width() - 32.0).min(420.0);
     let id = ui.id().with("start_hint");
     let size = ui.data(|d| d.get_temp::<Vec2>(id)).unwrap_or(Vec2::new(width, 180.0));
     let card = Align2::CENTER_CENTER.align_size_within_rect(Vec2::new(width, size.y), rect);
     let root = state.game.project_root.clone();
     let shown = ui.scope_builder(egui::UiBuilder::new().max_rect(card), |ui| {
-        egui::Frame::popup(ui.style()).show(ui, |ui| {
+        egui::Frame::popup(ui.style()).inner_margin(12).show(ui, |ui| {
             // Selectable labels would take the clicks, drags and wheel meant for the camera behind the card.
             ui.style_mut().interaction.selectable_labels = false;
             ui.set_width(ui.available_width());
-            ui.label(RichText::new("This map is empty").strong().size(16.0));
+            ui.label(RichText::new("This is a new, empty map").strong().size(17.0));
+            ui.add_space(4.0);
+            let place = match start_view {
+                Some(ViewKind::Top) => "in the Top view",
+                Some(ViewKind::Front) => "in the Front view",
+                Some(ViewKind::Side) => "in the Side view",
+                _ => "in this view",
+            };
+            let first = if state.tool == ToolKind::Select {
+                format!("To start, drag {place} to draw your first box.")
+            } else {
+                let keys =
+                    crate::commands::shortcut_text(ui.ctx(), &state.prefs, &Action::SetTool(ToolKind::Select)).map(|k| format!(" ({k})")).unwrap_or_default();
+                format!("To start, pick the Select tool{keys}, then drag {place} to draw your first box.")
+            };
+            ui.label(RichText::new(first).size(15.0).color(theme::YELLOW));
+            ui.add_space(8.0);
             let hollow = match crate::commands::shortcut_text(ui.ctx(), &state.prefs, &Action::CsgHollow) {
                 Some(keys) => format!("Brush > CSG > Hollow ({keys})"),
                 None => "Brush > CSG > Hollow".into(),
             };
-            ui.label(format!(
-                "Levels are built from brushes, solid blocks you draw and then shape. Drag in the Top, Front or Side view to draw your \
-                 first one, then hollow it into a room with {hollow}."
-            ));
+            ui.label(format!("Then {hollow} turns the box into a room."));
             ui.label(RichText::new(CAMERA_3D_HELP).weak());
-            ui.add_space(4.0);
+            ui.add_space(6.0);
             ui.horizontal_wrapped(|ui| {
+                ui.hyperlink_to("Getting started guide", GETTING_STARTED_URL).on_hover_text(GETTING_STARTED_URL);
                 let maps = maps.get(ui.ctx(), root.as_deref());
                 if !maps.is_empty() {
                     ui.menu_button("Open a map from this project", |ui| maps_menu(ui, root.as_deref(), maps, actions))
@@ -177,7 +208,6 @@ pub fn view_hint(ui: &mut Ui, rect: Rect, kind: ViewKind, state: &mut EditorStat
                         .on_hover_text("See how a finished map is put together");
                 }
 
-                ui.hyperlink_to("Getting started guide", GETTING_STARTED_URL);
                 if ui.button("Hide tips").on_hover_text("File > Preferences brings them back").clicked() {
                     state.prefs.start_hints = false;
                 }
@@ -224,38 +254,55 @@ mod tests {
         assert_eq!(found[MAX_MAPS - 1], dir.join(format!("b/{:03}.gtm", MAX_MAPS - 2)));
     }
 
-    #[test]
-    fn the_3d_view_offers_the_project_maps_until_the_tips_are_hidden() {
-        use egui_kittest::Harness;
-        use egui_kittest::kittest::Queryable;
+    struct Fixture {
+        state: EditorState,
+        maps: ProjectMaps,
+        actions: Vec<Action>,
+        start_view: Option<ViewKind>,
+        view_hovered: bool,
+        opened: Vec<String>,
+    }
 
-        struct Fixture {
-            state: EditorState,
-            maps: ProjectMaps,
-            actions: Vec<Action>,
-            view_hovered: bool,
+    impl Fixture {
+        fn new(state: EditorState) -> Self {
+            Self { state, maps: ProjectMaps::default(), actions: Vec::new(), start_view: Some(ViewKind::Top), view_hovered: false, opened: Vec::new() }
         }
+    }
+
+    /// The 3D view with its card, and the links it opens taken the way the app takes them.
+    fn card_harness(fixture: Fixture) -> egui_kittest::Harness<'static, Fixture> {
+        egui_kittest::Harness::builder().with_size(egui::vec2(800.0, 600.0)).build_ui_state(
+            |ui, f: &mut Fixture| {
+                let rect = ui.max_rect();
+                f.view_hovered = ui.allocate_rect(rect, egui::Sense::click_and_drag()).hovered();
+                view_hint(ui, rect, ViewKind::Perspective, f.start_view, &mut f.state, &mut f.maps, &mut f.actions);
+                f.opened.extend(crate::panels::take_open_urls(ui.ctx()));
+            },
+            fixture,
+        )
+    }
+
+    #[test]
+    fn the_3d_view_card_says_where_to_start_and_lets_the_camera_through() {
+        use egui_kittest::kittest::Queryable;
 
         let dir = std::env::temp_dir().join(format!("gt_welcome_hint_{}", std::process::id()));
         std::fs::create_dir_all(dir.join("maps")).unwrap();
         std::fs::write(dir.join("maps/church.gtm"), "").unwrap();
         let mut state = EditorState::new(Default::default());
         state.game.project_root = Some(dir.clone());
-        let fixture = Fixture { state, maps: ProjectMaps::default(), actions: Vec::new(), view_hovered: false };
-        let mut harness = Harness::builder().with_size(egui::vec2(800.0, 600.0)).build_ui_state(
-            |ui, f: &mut Fixture| {
-                let rect = ui.max_rect();
-                f.view_hovered = ui.allocate_rect(rect, egui::Sense::click_and_drag()).hovered();
-                view_hint(ui, rect, ViewKind::Perspective, &mut f.state, &mut f.maps, &mut f.actions);
-            },
-            fixture,
-        );
+        let mut harness = card_harness(Fixture::new(state));
         harness.run();
-        assert!(harness.query_by_label_contains("with Brush > CSG > Hollow (").is_some(), "names the menu and the shortcut");
-        let title = harness.get_by_label("This map is empty").rect().center();
+        assert!(harness.query_by_label("To start, drag in the Top view to draw your first box.").is_some());
+        assert!(harness.query_by_label_contains("Brush > CSG > Hollow (").is_some(), "names the menu and the shortcut");
+        let title = harness.get_by_label("This is a new, empty map").rect().center();
         harness.hover_at(title);
         harness.run();
         assert!(harness.state().view_hovered, "the card's text lets the camera behind it take the mouse");
+
+        harness.get_by_label("Getting started guide").click();
+        harness.run();
+        assert_eq!(harness.state().opened, [GETTING_STARTED_URL], "the link reaches the app, which opens it in the browser");
 
         // The scan runs on a thread, the menu shows up once it is done.
         for _ in 0..500 {
@@ -278,7 +325,29 @@ mod tests {
         harness.get_by_label("Hide tips").click();
         harness.run();
         assert!(!harness.state().state.prefs.start_hints);
-        assert!(harness.query_by_label("This map is empty").is_none());
+        assert!(harness.query_by_label("This is a new, empty map").is_none());
+    }
+
+    #[test]
+    fn the_first_step_fits_the_open_views_and_the_tool() {
+        use egui_kittest::kittest::Queryable;
+
+        let mut harness = card_harness(Fixture { start_view: Some(ViewKind::Front), ..Fixture::new(EditorState::new(Default::default())) });
+        harness.run();
+        assert!(harness.query_by_label("To start, drag in the Front view to draw your first box.").is_some(), "the Top view is closed");
+        harness.state_mut().start_view = None;
+        harness.run();
+        assert!(harness.query_by_label("To start, drag in this view to draw your first box.").is_some(), "only the 3D view is showing");
+
+        harness.state_mut().state.tool = ToolKind::Clip;
+        harness.run();
+        assert!(harness.query_by_label_contains("pick the Select tool (Q), then drag in this view").is_some(), "only the Select tool draws boxes");
+
+        let layer = harness.state().state.doc.map.default_layer();
+        let brush = gt_geom::Brush::from_aabb(&gt_core::Aabb::new(gt_core::DVec3::ZERO, gt_core::DVec3::splat(64.0)), "dev/grey").unwrap();
+        harness.state_mut().state.doc.map.insert(layer, gt_doc::NodeKind::Brush(brush));
+        harness.run();
+        assert!(harness.query_by_label("This is a new, empty map").is_none(), "the card goes once the map has something in it");
     }
 
     #[test]
