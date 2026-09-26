@@ -2943,20 +2943,67 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
     ui.add(egui::TextEdit::multiline(&mut text).code_editor().desired_width(f32::INFINITY));
 }
 
-/// Opens a file with the operating system's default application.
-pub fn open_in_system(path: &std::path::Path) {
-    let mut cmd = if cfg!(windows) {
-        let mut cmd = std::process::Command::new("cmd");
-        cmd.args(["/C", "start", ""]);
-        cmd
-    } else if cfg!(target_os = "macos") {
-        std::process::Command::new("open")
+/// Takes the links widgets asked egui to open this frame out of its output. eframe is built without its `links`
+/// feature, so nothing opens them unless the app passes them to `open_link`.
+pub fn take_open_urls(ctx: &egui::Context) -> Vec<String> {
+    ctx.output_mut(|o| {
+        let mut urls = Vec::new();
+        o.commands.retain(|c| match c {
+            egui::OutputCommand::OpenUrl(open) => {
+                urls.push(open.url.clone());
+                false
+            }
+            _ => true,
+        });
+        urls
+    })
+}
+
+/// Opens a web link in the system browser. Other schemes are refused because a model pack's page link comes from a
+/// file in the project. When the browser cannot be started the link is copied instead, so it is never lost.
+pub fn open_link(state: &mut EditorState, ctx: &egui::Context, url: &str) {
+    let lower = url.to_ascii_lowercase();
+    let web = lower.starts_with("https://") || lower.starts_with("http://");
+    if web && open_with_system(url.as_ref()).is_ok() {
+        state.set_status(format!("Opening {url} in your browser"));
     } else {
-        std::process::Command::new("xdg-open")
-    };
-    // stdout carries the JSON-RPC stream when MCP runs over stdio.
-    use std::process::Stdio;
-    let _ = cmd.arg(path).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+        ctx.copy_text(url.to_string());
+        state.set_status(format!("Could not open {url} in a browser, the link is copied to the clipboard"));
+    }
+
+    // The status bar is drawn before the links are handled.
+    ctx.request_repaint();
+}
+
+/// Opens a file or folder with the operating system's default application.
+pub fn open_in_system(path: &std::path::Path) {
+    let _ = open_with_system(path.as_os_str());
+}
+
+/// Only starting the opener can fail here, whether it then finds an application is not reported back.
+fn open_with_system(target: &std::ffi::OsStr) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        // `cmd /C start` would cut a link at its first `&` and flash a console window.
+        let wide = |s: &std::ffi::OsStr| s.encode_wide().chain([0]).collect::<Vec<u16>>();
+        let (verb, file) = (wide("open".as_ref()), wide(target));
+        let code = unsafe { ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL) };
+        // Values up to 32 are error codes.
+        if code as usize > 32 { Ok(()) } else { Err(std::io::Error::last_os_error()) }
+    }
+    #[cfg(not(windows))]
+    {
+        use std::process::Stdio;
+        let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+        // stdout carries the JSON-RPC stream when MCP runs over stdio.
+        let mut child = std::process::Command::new(opener).arg(target).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
+        // Waited for, or every opener that exits stays behind as a zombie until the editor quits.
+        std::thread::spawn(move || child.wait());
+        Ok(())
+    }
 }
 
 /// Opens the system file manager on the folder of `path` with the file selected. Linux file managers do that through
