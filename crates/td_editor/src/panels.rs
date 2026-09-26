@@ -124,7 +124,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
     let renaming = state.renaming.filter(|id| map.contains(*id));
     if renaming != ps.rename_for {
         ps.rename_for = renaming;
-        ps.rename_text = renaming.and_then(|id| map.get(id)).map(|n| n.name()).unwrap_or_default();
+        ps.rename_text = renaming.and_then(|id| map.get(id)).map(|n| n.editable_name()).unwrap_or_default();
         ps.rename_focus = true;
     }
 

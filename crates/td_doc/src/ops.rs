@@ -410,6 +410,11 @@ pub fn apply_material(map: &mut Map, sel: &Selection, material: &str) {
     }
 }
 
+/// The name of the first of `ids` that was given one, for the node that replaces them all.
+fn first_label(map: &Map, ids: &[NodeId]) -> Option<String> {
+    ids.iter().find_map(|id| map.get(*id).and_then(|n| n.label.clone()))
+}
+
 /// Subtracts the selected brushes from every other intersecting editable brush, then removes the selected ones.
 /// Returns how many brushes were cut, and every replaced brush (the cutters with no replacement).
 pub fn csg_subtract(map: &mut Map, sel: &mut Selection, carve: csg::CarveMaterial) -> (usize, Replaced) {
@@ -436,8 +441,9 @@ pub fn csg_subtract(map: &mut Map, sel: &mut Selection, carve: csg::CarveMateria
 
         changed += 1;
         let parent = map.get(t).and_then(|n| n.parent).unwrap_or(map.default_layer());
+        let label = map.get(t).and_then(|n| n.label.clone());
         parents.extend(remove_nodes(map, &[t]));
-        let new_ids = pieces.into_iter().map(|p| map.insert(parent, NodeKind::Brush(p))).collect();
+        let new_ids = pieces.into_iter().map(|p| map.insert_labeled(parent, NodeKind::Brush(p), label.clone())).collect();
         replaced.insert(t, new_ids);
     }
 
@@ -458,8 +464,9 @@ pub fn csg_merge(map: &mut Map, sel: &mut Selection, default_material: &str) -> 
     let refs: Vec<&Brush> = brushes.iter().collect();
     let merged = csg::convex_merge(&refs, default_material).ok()?;
     let parent = map.get(ids[0]).and_then(|n| n.parent).unwrap_or(map.default_layer());
+    let label = first_label(map, &ids);
     let parents = remove_nodes(map, &ids);
-    let new_id = map.insert(parent, NodeKind::Brush(merged));
+    let new_id = map.insert_labeled(parent, NodeKind::Brush(merged), label);
     remove_empty_containers(map, parents);
     sel.clear();
     sel.nodes.insert(new_id);
@@ -478,8 +485,9 @@ pub fn csg_intersect(map: &mut Map, sel: &mut Selection) -> Option<NodeId> {
     }
 
     let parent = map.get(ids[0]).and_then(|n| n.parent).unwrap_or(map.default_layer());
+    let label = first_label(map, &ids);
     let parents = remove_nodes(map, &ids);
-    let new_id = map.insert(parent, NodeKind::Brush(result));
+    let new_id = map.insert_labeled(parent, NodeKind::Brush(result), label);
     remove_empty_containers(map, parents);
     sel.clear();
     sel.nodes.insert(new_id);
@@ -498,8 +506,9 @@ pub fn csg_hollow(map: &mut Map, sel: &mut Selection, thickness: f64) -> Replace
         }
 
         let parent = map.get(id).and_then(|n| n.parent).unwrap_or(map.default_layer());
+        let label = map.get(id).and_then(|n| n.label.clone());
         map.remove(id);
-        let new_ids: Vec<NodeId> = walls.into_iter().map(|w| map.insert(parent, NodeKind::Brush(w))).collect();
+        let new_ids: Vec<NodeId> = walls.into_iter().map(|w| map.insert_labeled(parent, NodeKind::Brush(w), label.clone())).collect();
         replaced.insert(id, new_ids);
     }
 
@@ -574,10 +583,12 @@ pub fn convert_to_mesh(map: &mut Map, sel: &mut Selection, join: bool) -> Vec<No
     let brushes = sel.brushes(map);
     let mut out = Vec::new();
     let mut joined: Option<(NodeId, Mesh)> = None;
+    let joined_label = first_label(map, &brushes);
     let mut parents = BTreeSet::new();
     for id in brushes {
         let Some(b) = map.brush(id).cloned() else { continue };
         let parent = map.get(id).and_then(|n| n.parent).unwrap_or(map.default_layer());
+        let label = map.get(id).and_then(|n| n.label.clone());
         let mesh = Mesh::from_brush(&b);
         parents.extend(remove_nodes(map, &[id]));
         if join {
@@ -586,13 +597,13 @@ pub fn convert_to_mesh(map: &mut Map, sel: &mut Selection, join: bool) -> Vec<No
                 None => joined = Some((parent, mesh)),
             }
         } else {
-            out.push(map.insert(parent, NodeKind::Mesh(mesh)));
+            out.push(map.insert_labeled(parent, NodeKind::Mesh(mesh), label));
         }
     }
 
     if let Some((parent, mut mesh)) = joined {
         mesh.weld(1e-4);
-        out.push(map.insert(parent, NodeKind::Mesh(mesh)));
+        out.push(map.insert_labeled(parent, NodeKind::Mesh(mesh), joined_label));
     }
 
     remove_empty_containers(map, parents);
@@ -608,8 +619,9 @@ pub fn convert_to_brushes(map: &mut Map, sel: &mut Selection) -> Vec<NodeId> {
         let Some(m) = map.mesh(id).cloned() else { continue };
         let Ok(b) = m.to_brush() else { continue };
         let parent = map.get(id).and_then(|n| n.parent).unwrap_or(map.default_layer());
+        let label = map.get(id).and_then(|n| n.label.clone());
         map.remove(id);
-        out.push(map.insert(parent, NodeKind::Brush(b)));
+        out.push(map.insert_labeled(parent, NodeKind::Brush(b), label));
     }
 
     sel.clear();
@@ -653,7 +665,8 @@ pub fn join_meshes(map: &mut Map, sel: &mut Selection) -> Option<NodeId> {
         }
         None => {
             let parent = map.get(ids[0]).and_then(|n| n.parent).unwrap_or(map.default_layer());
-            map.insert(parent, NodeKind::Mesh(result))
+            let label = first_label(map, &ids);
+            map.insert_labeled(parent, NodeKind::Mesh(result), label)
         }
     };
     let parents = remove_nodes(map, &others);
@@ -787,6 +800,37 @@ mod tests {
         sel.nodes.insert(ids[1]);
         select_touching(&mut m, &mut sel, &[], false);
         assert!(!m.contains(door));
+    }
+
+    #[test]
+    fn replacing_brushes_keeps_their_name() {
+        let named = |m: &Map, ids: &[NodeId]| ids.iter().all(|id| m.get(*id).unwrap().label.as_deref() == Some("pillar"));
+        for op in 0..6 {
+            let (mut m, ids) = world_with_boxes();
+            m.rename(ids[1], "pillar");
+            let mut sel = Selection::default();
+            sel.nodes.extend([ids[0], ids[1]]);
+            let result = match op {
+                0 => vec![csg_merge(&mut m, &mut sel, "m").unwrap()],
+                1 => vec![csg_intersect(&mut m, &mut sel).unwrap()],
+                2 => convert_to_mesh(&mut m, &mut sel, true),
+                3 => {
+                    let meshes = convert_to_mesh(&mut m, &mut sel, false);
+                    assert_eq!(m.get(meshes[0]).unwrap().label, None, "the unnamed brush stays unnamed");
+                    sel.nodes = meshes[1..].iter().copied().collect();
+                    convert_to_brushes(&mut m, &mut sel)
+                }
+                4 => {
+                    sel.nodes.remove(&ids[0]);
+                    csg_hollow(&mut m, &mut sel, 4.0).remove(&ids[1]).unwrap()
+                }
+                _ => {
+                    sel.nodes.remove(&ids[1]);
+                    csg_subtract(&mut m, &mut sel, csg::CarveMaterial::Cutter).1.remove(&ids[1]).unwrap()
+                }
+            };
+            assert!(!result.is_empty() && named(&m, &result), "op {op}");
+        }
     }
 
     #[test]
