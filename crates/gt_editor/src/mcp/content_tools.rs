@@ -867,12 +867,14 @@ impl App {
                     Ok(id) => id,
                     Err(e) => return err(e),
                 };
-                let Some(name) = name else { return err("name required") };
-                if !self.state.doc.map.contains(id) {
-                    return err(format!("no node {id}"));
+                // Unlike the other ops, an empty name counts: it takes a given name off again.
+                let Some(name) = args["name"].as_str() else { return err("name required") };
+                let Some(node) = self.state.doc.map.get(id) else { return err(format!("no node {id}")) };
+                if name.trim().is_empty() && node.kind.has_own_name() {
+                    return err("layers, groups and scatter sets need a name");
                 }
 
-                let _ = self.state.doc.try_edit("Rename", |m, _| if m.rename(id, &name) { Ok(()) } else { Err(()) });
+                let _ = self.state.doc.try_edit("Rename", |m, _| if m.rename(id, name) { Ok(()) } else { Err(()) });
                 let name = self.state.doc.map.get(id).map(|n| n.name()).unwrap_or_default();
                 ok(json!({ "id": id.0, "name": name }))
             }

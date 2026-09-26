@@ -216,7 +216,7 @@ fn insert_fresh(map: &mut Map, parent: NodeId, node: FileNode, copies: &mut BTre
     if let Some(n) = map.get_mut(id) {
         n.hidden = node.hidden;
         n.locked = node.locked;
-        n.label = node.label;
+        n.set_label(node.label);
     }
 
     for c in node.children {
@@ -250,7 +250,7 @@ fn insert_file_node(map: &mut Map, parent: Option<NodeId>, node: FileNode) {
     if let Some(n) = map.get_mut(id) {
         n.hidden = node.hidden;
         n.locked = node.locked;
-        n.label = node.label;
+        n.set_label(node.label);
     }
 
     for c in node.children {
@@ -442,6 +442,19 @@ mod tests {
         assert!(m.rename(brush, ""));
         assert_eq!(m.get(brush).unwrap().name(), format!("brush{}", brush.0), "an empty name brings the default back");
         assert!(!m.rename(layer, ""), "a layer keeps its name");
+    }
+
+    #[test]
+    fn hand_edited_labels_that_name_nothing_are_dropped() {
+        let m = sample();
+        let layer = m.default_layer();
+        let brush = m.get(layer).unwrap().children[0];
+        let mut value = to_value(&m);
+        value["layers"][0]["label"] = "walls".into();
+        value["layers"][0]["children"][0]["label"] = "  ".into();
+        let back = from_str(&value.to_string()).unwrap();
+        assert_eq!((back.get(layer).unwrap().label.as_deref(), back.get(brush).unwrap().label.as_deref()), (None, None));
+        assert_eq!(back.get(brush).unwrap().name(), format!("brush{}", brush.0));
     }
 
     #[test]

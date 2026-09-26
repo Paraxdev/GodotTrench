@@ -196,6 +196,12 @@ impl Node {
         }
     }
 
+    /// Sets the name given with Rename. A blank name, which only a hand edited file has, and a name on a kind that
+    /// carries its own are dropped.
+    pub fn set_label(&mut self, label: Option<String>) {
+        self.label = label.filter(|l| !l.trim().is_empty() && !self.kind.has_own_name());
+    }
+
     /// The name from the node's kind and content, used while it has no label.
     pub fn default_name(&self) -> String {
         match &self.kind {
@@ -387,7 +393,7 @@ impl Map {
     pub fn insert_labeled(&mut self, parent: NodeId, kind: NodeKind, label: Option<String>) -> NodeId {
         let id = self.insert(parent, kind);
         if let Some(n) = self.get_mut(id) {
-            n.label = label.filter(|_| !n.kind.has_own_name());
+            n.set_label(label);
         }
 
         id
@@ -627,29 +633,36 @@ impl Map {
     }
 
     /// Names a node. Layers, groups and scatter sets take it as their own name and ignore an empty one, other nodes get
-    /// it as their label, and an empty or default name takes the label off again. Returns false when nothing changed.
+    /// it as their label, and an empty or default name takes the label off again. A scatter set's layer named after it,
+    /// as the Scatter tool makes one, is renamed along. Returns false when nothing changed.
     pub fn rename(&mut self, id: NodeId, name: &str) -> bool {
         let name = name.trim();
+        let layer = self.layer_of(id);
         let Some(node) = self.get_mut(id) else { return false };
         let default = node.default_name();
+        let scatter = matches!(node.kind, NodeKind::Scatter(_));
         let slot = match &mut node.kind {
             NodeKind::Layer(Layer { name: own, .. }) | NodeKind::Group(Group { name: own, .. }) | NodeKind::Scatter(Scatter { name: own, .. }) => Some(own),
             _ => None,
         };
-        match slot {
-            Some(_) if name.is_empty() => false,
-            Some(own) if own == name => false,
-            Some(own) => {
-                *own = name.to_string();
-                true
-            }
+        let old = match slot {
+            Some(own) if name.is_empty() || own == name => return false,
+            Some(own) => std::mem::replace(own, name.to_string()),
             None => {
                 let label = (!name.is_empty() && name != default).then(|| name.to_string());
                 let changed = node.label != label;
                 node.label = label;
-                changed
+                return changed;
             }
+        };
+        if scatter
+            && let Some(NodeKind::Layer(l)) = self.get_mut(layer).map(|n| &mut n.kind)
+            && l.name == format!("Scatter: {old}")
+        {
+            l.name = format!("Scatter: {name}");
         }
+
+        true
     }
 
     /// Deep copies a subtree under a new parent with fresh ids. Returns the new root id.
@@ -725,6 +738,20 @@ mod tests {
         }
 
         assert_eq!(m.get(room).unwrap().name(), "room (linked)");
+    }
+
+    #[test]
+    fn renaming_a_scatter_set_renames_its_layer() {
+        let mut m = Map::new();
+        let layer = m.add_layer("Scatter: grass");
+        let grass = m.insert(layer, NodeKind::Scatter(Scatter::new("grass", crate::scatter::ScatterKind::Foliage, Vec::new())));
+        assert!(m.rename(grass, " meadow "));
+        assert_eq!(m.get(layer).unwrap().name(), "Scatter: meadow");
+        assert!(!m.rename(grass, ""), "a set keeps its name");
+
+        m.rename(layer, "Field");
+        assert!(m.rename(grass, "lawn"));
+        assert_eq!(m.get(layer).unwrap().name(), "Field", "a layer named by hand keeps its name");
     }
 
     #[test]

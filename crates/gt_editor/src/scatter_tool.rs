@@ -132,19 +132,7 @@ pub fn set_palette(state: &mut EditorState, id: NodeId, items: &[ScatterItem]) {
 
 /// Renames a set together with the layer it was created on.
 pub fn rename_set(state: &mut EditorState, id: NodeId, name: &str) {
-    let Some(old) = state.doc.map.scatter(id).map(|s| s.name.clone()) else { return };
-    let layer = state.doc.map.layer_of(id);
-    state.doc.edit_coalesced("Rename Scatter Set", |m, _| {
-        if let Some(s) = m.scatter_mut(id) {
-            s.name = name.to_string();
-        }
-
-        if let Some(NodeKind::Layer(l)) = m.get_mut(layer).map(|n| &mut n.kind)
-            && l.name == format!("Scatter: {old}")
-        {
-            l.name = format!("Scatter: {name}");
-        }
-    });
+    let _ = state.doc.try_edit("Rename Scatter Set", |m, _| if m.rename(id, name) { Ok(()) } else { Err(()) });
 }
 
 /// Deletes a set, and the layer it was created on once that is empty.
