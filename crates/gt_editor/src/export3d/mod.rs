@@ -9,7 +9,9 @@ mod obj;
 mod textures;
 
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use gt_core::NodeId;
 use gt_doc::{Map, NodeKind};
@@ -22,6 +24,9 @@ use crate::prefabs::PrefabCache;
 /// OBJ cannot share a mesh between copies, so every scatter instance is written out in full. Past this many triangles
 /// the file runs into gigabytes few tools open, and an OBJ export is refused.
 pub const OBJ_TRIANGLE_LIMIT: usize = 10_000_000;
+
+/// The error of an export stopped with [`Progress::cancel`].
+pub const CANCELLED: &str = "export cancelled";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
@@ -134,10 +139,56 @@ pub fn obj_bytes(vertices: usize, triangles: usize) -> u64 {
     vertices as u64 * 80 + triangles as u64 * 75
 }
 
+/// How far an export got, shared by the thread running it and the window showing it, and the flag that stops it.
+#[derive(Default)]
+pub struct Progress {
+    writing: AtomicBool,
+    done: AtomicU64,
+    total: AtomicU64,
+    cancel: AtomicBool,
+}
+
+impl Progress {
+    pub fn cancel(&self) {
+        self.cancel.store(true, Ordering::Relaxed);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancel.load(Ordering::Relaxed)
+    }
+
+    /// Stops the export with [`CANCELLED`] once it is cancelled.
+    fn check(&self) -> Result<(), String> {
+        if self.is_cancelled() { Err(CANCELLED.into()) } else { Ok(()) }
+    }
+
+    fn begin(&self, writing: bool, total: usize) {
+        self.writing.store(writing, Ordering::Relaxed);
+        self.done.store(0, Ordering::Relaxed);
+        self.total.store(total.max(1) as u64, Ordering::Relaxed);
+    }
+
+    fn advance(&self, n: usize) {
+        self.done.fetch_add(n as u64, Ordering::Relaxed);
+    }
+
+    /// Whether the file is being written yet, and how much of that step is done, from 0 to 1.
+    pub fn get(&self) -> (bool, f32) {
+        let total = self.total.load(Ordering::Relaxed).max(1);
+        (self.writing.load(Ordering::Relaxed), (self.done.load(Ordering::Relaxed) as f64 / total as f64).min(1.0) as f32)
+    }
+}
+
 /// Writes the export to `path`. OBJ also writes `<name>.mtl` and the textures into a `<name>_textures` folder next to it.
 pub fn export(src: Sources, path: &Path, format: Format, options: &Options) -> Result<Report, String> {
+    export_with(src, path, format, options, &Progress::default())
+}
+
+/// [`export`] reporting how far it got to `progress`. A cancelled export fails with [`CANCELLED`] and writes nothing.
+pub fn export_with(src: Sources, path: &Path, format: Format, options: &Options, progress: &Progress) -> Result<Report, String> {
     let name = src.map_path.and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "map".into());
-    let scene = collect::collect(src, options, name);
+    let scene = collect::collect(src, options, name, progress);
+    progress.check()?;
     if scene.roots.is_empty() {
         return Err(if options.selection_only { "nothing to export in the selection" } else { "the map has nothing to export" }.into());
     }
@@ -155,8 +206,8 @@ pub fn export(src: Sources, path: &Path, format: Format, options: &Options) -> R
     }
 
     let bytes = match format {
-        Format::Glb => glb::write(&scene, path)?,
-        Format::Obj => obj::write(&scene, path)?,
+        Format::Glb => glb::write(&scene, path, progress)?,
+        Format::Obj => obj::write(&scene, path, progress)?,
     };
     Ok(Report {
         objects: scene.nodes.len(),
@@ -196,6 +247,68 @@ pub fn export_file(map_path: &Path, out: &Path, format: Format) -> Result<Report
         selection: &selection,
     };
     export(src, out, format, &Options::default())
+}
+
+/// Copies of what an export reads, so it can run on its own thread while the editor goes on.
+struct Snapshot {
+    map: Map,
+    map_path: Option<PathBuf>,
+    game: GameConfig,
+    materials: MaterialLibrary,
+    models: ModelCache,
+    prefabs: PrefabCache,
+    selection: BTreeSet<NodeId>,
+}
+
+/// An export running on its own thread, so the editor keeps drawing and a cancel can stop it.
+pub struct Job {
+    pub path: PathBuf,
+    pub progress: Arc<Progress>,
+    thread: Option<std::thread::JoinHandle<Result<Report, String>>>,
+}
+
+impl Job {
+    /// Exports the map as it is now to `path`. Edits made while it runs do not reach the file.
+    pub fn start(state: &crate::state::EditorState, path: PathBuf, format: Format, options: Options) -> Result<Job, String> {
+        let mut snapshot = Snapshot {
+            map: state.doc.map.clone(),
+            map_path: state.doc.path.clone(),
+            game: state.game.clone(),
+            materials: state.materials.detached(),
+            models: state.models.clone(),
+            prefabs: PrefabCache::default(),
+            selection: state.doc.selection.nodes.clone(),
+        };
+        snapshot.prefabs.project_root = state.prefabs.project_root.clone();
+        let progress = Arc::new(Progress::default());
+        let (shared, out) = (progress.clone(), path.clone());
+        let thread = std::thread::Builder::new()
+            .name("export".into())
+            .spawn(move || {
+                let src = Sources {
+                    map: &snapshot.map,
+                    map_path: snapshot.map_path.as_deref(),
+                    game: &snapshot.game,
+                    materials: &mut snapshot.materials,
+                    models: &mut snapshot.models,
+                    prefabs: &mut snapshot.prefabs,
+                    selection: &snapshot.selection,
+                };
+                export_with(src, &out, format, &options, &shared)
+            })
+            .map_err(|e| format!("cannot start the export: {e}"))?;
+        Ok(Job { path, progress, thread: Some(thread) })
+    }
+
+    /// The outcome once the export is done, None while it runs.
+    pub fn finished(&mut self) -> Option<Result<Report, String>> {
+        if !self.thread.as_ref().is_some_and(|t| t.is_finished()) {
+            return None;
+        }
+
+        let outcome = self.thread.take()?.join();
+        Some(outcome.unwrap_or_else(|_| Err("the export stopped on an internal error".into())))
+    }
 }
 
 /// Whether the node `id` goes into an export with these options: not in a layer left out of the Godot build, visible

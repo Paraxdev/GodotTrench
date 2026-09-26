@@ -150,8 +150,16 @@ pub struct App {
     pub(crate) tool_options_rect: egui::Rect,
 }
 
-const WINDOW_TITLES: [&str; 7] =
-    ["Shape Generator", "Create Terrain", "Keyboard Shortcuts", "Link Entities", "Hotspot Editor", "Preferences", crate::export3d::dialog::TITLE];
+const WINDOW_TITLES: [&str; 8] = [
+    "Shape Generator",
+    "Create Terrain",
+    "Keyboard Shortcuts",
+    "Link Entities",
+    "Hotspot Editor",
+    "Preferences",
+    crate::export3d::dialog::TITLE,
+    crate::export3d::dialog::PROGRESS_TITLE,
+];
 
 /// Who this frame's keys belong to. Decided before any widget runs, so it reads what egui knew at the end of the last
 /// frame.
@@ -810,8 +818,8 @@ impl App {
             Action::ShowCommandPalette => self.palette.toggle(),
             Action::ShowShapeDialog => self.shape_dialog.open = true,
             Action::ShowTerrainDialog => self.terrain_dialog.open = true,
-            Action::ExportGlb => self.export_dialog.open_for(crate::export3d::Format::Glb, &self.state),
-            Action::ExportObj => self.export_dialog.open_for(crate::export3d::Format::Obj, &self.state),
+            Action::ExportGlb => self.export_dialog.open_for(crate::export3d::Format::Glb, &mut self.state),
+            Action::ExportObj => self.export_dialog.open_for(crate::export3d::Format::Obj, &mut self.state),
             Action::ShowKeymap => self.keymap.open = true,
             Action::ShowScatterPanel => reveal_tab(&mut self.dock, Tab::Scatter, Tab::Inspector),
             Action::ShowLinkDialog => {

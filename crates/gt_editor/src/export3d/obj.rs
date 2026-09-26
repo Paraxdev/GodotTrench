@@ -10,6 +10,7 @@ use gt_core::{DMat3, DMat4, DVec3};
 
 use super::collect::Scene;
 use super::textures::{Alpha, to_srgb};
+use super::{CANCELLED, Progress};
 
 /// A name OBJ and MTL readers take as one word.
 fn word(name: &str) -> String {
@@ -18,16 +19,18 @@ fn word(name: &str) -> String {
 }
 
 /// Writes `path`, `<stem>.mtl` and `<stem>_textures/` next to it. Returns the bytes written.
-pub fn write(scene: &Scene, path: &Path) -> Result<u64, String> {
+pub fn write(scene: &Scene, path: &Path, progress: &Progress) -> Result<u64, String> {
     let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
     let stem = word(&path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "map".into()));
     let mtl_name = format!("{stem}.mtl");
     let tex_dir = format!("{stem}_textures");
     let fail = |p: &Path, e: std::io::Error| format!("cannot write {}: {e}", p.display());
 
-    // The geometry goes first, the bulk of the work. Streamed through a temporary file, a full disk leaves neither a
-    // half written OBJ nor materials without one.
-    let mut written = gt_formats::write_atomic_with(path, |out| geometry(scene, &mtl_name, out)).map_err(|e| fail(path, e))?;
+    // The geometry goes first, the bulk of the work. Streamed through a temporary file, a cancel or a full disk leaves
+    // neither a half written OBJ nor materials without one.
+    progress.begin(true, scene.triangles());
+    let mut written = gt_formats::write_atomic_with(path, |out| geometry(scene, &mtl_name, out, progress))
+        .map_err(|e| if progress.is_cancelled() { CANCELLED.to_string() } else { fail(path, e) })?;
 
     // Texture files, named after their source and made unique.
     let mut files: HashMap<usize, String> = HashMap::new();
@@ -104,7 +107,7 @@ pub fn write(scene: &Scene, path: &Path) -> Result<u64, String> {
 }
 
 /// The objects in world space, a scatter instance as a full copy of its model. Returns the bytes written.
-fn geometry(scene: &Scene, mtl_name: &str, out: &mut impl std::io::Write) -> std::io::Result<u64> {
+fn geometry(scene: &Scene, mtl_name: &str, out: &mut impl std::io::Write, progress: &Progress) -> std::io::Result<u64> {
     let mut out = Counted { out, bytes: 0 };
     writeln!(
         out,
@@ -115,6 +118,10 @@ fn geometry(scene: &Scene, mtl_name: &str, out: &mut impl std::io::Write) -> std
     let mut next = 1usize;
     let mut stack: Vec<(usize, DMat4)> = scene.roots.iter().rev().map(|r| (*r, DMat4::IDENTITY)).collect();
     while let Some((index, parent)) = stack.pop() {
+        if progress.is_cancelled() {
+            return Err(std::io::Error::other(CANCELLED));
+        }
+
         let node = &scene.nodes[index];
         let world = parent * node.matrix();
         stack.extend(node.children.iter().rev().map(|c| (*c, world)));
@@ -145,6 +152,7 @@ fn geometry(scene: &Scene, mtl_name: &str, out: &mut impl std::io::Write) -> std
             }
 
             next += p.positions.len();
+            progress.advance(p.indices.len() / 3);
         }
     }
 

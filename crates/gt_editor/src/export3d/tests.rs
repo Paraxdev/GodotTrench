@@ -411,19 +411,68 @@ fn obj_with_a_forest_of_scatter_instances_is_refused_before_writing() {
 }
 
 #[test]
+fn a_cancelled_export_writes_nothing() {
+    let root = project("cancel");
+    let map = map();
+    let mut caches = Caches::new(&root);
+    let cancelled = Progress::default();
+    cancelled.cancel();
+    for format in [Format::Glb, Format::Obj] {
+        let out = root.join(format!("room.{}", format.extension()));
+        let result = export_with(caches.sources(&map), &out, format, &Options::default(), &cancelled);
+        assert_eq!(result.unwrap_err(), CANCELLED);
+    }
+
+    // Stopped while writing the geometry, OBJ leaves neither a partial file nor its materials.
+    let scene = collect::collect(caches.sources(&map), &Options::default(), "room".into(), &Progress::default());
+    assert!(obj::write(&scene, &root.join("room.obj"), &cancelled).is_err());
+    let left: Vec<String> = std::fs::read_dir(&root).unwrap().map(|f| f.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert!(left.iter().all(|f| !f.starts_with("room")), "{left:?}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn glb_size_is_known_before_the_buffer_is_built() {
     let root = project("size");
     let map = map();
     let mut caches = Caches::new(&root);
-    let scene = collect::collect(caches.sources(&map), &Options::default(), "room".into());
+    let scene = collect::collect(caches.sources(&map), &Options::default(), "room".into(), &Progress::default());
     let out = root.join("room.glb");
-    let bytes = glb::write(&scene, &out).unwrap();
+    let bytes = glb::write(&scene, &out, &Progress::default()).unwrap();
     let file = std::fs::read(&out).unwrap();
     assert_eq!(bytes, file.len() as u64);
     assert_eq!(u32::from_le_bytes(file[8..12].try_into().unwrap()) as usize, file.len());
     let json = u32::from_le_bytes(file[12..16].try_into().unwrap()) as usize;
     let bin = u32::from_le_bytes(file[20 + json..24 + json].try_into().unwrap()) as u64;
     assert_eq!(bin, glb::buffer_size(&scene), "the 4 GB check sees the real size");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn an_export_job_runs_off_the_ui_thread() {
+    let root = project("job");
+    let mut state = crate::state::EditorState::new(crate::state::Prefs::default());
+    state.game.project_root = Some(root.clone());
+    let map_path = root.join("maps/room.gtm");
+    state.doc.path = Some(map_path.clone());
+    state.doc.edit("Build", |m, _| *m = map());
+    let out = root.join("room.glb");
+    let mut dialog = dialog::ExportDialog::default();
+    dialog.start(&mut state, out.clone());
+    assert!(crate::state::autosave_path(&map_path).is_file(), "unsaved work is autosaved before the export starts");
+    let mut job = dialog.job.take().expect("the export runs");
+    state.doc.map = Map::new();
+    let started = std::time::Instant::now();
+    let report = loop {
+        if let Some(outcome) = job.finished() {
+            break outcome.unwrap();
+        }
+
+        assert!(started.elapsed().as_secs() < 60, "the export finishes");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
+    assert!(report.objects > 5 && out.is_file(), "the map as it was when the export started");
+    assert_eq!(job.progress.get(), (true, 1.0));
     let _ = std::fs::remove_dir_all(&root);
 }
 

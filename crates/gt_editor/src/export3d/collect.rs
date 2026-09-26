@@ -10,7 +10,7 @@ use gt_formats::GameConfig;
 use gt_geom::{Brush, Mesh, Terrain};
 
 use super::textures::Materials;
-use super::{Options, Sources};
+use super::{Options, Progress, Sources};
 use crate::face_cull::{FaceCull, FacePieces};
 use crate::materials::MaterialLibrary;
 use crate::models::{Model, ModelCache};
@@ -163,6 +163,7 @@ struct Collector<'a> {
     prefabs: &'a mut PrefabCache,
     selection: &'a BTreeSet<NodeId>,
     options: &'a Options,
+    progress: &'a Progress,
     upm: f64,
     pieces: HashMap<NodeId, FacePieces>,
     nodes: Vec<Node>,
@@ -180,8 +181,9 @@ pub fn scatter_model(game: &GameConfig, models: &mut ModelCache, source: &str) -
     Some((path, model))
 }
 
-pub fn collect(src: Sources, options: &Options, name: String) -> Scene {
+pub fn collect(src: Sources, options: &Options, name: String, progress: &Progress) -> Scene {
     let Sources { map, map_path, game, materials: lib, models, prefabs, selection } = src;
+    progress.begin(false, map.nodes.len());
     // Hidden faces are left out like the Godot build does, which also keeps overlapping faces from z-fighting.
     let brush_faces = map.brushes().flat_map(|(_, b)| b.faces.iter().map(|f| f.data.material.as_str()));
     let face_materials: BTreeSet<&str> = brush_faces.chain(map.meshes().flat_map(|(_, m)| m.faces.iter().map(|f| f.data.material.as_str()))).collect();
@@ -203,6 +205,7 @@ pub fn collect(src: Sources, options: &Options, name: String) -> Scene {
         prefabs,
         selection,
         options,
+        progress,
         upm: game.units_per_meter.max(1e-6),
         pieces: std::mem::take(&mut cull.pieces),
         nodes: Vec::new(),
@@ -237,8 +240,9 @@ impl Collector<'_> {
 
     /// The node for `id` and what it holds, None when nothing in it goes out.
     fn walk(&mut self, map: &Map, map_path: Option<&Path>, id: NodeId, chosen: bool) -> Option<usize> {
+        self.progress.advance(1);
         let node = map.get(id)?;
-        if node.hidden && !self.options.hidden {
+        if (node.hidden && !self.options.hidden) || self.progress.is_cancelled() {
             return None;
         }
 
@@ -255,6 +259,7 @@ impl Collector<'_> {
                         && chosen
                         && map.get(*child).is_some_and(|n| matches!(n.kind, NodeKind::Brush(_)) && n.label.is_none() && (self.options.hidden || !n.hidden));
                     if merge {
+                        self.progress.advance(1);
                         if let Some(brush) = map.brush(*child) {
                             let pieces = self.pieces.remove(child);
                             self.brush(&mut merged, brush, pieces.as_ref());
@@ -462,6 +467,10 @@ impl Collector<'_> {
         let items: Vec<Option<(PathBuf, Arc<Model>)>> = set.items.iter().map(|item| scatter_model(self.game, self.models, &item.source)).collect();
         let mut children = Vec::new();
         for inst in &set.instances {
+            if self.progress.is_cancelled() {
+                return None;
+            }
+
             let Some(Some((path, model))) = items.get(inst.item as usize) else { continue };
             let mesh = self.model_mesh(path, model, set.item_material(inst.item as usize));
             let (scale, rotation, translation) = inst.transform().to_scale_rotation_translation();

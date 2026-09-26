@@ -1,14 +1,16 @@
-//! File > Export > glTF / OBJ: the options asked for before the save dialog.
+//! File > Export > glTF / OBJ: the options asked for before the save dialog, and the progress of a running export.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use gt_core::NodeId;
 
-use super::{Counts, Format, OBJ_TRIANGLE_LIMIT, Options, Sources, obj_bytes, size_text};
+use super::{CANCELLED, Counts, Format, Job, OBJ_TRIANGLE_LIMIT, Options, obj_bytes, size_text};
 use crate::state::EditorState;
 
 pub const TITLE: &str = "Export for 3D Tools";
+/// The window a running export shows its progress in.
+pub const PROGRESS_TITLE: &str = "Exporting";
 
 /// Said in the dialog and the docs, so nobody expects a round trip.
 pub const WHAT_IS_LEFT_OUT: &str = "Only geometry and materials are exported. Entity logic, I/O wiring, triggers, scripts and gameplay behaviour are left \
@@ -32,11 +34,13 @@ pub struct ExportDialog {
     pub format: Format,
     pub options: Options,
     counts: Option<(CountsKey, Counts)>,
+    /// The export running now.
+    pub job: Option<Job>,
 }
 
 impl Default for ExportDialog {
     fn default() -> Self {
-        Self { open: false, format: Format::Glb, options: Options::default(), counts: None }
+        Self { open: false, format: Format::Glb, options: Options::default(), counts: None, job: None }
     }
 }
 
@@ -45,7 +49,12 @@ fn triangles_text(n: usize) -> String {
 }
 
 impl ExportDialog {
-    pub fn open_for(&mut self, format: Format, state: &EditorState) {
+    pub fn open_for(&mut self, format: Format, state: &mut EditorState) {
+        if self.job.is_some() {
+            state.set_status("An export is still running, wait for it or cancel it first");
+            return;
+        }
+
         self.open = true;
         self.format = format;
         // A selection export only makes sense while something is selected.
@@ -53,6 +62,7 @@ impl ExportDialog {
     }
 
     pub fn show(&mut self, ctx: &egui::Context, state: &mut EditorState) {
+        self.show_progress(ctx, state);
         let mut open = self.open;
         let mut export = false;
         egui::Window::new(TITLE)
@@ -64,11 +74,51 @@ impl ExportDialog {
             .show(ctx, |ui| export = self.ui(ui, state));
         self.open = open && !export;
         if export && let Some(path) = save_path(state, self.format) {
-            match super::export(Sources::of(state), &path, self.format, &self.options) {
-                Ok(report) => state.set_status(report.summary(&path)),
+            self.start(state, path);
+        }
+    }
+
+    /// Starts exporting to `path` on its own thread. Unsaved work is autosaved first, in case the export runs the
+    /// computer out of memory, which ends the whole program.
+    pub fn start(&mut self, state: &mut EditorState, path: PathBuf) {
+        state.autosave_now();
+        match Job::start(state, path, self.format, self.options) {
+            Ok(job) => {
+                state.set_status(format!("Exporting to {}…", job.path.display()));
+                self.job = Some(job);
+            }
+            Err(e) => state.set_status(format!("Export failed: {e}")),
+        }
+    }
+
+    /// The progress window of a running export, and its outcome on the status line once it is done.
+    fn show_progress(&mut self, ctx: &egui::Context, state: &mut EditorState) {
+        let Some(job) = &mut self.job else { return };
+        if let Some(outcome) = job.finished() {
+            match outcome {
+                Ok(report) => state.set_status(report.summary(&job.path)),
+                Err(e) if e == CANCELLED => state.set_status(format!("Export cancelled, {} was not written", job.path.display())),
                 Err(e) => state.set_status(format!("Export failed: {e}")),
             }
+
+            self.job = None;
+            return;
         }
+
+        let (writing, done) = job.progress.get();
+        let cancelling = job.progress.is_cancelled();
+        let file = job.path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+        let window = egui::Window::new(PROGRESS_TITLE).resizable(false).collapsible(false).pivot(egui::Align2::CENTER_CENTER);
+        window.default_pos(ctx.content_rect().center()).show(ctx, |ui| {
+            ui.label(if writing { format!("Writing {file}") } else { "Collecting geometry and textures".to_string() });
+            ui.add(egui::ProgressBar::new(done).show_percentage().desired_width(300.0));
+            ui.label(egui::RichText::new("You can keep editing. Changes made now do not go into the file.").weak());
+            let label = if cancelling { "Cancelling…" } else { "Cancel" };
+            if ui.add_enabled(!cancelling, egui::Button::new(label)).on_hover_text("Stops the export, nothing is written").clicked() {
+                job.progress.cancel();
+            }
+        });
+        ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
 
     fn counts(&mut self, state: &mut EditorState) -> Counts {

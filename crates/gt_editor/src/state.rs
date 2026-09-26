@@ -1028,9 +1028,18 @@ impl EditorState {
         true
     }
 
-    /// Autosaves every open map with unsaved changes.
+    /// Autosaves every open map with unsaved changes once the autosave interval has passed.
     pub fn tick_autosave(&mut self) {
-        if self.prefs.autosave_minutes <= 0.0 || self.doc.in_transaction() || self.last_autosave.elapsed().as_secs_f64() < self.prefs.autosave_minutes * 60.0 {
+        if self.doc.in_transaction() || self.last_autosave.elapsed().as_secs_f64() < self.prefs.autosave_minutes * 60.0 {
+            return;
+        }
+
+        self.autosave_now();
+    }
+
+    /// Autosaves every open map with unsaved changes right away, unless autosave is turned off.
+    pub fn autosave_now(&mut self) {
+        if self.prefs.autosave_minutes <= 0.0 {
             return;
         }
 

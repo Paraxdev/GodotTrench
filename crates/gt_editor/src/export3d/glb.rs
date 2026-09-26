@@ -7,8 +7,8 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 use super::collect::Scene;
-use super::size_text;
 use super::textures::Alpha;
+use super::{CANCELLED, Progress, size_text};
 
 const GLB_MAGIC: u32 = 0x4654_6C67;
 const CHUNK_JSON: u32 = 0x4E4F_534A;
@@ -122,7 +122,7 @@ pub(super) fn buffer_size(scene: &Scene) -> u64 {
 }
 
 /// Writes the scene as a `.glb` file to `path`. Returns the bytes written.
-pub fn write(scene: &Scene, path: &Path) -> Result<u64, String> {
+pub fn write(scene: &Scene, path: &Path, progress: &Progress) -> Result<u64, String> {
     // Refused before the buffer is built, a file past the limit would take as much memory.
     let estimate = 28 + buffer_size(scene);
     if estimate > MAX_FILE {
@@ -131,8 +131,13 @@ pub fn write(scene: &Scene, path: &Path) -> Result<u64, String> {
 
     let mut buf = Buffer::default();
     let mut extensions: Vec<&str> = Vec::new();
+    progress.begin(true, scene.meshes.len() + 1);
     let mut meshes: Vec<Value> = Vec::with_capacity(scene.meshes.len());
     for mesh in &scene.meshes {
+        if progress.is_cancelled() {
+            return Err(CANCELLED.into());
+        }
+
         let primitives: Vec<Value> = mesh
             .primitives
             .iter()
@@ -151,6 +156,7 @@ pub fn write(scene: &Scene, path: &Path) -> Result<u64, String> {
             })
             .collect();
         meshes.push(json!({ "name": mesh.name, "primitives": primitives }));
+        progress.advance(1);
     }
 
     // Images go into the buffer only when a glTF texture uses them, and each image gets one texture per filter.
@@ -317,7 +323,12 @@ pub fn write(scene: &Scene, path: &Path) -> Result<u64, String> {
         return Err(too_big(total));
     }
 
+    if progress.is_cancelled() {
+        return Err(CANCELLED.into());
+    }
+
     gt_formats::write_atomic_with(path, |out| write_container(out, &json, &buf.bin)).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    progress.advance(1);
     Ok(total)
 }
 
