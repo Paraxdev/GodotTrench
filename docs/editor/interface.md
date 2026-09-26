@@ -14,10 +14,10 @@ The **tool options bar** under the toolbar holds the settings of the active tool
 that has none. Hovering the tool's name there, or its button in the toolbar, shows the full description.
 
 A new, empty map shows a card in the 3D view that says where to start: drag in the Top view to draw your first box,
-and the Top view marks the spot with a yellow label. Below that the card explains the 3D camera, links the
-[getting started guide](../getting-started.md) and lists the maps of the open project, so you can open a finished one
-instead. The card goes away once the map has something in it. **Hide tips** turns the tips off, and *Tips on an empty
-map* in *File > Preferences* brings them back.
+and the Top view marks the spot with a yellow label. Below that the card explains the 3D camera and links the
+[getting started guide](../getting-started.md). When the open project has maps, its **Open a map from this project**
+button lists them, so you can open a finished one instead. The card goes away once the map has something in it.
+**Hide tips** turns the tips off, and *Tips on an empty map* in *File > Preferences* brings them back.
 
 | Panel | Dock | What it is for |
 | --- | --- | --- |

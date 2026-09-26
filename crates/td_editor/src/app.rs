@@ -2342,7 +2342,7 @@ impl eframe::App for App {
         self.state.uv_panel_open = tab_shown(&self.dock, &Tab::Uv);
         let start_view = [ViewKind::Top, ViewKind::Front, ViewKind::Side]
             .into_iter()
-            .find(|k| self.viewports.iter().position(|v| v.kind() == *k).is_some_and(|i| tab_shown(&self.dock, &Tab::View(i))));
+            .find(|k| self.viewports.iter().enumerate().any(|(i, v)| v.kind() == *k && tab_shown(&self.dock, &Tab::View(i))));
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
             let mut tabs = Tabs {
                 views_open: open_views(&self.dock).len(),
