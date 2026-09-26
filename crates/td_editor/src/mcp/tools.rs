@@ -779,6 +779,7 @@ impl App {
                 "measure": self.tools.measure.start.zip(self.tools.measure.end).map(|(a, b)| json!({ "start": arr(a), "end": arr(b), "distance": (b - a).length() })),
                 "clip_points": self.tools.clip.points.iter().map(|p| arr(*p)).collect::<Vec<_>>(),
                 "selected_vertices": self.tools.vertex.selected.iter().map(|p| arr(*p)).collect::<Vec<_>>(),
+                "sculpt": { "radius": s.sculpt.radius, "strength": s.sculpt.strength },
             },
             "cameras": cameras,
             "ui": {
@@ -786,6 +787,7 @@ impl App {
                 "pixels_per_point": self.viewports.first().map(|v| (v.pixels_per_point as f64 * 1000.0).round() / 1000.0),
                 "windows": self.open_windows.iter().map(|(title, r)| json!({ "title": title, "rect": [r.min.x, r.min.y, r.max.x, r.max.y] })).collect::<Vec<_>>(),
                 "tool_buttons": self.tool_buttons.iter().map(|(t, r)| json!({ "tool": t.label(), "rect": [r.min.x, r.min.y, r.max.x, r.max.y] })).collect::<Vec<_>>(),
+                "tool_options": [self.tool_options_rect.min.x, self.tool_options_rect.min.y, self.tool_options_rect.max.x, self.tool_options_rect.max.y],
             },
             "game": {
                 "name": s.game.name, "project_root": path_value(s.game.project_root.as_ref()), "entity_definitions": s.game.entities.len(),

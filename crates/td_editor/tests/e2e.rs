@@ -266,6 +266,30 @@ fn keys_stay_with_windows_menus_and_the_palette() {
 
 #[test]
 #[ignore]
+fn number_fields_in_the_tool_options_bar_take_ctrl_a() {
+    let ed = Editor::launch("bar_ctrl_a");
+    let a = ed.box_brush([0.0, 0.0, 0.0], [64.0, 64.0, 64.0]);
+    ed.box_brush([128.0, 0.0, 0.0], [192.0, 64.0, 64.0]);
+    ed.call("select", json!({ "ids": [a] }));
+    ed.call("run_action", json!({ "action": "set_tool", "args": { "tool": "sculpt" } }));
+    ed.input("window", json!([{ "type": "move", "x": 10, "y": 10 }]));
+    let bar: Vec<f64> = ed.state()["ui"]["tool_options"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+    // The radius field, after the tool name and the mode drop down.
+    let (x, y) = (bar[0] + 241.0, (bar[1] + bar[3]) / 2.0);
+    for events in [
+        json!([{ "type": "click", "x": x, "y": y }, { "type": "key", "key": "A", "modifiers": ["ctrl"] }, { "type": "text", "text": "150" }, { "type": "key", "key": "Enter" }]),
+        json!([{ "type": "double_click", "x": x, "y": y }, { "type": "key", "key": "A", "modifiers": ["ctrl"] }, { "type": "text", "text": "96" }, { "type": "key", "key": "Enter" }]),
+    ] {
+        let typed = events[2]["text"].as_str().unwrap().parse::<f64>().unwrap();
+        ed.input("window", events);
+        let state = ed.state();
+        assert_eq!(state["editor"]["sculpt"]["radius"], typed, "Ctrl+A selected the field's text, so the typed value replaced it");
+        assert_eq!(selected(&ed), vec![a], "not Select All");
+    }
+}
+
+#[test]
+#[ignore]
 fn alt_orbit_click_cycling_and_edge_grab() {
     let ed = Editor::launch("picking");
     let floor = ed.box_brush([-64.0, 0.0, -64.0], [64.0, 16.0, 64.0]);
