@@ -49,11 +49,16 @@ pub(crate) fn skipped_entity(map: &Map, game: &GameConfig, id: NodeId) -> bool {
         .is_some_and(|e| e.classname.starts_with("trigger") || game.entity(&e.classname).is_some_and(|d| MOVING_CLASSES.contains(&d.node_class.as_str())))
 }
 
-/// Bounds of a node that can swallow another solid's faces: a closed, visible solid drawn opaque on every face.
+/// Whether the views draw `id`. Only those nodes take part in the culling the views show.
+fn shown(map: &Map, id: NodeId) -> bool {
+    !map.is_hidden(id) && map.in_cordon(id)
+}
+
+/// Bounds of a node that can swallow another solid's faces: a closed solid that takes part, drawn opaque on every face.
 /// A tool textured or see-through box (clip, water) shows what is inside it, so it buries nothing.
-fn solid_bounds(map: &Map, game: &GameConfig, opaque: &(dyn Fn(&str) -> bool + Sync), id: NodeId) -> Option<Aabb> {
+fn solid_bounds(map: &Map, game: &GameConfig, opaque: &(dyn Fn(&str) -> bool + Sync), takes_part: &dyn Fn(NodeId) -> bool, id: NodeId) -> Option<Aabb> {
     let node = map.get(id)?;
-    if map.is_hidden(id) || !map.in_cordon(id) || skipped_entity(map, game, id) {
+    if !takes_part(id) || skipped_entity(map, game, id) {
         return None;
     }
 
@@ -144,9 +149,9 @@ pub(crate) fn plane_key(normal: DVec3, dist: f64) -> PlaneKey {
 
 impl FaceCull {
     /// Faces of a node that take part: opaque, single sided, not tool textures, triggers or displacements.
-    fn node_faces(map: &Map, game: &GameConfig, opaque: &(dyn Fn(&str) -> bool + Sync), id: NodeId) -> Vec<CullFace> {
+    fn node_faces(map: &Map, game: &GameConfig, opaque: &(dyn Fn(&str) -> bool + Sync), takes_part: &dyn Fn(NodeId) -> bool, id: NodeId) -> Vec<CullFace> {
         let Some(node) = map.get(id) else { return Vec::new() };
-        if map.is_hidden(id) || !map.in_cordon(id) || skipped_entity(map, game, id) {
+        if !takes_part(id) || skipped_entity(map, game, id) {
             return Vec::new();
         }
 
@@ -219,11 +224,18 @@ impl FaceCull {
 
     /// The changed nodes plus every closed solid sharing space with them. Moving a solid buries or uncovers the
     /// faces of its neighbours, so those are recomputed in the same pass and stay consistent.
-    fn with_neighbours(&self, map: &Map, game: &GameConfig, opaque: &(dyn Fn(&str) -> bool + Sync), dirty: &BTreeSet<NodeId>) -> Vec<NodeId> {
+    fn with_neighbours(
+        &self,
+        map: &Map,
+        game: &GameConfig,
+        opaque: &(dyn Fn(&str) -> bool + Sync),
+        takes_part: &dyn Fn(NodeId) -> bool,
+        dirty: &BTreeSet<NodeId>,
+    ) -> Vec<NodeId> {
         let mut regions: Vec<Aabb> = Vec::new();
         for id in dirty {
             regions.extend(self.solids.get(id).copied());
-            regions.extend(solid_bounds(map, game, opaque, *id));
+            regions.extend(solid_bounds(map, game, opaque, takes_part, *id));
         }
 
         let mut nodes = dirty.clone();
@@ -275,11 +287,25 @@ impl FaceCull {
 
     /// Refreshes the faces of `dirty` nodes and everything sharing a plane with them. Returns the nodes whose visible pieces changed.
     pub fn update(&mut self, map: &Map, game: &GameConfig, opaque: &(dyn Fn(&str) -> bool + Sync), dirty: &BTreeSet<NodeId>, full: bool) -> BTreeSet<NodeId> {
+        self.update_among(map, game, opaque, &|id| shown(map, id), dirty, full)
+    }
+
+    /// Like [`Self::update`], with only the nodes `takes_part` accepts hiding each other's faces instead of those the
+    /// views show. An export culls among what goes into the file.
+    pub fn update_among(
+        &mut self,
+        map: &Map,
+        game: &GameConfig,
+        opaque: &(dyn Fn(&str) -> bool + Sync),
+        takes_part: &dyn Fn(NodeId) -> bool,
+        dirty: &BTreeSet<NodeId>,
+        full: bool,
+    ) -> BTreeSet<NodeId> {
         let nodes: Vec<NodeId> = if full {
             *self = Self::default();
             map.nodes.keys().copied().collect()
         } else {
-            self.with_neighbours(map, game, opaque, dirty)
+            self.with_neighbours(map, game, opaque, takes_part, dirty)
         };
         // Areas on each plane that changed, from the old and the new faces of the refreshed nodes.
         let mut touched: HashMap<PlaneKey, Vec<Aabb>> = HashMap::new();
@@ -294,7 +320,7 @@ impl FaceCull {
                 }
             }
 
-            let new = Self::node_faces(map, game, opaque, *id);
+            let new = Self::node_faces(map, game, opaque, takes_part, *id);
             for f in &new {
                 self.planes.entry(f.key).or_default().insert((*id, f.face));
                 touched.entry(f.key).or_default().push(f.bounds);
@@ -305,7 +331,7 @@ impl FaceCull {
             }
 
             self.solids.remove(id);
-            if let Some(b) = solid_bounds(map, game, opaque, *id) {
+            if let Some(b) = solid_bounds(map, game, opaque, takes_part, *id) {
                 self.solids.insert(*id, b);
             }
         }
