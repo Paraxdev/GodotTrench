@@ -62,6 +62,7 @@ func _initialize() -> void:
 	await test_missing_map_settings()
 	test_bbmodel()
 	test_default_fgd()
+	test_entity_pack()
 	test_build_report()
 	await test_game_config()
 	test_game_config_lint()
@@ -639,6 +640,35 @@ func test_default_fgd() -> void:
 	check(names == ["brick"], "with the addon defaults a clip brush draws nothing, got %s" % [names])
 	map.free()
 	DirAccess.remove_absolute(path)
+
+func test_entity_pack() -> void:
+	print("- the Gameplay entities pack installs where the project owns it")
+	var to := OS.get_temp_dir().path_join("gt_pack_test_%d" % OS.get_process_id())
+	var maps := to.path_join("maps")
+	DirAccess.make_dir_recursive_absolute(to.path_join("pack/scripts"))
+	DirAccess.make_dir_recursive_absolute(maps)
+	FileAccess.open(to.path_join("pack/scripts/gt_door.gd"), FileAccess.WRITE).store_string("# mine\n")
+	var written := GodotTrenchEntityPack.install(to.path_join("pack"))
+	check(written.has("scripts/gt_relay.gd") and written.has("gameplay_fgd.tres") and written.has("definitions/func_door.tres"), "installing copies the definitions and scripts")
+	check(not written.has("scripts/gt_door.gd") and FileAccess.get_file_as_string(to.path_join("pack/scripts/gt_door.gd")) == "# mine\n", "a file already there is kept")
+	check(not FileAccess.file_exists(to.path_join("pack/.gdignore")), "Godot sees the copies")
+	var manifest: Variant = JSON.parse_string(FileAccess.get_file_as_string(to.path_join("pack/pack.json")))
+	var files: Dictionary = manifest.get("files", {}) if manifest is Dictionary else {}
+	check(files.has("scripts/gt_relay.gd") and not files.has("scripts/gt_door.gd"), "the record leaves out the file the project had")
+	check(files.get("scripts/gt_relay.gd", "") == FileAccess.get_sha256(GodotTrenchEntityPack.TEMPLATE.path_join("scripts/gt_relay.gd")), "records hashes the way the editor does")
+
+	FileAccess.open(maps.path_join("old.gtm"), FileAccess.WRITE).store_string('{"classname": "func_door", "light": {"classname": "light"}}')
+	var core := GodotTrenchFGDFile.new()
+	core.base_fgd_files = [load("res://addons/func_godot/fgd/func_godot_fgd.tres")]
+	core.entity_definitions = (load("res://addons/func_godot/fgd/godottrench/godottrench_fgd.tres") as FuncGodotFGDFile).entity_definitions
+	core.pack_fgd_path = ""
+	check(GodotTrenchEntityPack.missing(core.get_entity_definitions(), maps) == PackedStringArray(["func_door"]), "a map with a door needs the pack in a core only project")
+	check(GodotTrenchEntityPack.missing((load("res://demo/demo_fgd.tres") as FuncGodotFGDFile).get_entity_definitions(), maps).is_empty(), "a project that defines func_door needs nothing")
+	for dir in ["pack/scripts", "pack/definitions", "pack", "maps"]:
+		for f in DirAccess.get_files_at(to.path_join(dir)):
+			DirAccess.remove_absolute(to.path_join(dir).path_join(f))
+		DirAccess.remove_absolute(to.path_join(dir))
+	DirAccess.remove_absolute(to)
 
 func test_build_report() -> void:
 	print("- the build report names what is missing, once each")

@@ -46,6 +46,17 @@ impl Manifest {
         (manifest.format == FORMAT).then_some(manifest)
     }
 
+    /// Only the installed files of a project's manifest. Godot's JSON writes every number as a float, so a manifest the
+    /// addon wrote may not read as a whole.
+    pub fn read_files(path: &Path) -> Option<BTreeMap<String, String>> {
+        let value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+        if value["format"] != FORMAT {
+            return None;
+        }
+
+        serde_json::from_value(value.get("files").cloned().unwrap_or_default()).ok().or(Some(BTreeMap::new()))
+    }
+
     pub fn to_json(&self) -> String {
         serde_json::to_string_pretty(self).expect("manifest serializes") + "\n"
     }
@@ -65,7 +76,7 @@ pub fn available(root: &Path) -> bool {
 }
 
 pub fn installed(root: &Path) -> bool {
-    Manifest::read(&install_dir(root).join(MANIFEST)).is_some()
+    Manifest::read_files(&install_dir(root).join(MANIFEST)).is_some()
 }
 
 fn sha256(bytes: &[u8]) -> String {
@@ -122,7 +133,7 @@ fn plan(root: &Path) -> Result<Plan, String> {
         return Err("The addon in this project has no Gameplay entities pack. Update the addon first.".into());
     };
     let dir = install_dir(root);
-    let before = Manifest::read(&dir.join(MANIFEST)).map(|m| m.files).unwrap_or_default();
+    let before = Manifest::read_files(&dir.join(MANIFEST)).unwrap_or_default();
     let files = template_files(&template).map_err(|e| format!("Could not read {}: {e}", template.display()))?;
     let mut record = BTreeMap::new();
     let mut out = Vec::new();
@@ -277,14 +288,44 @@ pub fn add_unexported(game: &mut GameConfig, root: &Path) -> usize {
 
     let mut added = 0;
     for mut def in manifest.entities {
-        if game.entity(&def.classname).is_none() {
-            def.fill_group();
-            game.entities.push(def);
-            added += 1;
+        def.fill_group();
+        match game.entities.iter().position(|e| e.classname == def.classname) {
+            None => game.entities.push(def),
+            Some(i) if !defined(game, &def.classname) => game.entities[i] = def,
+            Some(_) => continue,
         }
+
+        added += 1;
     }
 
     added
+}
+
+/// Whether `game` defines `classname` with a script that is there. The config an older addon exported names scripts
+/// that moved into the pack.
+fn defined(game: &GameConfig, classname: &str) -> bool {
+    game.entity(classname).is_some_and(|d| d.script.is_empty() || game.resolve_res(&d.script).is_none_or(|p| p.is_file()))
+}
+
+/// Installs the pack into the open project when its maps use entities of the pack that nothing defines, which is what
+/// a project made while those entities were part of the addon looks like after an addon update. Returns a status line
+/// when it installed or tried to.
+pub fn install_for_maps(state: &mut crate::state::EditorState) -> Option<String> {
+    let root = state.game.project_root.clone()?;
+    if state.gameplay_pack.installed || !state.gameplay_pack.available {
+        return None;
+    }
+
+    let need: Vec<String> = used_by_maps(&root).into_iter().filter(|c| !defined(&state.game, c)).collect();
+    let named = match need.len() {
+        0 => return None,
+        1..=3 => need.join(", "),
+        n => format!("{} and {} more", need[..3].join(", "), n - 3),
+    };
+    Some(match install_in_project(state) {
+        Ok(report) => format!("The maps use {named}, which now come with the {NAME} pack. {}", report.summary()),
+        Err(e) => format!("The maps use {named} from the {NAME} pack, which could not be installed: {e}"),
+    })
 }
 
 #[cfg(test)]
@@ -381,6 +422,45 @@ mod tests {
         let mut game = GameConfig::builtin();
         game.source = Some(exported);
         assert_eq!(add_unexported(&mut game, root), 0);
+    }
+
+    #[test]
+    fn a_project_whose_maps_use_the_pack_gets_it_when_the_addon_no_longer_has_the_entities() {
+        let dir = project();
+        let root = dir.path();
+        let mut state = crate::state::EditorState::new(Default::default());
+        state.load_project(root);
+        assert!(install_for_maps(&mut state).is_none(), "no map uses the pack");
+        write(&root.join("maps/old.gtm"), r#"{"classname": "func_door"}, {"classname": "my_door"}"#);
+
+        // The config the old addon exported still names func_door, with a script the update removed.
+        let mut game = GameConfig::with_gameplay_pack();
+        game.entities.iter_mut().find(|e| e.classname == "func_door").unwrap().script = "res://addons/func_godot/src/godottrench/entities/gt_door.gd".into();
+        game.project_root = Some(root.to_path_buf());
+        state.game = game;
+        let status = install_for_maps(&mut state).expect("installed");
+        assert!(status.starts_with("The maps use func_door, which now come with the Gameplay entities pack. Added 4 files"), "{status}");
+        assert!(state.gameplay_pack.installed && install_dir(root).join("scripts/gt_door.gd").is_file());
+        assert_eq!(state.game.entity("func_door").unwrap().script, "res://godottrench/entities/scripts/gt_door.gd", "the stale definition is replaced");
+        assert!(install_for_maps(&mut state).is_none(), "once");
+    }
+
+    #[test]
+    fn a_project_that_defines_the_classes_itself_is_left_alone() {
+        let dir = project();
+        let root = dir.path();
+        write(&root.join("maps/a.gtm"), r#"{"classname": "func_door"}"#);
+        let config = r#"{"format": "godottrench-game", "version": 1, "entities": [{"classname": "func_door", "type": "solid"}]}"#;
+        write(&root.join(gt_formats::game::GAME_FILE_NAME), config);
+        let mut state = crate::state::EditorState::new(Default::default());
+        state.load_project(root);
+        assert!(install_for_maps(&mut state).is_none());
+        assert!(!install_dir(root).exists());
+
+        std::fs::remove_file(root.join(gt_formats::game::GAME_FILE_NAME)).unwrap();
+        state.load_project(root);
+        assert!(state.gameplay_pack.installed, "opening the project installs it once nothing defines func_door");
+        assert!(state.status.contains("The maps use func_door"), "{}", state.status);
     }
 
     #[test]
