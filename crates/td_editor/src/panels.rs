@@ -2504,7 +2504,7 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
         }
     });
     ui.label(
-        RichText::new("Drag into a view to place, Ctrl or Shift click selects several and drags them together. Double click places at the cursor.").weak(),
+        RichText::new("Drag into a view to place, Ctrl or Shift click selects several and drags them together. Double click places at the cursor. Hover a heading to see what its entities are for.").weak(),
     );
     ui.separator();
     let filter = ps.entity_filter.to_lowercase();
@@ -2537,7 +2537,7 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
     let mut to_reference: Option<String> = None;
     ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for (group, defs) in &groups {
-            egui::CollapsingHeader::new(group).default_open(true).show(ui, |ui| {
+            let section = egui::CollapsingHeader::new(group).default_open(true).show(ui, |ui| {
                 let cols = ((ui.available_width() / cell_width).floor() as usize).max(1);
                 for chunk in defs.chunks(cols) {
                     ui.horizontal(|ui| {
@@ -2581,6 +2581,9 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
                     });
                 }
             });
+            if let Some(hint) = entity_group_hint(group) {
+                section.header_response.on_hover_text(hint);
+            }
         }
     });
     if let Some((classname, modifiers)) = clicked {
@@ -2924,6 +2927,23 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
     });
     let mut text = code.as_str();
     ui.add(egui::TextEdit::multiline(&mut text).code_editor().desired_width(f32::INFINITY));
+}
+
+/// What the entities of a group are for, since a newcomer cannot tell a func_ from an info_ by the name alone.
+fn entity_group_hint(group: &str) -> Option<&'static str> {
+    Some(match group {
+        "func" => "Brush entities: brushes that do something, such as doors, buttons, lifts, or walls without collision",
+        "info" => "Markers for spots in the level, such as where the player starts, a teleport arrives or enemies spawn",
+        "trigger" => "Invisible volumes that fire outputs when a body enters or leaves them",
+        "logic" => "Invisible helpers that wire outputs together: relays, timers, counters and scripts",
+        "path" => "Stops of a route that trains and walkers follow",
+        "light" => "Lights, placed as points",
+        "prop" => "Models placed in the level, static or with physics",
+        "env" => "Effects such as sounds, particles and explosions",
+        "game" => "Text shown to the player in the world or on the HUD",
+        "npc" => "Scripted characters that walk a path, for cutscenes",
+        _ => return None,
+    })
 }
 
 /// Opens a file with the operating system's default application.
