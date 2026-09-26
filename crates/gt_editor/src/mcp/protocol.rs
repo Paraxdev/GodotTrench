@@ -322,9 +322,9 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "project_content",
-            "description": "Ready made content for the open Godot project. Without arguments it tells which content the project has. install: \"nature\" adds the nature models (the embedded Blockbench models plus the glTF trees, bushes and their textures, downloaded from the GitHub release, about 23 MB) to res://godottrench/nature, which the glTF scatter presets need. install: \"demo\" adds those and the demo (showcase maps, demo models and textures, overlays, demo scenes, about 107 MB more) to res://demo and res://models. Files the project already has are kept, project.godot and the addon are never touched. The call returns once the download is unpacked.",
+            "description": "Ready made content for the open Godot project. Without arguments it tells which content the project has. install: \"nature\" adds the nature models (the embedded Blockbench models plus the glTF trees, bushes and their textures, downloaded from the GitHub release, about 23 MB) to res://godottrench/nature, which the glTF scatter presets need. install: \"demo\" adds those and the demo (showcase maps, demo models and textures, overlays, demo scenes, about 107 MB more) to res://demo and res://models. install: \"gameplay\" copies the Gameplay entities pack (doors, buttons, lifts, triggers, logic, spawners, props, effects) from the project's addon into res://godottrench/entities, or updates the files nobody edited, without a download; the core entities (worldspawn, func_detail, func_illusionary, func_geo, light, light_spot, info_player_start) need nothing. Files the project already has are kept, project.godot and the addon are never touched. The call returns once the download is unpacked.",
             "inputSchema": { "type": "object", "properties": {
-                "install": { "type": "string", "enum": ["nature", "demo"] }
+                "install": { "type": "string", "enum": ["nature", "demo", "gameplay"] }
             } }
         }),
         json!({

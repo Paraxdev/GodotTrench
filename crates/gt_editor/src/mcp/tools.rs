@@ -433,6 +433,7 @@ impl App {
                 ctx.request_repaint();
                 Reply::Deferred
             }
+            "project_content" if args["install"] == "gameplay" => Reply::Now(self.run_tool("project_content", args, ctx)),
             "project_content" if args.get("install").is_some() => match self.start_content(&args, ctx) {
                 Ok(()) => {
                     self.content_replies.push(reply.clone());
@@ -557,6 +558,10 @@ impl App {
 
         match name {
             "get_state" => ok(self.state_summary()),
+            "project_content" if args["install"] == "gameplay" => match crate::entity_pack::install_in_project(&mut self.state) {
+                Ok(report) => ok(json!({ "added": report.added.len(), "updated": report.updated.len(), "kept": report.kept, "summary": report.summary() })),
+                Err(e) => err(e),
+            },
             "project_content" if args.get("install").is_some() => err("project_content install cannot run inside scripts, call it before the script"),
             "project_content" => ok(self.content_status()),
             "list_nodes" => match self.list_nodes(&args) {
