@@ -1934,6 +1934,9 @@ fn material_interactions(resp: egui::Response, state: &mut EditorState, name: &s
     });
 }
 
+/// Thumbnail size in the Materials panel's row of recently applied materials.
+const RECENT_CELL: f32 = 28.0;
+
 pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
     ui.horizontal_wrapped(|ui| {
         ui.add(egui::TextEdit::singleline(&mut ps.material_filter).hint_text("Search materials").desired_width(160.0));
@@ -1955,15 +1958,18 @@ pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
     });
     let mut budget = 6;
     let recent: Vec<String> = state.prefs.recent_materials.iter().take(16).cloned().collect();
-    if !recent.is_empty() {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("recent").weak());
-            for name in recent {
-                let resp = material_cell(ui, state, &name, 28.0, false, &mut budget);
-                material_interactions(resp, state, &name, actions);
-            }
-        });
-    }
+    // Shown while still empty, or the first material applied would push the grid down under the pointer.
+    ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), RECENT_CELL + 4.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+        ui.label(RichText::new("recent").weak());
+        if recent.is_empty() {
+            ui.label(RichText::new("the materials you apply show up here").weak().italics());
+        }
+
+        for name in recent {
+            let resp = material_cell(ui, state, &name, RECENT_CELL, false, &mut budget);
+            material_interactions(resp, state, &name, actions);
+        }
+    });
 
     ui.separator();
 
