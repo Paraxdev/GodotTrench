@@ -2670,8 +2670,10 @@ mod tests {
         assert!(!dir.join("godottrench").exists(), "nothing is written");
         state.content_request = None;
         assert_eq!(state.prefs.scatter.preset, "forest", "the template painting starts a set from");
-        assert_eq!(crate::scatter_tool::active_or_new_set(&mut state), None, "painting without a set asks too");
-        assert!(state.content_request.is_some() && state.doc.map.scatters().count() == 0);
+        assert!(crate::scatter_tool::active_or_new_set(&mut state).is_some(), "painting without a set falls back to the built-in trees");
+        assert_eq!(state.prefs.scatter.preset, crate::scatter_tool::FALLBACK_PRESET);
+        assert!(state.status.contains("needs the nature pack") && state.content_request.is_none(), "{}", state.status);
+        assert_eq!(state.doc.map.scatters().count(), 1);
 
         add_nature_pack(&dir);
         state.content_request = None;
@@ -2685,7 +2687,7 @@ mod tests {
             }
         }
 
-        assert_eq!(state.doc.map.scatters().count(), gt_doc::scatter::PRESETS.len());
+        assert_eq!(state.doc.map.scatters().count(), gt_doc::scatter::PRESETS.len() + 1);
         assert_eq!(state.content_request, None);
         let _ = std::fs::remove_dir_all(dir);
     }
