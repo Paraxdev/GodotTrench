@@ -43,7 +43,9 @@ image for. Those come out untextured.
 
 The file leaves out what the Godot build does not draw: faces with tool textures (clip, skip, origin, sky, trigger,
 nodraw, hint), faces hidden against another brush, trigger and other volume entities, and layers set to *Omit From
-Export*. Lights, sounds, spawn points, the sky and fog are not exported either.
+Export*. Lights, sounds, spawn points, the sky and fog are not exported either. Only objects that go into the file hide
+each other's faces, so a pillar exported with *Selection only* keeps the bottom that rests on the floor, and a layer set
+to *Omit From Export* leaves no holes in its neighbours.
 
 ## Units and axes
 

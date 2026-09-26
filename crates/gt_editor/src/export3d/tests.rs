@@ -289,3 +289,55 @@ fn dialog_says_what_is_left_out_and_counts_scatter() {
     harness.run();
     assert!(harness.state().0.options.scatter);
 }
+
+/// A pillar standing on a floor in a layer of its own.
+fn pillar_on_floor() -> (Map, NodeId, NodeId) {
+    let mut map = Map::new();
+    let ground = map.add_layer("Ground");
+    let floor = map.insert_labeled(ground, NodeKind::Brush(cube([-128.0, -16.0, -128.0], [128.0, 0.0, 128.0], "brick")), Some("Floor".into()));
+    let layer = map.default_layer();
+    let pillar = map.insert_labeled(layer, NodeKind::Brush(cube([0.0, 0.0, 0.0], [32.0, 128.0, 32.0], "brick")), Some("Pillar".into()));
+    (map, floor, pillar)
+}
+
+/// Vertices of the object `name` in a written .glb.
+fn vertex_count(path: &Path, name: &str) -> usize {
+    let (doc, ..) = gltf::import(path).unwrap();
+    let node = doc.nodes().find(|n| n.name() == Some(name)).unwrap_or_else(|| panic!("no {name}"));
+    node.mesh().unwrap().primitives().map(|p| p.get(&gltf::Semantic::Positions).unwrap().count()).sum()
+}
+
+#[test]
+fn only_what_is_exported_hides_faces() {
+    let root = project("cull");
+    let (mut map, floor, pillar) = pillar_on_floor();
+    let mut caches = Caches::new(&root);
+    let out = root.join("cull.glb");
+    let pillar_vertices = |map: &Map, caches: &mut Caches, options: Options| {
+        export(caches.sources(map), &out, Format::Glb, &options).unwrap();
+        vertex_count(&out, "Pillar")
+    };
+    assert_eq!(pillar_vertices(&map, &mut caches, Options::default()), 20, "on the floor its bottom is hidden, as in the Godot build");
+
+    caches.selection.insert(pillar);
+    assert_eq!(pillar_vertices(&map, &mut caches, Options { selection_only: true, ..Default::default() }), 24, "exported alone it keeps its base");
+    caches.selection.clear();
+
+    // A cordon only narrows the views, the export still holds both and culls between them.
+    map.editor.cordon = Some(Aabb::new(DVec3::splat(4096.0), DVec3::splat(4608.0)));
+    map.editor.cordon_enabled = true;
+    assert_eq!(pillar_vertices(&map, &mut caches, Options::default()), 20);
+
+    map.get_mut(floor).unwrap().hidden = true;
+    assert_eq!(pillar_vertices(&map, &mut caches, Options::default()), 24, "a hidden floor stays out and hides nothing");
+    assert_eq!(pillar_vertices(&map, &mut caches, Options { hidden: true, ..Default::default() }), 20, "exported with it, the floor hides the base");
+    map.get_mut(floor).unwrap().hidden = false;
+
+    let ground = map.layer_of(floor);
+    if let NodeKind::Layer(l) = &mut map.get_mut(ground).unwrap().kind {
+        l.omit_from_export = true;
+    }
+
+    assert_eq!(pillar_vertices(&map, &mut caches, Options::default()), 24, "a layer left out of the export leaves no hole");
+    let _ = std::fs::remove_dir_all(&root);
+}

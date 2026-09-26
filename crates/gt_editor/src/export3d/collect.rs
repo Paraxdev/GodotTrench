@@ -175,8 +175,10 @@ pub fn collect(src: Sources, options: &Options, name: String) -> Scene {
             (m.to_string(), info.transparency != gt_formats::godot_material::Transparency::Alpha && info.albedo_color[3] >= 0.999 && !info.double_sided)
         })
         .collect();
+    // Only what goes into the file hides faces: an unselected floor must not eat the base of a pillar exported alone.
     let mut cull = FaceCull::default();
-    cull.update(map, game, &|m: &str| opaque.get(m).copied().unwrap_or(true), &BTreeSet::new(), true);
+    let exported = |id: NodeId| super::in_scope(map, id, selection, options);
+    cull.update_among(map, game, &|m: &str| opaque.get(m).copied().unwrap_or(true), &exported, &BTreeSet::new(), true);
     let mut c = Collector {
         game,
         lib,
