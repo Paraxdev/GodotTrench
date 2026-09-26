@@ -105,8 +105,10 @@ CI skips pushes that only change docs or Markdown. Every green push to `main` re
 The releases also carry `godottrench-nature-pack.zip` and `godottrench-demo-content.zip`, which *Godot > Add Content to
 Project…* downloads into a project. The folders they hold are listed in
 [content.rs](https://github.com/Paraxdev/GodotTrench/blob/main/crates/gt_editor/src/content.rs), and a test checks the
-zip commands in `ci.yml` against that list. The editor looks the zips up through the GitHub API, and the
-`GODOTTRENCH_RELEASES_API` environment variable points it at another server, for trying a zip before it is published.
+zip commands in `ci.yml` against that list. The editor looks the zips up through the GitHub API, in the release of its
+own version first and then in the rolling beta. CI builds the beta with `GODOTTRENCH_CHANNEL=beta`, which turns that
+order around, since a beta carries the version of the last release. The `GODOTTRENCH_RELEASES_API` environment variable
+points the editor at another server, for trying a zip before it is published.
 
 {% mcp %}
 

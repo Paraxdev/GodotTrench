@@ -2,7 +2,7 @@
 //! the editor, the rest is downloaded from the GitHub release that matches the editor, or from the rolling beta, and
 //! unpacked into the project without replacing any file.
 
-use std::io::{Read, Write};
+use std::io::{Read, Seek, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
@@ -25,8 +25,11 @@ pub const RELEASES_API: &str = "https://api.github.com/repos/Paraxdev/GodotTrenc
 /// Replaces [`RELEASES_API`], so tests can serve the downloads themselves.
 pub const API_ENV: &str = "GODOTTRENCH_RELEASES_API";
 
-/// Refuses archives that would unpack to more than this, whatever their headers claim per file.
+/// Refuses archives that would unpack to more than this. No entry may give more than its header claims.
 const MAX_UNPACKED: u64 = 4 << 30;
+
+/// A download that brings nothing new for this long has stalled.
+const STALL: Duration = if cfg!(test) { Duration::from_millis(600) } else { Duration::from_secs(60) };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Choice {
@@ -82,15 +85,28 @@ pub fn has_demo(root: &Path) -> bool {
 pub enum Error {
     /// The server could not be reached, with what failed.
     Offline(String),
+    /// A release has no such download.
     NotPublished(&'static str),
+    /// Neither release was found, which happens while CI replaces the rolling beta.
+    NoRelease,
     Status(u16),
     /// The download or the archive is not what the release promised.
     Damaged(String),
     DiskFull,
-    /// The archive names a path outside the folders it may add to. Nothing is written then.
+    /// The archive names a path outside the folders it may add to, or one Windows cannot hold. Nothing from it is
+    /// written then.
     Unsafe(String),
+    /// A folder the archive adds to is a link leading out of the project. Nothing from the archive is written then.
+    Link(PathBuf),
     Io(String),
     Cancelled,
+}
+
+impl Error {
+    /// The download went wrong, rather than being cancelled, refused or failing to write into the project.
+    pub fn is_download(&self) -> bool {
+        matches!(self, Error::Offline(_) | Error::NotPublished(_) | Error::NoRelease | Error::Status(_) | Error::Damaged(_))
+    }
 }
 
 impl std::fmt::Display for Error {
@@ -100,18 +116,24 @@ impl std::fmt::Display for Error {
             Error::NotPublished(asset) => {
                 write!(f, "{asset} is not published yet, neither with the v{} release nor with the rolling beta.", crate::VERSION)
             }
+            Error::NoRelease => write!(
+                f,
+                "Neither the v{} release nor the rolling beta was found. The beta is replaced after each change, try again in a few minutes.",
+                crate::VERSION
+            ),
             Error::Status(code @ (403 | 429)) => write!(f, "GitHub refused the request ({code}), it limits how often one address may ask. Try again later."),
             Error::Status(code) => write!(f, "GitHub answered with error {code}. Try again later."),
             Error::Damaged(why) => write!(f, "The download is damaged: {why}. Try again."),
             Error::DiskFull => write!(f, "The disk is full. Free some space and try again, the files added so far stay."),
-            Error::Unsafe(path) => write!(f, "The archive holds {path}, outside the folders it may add to, so nothing was added."),
+            Error::Unsafe(path) => write!(f, "The archive holds {path}, which it may not add to the project, so nothing from it was added."),
+            Error::Link(path) => write!(f, "{} is a link that leads out of the project, so nothing from the archive was added.", path.display()),
             Error::Io(why) => write!(f, "{why}"),
             Error::Cancelled => write!(f, "Cancelled. The files added so far stay, installing again adds the rest."),
         }
     }
 }
 
-fn io_error(e: std::io::Error, what: &Path) -> Error {
+pub(crate) fn io_error(e: std::io::Error, what: &Path) -> Error {
     match e.kind() {
         std::io::ErrorKind::StorageFull => Error::DiskFull,
         // The zip reader reports a CRC mismatch as invalid data.
@@ -127,7 +149,8 @@ fn net_error(e: ureq::Error) -> Error {
         ureq::Error::ConnectionFailed => Error::Offline("the connection failed".into()),
         ureq::Error::Timeout(_) => Error::Offline("no answer in time".into()),
         ureq::Error::Io(e) => Error::Offline(e.to_string()),
-        ureq::Error::Tls(why) => Error::Offline(format!("secure connection failed: {why}")),
+        // Only the system's certificates are used, a missing CA bundle or a proxy it does not trust ends up here.
+        ureq::Error::Tls(why) => Error::Offline(format!("the secure connection failed, check that the system trusts GitHub's certificate: {why}")),
         other => Error::Offline(other.to_string()),
     }
 }
@@ -142,7 +165,7 @@ pub struct Asset {
     pub tag: String,
 }
 
-fn agent() -> ureq::Agent {
+pub(crate) fn agent() -> ureq::Agent {
     // The operating system's certificates, so a proxy or antivirus that re-signs TLS works as it does in a browser.
     let tls = ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build();
     ureq::Agent::config_builder()
@@ -153,6 +176,8 @@ fn agent() -> ureq::Agent {
         .max_redirects(0)
         .timeout_connect(Some(Duration::from_secs(20)))
         .timeout_recv_response(Some(Duration::from_secs(60)))
+        // Frees the connection of a download given up on as stalled, see STALL.
+        .timeout_recv_body(Some(Duration::from_secs(6 * 3600)))
         .user_agent(format!("GodotTrench/{}", crate::VERSION))
         .build()
         .into()
@@ -178,12 +203,26 @@ fn get(agent: &ureq::Agent, url: &str, accept: &str) -> Result<ureq::http::Respo
     Err(Error::Damaged("the server sent it on too many times".into()))
 }
 
-/// Finds `name` in the release of this editor version, else in the rolling beta.
+/// Whether CI built this editor for the rolling beta, see `GODOTTRENCH_CHANNEL` in ci.yml.
+pub fn beta_build() -> bool {
+    option_env!("GODOTTRENCH_CHANNEL") == Some("beta")
+}
+
+/// The releases to look in, in order. A beta carries the version of the last release, so it looks in the rolling beta
+/// first, or it would get that release's older downloads.
+pub fn release_tags() -> [String; 2] {
+    let version = format!("v{}", crate::VERSION);
+    if beta_build() { ["beta".into(), version] } else { [version, "beta".into()] }
+}
+
+/// Finds `name` in the release of this editor version and the rolling beta, see [`release_tags`]. The GitHub API has to
+/// link it over https with its checksum, a server [`API_ENV`] names only over https when it is https itself.
 pub fn find_asset(agent: &ureq::Agent, api: &str, name: &'static str) -> Result<Asset, Error> {
-    for tag in [format!("v{}", crate::VERSION), "beta".to_string()] {
+    let mut found_release = false;
+    for tag in release_tags() {
         let response = get(agent, &format!("{api}/releases/tags/{tag}"), "application/vnd.github+json")?;
         match response.status().as_u16() {
-            200 => {}
+            200 => found_release = true,
             404 => continue,
             code => return Err(Error::Status(code)),
         }
@@ -195,10 +234,25 @@ pub fn find_asset(agent: &ureq::Agent, api: &str, name: &'static str) -> Result<
             return Err(Error::Damaged(format!("the release lists {name} without a link or size")));
         };
         let sha256 = asset["digest"].as_str().and_then(|d| d.strip_prefix("sha256:")).map(str::to_ascii_lowercase);
+        trusted(api, name, url, sha256.is_some())?;
         return Ok(Asset { url: url.to_string(), size, sha256, tag });
     }
 
-    Err(Error::NotPublished(name))
+    Err(if found_release { Error::NotPublished(name) } else { Error::NoRelease })
+}
+
+/// Refuses a download the release links without https while the API itself is https, or lists without its checksum on
+/// GitHub. A server [`API_ENV`] names may leave the checksum out.
+fn trusted(api: &str, name: &str, url: &str, checksum: bool) -> Result<(), Error> {
+    if api.starts_with("https://") && !url.starts_with("https://") {
+        return Err(Error::Damaged(format!("the release links {name} without https")));
+    }
+
+    if api == RELEASES_API && !checksum {
+        return Err(Error::Damaged(format!("the release lists no checksum for {name}")));
+    }
+
+    Ok(())
 }
 
 /// What a running install shows: a sentence and how far along it is.
@@ -238,7 +292,24 @@ pub struct Reporter {
 }
 
 impl Reporter {
-    fn set(&self, f: impl FnOnce(&mut Progress)) {
+    pub fn new(repaint: Option<egui::Context>) -> Reporter {
+        Reporter { repaint, ..Default::default() }
+    }
+
+    pub fn progress(&self) -> Progress {
+        self.progress.lock().map(|p| p.clone()).unwrap_or_default()
+    }
+
+    /// Asks the work to stop. It notices within a fraction of a second, or after the file it is writing.
+    pub fn cancel(&self) {
+        self.cancel.store(true, Ordering::Relaxed);
+    }
+
+    pub fn cancelled(&self) -> bool {
+        self.cancel.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set(&self, f: impl FnOnce(&mut Progress)) {
         if let Ok(mut p) = self.progress.lock() {
             f(&mut p);
         }
@@ -248,13 +319,14 @@ impl Reporter {
         }
     }
 
-    fn check(&self) -> Result<(), Error> {
-        if self.cancel.load(Ordering::Relaxed) { Err(Error::Cancelled) } else { Ok(()) }
+    pub(crate) fn check(&self) -> Result<(), Error> {
+        if self.cancelled() { Err(Error::Cancelled) } else { Ok(()) }
     }
 }
 
-/// Downloads `asset` into `to`, checking its size and checksum.
-pub fn download(agent: &ureq::Agent, asset: &Asset, to: &Path, report: &Reporter) -> Result<(), Error> {
+/// Downloads `asset` into a file without a name in the temporary folder, checking its size and checksum, and returns it
+/// rewound for [`extract`]. Nothing else can open or replace the file, and it goes away once dropped, even after a crash.
+pub fn download(agent: &ureq::Agent, asset: &Asset, report: &Reporter) -> Result<std::fs::File, Error> {
     let response = get(agent, &asset.url, "application/octet-stream")?;
     match response.status().as_u16() {
         200 => {}
@@ -269,26 +341,58 @@ pub fn download(agent: &ureq::Agent, asset: &Asset, to: &Path, report: &Reporter
 
     let name = asset.url.rsplit('/').next().unwrap_or_default().to_string();
     report.set(|p| *p = Progress { stage: format!("Downloading {name} from the {} release", asset.tag), done: 0, total: asset.size, bytes: true });
+    let temp = std::env::temp_dir();
+    let mut file = tempfile::tempfile().map_err(|e| io_error(e, &temp))?;
+    // Read on a thread of its own, so a connection that stalls or a cancel does not have to wait for the next read.
     let mut body = response.into_body().into_with_config().limit(asset.size.saturating_add(1)).reader();
-    let mut file = std::fs::File::create(to).map_err(|e| io_error(e, to))?;
+    let (tx, rx) = mpsc::sync_channel::<std::io::Result<Vec<u8>>>(4);
+    std::thread::spawn(move || {
+        loop {
+            let mut buf = vec![0u8; 256 * 1024];
+            let chunk = match body.read(&mut buf) {
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                read => read.map(|n| {
+                    buf.truncate(n);
+                    buf
+                }),
+            };
+            let last = !chunk.as_ref().is_ok_and(|c| !c.is_empty());
+            if tx.send(chunk).is_err() || last {
+                break;
+            }
+        }
+    });
+
     let mut hash = ring::digest::Context::new(&ring::digest::SHA256);
-    let mut buf = vec![0u8; 256 * 1024];
     let mut done = 0u64;
+    let mut quiet = Duration::ZERO;
     loop {
         report.check()?;
-        let n = match body.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => n,
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(Error::Offline(format!("the download broke off after {}: {e}", megabytes(done)))),
+        let tick = Duration::from_millis(200);
+        let chunk = match rx.recv_timeout(tick) {
+            Ok(Ok(chunk)) => chunk,
+            Ok(Err(e)) => return Err(Error::Offline(format!("the download broke off after {}: {e}", megabytes(done)))),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                quiet += tick;
+                if quiet >= STALL {
+                    return Err(Error::Offline(format!("the download stalled after {}, nothing came for {} seconds", megabytes(done), STALL.as_secs())));
+                }
+
+                continue;
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => return Err(Error::Offline(format!("the download broke off after {}", megabytes(done)))),
         };
-        hash.update(&buf[..n]);
-        file.write_all(&buf[..n]).map_err(|e| io_error(e, to))?;
-        done += n as u64;
+        if chunk.is_empty() {
+            break;
+        }
+
+        quiet = Duration::ZERO;
+        hash.update(&chunk);
+        file.write_all(&chunk).map_err(|e| io_error(e, &temp))?;
+        done += chunk.len() as u64;
         report.set(|p| p.done = done);
     }
 
-    file.flush().map_err(|e| io_error(e, to))?;
     if done != asset.size {
         return Err(Error::Damaged(format!("it has {} instead of {}", megabytes(done), megabytes(asset.size))));
     }
@@ -298,18 +402,26 @@ pub fn download(agent: &ureq::Agent, asset: &Asset, to: &Path, report: &Reporter
         return Err(Error::Damaged("its checksum does not match the release".into()));
     }
 
-    Ok(())
+    file.seek(std::io::SeekFrom::Start(0)).map_err(|e| io_error(e, &temp))?;
+    Ok(file)
 }
 
 /// The project path an archive entry unpacks to, or None when the name is absolute, climbs out with `..`, uses
-/// backslashes or drive letters, or lies outside `folders`.
+/// backslashes or drive letters, lies outside `folders`, or has a part Windows cannot hold: a device name like `CON` or
+/// `com1.txt`, a character it forbids, or a trailing dot or space.
 pub fn entry_path(name: &str, folders: &[&str]) -> Option<PathBuf> {
     if name.is_empty() || name.contains(['\\', ':', '\0']) || name.starts_with('/') {
         return None;
     }
 
     let parts: Vec<&str> = name.trim_end_matches('/').split('/').collect();
-    if parts.iter().any(|p| p.is_empty() || *p == "." || *p == "..") {
+    let windows_name = |p: &str| {
+        let stem = p.split('.').next().unwrap_or_default().trim_end().to_ascii_uppercase();
+        let device = ["CON", "PRN", "AUX", "NUL"].contains(&stem.as_str())
+            || (stem.len() == 4 && (stem.starts_with("COM") || stem.starts_with("LPT")) && stem.as_bytes()[3].is_ascii_digit());
+        !device && !p.ends_with(['.', ' ']) && !p.contains(['<', '>', '"', '|', '?', '*']) && !p.chars().any(char::is_control)
+    };
+    if parts.iter().any(|p| p.is_empty() || *p == "." || *p == ".." || !windows_name(p)) {
         return None;
     }
 
@@ -321,21 +433,24 @@ pub fn entry_path(name: &str, folders: &[&str]) -> Option<PathBuf> {
     (inside && path.components().all(|c| matches!(c, Component::Normal(_)))).then_some(path)
 }
 
-/// Creates `rel` below `root` one folder at a time, refusing a folder that is a link leading out of the project.
-fn make_dirs(root: &Path, real_root: &Path, rel: &Path) -> Result<(), Error> {
+/// Checks the folders on the way from `root` to `rel` that exist already: each has to be a folder, and a link has to
+/// lead to one inside the project. With `create`, the missing ones are made.
+fn check_dirs(root: &Path, real_root: &Path, rel: &Path, create: bool) -> Result<(), Error> {
     let mut dir = root.to_path_buf();
     for part in rel.components() {
         dir.push(part);
         match std::fs::symlink_metadata(&dir) {
             Ok(meta) if meta.file_type().is_symlink() => {
-                let real = dir.canonicalize().map_err(|e| io_error(e, &dir))?;
-                if !real.starts_with(real_root) || !real.is_dir() {
-                    return Err(Error::Unsafe(format!("{}, a link that leads out of the project", dir.display())));
+                let inside = dir.canonicalize().is_ok_and(|real| real.starts_with(real_root) && real.is_dir());
+                if !inside {
+                    return Err(Error::Link(dir));
                 }
             }
             Ok(meta) if meta.is_dir() => {}
             Ok(_) => return Err(Error::Io(format!("Could not add files to {}, it is a file and not a folder", dir.display()))),
-            Err(_) => std::fs::create_dir(&dir).map_err(|e| io_error(e, &dir))?,
+            Err(_) if create => std::fs::create_dir(&dir).map_err(|e| io_error(e, &dir))?,
+            // Nothing below a missing folder exists either.
+            Err(_) => return Ok(()),
         }
     }
 
@@ -349,12 +464,26 @@ pub struct Added {
     pub kept: usize,
 }
 
-/// Unpacks the files of `archive` that lie in `folders` into `root`. Every name is checked before anything is written,
-/// files the project has are kept, links in the archive are refused, and each file appears under its name only once
-/// it is complete.
-pub fn extract(archive: &Path, root: &Path, folders: &[&str], report: &Reporter) -> Result<Added, Error> {
-    let file = std::fs::File::open(archive).map_err(|e| io_error(e, archive))?;
-    let mut zip = zip::ZipArchive::new(std::io::BufReader::new(file)).map_err(|e| Error::Damaged(e.to_string()))?;
+/// Passes on at most `left` bytes and fails on the next one, so an entry cannot unpack to more than its header claims.
+struct Capped<R> {
+    inner: R,
+    left: u64,
+}
+
+impl<R: Read> Read for Capped<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        self.left = self.left.checked_sub(n as u64).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "more than its header says"))?;
+        Ok(n)
+    }
+}
+
+/// Unpacks the files of `archive`, named `name` in the progress, that lie in `folders` into `root`, adding each to
+/// `added`, which keeps what was written when it fails part way. Every name and every folder already on the way is
+/// checked before anything is written, files the project has are kept, links in the archive are refused, and each file
+/// appears under its name only once it is complete.
+pub fn extract(archive: std::fs::File, name: &str, root: &Path, folders: &[&str], report: &Reporter, added: &mut Added) -> Result<(), Error> {
+    let mut zip = zip::ZipArchive::new(std::io::BufReader::new(archive)).map_err(|e| Error::Damaged(e.to_string()))?;
     let mut files = Vec::new();
     let mut total = 0u64;
     for i in 0..zip.len() {
@@ -374,29 +503,36 @@ pub fn extract(archive: &Path, root: &Path, folders: &[&str], report: &Reporter)
 
     std::fs::create_dir_all(root).map_err(|e| io_error(e, root))?;
     let real_root = root.canonicalize().map_err(|e| io_error(e, root))?;
+    let parents: std::collections::BTreeSet<&Path> = files.iter().filter_map(|(_, rel)| rel.parent()).collect();
+    for parent in parents {
+        check_dirs(root, &real_root, parent, false)?;
+    }
+
     let count = files.len() as u64;
-    report.set(|p| *p = Progress { stage: format!("Adding files to the project from {}", archive_name(archive)), done: 0, total: count, bytes: false });
-    let mut added = Added::default();
+    report.set(|p| *p = Progress { stage: format!("Adding files to the project from {name}"), done: 0, total: count, bytes: false });
     for (n, (i, rel)) in files.into_iter().enumerate() {
         report.check()?;
         let target = root.join(&rel);
+        let mut part = target.clone().into_os_string();
+        part.push(gt_formats::PART_SUFFIX);
+        let _ = std::fs::remove_file(part);
         if std::fs::symlink_metadata(&target).is_ok() {
             added.kept += 1;
         } else {
-            make_dirs(root, &real_root, rel.parent().unwrap_or(Path::new("")))?;
+            check_dirs(root, &real_root, rel.parent().unwrap_or(Path::new("")), true)?;
             let mut entry = zip.by_index(i).map_err(|e| Error::Damaged(e.to_string()))?;
-            gt_formats::write_atomic(&target, &mut entry).map_err(|e| io_error(e, &target))?;
-            added.written.push(target);
+            let size = entry.size();
+            match gt_formats::write_new(&target, &mut Capped { inner: &mut entry, left: size }) {
+                Ok(_) => added.written.push(target),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => added.kept += 1,
+                Err(e) => return Err(io_error(e, &target)),
+            }
         }
 
         report.set(|p| p.done = n as u64 + 1);
     }
 
-    Ok(added)
-}
-
-fn archive_name(path: &Path) -> String {
-    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+    Ok(())
 }
 
 /// The name a Godot project gives itself in `project.godot`, else its folder's name.
@@ -444,25 +580,21 @@ impl Outcome {
 }
 
 /// Installs `choice` into the project at `root`, one download after the other, stopping at the first error and keeping
-/// what was added. When a download fails, the embedded Blockbench models are added instead, they need no network.
+/// what was added. The demo leaves out a nature pack the project has. When a download fails, the embedded Blockbench
+/// models are added instead, they need no network.
 pub fn install(root: &Path, choice: Choice, api: &str, report: &Reporter) -> Outcome {
     let mut outcome = Outcome { choice, ..Default::default() };
     let agent = agent();
-    for download in choice.downloads() {
+    let skip_pack = choice == Choice::Demo && has_nature_pack(root);
+    for download in choice.downloads().iter().filter(|d| !(skip_pack && **d == NATURE_PACK)) {
         report.set(|p| *p = Progress { stage: format!("Looking up {} in the releases", download.asset), ..Default::default() });
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let folder = std::env::temp_dir().join(format!("godottrench-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
-        let result = std::fs::create_dir_all(&folder)
-            .map_err(|e| io_error(e, &folder))
-            .and_then(|_| find_asset(&agent, api, download.asset))
-            .and_then(|asset| download_and_extract(&agent, &asset, &folder.join(download.asset), root, download, report).map(|added| (asset.tag, added)));
-        let _ = std::fs::remove_dir_all(&folder);
+        let result = find_asset(&agent, api, download.asset).and_then(|asset| {
+            let file = self::download(&agent, &asset, report)?;
+            extract(file, download.asset, root, download.folders, report, &mut outcome.added)?;
+            Ok(asset.tag)
+        });
         match result {
-            Ok((tag, added)) => {
-                outcome.added.written.extend(added.written);
-                outcome.added.kept += added.kept;
-                outcome.tags.push(tag);
-            }
+            Ok(tag) => outcome.tags.push(tag),
             Err(e) => {
                 outcome.error = Some(e);
                 break;
@@ -470,7 +602,7 @@ pub fn install(root: &Path, choice: Choice, api: &str, report: &Reporter) -> Out
         }
     }
 
-    if outcome.error.as_ref().is_some_and(|e| *e != Error::Cancelled) {
+    if outcome.error.as_ref().is_some_and(Error::is_download) {
         let nature = nature_dir(root);
         if let Ok(written) = gt_formats::nature::install(&nature, &[], false) {
             outcome.added.written.extend(written);
@@ -478,11 +610,6 @@ pub fn install(root: &Path, choice: Choice, api: &str, report: &Reporter) -> Out
     }
 
     outcome
-}
-
-fn download_and_extract(agent: &ureq::Agent, asset: &Asset, part: &Path, root: &Path, what: &Download, report: &Reporter) -> Result<Added, Error> {
-    download(agent, asset, part, report)?;
-    extract(part, root, what.folders, report)
 }
 
 /// [`RELEASES_API`], or the server [`API_ENV`] names.
@@ -500,7 +627,7 @@ pub struct Job {
 
 impl Job {
     pub fn start(root: PathBuf, choice: Choice, api: String, repaint: Option<egui::Context>) -> Job {
-        let report = Reporter { repaint, ..Default::default() };
+        let report = Reporter::new(repaint);
         let (tx, rx) = mpsc::channel();
         let (thread_root, thread_report) = (root.clone(), report.clone());
         std::thread::spawn(move || {
@@ -514,13 +641,16 @@ impl Job {
     }
 
     pub fn progress(&self) -> Progress {
-        self.report.progress.lock().map(|p| p.clone()).unwrap_or_default()
+        self.report.progress()
     }
 
-    /// Asks the thread to stop. A read that hangs on a dead connection only notices once it returns, so the caller
-    /// should not wait for it.
+    /// Asks the thread to stop. [`Job::poll`] then delivers the outcome, with what was added until then.
     pub fn cancel(&self) {
-        self.report.cancel.store(true, Ordering::Relaxed);
+        self.report.cancel();
+    }
+
+    pub fn cancelling(&self) -> bool {
+        self.report.cancelled()
     }
 
     pub fn poll(&self) -> Option<Outcome> {
@@ -656,6 +786,22 @@ mod tests {
         out
     }
 
+    /// `bytes` in a file without a name, the way [`download`] hands an archive to [`extract`].
+    fn file(bytes: &[u8]) -> std::fs::File {
+        let mut file = tempfile::tempfile().unwrap();
+        file.write_all(bytes).unwrap();
+        file.seek(std::io::SeekFrom::Start(0)).unwrap();
+        file
+    }
+
+    fn unpack(bytes: &[u8], root: &Path, folders: &[&str]) -> Result<Added, (Added, Error)> {
+        let mut added = Added::default();
+        match extract(file(bytes), "test.zip", root, folders, &Reporter::default(), &mut added) {
+            Ok(()) => Ok(added),
+            Err(e) => Err((added, e)),
+        }
+    }
+
     #[test]
     fn entry_names_outside_the_folders_are_refused() {
         let folders = ["godottrench/nature"];
@@ -672,8 +818,21 @@ mod tests {
             "C:/godottrench/nature/a.glb",
             "godottrench//nature/a.glb",
             "",
+            "godottrench/nature/CON",
+            "godottrench/nature/com1.txt",
+            "godottrench/nature/trees/aux.glb",
+            "godottrench/nature/LPT9",
+            "godottrench/nature/oak.",
+            "godottrench/nature/oak ",
+            "godottrench/nature/a?b.glb",
+            "godottrench/nature/a|b.glb",
+            "godottrench/nature/a\u{1}b.glb",
         ] {
-            assert_eq!(entry_path(bad, &folders), None, "{bad}");
+            assert_eq!(entry_path(bad, &folders), None, "{bad:?}");
+        }
+
+        for fine in ["godottrench/nature/console.glb", "godottrench/nature/com10.txt", "godottrench/nature/lpt.png", "godottrench/nature/a b.glb"] {
+            assert!(entry_path(fine, &folders).is_some(), "{fine}");
         }
 
         assert!(entry_path("models/polyhaven/barrel.gltf", DEMO_CONTENT.folders).is_some());
@@ -694,13 +853,15 @@ mod tests {
         let root = project("beta");
         std::fs::create_dir_all(root.join("godottrench/nature/trees")).unwrap();
         std::fs::write(root.join("godottrench/nature/trees/pack.json"), "mine").unwrap();
+        std::fs::write(root.join("godottrench/nature/trees/oak.glb.gtpart"), "cut short by a crash").unwrap();
+        std::fs::write(root.join("godottrench/nature/trees/pack.json.gtpart"), "cut short by a crash").unwrap();
 
         let outcome = install(&root, Choice::Nature, &server.url, &Reporter::default());
         assert_eq!(outcome.error, None);
         assert_eq!(outcome.tags, ["beta"]);
         let installed = files(&root);
         assert!(installed.contains(&"godottrench/nature/trees/oak.glb".to_string()), "{installed:?}");
-        assert!(installed.iter().all(|f| !f.ends_with(".gtpart")), "{installed:?}");
+        assert!(installed.iter().all(|f| !f.ends_with(".gtpart")), "left over temporary files go too: {installed:?}");
         assert_eq!(installed.iter().filter(|f| f.ends_with(".bbmodel")).count(), 1, "the embedded models are only a fallback");
         assert_eq!(std::fs::read_to_string(root.join("godottrench/nature/trees/pack.json")).unwrap(), "mine", "a file already there is kept");
         assert_eq!(std::fs::read_to_string(root.join("godottrench/nature/rock.bbmodel")).unwrap(), "from the archive");
@@ -710,6 +871,18 @@ mod tests {
         let again = install(&root, Choice::Nature, &server.url, &Reporter::default());
         assert_eq!((again.added.written.len(), again.added.kept, again.error.clone()), (0, 4, None));
         assert!(again.summary().starts_with("The project already had all 4 files"), "{}", again.summary());
+
+        // The demo does not fetch a nature pack the project has again.
+        for folder in gt_formats::nature::PACK_FOLDERS {
+            std::fs::create_dir_all(root.join("godottrench/nature").join(folder)).unwrap();
+            std::fs::write(root.join("godottrench/nature").join(folder).join("pack.json"), "{}").unwrap();
+        }
+
+        server.release("beta", &[(NATURE_PACK.asset, &pack), (DEMO_CONTENT.asset, &zip(&[("demo/demo.tscn", b"scene")]))], true);
+        server.requests.lock().unwrap().clear();
+        let demo = install(&root, Choice::Demo, &server.url, &Reporter::default());
+        assert_eq!((demo.error, demo.added.written.len()), (None, 1));
+        assert!(server.requests.lock().unwrap().iter().all(|r| !r.contains(NATURE_PACK.asset)));
         assert!(server.requests.lock().unwrap().iter().all(|r| !r.contains("..")));
         std::fs::remove_dir_all(&root).unwrap();
     }
@@ -723,16 +896,16 @@ mod tests {
             server.release("beta", &[(DEMO_CONTENT.asset, archive)], digest);
             let agent = agent();
             let asset = find_asset(&agent, &server.url, DEMO_CONTENT.asset).unwrap();
-            let part = root.join("download.part");
-            let result = download(&agent, &asset, &part, &Reporter::default()).and_then(|_| extract(&part, &root, DEMO_CONTENT.folders, &Reporter::default()));
-            let _ = std::fs::remove_file(&part);
-            result
+            let mut added = Added::default();
+            let file = download(&agent, &asset, &Reporter::default())?;
+            extract(file, DEMO_CONTENT.asset, &root, DEMO_CONTENT.folders, &Reporter::default(), &mut added).map(|_| added)
         };
 
         for (bad, why) in [
             (zip(&[("demo/ok.txt", b"ok"), ("../evil.txt", b"x")]), "climbs out"),
             (zip(&[("demo/ok.txt", b"ok"), ("project.godot", b"x")]), "the project file"),
             (zip(&[("demo/ok.txt", b"ok"), ("addons/func_godot/plugin.cfg", b"x")]), "the addon"),
+            (zip(&[("demo/ok.txt", b"ok"), ("demo/NUL.txt", b"x")]), "a device name on Windows"),
         ] {
             assert!(matches!(check(&bad, true), Err(Error::Unsafe(_))), "{why}");
             assert_eq!(files(&root), ["project.godot"], "{why}: nothing is written");
@@ -750,33 +923,87 @@ mod tests {
         server.route(&asset, 200, other);
         let agent = agent();
         let found = find_asset(&agent, &server.url, DEMO_CONTENT.asset).unwrap();
-        let part = root.join("download.part");
-        assert!(matches!(download(&agent, &found, &part, &Reporter::default()), Err(Error::Damaged(why)) if why.contains("checksum")));
+        assert!(matches!(download(&agent, &found, &Reporter::default()), Err(Error::Damaged(why)) if why.contains("checksum")));
         server.route(&asset, 200, &good[..good.len() - 1]);
-        assert!(matches!(download(&agent, &found, &part, &Reporter::default()), Err(Error::Damaged(_))), "cut short");
-        let _ = std::fs::remove_file(&part);
+        assert!(matches!(download(&agent, &found, &Reporter::default()), Err(Error::Damaged(_))), "cut short");
 
         // A zip with a corrupt entry fails its CRC check, the files before it stay and no partial file is left behind.
         let mut corrupt = zip(&[("demo/maps/a.gtm", b"deflated"), ("demo/maps/b.gtm", &[7u8; 64])]);
         let at = corrupt.windows(64).position(|w| w == [7u8; 64]).expect("the stored bytes");
         corrupt[at] = 8;
-        std::fs::write(&part, &corrupt).unwrap();
-        assert!(matches!(extract(&part, &root, DEMO_CONTENT.folders, &Reporter::default()), Err(Error::Damaged(_))));
-        std::fs::remove_file(&part).unwrap();
+        let (added, error) = unpack(&corrupt, &root, DEMO_CONTENT.folders).unwrap_err();
+        assert!(matches!(error, Error::Damaged(_)));
+        assert_eq!(added.written, [root.join("demo/maps/a.gtm")], "what was written before the error is reported");
         assert_eq!(files(&root), ["demo/maps/a.gtm", "project.godot"]);
         std::fs::remove_dir_all(root.join("demo")).unwrap();
+
+        // An entry that inflates to more than its header says stops at that, and nothing of it stays.
+        let mut bomb = zip(&[("demo/big.bin", &[0u8; 4096])]);
+        for (signature, offset) in [(&[0x50, 0x4b, 0x03, 0x04], 22), (&[0x50, 0x4b, 0x01, 0x02], 24)] {
+            let at = bomb.windows(4).position(|w| w == signature).unwrap() + offset;
+            bomb[at..at + 4].copy_from_slice(&16u32.to_le_bytes());
+        }
+
+        assert!(matches!(unpack(&bomb, &root, DEMO_CONTENT.folders), Err((_, Error::Damaged(_)))));
+        assert_eq!(files(&root), ["project.godot"]);
 
         assert_eq!(check(&good, false).unwrap().written, [root.join("demo/maps/a.gtm")], "without a digest the size still has to match");
         std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
+    fn github_downloads_need_https_and_a_checksum() {
+        assert_eq!(trusted(RELEASES_API, "a.zip", "https://github.com/x/a.zip", true), Ok(()));
+        assert!(matches!(trusted(RELEASES_API, "a.zip", "http://github.com/x/a.zip", true), Err(Error::Damaged(why)) if why.contains("https")));
+        assert!(matches!(trusted(RELEASES_API, "a.zip", "https://github.com/x/a.zip", false), Err(Error::Damaged(why)) if why.contains("checksum")));
+        assert_eq!(trusted("https://mirror.example", "a.zip", "https://mirror.example/a.zip", false), Ok(()), "another server may leave it out");
+        assert!(trusted("https://mirror.example", "a.zip", "http://mirror.example/a.zip", false).is_err());
+        assert_eq!(trusted("http://127.0.0.1:1", "a.zip", "http://127.0.0.1:1/a.zip", false), Ok(()));
+    }
+
+    #[test]
+    fn a_stalled_download_gives_up_and_a_cancel_does_not_wait_for_it() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/stalls.zip", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                std::thread::spawn(move || {
+                    let _ = std::io::BufRead::read_line(&mut std::io::BufReader::new(stream.try_clone().unwrap()), &mut String::new());
+                    let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n0123456789");
+                    std::thread::sleep(Duration::from_secs(5));
+                });
+            }
+        });
+
+        let asset = Asset { url, size: 1000, sha256: None, tag: "beta".into() };
+        let started = std::time::Instant::now();
+        let stalled = download(&agent(), &asset, &Reporter::default());
+        assert!(matches!(&stalled, Err(Error::Offline(why)) if why.contains("stalled")), "{stalled:?}");
+        assert!(started.elapsed() < Duration::from_secs(4));
+
+        let report = Reporter::default();
+        let cancel = report.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            cancel.cancel();
+        });
+        let started = std::time::Instant::now();
+        assert!(matches!(download(&agent(), &asset, &report), Err(Error::Cancelled)));
+        assert!(started.elapsed() < STALL, "cancelled before the stall shows");
+    }
+
+    #[test]
     fn missing_releases_and_no_network_say_what_is_wrong() {
         let server = Server::start();
         let agent = agent();
-        assert_eq!(find_asset(&agent, &server.url, NATURE_PACK.asset), Err(Error::NotPublished(NATURE_PACK.asset)));
+        assert_eq!(find_asset(&agent, &server.url, NATURE_PACK.asset), Err(Error::NoRelease));
+        assert!(Error::NoRelease.to_string().contains("try again in a few minutes"));
         let requests = server.requests.lock().unwrap().clone();
-        assert_eq!(requests, [format!("/releases/tags/v{}", crate::VERSION), "/releases/tags/beta".to_string()]);
+        assert_eq!(requests, release_tags().map(|tag| format!("/releases/tags/{tag}")));
+        assert_eq!(release_tags()[0] == "beta", beta_build(), "a beta build looks in the rolling beta first");
+        server.release("beta", &[], true);
+        assert_eq!(find_asset(&agent, &server.url, NATURE_PACK.asset), Err(Error::NotPublished(NATURE_PACK.asset)));
         server.route("/releases/tags/beta", 403, "rate limited");
         assert_eq!(find_asset(&agent, &server.url, NATURE_PACK.asset), Err(Error::Status(403)));
         assert!(Error::Status(403).to_string().contains("Try again later"));
@@ -814,7 +1041,7 @@ mod tests {
         assert!(root.join("godottrench/nature/textures/big.png").is_file());
 
         let cancelled = Reporter::default();
-        cancelled.cancel.store(true, Ordering::Relaxed);
+        cancelled.cancel();
         let other = project("cancel");
         let outcome = install(&other, Choice::Demo, &server.url, &cancelled);
         assert_eq!(outcome.error, Some(Error::Cancelled));
@@ -832,15 +1059,22 @@ mod tests {
         let root = project("link");
         let outside = project("outside");
         std::os::unix::fs::symlink(&outside, root.join("demo")).unwrap();
-        let archive = root.join("demo.zip");
-        std::fs::write(&archive, zip(&[("demo/maps/a.gtm", b"map")])).unwrap();
-        assert!(matches!(extract(&archive, &root, DEMO_CONTENT.folders, &Reporter::default()), Err(Error::Unsafe(_))));
+        let archive = zip(&[("demo/maps/a.gtm", b"map")]);
+        assert!(matches!(unpack(&archive, &root, DEMO_CONTENT.folders), Err((_, Error::Link(_)))));
         assert_eq!(files(&outside), ["project.godot"]);
 
+        // Every folder is checked before the first file is written, whichever comes first in the archive.
         std::fs::remove_file(root.join("demo")).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("models")).unwrap();
+        let both = zip(&[("demo/maps/a.gtm", b"map"), ("demo/maps/b.gtm", b"map"), ("models/tree.glb", b"glTF")]);
+        let (added, error) = unpack(&both, &root, DEMO_CONTENT.folders).unwrap_err();
+        assert!(matches!(error, Error::Link(_)) && added == Added::default(), "{error:?}");
+        assert!(!root.join("demo").exists() && files(&outside) == ["project.godot"]);
+        std::fs::remove_file(root.join("models")).unwrap();
+
         std::fs::create_dir_all(root.join("mine")).unwrap();
         std::os::unix::fs::symlink(root.join("mine"), root.join("demo")).unwrap();
-        assert_eq!(extract(&archive, &root, DEMO_CONTENT.folders, &Reporter::default()).unwrap().written.len(), 1, "a link inside the project is fine");
+        assert_eq!(unpack(&archive, &root, DEMO_CONTENT.folders).unwrap().written.len(), 1, "a link inside the project is fine");
         assert!(root.join("mine/maps/a.gtm").is_file());
         std::fs::remove_dir_all(&root).unwrap();
         std::fs::remove_dir_all(&outside).unwrap();

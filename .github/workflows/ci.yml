@@ -140,6 +140,9 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y $LINUX_DEPS
       - name: Build editor
+        # A beta keeps the version of the last release, so it has to know to take its downloads from the rolling beta.
+        env:
+          GODOTTRENCH_CHANNEL: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'beta' }}
         run: cargo build --release -p gt_editor
       - name: Package
         shell: bash
