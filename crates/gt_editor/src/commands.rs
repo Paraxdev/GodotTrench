@@ -1233,7 +1233,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             if let Some(path) = path {
                 let at = state.snap(state.cursor_world.unwrap_or(DVec3::ZERO));
                 match import_model(state, &path, mode, at) {
-                    Ok(n) => state.set_status(format!("Imported {} ({n} object(s))", path.display())),
+                    Ok((_, status)) => state.set_status(status),
                     Err(e) => state.set_status(format!("Import failed: {e}")),
                 }
             }
@@ -1698,9 +1698,9 @@ fn sanitize(name: &str) -> String {
     name.chars().map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c.to_ascii_lowercase() } else { '_' }).collect()
 }
 
-/// Folder under `models/` in the texture folder that a placed model's textures go to. It follows the model's name in
-/// the Models panel, so models sharing a file name, like nature/oak.bbmodel and nature/trees/oak.glb, never overwrite
-/// each other's textures.
+/// Folder under `models/` in the texture folder that a placed model's textures go to: its name in the Models panel,
+/// like nature/oak for nature/oak.bbmodel and nature/trees/oak for nature/trees/oak.glb, or the file name for a model
+/// from elsewhere. [`write_model_textures`] numbers it when another model's textures are there already.
 fn model_texture_folder(state: &EditorState, path: &std::path::Path) -> String {
     let stem = || path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into());
     let name = state.model_library.entries.iter().find(|e| e.path == path).map(|e| e.name.clone()).unwrap_or_else(stem);
@@ -1758,10 +1758,10 @@ fn copy_into_project(root: &std::path::Path, path: &std::path::Path) -> Result<s
     Ok(target)
 }
 
-/// Imports a model file. Blockbench textures are written into the project texture folder so faces can use them. Other
-/// formats become an editable mesh like a model dragged in from the Models panel, or a prop entity for `Prop`, which
-/// needs the file inside the Godot project.
-pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: ModelImport, at: DVec3) -> Result<usize, String> {
+/// Imports a model file and returns the number of objects made and a status line. Blockbench textures are written into
+/// the project texture folder so faces can use them. Other formats become an editable mesh like a model dragged in from
+/// the Models panel, or a prop entity for `Prop`, which needs the file inside the Godot project.
+pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: ModelImport, at: DVec3) -> Result<(usize, String), String> {
     let parent = state.insert_parent();
     let is_bb = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("bbmodel"));
     if mode == ModelImport::Brushes && !is_bb {
@@ -1769,8 +1769,7 @@ pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: Model
     }
 
     if mode == ModelImport::Mesh && !is_bb {
-        place_model_mesh(state, path, at)?;
-        return Ok(1);
+        return place_model_mesh(state, path, at).map(|status| (1, status));
     }
 
     if mode == ModelImport::Prop {
@@ -1789,52 +1788,42 @@ pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: Model
             s.clear();
             s.select_node(id);
         });
-        return Ok(1);
+        return Ok((1, format!("Imported {} as a model prop", path.display())));
     }
 
     let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let model = gt_formats::bbmodel::parse(&text).map_err(|e| e.to_string())?;
     let preview = state.models.get(path, state.game.units_per_meter);
     let stem = sanitize(&path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into()));
-    let folder = model_texture_folder(state, path);
-    let mut materials = Vec::new();
+    let mut files = Vec::new();
+    let mut indices = Vec::new();
     let mut sizes = Vec::new();
-    // A fresh project has no texture folder yet, it is made here rather than leaving the model untextured.
-    let texture_root = state.game.texture_root();
     for (i, tex) in model.textures.iter().enumerate() {
         let png =
             if tex.png.is_empty() { path.parent().map(|d| d.join(&tex.path)).and_then(|p| std::fs::read(p).ok()).unwrap_or_default() } else { tex.png.clone() };
         let size = image::load_from_memory(&png).map(|img| DVec2::new(img.width() as f64, img.height() as f64)).unwrap_or(DVec2::splat(16.0));
         sizes.push(size);
-        let file_name = format!("{}_{i}.png", sanitize(&tex.name));
-        let name = match &texture_root {
-            Some(root) => {
-                let dir = root.join("models").join(&folder);
-                std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-                std::fs::write(dir.join(&file_name), &png).map_err(|e| e.to_string())?;
-                // The preview lists the Blockbench textures in file order.
-                if let Some((preview, (key, ..))) = preview.as_ref().and_then(|p| Some((p, p.textures.get(i)?))) {
-                    write_model_material(state, preview, key, &dir.join(&file_name))?;
-                }
+        if png.is_empty() {
+            continue;
+        }
 
-                format!("models/{folder}/{}", file_name.trim_end_matches(".png"))
-            }
-            None => {
-                let file = path.with_file_name(format!("{stem}_{file_name}"));
-                std::fs::write(&file, &png).map_err(|e| e.to_string())?;
-                file.to_string_lossy().replace('\\', "/")
-            }
-        };
-        materials.push(name);
+        // The preview lists the Blockbench textures in file order.
+        let key = preview.as_ref().and_then(|p| p.textures.get(i)).map(|(k, ..)| k.as_str());
+        files.push((format!("{}_{i}", sanitize(&tex.name)), png, key));
+        indices.push(i);
     }
 
-    if texture_root.is_some() {
+    let (materials, untextured) = match write_model_textures(state, path, preview.as_deref(), &files) {
+        Ok(names) => (indices.into_iter().zip(names).collect(), None),
+        Err(e) => (std::collections::HashMap::new(), (!files.is_empty()).then_some(e)),
+    };
+    if !materials.is_empty() {
         let game = state.game.clone();
         state.materials.rescan(&game);
     }
 
     let scale = state.game.units_per_meter / crate::models::BB_UNITS_PER_METER;
-    let material = |t: Option<usize>| t.and_then(|i| materials.get(i).cloned()).unwrap_or_else(|| "dev/grey".to_string());
+    let material = |t: Option<usize>| t.and_then(|i| materials.get(&i).cloned()).unwrap_or_else(|| "dev/grey".to_string());
     let count = match mode {
         ModelImport::Mesh => {
             let mut mesh = model.to_mesh(scale, at, material);
@@ -1862,7 +1851,8 @@ pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: Model
         }
         ModelImport::Prop => unreachable!(),
     };
-    Ok(count)
+    let note = untextured.map(|e| format!(". {e}")).unwrap_or_default();
+    Ok((count, format!("Imported {} ({count} object(s)){note}", path.display())))
 }
 
 /// A mesh past either of these is heavy enough that vertex editing gets sluggish, so entering edit
@@ -1884,37 +1874,115 @@ fn edit_mesh_weight(state: &EditorState) -> (usize, usize) {
     (verts, tris)
 }
 
-/// Writes the Godot material that makes the texture image `png` of a placed model draw like the model, see
-/// [`crate::models::Model::material_tres`]. Nothing is written when the plain image is enough.
-fn write_model_material(state: &EditorState, model: &crate::models::Model, key: &str, png: &std::path::Path) -> Result<(), String> {
-    let res = state.game.project_root.as_deref().and_then(|root| gt_formats::game::to_res_path(root, png));
-    let text = model.textures.iter().find(|(k, ..)| k == key).zip(res).and_then(|((_, img, pixelated), res)| model.material_tres(key, img, *pixelated, &res));
-    match text {
-        Some(text) => std::fs::write(png.with_extension("tres"), text).map_err(|e| e.to_string()),
-        None => Ok(()),
+/// Writes a placed model's textures into `models/<folder>` in the project's texture folder, see
+/// [`model_texture_folder`], and returns the face material name of each. `textures` are file names without extension,
+/// PNG data and the texture's key in the `model` preview, which gets a Godot material in the project's material folder
+/// where the plain image does not draw like the model, see [`crate::models::Model::material_tres`]. Nothing already
+/// there is overwritten: a folder holding other images under the same names is left for the next free number, and a
+/// material file is kept, it may have been tuned in Godot. The error says why the model stays untextured.
+fn write_model_textures(
+    state: &EditorState,
+    path: &std::path::Path,
+    model: Option<&crate::models::Model>,
+    textures: &[(String, Vec<u8>, Option<&str>)],
+) -> Result<Vec<String>, String> {
+    if textures.is_empty() {
+        return Ok(Vec::new());
     }
+
+    let target = crate::texture_convert::target(state).map_err(|_| "Open a Godot project to keep its textures".to_string())?;
+    let preview =
+        |key: Option<&str>| model.zip(key).and_then(|(m, key)| m.textures.iter().find(|(k, ..)| k == key).map(|(k, img, nearest)| (m, k, img, *nearest)));
+    let emission_file = |stem: &str| format!("{stem}{}.png", crate::materials::EMISSION_SUFFIX);
+    let mut images: Vec<(String, Vec<u8>)> = Vec::new();
+    for (stem, png, key) in textures {
+        images.push((format!("{stem}.png"), png.clone()));
+        if let Some((m, k, img, _)) = preview(*key)
+            && let Some(map) = m.emission_map(k, img)
+        {
+            images.push((emission_file(stem), encode_png(map)?));
+        }
+    }
+
+    let base = model_texture_folder(state, path);
+    let mut folder = base.clone();
+    for n in 2.. {
+        let dir = target.texture_dir.join("models").join(&folder);
+        if images.iter().all(|(file, png)| std::fs::read(dir.join(file)).ok().is_none_or(|old| old == *png)) {
+            break;
+        }
+
+        folder = format!("{base}_{n}");
+    }
+
+    let failed = |e: String| format!("Its textures could not be written, so it is untextured: {e}");
+    let dir = target.texture_dir.join("models").join(&folder);
+    std::fs::create_dir_all(&dir).map_err(|e| failed(format!("{}: {e}", dir.display())))?;
+    for (file, png) in &images {
+        if !dir.join(file).exists() {
+            write_atomic(&dir.join(file), png).map_err(failed)?;
+        }
+    }
+
+    // Only a .tres is text. Without a file FuncGodot builds the material from its default one.
+    let tres = target.material_ext.eq_ignore_ascii_case("tres");
+    let res = |file: String| gt_formats::game::to_res_path(&target.project_root, &dir.join(file));
+    let mut names = Vec::new();
+    for (stem, _, key) in textures {
+        let name = format!("models/{folder}/{stem}");
+        let material = target.material_dir.join(format!("{name}.{}", target.material_ext));
+        if tres
+            && !material.exists()
+            && let Some((m, k, img, nearest)) = preview(*key)
+            && let Some(text) = res(format!("{stem}.png")).and_then(|albedo| {
+                let emission = m.emission_map(k, img).and_then(|_| res(emission_file(stem)));
+                m.material_tres(k, img, nearest, &albedo, emission.as_deref())
+            })
+        {
+            material.parent().map_or(Ok(()), std::fs::create_dir_all).map_err(|e| failed(format!("{}: {e}", material.display())))?;
+            write_atomic(&material, text.as_bytes()).map_err(failed)?;
+        }
+
+        names.push(name);
+    }
+
+    Ok(names)
 }
 
-/// Places a model from the Models panel into the scene as one editable mesh at `at`. The model's
-/// textures are written into `res://textures/models/<name in the Models panel>/` and registered as
-/// materials so the mesh keeps its look. Large results are warned about but never blocked.
+fn encode_png(image: &image::RgbaImage) -> Result<Vec<u8>, String> {
+    let mut png = std::io::Cursor::new(Vec::new());
+    image.write_to(&mut png, image::ImageFormat::Png).map_err(|e| e.to_string())?;
+    Ok(png.into_inner())
+}
+
+/// Writes through a temporary file next to `path`, so a failed write never leaves a partial file that later looks done.
+fn write_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let written = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    written.map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// Places a model from the Models panel into the scene as one editable mesh at `at`. The model's textures are written
+/// into the project, see [`write_model_textures`], and registered as materials so the mesh keeps its look. Without
+/// them it is placed untextured and the status says why. Large results are warned about but never blocked.
 pub fn place_model_mesh(state: &mut EditorState, path: &std::path::Path, at: DVec3) -> Result<String, String> {
     let upm = state.game.units_per_meter;
     let model = state.models.get(path, upm).ok_or_else(|| "could not load model".to_string())?;
-    let folder = model_texture_folder(state, path);
-    // A fresh project has no texture folder yet, it is made here rather than leaving the mesh untextured.
-    let texture_root = state.game.texture_root();
-    let mut key_to_material: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-    if let Some(root) = &texture_root {
-        let dir = root.join("models").join(&folder);
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        for (i, (key, img, _pixelated)) in model.textures.iter().enumerate() {
-            let file = dir.join(format!("tex{i}.png"));
-            img.save(&file).map_err(|e| e.to_string())?;
-            write_model_material(state, &model, key, &file)?;
-            key_to_material.insert(key.clone(), format!("models/{folder}/tex{i}"));
-        }
+    let mut files = Vec::new();
+    for (i, (key, img, _)) in model.textures.iter().enumerate() {
+        files.push((format!("tex{i}"), encode_png(img)?, Some(key.as_str())));
+    }
 
+    let (key_to_material, untextured): (std::collections::HashMap<&str, String>, _) = match write_model_textures(state, path, Some(&*model), &files) {
+        Ok(names) => (model.textures.iter().map(|(key, ..)| key.as_str()).zip(names).collect(), None),
+        Err(e) => (Default::default(), (!files.is_empty()).then_some(e)),
+    };
+    if !key_to_material.is_empty() {
         let game = state.game.clone();
         state.materials.rescan(&game);
     }
@@ -1934,7 +2002,7 @@ pub fn place_model_mesh(state: &mut EditorState, path: &std::path::Path, at: DVe
     });
     let name = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "model".into());
     let scaled = if (scale - 1.0).abs() > 1e-3 { format!(", scaled {scale:.3}x to fit") } else { String::new() };
-    let untextured = if texture_root.is_none() && !model.textures.is_empty() { ". Open a Godot project to keep its textures" } else { "" };
+    let untextured = untextured.map(|e| format!(". {e}")).unwrap_or_default();
     // Warn but do not hinder: heavy meshes stay placeable, the user just gets a heads up.
     if verts > HEAVY_VERTS || tris > HEAVY_TRIS {
         Ok(format!("Placed {name} as an editable mesh, {verts} vertices, {tris} triangles{scaled}{untextured}. That is a lot, editing may be slow."))
@@ -2640,6 +2708,112 @@ mod tests {
         import_model(&mut state, &nature.join("pine.bbmodel"), ModelImport::Mesh, DVec3::ZERO).unwrap();
         assert_eq!(materials(&state), ["models/nature/pine/pine_0"]);
         assert!(state.materials.load_image("models/nature/pine/pine_0").is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The face materials of the selected mesh, sorted.
+    fn placed_materials(state: &EditorState) -> Vec<String> {
+        let mesh = state.doc.selection.nodes.iter().find_map(|id| state.doc.map.mesh(*id)).expect("the model is placed and selected");
+        let mut names: Vec<String> = mesh.faces.iter().map(|f| f.data.material.clone()).collect();
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    /// A Blockbench model of the demo project's nature pack.
+    fn nature_model(name: &str) -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../godot/godottrench/nature").join(format!("{name}.bbmodel"))
+    }
+
+    #[test]
+    fn placing_a_model_never_overwrites_files_in_the_project() {
+        let (mut state, dir) = fresh_project("place_keeps_files");
+        let models = dir.join("models");
+        std::fs::create_dir_all(&models).unwrap();
+        std::fs::copy(nature_model("grass_tall"), models.join("rock.bbmodel")).unwrap();
+        let gltf = crate::models::emissive_gltf(&models);
+        std::fs::rename(&gltf, models.join("rock.gltf")).unwrap();
+        state.model_library.rescan(&state.game);
+
+        place_model_mesh(&mut state, &models.join("rock.bbmodel"), DVec3::ZERO).unwrap();
+        assert_eq!(placed_materials(&state), ["models/rock/tex0"]);
+        let tex = dir.join("textures/models/rock");
+        let (png, tres) = (std::fs::read(tex.join("tex0.png")).unwrap(), tex.join("tex0.tres"));
+        let tuned = format!("{}metallic_specular = 0.0\n", std::fs::read_to_string(&tres).unwrap());
+        std::fs::write(&tres, &tuned).unwrap();
+        place_model_mesh(&mut state, &models.join("rock.bbmodel"), DVec3::ZERO).unwrap();
+        assert_eq!(placed_materials(&state), ["models/rock/tex0"], "placed again it uses the same textures");
+        assert_eq!(std::fs::read_to_string(&tres).unwrap(), tuned, "a material tuned in Godot is kept");
+
+        // rock.gltf shares the name in the Models panel, its textures get their own folder.
+        place_model_mesh(&mut state, &models.join("rock.gltf"), DVec3::ZERO).unwrap();
+        assert!(placed_materials(&state).iter().all(|m| m.starts_with("models/rock_2/")), "{:?}", placed_materials(&state));
+        assert_eq!(std::fs::read(tex.join("tex0.png")).unwrap(), png, "the Blockbench rock's texture is untouched");
+
+        // So do two models of the same file name imported from elsewhere, here with a texture of the same name too.
+        for (i, source) in ["oak", "pine"].into_iter().enumerate() {
+            let outside = dir.with_file_name(format!("gt_place_outside_{i}_{}", std::process::id()));
+            std::fs::create_dir_all(&outside).unwrap();
+            let mut bb: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(nature_model(source)).unwrap()).unwrap();
+            bb["textures"][0]["name"] = "bark.png".into();
+            std::fs::write(outside.join("tree.bbmodel"), bb.to_string()).unwrap();
+            import_model(&mut state, &outside.join("tree.bbmodel"), ModelImport::Mesh, DVec3::ZERO).unwrap();
+            let _ = std::fs::remove_dir_all(outside);
+        }
+
+        assert_eq!(placed_materials(&state), ["models/tree_2/bark_0"]);
+        let oak = std::fs::read(dir.join("textures/models/tree/bark_0.png")).unwrap();
+        assert_ne!(std::fs::read(dir.join("textures/models/tree_2/bark_0.png")).unwrap(), oak, "the first tree keeps its bark");
+        assert!(std::fs::read_dir(&tex).unwrap().all(|f| !f.unwrap().file_name().to_string_lossy().ends_with(".tmp")), "no temporary files are left");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_placed_model_keeps_its_glow_in_godot() {
+        let (mut state, dir) = fresh_project("place_glow");
+        let gltf = crate::models::emissive_gltf(&dir);
+        let status = place_model_mesh(&mut state, &gltf, DVec3::ZERO).unwrap();
+        assert!(!status.contains("untextured"), "{status}");
+        let names = placed_materials(&state);
+        assert_eq!(names, ["models/glow/tex0", "models/glow/tex1", "models/glow/tex2"]);
+        let lamp = state.materials.info("models/glow/tex1").expect("a material for the emissiveFactor");
+        assert!(lamp.is_emissive() && lamp.emission_texture.is_none() && lamp.emission_energy == 6.0, "{lamp:?}");
+        let flame = state.materials.info("models/glow/tex2").expect("a material for the emissiveTexture");
+        assert_eq!(flame.emission_texture.as_deref(), Some("res://textures/models/glow/tex2_emission.png"));
+        assert!(state.materials.find("models/glow/tex2_emission").is_none(), "the emission map is no material of its own");
+        assert!(state.materials.load_material("models/glow/tex2").is_some_and(|m| m.emission.is_some()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn placed_model_materials_follow_the_project_settings() {
+        let (mut state, dir) = fresh_project("place_material_dir");
+        state.game.textures.material_dir = "res://materials".into();
+        place_model_mesh(&mut state, &nature_model("grass_tall"), DVec3::ZERO).unwrap();
+        assert!(dir.join("materials/models/grass_tall/tex0.tres").is_file(), "FuncGodot looks for it in its material folder");
+        assert!(!dir.join("textures/models/grass_tall/tex0.tres").exists());
+        let grass = state.materials.info("models/grass_tall/tex0").expect("the editor finds it there too");
+        assert_eq!(grass.transparency, gt_formats::godot_material::Transparency::Scissor(0.5));
+
+        // Only text resources are written, FuncGodot makes the material from its default one otherwise.
+        state.game.textures.material_extension = "material".into();
+        place_model_mesh(&mut state, &nature_model("fern"), DVec3::ZERO).unwrap();
+        assert_eq!(placed_materials(&state), ["models/fern/tex0"]);
+        assert!(dir.join("textures/models/fern/tex0.png").is_file());
+        assert!(!dir.join("materials/models/fern").exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_model_whose_textures_cannot_be_written_is_placed_untextured() {
+        let (mut state, dir) = fresh_project("place_blocked");
+        // A file where the texture folder would be stops even a user who may write anywhere.
+        std::fs::write(dir.join("textures"), "").unwrap();
+        let status = place_model_mesh(&mut state, &nature_model("oak"), DVec3::ZERO).unwrap();
+        assert!(status.contains("Its textures could not be written, so it is untextured"), "{status}");
+        assert_eq!(placed_materials(&state), ["dev/grey"]);
+        let (_, status) = import_model(&mut state, &nature_model("pine"), ModelImport::Brushes, DVec3::ZERO).unwrap();
+        assert!(status.contains("untextured"), "{status}");
         let _ = std::fs::remove_dir_all(dir);
     }
 

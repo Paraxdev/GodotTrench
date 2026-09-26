@@ -78,11 +78,19 @@ impl Model {
         desc
     }
 
-    /// Godot material written next to one of `textures` when the model is placed as a mesh, so Godot and the editor
-    /// draw the mesh like the model: cut out where its texture is transparent, pixel art kept sharp, leaf cards drawn
-    /// from both sides and glowing textures glowing. None when the plain image already looks that way.
-    pub fn material_tres(&self, key: &str, image: &image::RgbaImage, pixelated: bool, albedo_res: &str) -> Option<String> {
+    /// The texture one of `textures` glows with when that is not its own `image`, placed next to it as its `_emission`
+    /// map.
+    pub fn emission_map(&self, key: &str, image: &image::RgbaImage) -> Option<&image::RgbaImage> {
+        self.emission.get(key).and_then(|e| e.texture.as_ref()).filter(|t| *t != image)
+    }
+
+    /// Godot material written for one of `textures` when the model is placed as a mesh, so Godot and the editor draw the
+    /// mesh like the model: cut out where its texture is transparent, pixel art kept sharp, leaf cards drawn from both
+    /// sides and glowing parts glowing. `emission_res` is where its [`Model::emission_map`] went. None when the plain
+    /// image already looks that way.
+    pub fn material_tres(&self, key: &str, image: &image::RgbaImage, pixelated: bool, albedo_res: &str, emission_res: Option<&str>) -> Option<String> {
         let desc = self.material_desc(key, image, pixelated);
+        let mut resources = format!("[ext_resource type=\"Texture2D\" path=\"{albedo_res}\" id=\"1_albedo\"]\n");
         let mut body = String::new();
         match desc.alpha {
             gt_render::AlphaMode::Opaque => {}
@@ -103,20 +111,32 @@ impl Model {
             body += "texture_filter = 2\n";
         }
 
-        if desc.emission_texture.is_some_and(|e| e == image) && desc.emission == [0.0; 3] {
-            body += &format!(
-                "emission_enabled = true\nemission = Color(0, 0, 0, 1)\nemission_energy_multiplier = {}\nemission_texture = ExtResource(\"1_albedo\")\n",
-                desc.emission_energy
-            );
+        let emission_texture = match (desc.emission_texture, emission_res) {
+            (Some(e), _) if e == image => Some("1_albedo"),
+            (Some(_), Some(res)) => {
+                resources += &format!("[ext_resource type=\"Texture2D\" path=\"{res}\" id=\"2_emission\"]\n");
+                Some("2_emission")
+            }
+            _ => None,
+        };
+        if desc.emission_energy > 0.0 && (emission_texture.is_some() || desc.emission.iter().any(|c| *c > 0.0)) {
+            // Godot's color is sRGB, the model's emission linear.
+            let [r, g, b] = desc.emission.map(|c| if c <= 0.0031308 { c * 12.92 } else { 1.055 * c.powf(1.0 / 2.4) - 0.055 });
+            body += &format!("emission_enabled = true\nemission = Color({r}, {g}, {b}, 1)\nemission_energy_multiplier = {}\n", desc.emission_energy);
+            if desc.emission_multiply {
+                body += "emission_operator = 1\n";
+            }
+
+            if let Some(id) = emission_texture {
+                body += &format!("emission_texture = ExtResource(\"{id}\")\n");
+            }
         }
 
         if body.is_empty() {
             return None;
         }
 
-        Some(format!(
-            "[gd_resource type=\"StandardMaterial3D\" format=3]\n\n[ext_resource type=\"Texture2D\" path=\"{albedo_res}\" id=\"1_albedo\"]\n\n[resource]\nalbedo_texture = ExtResource(\"1_albedo\")\n{body}"
-        ))
+        Some(format!("[gd_resource type=\"StandardMaterial3D\" format=3]\n\n{resources}\n[resource]\nalbedo_texture = ExtResource(\"1_albedo\")\n{body}"))
     }
 }
 
@@ -834,6 +854,44 @@ fn fallback_pack(root: &Path, dir: &Path, root_fallback: &str) -> PackInfo {
     PackInfo { name, ..Default::default() }
 }
 
+/// A glTF triangle drawn three times: plain, glowing in an emissiveFactor color, and glowing with an emissiveTexture that
+/// is not its albedo.
+#[cfg(test)]
+pub(crate) fn emissive_gltf(dir: &Path) -> PathBuf {
+    use base64::Engine;
+    let b64 = base64::engine::general_purpose::STANDARD;
+    let mut bin: Vec<u8> = Vec::new();
+    for f in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
+        bin.extend(f.to_le_bytes());
+    }
+
+    let mut png = Vec::new();
+    image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 128, 0, 255])).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+    let prim = |m: usize| serde_json::json!({ "attributes": { "POSITION": 0 }, "material": m });
+    let gltf = serde_json::json!({
+        "asset": { "version": "2.0" },
+        "extensionsUsed": ["KHR_materials_emissive_strength"],
+        "scene": 0,
+        "scenes": [{ "nodes": [0] }],
+        "nodes": [{ "mesh": 0 }],
+        "meshes": [{ "primitives": [prim(0), prim(1), prim(2)] }],
+        "materials": [
+            { "pbrMetallicRoughness": { "baseColorFactor": [0.5, 0.5, 0.5, 1.0] } },
+            { "pbrMetallicRoughness": { "baseColorFactor": [0.5, 0.5, 0.5, 1.0] }, "emissiveFactor": [1.0, 0.25, 0.0],
+              "extensions": { "KHR_materials_emissive_strength": { "emissiveStrength": 6.0 } } },
+            { "emissiveFactor": [1.0, 1.0, 1.0], "emissiveTexture": { "index": 0 } }
+        ],
+        "textures": [{ "source": 0 }],
+        "images": [{ "uri": format!("data:image/png;base64,{}", b64.encode(&png)) }],
+        "buffers": [{ "byteLength": bin.len(), "uri": format!("data:application/octet-stream;base64,{}", b64.encode(&bin)) }],
+        "bufferViews": [{ "buffer": 0, "byteLength": bin.len() }],
+        "accessors": [{ "bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0] }]
+    });
+    let path = dir.join("glow.gltf");
+    std::fs::write(&path, gltf.to_string()).unwrap();
+    path
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -972,39 +1030,29 @@ mod tests {
     }
 
     /// A one triangle glTF with three materials: plain, glowing by factor and strength, and glowing by texture.
-    fn emissive_gltf(dir: &Path) -> PathBuf {
-        use base64::Engine;
-        let b64 = base64::engine::general_purpose::STANDARD;
-        let mut bin: Vec<u8> = Vec::new();
-        for f in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
-            bin.extend(f.to_le_bytes());
-        }
+    #[test]
+    fn placed_gltf_materials_glow_like_the_model() {
+        let dir = std::env::temp_dir().join(format!("gt_models_glow_tres_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let model = load(&emissive_gltf(&dir), 32.0).unwrap();
+        let tres = |part: &ModelPart| {
+            let (key, img, pixelated) = model.textures.iter().find(|(k, ..)| *k == part.material).unwrap();
+            let emission = model.emission_map(key, img).map(|_| "res://glow_emission.png");
+            model.material_tres(key, img, *pixelated, "res://glow.png", emission).map(|t| gt_formats::godot_material::parse(&t).unwrap())
+        };
+        assert!(tres(&model.parts[0]).is_none(), "a plain material needs no file");
 
-        let mut png = Vec::new();
-        image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 128, 0, 255])).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
-        let prim = |m: usize| serde_json::json!({ "attributes": { "POSITION": 0 }, "material": m });
-        let gltf = serde_json::json!({
-            "asset": { "version": "2.0" },
-            "extensionsUsed": ["KHR_materials_emissive_strength"],
-            "scene": 0,
-            "scenes": [{ "nodes": [0] }],
-            "nodes": [{ "mesh": 0 }],
-            "meshes": [{ "primitives": [prim(0), prim(1), prim(2)] }],
-            "materials": [
-                { "pbrMetallicRoughness": { "baseColorFactor": [0.5, 0.5, 0.5, 1.0] } },
-                { "pbrMetallicRoughness": { "baseColorFactor": [0.5, 0.5, 0.5, 1.0] }, "emissiveFactor": [1.0, 0.25, 0.0],
-                  "extensions": { "KHR_materials_emissive_strength": { "emissiveStrength": 6.0 } } },
-                { "emissiveFactor": [1.0, 1.0, 1.0], "emissiveTexture": { "index": 0 } }
-            ],
-            "textures": [{ "source": 0 }],
-            "images": [{ "uri": format!("data:image/png;base64,{}", b64.encode(&png)) }],
-            "buffers": [{ "byteLength": bin.len(), "uri": format!("data:application/octet-stream;base64,{}", b64.encode(&bin)) }],
-            "bufferViews": [{ "buffer": 0, "byteLength": bin.len() }],
-            "accessors": [{ "bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0] }]
-        });
-        let path = dir.join("glow.gltf");
-        std::fs::write(&path, gltf.to_string()).unwrap();
-        path
+        let lamp = tres(&model.parts[1]).unwrap();
+        let [r, g, b] = lamp.emission.unwrap();
+        assert!((r - 1.0).abs() < 1e-4 && (g - 0.5371).abs() < 1e-3 && b == 0.0, "emissiveFactor, in Godot's sRGB: {:?}", lamp.emission);
+        assert_eq!((lamp.emission_energy, lamp.emission_texture.as_deref()), (6.0, None));
+
+        let flame = tres(&model.parts[2]).unwrap();
+        assert_eq!(flame.emission, Some([0.0; 3]), "like Godot's importer, the texture alone glows");
+        assert_eq!(flame.emission_texture.as_deref(), Some("res://glow_emission.png"), "its own emissive texture, not the albedo");
+        assert_eq!(flame.albedo_texture.as_deref(), Some("res://glow.png"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

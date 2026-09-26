@@ -1018,9 +1018,10 @@ fn mesh_inspector_names_the_materials_a_placed_model_draws_with() {
     let layer = f.state.doc.map.default_layer();
     let mut mesh = gt_geom::mesh_shapes::cuboid(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "models/nature/pine/tex0");
     mesh.faces[0].data.material = "models/nature/pine/tex1".into();
-    f.state.doc.edit("add", |m, s| {
+    let id = f.state.doc.edit("add", |m, s| {
         let id = m.insert(layer, NodeKind::Mesh(mesh));
         s.select_node(id);
+        id
     });
     let mut harness = Harness::builder()
         .with_size(egui::vec2(520.0, 700.0))
@@ -1032,4 +1033,8 @@ fn mesh_inspector_names_the_materials_a_placed_model_draws_with() {
     state.doc.edit("Apply Material", |m, s| ops::apply_material(m, s, "dev/grey"));
     harness.run();
     harness.get_by_label("Materials: dev/grey");
+
+    harness.state_mut().state.doc.edit("Delete Faces", |m, _| m.mesh_mut(id).unwrap().faces.clear());
+    harness.run();
+    assert!(harness.query_by_label_contains("Materials:").is_none(), "a mesh without faces lists none");
 }

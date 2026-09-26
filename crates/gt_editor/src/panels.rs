@@ -536,11 +536,13 @@ fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mu
     }
 
     // A placed model draws with its own textures, a material applied to it later shows up here in their place.
-    let mut used: Vec<&str> = mesh.faces.iter().map(|f| f.data.material.as_str()).collect();
+    let mut used: Vec<&str> = mesh.faces.iter().map(|f| f.data.material.as_str()).collect::<HashSet<_>>().into_iter().collect();
     used.sort_unstable();
-    used.dedup();
-    let more = if used.len() > 3 { format!(" and {} more", used.len() - 3) } else { String::new() };
-    ui.label(format!("Materials: {}{more}", used[..used.len().min(3)].join(", "))).on_hover_text(used.join("\n"));
+    if !used.is_empty() {
+        let more = if used.len() > 3 { format!(" and {} more", used.len() - 3) } else { String::new() };
+        ui.label(format!("Materials: {}{more}", used[..used.len().min(3)].join(", "))).on_hover_text(used.join("\n"));
+    }
+
     let mut decal = mesh.decal;
     if ui
         .checkbox(&mut decal, "Decal (blended, double sided)")
