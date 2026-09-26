@@ -176,11 +176,15 @@ jobs:
           path: dist
           pattern: editor-*
           merge-multiple: true
-      - name: Package Godot addon and demo project
+      - name: Package Godot addon, demo project and content
         run: |
           # The addon is a submodule, its .git file and git settings stay out of the zips.
           (cd godot && zip -qr "../dist/func_godot-godottrench-addon.zip" addons/func_godot -x "addons/func_godot/.git*")
           zip -qr dist/godottrench-demo-project.zip godot -x "godot/.godot/*" "godot/addons/func_godot/.git*"
+          # What the editor's content wizard downloads into a project, laid out as in the project. The folders must be the
+          # ones crates/gt_editor/src/content.rs accepts, its tests read these two lines.
+          (cd godot && zip -qr "../dist/godottrench-nature-pack.zip" godottrench/nature -x "*.import")
+          (cd godot && zip -qr "../dist/godottrench-demo-content.zip" demo models)
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -193,6 +197,7 @@ jobs:
           downloads="* godottrench-*: the editor for Linux, Windows and macOS.
           * func_godot-godottrench-addon.zip: the Godot addon, extract into your Godot project so it becomes res://addons/func_godot.
           * godottrench-demo-project.zip: the demo Godot project with the showcase maps.
+          * godottrench-nature-pack.zip and godottrench-demo-content.zip: the nature models and the demo content that the editor's Godot > Add Content to Project adds to a project, no need to download them by hand.
 
           ![Editor](${shots}/editor.png)
           ![Lighthouse and Forest in Godot](${shots}/lighthouse_forest.png)
