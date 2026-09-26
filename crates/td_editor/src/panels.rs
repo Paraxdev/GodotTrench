@@ -540,6 +540,12 @@ fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mu
     ui.heading(if mesh.decal { "Decal" } else { "Mesh" });
     ui.label(format!("{} vertices, {} faces, {} triangles", mesh.vertices.len(), mesh.faces.len(), mesh.triangle_count()));
     ui.label(if mesh.is_closed() { "closed" } else { "open surface" });
+    // A placed model draws with its own textures, a material applied to it later shows up here in their place.
+    let mut used: Vec<&str> = mesh.faces.iter().map(|f| f.data.material.as_str()).collect();
+    used.sort_unstable();
+    used.dedup();
+    let more = if used.len() > 3 { format!(" and {} more", used.len() - 3) } else { String::new() };
+    ui.label(format!("Materials: {}{more}", used[..used.len().min(3)].join(", "))).on_hover_text(used.join("\n"));
     let mut decal = mesh.decal;
     if ui
         .checkbox(&mut decal, "Decal (blended, double sided)")
