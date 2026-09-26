@@ -8,6 +8,10 @@ the button fires an output named `pressed`, and a link turns that into a call of
 
 ## Wire it
 
+`func_door` and `func_button` come with the Gameplay entities pack. If the project does not have it yet, press
+**Install Gameplay Entities** in the *Set up this project* window (*Godot > Install or Update Addon…*), or choose
+*Gameplay > Install Gameplay Entities*.
+
 1. Draw a door sized brush in a doorway, [Getting started](../getting-started.md#4-build-a-room) shows how to cut
    one. Right click the brush, *Create Brush Entity > func_door*, and set its `targetname` to `main_door` in the
    Inspector. The name is how other entities find the door. The default `travel` of `0 64 0` slides it up 64 units,

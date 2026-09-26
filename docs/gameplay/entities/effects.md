@@ -1,5 +1,9 @@
 # Props, lights and effects
 
+> **Note:** These entities come with the Gameplay entities pack, see
+> [Installing and customizing](README.md#installing-and-customizing). Only `light` and `light_spot` are part of the
+> addon's core and work without it.
+
 ## prop_physics
 
 A crate or barrel that can be thrown, damaged and broken. It breaks at 0 health, on an impact faster than
@@ -68,7 +72,7 @@ else 2.
 ## light and light_spot
 
 Omni and spot lights that inputs switch on and off, for light switches, alarms and flickering lamps. `switched` only
-fires when the state actually changes.
+fires when the state actually changes. They are part of the addon's core, so every project has them.
 
 * **Inputs:** `turn_on`, `turn_off`, `toggle`
 * **Outputs:** `switched(on)`

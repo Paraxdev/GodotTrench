@@ -1,5 +1,8 @@
 # Scripts and calls
 
+> **Note:** These entities come with the Gameplay entities pack, see
+> [Installing and customizing](README.md#installing-and-customizing).
+
 Point entities for what plain wiring cannot reach: game state, your own game code, animations, and finding out why a
 chain does not fire.
 

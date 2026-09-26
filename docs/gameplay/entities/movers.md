@@ -1,5 +1,8 @@
 # Doors, movers and buttons
 
+> **Note:** These entities come with the Gameplay entities pack, see
+> [Installing and customizing](README.md#installing-and-customizing).
+
 Brush entities that move as one body and carry whatever stands on them, so a lift takes the player along.
 
 > **Note:** Doors and buttons do not react to the player on their own. Your player script calls `use(activator)` on

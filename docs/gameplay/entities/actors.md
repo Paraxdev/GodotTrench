@@ -1,5 +1,8 @@
 # Spawners and paths
 
+> **Note:** These entities come with the Gameplay entities pack, see
+> [Installing and customizing](README.md#installing-and-customizing).
+
 ## info_spawner
 
 Spawns a scene, such as an enemy or a pickup, at random spots within `radius`. Fire `spawn` from a trigger for an

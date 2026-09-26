@@ -1,5 +1,8 @@
 # Logic
 
+> **Note:** These entities come with the Gameplay entities pack, see
+> [Installing and customizing](README.md#installing-and-customizing).
+
 Invisible point entities that decide when things happen. They sit between a trigger or button and what it affects,
 and shape the signal on the way. Entities that run code or animations are in [Scripts and calls](scripting.md).
 
