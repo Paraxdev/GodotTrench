@@ -63,6 +63,9 @@ The Godot plugin for building levels from Quake style map files. The GodotTrench
 ## game config
 The file godottrench_game.json in the Godot project root, written by the addon. It tells the editor which entities, texture folders and unit scale the project uses, and the editor reloads it whenever the addon exports it again.
 
+## glTF
+An open file format for 3D models and scenes that Blender, Godot and most 3D tools read. A .glb file is its binary form, which holds the geometry and the textures in one file.
+
 ## Godot group
 A named tag on nodes in Godot, set under Node > Groups or from code, that lets code and entity I/O find all of them at once. A target such as @enemies reaches every node in the enemies group.
 
