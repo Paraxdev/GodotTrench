@@ -417,6 +417,13 @@ fn csg_entities_io_and_files() {
     let (text, _) = gt_doc::format::file_to_json(&bytes).unwrap();
     assert!(text.contains("\"format\": \"godottrench-map\"") && text.contains("\"opened\""));
 
+    let glb = artifacts().join("csg_roundtrip.glb");
+    let exported = ed.call("map_file", json!({ "op": "export_glb", "path": glb, "markers": true }));
+    assert!(exported["objects"].as_u64().unwrap() > 1 && exported["triangles"].as_u64().unwrap() > 0, "{exported}");
+    let (doc, _, _) = gltf::import(&glb).expect("the export reads back as glTF");
+    assert!(doc.nodes().any(|n| n.name() == Some("light (lamp)") && n.mesh().is_none()), "the light is an empty marker");
+    assert!(ed.call_err("run_action", json!({ "action": "export_glb" })).contains("map_file {op: export_glb or export_obj, path}"));
+
     // A damaged save still opens, with what was lost reported.
     let damaged = artifacts().join("csg_damaged.gtm");
     std::fs::write(&damaged, &bytes[..bytes.len() - 8]).unwrap();

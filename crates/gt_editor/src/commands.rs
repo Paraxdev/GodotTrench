@@ -117,6 +117,9 @@ pub enum Action {
     ImportQuakeMap,
     ExportQuakeMap,
     ExportQuakeMapCordon,
+    /// Open the options of the export for Blender and other 3D tools, set to glTF binary or OBJ.
+    ExportGlb,
+    ExportObj,
     ImportVmf,
     /// Turns a folder of Valve, Quake or Half-Life textures into project PNGs and materials.
     ConvertTextures,
@@ -254,6 +257,8 @@ impl Action {
             Action::FocusGodot => "Show Godot Editor".into(),
             Action::BuildInGodot => "Build in Godot".into(),
             Action::ToggleLiveMode => "Toggle Godot Live Mode".into(),
+            Action::ExportGlb => "Export glTF Binary (.glb)".into(),
+            Action::ExportObj => "Export Wavefront OBJ (.obj)".into(),
             other => format!("{other:?}"),
         }
     }
@@ -285,6 +290,9 @@ impl Action {
             Action::ToggleCordon => "Switches the cordon on or off without forgetting its box",
             Action::ClearCordon => "Removes the cordon box and shows the whole map again",
             Action::ExportQuakeMapCordon => "Exports only the objects that touch the cordon box",
+            Action::ExportGlb | Action::ExportObj => {
+                "Saves the geometry and materials as a 3D model for Blender and other 3D tools. Entity logic, triggers and scripts are left out"
+            }
             Action::ToggleUvLock => {
                 "When on, textures stick to brushes as you move or rotate them. When off, they stay put in the world and slide across the faces"
             }
@@ -1107,6 +1115,8 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
 
         // Handled by the app, which owns dialogs, viewports and tool state.
         Action::ShowCommandPalette
+        | Action::ExportGlb
+        | Action::ExportObj
         | Action::ShowShapeDialog
         | Action::ShowTerrainDialog
         | Action::ShowKeymap

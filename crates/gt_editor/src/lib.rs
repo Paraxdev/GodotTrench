@@ -6,6 +6,7 @@ pub mod code_refs;
 pub mod commands;
 pub mod dialogs;
 pub mod entity_wizards;
+pub mod export3d;
 pub mod extra_tools;
 pub mod face_cull;
 pub mod gizmos;
@@ -75,6 +76,8 @@ pub enum Convert {
     ToJson(PathBuf, PathBuf),
     /// Any map file to the binary `.gtm`, keeping its content exactly.
     ToGtm(PathBuf, PathBuf),
+    /// A map's geometry and materials as a glTF binary or OBJ model, for Blender and other 3D tools.
+    Export(PathBuf, PathBuf, export3d::Format),
 }
 
 pub const DEFAULT_MCP_PORT: u16 = 7841;
@@ -92,6 +95,10 @@ Options:
   --dump <map>           Print a map as JSON and exit
   --to-json <map> <out>  Write a map as JSON and exit
   --to-gtm <map> <out>   Write a map as a binary .gtm and exit
+  --export-glb <map> <out.glb>
+                         Write a map's geometry and materials as glTF binary and exit
+  --export-obj <map> <out.obj>
+                         Write a map's geometry and materials as OBJ and exit
   -h, --help             Print this help and exit
 ";
 
@@ -114,11 +121,16 @@ impl CliArgs {
                 "--mcp-http" => out.mcp_http = Some(DEFAULT_MCP_PORT),
                 "--default-prefs" => out.default_prefs = true,
                 "--dump" => out.convert = value("a map file").map(Convert::Dump),
-                "--to-json" | "--to-gtm" => {
+                "--to-json" | "--to-gtm" | "--export-glb" | "--export-obj" => {
                     let what = "a map file and an output file";
                     let Some(from) = value(what) else { continue };
                     let Some(to) = value(what) else { continue };
-                    out.convert = Some(if arg == "--to-json" { Convert::ToJson(from, to) } else { Convert::ToGtm(from, to) });
+                    out.convert = Some(match arg.as_str() {
+                        "--to-json" => Convert::ToJson(from, to),
+                        "--to-gtm" => Convert::ToGtm(from, to),
+                        "--export-glb" => Convert::Export(from, to, export3d::Format::Glb),
+                        _ => Convert::Export(from, to, export3d::Format::Obj),
+                    });
                 }
                 a if a.starts_with("--mcp-http=") => match a["--mcp-http=".len()..].parse() {
                     Ok(port) => out.mcp_http = Some(port),
@@ -153,6 +165,11 @@ pub fn convert(c: &Convert) -> Result<(), String> {
             let (bytes, problems) = gt_doc::format::file_to_binary(&read(from)?).map_err(|e| format!("{}: {e}", from.display()))?;
             report(from, &problems);
             std::fs::write(to, bytes).map_err(|e| format!("{}: {e}", to.display()))
+        }
+        Convert::Export(from, to, format) => {
+            let done = export3d::export_file(from, to, *format)?;
+            eprintln!("{}", done.summary(to));
+            Ok(())
         }
     }
 }
@@ -191,6 +208,10 @@ mod tests {
         assert_eq!(c.map, None);
         let c = CliArgs::parse(["--to-gtm", "a.json", "b.gtm"].map(String::from)).convert;
         assert_eq!(c, Some(Convert::ToGtm("a.json".into(), "b.gtm".into())));
+        let c = CliArgs::parse(["--export-glb", "a.gtm", "a.glb"].map(String::from)).convert;
+        assert_eq!(c, Some(Convert::Export("a.gtm".into(), "a.glb".into(), export3d::Format::Glb)));
+        let c = CliArgs::parse(["--export-obj", "a.gtm", "a.obj"].map(String::from)).convert;
+        assert_eq!(c, Some(Convert::Export("a.gtm".into(), "a.obj".into(), export3d::Format::Obj)));
         assert!(a.errors.is_empty() && !a.help);
     }
 
@@ -204,6 +225,7 @@ mod tests {
         assert_eq!(errors(&["--project"]), ["--project needs a folder"]);
         assert_eq!(errors(&["--dump", "--mcp"]), ["--dump needs a map file"]);
         assert_eq!(errors(&["--to-json", "a.gtm"]), ["--to-json needs a map file and an output file"]);
+        assert_eq!(errors(&["--export-glb", "a.gtm"]), ["--export-glb needs a map file and an output file"]);
         assert_eq!(errors(&["--mcp-http=abc"]), ["--mcp-http=abc: the port must be a number"]);
     }
 

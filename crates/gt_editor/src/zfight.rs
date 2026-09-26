@@ -58,7 +58,7 @@ fn depth_key(dist: f64) -> i64 {
 }
 
 /// Tool textures, hints and nodraw faces build no visual mesh.
-fn draws(game: &GameConfig, material: &str) -> bool {
+pub(crate) fn draws(game: &GameConfig, material: &str) -> bool {
     let lower = material.to_ascii_lowercase();
     let name = lower.rsplit('/').next().unwrap_or_default();
     !lower.is_empty()

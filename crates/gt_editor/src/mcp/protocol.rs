@@ -305,13 +305,19 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "map_file",
-            "description": "new, open or save .gtm maps, import or export Quake/TrenchBroom .map files, import Hammer .vmf files (func_instance maps are inlined as groups), convert textures. new and open keep a map with unsaved changes in its own tab, like the File menu. save without path saves to the current file. export_map returns the written .map path. import_map and import_vmf report the materials the project lacks and how many of them the .vmt/.vtf, .wad or .wal files near the map could provide; textures: \"auto\" converts those, or a folder or file path converts them from there. convert_textures {path, only_missing, overwrite} turns a folder (or one .wad) of Valve, Quake or Half-Life textures into PNGs and .tres materials in the project texture folder, named so imported faces find them.",
+            "description": "new, open or save .gtm maps, import or export Quake/TrenchBroom .map files, import Hammer .vmf files (func_instance maps are inlined as groups), convert textures, or export the geometry and materials for Blender and other 3D tools. new and open keep a map with unsaved changes in its own tab, like the File menu. save without path saves to the current file. export_map returns the written .map path. import_map and import_vmf report the materials the project lacks and how many of them the .vmt/.vtf, .wad or .wal files near the map could provide; textures: \"auto\" converts those, or a folder or file path converts them from there. convert_textures {path, only_missing, overwrite} turns a folder (or one .wad) of Valve, Quake or Half-Life textures into PNGs and .tres materials in the project texture folder, named so imported faces find them. export_glb {path} writes glTF binary with the textures inside, export_obj {path} writes OBJ plus a .mtl and a <name>_textures folder; both leave out entity logic, I/O, triggers, tool faces and scripts, take the flags selection_only, hidden, scatter, models (true by default), markers (point entities as empty nodes) and merge_brushes (unnamed brushes joined per layer, group or entity), and return the counts written.",
             "inputSchema": { "type": "object", "properties": {
-                "op": { "type": "string", "enum": ["new", "open", "open_tab", "save", "import_map", "import_vmf", "convert_textures", "export_map"] },
+                "op": { "type": "string", "enum": ["new", "open", "open_tab", "save", "import_map", "import_vmf", "convert_textures", "export_map", "export_glb", "export_obj"] },
                 "path": { "type": "string" },
                 "textures": { "type": "string", "description": "import_map, import_vmf: \"auto\" or a folder or file to convert the map's missing textures from" },
                 "only_missing": { "type": "boolean", "description": "convert_textures: only what the open map lacks" },
-                "overwrite": { "type": "boolean", "description": "convert_textures: replace files already in the project" }
+                "overwrite": { "type": "boolean", "description": "convert_textures: replace files already in the project" },
+                "selection_only": { "type": "boolean", "description": "export_glb, export_obj: only the selected objects" },
+                "hidden": { "type": "boolean", "description": "export_glb, export_obj: hidden layers and objects too" },
+                "scatter": { "type": "boolean", "description": "export_glb, export_obj: every scatter instance as its own node" },
+                "models": { "type": "boolean", "description": "export_glb, export_obj: models of props and other point entities, true by default" },
+                "markers": { "type": "boolean", "description": "export_glb, export_obj: point entities without a model as empty nodes" },
+                "merge_brushes": { "type": "boolean", "description": "export_glb, export_obj: brushes without a name joined per layer, group or entity" }
             }, "required": ["op"] }
         }),
         json!({
