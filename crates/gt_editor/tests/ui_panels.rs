@@ -673,6 +673,38 @@ fn a_pending_rename_stays_with_its_map() {
 }
 
 #[test]
+fn a_rename_field_that_disappears_is_dropped() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    let brush = f.state.doc.edit("add", |m, s| {
+        let id = m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "dev/grey").unwrap()));
+        s.select_node(id);
+        id
+    });
+    gt_editor::commands::execute(&mut f.state, Action::Rename, &egui::Context::default());
+    let mut harness = Harness::builder().with_size(egui::vec2(360.0, 400.0)).build_ui_state(
+        |ui, (f, shown): &mut (Fixture, bool)| {
+            if *shown {
+                panels::outliner(ui, &mut f.state, &mut f.panels, &mut f.actions);
+            }
+        },
+        (f, true),
+    );
+    harness.run();
+    harness.get_all_by_role(egui::accesskit::Role::TextInput).last().unwrap().type_text("cellar");
+    harness.run();
+
+    // Like switching to the History tab and back.
+    harness.state_mut().1 = false;
+    harness.run();
+    harness.state_mut().1 = true;
+    harness.run();
+    assert_eq!(harness.state().0.state.renaming, None);
+    assert_eq!(harness.get_all_by_role(egui::accesskit::Role::TextInput).count(), 1, "only the filter is left");
+    assert_eq!(harness.state().0.state.doc.map.get(brush).unwrap().label, None);
+}
+
+#[test]
 fn outliner_context_menu_selects_and_acts_on_objects() {
     let mut f = Fixture::new();
     let layer = f.state.doc.map.default_layer();

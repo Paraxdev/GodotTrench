@@ -42,10 +42,12 @@ pub struct PanelState {
     outliner_filter: String,
     outliner_offset: f32,
     outliner_anchor: Option<NodeId>,
-    /// The node the rename field was filled for, its text, and whether it still has to take the keyboard focus.
+    /// The node the rename field was filled for, its text, whether it still has to take the keyboard focus, and the
+    /// field once shown.
     rename_for: Option<NodeId>,
     rename_text: String,
     rename_focus: bool,
+    rename_field: Option<egui::Id>,
     issues: Vec<gt_doc::issues::Issue>,
     issues_revision: u64,
     issues_overlays: u64,
@@ -86,6 +88,7 @@ impl Default for PanelState {
             rename_for: None,
             rename_text: String::new(),
             rename_focus: false,
+            rename_field: None,
             issues: Vec::new(),
             issues_revision: 0,
             issues_overlays: 0,
@@ -121,11 +124,18 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
         ps.expanded.extend(map.ancestors(id));
     }
 
+    // A field that vanished, scrolled out of view or behind another tab, lost its focus without telling. Left open it
+    // would come back later as a field nobody is typing into.
+    if state.renaming == ps.rename_for && ps.rename_field.is_some_and(|f| !ui.memory(|m| m.has_focus(f))) {
+        state.renaming = None;
+    }
+
     let renaming = state.renaming.filter(|id| map.contains(*id));
     if renaming != ps.rename_for {
         ps.rename_for = renaming;
         ps.rename_text = renaming.and_then(|id| map.get(id)).map(|n| n.editable_name()).unwrap_or_default();
         ps.rename_focus = true;
+        ps.rename_field = None;
     }
 
     let filter = ps.outliner_filter.to_lowercase();
@@ -226,6 +236,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
 
                 if renaming == Some(*id) {
                     let mut field = egui::TextEdit::singleline(&mut ps.rename_text).desired_width(f32::INFINITY).show(ui);
+                    ps.rename_field = Some(field.response.id);
                     if std::mem::take(&mut ps.rename_focus) {
                         field.response.request_focus();
                         let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(ps.rename_text.chars().count()));

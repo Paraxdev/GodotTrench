@@ -762,8 +762,11 @@ fn keyboard_shortcuts_and_views() {
     assert_eq!(ed.state()["editor"]["grid"], 32.0);
     ed.input("window", json!([{ "type": "key", "key": "OpenBracket" }, { "type": "key", "key": "OpenBracket" }]));
     assert_eq!(ed.state()["editor"]["grid"], 8.0);
-    ed.box_brush([0.0, 0.0, 0.0], [32.0, 32.0, 32.0]);
+    let first = ed.box_brush([0.0, 0.0, 0.0], [32.0, 32.0, 32.0]);
     ed.box_brush([64.0, 0.0, 0.0], [96.0, 32.0, 32.0]);
+    ed.call("select", json!({ "ids": [first] }));
+    ed.input("top", json!([{ "type": "move" }, { "type": "key", "key": "F2" }, { "type": "text", "text": "north wall" }, { "type": "key", "key": "Enter" }]));
+    assert_eq!(ed.call("get_node", json!({ "id": first }))["label"], "north wall", "F2 opens the name field in the Outliner");
     ed.input("top", json!([{ "type": "move" }, { "type": "key", "key": "A", "modifiers": ["ctrl"] }]));
     assert_eq!(ed.state()["selection"]["nodes"].as_array().unwrap().len(), 2);
     ed.input("window", json!([{ "type": "key", "key": "H", "modifiers": ["ctrl"] }]));
