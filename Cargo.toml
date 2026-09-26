@@ -43,6 +43,8 @@ ureq = { version = "3.4", default-features = false, features = ["rustls", "platf
 zip = { version = "8.6", default-features = false, features = ["deflate-flate2"] }
 # Already compiled in for rustls, used for the SHA-256 of downloads.
 ring = "0.17"
+# Downloads land in a file without a name, so no other user of a shared temporary folder can reach or swap it.
+tempfile = "3"
 
 [profile.dev]
 opt-level = 1
