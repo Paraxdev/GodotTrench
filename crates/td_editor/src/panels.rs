@@ -2954,7 +2954,7 @@ pub fn open_in_system(path: &std::path::Path) {
 }
 
 /// Opens the system file manager on the folder of `path` with the file selected. Linux file managers do that through
-/// the FileManager1 D-Bus interface, without one the folder opens with nothing selected.
+/// the FileManager1 D-Bus interface, without one, or without a session bus, the folder opens with nothing selected.
 pub fn show_in_file_manager(path: &std::path::Path) {
     let path = crate::state::absolute(path);
     #[cfg(windows)]
@@ -2972,20 +2972,34 @@ pub fn show_in_file_manager(path: &std::path::Path) {
     std::thread::spawn(move || {
         use std::process::{Command, Stdio};
         let uri = file_uri(&path);
-        let ran = |cmd: &mut Command| cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
         let (object, method) = ("/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems");
-        let shown = ran(Command::new("dbus-send")
+        let mut dbus_send = Command::new("dbus-send");
+        dbus_send
             .args(["--session", "--print-reply", "--reply-timeout=3000", "--dest=org.freedesktop.FileManager1", object, method])
             .arg(format!("array:string:{uri}"))
-            .arg("string:"))
-            || ran(Command::new("gdbus")
-                .args(["call", "--session", "--dest", "org.freedesktop.FileManager1", "--object-path", object, "--method", method])
-                .arg(format!("['{uri}']"))
-                .arg("''"));
-        if !shown {
+            .arg("string:");
+        let mut gdbus = Command::new("gdbus");
+        gdbus
+            .args(["call", "--session", "--dest", "org.freedesktop.FileManager1", "--object-path", object, "--method", method])
+            .arg(format!("['{uri}']"))
+            .arg("''");
+        // gdbus is only asked when there is no dbus-send, since a call that timed out while the file manager starts may
+        // still open its window.
+        let reply = crate::commands::session_bus()
+            .then(|| [dbus_send, gdbus].into_iter().find_map(|mut cmd| cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped()).output().ok()))
+            .flatten();
+        if reply.is_none_or(|r| !r.status.success() && !dbus_timed_out(&String::from_utf8_lossy(&r.stderr))) {
             open_in_system(path.parent().unwrap_or(&path));
         }
     });
+}
+
+/// Whether a failed `dbus-send` or `gdbus` call only ran out of time. A file manager that D-Bus is still starting gets
+/// the call anyway and opens a window later, unlike after an error such as no file manager on the bus.
+pub fn dbus_timed_out(stderr: &str) -> bool {
+    ["org.freedesktop.DBus.Error.NoReply", "org.freedesktop.DBus.Error.Timeout", "org.freedesktop.DBus.Error.TimedOut", "Timeout was reached"]
+        .iter()
+        .any(|e| stderr.contains(e))
 }
 
 /// A `file://` URI for an absolute path. Everything but unreserved characters, slashes and colons is percent encoded,
