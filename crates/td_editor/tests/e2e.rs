@@ -389,6 +389,12 @@ fn csg_entities_io_and_files() {
         (&json!("front door"), &json!("door1")),
         "renaming over MCP names it like the Outliner does"
     );
+    let revision = ed.state()["map"]["revision"].clone();
+    assert_eq!(ed.call("hierarchy", json!({ "op": "rename", "id": door_entity, "name": " front door " }))["name"], "front door");
+    assert_eq!(ed.state()["map"]["revision"], revision, "the same name again is no edit");
+    assert_eq!(ed.call("hierarchy", json!({ "op": "rename", "id": door_entity, "name": "" }))["name"], "func_door (door1)");
+    let layer = ed.state()["editor"]["current_layer"].clone();
+    assert!(ed.call_err("hierarchy", json!({ "op": "rename", "id": layer, "name": " " })).contains("need a name"));
     let issues = ed.call("validate_map", json!({}));
     assert!(issues["issues"].as_array().unwrap().iter().any(|i| i["code"] == "io_missing_target"));
     ed.call("create_entity", json!({ "classname": "light", "origin": [0, 96, 96], "properties": { "targetname": "lamp" } }));

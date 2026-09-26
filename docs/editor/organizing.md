@@ -12,9 +12,10 @@ row to see its materials, size and bounds, and to outline the object in every vi
 
 To give an object a name of its own, select it and press F2, or right click it in the Outliner or a view and pick
 *Rename*. The row turns into a text field: Enter keeps the name, Esc cancels, and an empty name brings back the default
-one. Names are saved with the map. Entities keep their `targetname` apart from this name, so renaming never changes what
-an output reaches. The pieces a Clip, a CSG operation or a conversion leaves behind keep the name, and naming an object
-inside a linked group names it in every copy.
+one. Layers, groups and scatter sets always keep a name, so for them an empty one changes nothing, and renaming a scatter
+set also renames the layer the Scatter tool made for it. Names are saved with the map. Entities keep their `targetname`
+apart from this name, so renaming never changes what an output reaches. The pieces a Clip, a CSG operation or a
+conversion leaves behind keep the name, and naming an object inside a linked group names it in every copy.
 
 Ctrl+click a row to add it to the selection or take it out, and Shift+click to select every row between the last
 clicked one and this one. Ctrl+Shift+click adds that range to what is already selected. The Outliner is often the
