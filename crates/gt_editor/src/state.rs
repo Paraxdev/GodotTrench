@@ -353,6 +353,8 @@ pub struct EditorState {
     pub stdio_mcp: bool,
     /// Asks the app to open the content wizard.
     pub content_request: Option<ContentRequest>,
+    /// The Gameplay entities pack in the open project, checked when it loads and after an install.
+    pub gameplay_pack: crate::entity_pack::Status,
     live_link_status: Option<std::sync::mpsc::Receiver<String>>,
     /// Links the system opener found no browser for, sent back from its thread to be copied instead.
     pub(crate) unopened_links: (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>),
@@ -496,6 +498,7 @@ impl EditorState {
             autosave: Autosave::default(),
             stdio_mcp: false,
             content_request: None,
+            gameplay_pack: Default::default(),
             live_link_status: None,
             unopened_links: std::sync::mpsc::channel(),
             godot: Default::default(),
@@ -972,6 +975,8 @@ impl EditorState {
         };
         game.project_root = Some(root.to_path_buf());
         game.addon_version = gt_formats::game::addon_version(root);
+        crate::entity_pack::add_unexported(&mut game, root);
+        self.gameplay_pack = crate::entity_pack::Status::check(root);
         if let Some(addon) = &game.addon_version
             && addon != crate::VERSION
         {

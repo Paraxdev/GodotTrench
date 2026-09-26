@@ -76,6 +76,7 @@ impl AddonWizard {
         self.checked = None;
         if state.game.project_root.as_ref() == Some(&root) {
             state.game.addon_version = gt_formats::game::addon_version(&root);
+            state.gameplay_pack = crate::entity_pack::Status::check(&root);
         }
 
         state.set_status(outcome.summary(&root));

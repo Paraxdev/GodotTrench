@@ -1263,6 +1263,16 @@ impl App {
             menu(ui, "Gameplay", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 let game = &self.state.game;
+                let pack = &self.state.gameplay_pack;
+                if !pack.installed && game.entity("func_door").is_none() {
+                    empty_hint(ui, "Doors, triggers and logic need the pack");
+                    m.item(ui, Some(icons::PLUS), "Install Gameplay Entities", Action::InstallGameplayEntities);
+                    ui.separator();
+                } else if pack.update() {
+                    m.item(ui, None, &format!("Update Gameplay Entities ({} files)", pack.changes), Action::InstallGameplayEntities);
+                    ui.separator();
+                }
+
                 sub_menu(ui, Some(icons::DOOR), "Doors and Movers", |ui| {
                     empty_hint(ui, "From the selected brushes");
                     let hinged = |side| DoorKind::Hinged { side, angle: 95.0 };

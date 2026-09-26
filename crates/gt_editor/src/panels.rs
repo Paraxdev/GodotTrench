@@ -2555,6 +2555,16 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
         "Drag a card into a view, or double click it",
         "Double click places at the cursor. Ctrl or Shift click selects several cards to drag in together. Hover a heading to see what its entities are for",
     );
+    if !state.game.entities.iter().any(|d| crate::entity_pack::in_pack(&d.classname)) {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new("Doors, buttons, triggers, logic and props come with the Gameplay entities pack.").weak());
+            let tip = Action::InstallGameplayEntities.help().unwrap_or_default();
+            if ui.small_button("Install Gameplay Entities").on_hover_text(tip).clicked() {
+                actions.push(Action::InstallGameplayEntities);
+            }
+        });
+    }
+
     ui.separator();
     let filter = ps.entity_filter.to_lowercase();
     let mut groups: Vec<(String, Vec<&EntityDef>)> = Vec::new();

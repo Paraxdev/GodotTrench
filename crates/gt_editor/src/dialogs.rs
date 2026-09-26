@@ -155,6 +155,7 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("Texture: Set Blend Material".into(), Action::SetBlendMaterial),
         ("Texture: Clear Blend Material".into(), Action::ClearBlendMaterial),
         ("Gameplay: Make Lift".into(), Action::MakePlatform),
+        ("Gameplay: Install or Update Gameplay Entities".into(), Action::InstallGameplayEntities),
         ("Gameplay: Link Selected Entities".into(), Action::ShowLinkDialog),
         ("Help: Entity and Code Reference".into(), Action::ShowReference),
         ("File: Preferences".into(), Action::ShowPreferences),

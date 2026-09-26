@@ -11,6 +11,7 @@ use crate::state::{ContentRequest, EditorState};
 use crate::theme;
 
 pub const TITLE: &str = "Set up this project";
+pub const PACK_HEADING: &str = "Gameplay entities";
 
 /// MCP tools a person at the screen uses through the test harness: looking and clicking, which leave the wizard open.
 const WATCHING_TOOLS: [&str; 3] = ["get_state", "screenshot", "simulate_input"];
@@ -33,6 +34,8 @@ pub struct ContentWizard {
     pack_offered: bool,
     /// The content choices show below the addon, else the wizard is only about the addon.
     pub content: bool,
+    /// What the last install of the Gameplay entities pack did.
+    pack_note: Option<String>,
     pub addon: crate::addon_wizard::AddonWizard,
 }
 
@@ -44,6 +47,7 @@ impl ContentWizard {
         }
 
         self.note = note;
+        self.pack_note = None;
         self.project = Some(root);
         self.automatic = automatic;
         self.content = true;
@@ -185,6 +189,8 @@ impl ContentWizard {
             if let Some(root) = self.project.clone() {
                 self.addon.ui(ui, state, &root);
                 ui.add_space(6.0);
+                self.pack_ui(ui, state, &root);
+                ui.add_space(6.0);
                 if !self.content {
                     if ui.button("Close").clicked() {
                         self.close(state);
@@ -220,6 +226,51 @@ impl ContentWizard {
         }
 
         (Some(modal.response.rect), finished)
+    }
+
+    /// The Gameplay entities pack, which comes with the addon and is copied into the project to own.
+    fn pack_ui(&mut self, ui: &mut Ui, state: &mut EditorState, root: &Path) {
+        if state.game.project_root.as_deref() != Some(root) {
+            return;
+        }
+
+        ui.separator();
+        ui.label(RichText::new(PACK_HEADING).strong());
+        let pack = state.gameplay_pack.clone();
+        let dir = crate::entity_pack::RES_DIR;
+        let install = if !pack.installed && pack.available {
+            ui.label(format!(
+                "Doors, buttons, lifts, triggers, logic, spawners, props and effects. Installing copies their definitions and scripts into {dir}. The project owns the copies, so you can edit, delete or add entities there without clashing with the addon."
+            ));
+            ui.button(RichText::new("Install Gameplay Entities").strong()).clicked()
+        } else if !pack.installed {
+            ui.label(
+                RichText::new(
+                    "Doors, buttons, lifts, triggers, logic, spawners, props and effects come as a pack with the addon. Install or update the addon first.",
+                )
+                .weak(),
+            );
+            false
+        } else if pack.update() {
+            ui.label(format!(
+                "Installed in {dir}. The addon has a newer version of {} of its files. Updating replaces only files you did not edit, and never brings back ones you deleted.",
+                pack.changes
+            ));
+            ui.button("Update Gameplay Entities").clicked()
+        } else {
+            ui.label(RichText::new(format!("Installed in {dir}, where the project owns the copies.")).color(theme::SUCCESS));
+            false
+        };
+        if install {
+            self.pack_note = Some(match crate::entity_pack::install_in_project(state) {
+                Ok(report) => report.summary(),
+                Err(e) => e,
+            });
+        }
+
+        if let Some(note) = &self.pack_note {
+            ui.label(RichText::new(note).weak());
+        }
     }
 
     fn choice_ui(&mut self, ui: &mut Ui, state: &mut EditorState, root: &Path) {
@@ -407,6 +458,39 @@ mod tests {
         harness.state_mut().state.load_project(&root);
         harness.run();
         assert!(!harness.state().wizard.open, "only on the first start");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    fn copy_dir(from: &Path, to: &Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for entry in std::fs::read_dir(from).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                copy_dir(&path, &to.join(entry.file_name()));
+            } else {
+                std::fs::copy(&path, to.join(entry.file_name())).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn the_gameplay_pack_installs_from_the_addon_and_the_editor_knows_it_at_once() {
+        let (mut fixture, root) = fresh("pack");
+        assert!(fixture.state.game.entity("func_door").is_none() && fixture.state.game.entity("light").is_some(), "only the core without the pack");
+        assert!(!fixture.state.gameplay_pack.available);
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../godot");
+        copy_dir(&crate::entity_pack::template_dir(&repo), &crate::entity_pack::template_dir(&root));
+        fixture.state.load_project(&root);
+        let mut harness = harness(fixture);
+        harness.run();
+        assert!(harness.query_by_label(PACK_HEADING).is_some());
+        harness.get_by_label("Install Gameplay Entities").click();
+        harness.run();
+        assert!(harness.query_by_label_contains("Added 65 files of the Gameplay entities pack").is_some());
+        assert!(harness.query_by_label("Installed in res://godottrench/entities, where the project owns the copies.").is_some());
+        let door = harness.state().state.game.entity("func_door").expect("known before Godot exports the game config");
+        assert_eq!(door.script, "res://godottrench/entities/scripts/gt_door.gd");
+        assert!(root.join("godottrench/entities/scripts/gt_door.gd").is_file() && !root.join("godottrench/entities/.gdignore").exists());
         std::fs::remove_dir_all(&root).unwrap();
     }
 

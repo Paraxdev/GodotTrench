@@ -1105,6 +1105,26 @@ fn a_file_manager_that_starts_slowly_is_not_opened_twice() {
 }
 
 #[test]
+fn entity_browser_offers_the_gameplay_pack_while_only_the_core_is_known() {
+    let mut core = Fixture::new();
+    core.state.game = gt_formats::GameConfig::builtin();
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(700.0, 900.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::entity_browser(ui, &mut f.state, &mut f.panels, &mut f.actions), core);
+    harness.run();
+    assert!(harness.query_by_label("func_door").is_none() && harness.query_by_label("info_player_start").is_some());
+    harness.get_by_label("Install Gameplay Entities").click();
+    harness.run();
+    assert_eq!(harness.state().actions, [Action::InstallGameplayEntities]);
+
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(700.0, 900.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::entity_browser(ui, &mut f.state, &mut f.panels, &mut f.actions), Fixture::new());
+    harness.run();
+    assert!(harness.query_by_label("Install Gameplay Entities").is_none(), "a project with the pack is not asked");
+}
+
+#[test]
 fn entity_browser_headings_say_what_their_entities_are_for() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(700.0, 1400.0))

@@ -188,6 +188,8 @@ pub enum Action {
     ShowProjectContent,
     /// Opens the setup wizard on the GodotTrench addon, which it installs, updates or enables.
     ShowAddonSetup,
+    /// Copies the Gameplay entities pack from the addon into the project, or updates the files nobody edited.
+    InstallGameplayEntities,
     /// Replaces the selected scatter sets with prop entities.
     ScatterToEntities,
     /// Uses the current material as the blend material of the selected faces.
@@ -324,6 +326,9 @@ impl Action {
                 "Adds the nature models, or the demo maps, models and textures, to the open Godot project. They are downloaded from the GodotTrench release"
             }
             Action::InstallNatureModels => "Adds the trees, bushes, rocks and grass the scatter presets use to res://godottrench/nature",
+            Action::InstallGameplayEntities => {
+                "Copies doors, buttons, lifts, triggers, logic, spawners, props and effects into res://godottrench/entities, where the project owns them. An update keeps the files you edited"
+            }
             Action::ShowAddonSetup => {
                 "Shows whether the Godot project has the GodotTrench addon in the editor's version and enabled, and installs, updates or enables it"
             }
@@ -1367,6 +1372,10 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
 
         // The app opens the content wizard for these.
         Action::InstallNatureModels | Action::ShowProjectContent | Action::ShowAddonSetup => {}
+        Action::InstallGameplayEntities => match crate::entity_pack::install_in_project(state) {
+            Ok(report) => state.set_status(report.summary()),
+            Err(e) => state.set_status(e),
+        },
         Action::ScatterToEntities => {
             let sets: Vec<NodeId> = state.doc.selection.nodes.iter().copied().filter(|id| state.doc.map.scatter(*id).is_some()).collect();
             let n: usize = sets.into_iter().map(|id| crate::scatter_tool::bake_to_entities(state, id)).sum();
