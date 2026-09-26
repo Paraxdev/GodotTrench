@@ -1277,7 +1277,9 @@ impl App {
 
         let origin = vec3(&args["origin"]).unwrap_or_default();
         match crate::commands::import_model(&mut self.state, path, mode, origin) {
-            Ok(n) => ok(json!({ "objects": n, "selection": self.state.doc.selection.nodes.iter().map(|i| i.0).collect::<Vec<_>>() })),
+            Ok((n, status)) => {
+                ok(json!({ "objects": n, "status": status, "selection": self.state.doc.selection.nodes.iter().map(|i| i.0).collect::<Vec<_>>() }))
+            }
             Err(e) => err(e),
         }
     }
