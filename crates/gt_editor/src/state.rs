@@ -348,6 +348,8 @@ pub struct EditorState {
     /// Asks the app to open the content wizard.
     pub content_request: Option<ContentRequest>,
     live_link_status: Option<std::sync::mpsc::Receiver<String>>,
+    /// Links the system opener found no browser for, sent back from its thread to be copied instead.
+    pub(crate) unopened_links: (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>),
     pub godot: crate::godot::GodotStatus,
     /// Started by the app, tests and tools run without it.
     pub link: Option<crate::live_link::LiveLink>,
@@ -489,6 +491,7 @@ impl EditorState {
             stdio_mcp: false,
             content_request: None,
             live_link_status: None,
+            unopened_links: std::sync::mpsc::channel(),
             godot: Default::default(),
             link: None,
             link_state: Default::default(),

@@ -2433,6 +2433,8 @@ impl eframe::App for App {
             panels::open_link(&mut self.state, &ctx, &url);
         }
 
+        panels::copy_unopened_links(&mut self.state, &ctx);
+
         self.state.tick_autosave();
         self.state.poll_live_link();
         self.finish_input_script(&ctx);
