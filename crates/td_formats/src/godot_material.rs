@@ -1,4 +1,5 @@
-//! Reads the parts of Godot `StandardMaterial3D` / `ORMMaterial3D` text resources that matter for the editor preview.
+//! Reads the parts of Godot `StandardMaterial3D` / `ORMMaterial3D` text resources that matter for the editor preview and
+//! the glTF and OBJ exports.
 
 use std::collections::HashMap;
 
@@ -32,6 +33,15 @@ pub struct GodotMaterial {
     pub nearest: Option<bool>,
     pub roughness: f32,
     pub metallic: f32,
+    /// Roughness map and the channel it is read from, 0 to 3 for red to alpha, 4 for grayscale.
+    pub roughness_texture: Option<String>,
+    pub roughness_channel: u8,
+    pub metallic_texture: Option<String>,
+    pub metallic_channel: u8,
+    /// Ambient occlusion map, only when `ao_enabled` is set.
+    pub ao_texture: Option<String>,
+    /// Packed occlusion, roughness and metallic map of an `ORMMaterial3D`, in its red, green and blue channels.
+    pub orm_texture: Option<String>,
     /// UV1 scale, applied on top of the face projection.
     pub uv_scale: [f32; 2],
     /// World size in map units that one repeat of the texture covers, from `metadata/texture_size`. Face UVs
@@ -56,6 +66,12 @@ impl Default for GodotMaterial {
             nearest: None,
             roughness: 1.0,
             metallic: 0.0,
+            roughness_texture: None,
+            roughness_channel: 0,
+            metallic_texture: None,
+            metallic_channel: 0,
+            ao_texture: None,
+            orm_texture: None,
             uv_scale: [1.0, 1.0],
             texture_size: None,
         }
@@ -177,6 +193,16 @@ pub fn parse(text: &str) -> Option<GodotMaterial> {
     m.nearest = values.get("texture_filter").and_then(|v| v.parse::<u32>().ok()).map(|f| f % 2 == 0);
     m.roughness = float("roughness").unwrap_or(1.0);
     m.metallic = float("metallic").unwrap_or(0.0);
+    let channel = |key: &str| values.get(key).and_then(|v| v.parse::<u8>().ok()).filter(|c| *c <= 4).unwrap_or(0);
+    m.roughness_texture = texture("roughness_texture");
+    m.roughness_channel = channel("roughness_texture_channel");
+    m.metallic_texture = texture("metallic_texture");
+    m.metallic_channel = channel("metallic_texture_channel");
+    if flag("ao_enabled") == Some(true) {
+        m.ao_texture = texture("ao_texture");
+    }
+
+    m.orm_texture = texture("orm_texture");
     if let Some(s) = values.get("uv1_scale").map(|v| numbers(v)).filter(|s| s.len() >= 2) {
         m.uv_scale = [s[0], s[1]];
     }
@@ -256,5 +282,22 @@ mod tests {
         assert!(!disabled.is_emissive());
         let zero_energy = parse(&text("emission_enabled = true\nemission = Color(1, 1, 1, 1)\nemission_energy_multiplier = 0.0\n")).unwrap();
         assert!(!zero_energy.is_emissive());
+    }
+
+    #[test]
+    fn reads_the_pbr_maps() {
+        let metal = parse(
+            "[gd_resource type=\"StandardMaterial3D\" format=3]\n[ext_resource type=\"Texture2D\" path=\"res://m.png\" id=\"1\"]\n[ext_resource type=\"Texture2D\" path=\"res://m_roughness.jpg\" id=\"2\"]\n[ext_resource type=\"Texture2D\" path=\"res://m_ao.png\" id=\"3\"]\n[resource]\nalbedo_texture = ExtResource(\"1\")\nroughness_texture = ExtResource(\"2\")\nroughness_texture_channel = 1\nmetallic = 0.8\nao_texture = ExtResource(\"3\")\n",
+        )
+        .unwrap();
+        assert_eq!(metal.roughness_texture.as_deref(), Some("res://m_roughness.jpg"));
+        assert_eq!(metal.roughness_channel, 1);
+        assert_eq!(metal.metallic_texture, None);
+        assert_eq!(metal.ao_texture, None, "an occlusion map without ao_enabled is ignored, like in Godot");
+        let orm = parse(
+            "[gd_resource type=\"ORMMaterial3D\" format=3]\n[ext_resource type=\"Texture2D\" path=\"res://p_orm.png\" id=\"1\"]\n[resource]\norm_texture = ExtResource(\"1\")\n",
+        )
+        .unwrap();
+        assert_eq!(orm.orm_texture.as_deref(), Some("res://p_orm.png"));
     }
 }
