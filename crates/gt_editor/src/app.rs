@@ -146,6 +146,8 @@ pub struct App {
     pub(crate) content_wizard: crate::content_wizard::ContentWizard,
     /// project_content calls waiting for the running install.
     pub(crate) content_replies: Vec<std::sync::mpsc::Sender<crate::mcp::ToolResult>>,
+    /// Where the tool options bar is, reported by get_state like `open_windows`.
+    pub(crate) tool_options_rect: egui::Rect,
 }
 
 const WINDOW_TITLES: [&str; 7] =
@@ -167,6 +169,13 @@ pub(crate) enum KeyScope {
 /// before the frame starts, so without it the Escape that leaves a field would also clear the selection.
 pub(crate) fn key_scope(ctx: &egui::Context, had_focus: bool, view_hovered: bool, is_view: impl Fn(egui::Id) -> bool) -> KeyScope {
     if had_focus || ctx.egui_wants_keyboard_input() || egui::Popup::is_any_open(ctx) {
+        return KeyScope::Ui;
+    }
+
+    // A field clicked this frame only takes the focus once it is drawn, after the shortcuts ran. On a slow frame the
+    // Ctrl+A typed right after the click arrives with it.
+    let clicked = ctx.interaction_snapshot(|i| i.clicked.or(i.drag_started).or(i.drag_stopped));
+    if clicked.is_some_and(|id| !is_view(id)) {
         return KeyScope::Ui;
     }
 
@@ -731,6 +740,7 @@ impl App {
             manual_under_pointer: None,
             content_wizard: Default::default(),
             content_replies: Vec::new(),
+            tool_options_rect: egui::Rect::NOTHING,
         }
     }
 
@@ -2302,6 +2312,7 @@ impl eframe::App for App {
         let options_max = TOOL_OPTIONS_MAX_HEIGHT.max(self.tool_options_height) + margin;
         let options = egui::Panel::top(TOOL_OPTIONS_ID).resizable(true).max_size(options_max).show(ui, |ui| bar_contents(ui, |ui| self.tool_options(ui)));
         self.tool_options_height = options.inner;
+        self.tool_options_rect = options.response.rect;
         if !self.state.tabs.is_empty() {
             egui::Panel::top("map_tabs").show(ui, |ui| self.tab_bar(ui));
         }
@@ -2716,5 +2727,32 @@ mod tests {
         d.frame(vec![egui::Event::PointerButton { pos: field, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE }]);
         d.frame(vec![egui::Event::PointerMoved(egui::pos2(60.0, 60.0))]);
         assert_eq!(d.frame(vec![egui::Event::PointerMoved(egui::pos2(70.0, 60.0))]), KeyScope::WindowHovered, "dragging a number field over the map");
+    }
+
+    #[test]
+    fn a_key_that_comes_with_the_click_into_a_bar_field_stays_with_it() {
+        let ctx = egui::Context::default();
+        let (mut value, mut had_focus, mut time) = (48.0, false, 0.0);
+        // A number field on the background layer, like the radius in the tool options bar. Returns the scope and where
+        // the field is.
+        let mut frame = |events: Vec<egui::Event>| {
+            time += 0.05;
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
+            ctx.begin_pass(egui::RawInput { events, time: Some(time), screen_rect: Some(screen), ..Default::default() });
+            let scope = key_scope(&ctx, had_focus, false, |_| false);
+            let area = egui::Area::new(egui::Id::new("bar")).order(egui::Order::Background).fixed_pos([100.0, 20.0]);
+            let field = area.show(&ctx, |ui| ui.add(egui::DragValue::new(&mut value).prefix("radius ")).rect).inner;
+            had_focus = ctx.egui_wants_keyboard_input();
+            ctx.end_pass().drop_without_applying_deltas();
+            (scope, field.center())
+        };
+        frame(vec![]);
+        let (_, pos) = frame(vec![]);
+        let button = |pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+        let ctrl_a = egui::Event::Key { key: egui::Key::A, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::COMMAND };
+        assert_eq!(frame(vec![egui::Event::PointerMoved(pos)]).0, KeyScope::Editor, "plain keys over a bar go to the map");
+        frame(vec![button(true)]);
+        assert_eq!(frame(vec![button(false), ctrl_a]).0, KeyScope::Ui, "not Select All");
+        assert!(ctx.egui_wants_keyboard_input(), "the field took the focus");
     }
 }
