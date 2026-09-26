@@ -925,6 +925,37 @@ fn material_menu_opens_the_hotspot_editor_on_the_clicked_material() {
 }
 
 #[test]
+fn the_material_grid_stays_put_when_the_first_material_is_applied() {
+    let mut f = Fixture::new();
+    f.state.materials.entries = vec![gt_editor::materials::MaterialEntry {
+        name: "bricks/red".into(),
+        folder: "bricks".into(),
+        path: None,
+        material_file: None,
+        has_normal: false,
+        missing_albedo: false,
+        is_pbr: false,
+        is_emissive: false,
+    }];
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(700.0, 400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::material_browser(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    // The grid's cells, 8 wider and 22 taller than the thumbnail size.
+    let cell = |h: &Harness<'_, Fixture>| {
+        let size = egui::vec2(72.0 + 8.0, 72.0 + 22.0);
+        let is_cell =
+            move |n: &egui_kittest::kittest::AccessKitNode<'_>| n.bounding_box().is_some_and(|b| (b.width() as f32, b.height() as f32) == (size.x, size.y));
+        h.query_all(egui_kittest::kittest::By::new().predicate(is_cell)).map(|n| n.rect()).next().expect("a grid cell")
+    };
+    harness.run_steps(2);
+    let before = cell(&harness);
+    harness.get_by_label("the materials you apply show up here");
+    harness.state_mut().state.prefs.recent_materials = vec!["bricks/red".into()];
+    harness.run_steps(2);
+    assert_eq!(cell(&harness), before, "the recent row was there already");
+}
+
+#[test]
 fn history_panel_undoes_to_clicked_step() {
     let mut f = Fixture::new();
     let layer = f.state.doc.map.default_layer();
