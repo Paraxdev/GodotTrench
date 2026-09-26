@@ -41,9 +41,18 @@ impl Editor {
     }
 
     fn launch_with(name: &'static str, args: &[&str]) -> Editor {
+        Self::launch_env(name, args, &[])
+    }
+
+    fn launch_env(name: &'static str, args: &[&str], env: &[(&str, &str)]) -> Editor {
         let port = free_port();
-        let child =
-            Command::new(env!("CARGO_BIN_EXE_godottrench")).arg(format!("--mcp-http={port}")).arg("--default-prefs").args(args).spawn().expect("launch editor");
+        let child = Command::new(env!("CARGO_BIN_EXE_godottrench"))
+            .arg(format!("--mcp-http={port}"))
+            .arg("--default-prefs")
+            .args(args)
+            .envs(env.iter().copied())
+            .spawn()
+            .expect("launch editor");
         let editor = Editor { child, port, name };
         let deadline = Instant::now() + Duration::from_secs(60);
         loop {
@@ -1180,6 +1189,62 @@ fn view_panes_maximize_close_and_come_back() {
     palette(&ed, "single view layout");
     assert!(width(&ed) > docked * 3 / 2, "Single View keeps the view worked in last");
     palette(&ed, "four view layout");
+}
+
+/// F1 over a toolbar tool and a Ctrl+click on it open the tool's page of the manual. The system opener is replaced by a
+/// script that writes down what it was asked to open, so no browser starts.
+#[test]
+#[ignore]
+#[cfg(unix)]
+fn f1_and_ctrl_click_on_a_tool_open_its_manual_page() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let bin = artifacts().join("opener");
+    std::fs::create_dir_all(&bin).unwrap();
+    let log = bin.join("opened.txt");
+    let _ = std::fs::remove_file(&log);
+    for name in ["xdg-open", "open"] {
+        let script = bin.join(name);
+        std::fs::write(&script, format!("#!/bin/sh\necho \"$1\" >> '{}'\n", log.display())).unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default());
+    let ed = Editor::launch_env("manual", &[], &[("PATH", &path)]);
+    let opened = |count: usize| {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        loop {
+            let lines: Vec<String> = std::fs::read_to_string(&log).unwrap_or_default().lines().map(str::to_string).collect();
+            if lines.len() >= count || Instant::now() > deadline {
+                return lines;
+            }
+
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    };
+    let state = ed.state();
+    let button = state["ui"]["tool_buttons"].as_array().unwrap().iter().find(|b| b["tool"] == "Clip").expect("the Clip tool button")["rect"].clone();
+    let r: Vec<f64> = button.as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+    let (x, y) = ((r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0);
+    let page = "https://paraxdev.github.io/GodotTrench/editor/brushes.html#reshape";
+
+    ed.input("window", json!([{ "type": "move", "x": x, "y": y }, { "type": "key", "key": "F1" }, { "type": "text", "text": "grid larger" }, { "type": "key", "key": "Enter" }]));
+    let state = ed.state();
+    assert_eq!(state["editor"]["grid"], 16.0, "F1 over a tool opens the manual, not the command palette");
+    assert!(state["status"].as_str().unwrap().contains(page), "{}", state["status"]);
+    assert_eq!(opened(1), [page]);
+
+    ed.input("window", json!([{ "type": "click", "x": x, "y": y, "modifiers": ["ctrl"] }]));
+    assert_eq!(ed.state()["editor"]["tool"], "Select", "a Ctrl+click opens the page instead of picking the tool");
+    assert_eq!(opened(2), [page, page]);
+    ed.input("window", json!([{ "type": "click", "x": x, "y": y }]));
+    assert_eq!(ed.state()["editor"]["tool"], "Clip");
+
+    // Over a view F1 keeps its binding.
+    ed.input("top", json!([{ "type": "move" }, { "type": "key", "key": "F1" }, { "type": "text", "text": "grid larger" }, { "type": "key", "key": "Enter" }]));
+    assert_eq!(ed.state()["editor"]["grid"], 32.0, "the palette ran the command");
+    std::thread::sleep(Duration::from_secs(1));
+    assert_eq!(opened(0).len(), 2, "nothing else was opened");
 }
 
 /// Ctrl+click adds objects in the views. With the UV Editor tab showing it grabs all of a brush's faces instead, but

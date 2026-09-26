@@ -23,8 +23,8 @@ layer fields set up the paint in the same step, see [Auto Paint](terrain-paintin
 ## Picking the cell size
 
 Nothing sits between two vertices, so the cell size is the finest detail the terrain can hold. A mountain range wants
-big cells, a garden small ones. If you picked wrong, the Inspector's **resample** buttons rebuild the grid at 65, 129,
-257 or 513 vertices along the longer side and keep the heights, paint and holes. The terrain keeps its size, so more
+big cells, a garden small ones. If you picked wrong, the Inspector's **Resample** menu rebuilds the grid at 65, 129,
+257 or 513 vertices along the longer side and keeps the heights, paint and holes. The terrain keeps its size, so more
 vertices means smaller cells.
 
 **Chunk cells** (32 by default) splits the terrain into square pieces for drawing and collision. Smaller chunks rebuild

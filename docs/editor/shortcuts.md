@@ -85,7 +85,9 @@ Select clears the selection.
 | Shift+Space | Maximize the view under the pointer |
 | Ctrl+Shift+1 to 9, Ctrl+1 to 9 | Store, recall camera bookmarks |
 | Ctrl+=, Ctrl+-, Ctrl+0 | Interface scale up, down, reset |
-| Ctrl+Shift+P or F1 | Command palette |
+| F1 | Open the [manual](interface.md#help-and-the-manual) at the tool, panel tab, menu entry or Inspector section under the pointer, anywhere else the command palette |
+| Ctrl+click a tool in the toolbar | Open its page in the manual |
+| Ctrl+Shift+P | Command palette |
 | Ctrl+N, Ctrl+O | New map, open map |
 | Ctrl+S, Ctrl+Shift+S | Save, save as |
 | Ctrl+Shift+N, Ctrl+Tab, Ctrl+W | New tab, next tab, close tab |

@@ -6,6 +6,7 @@ use crate::CliArgs;
 use crate::camera::ViewKind;
 use crate::commands::{self, Action, ModelImport};
 use crate::dialogs::{CommandPalette, KeymapWindow, LinkDialog, ShapeDialog, TerrainDialog};
+use crate::help::{self, Topic};
 use crate::icons;
 use crate::mcp::tools::{Deferred, InputScript};
 use crate::mcp::{McpHost, ToolExecutor, transport};
@@ -138,6 +139,10 @@ pub struct App {
     ui_had_focus: bool,
     /// Floating windows shown this frame and where, reported by get_state so input scripts can click into them.
     pub(crate) open_windows: Vec<(&'static str, egui::Rect)>,
+    /// The toolbar's tool buttons and where, reported by get_state like the windows.
+    pub(crate) tool_buttons: Vec<(ToolKind, egui::Rect)>,
+    /// The manual page of what the pointer was over at the end of the last frame, for F1.
+    manual_under_pointer: Option<String>,
 }
 
 const WINDOW_TITLES: [&str; 7] =
@@ -377,8 +382,8 @@ impl MenuCx<'_> {
         self.shortcuts.iter().find(|(_, a)| a == action).map(|(s, _)| self.ctx.format_shortcut(s))
     }
 
-    fn push_if_clicked(&mut self, ui: &mut Ui, button: egui::Button, action: Action) {
-        if with_help(ui.add(button), &action).clicked() {
+    fn push_if_clicked(&mut self, ui: &mut Ui, label: &str, button: egui::Button, action: Action) {
+        if with_help(ui.add(button), &action, label).clicked() {
             self.actions.push(action);
             ui.close();
         }
@@ -386,13 +391,13 @@ impl MenuCx<'_> {
 
     fn item(&mut self, ui: &mut Ui, icon: Option<icons::Icon>, label: &str, action: Action) {
         let shortcut = self.shortcut(&action);
-        self.push_if_clicked(ui, menu_button(icon, label, shortcut), action);
+        self.push_if_clicked(ui, label, menu_button(icon, label, shortcut), action);
     }
 
     /// Menu item that is greyed out with `why` on hover when `enabled` is false.
     fn item_enabled(&mut self, ui: &mut Ui, icon: Option<icons::Icon>, label: &str, action: Action, enabled: bool, why: &str) {
         let shortcut = self.shortcut(&action);
-        let response = with_help(ui.add_enabled(enabled, menu_button(icon, label, shortcut)), &action).on_disabled_hover_text(why);
+        let response = with_help(ui.add_enabled(enabled, menu_button(icon, label, shortcut)), &action, label).on_disabled_hover_text(why);
         if response.clicked() {
             self.actions.push(action);
             ui.close();
@@ -401,17 +406,17 @@ impl MenuCx<'_> {
 
     /// Menu item for actions driven by OS clipboard events instead of key bindings.
     fn item_keys(&mut self, ui: &mut Ui, icon: Option<icons::Icon>, label: &str, keys: &str, action: Action) {
-        self.push_if_clicked(ui, menu_button(icon, label, Some(keys.to_string())), action);
+        self.push_if_clicked(ui, label, menu_button(icon, label, Some(keys.to_string())), action);
     }
 
     fn toggle(&mut self, ui: &mut Ui, label: &str, on: bool, action: Action) {
         let shortcut = self.shortcut(&action);
-        self.push_if_clicked(ui, menu_button(on.then_some(icons::CHECK), label, shortcut), action);
+        self.push_if_clicked(ui, label, menu_button(on.then_some(icons::CHECK), label, shortcut), action);
     }
 
     fn toggle_enabled(&mut self, ui: &mut Ui, label: &str, on: bool, action: Action, enabled: bool, why: &str) {
         let shortcut = self.shortcut(&action);
-        if with_help(ui.add_enabled(enabled, menu_button(on.then_some(icons::CHECK), label, shortcut)), &action).on_disabled_hover_text(why).clicked() {
+        if with_help(ui.add_enabled(enabled, menu_button(on.then_some(icons::CHECK), label, shortcut)), &action, label).on_disabled_hover_text(why).clicked() {
             self.actions.push(action);
             ui.close();
         }
@@ -430,9 +435,16 @@ impl MenuCx<'_> {
     }
 }
 
-fn with_help(response: egui::Response, action: &Action) -> egui::Response {
+/// The action's explanation on hover, and F1 for the manual page of `label` when it has one.
+fn with_help(response: egui::Response, action: &Action, label: &str) -> egui::Response {
+    let topic = Topic::Menu(label);
+    help::register(&response, topic);
     match action.help() {
-        Some(help) => response.on_hover_text(help),
+        Some(text) if help::page(topic).is_some() => response.on_hover_ui(|ui| {
+            ui.label(text);
+            help::hint(ui, help::F1_HINT);
+        }),
+        Some(text) => response.on_hover_text(text),
         None => response,
     }
 }
@@ -446,21 +458,57 @@ fn menu_button<'a>(icon: Option<icons::Icon>, label: &str, shortcut: Option<Stri
 }
 
 fn menu<R>(ui: &mut Ui, title: &'static str, add_contents: impl FnOnce(&mut Ui) -> R) {
-    ui.menu_button(title, add_contents);
+    let response = ui.menu_button(title, add_contents).response;
+    help::register(&response, Topic::Menu(title));
 }
 
 fn sub_menu<R>(ui: &mut Ui, icon: Option<icons::Icon>, label: &str, add_contents: impl FnOnce(&mut Ui) -> R) {
     use egui::containers::menu::SubMenuButton;
     let button =
         egui::Button::new((icons::atom(icon, icons::SMALL), label.to_string())).right_text(SubMenuButton::RIGHT_ARROW).image_tint_follows_text_color(true);
-    SubMenuButton::from_button(button).ui(ui, |ui| {
+    let (response, _) = SubMenuButton::from_button(button).ui(ui, |ui| {
         ui.set_min_width(MENU_WIDTH * 0.8);
         add_contents(ui)
     });
+    help::register(&response, Topic::Menu(label));
 }
 
 fn empty_hint(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text).weak().italics());
+}
+
+/// The map's counts for the status bar, without the kinds it has none of.
+fn stats_text(s: &crate::scene::SceneStats) -> String {
+    let counts = [(s.brushes, "brush", "brushes"), (s.meshes, "mesh", "meshes"), (s.terrains, "terrain", "terrains"), (s.entities, "entity", "entities")];
+    let mut parts: Vec<String> =
+        counts.into_iter().filter(|(n, _, _)| *n > 0).map(|(n, one, many)| format!("{n} {}", if n == 1 { one } else { many })).collect();
+    if s.triangles > 0 {
+        parts.push(format!("{} tris", s.triangles));
+    }
+
+    parts.join("  ")
+}
+
+/// Help menu entries that open the manual in the browser.
+fn help_menu_links(ui: &mut Ui) {
+    let mouse = [
+        "3D: right drag looks, WASD flies while it is held, Q and E go down and up, middle drag pans, Alt+left drag orbits",
+        "2D: right or middle drag pans, the wheel zooms, drag a selection edge to resize",
+        "Click selects an object, double click its group. Drag empty space to draw a brush, drag the selection to move it (Alt vertical, Ctrl copies)",
+        "3D gizmo: arrows and squares move, rings rotate, boxes scale",
+        "Shift+click selects faces, Shift+drag a face pushes it, Ctrl+Shift+drag extrudes",
+        "Tab edits meshes Blender style: 1/2/3 modes, G/R/S, E extrude, I inset, Ctrl+R loop cut, K knife",
+    ]
+    .join("\n");
+    let manual = "F1 over a tool, panel tab, menu or Inspector section opens its page, and so does Ctrl+click on a toolbar tool";
+    for (label, tip) in [("Getting Started Guide", crate::welcome::GETTING_STARTED_URL.to_string()), ("Manual", manual.to_string()), ("Mouse and Keys", mouse)]
+    {
+        let response = ui.add(menu_button(None, label, None)).on_hover_text(tip);
+        if response.clicked() {
+            help::open(ui.ctx(), Topic::Menu(label));
+            ui.close();
+        }
+    }
 }
 
 fn capitalize(text: &str) -> String {
@@ -676,6 +724,8 @@ impl App {
             project_maps: Default::default(),
             ui_had_focus: false,
             open_windows: Vec::new(),
+            tool_buttons: Vec::new(),
+            manual_under_pointer: None,
         }
     }
 
@@ -696,6 +746,7 @@ impl App {
     }
 
     fn collect_input_actions(&mut self, ctx: &egui::Context) {
+        help::open_on_f1(ctx, self.manual_under_pointer.as_deref());
         let view_hovered = self.viewports.iter().any(|v| v.hovered);
         let scope = key_scope(ctx, self.ui_had_focus || self.keymap.open, view_hovered, |id| self.viewports.iter().any(|v| v.id == id));
         if scope == KeyScope::Ui {
@@ -1230,7 +1281,9 @@ impl App {
                     for t in group.iter().copied() {
                         let shortcut = m.shortcut(&Action::SetTool(t));
                         let button = menu_button(Some(icons::tool(t)), &format!("{} Tool", t.label()), shortcut).selected(self.state.tool == t);
-                        if ui.add(button).on_hover_text(panels::tool_help(t)).clicked() {
+                        let response = ui.add(button);
+                        help::register(&response, Topic::Tool(t));
+                        if response.on_hover_text(help::tooltip(ui, panels::tool_help(t), help::F1_HINT)).clicked() {
                             m.actions.push(Action::SetTool(t));
                             ui.close();
                         }
@@ -1391,29 +1444,16 @@ impl App {
                 m.item(ui, Some(icons::COMMAND), "Command Palette", Action::ShowCommandPalette);
                 m.item(ui, Some(icons::KEYBOARD), "Keyboard Shortcuts…", Action::ShowKeymap);
                 m.item(ui, None, "Entity and Code Reference", Action::ShowReference);
-                if ui.add(menu_button(None, "Getting Started Guide", None)).on_hover_text(crate::welcome::GETTING_STARTED_URL).clicked() {
-                    ui.ctx().open_url(egui::OpenUrl::new_tab(crate::welcome::GETTING_STARTED_URL));
-                    ui.close();
-                }
-
+                help_menu_links(ui);
                 ui.separator();
-                ui.label(RichText::new("GodotTrench, a brush and mesh level editor for Godot").strong());
-                for line in [
-                    "3D: RMB look + WASD fly (Q/E down/up), MMB pan, Alt+LMB orbit",
-                    "2D: RMB/MMB pan, wheel zoom, drag edges to resize",
-                    "Click selects an object, double click its group. Drag empty space to draw a brush, drag selection to move (Alt vertical, Ctrl duplicate)",
-                    "3D gizmo: arrows and squares move, rings rotate, boxes scale",
-                    "Shift+click selects faces, Shift+drag a face resizes, Ctrl+Shift+drag extrudes",
-                    "Tab edits meshes Blender style: 1/2/3 modes, G/R/S, E extrude, I inset, Ctrl+R loop cut, K knife",
-                ] {
-                    ui.label(RichText::new(line).weak());
-                }
+                ui.label(RichText::new("GodotTrench, a brush and mesh level editor for Godot").weak());
             });
         });
     }
 
     fn toolbar(&mut self, ui: &mut Ui, bar_height: f32) {
         let ctx = ui.ctx().clone();
+        self.tool_buttons.clear();
         let size = self.toolbar_fit.icon_size(bar_height, ui.available_width(), ui.spacing().button_padding.y * 2.0);
         let mut icon_count = 0;
         let mut tools_rect = egui::Rect::NOTHING;
@@ -1466,11 +1506,14 @@ impl App {
                 }
 
                 for t in tools.iter().copied() {
-                    let tooltip = format!("{}\n{}", tip(&format!("{} tool", t.label()), &Action::SetTool(t)), panels::tool_help(t));
+                    let text = format!("{}\n{}", tip(&format!("{} tool", t.label()), &Action::SetTool(t)), panels::tool_help(t));
+                    let tooltip = help::tooltip(ui, &text, help::TOOL_HINT);
                     let resp = icons::toggle(ui, icons::tool(t), size, self.state.tool == t, t.label(), tooltip);
                     group |= resp.rect;
                     icon_count += 1;
-                    if resp.clicked() {
+                    self.tool_buttons.push((t, resp.rect));
+                    help::register(&resp, Topic::Tool(t));
+                    if !help::open_on_ctrl_click(&resp, Topic::Tool(t)) && resp.clicked() {
                         self.actions.push(Action::SetTool(t));
                     }
                 }
@@ -1615,9 +1658,14 @@ impl App {
     fn tool_options(&mut self, ui: &mut Ui) {
         ui.horizontal_wrapped(|ui| {
             let tool = self.state.tool;
-            let help = panels::tool_help(tool);
+            let details = |ui: &mut Ui| {
+                ui.label(panels::tool_help(tool));
+                help::hint(ui, help::F1_HINT);
+            };
             ui.add(icons::tool(tool).image(icons::SMALL).tint(ui.visuals().strong_text_color()));
-            ui.label(RichText::new(format!("{} tool", tool.label())).strong()).on_hover_text(help);
+            let name = ui.label(RichText::new(format!("{} tool", tool.label())).strong());
+            help::register(&name, Topic::Tool(tool));
+            name.on_hover_ui(details);
             ui.separator();
             match tool {
                 ToolKind::Sculpt | ToolKind::Paint => {
@@ -1799,7 +1847,11 @@ impl App {
                     }
                 }
                 _ => {
-                    ui.label(RichText::new(help).weak());
+                    if self.state.prefs.help_text {
+                        let line = ui.label(RichText::new(help::tool_line(tool)).weak());
+                        help::register(&line, Topic::Tool(tool));
+                        line.on_hover_ui(details);
+                    }
                 }
             }
         });
@@ -1838,10 +1890,7 @@ impl App {
             let alpha = if s.status_age() > 6.0 { 120 } else { 230 };
             ui.label(RichText::new(&s.status).color(crate::theme::FG.gamma_multiply_u8(alpha)));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(format!(
-                    "{} brushes  {} meshes  {} terrains  {} entities  {} tris",
-                    stats.brushes, stats.meshes, stats.terrains, stats.entities, stats.triangles
-                ));
+                ui.label(stats_text(&stats));
                 ui.separator();
                 if let Some(c) = s.cursor_world {
                     ui.monospace(format!("{:8.1} {:8.1} {:8.1}", c.x, c.y, c.z));
@@ -1943,6 +1992,10 @@ impl App {
                 ui.end_row();
                 ui.label("Tips on an empty map");
                 ui.checkbox(&mut p.start_hints, "");
+                ui.end_row();
+                ui.label("Help text");
+                ui.checkbox(&mut p.help_text, "")
+                    .on_hover_text("Short guidance lines in the tool options bar and the panels. Tooltips and the manual (F1) keep the details either way");
                 ui.end_row();
                 ui.label("Grid opacity (3D)");
                 ui.add(egui::Slider::new(&mut p.grid_alpha, 0.0..=1.0));
@@ -2141,16 +2194,20 @@ impl TabViewer for Tabs<'_> {
     }
 
     fn on_tab_button(&mut self, tab: &mut Tab, response: &egui::Response) {
-        if let Some(panel) = tab_panel(*tab) {
-            response.clone().on_hover_ui(|ui| {
-                ui.label(panel.tooltip(ui.ctx(), &self.state.prefs));
-            });
+        help::register(response, Topic::Panel(if matches!(tab, Tab::View(_)) { "View" } else { tab_title(*tab) }));
+        let text = if let Some(panel) = tab_panel(*tab) {
+            panel.tooltip(&response.ctx, &self.state.prefs)
         } else if let Tab::View(i) = tab
             && let Some(vp) = self.viewports.get(*i)
         {
-            let help = if vp.kind().is_2d() { crate::welcome::CAMERA_2D_HELP } else { crate::welcome::CAMERA_3D_HELP };
-            response.clone().on_hover_text(help);
-        }
+            (if vp.kind().is_2d() { crate::welcome::CAMERA_2D_HELP } else { crate::welcome::CAMERA_3D_HELP }).to_string()
+        } else {
+            return;
+        };
+        response.clone().on_hover_ui(|ui| {
+            ui.label(text);
+            help::hint(ui, help::F1_HINT);
+        });
     }
 
     fn ui(&mut self, ui: &mut Ui, tab: &mut Tab) {
@@ -2358,6 +2415,7 @@ impl eframe::App for App {
         self.state.poll_live_link();
         self.finish_input_script(&ctx);
         self.ui_had_focus = ctx.egui_wants_keyboard_input();
+        self.manual_under_pointer = help::take_hovered(&ctx);
 
         let title = format!("{} - GodotTrench", self.state.doc.title());
         if title != self.title {
@@ -2499,6 +2557,18 @@ mod tests {
     }
 
     #[test]
+    fn every_panel_tab_and_menu_has_a_manual_page() {
+        for tab in PANEL_TABS {
+            assert!(help::url(Topic::Panel(tab_title(tab))).is_some(), "F1 over the {tab:?} tab");
+        }
+
+        assert!(help::url(Topic::Panel("View")).is_some());
+        for menu in ["File", "Edit", "Brush", "Mesh", "Texture", "Terrain", "Gameplay", "Tools", "View", "Godot"] {
+            assert!(help::url(Topic::Menu(menu)).is_some(), "F1 over the {menu} menu");
+        }
+    }
+
+    #[test]
     fn finds_the_view_grid_in_the_default_layout() {
         let dock = default_dock();
         let tree = dock.main_surface();
@@ -2531,6 +2601,13 @@ mod tests {
         let wrapped = ToolbarFit { content_height: 120.0, ..fit };
         assert_eq!(wrapped.max_height(2.0), 120.0, "wrapped rows are never clipped");
         assert_eq!(ToolbarFit { icon: 30.0, ..wrapped }.max_height(2.0), icons::TOOLBAR_MAX + 2.0);
+    }
+
+    #[test]
+    fn status_bar_counts_leave_out_what_the_map_has_none_of() {
+        let stats = crate::scene::SceneStats { brushes: 12, meshes: 0, terrains: 1, entities: 0, triangles: 900 };
+        assert_eq!(stats_text(&stats), "12 brushes  1 terrain  900 tris");
+        assert_eq!(stats_text(&crate::scene::SceneStats::default()), "");
     }
 
     #[test]

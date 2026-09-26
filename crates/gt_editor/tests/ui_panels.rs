@@ -218,6 +218,28 @@ fn inspector_shows_worldspawn_without_selection() {
 }
 
 #[test]
+fn help_lines_are_short_and_the_preference_hides_them() {
+    let line = "Nothing selected, these settings apply to the whole map";
+    let mut harness = Harness::new_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), Fixture::new());
+    harness.run();
+    assert!(harness.query_by_label(line).is_some());
+    harness.state_mut().state.prefs.help_text = false;
+    harness.run();
+    assert!(harness.query_by_label(line).is_none(), "hidden for people who know their way around");
+    harness.get_by_label("Map (worldspawn)");
+
+    let line = "Drag a card into a view, or double click it";
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(700.0, 900.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::entity_browser(ui, &mut f.state, &mut f.panels, &mut f.actions), Fixture::new());
+    harness.run();
+    assert!(harness.query_by_label(line).is_some());
+    harness.state_mut().state.prefs.help_text = false;
+    harness.run();
+    assert!(harness.query_by_label(line).is_none());
+}
+
+#[test]
 fn face_inspector_reset_is_undoable() {
     let mut f = Fixture::new();
     let layer = f.state.doc.map.default_layer();
@@ -406,6 +428,9 @@ fn selection_summary_offers_door_wizards() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(520.0, 700.0))
         .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    assert!(harness.query_by_label("Door, hinge right").is_none(), "the Gameplay section starts collapsed");
+    harness.get_by_label("Gameplay").click();
     harness.run();
     harness.get_by_label("Door, hinge right").click();
     harness.run();

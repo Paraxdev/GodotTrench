@@ -10,16 +10,14 @@ covers what you need.
 A menu command sits under the kind of object it changes, and the command palette (Ctrl+Shift+P or F1) finds any
 command by name. Hovering a command with a jargon name, like *Hollow* or *UV Lock*, explains what it does, and the
 palette shows the same line under its list. Esc or a click outside closes the palette without running anything.
-The **tool options bar** under the toolbar holds the settings of the active tool.
+The **tool options bar** under the toolbar holds the settings of the active tool, or one line on how to use a tool
+that has none. Hovering the tool's name there, or its button in the toolbar, shows the full description.
 
 A new, empty map shows a card in the 3D view that says where to start: drag in the Top view to draw your first box,
 and the Top view marks the spot with a yellow label. Below that the card explains the 3D camera, links the
 [getting started guide](../getting-started.md) and lists the maps of the open project, so you can open a finished one
 instead. The card goes away once the map has something in it. **Hide tips** turns the tips off, and *Tips on an empty
 map* in *File > Preferences* brings them back.
-
-Links in the editor open in your web browser. If no browser starts, the status bar says so and the link is copied to
-the clipboard.
 
 | Panel | Dock | What it is for |
 | --- | --- | --- |
@@ -36,6 +34,19 @@ the clipboard.
 | Reference | Starts closed | Code for using an entity class from your scripts |
 
 Open any panel from *View > Panels*, and *Reset Layout* in the same menu restores the defaults.
+
+## Help and the manual
+
+Tooltips explain buttons, tabs and settings. For more, point at a tool, a panel tab, a menu entry or an Inspector
+section and press **F1**, which opens the matching page of this manual. A Ctrl+click on a tool in the toolbar does the
+same, and a tooltip ending in *F1: manual* has a page behind it. Over anything else F1 opens the command palette.
+*Help > Manual* opens the start of the manual.
+
+Once you know your way around, untick *Help text* in *File > Preferences* to hide the short guidance lines in the tool
+options bar and the panels. Their tooltips stay.
+
+Links in the editor open in your web browser. If no browser starts, the status bar says so and the link is copied to
+the clipboard.
 
 ## Views
 

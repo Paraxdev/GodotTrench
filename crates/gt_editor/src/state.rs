@@ -216,6 +216,8 @@ pub struct Prefs {
     pub ui_scale: f32,
     /// Multiply `ui_scale` by the monitor's scaling. When off, `ui_scale` is the exact pixels per point.
     pub follow_display_scaling: bool,
+    /// Short guidance lines in the tool options bar and the panels. Tooltips keep the details either way.
+    pub help_text: bool,
     /// Move, rotate and scale handles on the selection in the 3D view.
     pub transform_gizmo: bool,
     /// Ghost boxes of the Godot overlays built on top of the map, read from its overlay sidecar.
@@ -285,6 +287,7 @@ impl Default for Prefs {
             blend_detile_sharpen: 0.5,
             ui_scale: 1.0,
             follow_display_scaling: true,
+            help_text: true,
             transform_gizmo: true,
             godot_overlays: true,
             walk_agent: Default::default(),

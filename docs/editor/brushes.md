@@ -40,6 +40,14 @@ between keeping the front, the back or both halves, and Enter to cut. Backspace 
 the brush a dent is refused, so for dents and overhangs convert it to a [mesh](meshes.md). Delete removes the selected
 vertices.
 
+## Rotate, scale and measure
+
+| Tool | Input | Result |
+| --- | --- | --- |
+| **Rotate** (R) | Drag a ring around the selection | Rotates in 15° steps, with Shift in 1° steps. A 2D view has one ring, around the axis it looks along |
+| **Scale** (T) | Drag a handle on the selection's bounds | Resizes on the grid, with Alt on both sides at once so the center stays put. The 3D view has a handle on each side |
+| **Measure** (M) | Drag, or click two points | Shows the distance in units and meters, and at the bottom of the view its X, Y, Z and horizontal parts |
+
 ## Shape Generator
 
 *Brush > Shape Generator* (Ctrl+Shift+B) builds cylinders, arches, stairs, roofs and other shapes that would take many

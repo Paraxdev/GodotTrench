@@ -150,9 +150,8 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
     if !filter.is_empty() && rows.iter().all(|(depth, _)| *depth == 0) {
         ui.label(RichText::new("No objects match the filter").weak());
     } else if map.layers.iter().all(|l| map.get(*l).is_none_or(|n| n.children.is_empty())) {
-        ui.label(
-            RichText::new("The map is empty. Drag in the Top, Front or Side view to draw a box brush, or drag an entity in from the Entities panel.").weak(),
-        );
+        ui.label(RichText::new("The map is empty").weak())
+            .on_hover_text("Drag in the Top, Front or Side view to draw a box brush, or drag an entity in from the Entities panel");
     }
 
     let row_h = 20.0;
@@ -538,8 +537,12 @@ pub fn inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
 fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mut Vec<Action>) {
     let Some(mesh) = state.doc.map.mesh(id).cloned() else { return };
     ui.heading(if mesh.decal { "Decal" } else { "Mesh" });
-    ui.label(format!("{} vertices, {} faces, {} triangles", mesh.vertices.len(), mesh.faces.len(), mesh.triangle_count()));
-    ui.label(if mesh.is_closed() { "closed" } else { "open surface" });
+    let shape = if mesh.is_closed() { "closed" } else { "open surface" };
+    let counts = ui.label(format!("{} vertices, {} faces, {} triangles, {shape}", mesh.vertices.len(), mesh.faces.len(), mesh.triangle_count()));
+    if mesh.is_convex() {
+        counts.on_hover_text("Convex, so it exports to .map as a brush");
+    }
+
     // A placed model draws with its own textures, a material applied to it later shows up here in their place.
     let mut used: Vec<&str> = mesh.faces.iter().map(|f| f.data.material.as_str()).collect();
     used.sort_unstable();
@@ -559,10 +562,6 @@ fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mu
         });
     }
 
-    if mesh.is_convex() {
-        ui.label(RichText::new("convex, exports to .map as a brush").weak());
-    }
-
     bounds_rows(ui, state, widgets::label_width(ui), 0);
     let mut angle = mesh.smooth_angle;
     ui.horizontal(|ui| {
@@ -575,7 +574,7 @@ fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mu
             });
         }
     });
-    section(ui, "Mesh Operations", true, |ui| {
+    section(ui, "Mesh Operations", "", true, |ui| {
         ui.horizontal_wrapped(|ui| {
             for (label, action) in [
                 ("Edit (Tab)", Action::EditMesh),
@@ -594,9 +593,28 @@ fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mu
     brush_entity_section(ui, state, actions);
 }
 
-/// Collapsible inspector section with a strong title.
-fn section<R>(ui: &mut Ui, title: &str, open: bool, add_contents: impl FnOnce(&mut Ui) -> R) {
-    egui::CollapsingHeader::new(RichText::new(title).strong()).id_salt(title).default_open(open).show(ui, add_contents);
+/// Collapsible inspector section with a strong title. `tip` says what is inside, F1 opens its page of the manual.
+fn section<R>(ui: &mut Ui, title: &str, tip: &str, open: bool, add_contents: impl FnOnce(&mut Ui) -> R) {
+    let header = egui::CollapsingHeader::new(RichText::new(title).strong()).id_salt(title).default_open(open).show(ui, add_contents).header_response;
+    section_help(&header, title, tip);
+}
+
+/// Tooltip and manual page of an Inspector section or heading, found by `topic`.
+fn section_help(response: &egui::Response, topic: &str, tip: &str) {
+    let topic = crate::help::Topic::Section(topic);
+    crate::help::register(response, topic);
+    let manual = crate::help::page(topic).is_some();
+    if manual || !tip.is_empty() {
+        response.clone().on_hover_ui(|ui| {
+            if !tip.is_empty() {
+                ui.label(tip);
+            }
+
+            if manual {
+                crate::help::hint(ui, crate::help::F1_HINT);
+            }
+        });
+    }
 }
 
 fn sub_heading(ui: &mut Ui, text: &str) {
@@ -657,7 +675,7 @@ fn brush_entity_section(ui: &mut Ui, state: &EditorState, actions: &mut Vec<Acti
     }
 
     let title = format!("Make Brush Entity ({})", groups.iter().map(|(_, d)| d.len()).sum::<usize>());
-    egui::CollapsingHeader::new(RichText::new(title).strong()).id_salt("brush_entity_section").default_open(false).show(ui, |ui| {
+    let section = egui::CollapsingHeader::new(RichText::new(title).strong()).id_salt("brush_entity_section").default_open(false).show(ui, |ui| {
         if groups.is_empty() {
             sub_heading(ui, "No brush entities, open a Godot project with a game config");
         }
@@ -673,12 +691,14 @@ fn brush_entity_section(ui: &mut Ui, state: &EditorState, actions: &mut Vec<Acti
             });
         }
     });
+    section_help(&section.header_response, "Make Brush Entity", "Turns the selected brushes into a door, trigger or other brush entity");
 }
 
 fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mut Vec<Action>) {
     use gt_doc::scatter::ScatterCollision;
     let Some(set) = state.doc.map.scatter(id).cloned() else { return };
-    ui.heading(format!("Scatter set '{}'", set.name));
+    let heading = ui.heading(format!("Scatter set '{}'", set.name));
+    section_help(&heading, "Scatter set", "");
     let active = state.active_scatter == Some(id);
     let enabled = set.items.iter().filter(|i| i.enabled).count();
     ui.label(format!(
@@ -801,7 +821,8 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
 
 fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mut Vec<Action>) {
     let Some(t) = state.doc.map.terrain(id).cloned() else { return };
-    ui.heading("Terrain");
+    let heading = ui.heading("Terrain");
+    section_help(&heading, "Terrain", "");
     let size = t.size();
     let upm = state.game.units_per_meter;
     ui.label(format!("{} x {} vertices, cell {} units", t.resolution[0], t.resolution[1], t.cell_size));
@@ -854,13 +875,16 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
         }
 
         let longest = t.resolution[0].max(t.resolution[1]);
-        for res in [65u32, 129, 257, 513] {
-            let tip = format!("At most {res} vertices along the longer side, cells stay square so the other side keeps its extent");
-            if res != longest && ui.small_button(format!("resample {res}")).on_hover_text(tip).clicked() {
-                edited = t.resample([res, res]);
-                changed = true;
+        ui.menu_button("Resample", |ui| {
+            for res in [65u32, 129, 257, 513].into_iter().filter(|r| *r != longest) {
+                if ui.button(format!("{res} vertices")).clicked() {
+                    edited = t.resample([res, res]);
+                    changed = true;
+                }
             }
-        }
+        })
+        .response
+        .on_hover_text("Rebuilds the grid with the chosen number of vertices along the longer side, keeping the heights and paint. Cells stay square");
     });
     if changed {
         state.doc.edit_coalesced("Edit Terrain", |m, _| {
@@ -885,15 +909,12 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
         }
     });
     crate::dialogs::auto_paint_base_ui(ui, &mut state.auto_paint_base);
-    let hint = if state.tool == crate::tools::ToolKind::Blend {
-        format!("Drop a material from the browser on the terrain to put it in layer {}, the layer the Blend tool paints.", state.blend.layer)
+    let (layer, details) = if state.tool == crate::tools::ToolKind::Blend {
+        (state.blend.layer, "It goes to the layer the Blend tool paints")
     } else {
-        format!(
-            "Drop a material from the browser on the terrain to put it in layer {}, the layer the Sculpt tool's PaintLayer mode paints. With the Blend tool active it goes to the Blend layer.",
-            state.sculpt.layer
-        )
+        (usize::from(state.sculpt.layer), "It goes to the layer the Sculpt tool's PaintLayer mode paints, or with the Blend tool active to the Blend layer")
     };
-    ui.label(RichText::new(hint).weak());
+    crate::help::line(ui, state.prefs.help_text, &format!("Drop a material on the terrain to use it for layer {layer}"), details);
 }
 
 fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>) {
@@ -921,7 +942,7 @@ fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Act
             }
         });
     };
-    section(ui, "Selection", true, |ui| {
+    section(ui, "Selection", "", true, |ui| {
         buttons(
             ui,
             actions,
@@ -939,7 +960,7 @@ fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Act
             ],
         );
     });
-    section(ui, "Transform", true, |ui| {
+    section(ui, "Transform", "Rotate, flip and snap the selection", false, |ui| {
         buttons(
             ui,
             actions,
@@ -953,7 +974,7 @@ fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Act
             ],
         );
     });
-    section(ui, "Gameplay", true, |ui| {
+    section(ui, "Gameplay", "Doors, lifts and trigger volumes from the selection", false, |ui| {
         sub_heading(ui, "Doors and movers");
         buttons(
             ui,
@@ -987,8 +1008,8 @@ fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Act
             ui,
             actions,
             vec![
-                ("Trigger around", "trigger_multiple around the selection", Action::VolumeAroundSelection("trigger_multiple".into())),
-                ("Spawn area around", "trigger_spawn_area around the selection", Action::VolumeAroundSelection("trigger_spawn_area".into())),
+                ("Trigger", "trigger_multiple around the selection", Action::VolumeAroundSelection("trigger_multiple".into())),
+                ("Spawn Area", "trigger_spawn_area around the selection", Action::VolumeAroundSelection("trigger_spawn_area".into())),
             ],
         );
         if entity_count == 2 {
@@ -1000,8 +1021,14 @@ fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Act
 }
 
 fn worldspawn_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState) {
-    ui.heading("Map (worldspawn)");
-    ui.label(RichText::new("Nothing selected. Click an object in a view or the outliner to inspect it. These properties apply to the whole map.").weak());
+    let heading = ui.heading("Map (worldspawn)");
+    section_help(&heading, "Map (worldspawn)", "");
+    crate::help::line(
+        ui,
+        state.prefs.help_text,
+        "Nothing selected, these settings apply to the whole map",
+        "Click an object in a view or the Outliner to inspect it instead",
+    );
     let props: Vec<(String, String)> = state.doc.map.properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let def = state.game.entity("worldspawn").cloned();
     let label_w = widgets::label_width(ui);
@@ -1094,7 +1121,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
             let gizmos = d.gizmos(state.game.units_per_meter);
             if !gizmos.is_empty() {
                 let names: Vec<String> = gizmos.iter().map(|g| g.label()).collect();
-                ui.label(RichText::new(format!("drag the {} handles in the views", names.join(", "))).weak());
+                crate::help::line(ui, state.prefs.help_text, &format!("drag the {} handles in the views", names.join(", ")), "");
             }
         }
     });
@@ -1147,7 +1174,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
     }
 
     let value_x = ui.cursor().left() + label_w;
-    egui::CollapsingHeader::new(RichText::new("Properties").strong()).id_salt("entity_properties").default_open(true).show(ui, |ui| {
+    let properties = egui::CollapsingHeader::new(RichText::new("Properties").strong()).id_salt("entity_properties").default_open(true).show(ui, |ui| {
         let label_w = value_x - ui.cursor().left();
         let mut index = 0;
         if let Some(d) = &def {
@@ -1224,15 +1251,17 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
         });
     });
 
+    section_help(&properties.header_response, "Properties", "");
     let title = format!("Outputs (I/O, {})", entity.outputs.len());
-    egui::CollapsingHeader::new(RichText::new(title).strong()).id_salt("entity_outputs").default_open(true).show(ui, |ui| {
+    let outputs = egui::CollapsingHeader::new(RichText::new(title).strong()).id_salt("entity_outputs").default_open(true).show(ui, |ui| {
         io_editor(ui, state, id, &entity, def.as_ref());
     });
+    section_help(&outputs.header_response, "Outputs", "");
 }
 
 fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &gt_doc::Entity, def: Option<&EntityDef>) {
     if entity.outputs.is_empty() {
-        ui.label(RichText::new("No outputs. Outputs fire inputs on other entities, for example a trigger opening a door.").weak());
+        ui.label(RichText::new("No outputs").weak()).on_hover_text("Outputs fire inputs on other entities, for example a trigger opening a door");
     }
 
     let mut targetnames: Vec<(String, String)> =
@@ -1488,7 +1517,7 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
         ui.label(RichText::new(format!("{size}{details}")).weak());
     }
 
-    section(ui, "Alignment", true, |ui| {
+    section(ui, "Alignment", "", true, |ui| {
         if info.explicit.is_none() {
             let mut uv = info.uv.clone();
             let mut changed = false;
@@ -1578,7 +1607,7 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
             }
         });
     });
-    section(ui, "Texture Tools", true, |ui| {
+    section(ui, "Texture Tools", "", true, |ui| {
         ui.horizontal_wrapped(|ui| {
             ui.label("Texel density");
             for d in [0.25, 0.5, 1.0, 2.0, 4.0] {
@@ -1625,11 +1654,11 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
         return;
     }
 
-    section(ui, "Surface Properties", true, |ui| {
+    section(ui, "Surface Properties", "Keys Godot reads per face, such as a collision layer or no shadow", false, |ui| {
         let face = state.doc.map.brush(bid).and_then(|b| b.faces.get(fi)).cloned();
         let Some(face) = face else { return };
         if face.data.props.is_empty() {
-            ui.label(RichText::new("No surface properties. Add one below, Godot reads them per face.").weak());
+            ui.label(RichText::new("None yet, add one below").weak());
         }
 
         let mut props = face.data.props.clone();
@@ -2520,8 +2549,11 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
             }
         }
     });
-    ui.label(
-        RichText::new("Drag into a view to place, Ctrl or Shift click selects several and drags them together. Double click places at the cursor.").weak(),
+    crate::help::line(
+        ui,
+        state.prefs.help_text,
+        "Drag a card into a view, or double click it",
+        "Double click places at the cursor. Ctrl or Shift click selects several cards to drag in together",
     );
     ui.separator();
     let filter = ps.entity_filter.to_lowercase();
