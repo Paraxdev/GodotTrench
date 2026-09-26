@@ -32,7 +32,6 @@ pub struct Viewport {
     /// A menu or popup was open when the frame started, see `App::ui`.
     pub(crate) popup_open: bool,
     press_modifiers: egui::Modifiers,
-    /// Where the last plain click in a 2D view landed, a second click there selects the next object under it.
     /// Where and when (egui time) the last plain click in a 2D view landed, a quick click at the same spot cycles.
     last_click: Option<(Pos2, f64)>,
     /// The outer edge of the selected brushes a drag would resize, highlighted before the drag starts.
@@ -1105,14 +1104,15 @@ impl Viewport {
     }
 }
 
-/// Points of `smooth_scroll_delta` egui makes of one mouse wheel notch. Trackpads send smaller point deltas.
 /// How soon a second click at the same spot in a 2D view has to follow to select the next object under the cursor.
 /// Longer than a double click, short enough that clicking the selection again later does not cycle away from it.
 const CLICK_CYCLE_SECONDS: f64 = 1.5;
+/// Points of `smooth_scroll_delta` egui makes of one mouse wheel notch. Trackpads send smaller point deltas.
 const NOTCH_POINTS: f64 = 40.0;
 /// Zoom factor of one wheel notch in the 2D views.
 const WHEEL_ZOOM: f64 = 1.2;
-/// Share of the distance to the surface under the pointer that one wheel notch moves the 3D camera.
+/// Share of the distance to the surface straight ahead, or with nothing there the one under the pointer, that one
+/// wheel notch moves the 3D camera.
 const WHEEL_DOLLY: f64 = 0.2;
 
 /// Wheel movement this frame in notches, from the raw events whose modifiers pass `keep`. egui spreads one notch
