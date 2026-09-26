@@ -58,7 +58,14 @@ pub fn map_issues(map: &Map, game: &GameConfig, materials: &mut MaterialLibrary,
                 node: Some(id),
                 severity: Severity::Warning,
                 code: "unknown_class",
-                message: format!("No entity definition for '{}'", e.classname),
+                message: if crate::entity_pack::in_pack(&e.classname) {
+                    format!(
+                        "No entity definition for '{}', it comes with the Gameplay entities pack. Gameplay > Install Gameplay Entities adds it",
+                        e.classname
+                    )
+                } else {
+                    format!("No entity definition for '{}'", e.classname)
+                },
             });
         }
     }
@@ -223,6 +230,25 @@ mod tests {
         game.project_root = None;
         assert!(missing_model_issues(&map, &game).is_empty(), "project paths are not checked without a project");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_unknown_class_of_the_pack_points_at_the_install() {
+        let game = GameConfig::builtin();
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        map.insert(layer, NodeKind::Entity(Entity::new("func_door")));
+        map.insert(layer, NodeKind::Entity(Entity::new("my_thing")));
+        let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &BTreeSet::new());
+        let mut unknown: Vec<&str> = found.iter().filter(|i| i.code == "unknown_class").map(|i| i.message.as_str()).collect();
+        unknown.sort();
+        assert_eq!(
+            unknown,
+            [
+                "No entity definition for 'func_door', it comes with the Gameplay entities pack. Gameplay > Install Gameplay Entities adds it",
+                "No entity definition for 'my_thing'"
+            ]
+        );
     }
 
     #[test]

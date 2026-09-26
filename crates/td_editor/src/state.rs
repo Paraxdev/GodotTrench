@@ -998,6 +998,11 @@ impl EditorState {
         self.prefs.recent_projects.retain(|r| r != &p);
         self.prefs.recent_projects.insert(0, p);
         self.prefs.recent_projects.truncate(8);
+        if let Some(status) = crate::entity_pack::install_for_maps(self) {
+            self.set_status(status);
+        } else if self.gameplay_pack.update() {
+            self.set_status("The addon has a newer Gameplay entities pack. Gameplay > Update Gameplay Entities installs it and keeps the files you edited.");
+        }
     }
 
     /// Watches the project's game config from now on, waking `repaint` when it changes on disk.

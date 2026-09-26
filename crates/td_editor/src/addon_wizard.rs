@@ -79,7 +79,8 @@ impl AddonWizard {
             state.gameplay_pack = crate::entity_pack::Status::check(&root);
         }
 
-        state.set_status(outcome.summary(&root));
+        let migrated = crate::entity_pack::install_for_maps(state);
+        state.set_status([outcome.summary(&root), migrated.unwrap_or_default()].join(" ").trim().to_string());
         self.outcome = Some(outcome.clone());
         Some(outcome)
     }
