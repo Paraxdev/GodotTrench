@@ -19,6 +19,10 @@ use crate::materials::MaterialLibrary;
 use crate::models::ModelCache;
 use crate::prefabs::PrefabCache;
 
+/// OBJ cannot share a mesh between copies, so every scatter instance is written out in full. Past this many triangles
+/// the file runs into gigabytes few tools open, and an OBJ export is refused.
+pub const OBJ_TRIANGLE_LIMIT: usize = 10_000_000;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Format {
     Glb,
@@ -80,12 +84,12 @@ impl Report {
     /// One line for the status bar.
     pub fn summary(&self, path: &Path) -> String {
         let mut s = format!(
-            "Exported {} objects, {} materials and {} triangles to {} ({:.1} MB). Entity logic, triggers and scripts are not included",
+            "Exported {} objects, {} materials and {} triangles to {} ({}). Entity logic, triggers and scripts are not included",
             self.objects,
             self.materials,
             self.triangles,
             path.display(),
-            self.bytes as f64 / 1_048_576.0
+            size_text(self.bytes)
         );
         if !self.missing.is_empty() {
             s += &format!(". No image found for {}", self.missing.join(", "));
@@ -120,6 +124,16 @@ impl<'a> Sources<'a> {
     }
 }
 
+/// A file size for people, in MB or GB.
+pub fn size_text(bytes: u64) -> String {
+    if bytes >= 1 << 30 { format!("{:.1} GB", bytes as f64 / (1u64 << 30) as f64) } else { format!("{:.1} MB", bytes as f64 / (1u64 << 20) as f64) }
+}
+
+/// Roughly what an OBJ file of this many vertices and triangles takes, as the writer formats them.
+pub fn obj_bytes(vertices: usize, triangles: usize) -> u64 {
+    vertices as u64 * 80 + triangles as u64 * 75
+}
+
 /// Writes the export to `path`. OBJ also writes `<name>.mtl` and the textures into a `<name>_textures` folder next to it.
 pub fn export(src: Sources, path: &Path, format: Format, options: &Options) -> Result<Report, String> {
     let name = src.map_path.and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "map".into());
@@ -128,12 +142,20 @@ pub fn export(src: Sources, path: &Path, format: Format, options: &Options) -> R
         return Err(if options.selection_only { "nothing to export in the selection" } else { "the map has nothing to export" }.into());
     }
 
+    let triangles = scene.triangles();
+    if format == Format::Obj && triangles > OBJ_TRIANGLE_LIMIT {
+        return Err(format!(
+            "the OBJ would hold {:.1} million triangles, about {}, more than the {} million an OBJ export takes. OBJ writes every \
+             scatter instance in full, glTF shares one mesh between them. Export as glTF, leave out the scatter instances, or \
+             export part of the map with Selection only",
+            triangles as f64 / 1e6,
+            size_text(obj_bytes(scene.vertices(), triangles)),
+            OBJ_TRIANGLE_LIMIT / 1_000_000
+        ));
+    }
+
     let bytes = match format {
-        Format::Glb => {
-            let data = glb::write(&scene);
-            std::fs::write(path, &data).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
-            data.len() as u64
-        }
+        Format::Glb => glb::write(&scene, path)?,
         Format::Obj => obj::write(&scene, path)?,
     };
     Ok(Report {
@@ -141,7 +163,7 @@ pub fn export(src: Sources, path: &Path, format: Format, options: &Options) -> R
         meshes: scene.meshes.len(),
         materials: scene.materials.list.len(),
         images: scene.materials.images.len(),
-        triangles: scene.triangles(),
+        triangles,
         bytes,
         missing: scene.materials.missing.iter().cloned().collect(),
     })
@@ -193,9 +215,13 @@ pub struct Counts {
     pub models: usize,
     pub point_entities: usize,
     pub scatter: usize,
+    /// Vertices and triangles of the scatter instances when they are exported, which OBJ writes out one by one.
+    pub scatter_vertices: usize,
+    pub scatter_triangles: usize,
 }
 
-pub fn counts(map: &Map, game: &GameConfig, selection: &BTreeSet<NodeId>, options: &Options) -> Counts {
+/// What the export would hold with these options. The scatter sizes load the models the sets show.
+pub fn counts(map: &Map, game: &GameConfig, models: &mut ModelCache, selection: &BTreeSet<NodeId>, options: &Options) -> Counts {
     let mut c = Counts::default();
     for (id, node) in map.nodes.iter() {
         if !in_scope(map, *id, selection, options) {
@@ -213,7 +239,25 @@ pub fn counts(map: &Map, game: &GameConfig, selection: &BTreeSet<NodeId>, option
                     c.models += 1;
                 }
             }
-            NodeKind::Scatter(s) => c.scatter += s.instances.len(),
+            NodeKind::Scatter(s) => {
+                c.scatter += s.instances.len();
+                if !options.scatter {
+                    continue;
+                }
+
+                let sizes: Vec<(usize, usize)> = s
+                    .items
+                    .iter()
+                    .map(|item| {
+                        let model = collect::scatter_model(game, models, &item.source);
+                        model.map_or((0, 0), |(_, m)| m.parts.iter().fold((0, 0), |(v, t), p| (v + p.vertices.len(), t + p.indices.len() / 3)))
+                    })
+                    .collect();
+                for (v, t) in s.instances.iter().filter_map(|i| sizes.get(i.item as usize)) {
+                    c.scatter_vertices += v;
+                    c.scatter_triangles += t;
+                }
+            }
             _ => {}
         }
     }

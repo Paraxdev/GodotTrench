@@ -61,7 +61,16 @@ pub struct Scene {
 impl Scene {
     /// Triangles as placed, a mesh used by several nodes counts once per node.
     pub fn triangles(&self) -> usize {
-        let per_mesh: Vec<usize> = self.meshes.iter().map(|m| m.primitives.iter().map(|p| p.indices.len() / 3).sum()).collect();
+        self.placed(|p| p.indices.len() / 3)
+    }
+
+    /// Vertices as placed, like [`Self::triangles`].
+    pub fn vertices(&self) -> usize {
+        self.placed(|p| p.positions.len())
+    }
+
+    fn placed(&self, count: impl Fn(&Primitive) -> usize) -> usize {
+        let per_mesh: Vec<usize> = self.meshes.iter().map(|m| m.primitives.iter().map(&count).sum()).collect();
         self.nodes.iter().filter_map(|n| n.mesh).map(|m| per_mesh[m]).sum()
     }
 }
@@ -161,6 +170,14 @@ struct Collector<'a> {
     materials: Materials,
     /// Mesh of a model file, per material override, shared by every prop and scatter instance showing it.
     model_meshes: HashMap<(PathBuf, Option<String>), usize>,
+}
+
+/// The model a scatter item shows, loaded through the cache.
+pub fn scatter_model(game: &GameConfig, models: &mut ModelCache, source: &str) -> Option<(PathBuf, Arc<Model>)> {
+    let path = if source.starts_with("res://") { game.resolve_res(source) } else { Some(PathBuf::from(source)) };
+    let path = path.filter(|p| crate::models::is_model_path(&p.to_string_lossy()))?;
+    let model = models.get(&path, game.units_per_meter)?;
+    Some((path, model))
 }
 
 pub fn collect(src: Sources, options: &Options, name: String) -> Scene {
@@ -442,16 +459,7 @@ impl Collector<'_> {
             return None;
         }
 
-        let items: Vec<Option<(PathBuf, Arc<Model>)>> = set
-            .items
-            .iter()
-            .map(|item| {
-                let path = if item.source.starts_with("res://") { self.game.resolve_res(&item.source) } else { Some(PathBuf::from(&item.source)) };
-                let path = path.filter(|p| crate::models::is_model_path(&p.to_string_lossy()))?;
-                let model = self.models.get(&path, self.game.units_per_meter)?;
-                Some((path, model))
-            })
-            .collect();
+        let items: Vec<Option<(PathBuf, Arc<Model>)>> = set.items.iter().map(|item| scatter_model(self.game, self.models, &item.source)).collect();
         let mut children = Vec::new();
         for inst in &set.instances {
             let Some(Some((path, model))) = items.get(inst.item as usize) else { continue };
