@@ -246,7 +246,7 @@ fn glb_places_scatter_instances_and_prefab_contents() {
     let mut caches = Caches::new(&root);
     caches.prefabs.project_root = Some(root.clone());
     let out = root.join("scatter.glb");
-    let counted = counts(&map, &caches.game, &caches.selection, &Options::default());
+    let counted = counts(&map, &caches.game, &mut caches.models, &caches.selection, &Options::default());
     assert_eq!(counted.scatter, 3, "the dialog shows how many instances the option adds");
     export(caches.sources(&map), &out, Format::Glb, &Options { scatter: true, ..Default::default() }).unwrap();
     let (doc, ..) = gltf::import(&out).unwrap();
@@ -340,4 +340,117 @@ fn only_what_is_exported_hides_faces() {
 
     assert_eq!(pillar_vertices(&map, &mut caches, Options::default()), 24, "a layer left out of the export leaves no hole");
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// An OBJ model of a flat grid of `cells` by `cells` quads, two triangles each.
+fn grid_model(path: &Path, cells: usize) {
+    use std::fmt::Write as _;
+    let mut text = String::from("o grid\nvt 0 0\nvn 0 1 0\n");
+    for z in 0..=cells {
+        for x in 0..=cells {
+            let _ = writeln!(text, "v {x} 0 {z}");
+        }
+    }
+
+    let at = |x: usize, z: usize| z * (cells + 1) + x + 1;
+    for z in 0..cells {
+        for x in 0..cells {
+            let _ = writeln!(text, "f {}/1/1 {}/1/1 {}/1/1 {}/1/1", at(x, z), at(x, z + 1), at(x + 1, z + 1), at(x + 1, z));
+        }
+    }
+
+    std::fs::write(path, text).unwrap();
+}
+
+#[test]
+fn obj_with_a_forest_of_scatter_instances_is_refused_before_writing() {
+    use egui_kittest::kittest::{NodeT, Queryable};
+    let root = project("forest");
+    grid_model(&root.join("models/grid.obj"), 224);
+    let mut map = Map::new();
+    let layer = map.default_layer();
+    let mut set = gt_doc::Scatter::new("Forest", gt_doc::ScatterKind::Props, vec![gt_doc::scatter::ScatterItem::new("res://models/grid.obj")]);
+    for i in 0..101 {
+        set.instances.push(gt_doc::scatter::ScatterInstance { item: 0, position: DVec3::new(i as f64 * 256.0, 0.0, 0.0), angles: DVec3::ZERO, scale: 1.0 });
+    }
+
+    map.insert(layer, NodeKind::Scatter(set));
+    let mut caches = Caches::new(&root);
+    let options = Options { scatter: true, ..Default::default() };
+    let counted = counts(&map, &caches.game, &mut caches.models, &caches.selection, &options);
+    assert_eq!((counted.scatter_triangles, counted.scatter_vertices), (101 * 224 * 224 * 2, 101 * 225 * 225));
+
+    let obj = root.join("forest.obj");
+    let refused = export(caches.sources(&map), &obj, Format::Obj, &options).unwrap_err();
+    assert!(refused.contains("10.1 million triangles") && refused.contains("glTF"), "{refused}");
+    assert!(std::fs::read_dir(&root).unwrap().all(|f| !f.unwrap().file_name().to_string_lossy().starts_with("forest")), "nothing is written");
+    let glb = root.join("forest.glb");
+    let report = export(caches.sources(&map), &glb, Format::Glb, &options).unwrap();
+    assert!(report.bytes < 4 << 20, "glTF shares the model's mesh between the instances: {} bytes", report.bytes);
+
+    // The dialog says so before anything is exported.
+    let mut state = crate::state::EditorState::new(crate::state::Prefs::default());
+    state.game = caches.game.clone();
+    state.doc.map = map;
+    let mut dialog = dialog::ExportDialog::default();
+    (dialog.format, dialog.options) = (Format::Obj, options);
+    let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(480.0, 520.0)).build_ui_state(
+        |ui, (dialog, state): &mut (dialog::ExportDialog, crate::state::EditorState)| {
+            dialog.ui(ui, state);
+        },
+        (dialog, state),
+    );
+    harness.run();
+    harness.get_by_label_contains("OBJ writes every scatter instance as a full copy of its model: 10.1 million triangles");
+    assert!(harness.get_by_label("Export…").accesskit_node().is_disabled());
+    harness.get_by_label(Format::Glb.label()).click();
+    harness.run();
+    assert!(harness.query_by_label_contains("OBJ writes every scatter instance").is_none());
+    assert!(!harness.get_by_label("Export…").accesskit_node().is_disabled());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn glb_size_is_known_before_the_buffer_is_built() {
+    let root = project("size");
+    let map = map();
+    let mut caches = Caches::new(&root);
+    let scene = collect::collect(caches.sources(&map), &Options::default(), "room".into());
+    let out = root.join("room.glb");
+    let bytes = glb::write(&scene, &out).unwrap();
+    let file = std::fs::read(&out).unwrap();
+    assert_eq!(bytes, file.len() as u64);
+    assert_eq!(u32::from_le_bytes(file[8..12].try_into().unwrap()) as usize, file.len());
+    let json = u32::from_le_bytes(file[12..16].try_into().unwrap()) as usize;
+    let bin = u32::from_le_bytes(file[20 + json..24 + json].try_into().unwrap()) as u64;
+    assert_eq!(bin, glb::buffer_size(&scene), "the 4 GB check sees the real size");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn dialog_counts_follow_the_selection() {
+    use egui_kittest::kittest::Queryable;
+    let mut state = crate::state::EditorState::new(crate::state::Prefs::default());
+    let layer = state.doc.map.default_layer();
+    let light = state.doc.edit("Add", |m, s| {
+        let brush = m.insert(layer, NodeKind::Brush(cube([0.0, 0.0, 0.0], [32.0, 32.0, 32.0], "brick")));
+        s.select_node(brush);
+        m.insert(layer, NodeKind::Entity(Entity::new("light")))
+    });
+    let mut dialog = dialog::ExportDialog::default();
+    dialog.options.selection_only = true;
+    let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(480.0, 420.0)).build_ui_state(
+        |ui, (dialog, state): &mut (dialog::ExportDialog, crate::state::EditorState)| {
+            dialog.ui(ui, state);
+        },
+        (dialog, state),
+    );
+    harness.run();
+    harness.get_by_label_contains("Exports 1 brushes, 0 meshes");
+    harness.state_mut().1.doc.select(|_, s| {
+        s.clear();
+        s.select_node(light);
+    });
+    harness.run();
+    harness.get_by_label_contains("Exports 0 brushes, 0 meshes");
 }

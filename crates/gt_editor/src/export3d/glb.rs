@@ -1,10 +1,13 @@
 //! glTF 2.0 binary container: the JSON document and one buffer holding the geometry and the images.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
+use std::io::Write;
+use std::path::Path;
 
 use serde_json::{Value, json};
 
 use super::collect::Scene;
+use super::size_text;
 use super::textures::Alpha;
 
 const GLB_MAGIC: u32 = 0x4654_6C67;
@@ -88,35 +91,67 @@ fn is_zero(v: &[f64]) -> bool {
     v.iter().all(|x| *x == 0.0)
 }
 
-/// The scene as a `.glb` file.
-pub fn write(scene: &Scene) -> Vec<u8> {
+/// The header keeps the file length in 32 bits.
+const MAX_FILE: u64 = u32::MAX as u64;
+
+fn too_big(bytes: u64) -> String {
+    format!(
+        "the .glb would be {}, more than the 4 GB a .glb file can hold. Export part of the map with Selection only, or leave \
+         out the prop models or scatter instances",
+        size_text(bytes)
+    )
+}
+
+/// The size of the binary chunk, as [`Buffer`] lays it out.
+pub(super) fn buffer_size(scene: &Scene) -> u64 {
+    let padded = |n: usize| (n as u64).next_multiple_of(4);
+    let mut size = 0;
+    for p in scene.meshes.iter().flat_map(|m| &m.primitives).filter(|p| !p.indices.is_empty()) {
+        let index = if p.positions.len() <= u16::MAX as usize { 2 } else { 4 };
+        size += padded(p.positions.len() * 12) + padded(p.normals.len() * 12) + padded(p.uvs.len() * 8) + padded(p.indices.len() * index);
+    }
+
+    let used: BTreeSet<usize> = scene
+        .materials
+        .list
+        .iter()
+        .flat_map(|m| [m.albedo, m.metal_rough, m.normal, m.occlusion, m.emissive_texture.filter(|_| m.is_emissive())])
+        .flatten()
+        .collect();
+    size + used.iter().map(|i| padded(scene.materials.images[*i].bytes.len())).sum::<u64>()
+}
+
+/// Writes the scene as a `.glb` file to `path`. Returns the bytes written.
+pub fn write(scene: &Scene, path: &Path) -> Result<u64, String> {
+    // Refused before the buffer is built, a file past the limit would take as much memory.
+    let estimate = 28 + buffer_size(scene);
+    if estimate > MAX_FILE {
+        return Err(too_big(estimate));
+    }
+
     let mut buf = Buffer::default();
     let mut extensions: Vec<&str> = Vec::new();
-
-    let meshes: Vec<Value> = scene
-        .meshes
-        .iter()
-        .map(|mesh| {
-            let primitives: Vec<Value> = mesh
-                .primitives
-                .iter()
-                .filter(|p| !p.indices.is_empty())
-                .map(|p| {
-                    let position = buf.floats(&p.positions, true);
-                    let normal = buf.floats(&p.normals, false);
-                    let uv = buf.floats(&p.uvs, false);
-                    let indices = buf.indices(&p.indices, p.positions.len());
-                    json!({
-                        "attributes": { "POSITION": position, "NORMAL": normal, "TEXCOORD_0": uv },
-                        "indices": indices,
-                        "material": p.material,
-                        "mode": 4,
-                    })
+    let mut meshes: Vec<Value> = Vec::with_capacity(scene.meshes.len());
+    for mesh in &scene.meshes {
+        let primitives: Vec<Value> = mesh
+            .primitives
+            .iter()
+            .filter(|p| !p.indices.is_empty())
+            .map(|p| {
+                let position = buf.floats(&p.positions, true);
+                let normal = buf.floats(&p.normals, false);
+                let uv = buf.floats(&p.uvs, false);
+                let indices = buf.indices(&p.indices, p.positions.len());
+                json!({
+                    "attributes": { "POSITION": position, "NORMAL": normal, "TEXCOORD_0": uv },
+                    "indices": indices,
+                    "material": p.material,
+                    "mode": 4,
                 })
-                .collect();
-            json!({ "name": mesh.name, "primitives": primitives })
-        })
-        .collect();
+            })
+            .collect();
+        meshes.push(json!({ "name": mesh.name, "primitives": primitives }));
+    }
 
     // Images go into the buffer only when a glTF texture uses them, and each image gets one texture per filter.
     let mut images: Vec<Value> = Vec::new();
@@ -276,26 +311,38 @@ pub fn write(scene: &Scene) -> Vec<u8> {
         doc["extensionsUsed"] = json!(extensions);
     }
 
-    container(&serde_json::to_vec(&doc).unwrap_or_default(), &buf.bin)
+    let json = serde_json::to_vec(&doc).unwrap_or_default();
+    let total = container_len(json.len(), buf.bin.len());
+    if total > MAX_FILE {
+        return Err(too_big(total));
+    }
+
+    gt_formats::write_atomic_with(path, |out| write_container(out, &json, &buf.bin)).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
+    Ok(total)
 }
 
-fn container(json: &[u8], bin: &[u8]) -> Vec<u8> {
+fn container_len(json: usize, bin: usize) -> u64 {
+    let json = (json as u64).next_multiple_of(4);
+    let bin = (bin as u64).next_multiple_of(4);
+    12 + 8 + json + if bin == 0 { 0 } else { 8 + bin }
+}
+
+fn write_container(out: &mut impl Write, json: &[u8], bin: &[u8]) -> std::io::Result<()> {
+    let total = container_len(json.len(), bin.len());
     let json_len = json.len().next_multiple_of(4);
-    let bin_len = bin.len().next_multiple_of(4);
-    let total = 12 + 8 + json_len + if bin.is_empty() { 0 } else { 8 + bin_len };
-    let mut out = Vec::with_capacity(total);
     for word in [GLB_MAGIC, 2, total as u32, json_len as u32, CHUNK_JSON] {
-        out.extend_from_slice(&word.to_le_bytes());
+        out.write_all(&word.to_le_bytes())?;
     }
 
-    out.extend_from_slice(json);
-    out.resize(20 + json_len, b' ');
+    out.write_all(json)?;
+    out.write_all(&b"   "[..json_len - json.len()])?;
     if !bin.is_empty() {
-        out.extend_from_slice(&(bin_len as u32).to_le_bytes());
-        out.extend_from_slice(&CHUNK_BIN.to_le_bytes());
-        out.extend_from_slice(bin);
-        out.resize(total, 0);
+        let bin_len = bin.len().next_multiple_of(4);
+        out.write_all(&(bin_len as u32).to_le_bytes())?;
+        out.write_all(&CHUNK_BIN.to_le_bytes())?;
+        out.write_all(bin)?;
+        out.write_all(&[0; 3][..bin_len - bin.len()])?;
     }
 
-    out
+    Ok(())
 }

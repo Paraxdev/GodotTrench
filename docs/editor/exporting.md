@@ -60,8 +60,13 @@ example `level.obj`, `level.mtl` with the materials, and a `level_textures` fold
 them together when you move them. In Blender, *File > Import > Wavefront (.obj)*.
 
 OBJ has no parent objects and no way to share one mesh between copies, so every object is written flat in world space
-and each scatter instance is a full copy. Materials keep the albedo, normal, roughness and emission textures. Prefer
-glTF whenever the other tool reads it.
+and each scatter instance is a full copy. With scatter instances ticked, the dialog warns once they add up to a million
+triangles and says how big the file gets. An OBJ export refuses more than 10 million triangles, a file of more than a
+gigabyte. Materials keep the albedo, normal, roughness and emission textures. Prefer glTF whenever the other tool reads
+it.
+
+A `.glb` file holds at most 4 GB. glTF writes each model once however many scatter instances show it, so only a huge map
+gets there, and the export then says so instead of writing a broken file.
 
 ## Command line
 
