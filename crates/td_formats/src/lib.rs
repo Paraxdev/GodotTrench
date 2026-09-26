@@ -11,7 +11,7 @@ pub mod vmf;
 pub mod vmt;
 pub mod vtf;
 
-pub use game::{EntityDef, EntityKind, GameConfig, GizmoDef, IoDef, PropertyDef, PropertyType};
+pub use game::{Clash, EntityDef, EntityKind, GameConfig, GizmoDef, IoDef, PropertyDef, PropertyType};
 
 /// Writes `contents` to `path` through a temporary file next to it that is renamed into place, so an interrupted write
 /// never leaves a partial file under the real name, which a later install would take for a finished one. Returns the
