@@ -115,6 +115,7 @@ pub struct App {
     keymap: KeymapWindow,
     pub(crate) hotspot_editor: crate::hotspot_editor::HotspotEditor,
     link_dialog: LinkDialog,
+    export_dialog: crate::export3d::dialog::ExportDialog,
     keep_prefs: bool,
     window_fitted: bool,
     toolbar_fit: ToolbarFit,
@@ -139,7 +140,8 @@ pub struct App {
     pub(crate) open_windows: Vec<(&'static str, egui::Rect)>,
 }
 
-const WINDOW_TITLES: [&str; 6] = ["Shape Generator", "Create Terrain", "Keyboard Shortcuts", "Link Entities", "Hotspot Editor", "Preferences"];
+const WINDOW_TITLES: [&str; 7] =
+    ["Shape Generator", "Create Terrain", "Keyboard Shortcuts", "Link Entities", "Hotspot Editor", "Preferences", crate::export3d::dialog::TITLE];
 
 /// Who this frame's keys belong to. Decided before any widget runs, so it reads what egui knew at the end of the last
 /// frame.
@@ -660,6 +662,7 @@ impl App {
             keymap: KeymapWindow::default(),
             hotspot_editor: Default::default(),
             link_dialog: Default::default(),
+            export_dialog: Default::default(),
             keep_prefs,
             window_fitted: false,
             toolbar_fit: ToolbarFit::default(),
@@ -740,6 +743,8 @@ impl App {
             Action::ShowCommandPalette => self.palette.toggle(),
             Action::ShowShapeDialog => self.shape_dialog.open = true,
             Action::ShowTerrainDialog => self.terrain_dialog.open = true,
+            Action::ExportGlb => self.export_dialog.open_for(crate::export3d::Format::Glb, &self.state),
+            Action::ExportObj => self.export_dialog.open_for(crate::export3d::Format::Obj, &self.state),
             Action::ShowKeymap => self.keymap.open = true,
             Action::ShowScatterPanel => reveal_tab(&mut self.dock, Tab::Scatter, Tab::Inspector),
             Action::ShowLinkDialog => {
@@ -937,6 +942,9 @@ impl App {
                 sub_menu(ui, Some(icons::EXPORT), "Export", |ui| {
                     m.item(ui, None, ".map (Valve 220)…", Action::ExportQuakeMap);
                     m.item(ui, None, ".map, cordon only…", Action::ExportQuakeMapCordon);
+                    ui.separator();
+                    m.item(ui, None, "glTF Binary (.glb) for Blender and other 3D tools…", Action::ExportGlb);
+                    m.item(ui, None, "Wavefront OBJ (.obj)…", Action::ExportObj);
                 });
                 ui.separator();
                 if ui.add(menu_button(Some(icons::SETTINGS), "Preferences…", None)).clicked() {
@@ -2303,6 +2311,7 @@ impl eframe::App for App {
         self.keymap.show(&ctx, &mut self.state);
         self.hotspot_editor.show(&ctx, &mut self.state, &mut self.actions);
         self.link_dialog.show(&ctx, &mut self.state);
+        self.export_dialog.show(&ctx, &mut self.state);
         panels::dnd_preview(&ctx, &mut self.state);
         // egui ids a window by its title text, which it holds as an Option.
         let window_id = |title: &str| egui::Id::new(Some(title));

@@ -325,6 +325,7 @@ fn dialog_action(name: &str) -> Option<&'static str> {
         "convert_textures" => "map_file {op: convert_textures, path}",
         "import_model" => "import_model {path}",
         "export_quake_map" | "export_map" | "export_quake_map_cordon" => "map_file {op: export_map, path}",
+        "export_glb" | "export_obj" => "map_file {op: export_glb or export_obj, path}",
         "create_prefab" => "copy the objects and save them with map_file into a new map",
         _ => return None,
     })
@@ -1425,7 +1426,33 @@ impl App {
                     .map(|()| json!({ "path": path_text(&p), "map_path": path_value(self.state.doc.path.as_ref()) }))
                     .map_err(|e| format!("cannot write {}: {e}", path_text(&p)))
             }),
-            _ => Err(format!("unknown op {op}, use new, open, open_tab, save, import_map, import_vmf, convert_textures or export_map")),
+            "export_glb" | "export_obj" => need(path).and_then(|p| {
+                let format = if op == "export_glb" { crate::export3d::Format::Glb } else { crate::export3d::Format::Obj };
+                let defaults = crate::export3d::Options::default();
+                let flag = |key: &str, default: bool| args[key].as_bool().unwrap_or(default);
+                let options = crate::export3d::Options {
+                    selection_only: flag("selection_only", defaults.selection_only),
+                    hidden: flag("hidden", defaults.hidden),
+                    scatter: flag("scatter", defaults.scatter),
+                    models: flag("models", defaults.models),
+                    markers: flag("markers", defaults.markers),
+                    merge_brushes: flag("merge_brushes", defaults.merge_brushes),
+                };
+                let report = crate::export3d::export(crate::export3d::Sources::of(&mut self.state), &p, format, &options)?;
+                self.state.set_status(report.summary(&p));
+                Ok(json!({
+                    "path": path_text(&p),
+                    "map_path": path_value(self.state.doc.path.as_ref()),
+                    "objects": report.objects,
+                    "meshes": report.meshes,
+                    "materials": report.materials,
+                    "images": report.images,
+                    "triangles": report.triangles,
+                    "bytes": report.bytes,
+                    "missing_textures": report.missing,
+                }))
+            }),
+            _ => Err(format!("unknown op {op}, use new, open, open_tab, save, import_map, import_vmf, convert_textures, export_map, export_glb or export_obj")),
         };
         self.project_generation += 1;
         match result {
@@ -2206,6 +2233,7 @@ mod tests {
         assert!(!is_failure_status("Deleted 3 objects"));
         assert!(!is_failure_status("New map"));
         assert!(dialog_action("save_as").is_some());
+        assert!(dialog_action("export_obj").is_some_and(|use_instead| use_instead.contains("export_obj")));
         assert!(dialog_action("undo").is_none());
         let names = mesh_op_names();
         for n in ["merge_by_distance", "dissolve_vertices", "select_linked", "mirror_y", "mirror_z"] {

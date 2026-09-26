@@ -56,6 +56,8 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("File: Save As".into(), Action::SaveAs),
         ("File: Import .map".into(), Action::ImportQuakeMap),
         ("File: Export .map".into(), Action::ExportQuakeMap),
+        ("File: Export glTF Binary (.glb) for Blender".into(), Action::ExportGlb),
+        ("File: Export Wavefront OBJ (.obj)".into(), Action::ExportObj),
         ("Godot: Open Godot Project".into(), Action::OpenProject),
         ("Godot: Reload Game Config".into(), Action::ReloadProject),
         ("Godot: Open Project in Godot Editor".into(), Action::OpenGodotEditor),
