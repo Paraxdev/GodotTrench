@@ -411,6 +411,7 @@ impl App {
 
     /// Runs a tool call from a transport. Window screenshots and input scripts keep `reply` and answer in a later frame.
     pub(crate) fn call_tool(&mut self, name: &str, args: Value, ctx: &egui::Context, reply: &Sender<ToolResult>) -> Reply {
+        self.content_wizard.mcp_call(name);
         // The watcher only looks once a second, a call right after Godot exported the config must already see it.
         if self.state.reload_changed_game_config() {
             self.project_generation += 1;
@@ -432,6 +433,13 @@ impl App {
                 ctx.request_repaint();
                 Reply::Deferred
             }
+            "project_content" if args.get("install").is_some() => match self.start_content(&args, ctx) {
+                Ok(()) => {
+                    self.content_replies.push(reply.clone());
+                    Reply::Deferred
+                }
+                Err(e) => Reply::Now(err(e)),
+            },
             "simulate_input" => {
                 if self.input_script.is_some() {
                     return Reply::Now(err("another input script is still running"));
@@ -549,6 +557,8 @@ impl App {
 
         match name {
             "get_state" => ok(self.state_summary()),
+            "project_content" if args.get("install").is_some() => err("project_content install cannot run inside scripts, call it before the script"),
+            "project_content" => ok(self.content_status()),
             "list_nodes" => match self.list_nodes(&args) {
                 Ok(v) => ok(v),
                 Err(e) => err(e),

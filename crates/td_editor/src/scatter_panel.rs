@@ -581,7 +581,7 @@ fn action_row(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>, a
             }
         });
     });
-    if ui.small_button("Install nature models").on_hover_text(td_doc::scatter::NATURE_DIR).clicked() {
+    if ui.small_button("Install nature models…").on_hover_text(format!("Adds trees, bushes, rocks and grass to {}", td_doc::scatter::NATURE_DIR)).clicked() {
         actions.push(Action::InstallNatureModels);
     }
 }

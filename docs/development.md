@@ -102,6 +102,12 @@ when they reach `main`.
 CI skips pushes that only change docs or Markdown. Every green push to `main` replaces the
 [rolling beta](https://github.com/Paraxdev/TrenchDot/releases/tag/beta) with fresh editor, addon and demo downloads.
 
+The releases also carry `trenchdot-nature-pack.zip` and `trenchdot-demo-content.zip`, which *Godot > Add Content to
+Project…* downloads into a project. The folders they hold are listed in
+[content.rs](https://github.com/Paraxdev/TrenchDot/blob/main/crates/td_editor/src/content.rs), and a test checks the
+zip commands in `ci.yml` against that list. The editor looks the zips up through the GitHub API, and the
+`TRENCHDOT_RELEASES_API` environment variable points it at another server, for trying a zip before it is published.
+
 {% mcp %}
 
 ## MCP
