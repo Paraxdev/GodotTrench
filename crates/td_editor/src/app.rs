@@ -51,11 +51,19 @@ impl Panel {
     pub const ALL: [Panel; 9] =
         [Panel::Outliner, Panel::Inspector, Panel::Materials, Panel::Entities, Panel::History, Panel::Issues, Panel::Uv, Panel::Reference, Panel::Scatter];
 
-    /// One or two sentences on what the panel is for, shown as the panel tab tooltip.
+    /// The tab tooltip: [`Panel::help`] with the key that renames, which the keymap can change.
+    pub fn tooltip(self, ctx: &egui::Context, prefs: &Prefs) -> String {
+        match commands::shortcut_text(ctx, prefs, &Action::Rename).filter(|_| self == Panel::Outliner) {
+            Some(keys) => format!("{} {keys} renames the selected object.", self.help()),
+            None => self.help().into(),
+        }
+    }
+
+    /// One or two sentences on what the panel is for.
     pub fn help(self) -> &'static str {
         match self {
             Panel::Outliner => {
-                "Every layer, group, brush, mesh and entity in the map as a tree. Click to select, the eye hides and the lock locks. F2 renames the selected object. Clicking a layer makes it the current layer new objects go into, right click it to rename or omit it from the build."
+                "Every layer, group, brush, mesh and entity in the map as a tree. Click to select, the eye hides and the lock locks. Clicking a layer makes it the current layer new objects go into, right click a row to rename it or, for a layer, omit it from the build."
             }
             Panel::Inspector => {
                 "Edits whatever is selected: entity properties and outputs, face materials and UVs, scatter sets and terrains. With nothing selected it shows the map's own settings (worldspawn), like sun, sky and fog."
@@ -2120,7 +2128,9 @@ impl TabViewer for Tabs<'_> {
 
     fn on_tab_button(&mut self, tab: &mut Tab, response: &egui::Response) {
         if let Some(panel) = tab_panel(*tab) {
-            response.clone().on_hover_text(panel.help());
+            response.clone().on_hover_ui(|ui| {
+                ui.label(panel.tooltip(ui.ctx(), &self.state.prefs));
+            });
         } else if let Tab::View(i) = tab
             && let Some(vp) = self.viewports.get(*i)
         {
@@ -2436,6 +2446,36 @@ mod tests {
         // Running it again does not duplicate the tab.
         ensure_tab(&mut dock, Tab::Models, Tab::Materials);
         assert_eq!(dock.iter_all_tabs().filter(|(_, t)| **t == Tab::Models).count(), 1);
+    }
+
+    #[test]
+    fn revealing_a_tab_brings_it_to_the_front_or_back() {
+        let shown = |d: &DockState<Tab>| d.iter_leaves().filter_map(|(_, leaf)| leaf.tabs.get(leaf.active.0).copied()).collect::<Vec<_>>();
+        let mut dock = default_dock();
+        let history = dock.find_tab(&Tab::History).unwrap();
+        dock.set_active_tab(history).unwrap();
+        assert!(!shown(&dock).contains(&Tab::Outliner));
+        reveal_tab(&mut dock, Tab::Outliner, Tab::History);
+        assert!(shown(&dock).contains(&Tab::Outliner), "Rename shows the Outliner hidden behind History");
+
+        let outliner = dock.find_tab(&Tab::Outliner).unwrap();
+        dock.remove_tab(outliner);
+        reveal_tab(&mut dock, Tab::Outliner, Tab::History);
+        let back = dock.find_tab(&Tab::Outliner).expect("a closed Outliner comes back");
+        assert_eq!(back.node_path(), dock.find_tab(&Tab::History).unwrap().node_path(), "next to History");
+        assert!(shown(&dock).contains(&Tab::Outliner));
+    }
+
+    #[test]
+    fn outliner_tooltip_names_the_rename_key() {
+        let ctx = egui::Context::default();
+        let mut prefs = Prefs::default();
+        let key = commands::shortcut_text(&ctx, &prefs, &Action::Rename).unwrap();
+        assert!(Panel::Outliner.tooltip(&ctx, &prefs).ends_with(&format!("{key} renames the selected object.")));
+        assert_eq!(Panel::History.tooltip(&ctx, &prefs), Panel::History.help());
+
+        prefs.key_overrides.insert(Action::Rename.binding_id(), String::new());
+        assert_eq!(Panel::Outliner.tooltip(&ctx, &prefs), Panel::Outliner.help(), "no key once it is unbound");
     }
 
     #[test]
