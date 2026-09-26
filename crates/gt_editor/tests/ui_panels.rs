@@ -746,6 +746,69 @@ fn a_rename_field_that_disappears_is_dropped() {
 }
 
 #[test]
+fn a_click_in_another_field_commits_the_rename() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    let brushes: Vec<_> = [0.0, 128.0]
+        .into_iter()
+        .map(|x| {
+            let b = Brush::from_aabb(&Aabb::new(DVec3::new(x, 0.0, 0.0), DVec3::new(x + 64.0, 64.0, 64.0)), "dev/grey").unwrap();
+            f.state.doc.edit("add", |m, _| m.insert(layer, NodeKind::Brush(b)))
+        })
+        .collect();
+    // The toolbar and the tool options bar are drawn before the Outliner, like this field.
+    let mut harness = Harness::builder().with_size(egui::vec2(360.0, 400.0)).build_ui_state(
+        |ui, (f, toolbar): &mut (Fixture, String)| {
+            ui.text_edit_singleline(toolbar);
+            panels::outliner(ui, &mut f.state, &mut f.panels, &mut f.actions);
+        },
+        (f, String::new()),
+    );
+    // The Outliner's Filter field, then the toolbar field.
+    for (brush, name, field) in [(brushes[0], "cellar", 1), (brushes[1], "vault", 0)] {
+        let state = &mut harness.state_mut().0.state;
+        state.doc.select(|_, s| {
+            s.clear();
+            s.select_node(brush);
+        });
+        gt_editor::commands::execute(state, Action::Rename, &egui::Context::default());
+        harness.run();
+        harness.get_all_by_role(egui::accesskit::Role::TextInput).last().unwrap().type_text(name);
+        harness.run();
+        harness.get_all_by_role(egui::accesskit::Role::TextInput).nth(field).unwrap().click();
+        harness.run();
+        assert_eq!(harness.state().0.state.doc.map.get(brush).unwrap().label.as_deref(), Some(name), "the typed name is kept");
+        assert_eq!(harness.state().0.state.renaming, None);
+    }
+}
+
+#[test]
+fn the_layer_menu_renames_in_the_row_and_keeps_a_name() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.add_layer("Upper");
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(360.0, 400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::outliner(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    // A blank name leaves the layer's name alone.
+    for (typed, name) in [("   ", "Upper"), ("Upper floor", "Upper floor")] {
+        harness.get_by_label("Upper").click_secondary();
+        harness.run();
+        harness.get_by_label("Rename").click();
+        harness.run();
+        let field = harness.get_all_by_role(egui::accesskit::Role::TextInput).last().unwrap();
+        assert_eq!(field.value().as_deref(), Some("Upper"), "the row's own name field opens");
+        field.type_text(typed);
+        harness.run();
+        harness.key_press(egui::Key::Enter);
+        harness.run();
+        assert_eq!(harness.state().state.doc.map.get(layer).unwrap().name(), name);
+    }
+
+    harness.get_by_label("Upper floor");
+}
+
+#[test]
 fn outliner_context_menu_selects_and_acts_on_objects() {
     let mut f = Fixture::new();
     let layer = f.state.doc.map.default_layer();

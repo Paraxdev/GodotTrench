@@ -43,11 +43,11 @@ pub struct PanelState {
     outliner_offset: f32,
     outliner_anchor: Option<NodeId>,
     /// The node the rename field was filled for, its text, whether it still has to take the keyboard focus, and the
-    /// field once shown.
+    /// pass it was last drawn in.
     rename_for: Option<NodeId>,
     rename_text: String,
     rename_focus: bool,
-    rename_field: Option<egui::Id>,
+    rename_drawn: Option<u64>,
     issues: Vec<gt_doc::issues::Issue>,
     issues_revision: u64,
     issues_overlays: u64,
@@ -88,7 +88,7 @@ impl Default for PanelState {
             rename_for: None,
             rename_text: String::new(),
             rename_focus: false,
-            rename_field: None,
+            rename_drawn: None,
             issues: Vec::new(),
             issues_revision: 0,
             issues_overlays: 0,
@@ -125,8 +125,10 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
     }
 
     // A field that vanished, scrolled out of view or behind another tab, lost its focus without telling. Left open it
-    // would come back later as a field nobody is typing into.
-    if state.renaming == ps.rename_for && ps.rename_field.is_some_and(|f| !ui.memory(|m| m.has_focus(f))) {
+    // would come back later as a field nobody is typing into. A field that is still drawn and lost its focus to a click
+    // elsewhere commits its name below instead.
+    let pass = ui.ctx().cumulative_pass_nr();
+    if state.renaming == ps.rename_for && ps.rename_drawn.is_some_and(|drawn| drawn + 1 < pass) {
         state.renaming = None;
     }
 
@@ -135,7 +137,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
         ps.rename_for = renaming;
         ps.rename_text = renaming.and_then(|id| map.get(id)).map(|n| n.editable_name()).unwrap_or_default();
         ps.rename_focus = true;
-        ps.rename_field = None;
+        ps.rename_drawn = None;
     }
 
     let filter = ps.outliner_filter.to_lowercase();
@@ -158,7 +160,6 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
     let mut toggles: Vec<(NodeId, u8)> = Vec::new();
     let mut clicked: Option<(NodeId, egui::Modifiers)> = None;
     let mut set_layer: Option<NodeId> = None;
-    let mut rename: Option<(NodeId, String)> = None;
     let mut renamed: Option<(NodeId, Option<String>)> = None;
     let mut hovered: Option<NodeId> = None;
     let mut scroll = ScrollArea::vertical().auto_shrink([false, false]);
@@ -235,7 +236,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
 
                 if renaming == Some(*id) {
                     let mut field = egui::TextEdit::singleline(&mut ps.rename_text).desired_width(f32::INFINITY).show(ui);
-                    ps.rename_field = Some(field.response.id);
+                    ps.rename_drawn = Some(pass);
                     if std::mem::take(&mut ps.rename_focus) {
                         field.response.request_focus();
                         let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(ps.rename_text.chars().count()));
@@ -275,12 +276,17 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                 }
 
                 resp.context_menu(|ui| {
-                    if let NodeKind::Layer(l) = &node.kind {
-                        let mut name = l.name.clone();
-                        if ui.text_edit_singleline(&mut name).changed() {
-                            rename = Some((*id, name));
+                    // Opens the row's name field. egui closes a menu on any click, so a field in the menu could not be clicked into.
+                    if ui.button("Rename").clicked() {
+                        renamed = Some((*id, None));
+                        if !matches!(node.kind, NodeKind::Layer(_)) {
+                            clicked = Some((*id, egui::Modifiers::NONE));
                         }
 
+                        ui.close();
+                    }
+
+                    if let NodeKind::Layer(_) = &node.kind {
                         if ui.button("Set Current Layer").clicked() {
                             set_layer = Some(*id);
                             ui.close();
@@ -301,12 +307,6 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                             ui.close();
                         }
                     } else {
-                        if ui.button("Rename").clicked() {
-                            renamed = Some((*id, None));
-                            clicked = Some((*id, egui::Modifiers::NONE));
-                            ui.close();
-                        }
-
                         ui.separator();
                         let mut item = |ui: &mut Ui, label: &str, action: Action| {
                             if ui.button(label).clicked() {
@@ -392,14 +392,6 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                 }
             }
         }
-    }
-
-    if let Some((id, name)) = rename {
-        state.doc.edit_coalesced("Rename", |m, _| {
-            if let Some(NodeKind::Layer(l)) = m.get_mut(id).map(|n| &mut n.kind) {
-                l.name = name;
-            }
-        });
     }
 
     // The row menu's Rename arrives without a name and opens the field, a field that lost focus brings one or nothing.

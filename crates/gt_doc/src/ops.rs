@@ -657,6 +657,13 @@ pub fn join_meshes(map: &mut Map, sel: &mut Selection) -> Option<NodeId> {
     let others: Vec<NodeId> = ids.iter().copied().filter(|id| Some(*id) != first).collect();
     let target = match first {
         Some(id) => {
+            if let Some(label) = first_label(map, &ids)
+                && let Some(node) = map.get_mut(id)
+                && node.label.is_none()
+            {
+                node.label = Some(label);
+            }
+
             if let Some(slot) = map.mesh_mut(id) {
                 *slot = result;
             }
@@ -840,10 +847,12 @@ mod tests {
         sel.nodes.extend([ids[0], ids[1]]);
         let meshes = convert_to_mesh(&mut m, &mut sel, false);
         m.mesh_mut(meshes[0]).unwrap().decal = true;
+        m.rename(meshes[1], "pillar");
         sel.nodes.extend(meshes.iter().copied());
         let joined = join_meshes(&mut m, &mut sel).unwrap();
         assert_eq!(joined, meshes[0]);
         assert!(m.mesh(joined).unwrap().decal);
+        assert_eq!(m.get(joined).unwrap().label.as_deref(), Some("pillar"), "the unnamed first mesh takes the other one's name");
         assert!(!m.contains(meshes[1]));
         assert_eq!(m.mesh(joined).unwrap().faces.len(), 12);
     }
