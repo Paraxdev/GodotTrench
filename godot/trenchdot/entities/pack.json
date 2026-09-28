@@ -2923,6 +2923,646 @@
           "type": "bool"
         }
       ]
+    },
+    {
+      "classname": "math_calc",
+      "type": "point",
+      "description": "Applies a math operation to the number it receives and fires the result",
+      "color": "#c0c0c0ff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://trenchdot/entities/scripts/td_calc.gd",
+      "group": "math",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "operation",
+          "type": "choices",
+          "default": "add",
+          "description": "What to do with the incoming number and the operand. modulo never gives a negative remainder",
+          "options": [
+            [
+              "add",
+              "add"
+            ],
+            [
+              "subtract",
+              "subtract"
+            ],
+            [
+              "multiply",
+              "multiply"
+            ],
+            [
+              "divide",
+              "divide"
+            ],
+            [
+              "modulo",
+              "modulo"
+            ],
+            [
+              "power",
+              "power"
+            ],
+            [
+              "min",
+              "min"
+            ],
+            [
+              "max",
+              "max"
+            ],
+            [
+              "abs",
+              "abs"
+            ],
+            [
+              "negate",
+              "negate"
+            ],
+            [
+              "round",
+              "round"
+            ],
+            [
+              "floor",
+              "floor"
+            ],
+            [
+              "ceil",
+              "ceil"
+            ]
+          ]
+        },
+        {
+          "name": "operand",
+          "type": "float",
+          "default": "1",
+          "description": "The second number. abs, negate, round, floor and ceil ignore it"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "result",
+          "parameter": "value",
+          "type": "variant",
+          "description": "The answer. Nothing fires for a division by zero"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "calculate",
+          "parameter": "value",
+          "type": "float",
+          "description": "Runs the operation on this number, 0 when there is none"
+        }
+      ]
+    },
+    {
+      "classname": "math_compare",
+      "type": "point",
+      "description": "Compares a stored number with another and fires on_less, on_equal or on_greater",
+      "color": "#c0c0c0ff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://trenchdot/entities/scripts/td_compare.gd",
+      "group": "math",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "compare_value",
+          "type": "float",
+          "default": "0",
+          "description": "The number the stored value is compared with"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "on_less"
+        },
+        {
+          "name": "on_equal"
+        },
+        {
+          "name": "on_not_equal",
+          "description": "Fires with on_less and on_greater"
+        },
+        {
+          "name": "on_greater"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "set_value",
+          "parameter": "value",
+          "type": "variant",
+          "description": "Stores the value without comparing"
+        },
+        {
+          "name": "set_compare_value",
+          "parameter": "value",
+          "type": "variant",
+          "description": "Changes what it compares with"
+        },
+        {
+          "name": "compare",
+          "description": "Compares the stored value now"
+        },
+        {
+          "name": "set_and_compare",
+          "parameter": "value",
+          "type": "variant",
+          "description": "Stores the value, then compares"
+        }
+      ]
+    },
+    {
+      "classname": "math_value",
+      "type": "point",
+      "description": "Stores a number or text, like a score, and fires when it changes",
+      "color": "#c0c0c0ff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://trenchdot/entities/scripts/td_value.gd",
+      "group": "math",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "start_value",
+          "type": "string",
+          "default": "0",
+          "description": "Number or text it starts with and reset returns to"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "value",
+          "parameter": "value",
+          "type": "variant",
+          "description": "Fires when get_value asks for it"
+        },
+        {
+          "name": "changed",
+          "parameter": "value",
+          "type": "variant",
+          "description": "Fires with the new value whenever it changes"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "set_value",
+          "parameter": "value",
+          "type": "variant"
+        },
+        {
+          "name": "add",
+          "parameter": "amount",
+          "type": "variant",
+          "description": "Adds to a number, appends to text. Adds 1 when there is no amount"
+        },
+        {
+          "name": "get_value",
+          "description": "Fires value with the stored value"
+        },
+        {
+          "name": "reset"
+        }
+      ]
+    },
+    {
+      "classname": "logic_gate",
+      "type": "point",
+      "description": "Combines two stored booleans with and, or, xor, nand, nor, xnor or not",
+      "color": "#c0c0c0ff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://trenchdot/entities/scripts/td_gate.gd",
+      "group": "logic",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "gate",
+          "type": "choices",
+          "default": "and",
+          "description": "How a and b are combined. not looks at a only",
+          "options": [
+            [
+              "and",
+              "and"
+            ],
+            [
+              "or",
+              "or"
+            ],
+            [
+              "xor",
+              "xor"
+            ],
+            [
+              "nand",
+              "nand"
+            ],
+            [
+              "nor",
+              "nor"
+            ],
+            [
+              "xnor",
+              "xnor"
+            ],
+            [
+              "not",
+              "not"
+            ]
+          ]
+        },
+        {
+          "name": "start_a",
+          "type": "bool",
+          "default": "0",
+          "description": "Initial value of a"
+        },
+        {
+          "name": "start_b",
+          "type": "bool",
+          "default": "0",
+          "description": "Initial value of b"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "on_true",
+          "description": "Fires when the result turns true, and on test"
+        },
+        {
+          "name": "on_false",
+          "description": "Fires when the result turns false, and on test"
+        },
+        {
+          "name": "changed",
+          "parameter": "on",
+          "type": "bool",
+          "description": "Fires with the new result when it flips"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "set_a",
+          "parameter": "value",
+          "type": "bool",
+          "description": "Sets a, true when there is no value"
+        },
+        {
+          "name": "set_b",
+          "parameter": "value",
+          "type": "bool",
+          "description": "Sets b, true when there is no value"
+        },
+        {
+          "name": "toggle_a"
+        },
+        {
+          "name": "toggle_b"
+        },
+        {
+          "name": "test",
+          "description": "Fires on_true or on_false for the current result"
+        }
+      ]
+    },
+    {
+      "classname": "logic_random",
+      "type": "point",
+      "description": "Picks one of several outputs at random, or succeeds with a chance",
+      "color": "#c0c0c0ff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://trenchdot/entities/scripts/td_random.gd",
+      "group": "logic",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "count",
+          "type": "int",
+          "default": "3",
+          "description": "How many outputs pick chooses from, 1 to 8"
+        },
+        {
+          "name": "no_repeat",
+          "type": "bool",
+          "default": "0",
+          "description": "Never picks the same output twice in a row"
+        },
+        {
+          "name": "chance",
+          "type": "float",
+          "default": "50",
+          "description": "Percent chance that roll fires on_success, 0 to 100"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "out_1"
+        },
+        {
+          "name": "out_2"
+        },
+        {
+          "name": "out_3"
+        },
+        {
+          "name": "out_4"
+        },
+        {
+          "name": "out_5"
+        },
+        {
+          "name": "out_6"
+        },
+        {
+          "name": "out_7"
+        },
+        {
+          "name": "out_8"
+        },
+        {
+          "name": "picked",
+          "parameter": "index",
+          "type": "int",
+          "description": "Which output pick chose"
+        },
+        {
+          "name": "on_success"
+        },
+        {
+          "name": "on_fail"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "pick",
+          "description": "Fires one of out_1 to out_N"
+        },
+        {
+          "name": "roll",
+          "description": "Fires on_success or on_fail"
+        }
+      ]
+    },
+    {
+      "classname": "logic_case",
+      "type": "point",
+      "description": "Fires the output of the first case that matches the value it receives",
+      "color": "#c0c0c0ff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://trenchdot/entities/scripts/td_case.gd",
+      "group": "logic",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "case_1",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_1, empty to skip it"
+        },
+        {
+          "name": "case_2",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_2, empty to skip it"
+        },
+        {
+          "name": "case_3",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_3, empty to skip it"
+        },
+        {
+          "name": "case_4",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_4, empty to skip it"
+        },
+        {
+          "name": "case_5",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_5, empty to skip it"
+        },
+        {
+          "name": "case_6",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_6, empty to skip it"
+        },
+        {
+          "name": "case_7",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_7, empty to skip it"
+        },
+        {
+          "name": "case_8",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_8, empty to skip it"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "on_case_1"
+        },
+        {
+          "name": "on_case_2"
+        },
+        {
+          "name": "on_case_3"
+        },
+        {
+          "name": "on_case_4"
+        },
+        {
+          "name": "on_case_5"
+        },
+        {
+          "name": "on_case_6"
+        },
+        {
+          "name": "on_case_7"
+        },
+        {
+          "name": "on_case_8"
+        },
+        {
+          "name": "on_default",
+          "description": "Fires when no case matches"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "in_value",
+          "parameter": "value",
+          "type": "variant",
+          "description": "Numbers match by value, text must match exactly"
+        }
+      ]
+    },
+    {
+      "classname": "logic_flipflop",
+      "type": "point",
+      "description": "Alternates between on_a and on_b each time it is triggered",
+      "color": "#c0c0c0ff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://trenchdot/entities/scripts/td_flipflop.gd",
+      "group": "logic",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "start_on",
+          "type": "bool",
+          "default": "0",
+          "description": "Starts on, so the first trigger fires on_b"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "on_a",
+          "description": "Fires when it turns on"
+        },
+        {
+          "name": "on_b",
+          "description": "Fires when it turns off"
+        },
+        {
+          "name": "changed",
+          "parameter": "on",
+          "type": "bool"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "trigger"
+        },
+        {
+          "name": "reset",
+          "description": "Back to the starting state without firing on_a or on_b"
+        }
+      ]
     }
   ],
   "files": {
@@ -2942,12 +3582,19 @@
     "definitions/logic_auto.tres": "f85c27fe3e80e66e5749cf65cf0f373a97aa7885f7b5a2fd9bb621fbc434a25f",
     "definitions/logic_branch.tres": "c9195a1a7a5df6d44ea491bc7fe7c6e64fa6dbf597c93c27ef79211d1df28ee6",
     "definitions/logic_call.tres": "537e3e85fd1d658e2747ac3199c68c65c38672440648e8976afaff220bfc3c51",
+    "definitions/logic_case.tres": "6dbc2a684824031816a0cb72d4e6bfeafb86be7eac54b39e515e9def0f3650fe",
     "definitions/logic_counter.tres": "e3907c5b782640c4ceba163a6cedc6216961b99f1b001d43ac284a4311192a6f",
     "definitions/logic_debug.tres": "7d124e8d8ad79f15757bb674ef107178d470e939c5d4a633ba0d328ca8bb5e35",
+    "definitions/logic_flipflop.tres": "e8cff100debac829525cc6986ac49c2e2e7800125f0f64b8632bd1432f82fe91",
+    "definitions/logic_gate.tres": "4b95686027934097894f352eb710360486d31495cf307c23df1d5b02800166c7",
+    "definitions/logic_random.tres": "ac8ffd76e3d8cec56516cdaee5607e6ee63a77440b3c4c9bbaa5d71ded491abb",
     "definitions/logic_relay.tres": "81434a4b601d79e3be4c0ed14c19f0cd25006bdc3e8cc35ff7a87a744cd83716",
     "definitions/logic_script.tres": "70264cfb5fcba32bb8dc0cd0bbb7dec06a835947199ca0d7eec7c91d287c8bf5",
     "definitions/logic_sequence.tres": "d0e6eb294288b744febfb051790c2004ff3c9f8822a0c91da66e9c45adf4e2c6",
     "definitions/logic_timer.tres": "b4b3465f0bf907bb9142639dab858cfe1ed35aebec9a45c99e0f92ec5f1159f3",
+    "definitions/math_calc.tres": "1f4b07efddaa8261a0840221a6eb9093074fd78acbf8eb4caf39a2132e20e41c",
+    "definitions/math_compare.tres": "8293359dfce9b5cb95c29c1c72966515200d4bd374037c3689e291c5018f21f9",
+    "definitions/math_value.tres": "f8df92ea8f8db76f651ffa3f7131ed1336b3a5a5eb4f61d9a0842cd58a67f6c7",
     "definitions/npc_walker.tres": "a5f377efb323e122dd495f5c5692afb41fac79b541036e5572b43e53517e8c47",
     "definitions/path_corner.tres": "ddd63fab9d25b6e36a0e25b15d391e92aa8c39f783f7533652a6799375809e58",
     "definitions/prop_model.tres": "3a74840e2689521f8dede4380014bfc4c6b4a1f2e194991d8a3b93446e0a8ac9",
@@ -2960,24 +3607,31 @@
     "definitions/trigger_push.tres": "ddde53b435fb831bca98ce6e56f04dbabfffce78987435bcd6dbe3f6fd6ee4b0",
     "definitions/trigger_spawn_area.tres": "5c7c50471c08c1ccaad6f2a20a87a2c88f751ee5a0258ab3589bb9aa6737ac12",
     "definitions/trigger_teleport.tres": "61b0c8593adf34152607e57333ffef5c01e9da29841b2a7112295ee2bc5b3e47",
-    "gameplay_fgd.tres": "9b8e2dd28c777e8340449eba5e51d4c696aae2b7155ebb6557678619ad688396",
+    "gameplay_fgd.tres": "70452a876cf4b20dd3ce0619aced03c47b6e4caa3f1e17935c3222f822b018da",
     "scripts/td_animate.gd": "0b5444e4367ac8f09973f649b4983a08ca84f78b458f71ac1fc191c7ed54fe6e",
     "scripts/td_auto.gd": "11bc2fa75bb84511915624b76ab78180d47aac23d9e368e3a5df6ee3a5667878",
     "scripts/td_branch.gd": "24880478ec939ff10de75ade727e4b79425d428139d8a2df9d079158cda3ad3c",
     "scripts/td_button.gd": "226115151c973257b74b8ceeb3121fe0c52163657e66f7ab2b6c709a731b2b09",
+    "scripts/td_calc.gd": "e447a51c7f864f371557c4c76d15679674016dc702a8d24ab45813c1e5e6e721",
+    "scripts/td_case.gd": "ab3d911fe36066630a26a5d773208974532bf85876e467fcb27cba5c9e0af717",
+    "scripts/td_compare.gd": "795f0f1618eac302a56cf69e1220e615d08b9194eba56bd98e953052c5a16835",
     "scripts/td_counter.gd": "fadf9e6adfb7ad047d6d10db942ab4f228a9b286d47943b9228e42429dd0d92f",
     "scripts/td_debug.gd": "f5117c39e130429d7476392b3eaf541aea0404e3d8973c5190c834ca994a062b",
     "scripts/td_door.gd": "f448566378ef5e0a391f32be684dc1101af64bf087d56cb690dee78e4b3b528c",
     "scripts/td_door_rotating.gd": "7add03f6f4a9907e755ae7d606eaa4d0d09192f36fc6fa2f5bc3c2ea6977836c",
     "scripts/td_explosion.gd": "8d1b5698dec92e8302cfe5bf58f57c02231becb7df34ff053101840bf796e7c9",
+    "scripts/td_flipflop.gd": "39064905c58391a447d4de3253f4ba28e17dd2c8c4126d87c3017f0076d92bfb",
+    "scripts/td_gate.gd": "7c65ee64e6cb3c58e6e22d1934df8db433ec2041906f44b25a28a06eca2f3e76",
     "scripts/td_hurt.gd": "87dcec936888639fe44a738b2de98f54b30343d1880a96b28f3b841b349bacfd",
     "scripts/td_logic_call.gd": "f2586065765ffad62bef426129df7e072fd0d2ee6823bffef806ea1aa3b7b1ee",
+    "scripts/td_math.gd": "1121897ba32810a40c3c61220076a464f41d22de5f1185bd8db6497167562d31",
     "scripts/td_npc.gd": "cb84aa8f06b86c1a519d908b19fc46b0c405b4956581c0b0d3c1f646721acecb",
     "scripts/td_particles.gd": "1ef3e0301970403a0d558eece022b42731c13fca6721aecf6391cfeeb653873d",
     "scripts/td_path_corner.gd": "e98740a44c7006f85144175e4701cbdd90f712bd697d533ccf782b0334b737da",
     "scripts/td_platform.gd": "54ba1f96a736fb2d3cf09ad595d81f8f116c69a2354c63c24e649e56a4a639ab",
     "scripts/td_prop_physics.gd": "5585cc52d888b2a46f2492b6c85a1c73441afd696770313d64c3ff2e8a616f22",
     "scripts/td_push.gd": "dee4c5436a39788fe1f2ec43da8b03fa5ad44883e4f4830f9764044e8ab66574",
+    "scripts/td_random.gd": "a9f34dcd225a8cd857781cb79274ca23304c5f116a85dae8e408cebceac045e3",
     "scripts/td_relay.gd": "37471bfff35526d790da8024a58e0860515013a01717eed4864811a335a0edc2",
     "scripts/td_script.gd": "29a2cd928d645adbcff7377aeceee8fe6415346c66045011233bb888c4d9e88d",
     "scripts/td_sequence.gd": "dd01cb8c6b27f3f350015b77e83b4c6bf43988cc21c74f5aea854fb8612f5c05",
@@ -2990,6 +3644,7 @@
     "scripts/td_timer.gd": "7656d21dae128bac1dabd7d79c5d667a658d0e4ae9627d07638b9d73174ad5ae",
     "scripts/td_train.gd": "7ce6bc85f50414bc9f901ba7f247637ba37fcae466ef2876be30b625214105de",
     "scripts/td_trigger.gd": "06210adc4512dd374f04683f982531a41370432ab015d1cea71fc1a66363ece4",
-    "scripts/td_trigger_call.gd": "5a37f1782f35c9f5337d5367f4b9d27973b3f7e7033ea4d41b4e66a4a722c7bc"
+    "scripts/td_trigger_call.gd": "5a37f1782f35c9f5337d5367f4b9d27973b3f7e7033ea4d41b4e66a4a722c7bc",
+    "scripts/td_value.gd": "c85add8c8146df87701570872250130564f5aed5a079773060b1efb1c456c6ea"
   }
 }
