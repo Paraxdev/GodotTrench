@@ -76,6 +76,13 @@ impl PinType {
         PinType::ALL.into_iter().find(|t| t.name() == name).unwrap_or(if name.is_empty() { PinType::Pulse } else { PinType::Variant })
     }
 
+    /// Whether a value of this type fits an input of type `to`. A pulse carries no value and takes any, a variant is any
+    /// value, and numbers convert. Other pairs are no natural fit, though the wire can still be made.
+    pub fn fits(self, to: PinType) -> bool {
+        use PinType::*;
+        self == to || matches!((self, to), (Pulse, _) | (_, Pulse) | (Variant, _) | (_, Variant) | (Int, Float) | (Float, Int) | (Bool, Int) | (Int, Bool))
+    }
+
     /// A declared pin's type: a pulse without parameters, else the type of its first one.
     fn of(def: &gt_formats::game::IoDef) -> Self {
         def.parameter_types().first().map_or(PinType::Pulse, |t| PinType::parse(t))
@@ -103,6 +110,11 @@ impl Pin {
     fn used(name: &str, ty: PinType) -> Self {
         Pin { name: name.to_string(), declared: false, description: String::new(), ty, values: String::new() }
     }
+}
+
+/// A logic or math entity, which only exists for its wiring, so it always has a node.
+pub fn is_helper(classname: &str) -> bool {
+    classname.starts_with("logic_") || classname.starts_with("math_")
 }
 
 /// What an entity is called in the graph: its targetname, else the name it was given in the Outliner, else its classname.
@@ -135,7 +147,7 @@ pub struct GraphNode {
     pub category: String,
     /// The entity has a definition, so pins it does not declare are worth a warning.
     pub defined: bool,
-    /// A logic_* helper entity, which only exists for its wiring.
+    /// A logic_* or math_* helper entity, which only exists for its wiring.
     pub logic: bool,
     /// Shown only because it is selected, it has no wiring yet.
     pub unwired: bool,
@@ -263,7 +275,7 @@ impl GraphModel {
         let mut shown: BTreeSet<NodeId> = BTreeSet::new();
         let mut incoming: BTreeMap<NodeKey, Vec<(&str, PinType)>> = BTreeMap::new();
         for (id, e) in map.entities() {
-            if !e.outputs.is_empty() || e.classname.starts_with("logic_") {
+            if !e.outputs.is_empty() || is_helper(&e.classname) {
                 shown.insert(id);
             }
 
@@ -320,7 +332,7 @@ impl GraphModel {
                 outputs,
                 category,
                 defined: def.is_some(),
-                logic: e.classname.starts_with("logic_"),
+                logic: is_helper(&e.classname),
                 unwired: !wired.contains(id),
                 stored,
                 settings: def.map(|d| setting_tokens(e, d)).unwrap_or_default(),
@@ -531,6 +543,23 @@ pub fn edge_label(conn: &IoConnection) -> String {
     }
 
     parts.join("  ")
+}
+
+/// What hovering a wire tells: the ends of the connection and the delay, with the times and parameter when set.
+pub fn edge_tip(conn: &IoConnection) -> String {
+    let mut tip = format!("output: {}\ntarget: {}\ninput: {}\ndelay: ", pin_label(&conn.output), conn.target, pin_label(&conn.input));
+    tip.push_str(&if conn.delay > 0.0 { format!("{} s", crate::widgets::format_number(conn.delay)) } else { "none".into() });
+    match conn.times {
+        -1 => {}
+        1 => tip.push_str("\nfires: once"),
+        n => tip.push_str(&format!("\nfires: {n} times")),
+    }
+
+    if !conn.parameter.is_empty() {
+        tip.push_str(&format!("\nparameter: {}", conn.parameter));
+    }
+
+    tip
 }
 
 /// Sets a node's size and packs its settings into the lines that fit.
@@ -864,6 +893,38 @@ mod tests {
         assert_eq!(long.len(), 1);
         assert!(long[0].chars().count() <= 20 && long[0].ends_with('\u{2026}'), "{long:?}");
         assert!(pack_settings(&[], 20).is_empty());
+    }
+
+    #[test]
+    fn a_wire_tip_names_both_ends_and_the_delay() {
+        let mut c = conn("pressed", "door_1", "open");
+        assert_eq!(edge_tip(&c), "output: pressed\ntarget: door_1\ninput: open\ndelay: none");
+        c.delay = 2.5;
+        c.times = 1;
+        c.parameter = "5".into();
+        assert_eq!(edge_tip(&c), "output: pressed\ntarget: door_1\ninput: open\ndelay: 2.5 s\nfires: once\nparameter: 5");
+        c.times = 3;
+        assert!(edge_tip(&c).contains("fires: 3 times"));
+    }
+
+    #[test]
+    fn pins_fit_when_a_value_can_go_into_them() {
+        use PinType::*;
+        assert!(Pulse.fits(Int) && Node.fits(Pulse), "a pulse takes and gives any");
+        assert!(Int.fits(Float) && Variant.fits(String) && String.fits(Variant));
+        assert!(!Node.fits(Int) && !String.fits(Vector3) && !Color.fits(Bool), "no natural fit");
+        assert!(PinType::ALL.iter().all(|t| t.fits(*t)));
+    }
+
+    #[test]
+    fn math_entities_always_have_a_node_like_logic_ones() {
+        let mut m = Map::new();
+        let calc = add(&mut m, "math_calc", "calc", vec![]);
+        let relay = add(&mut m, "logic_relay", "r", vec![]);
+        let light = add(&mut m, "light", "l", vec![]);
+        let g = build(&m, &[], &[]);
+        assert!(g.node(&NodeKey::Entity(calc)).is_some_and(|n| n.logic) && g.node(&NodeKey::Entity(relay)).is_some_and(|n| n.logic));
+        assert!(g.node(&NodeKey::Entity(light)).is_none());
     }
 
     #[test]

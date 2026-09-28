@@ -19,11 +19,11 @@ tall as the middle of the window, since a graph needs room. Drag the divider or 
 | Header color | The category: the definition's group, else the classname's first word, so `logic_relay` is *logic*. See [Colors](#colors) |
 | Pins | Inputs on the left, outputs on the right, from the [entity definition](entities/README.md) plus any name the map already uses on that entity. A filled pin has a wire. Hover a pin for its type and the values it passes |
 | Yellow pin name | The name is not in the entity's definition, the Issues panel warns about it too |
-| Wire label | The delay, `once` or how many times it may fire, and the parameter, when they are set |
+| Wire label | The delay, `once` or how many times it may fire, and the parameter, when they are set. Hover a wire for its output, target, input and delay in full |
 | Blue node and wire | A [target](parameters.md#targets) only the running game resolves, such as `!player`, `@enemies`, a node path or a wildcard like `door_*` |
 | Red node, dashed red wire | A targetname no entity has, usually a typo |
 
-Only wired entities and logic entities have a node. Select any other entity, in a view or the Outliner, and it shows
+Only wired entities and logic and math entities have a node. Select any other entity, in a view or the Outliner, and it shows
 up too, ready to be wired.
 
 ## Colors
@@ -67,6 +67,10 @@ category of your own, set with the `group` of a definition, gets a color of its 
 2. Drop the wire on a node's title instead, to pick from all its inputs or type any name.
 3. Drop it on empty space to add a logic entity there, already wired to the pin you dragged from.
 
+While you drag, the pins on the other nodes that the wire fits get a ring, and the pin it would end on is filled. A
+pulse fits any pin and a value fits a pin of its own type, so an `activator` node does not fit an `int` input. Any
+pin can still take the wire, since the names in entity I/O are only checked when the game runs.
+
 Right click empty space, or use **Add**, to add a logic entity without a wire. Without a search the list is grouped by
 category, logic and math first, then other entities that have inputs or outputs. Type to search all of them: classes
 whose name starts with or contains the text come first, then those whose category or description does. The first row
@@ -75,8 +79,23 @@ point entities, and the Godot build makes a node for each, so they need a place 
 *Logic*, next to the entity they are wired to, or in front of the 3D view's camera.
 
 Click a wire to edit its output, target, input, parameter, delay and times in the box at the top right. Its **Delete**
-button, or the Delete key while the pointer is over the graph, removes it. Every change is one step in *History*, so
-undo works as everywhere else.
+button, or the Delete key while the pointer is over the graph, removes it. Right click anywhere along a wire, not only
+on its label, for **Edit Connection** and **Delete Connection**. Every change is one step in *History*, so undo works
+as everywhere else.
+
+Right click a node for what to do with its entity:
+
+| Item | Does |
+| --- | --- |
+| Frame in Views | Selects it and moves the views to it, like a double click |
+| Rename | Renames the entity in the Outliner. The node is titled by the targetname when there is one, so the name shows there only for an entity without |
+| Duplicate | Copies the entity one grid step aside, wires from it included |
+| Select Connected | Selects the node and every node a wire joins it to |
+| Disconnect All | Deletes every wire into or out of the node in one step. The entities stay |
+| Delete Entity | Removes the entity from the map, see [Copy, paste and delete](#copy-paste-and-delete) |
+| Simulate | Fires one of its outputs on paper, see [Simulate](#simulate) |
+
+With several nodes selected, Duplicate and Delete act on all of them when you right click one of the selected.
 
 > **Note:** Without the Gameplay entities pack there are no logic entities to add. The Add menu then offers to
 > install it.
@@ -98,12 +117,13 @@ over the graph.
 | To | Do |
 | --- | --- |
 | Zoom | Turn the wheel |
-| Pan | Drag with the middle or right button |
+| Pan | Drag with the middle or right button. A right click without moving opens a menu, so a shaky pan can pop it up, Escape closes it |
 | Select | Click a node, Shift or Ctrl click adds, drag on empty space to box select. The entities are selected in the views and the Outliner too, and the other way round |
 | Frame in the views | Double click a node |
 | Move | Drag nodes. Their positions are saved in the map |
 | Tidy up | **Arrange** lays out the selected nodes by signal flow. With fewer than two selected, every node goes back to the automatic layout |
-| See everything | **Fit** |
+| See everything | **Fit**, or Home with the pointer over the graph |
+| See the selection | F with the pointer over the graph frames the selected nodes |
 
 Nodes nobody moved follow the automatic layout, left to right the way signals flow, and the view zooms to fit the
 panel until you zoom or pan yourself. Once you move a node or wire something in the graph, the others keep their

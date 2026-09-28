@@ -37,7 +37,7 @@ const CONTROLS: &str = "Drag from an output pin on the right of a node to an inp
 Drop on empty space to add a logic entity there, or right click the canvas.\n\
 Click a node to select its entity, double click to frame it in the views. Drag empty space to box select.\n\
 Click a wire to edit its delay, parameter and times, Delete removes it.\n\
-Wheel zooms, middle or right drag pans.";
+Wheel zooms, middle or right drag pans. F frames the selected nodes and Home shows every node.";
 
 /// One pin of a node, by name so it survives the model being built again.
 #[derive(Clone, Debug, PartialEq)]
@@ -351,6 +351,17 @@ impl GraphState {
         Some(self.pin_screen(n, output, pin))
     }
 
+    /// The canvas as last drawn.
+    pub fn canvas_rect(&self) -> Rect {
+        self.canvas
+    }
+
+    /// Screen position of a point along a wire as last drawn, `t` running from its output pin (0) to its input (1).
+    pub fn wire_pos(&self, id: ConnectionId, t: f32) -> Option<Pos2> {
+        let e = self.model.edges.iter().find(|e| e.id() == id)?;
+        Some(curve_at(&self.edge_curve(e), t))
+    }
+
     /// Screen rect of a frame as last drawn.
     pub fn frame_screen_rect(&self, i: usize) -> Option<Rect> {
         (i < self.frames.len()).then(|| self.frame_rect(i))
@@ -370,6 +381,10 @@ impl GraphState {
     /// Zooms to show every node, but not below `min`, where the view shows the top left of the graph instead.
     fn fit(&mut self, min: f32) {
         let bounds = self.model.nodes.iter().fold(Rect::NOTHING, |r, n| r.union(n.rect()));
+        self.fit_bounds(bounds, min);
+    }
+
+    fn fit_bounds(&mut self, bounds: Rect, min: f32) {
         if !bounds.is_positive() || !self.canvas.is_positive() {
             self.zoom = 1.0;
             self.pan = vec2(24.0, 24.0);
@@ -455,7 +470,8 @@ impl GraphState {
     }
 
     /// Claims the keys that act on the graph while the pointer is over it: Delete removes the selected wire, Escape
-    /// deselects it or closes a menu. Runs before the editor's shortcuts, so Delete does not also delete the entity.
+    /// deselects it or closes a menu, C adds a frame, F frames the selection and Home everything. Runs before the
+    /// editor's shortcuts, so Delete does not also delete the entity.
     pub fn take_keys(&mut self, ctx: &egui::Context, state: &mut EditorState) -> bool {
         if !self.hovered {
             return false;
@@ -473,6 +489,18 @@ impl GraphState {
 
         if !self.selected_nodes(state).is_empty() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::C)) {
             self.frame_selection(state);
+            return true;
+        }
+
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Home)) {
+            self.fit(MIN_ZOOM);
+            return true;
+        }
+
+        let bounds = self.selected_nodes(state).iter().fold(Rect::NOTHING, |r, n| r.union(n.rect()));
+        if bounds.is_positive() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F)) {
+            self.fit_bounds(bounds, MIN_ZOOM);
+            self.navigated = true;
             return true;
         }
 
@@ -593,7 +621,7 @@ type Group = (String, Vec<(String, String)>);
 fn creatable(state: &EditorState) -> Vec<Group> {
     let mut groups: std::collections::BTreeMap<(u8, String), Vec<(String, String)>> = Default::default();
     for d in state.game.point_entities() {
-        let helper = d.classname.starts_with("logic_") || d.classname.starts_with("math_");
+        let helper = super::model::is_helper(&d.classname);
         if !helper && d.inputs.is_empty() && d.outputs.is_empty() {
             continue;
         }
@@ -662,6 +690,13 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
         response.clone().on_hover_text_at_pointer(tip);
     }
 
+    if let Some(Hit::Edge(i)) = &hover
+        && let Some(e) = gs.model.edges.get(*i)
+        && let Some(conn) = state.doc.map.entity(e.source).and_then(|en| en.outputs.get(e.connection))
+    {
+        response.clone().on_hover_text_at_pointer(super::model::edge_tip(conn));
+    }
+
     if strip > 0.0 {
         sim_list(ui, Rect::from_min_max(pos2(room.min.x, canvas.max.y + 4.0), room.max), state, gs);
     }
@@ -686,7 +721,7 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: &
             arrange(state, gs, &selected);
         }
 
-        if ui.button("Fit").on_hover_text("Zooms to show every node").clicked() {
+        if ui.button("Fit").on_hover_text("Zooms to show every node, Home over the graph does the same. F frames the selected nodes").clicked() {
             gs.fit(MIN_ZOOM);
         }
 
@@ -1006,6 +1041,14 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
         Some(Hit::Edge(i)) => Some(*i),
         _ => None,
     };
+    // While a wire is dragged, the pins it fits are ringed and the one it would end on is filled.
+    let wire = match &gs.drag {
+        Some(Drag::Wire { from, at }) => gs.model.node(&from.key).and_then(|n| {
+            let pin = if from.output { n.output(&from.name).map(|i| &n.outputs[i]) } else { n.input(&from.name).map(|i| &n.inputs[i]) };
+            Some((from, pin?.ty, gs.drop_pin(from, *at, visible)))
+        }),
+        _ => None,
+    };
     let mut badges = Vec::new();
     for (i, e) in gs.model.edges.iter().enumerate() {
         let points = gs.edge_curve(e);
@@ -1081,10 +1124,19 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
         for (output, pins) in [(false, &n.inputs), (true, &n.outputs)] {
             for (k, pin) in pins.iter().enumerate() {
                 let at = gs.pin_screen(n, output, k);
-                let hot = hovered_pin == Some((output, pin.name.as_str()));
+                let target =
+                    wire.as_ref().is_some_and(|(_, _, drop)| drop.as_ref().is_some_and(|d| d.key == n.key && d.output == output && d.name == pin.name));
+                let hot = target || hovered_pin == Some((output, pin.name.as_str()));
                 let color = theme::pin_type_color(pin.ty.name());
                 let radius = PIN_RADIUS * gs.zoom.max(0.6) * if hot { 1.4 } else { 1.0 };
-                let (fill, stroke) = if connected(output, k) { (color, Stroke::NONE) } else { (Color32::TRANSPARENT, Stroke::new(1.5, color)) };
+                let (fill, stroke) = if target || connected(output, k) { (color, Stroke::NONE) } else { (Color32::TRANSPARENT, Stroke::new(1.5, color)) };
+                let fits = wire
+                    .as_ref()
+                    .is_some_and(|(from, ty, _)| from.output != output && from.key != n.key && if from.output { ty.fits(pin.ty) } else { pin.ty.fits(*ty) });
+                if fits {
+                    painter.circle_stroke(at, radius + 4.0 * gs.zoom.max(0.6), Stroke::new(2.0, theme::ACCENT));
+                }
+
                 // A pulse is a triangle pointing the way the signal flows, a value a circle, so the shape tells them
                 // apart as well as the color.
                 if pin.ty == PinType::Pulse {
@@ -1474,25 +1526,80 @@ fn context_menu(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, hit: 
         Hit::Node(k) => k.clone(),
         Hit::Empty => return true,
     };
-    let Some(id) = key.entity() else {
-        ui.label(RichText::new("Found when the map runs, or not at all").weak());
-        return false;
-    };
+    let entity = key.entity();
+    if let Some(id) = entity {
+        if ui.button("Frame in Views").clicked() {
+            select(state, &[id], false);
+            actions.push(Action::FocusSelection);
+            return true;
+        }
 
-    if ui.button("Frame in Views").clicked() {
-        select(state, &[id], false);
-        actions.push(Action::FocusSelection);
+        // The menu acts on the whole selection when its node is part of it, else on this node alone.
+        let act_on = |state: &mut EditorState| {
+            if !selected_entities(state).contains(&id) {
+                select(state, &[id], false);
+            }
+        };
+        let tip = "Renames the entity in the Outliner. The node is titled by its targetname when it has one, else by this name";
+        if ui.button("Rename").on_hover_text(tip).clicked() {
+            select(state, &[id], false);
+            actions.push(Action::Rename);
+            return true;
+        }
+
+        if ui.button("Duplicate").clicked() {
+            act_on(state);
+            actions.push(Action::Duplicate);
+            return true;
+        }
+    } else {
+        ui.label(RichText::new("Found when the map runs, or not at all").weak());
+    }
+
+    let touching: Vec<&GraphEdge> = gs.model.edges.iter().filter(|e| gs.model.nodes[e.from].key == key || gs.model.nodes[e.to].key == key).collect();
+    let mut linked: Vec<NodeId> = touching.iter().flat_map(|e| [gs.model.nodes[e.from].key.entity(), gs.model.nodes[e.to].key.entity()]).flatten().collect();
+    linked.extend(entity);
+    linked.sort();
+    linked.dedup();
+    let wires: Vec<ConnectionId> = touching.iter().map(|e| e.id()).collect();
+    ui.separator();
+    let tip = "Selects this node and every node a wire joins it to";
+    if ui.add_enabled(linked.len() > 1, egui::Button::new("Select Connected")).on_hover_text(tip).on_disabled_hover_text("No wires to follow").clicked() {
+        select(state, &linked, false);
         return true;
     }
 
-    let outputs = state.doc.map.entity(id).map(|e| logic_sim::start_outputs(state.game.entity(&e.classname), e)).unwrap_or_default();
-    if !outputs.is_empty() {
-        ui.separator();
-        ui.label(RichText::new("Simulate").weak());
-        for output in outputs {
-            if ui.button(&output).clicked() {
-                gs.simulate(state, id, &output);
-                return true;
+    let tip = "Deletes every wire going into or out of this node, the entities stay";
+    if ui.add_enabled(!wires.is_empty(), egui::Button::new("Disconnect All")).on_hover_text(tip).on_disabled_hover_text("No wires").clicked() {
+        let count = edit::disconnect(state, &wires);
+        gs.selected_edge = None;
+        state.set_status(format!("Deleted {count} connection(s)"));
+        return true;
+    }
+
+    if let Some(id) = entity {
+        let picked = selected_entities(state);
+        let many = if picked.contains(&id) { picked.len() } else { 1 };
+        let label = if many > 1 { format!("Delete {many} Entities") } else { "Delete Entity".to_string() };
+        let tip = "Removes the entity from the map, not only from the graph. Wires from other entities to it turn red. Undo brings it back";
+        if ui.button(label).on_hover_text(tip).clicked() {
+            if !picked.contains(&id) {
+                select(state, &[id], false);
+            }
+
+            actions.push(Action::Delete);
+            return true;
+        }
+
+        let outputs = state.doc.map.entity(id).map(|e| logic_sim::start_outputs(state.game.entity(&e.classname), e)).unwrap_or_default();
+        if !outputs.is_empty() {
+            ui.separator();
+            ui.label(RichText::new("Simulate").weak());
+            for output in outputs {
+                if ui.button(&output).clicked() {
+                    gs.simulate(state, id, &output);
+                    return true;
+                }
             }
         }
     }

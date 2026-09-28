@@ -1137,6 +1137,158 @@ fn logic_graph_simulate_marks_the_steps_that_only_might_happen() {
     assert!(harness.query_by_label_contains("1. btn.pressed -> count.add  (maybe)").is_none(), "the press itself always happens");
 }
 
+/// A Logic graph that gets its keys first, the way the app hands them out.
+fn logic_graph_with_keys(f: Fixture) -> Harness<'static, Fixture> {
+    let mut harness = Harness::builder().with_size(egui::vec2(1000.0, 640.0)).build_ui_state(
+        |ui, f: &mut Fixture| {
+            f.panels.logic.take_keys(ui.ctx(), &mut f.state);
+            gt_editor::logic_graph::show(ui, &mut f.state, &mut f.panels.logic, &mut f.actions);
+        },
+        f,
+    );
+    harness.run();
+    harness
+}
+
+#[test]
+fn logic_graph_f_frames_the_selection_and_home_shows_everything() {
+    use gt_editor::logic_graph::model::NodeKey;
+
+    let mut f = Fixture::new();
+    let near = named(&mut f, "logic_relay", "near", DVec3::ZERO);
+    let far = named(&mut f, "logic_relay", "far", DVec3::new(64.0, 0.0, 0.0));
+    f.state.doc.edit("place", |m, s| {
+        m.get_mut(near).unwrap().set_graph(Some([0.0, 0.0]));
+        m.get_mut(far).unwrap().set_graph(Some([4000.0, 2000.0]));
+        s.select_node(far);
+    });
+    let mut harness = logic_graph_with_keys(f);
+    let rect = |h: &Harness<'_, Fixture>, id| h.state().panels.logic.node_screen_rect(&NodeKey::Entity(id)).unwrap();
+    let canvas = harness.state().panels.logic.canvas_rect();
+    harness.hover_at(canvas.center());
+    harness.run();
+
+    harness.key_press(egui::Key::F);
+    harness.run();
+    assert!(canvas.contains_rect(rect(&harness, far)), "the selected node is in view: {:?} in {canvas:?}", rect(&harness, far));
+    assert!((rect(&harness, far).center() - canvas.center()).length() < 40.0, "and in the middle");
+    assert!(!canvas.contains_rect(rect(&harness, near)), "the other one is out of view");
+
+    harness.key_press(egui::Key::Home);
+    harness.run();
+    assert!(canvas.contains_rect(rect(&harness, near)) && canvas.contains_rect(rect(&harness, far)), "Home shows every node");
+    assert!(harness.state().state.doc.selection.nodes.contains(&far), "the selection is not touched");
+}
+
+#[test]
+fn logic_graph_hovering_a_wire_tells_its_ends_and_delay() {
+    use gt_editor::logic_graph::model::NodeKey;
+
+    let mut f = Fixture::new();
+    let relay = named(&mut f, "logic_relay", "r", DVec3::ZERO);
+    named(&mut f, "func_door", "gate", DVec3::new(64.0, 0.0, 0.0));
+    wire(&mut f, relay, "triggered", "gate", "open");
+    f.state.doc.edit("delay", |m, _| m.entity_mut(relay).unwrap().outputs[0].delay = 2.0);
+    let mut harness = logic_graph(f);
+    let id = (relay, 0);
+    let at = harness.state().panels.logic.wire_pos(id, 0.3).unwrap();
+    assert!(harness.state().panels.logic.model.node(&NodeKey::Entity(relay)).is_some());
+    harness.hover_at(at);
+    for _ in 0..8 {
+        harness.step();
+    }
+
+    for line in ["output: triggered", "target: gate", "input: open", "delay: 2 s"] {
+        assert!(harness.query_by_label_contains(line).is_some(), "the tooltip says {line}");
+    }
+}
+
+#[test]
+fn logic_graph_right_click_on_the_wire_line_opens_the_wire_menu() {
+    let mut f = Fixture::new();
+    let relay = named(&mut f, "logic_relay", "r", DVec3::ZERO);
+    named(&mut f, "func_door", "gate", DVec3::new(64.0, 0.0, 0.0));
+    wire(&mut f, relay, "triggered", "gate", "open");
+    let mut harness = logic_graph(f);
+    for t in [0.25, 0.5, 0.75] {
+        let at = harness.state().panels.logic.wire_pos((relay, 0), t).unwrap();
+        right_click_at(&mut harness, at);
+        harness.get_by_label("Edit Connection");
+        harness.get_by_label("Delete Connection");
+        harness.key_press(egui::Key::Escape);
+        harness.run();
+        assert!(harness.query_by_label("Edit Connection").is_none(), "the menu closes");
+    }
+}
+
+#[test]
+fn logic_graph_node_menu_renames_duplicates_selects_disconnects_and_deletes() {
+    use gt_editor::logic_graph::model::NodeKey;
+
+    let mut f = Fixture::new();
+    let button = named(&mut f, "func_button", "btn", DVec3::ZERO);
+    let counter = named(&mut f, "logic_counter", "count", DVec3::new(64.0, 0.0, 0.0));
+    let lamp = named(&mut f, "light", "lamp", DVec3::new(128.0, 0.0, 0.0));
+    let other = named(&mut f, "light", "other", DVec3::new(192.0, 0.0, 0.0));
+    wire(&mut f, button, "pressed", "count", "add");
+    wire(&mut f, counter, "hit_max", "lamp", "turn_on");
+    wire(&mut f, other, "switched", "count", "reset");
+    let mut harness = logic_graph(f);
+    let node = |h: &Harness<'_, Fixture>| {
+        let r = h.state().panels.logic.node_screen_rect(&NodeKey::Entity(counter)).unwrap();
+        r.center_top() + egui::vec2(0.0, 10.0)
+    };
+    let menu = |harness: &mut Harness<'_, Fixture>| {
+        let at = node(harness);
+        right_click_at(harness, at);
+    };
+
+    menu(&mut harness);
+    for label in ["Frame in Views", "Rename", "Duplicate", "Select Connected", "Disconnect All", "Delete Entity"] {
+        harness.get_by_label(label);
+    }
+
+    harness.get_by_label("Select Connected").click();
+    harness.run();
+    let selected: Vec<_> = harness.state().state.doc.selection.nodes.iter().copied().collect();
+    assert_eq!(selected.len(), 4, "the counter and the three nodes wired to it: {selected:?}");
+    assert!([button, counter, lamp, other].iter().all(|id| selected.contains(id)));
+
+    menu(&mut harness);
+    harness.get_by_label("Delete 4 Entities");
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    harness.state_mut().state.doc.select(|_, s| s.clear());
+    harness.run();
+
+    menu(&mut harness);
+    harness.get_by_label("Rename").click();
+    harness.run();
+    assert!(harness.state().actions.contains(&Action::Rename));
+    assert_eq!(harness.state().state.doc.selection.nodes.iter().copied().collect::<Vec<_>>(), [counter]);
+
+    harness.state_mut().actions.clear();
+    menu(&mut harness);
+    harness.get_by_label("Delete Entity").click();
+    harness.run();
+    assert!(harness.state().actions.contains(&Action::Delete), "the menu queues the editor's own Delete, which removes the entity");
+
+    harness.state_mut().actions.clear();
+    menu(&mut harness);
+    harness.get_by_label("Duplicate").click();
+    harness.run();
+    assert!(harness.state().actions.contains(&Action::Duplicate));
+
+    let steps = harness.state().state.doc.history.undo_labels().count();
+    menu(&mut harness);
+    harness.get_by_label("Disconnect All").click();
+    harness.run();
+    let map = &harness.state().state.doc.map;
+    assert!(map.entity(button).unwrap().outputs.is_empty() && map.entity(counter).unwrap().outputs.is_empty() && map.entity(other).unwrap().outputs.is_empty());
+    assert_eq!(harness.state().state.doc.history.undo_labels().count(), steps + 1, "one undo step for every wire");
+    assert_eq!(map.entity_count(), 4, "the entities stay");
+}
+
 #[test]
 fn logic_graph_drag_from_an_output_pin_to_an_input_pin_connects() {
     use gt_editor::logic_graph::model::NodeKey;

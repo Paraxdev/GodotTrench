@@ -1339,7 +1339,29 @@ impl App {
                     m.item(ui, Some(icons::LINK), "Link Two Selected Entities…", Action::ShowLinkDialog);
                     ui.separator();
                     empty_hint(ui, "Place at the cursor");
-                    m.point_entities(ui, game, &["logic_relay", "logic_timer", "logic_counter", "logic_call", "logic_auto", "logic_debug"]);
+                    m.point_entities(
+                        ui,
+                        game,
+                        &[
+                            "logic_relay",
+                            "logic_timer",
+                            "logic_counter",
+                            "logic_sequence",
+                            "logic_branch",
+                            "logic_gate",
+                            "logic_random",
+                            "logic_case",
+                            "logic_flipflop",
+                            "math_value",
+                            "math_calc",
+                            "math_compare",
+                            "logic_call",
+                            "logic_script",
+                            "logic_animate",
+                            "logic_auto",
+                            "logic_debug",
+                        ],
+                    );
                 });
                 sub_menu(ui, Some(icons::ENTITY), "Spawning", |ui| {
                     empty_hint(ui, "Place at the cursor");
