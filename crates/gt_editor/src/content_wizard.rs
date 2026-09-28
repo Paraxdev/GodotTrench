@@ -473,6 +473,19 @@ mod tests {
         }
     }
 
+    /// The files of a folder and below it, not counting the two the pack's template keeps to itself.
+    fn count_pack_files(dir: &Path) -> usize {
+        std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .map(|entry| {
+                let path = entry.path();
+                let name = entry.file_name();
+                if path.is_dir() { count_pack_files(&path) } else { usize::from(name != ".gdignore" && name != crate::entity_pack::MANIFEST) }
+            })
+            .sum()
+    }
+
     #[test]
     fn the_gameplay_pack_installs_from_the_addon_and_the_editor_knows_it_at_once() {
         let (mut fixture, root) = fresh("pack");
@@ -486,7 +499,8 @@ mod tests {
         assert!(harness.query_by_label(PACK_HEADING).is_some());
         harness.get_by_label("Install Gameplay Entities").click();
         harness.run();
-        assert!(harness.query_by_label_contains("Added 65 files of the Gameplay entities pack").is_some());
+        let files = count_pack_files(&crate::entity_pack::template_dir(&repo));
+        assert!(harness.query_by_label_contains(&format!("Added {files} files of the Gameplay entities pack")).is_some());
         assert!(harness.query_by_label("Installed in res://godottrench/entities, where the project owns the copies.").is_some());
         let door = harness.state().state.game.entity("func_door").expect("known before Godot exports the game config");
         assert_eq!(door.script, "res://godottrench/entities/scripts/gt_door.gd");
