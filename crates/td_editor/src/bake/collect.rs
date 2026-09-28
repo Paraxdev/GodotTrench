@@ -478,7 +478,8 @@ mod tests {
         map.insert(layer, NodeKind::Entity(lamp.clone()));
         lamp.properties.insert("targetname".into(), "switch_me".into());
         map.insert(layer, NodeKind::Entity(lamp));
-        let game = GameConfig::default();
+        // func_door comes from the Gameplay entities pack, as in a project that installed it.
+        let game = GameConfig::with_gameplay_pack();
         let c = collect(&map, &game, 0.0);
         assert_eq!(c.counts.surfaces, 6, "only the floor brush, the door moves");
         assert!(c.input.surfaces.iter().all(|s| s.key.node == floor.0));

@@ -2913,7 +2913,7 @@
     "scripts/td_spawn_logic.gd": "e1a7410fd117da863bff68b3845c8f696ec54e6cc74d57dddaf3330a9f6c894e",
     "scripts/td_spawner.gd": "0d53b65875f39f2d272c31f28e5d1ad161a169bd27c97df3dbb21681154c3d3b",
     "scripts/td_teleport.gd": "d8e4484e924f09cae9dd1cad089ec6d3c4c4c20b466b9649636432bb8b3ed0f4",
-    "scripts/td_text.gd": "df68990e71a2875850bfde7b4b97198e1927e2ba39eccfb6b41c43cbe21bcf2e",
+    "scripts/td_text.gd": "69252cc9ab75c96f6ab5ef3e7bde6a9a4d9676a4c5174f1f4c90a4f375d17a5f",
     "scripts/td_timer.gd": "7656d21dae128bac1dabd7d79c5d667a658d0e4ae9627d07638b9d73174ad5ae",
     "scripts/td_train.gd": "7ce6bc85f50414bc9f901ba7f247637ba37fcae466ef2876be30b625214105de",
     "scripts/td_trigger.gd": "06210adc4512dd374f04683f982531a41370432ab015d1cea71fc1a66363ece4",

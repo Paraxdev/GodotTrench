@@ -570,7 +570,21 @@ mod tests {
     fn builtin_holds_only_the_core_and_the_pack_the_rest() {
         let mut core: Vec<String> = GameConfig::builtin().entities.into_iter().map(|e| e.classname).collect();
         core.sort();
-        assert_eq!(core, ["func_detail", "func_geo", "func_illusionary", "info_player_start", "light", "light_spot", "worldspawn"]);
+        assert_eq!(
+            core,
+            [
+                "env_reflection_probe",
+                "env_voxel_gi",
+                "func_detail",
+                "func_geo",
+                "func_illusionary",
+                "info_player_start",
+                "light",
+                "light_probe",
+                "light_spot",
+                "worldspawn"
+            ]
+        );
         let pack = GameConfig::gameplay_pack();
         assert!(pack.entities.iter().all(|e| !core.contains(&e.classname)), "no classname is in both");
         for def in &pack.entities {
