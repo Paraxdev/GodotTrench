@@ -1,0 +1,14 @@
+[remap]
+
+importer="trenchdot.tdm"
+type="TrenchDotImportedMap"
+uid="uid://dop1hpx5k3c42"
+path="res://.godot/imported/logic_playground.tdm-9176d8f5d988bdb688f488e38e53fbc9.tres"
+
+[deps]
+
+source_file="res://demo/maps/logic_playground.tdm"
+dest_files=["res://.godot/imported/logic_playground.tdm-9176d8f5d988bdb688f488e38e53fbc9.tres"]
+
+[params]
+
