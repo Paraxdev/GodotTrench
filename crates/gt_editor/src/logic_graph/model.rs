@@ -105,6 +105,15 @@ impl Pin {
     }
 }
 
+/// What an entity is called in the graph: its targetname, else the name it was given in the Outliner, else its classname.
+pub fn node_title(map: &Map, id: NodeId) -> String {
+    let label = map.get(id).and_then(|n| n.label.clone());
+    match map.entity(id) {
+        Some(e) => e.targetname().map(str::to_string).or(label).unwrap_or_else(|| e.classname.clone()),
+        None => label.unwrap_or_default(),
+    }
+}
+
 /// The category a node is colored and grouped by: the definition's group, else the classname's first word, such as
 /// logic for logic_relay.
 pub fn category(game: &GameConfig, classname: &str) -> String {
@@ -287,8 +296,7 @@ impl GraphModel {
                 }
             }
 
-            let label = map.get(*id).and_then(|n| n.label.clone());
-            let title = e.targetname().map(str::to_string).or(label).unwrap_or_else(|| e.classname.clone());
+            let title = node_title(map, *id);
             let category = category(cx.game, &e.classname);
             let subtitle = match (title == e.classname, category == e.classname) {
                 (true, true) => String::new(),

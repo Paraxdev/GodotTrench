@@ -1046,6 +1046,20 @@ fn named(f: &mut Fixture, classname: &str, name: &str, at: DVec3) -> gt_core::No
     })
 }
 
+/// Adds `output -> target.input` to an entity.
+fn wire(f: &mut Fixture, from: gt_core::NodeId, output: &str, target: &str, input: &str) {
+    f.state.doc.edit("wire", |m, _| {
+        m.entity_mut(from).unwrap().outputs.push(gt_doc::IoConnection {
+            output: output.into(),
+            target: target.into(),
+            input: input.into(),
+            parameter: String::new(),
+            delay: 0.0,
+            times: -1,
+        });
+    });
+}
+
 /// Drags with the primary button through the given points, a frame for each.
 fn drag_through(harness: &mut Harness<'_, Fixture>, points: &[egui::Pos2]) {
     harness.hover_at(points[0]);
@@ -1090,6 +1104,26 @@ fn logic_graph_simulates_and_flags_broken_links() {
     harness.run();
     assert!(harness.query_by_label("2 steps").is_some(), "both wired outputs are listed");
     assert!(harness.query_by_label("1 broken").is_some(), "the missing target is flagged");
+}
+
+#[test]
+fn logic_graph_simulate_marks_the_steps_that_only_might_happen() {
+    let mut f = Fixture::new();
+    let button = named(&mut f, "func_button", "btn", DVec3::ZERO);
+    let counter = named(&mut f, "logic_counter", "count", DVec3::new(64.0, 0.0, 0.0));
+    named(&mut f, "light", "lamp", DVec3::new(128.0, 0.0, 0.0));
+    wire(&mut f, button, "pressed", "count", "add");
+    wire(&mut f, counter, "hit_max", "lamp", "turn_on");
+    f.state.doc.select(|_, s| s.select_node(button));
+
+    let mut harness = logic_graph(f);
+    harness.get_by_label("Simulate").click();
+    harness.run();
+    harness.get_by_label("pressed").click();
+    harness.run();
+    harness.get_by_label("1. btn.pressed -> count.add");
+    harness.get_by_label("2. count.hit_max -> lamp.turn_on  (maybe)");
+    assert!(harness.query_by_label_contains("1. btn.pressed -> count.add  (maybe)").is_none(), "the press itself always happens");
 }
 
 #[test]

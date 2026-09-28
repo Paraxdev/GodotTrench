@@ -730,7 +730,7 @@ fn replay_logic_playground(ed: &Editor, root: &std::path::Path, out: &std::path:
     }
 
     let coin = map.find_by_targetname("coin_1")[0];
-    let cascade = gt_editor::logic_sim::simulate(&map, coin, "pressed");
+    let cascade = gt_editor::logic_sim::simulate(&map, &gt_formats::GameConfig::with_gameplay_pack(), coin, "pressed");
     let links: Vec<String> = cascade.events.iter().map(|e| format!("{}.{}>{}.{}", e.source_name, e.output, e.target, e.input)).collect();
     for link in [
         "coin_1.pressed>score.add",
@@ -746,7 +746,7 @@ fn replay_logic_playground(ed: &Editor, root: &std::path::Path, out: &std::path:
 
     assert_eq!(cascade.broken(), 0, "every connection of the playground reaches an entity");
     let draw = map.find_by_targetname("draw_button")[0];
-    let lottery = gt_editor::logic_sim::simulate(&map, draw, "pressed");
+    let lottery = gt_editor::logic_sim::simulate(&map, &gt_formats::GameConfig::with_gameplay_pack(), draw, "pressed");
     let links: Vec<String> = lottery.events.iter().map(|e| format!("{}.{}>{}.{}", e.source_name, e.output, e.target, e.input)).collect();
     for link in ["picker.out_2>green_light.turn_on", "picker.picked>color_case.in_value", "color_case.on_case_3>lottery_text.set_text"] {
         assert!(links.iter().any(|l| l == link), "drawing a light reaches {link}: {links:?}");

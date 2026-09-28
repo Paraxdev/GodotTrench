@@ -10,7 +10,7 @@ use gt_doc::issues::BUILTIN_INPUTS;
 use gt_doc::map::GraphFrame;
 
 use super::edit::{self, NewLink, Placement};
-use super::model::{ConnectionId, EdgeKind, GraphEdge, GraphModel, GraphNode, HEADER, Inputs, NodeKey, PIN_ROW, PinType, pin_label};
+use super::model::{ConnectionId, EdgeKind, GraphEdge, GraphModel, GraphNode, HEADER, Inputs, NodeKey, PIN_ROW, PinType, node_title, pin_label};
 use crate::commands::Action;
 use crate::logic_sim::{self, SimResult};
 use crate::state::EditorState;
@@ -250,7 +250,7 @@ impl GraphState {
 
         if let Some(sim) = &mut self.sim {
             if map.entity(sim.start).is_some() {
-                sim.result = logic_sim::simulate(map, sim.start, &sim.output);
+                sim.result = logic_sim::simulate(map, &state.game, sim.start, &sim.output);
             } else {
                 self.sim = None;
             }
@@ -497,7 +497,7 @@ impl GraphState {
     }
 
     fn simulate(&mut self, state: &EditorState, start: NodeId, output: &str) {
-        let result = logic_sim::simulate(&state.doc.map, start, output);
+        let result = logic_sim::simulate(&state.doc.map, &state.game, start, output);
         self.sim = Some(Simulation { start, output: output.to_string(), result });
     }
 
@@ -978,10 +978,13 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
     }
 
     let selected = selected_entities(state);
-    let sim_steps = |id: ConnectionId| -> Vec<usize> {
+    let sim_steps = |id: ConnectionId| -> Vec<String> {
         gs.sim
             .as_ref()
-            .map(|s| s.result.events.iter().enumerate().filter(|(_, e)| (e.source, e.connection) == id).map(|(i, _)| i + 1).collect())
+            .map(|s| {
+                let steps = s.result.events.iter().enumerate().filter(|(_, e)| (e.source, e.connection) == id);
+                steps.map(|(i, e)| if e.possible() { format!("{}?", i + 1) } else { (i + 1).to_string() }).collect()
+            })
             .unwrap_or_default()
     };
     let sim_nodes: BTreeSet<NodeId> =
@@ -1025,7 +1028,7 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
 
         let mid = curve_at(&points, 0.5);
         if !steps.is_empty() {
-            badges.push((mid, steps.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(",")));
+            badges.push((mid, steps.join(",")));
         } else if detail && !e.label.is_empty() {
             let galley = painter.layout_no_wrap(e.label.clone(), font(11.0), theme::GRAY_7);
             let r = Rect::from_center_size(mid, galley.size() + vec2(8.0, 2.0));
@@ -1415,7 +1418,7 @@ fn context_menu(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, hit: 
 fn edge_editor(ctx: &egui::Context, state: &mut EditorState, gs: &mut GraphState, id: ConnectionId) {
     let Some(entity) = state.doc.map.entity(id.0) else { return };
     let Some(mut conn) = entity.outputs.get(id.1).cloned() else { return };
-    let source_name = entity.targetname().unwrap_or(&entity.classname).to_string();
+    let source_name = node_title(&state.doc.map, id.0);
     let outputs: Vec<(String, &str)> =
         state.game.entity(&entity.classname).map(|d| d.outputs.iter().map(|o| (o.name.clone(), "")).collect()).unwrap_or_default();
     let mut inputs: Vec<(String, &str)> = state
@@ -1488,7 +1491,7 @@ fn edge_editor(ctx: &egui::Context, state: &mut EditorState, gs: &mut GraphState
 /// The steps of a simulation, in a strip below the canvas so they never cover the highlighted wires.
 fn sim_list(ui: &mut Ui, rect: Rect, state: &mut EditorState, gs: &mut GraphState) {
     let Some(sim) = &gs.sim else { return };
-    let name = state.doc.map.entity(sim.start).map(|e| e.targetname().unwrap_or(&e.classname).to_string()).unwrap_or_default();
+    let name = node_title(&state.doc.map, sim.start);
     let mut clear = false;
     let mut pick = None;
     ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
@@ -1517,20 +1520,30 @@ fn sim_list(ui: &mut Ui, rect: Rect, state: &mut EditorState, gs: &mut GraphStat
                     text.push_str(&format!("  at {}s", crate::widgets::format_number(ev.time)));
                 }
 
+                if ev.possible() {
+                    text.push_str("  (maybe)");
+                }
+
                 let color = if ev.broken() {
                     theme::ERROR
                 } else if ev.dynamic {
                     theme::INFO
+                } else if ev.possible() {
+                    theme::GRAY_6
                 } else {
                     ui.visuals().text_color()
                 };
-                let hint = if ev.dynamic {
-                    "Found when the map runs, not followed further"
+                let mut hint = if ev.dynamic {
+                    "Found when the map runs, not followed further".to_string()
                 } else if ev.broken() {
-                    "No entity has this targetname"
+                    "No entity has this targetname".to_string()
                 } else {
-                    "Selects this connection"
+                    "Selects this connection".to_string()
                 };
+                if let Some(why) = &ev.condition {
+                    hint = format!("{why}. {hint}");
+                }
+
                 if ui.selectable_label(false, RichText::new(text).color(color)).on_hover_text(hint).clicked() {
                     pick = Some((ev.source, ev.connection));
                 }
