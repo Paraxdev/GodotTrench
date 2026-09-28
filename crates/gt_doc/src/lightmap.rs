@@ -8,6 +8,7 @@ use base64::Engine;
 use serde_json::{Value, json};
 
 use crate::variant::{self, Writer};
+use crate::{Map, NodeKind};
 
 pub const TAG: [u8; 4] = *b"LMAP";
 
@@ -97,12 +98,39 @@ impl Lightmap {
         self.nodes = nodes.as_chunks::<2>().0.iter().map(|p| (p[0] as u64, p[1] as u64)).collect();
     }
 
-    /// The payload of the `LMAP` chunk: a Godot Variant dictionary.
-    pub fn to_chunk(&self) -> Vec<u8> {
+    /// Average light of the texels that hold any, for surfaces a mesh has without a chart of their own.
+    pub fn fallback_light(&self) -> [f32; 3] {
+        let mut sum = [0.0f64; 3];
+        let mut n = 0usize;
+        for c in self.light.as_chunks::<3>().0 {
+            if c.iter().any(|h| *h != 0) {
+                for k in 0..3 {
+                    sum[k] += f16_to_f32(c[k]) as f64;
+                }
+
+                n += 1;
+            }
+        }
+
+        sum.map(|s| if n > 0 { (s / n as f64) as f32 } else { 0.0 })
+    }
+
+    /// Baked nodes of `map` whose geometry changed since the bake, or that are gone. Saved with the bake so the Godot
+    /// addon, which cannot fingerprint geometry, leaves their charts out.
+    pub fn stale_nodes(&self, map: &Map) -> Vec<i64> {
+        self.nodes
+            .iter()
+            .filter(|(id, print)| map.get(crate::NodeId(**id)).and_then(|n| fingerprint(&n.kind)) != Some(**print))
+            .map(|(id, _)| *id as i64)
+            .collect()
+    }
+
+    /// The payload of the `LMAP` chunk: a Godot Variant dictionary. `stale` is [`Lightmap::stale_nodes`].
+    pub fn to_chunk(&self, stale: &[i64]) -> Vec<u8> {
         let (keys, rows) = self.chart_columns();
         let nodes: Vec<i64> = self.nodes.iter().flat_map(|(k, v)| [*k as i64, *v as i64]).collect();
         let mut w = Writer::new();
-        w.dict_header(11);
+        w.dict_header(13);
         for (key, value) in [("version", VERSION as i64), ("width", self.width as i64), ("height", self.height as i64), ("scene", self.scene as i64)] {
             w.key(key);
             w.value(&Value::from(value));
@@ -122,6 +150,10 @@ impl Lightmap {
         w.float32s(&rows);
         w.key("nodes");
         w.int64s(&nodes);
+        w.key("stale");
+        w.int64s(stale);
+        w.key("fallback");
+        w.float32s(&self.fallback_light());
         w.out
     }
 
@@ -130,7 +162,7 @@ impl Lightmap {
     }
 
     /// The `lightmap` key of a JSON map, the byte fields as base64.
-    pub fn to_json(&self) -> Value {
+    pub fn to_json(&self, stale: &[i64]) -> Value {
         let (keys, rows) = self.chart_columns();
         let nodes: Vec<i64> = self.nodes.iter().flat_map(|(k, v)| [*k as i64, *v as i64]).collect();
         let b64 = |b: &[u8]| base64::engine::general_purpose::STANDARD.encode(b);
@@ -146,6 +178,8 @@ impl Lightmap {
             "chart_keys": keys,
             "chart_rows": rows,
             "nodes": nodes,
+            "stale": stale,
+            "fallback": self.fallback_light(),
         })
     }
 
@@ -231,6 +265,81 @@ pub fn f16_to_f32(h: u16) -> f32 {
     f32::from_bits(bits)
 }
 
+/// FNV-1a, stable across runs and Rust versions since fingerprints are saved with the map.
+pub struct Fnv(u64);
+
+impl Default for Fnv {
+    fn default() -> Self {
+        Self(0xcbf2_9ce4_8422_2325)
+    }
+}
+
+impl Fnv {
+    pub fn bytes(&mut self, b: &[u8]) -> &mut Self {
+        for x in b {
+            self.0 = (self.0 ^ u64::from(*x)).wrapping_mul(0x0100_0000_01b3);
+        }
+
+        self
+    }
+
+    pub fn f64(&mut self, v: f64) -> &mut Self {
+        self.bytes(&v.to_le_bytes())
+    }
+
+    pub fn u32(&mut self, v: u32) -> &mut Self {
+        self.bytes(&v.to_le_bytes())
+    }
+
+    pub fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+/// Fingerprint of the geometry a node's charts depend on: moving or reshaping it invalidates them, retexturing does not.
+pub fn fingerprint(kind: &NodeKind) -> Option<u64> {
+    let mut h = Fnv::default();
+    match kind {
+        NodeKind::Brush(b) => {
+            b.vertices.iter().for_each(|v| {
+                h.f64(v.x).f64(v.y).f64(v.z);
+            });
+            for f in &b.faces {
+                h.u32(f.indices.len() as u32);
+                f.indices.iter().for_each(|i| {
+                    h.u32(*i);
+                });
+                if let Some(d) = &f.data.disp {
+                    h.bytes(format!("{d:?}").as_bytes());
+                }
+            }
+        }
+        NodeKind::Mesh(m) => {
+            m.vertices.iter().for_each(|v| {
+                h.f64(v.x).f64(v.y).f64(v.z);
+            });
+            for f in &m.faces {
+                h.u32(f.indices.len() as u32);
+                f.indices.iter().for_each(|i| {
+                    h.u32(*i);
+                });
+            }
+
+            h.f64(m.smooth_angle as f64);
+        }
+        NodeKind::Terrain(t) => {
+            h.f64(t.origin.x).f64(t.origin.y).f64(t.origin.z).f64(t.cell_size).u32(t.resolution[0]).u32(t.resolution[1]);
+            t.heights.iter().for_each(|v| {
+                h.bytes(&v.to_le_bytes());
+            });
+            h.bytes(&t.holes);
+        }
+        _ => return None,
+    }
+
+    Some(h.finish())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,8 +378,8 @@ mod tests {
     #[test]
     fn chunk_and_json_round_trip() {
         let map = sample();
-        assert_eq!(Lightmap::from_chunk(&map.to_chunk()), Some(map.clone()));
-        let text = serde_json::to_string(&map.to_json()).unwrap();
+        assert_eq!(Lightmap::from_chunk(&map.to_chunk(&[])), Some(map.clone()));
+        let text = serde_json::to_string(&map.to_json(&[])).unwrap();
         assert_eq!(Lightmap::from_json(&serde_json::from_str(&text).unwrap()), Some(map));
     }
 
@@ -286,6 +395,6 @@ mod tests {
     fn a_truncated_payload_is_refused() {
         let mut map = sample();
         map.ao.pop();
-        assert_eq!(Lightmap::from_chunk(&map.to_chunk()), None);
+        assert_eq!(Lightmap::from_chunk(&map.to_chunk(&[])), None);
     }
 }

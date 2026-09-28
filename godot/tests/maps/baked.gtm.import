@@ -1,0 +1,14 @@
+[remap]
+
+importer="godottrench.gtm"
+type="GodotTrenchImportedMap"
+uid="uid://c64ci55gehyvw"
+path="res://.godot/imported/baked.gtm-9d5fba68dc6fba41b4a1486ceca953ef.tres"
+
+[deps]
+
+source_file="res://tests/maps/baked.gtm"
+dest_files=["res://.godot/imported/baked.gtm-9d5fba68dc6fba41b4a1486ceca953ef.tres"]
+
+[params]
+
