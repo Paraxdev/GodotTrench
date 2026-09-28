@@ -640,6 +640,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
     {
         let kind = if p.output { "output" } else { "input" };
         let mut tip = format!("{} {kind}, {}", pin_label(&pin.name), pin.ty.name());
+        if !pin.values.is_empty() {
+            tip.push_str(&format!(" ({})", pin.values));
+        }
+
         if !pin.description.is_empty() {
             tip.push_str(&format!("\n{}", pin.description));
         } else if !pin.declared {
