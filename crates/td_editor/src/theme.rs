@@ -35,6 +35,49 @@ pub const INFO: Color32 = CYAN;
 pub const WALKABLE: Color32 = GREEN;
 pub const WALKABLE_CUT_OFF: Color32 = RED;
 
+/// Between RED and YELLOW, like the orange of Okabe & Ito.
+pub const ORANGE: Color32 = Color32::from_rgb(0xe9, 0x93, 0x36);
+
+/// Logic graph node headers by entity category. The node names its category too, so hue is never the only cue.
+pub const CATEGORIES: [(&str, Color32); 10] = [
+    ("logic", BLUE),
+    ("math", ORANGE),
+    ("trigger", GREEN),
+    ("func", RED),
+    ("light", YELLOW),
+    ("env", TEAL),
+    ("game", CYAN),
+    ("prop", PINK),
+    ("npc", MAGENTA),
+    ("info", GRAY_5),
+];
+
+/// A category's color, and for one the editor does not know a stable pick from the accents.
+pub fn category_color(name: &str) -> Color32 {
+    const OTHERS: [Color32; 8] = [BLUE, MAGENTA, GREEN, RED, YELLOW, TEAL, CYAN, PINK];
+    CATEGORIES.iter().find(|(n, _)| *n == name).map(|(_, c)| *c).unwrap_or_else(|| {
+        let hash = name.bytes().fold(0u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32));
+        OTHERS[hash as usize % OTHERS.len()]
+    })
+}
+
+/// Logic graph pins and wires by the type of value they carry, Blueprint style. A pulse carries none.
+pub const PIN_TYPES: [(&str, Color32); 9] = [
+    ("pulse", GRAY_7),
+    ("bool", RED),
+    ("int", CYAN),
+    ("float", GREEN),
+    ("string", PINK),
+    ("vector3", YELLOW),
+    ("color", MAGENTA),
+    ("node", BLUE),
+    ("variant", GRAY_5),
+];
+
+pub fn pin_type_color(name: &str) -> Color32 {
+    PIN_TYPES.iter().find(|(n, _)| *n == name).map_or(GRAY_5, |(_, c)| *c)
+}
+
 /// Selected cards and rows: the accent sunk into the panel so text on top stays readable.
 pub fn selected_fill() -> Color32 {
     blend(GRAY_1, ACCENT, 0.45)
@@ -154,7 +197,17 @@ mod tests {
     #[test]
     fn cvd_pairs_stay_distinguishable() {
         // Role pairs whose only difference is hue, so they must survive every common color blindness.
-        let pairs: [(Color32, Color32, &str); 7] = [
+        let category = |name: &str| category_color(name);
+        let pin = |name: &str| pin_type_color(name);
+        let pairs: [(Color32, Color32, &str); 15] = [
+            (category("logic"), category("math"), "logic vs math nodes"),
+            (category("logic"), category("trigger"), "logic vs trigger nodes"),
+            (category("trigger"), category("func"), "trigger vs func nodes"),
+            (category("math"), category("func"), "math vs func nodes"),
+            (pin("int"), pin("float"), "int vs float pins"),
+            (pin("bool"), pin("float"), "bool vs float pins"),
+            (pin("string"), pin("vector3"), "string vs vector3 pins"),
+            (pin("node"), pin("int"), "node vs int pins"),
             (ERROR, SUCCESS, "error vs success"),
             (WARNING, SUCCESS, "warning vs success"),
             (WARNING, ERROR, "warning vs error"),
