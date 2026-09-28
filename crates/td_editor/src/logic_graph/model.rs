@@ -97,12 +97,12 @@ impl GraphNode {
 }
 
 /// Height of a node's title area and of one pin row, in graph points.
-pub const HEADER: f32 = 40.0;
-pub const PIN_ROW: f32 = 20.0;
-const MIN_WIDTH: f32 = 150.0;
-const MAX_WIDTH: f32 = 300.0;
+pub const HEADER: f32 = 42.0;
+pub const PIN_ROW: f32 = 22.0;
+const MIN_WIDTH: f32 = 160.0;
+const MAX_WIDTH: f32 = 320.0;
 /// Rough width of a character, the layout must not depend on fonts to stay the same everywhere.
-const CHAR: f32 = 7.0;
+const CHAR: f32 = 7.5;
 
 fn find_pin(pins: &[Pin], name: &str) -> Option<usize> {
     pins.iter().position(|p| p.name == name).or_else(|| pins.iter().position(|p| io_name_matches(&p.name, name)))
@@ -228,11 +228,12 @@ impl GraphModel {
 
             let label = map.get(*id).and_then(|n| n.label.clone());
             let title = e.targetname().map(str::to_string).or(label).unwrap_or_else(|| e.classname.clone());
+            let subtitle = if title == e.classname { String::new() } else { e.classname.clone() };
             let stored = map.get(*id).and_then(|n| n.graph);
             model.push(GraphNode {
                 key: NodeKey::Entity(*id),
                 title,
-                subtitle: e.classname.clone(),
+                subtitle,
                 inputs,
                 outputs,
                 color: def.map(|d| [d.color.r, d.color.g, d.color.b]),
@@ -377,7 +378,7 @@ impl GraphModel {
 }
 
 /// `p` moved down past every rect it would overlap.
-fn clear_spot(mut p: Pos2, size: Vec2, taken: &[egui::Rect]) -> Pos2 {
+pub(crate) fn clear_spot(mut p: Pos2, size: Vec2, taken: &[egui::Rect]) -> Pos2 {
     for _ in 0..=taken.len() {
         let r = egui::Rect::from_min_size(p, size).expand(8.0);
         match taken.iter().filter(|t| t.intersects(r)).map(|t| t.max.y).reduce(f32::max) {
@@ -522,7 +523,7 @@ mod tests {
         assert!(g.node(&NodeKey::Entity(light)).is_none());
 
         let b = g.node(&NodeKey::Entity(button)).unwrap();
-        assert_eq!(b.title, "func_button", "no targetname, the classname titles it");
+        assert_eq!((b.title.as_str(), b.subtitle.as_str()), ("func_button", ""), "no targetname, the classname titles it once");
         assert_eq!(b.outputs.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["pressed", "released", "locked_use"]);
         let d = g.node(&NodeKey::Entity(door)).unwrap();
         assert_eq!(d.title, "door");

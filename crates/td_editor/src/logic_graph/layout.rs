@@ -25,8 +25,7 @@ pub fn layered(sizes: &[Vec2], edges: &[(usize, usize)]) -> Vec<Pos2> {
     let mut out = vec![Pos2::ZERO; n];
     let mut component = vec![usize::MAX; n];
     let mut singles = Vec::new();
-    let mut y = 0.0f32;
-    let mut widest = 0.0f32;
+    let mut groups: Vec<(Vec<usize>, Vec2)> = Vec::new();
     for start in 0..n {
         if component[start] != usize::MAX {
             continue;
@@ -54,16 +53,35 @@ pub fn layered(sizes: &[Vec2], edges: &[(usize, usize)]) -> Vec<Pos2> {
 
         members.sort_unstable();
         let size = place_component(&members, sizes, &succ, &mut out);
-        for m in &members {
-            out[*m].y += y;
-        }
-
-        y += size.y + COMPONENT_GAP;
-        widest = widest.max(size.x);
+        groups.push((members, size));
     }
 
-    let row_width = widest.max(1000.0);
-    let (mut x, mut row_height) = (0.0f32, 0.0f32);
+    // Groups fill rows about as wide as the whole picture is tall, so it fits a panel instead of one tall column.
+    let area: f32 = groups.iter().map(|(_, s)| (s.x + COMPONENT_GAP) * (s.y + COMPONENT_GAP)).sum::<f32>()
+        + singles.iter().map(|s| (sizes[*s].x + COLUMN_GAP) * (sizes[*s].y + ROW_GAP)).sum::<f32>();
+    let widest = groups.iter().map(|(_, s)| s.x).fold(0.0, f32::max);
+    let row_width = widest.max(area.sqrt() * 1.6).max(600.0);
+    let (mut x, mut y, mut row_height) = (0.0f32, 0.0f32, 0.0f32);
+    for (members, size) in &groups {
+        if x > 0.0 && x + size.x > row_width {
+            x = 0.0;
+            y += row_height + COMPONENT_GAP;
+            row_height = 0.0;
+        }
+
+        for m in members {
+            out[*m] += vec2(x, y);
+        }
+
+        x += size.x + COMPONENT_GAP * 2.0;
+        row_height = row_height.max(size.y);
+    }
+
+    if !groups.is_empty() {
+        y += row_height + COMPONENT_GAP;
+    }
+
+    (x, row_height) = (0.0, 0.0);
     for s in singles {
         if x > 0.0 && x + sizes[s].x > row_width {
             x = 0.0;
@@ -253,11 +271,19 @@ mod tests {
     }
 
     #[test]
-    fn separate_groups_do_not_overlap() {
-        let s = sizes(6);
-        let p = layered(&s, &[(0, 1), (0, 2), (3, 4), (3, 5)]);
-        let bottom = |ids: &[usize]| ids.iter().map(|i| p[*i].y + s[*i].y).fold(0.0, f32::max);
-        let top = |ids: &[usize]| ids.iter().map(|i| p[*i].y).fold(f32::MAX, f32::min);
-        assert!(bottom(&[0, 1, 2]) < top(&[3, 4, 5]), "{p:?}");
+    fn separate_groups_do_not_overlap_and_fill_rows() {
+        let n = 24;
+        let s = sizes(n);
+        let edges: Vec<(usize, usize)> = (0..n / 2).map(|i| (2 * i, 2 * i + 1)).collect();
+        let p = layered(&s, &edges);
+        let rects: Vec<egui::Rect> = (0..n).map(|i| egui::Rect::from_min_size(p[i], s[i])).collect();
+        for i in 0..n {
+            for j in i + 1..n {
+                assert!(!rects[i].intersects(rects[j]), "{i} and {j} overlap: {p:?}");
+            }
+        }
+
+        let bounds = rects.iter().fold(egui::Rect::NOTHING, |a, b| a.union(*b));
+        assert!(bounds.width() > bounds.height() * 0.5, "not one tall column: {bounds:?}");
     }
 }
