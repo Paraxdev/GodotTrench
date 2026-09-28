@@ -63,6 +63,7 @@ The `editor` object holds view state that only matters inside the editor:
 | `cordon` | `{"min": [x, y, z], "max": [x, y, z]}` | none | The cordon box in map units, used to work on one part of a big map |
 | `cordon_enabled` | bool | `false` | Hide objects outside the cordon and leave them out of cordoned exports |
 | `bake` | `{"quality", "texel_size", "softness", "backend"}` | none | The options the map was last [baked](../editor/light-baking.md) with, so the next bake starts from them |
+| `graph_frames` | array | empty | Frames of the [Logic graph](../gameplay/logic-graph.md#frames), each `{"title", "rect": [x, y, width, height], "color"}` in graph points. A damaged one is dropped on load |
 
 ## Versions and compatibility
 
