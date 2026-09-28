@@ -36,7 +36,7 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 func pick() -> void:
 	var n := clampi(count, 1, MAX_OUTPUTS)
 	var index := _rng.randi_range(1, n)
-	if no_repeat and n > 1 and _last > 0:
+	if no_repeat and n > 1 and _last >= 1 and _last <= n:
 		# One of the other n - 1 outputs, skipping the last one.
 		index = _rng.randi_range(1, n - 1)
 		if index >= _last:
