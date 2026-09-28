@@ -6,7 +6,8 @@ keys (the settings in the Inspector). How outputs connect to inputs is explained
 
 | Page | What you find there |
 | --- | --- |
-| [Logic](logic.md) | Invisible helpers that decide when things happen: relays, "only if" checks, counters, timers, a map start event and cutscene timelines |
+| [Logic](logic.md) | Invisible helpers that decide when things happen: relays, "only if" checks, gates, flip flops, random picks and cases, counters, timers, a map start event and cutscene timelines |
+| [Math and values](math.md) | Invisible helpers that store, calculate and compare numbers, like a score that opens a door |
 | [Scripts and calls](scripting.md) | Run a GDScript snippet, call your game code, play an animation or print what a chain is doing |
 | [Doors, movers and buttons](movers.md) | Brush entities that move: sliding and swinging doors, lifts, trains and buttons |
 | [Triggers](triggers.md) | Invisible volumes that react when a body walks into them, to start events, hurt, teleport, push or spawn |
