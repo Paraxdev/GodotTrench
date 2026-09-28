@@ -8,7 +8,7 @@ A map's content is a tree of nodes. Every node has the same outer shape, with it
 | `type` | string | always | `layer`, `group`, `entity`, `brush`, `mesh`, `terrain`, `scatter` or `instance` |
 | type fields | | | The keys of that node type, see below, [Geometry](geometry.md) and [Terrain and scatter](terrain-scatter.md) |
 | `label` | string | when set | Name given with *Rename*, see below |
-| `graph` | array of 2 numbers | when set | Where an entity's node sits in the Logic graph |
+| `graph` | array of 2 numbers | when set | Where an entity's node sits in the [Logic graph](../gameplay/logic-graph.md) |
 | `hidden` | bool | when `true` | Hidden in the editor |
 | `locked` | bool | when `true` | Cannot be selected or edited in the editor |
 | `children` | array of nodes | when not empty | Child nodes, in order |
