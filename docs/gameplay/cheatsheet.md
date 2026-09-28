@@ -34,7 +34,7 @@ rest in order.
 | --- | --- |
 | `triggered`, `pressed`, `entered`, `exited`, `hurt`, `teleported`, `pushed` | Passed on unchanged |
 | `arrived(corner)`, `spawned(node)`, `reached(train)` | Replaced by the node in brackets |
-| `opened`, `timer`, `step_N`, `on_true`, `broken`, `switched`, `map_spawn` | Dropped |
+| `opened`, `timer`, `step_N`, `on_true`, `on_case_N`, `result`, `broken`, `switched`, `map_spawn` | Dropped |
 
 If the chain lost it and you need the player, target `!player`.
 

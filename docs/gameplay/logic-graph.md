@@ -112,8 +112,10 @@ Frames are saved in the map as editor data, the Godot build ignores them.
 
 Select one entity, press **Simulate** and pick one of its outputs, or right click a node. The graph numbers every wire
 the output would set off in yellow, and a list below the graph shows each step with the time it arrives after the
-delays. **Clear** ends the preview. It follows the runtime's rules: targets are found by targetname, and relays, timers, counters, doors and the
-other common entities pass the chain on. Runtime targets like `!player` are shown but not followed. Click a step to
+delays. **Clear** ends the preview. It follows the runtime's rules: targets are found by targetname, and relays, timers,
+counters, gates, doors and the other common entities pass the chain on. An entity that fires one of several outputs,
+like a gate or a random pick, shows every wire it might set off. Runtime targets like `!player` are shown but not
+followed. Click a step to
 select its wire.
 
 ![Simulate on button_2: the wires to garage_door and on to garage_beacon are yellow and numbered 1 to 3, and the list below the graph names each step](../assets/logic-graph/simulate.png)

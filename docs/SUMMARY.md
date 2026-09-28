@@ -51,6 +51,7 @@
 * [I/O cheatsheet](gameplay/cheatsheet.md)
 * [Entity reference](gameplay/entities/README.md)
     * [Logic](gameplay/entities/logic.md)
+    * [Math and values](gameplay/entities/math.md)
     * [Scripts and calls](gameplay/entities/scripting.md)
     * [Doors, movers and buttons](gameplay/entities/movers.md)
     * [Triggers](gameplay/entities/triggers.md)

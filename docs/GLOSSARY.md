@@ -21,6 +21,9 @@ Light that is traced once ahead of time and stored, instead of worked out every 
 ## bloom
 The soft glow that bright lamps and glowing materials spread into the pixels around them. It is switched on with the worldspawn key glow_intensity.
 
+## boolean
+A value that is either true or false, like whether the power is on. The logic_branch, logic_gate and logic_flipflop entities store and combine booleans.
+
 ## brush
 A convex solid, such as a box or a wedge, the basic building block of a level. You draw brushes in the views and combine them with CSG, and Godot turns each one into a mesh with matching collision.
 
@@ -102,6 +105,9 @@ The connection between GodotTrench and the Godot editor, a local server the addo
 ## live mode
 Pushes your edits into the scene open in the Godot editor as you make them, before you save, so you can judge lighting and scale in Godot's own renderer. Turn it on with the link button in the toolbar or Godot > Live Mode.
 
+## logic gate
+A rule that turns two true or false inputs into one answer, like and (both are true) or xor (exactly one is). The logic_gate entity offers the common ones.
+
 ## map settings
 A FuncGodotMapSettings resource that says where textures, materials and entity definitions come from and how many map units make a meter. A FuncGodotMap can have its own, otherwise the project default is used.
 
@@ -116,6 +122,9 @@ A simplified outline of the floors that AI agents can walk on, which Godot uses 
 
 ## normal map
 A texture that stores which way each pixel of a surface faces, so flat faces catch the light as if they had bumps and grooves. It adds fine detail without extra geometry.
+
+## operand
+The number a calculation works with besides the one it receives. In a math_calc that adds 5, the operand is 5.
 
 ## ORM
 A texture that packs three grayscale maps into its color channels, ambient occlusion in red, roughness in green and metallic in blue. Godot materials and GodotTrench terrain layers read it as one file.

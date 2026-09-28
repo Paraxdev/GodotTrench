@@ -46,7 +46,7 @@ chain passes one along. The built-in signals behave like this:
 | --- | --- |
 | `triggered`, `pressed`, `entered`, `exited`, `hurt`, `teleported`, `pushed` | Passed on unchanged, these signals carry the node that caused them |
 | `arrived(corner)`, `spawned(node)`, `reached(train)` | Replaced by the node in brackets, so further down `!activator` is that corner, spawned node or train |
-| `opened`, `timer`, `step_N`, `on_true`, `broken`, `switched`, `map_spawn` | Dropped. These carry no node, so from here on `!activator` finds nothing |
+| `opened`, `timer`, `step_N`, `on_true`, `on_case_N`, `result`, `broken`, `switched`, `map_spawn` | Dropped. These carry no node, so from here on `!activator` finds nothing |
 
 > **Tip:** Need the player several steps down a chain that lost the activator? Target `!player` instead, it does not
 > depend on the chain.
