@@ -362,6 +362,7 @@ pub fn collect(map: &Map, game: &GameConfig, softness: f32) -> Collected {
 
     let mut counts = Counts::default();
     let mut lights = Vec::new();
+    let mut probe_points = Vec::new();
     if let Some((light, mode)) = sun(map, softness) {
         counts.sun = Some(mode);
         lights.push(light);
@@ -369,6 +370,13 @@ pub fn collect(map: &Map, game: &GameConfig, softness: f32) -> Collected {
 
     for (id, e) in map.entities() {
         if !map.is_point_entity(id) || !is_static(map, game, id) {
+            continue;
+        }
+
+        if game.entity(&e.classname).is_some_and(|d| d.node_class == "LightmapProbe") {
+            let p = e.origin.as_vec3();
+            scene.f64(p.x as f64).f64(p.y as f64).f64(p.z as f64);
+            probe_points.push(p);
             continue;
         }
 
@@ -399,7 +407,7 @@ pub fn collect(map: &Map, game: &GameConfig, softness: f32) -> Collected {
     counts.surfaces = b.surfaces.len();
     let materials = vec![Material::default(); b.names.len()];
     Collected {
-        input: BakeInput { surfaces: b.surfaces, materials, lights, sky, units_per_meter: upm },
+        input: BakeInput { surfaces: b.surfaces, materials, lights, sky, units_per_meter: upm, probe_points },
         material_names: b.names,
         nodes,
         scene: scene.finish(),

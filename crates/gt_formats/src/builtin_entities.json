@@ -537,6 +537,31 @@
       ],
       "outputs": [{ "name": "on_true" }, { "name": "on_false" }],
       "inputs": [{ "name": "set_true" }, { "name": "set_false" }, { "name": "toggle" }, { "name": "test" }, { "name": "set_and_test", "parameter": "value" }]
+    },
+    {
+      "classname": "light_probe", "type": "point", "description": "An extra light probe for Bake Lighting. Moving objects here pick up the baked bounce light, on top of the probes placed on a grid", "color": "#ffd966ff", "node_class": "LightmapProbe",
+      "size": [[-8, -8, -8], [8, 8, 8]],
+      "properties": []
+    },
+    {
+      "classname": "env_reflection_probe", "type": "solid", "description": "The brush becomes the box of a ReflectionProbe, which captures its surroundings for reflections inside it", "color": "#80d4ffff", "node_class": "ReflectionProbe",
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_reflection_probe.gd",
+      "properties": [
+        { "name": "intensity", "type": "float", "default": "1.0", "description": "Brightness of the reflections" },
+        { "name": "update", "type": "choices", "default": "once", "description": "Capture once when the scene starts, or every frame for moving objects (costly)", "options": [["once", "once"], ["always", "always"]] },
+        { "name": "box_projection", "type": "bool", "default": "1", "description": "Lines reflections up with the box walls, good for rooms" },
+        { "name": "interior", "type": "bool", "default": "0", "description": "Leaves the sky out, for rooms without windows" },
+        { "name": "max_distance", "type": "float", "default": "0", "description": "Meters the probe sees past its box, 0 for the box only" }
+      ]
+    },
+    {
+      "classname": "env_voxel_gi", "type": "solid", "description": "The brush becomes the box of a VoxelGI, real time bounce light that follows moving lights and objects. It is baked in the Godot editor when the map is built", "color": "#b3ff80ff", "node_class": "VoxelGI",
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_voxel_gi.gd",
+      "properties": [
+        { "name": "subdiv", "type": "choices", "default": "128", "description": "Voxels along the longest side, more is sharper and slower", "options": [["64", "64"], ["128", "128"], ["256", "256"], ["512", "512"]] },
+        { "name": "energy", "type": "float", "default": "1.0", "description": "Brightness of the bounce light" },
+        { "name": "bake_on_build", "type": "bool", "default": "1", "description": "Bakes the volume in the Godot editor each time the map is built" }
+      ]
     }
   ]
 }

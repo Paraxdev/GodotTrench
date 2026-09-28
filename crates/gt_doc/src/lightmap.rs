@@ -39,6 +39,39 @@ pub struct Chart {
     pub rows: [[f32; 4]; 2],
 }
 
+/// Light probes for objects that move, in the columns Godot's `LightmapGIData` takes them in. Positions and plane
+/// distances are in map units, everything else is as Godot stores it: nine RGB spherical harmonics coefficients per
+/// point, four point indices per tetrahedron, and per BSP node a plane (normal, distance) with its children over and
+/// under it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Probes {
+    pub points: Vec<f32>,
+    pub sh: Vec<f32>,
+    pub tetrahedra: Vec<i32>,
+    pub bsp_planes: Vec<f32>,
+    pub bsp_children: Vec<i32>,
+}
+
+impl Probes {
+    pub fn len(&self) -> usize {
+        self.points.len() / 3
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.points.is_empty()
+    }
+
+    fn is_consistent(&self) -> bool {
+        let (n, nodes) = (self.len(), self.bsp_planes.len() / 4);
+        self.points.len() == n * 3
+            && self.sh.len() == n * 27
+            && self.tetrahedra.len().is_multiple_of(4)
+            && self.tetrahedra.iter().all(|i| (*i as usize) < n)
+            && self.bsp_planes.len() == nodes * 4
+            && self.bsp_children.len() == nodes * 2
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Lightmap {
     pub width: u32,
@@ -57,6 +90,7 @@ pub struct Lightmap {
     pub nodes: BTreeMap<u64, u64>,
     /// Fingerprint of everything the bake depended on, lights and all geometry, to tell when it is out of date.
     pub scene: u64,
+    pub probes: Probes,
 }
 
 impl Lightmap {
@@ -130,7 +164,7 @@ impl Lightmap {
         let (keys, rows) = self.chart_columns();
         let nodes: Vec<i64> = self.nodes.iter().flat_map(|(k, v)| [*k as i64, *v as i64]).collect();
         let mut w = Writer::new();
-        w.dict_header(13);
+        w.dict_header(18);
         for (key, value) in [("version", VERSION as i64), ("width", self.width as i64), ("height", self.height as i64), ("scene", self.scene as i64)] {
             w.key(key);
             w.value(&Value::from(value));
@@ -154,6 +188,17 @@ impl Lightmap {
         w.int64s(stale);
         w.key("fallback");
         w.float32s(&self.fallback_light());
+        let p = &self.probes;
+        w.key("probe_points");
+        w.float32s(&p.points);
+        w.key("probe_sh");
+        w.float32s(&p.sh);
+        w.key("probe_tetrahedra");
+        w.int32s(&p.tetrahedra);
+        w.key("probe_bsp_planes");
+        w.float32s(&p.bsp_planes);
+        w.key("probe_bsp_children");
+        w.int32s(&p.bsp_children);
         w.out
     }
 
@@ -180,6 +225,11 @@ impl Lightmap {
             "nodes": nodes,
             "stale": stale,
             "fallback": self.fallback_light(),
+            "probe_points": self.probes.points,
+            "probe_sh": self.probes.sh,
+            "probe_tetrahedra": self.probes.tetrahedra,
+            "probe_bsp_planes": self.probes.bsp_planes,
+            "probe_bsp_children": self.probes.bsp_children,
         })
     }
 
@@ -193,7 +243,9 @@ impl Lightmap {
             return None;
         }
 
-        let rows: Vec<f32> = v.get("chart_rows")?.as_array()?.iter().filter_map(Value::as_f64).map(|f| f as f32).collect();
+        let floats = |k: &str| v.get(k).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_f64).map(|f| f as f32).collect::<Vec<_>>());
+        let int32s = |k: &str| ints(k).unwrap_or_default().into_iter().filter_map(|i| i32::try_from(i).ok()).collect();
+        let rows = floats("chart_rows")?;
         let mut map = Lightmap {
             width: int("width")? as u32,
             height: int("height")? as u32,
@@ -205,6 +257,18 @@ impl Lightmap {
             ..Lightmap::default()
         };
         map.set_columns(&ints("chart_keys")?, &rows, &ints("nodes").unwrap_or_default());
+        let probes = Probes {
+            points: floats("probe_points").unwrap_or_default(),
+            sh: floats("probe_sh").unwrap_or_default(),
+            tetrahedra: int32s("probe_tetrahedra"),
+            bsp_planes: floats("probe_bsp_planes").unwrap_or_default(),
+            bsp_children: int32s("probe_bsp_children"),
+        };
+        // Probes that do not add up are left out, the light map itself still works without them.
+        if probes.is_consistent() {
+            map.probes = probes;
+        }
+
         map.is_consistent().then_some(map)
     }
 }
@@ -361,6 +425,13 @@ mod tests {
             ],
             nodes,
             scene: 99,
+            probes: Probes {
+                points: vec![0.0, 1.0, 2.0, 64.0, 0.0, 0.0, 0.0, 64.0, 0.0, 0.0, 0.0, 64.0],
+                sh: (0..4 * 27).map(|k| k as f32 * 0.25).collect(),
+                tetrahedra: vec![0, 1, 2, 3],
+                bsp_planes: vec![0.0, 1.0, 0.0, 16.5],
+                bsp_children: vec![-1, i32::MIN],
+            },
         }
     }
 
@@ -396,5 +467,10 @@ mod tests {
         let mut map = sample();
         map.ao.pop();
         assert_eq!(Lightmap::from_chunk(&map.to_chunk(&[])), None);
+
+        let mut map = sample();
+        map.probes.sh.pop();
+        let back = Lightmap::from_chunk(&map.to_chunk(&[])).unwrap();
+        assert!(back.probes.is_empty() && back.charts == map.charts, "broken probes are dropped, the light map stays");
     }
 }

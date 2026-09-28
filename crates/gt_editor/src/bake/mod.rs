@@ -143,6 +143,10 @@ impl Baked {
     pub fn summary(&self) -> String {
         let lm = &self.lightmap;
         let mut text = format!("Baked lighting in {:.1} s: {} surfaces in a {}×{} light map", self.seconds, self.counts.surfaces, lm.width, lm.height);
+        if !lm.probes.is_empty() {
+            text += &format!(" and {} light probes", lm.probes.len());
+        }
+
         if let Some(asked) = self.coarsened_from {
             text += &format!(", at {:.0} units per texel instead of {asked:.0} so it fits", lm.texel_size);
         }
@@ -215,6 +219,13 @@ fn stored(map: gt_bake::Lightmap, nodes: std::collections::BTreeMap<u64, u64>, s
         charts: map.charts.iter().map(|c| lightmap::Chart { node: c.key.node, face: c.key.face, rows: c.rows }).collect(),
         nodes,
         scene,
+        probes: lightmap::Probes {
+            points: map.probes.points.iter().flat_map(|p| p.to_array()).collect(),
+            sh: map.probes.sh.iter().flat_map(|c| c.iter().flat_map(|v| v.to_array())).collect(),
+            tetrahedra: map.probes.tetrahedra.iter().flatten().map(|i| *i as i32).collect(),
+            bsp_planes: map.probes.bsp.iter().flat_map(|n| n.plane).collect(),
+            bsp_children: map.probes.bsp.iter().flat_map(|n| [n.over, n.under]).collect(),
+        },
     }
 }
 

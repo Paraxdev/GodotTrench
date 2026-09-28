@@ -348,7 +348,8 @@ pub fn fgd_resource(def: &EntityDef) -> String {
         out += "build_visuals = false\n";
     }
 
-    if solid {
+    // Probe volumes keep their mesh only for the addon to measure the box, see godottrench_probes.gd.
+    if solid && !PROBE_VOLUMES.contains(&def.node_class.as_str()) {
         out += "collision_shape_type = 1\n";
     }
 
@@ -400,8 +401,11 @@ pub fn fgd_resource(def: &EntityDef) -> String {
     out
 }
 
+/// Node classes of solid entities whose brushes only give the box of a probe.
+pub const PROBE_VOLUMES: [&str; 2] = ["ReflectionProbe", "VoxelGI"];
+
 /// Classnames whose definitions ship with the Godot addon in `addons/func_godot/fgd/godottrench/`.
-pub const ADDON_ENTITIES: [&str; 35] = [
+pub const ADDON_ENTITIES: [&str; 38] = [
     "info_teleport_destination",
     "path_corner",
     "light",
@@ -437,6 +441,9 @@ pub const ADDON_ENTITIES: [&str; 35] = [
     "env_sound",
     "env_particles",
     "logic_branch",
+    "light_probe",
+    "env_reflection_probe",
+    "env_voxel_gi",
 ];
 
 /// Every addon FGD file as (file name, text): one resource per entity plus the FuncGodotFGDFile listing them.

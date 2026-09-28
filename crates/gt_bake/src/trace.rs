@@ -27,6 +27,8 @@ pub struct Scene<'a> {
     /// Map units rays start off their surface, so they do not hit it again.
     pub bias: f32,
     pub far: f32,
+    /// Corners of the box around every traced triangle.
+    pub bounds: (Vec3, Vec3),
 }
 
 impl<'a> Scene<'a> {
@@ -55,7 +57,7 @@ impl<'a> Scene<'a> {
 
         let far = if tris.is_empty() { 1.0 } else { (hi - lo).length() * 2.0 + 1.0 };
         let bias = 0.05 + settings.texel_size.max(0.0) * 0.01;
-        Scene { input, layout, bvh: Bvh::build(&tris), tri_surface, surface_chart, bias, far }
+        Scene { input, layout, bvh: Bvh::build(&tris), tri_surface, surface_chart, bias, far, bounds: (lo, hi) }
     }
 }
 
@@ -125,7 +127,7 @@ pub fn run(scene: &Scene, samples: &Samples, settings: &Settings, progress: &Pro
 }
 
 /// Runs `f` for every index on `threads` workers, in chunks so a cancel stops them quickly.
-fn parallel<T: Send + Default + Clone>(n: usize, threads: usize, progress: &Progress, f: impl Fn(usize) -> T + Sync) -> Result<Vec<T>, BakeError> {
+pub(crate) fn parallel<T: Send + Default + Clone>(n: usize, threads: usize, progress: &Progress, f: impl Fn(usize) -> T + Sync) -> Result<Vec<T>, BakeError> {
     let mut out = vec![T::default(); n];
     {
         let chunks = Mutex::new(out.chunks_mut(CHUNK).enumerate());

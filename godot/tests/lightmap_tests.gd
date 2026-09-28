@@ -1,7 +1,7 @@
 extends RefCounted
 ## Lighting baked in the GodotTrench editor: baked faces get their atlas coordinates as UV2, faces changed since the
-## bake point at the fallback row, the build adds a LightmapGI with the atlases and sets each light's bake mode, and
-## use_baked_lighting off leaves all of that out.
+## bake point at the fallback row, the build adds a LightmapGI with the atlases, light probes and each light's bake
+## mode, probe volumes become sized ReflectionProbe nodes, and use_baked_lighting off leaves the bake out.
 ##
 ## res://tests/run_tests.gd calls [method run], [param t] is that script's instance for its check helpers.
 
@@ -47,8 +47,21 @@ static func _map_json() -> Dictionary:
 			"light": Marshalls.raw_to_base64(light), "shadow": Marshalls.raw_to_base64(shadow),
 			"ao": Marshalls.raw_to_base64(shadow), "chart_keys": keys, "chart_rows": chart_rows,
 			"stale": [3], "fallback": [0.25, 0.25, 0.25],
+			# One tetrahedron 64 units on a side at the origin, lit 0.5 from everywhere, split by one plane at y 16.
+			"probe_points": [0, 0, 0, 64, 0, 0, 0, 64, 0, 0, 0, 64],
+			"probe_sh": _probe_sh(),
+			"probe_tetrahedra": [0, 1, 2, 3],
+			"probe_bsp_planes": [0, 1, 0, 16],
+			"probe_bsp_children": [-1, -1],
 		},
 	}
+
+static func _probe_sh() -> Array:
+	var sh := []
+	for p in 4:
+		for c in 9:
+			sh.append_array([0.5, 0.5, 0.5] if c == 0 else [0, 0, 0])
+	return sh
 
 static func t_box(id: int, min_c: Vector3, max_c: Vector3) -> Dictionary:
 	var vertices := []
@@ -98,6 +111,15 @@ static func _test_synthetic(t) -> void:
 		t.check(gi.shadowmask_mode == LightmapGIData.SHADOWMASK_MODE_REPLACE, "a sun that stays real time uses the shadow mask")
 		for k in data.get_user_count():
 			t.check(gi.get_node_or_null(data.get_user_path(k)) is MeshInstance3D, "user %d points at a mesh" % k)
+		# Headless Godot keeps no probe data either, so this checks what the build hands to _set_probe_data.
+		var lightmap := GodotTrenchLightmap.decode(_map_json()["lightmap"])
+		var probes := GodotTrenchLightmap.probe_data(lightmap["probes"], map.map_settings.scale_factor)
+		var points: PackedVector3Array = probes.get("points", PackedVector3Array())
+		t.check(points.size() == 4 and points[1].is_equal_approx(Vector3(2, 0, 0)), "the light probes reach Godot in meters, %s" % [points])
+		var bsp: PackedInt32Array = probes.get("bsp", PackedInt32Array())
+		var node := bsp.to_byte_array()
+		t.check(bsp.size() == 6 and is_equal_approx(node.decode_float(12), 0.5) and node.decode_s32(16) == -1, "the BSP plane is scaled to meters, %s" % [bsp])
+		t.check(probes.get("sh", PackedColorArray()).size() == 36 and probes.get("tetrahedra", PackedInt32Array()).size() == 4, "every probe has nine harmonics")
 
 	var uv2 := _uv2s(map)
 	var corner = uv2.get(Vector3(2, 0, 2))
@@ -134,5 +156,22 @@ static func _test_editor_bake(t) -> void:
 	t.check(brightest > 0.2, "the LMAP chunk holds the baked light, brightest %s" % brightest)
 	var uv2 := _uv2s(map)
 	t.check(not uv2.is_empty() and uv2.values().all(func(v): return v.x >= 0.0 and v.x <= 1.0 and v.y >= 0.0 and v.y <= 1.0), "every baked vertex lands inside the atlas")
+	var probes := GodotTrenchLightmap.probe_data(lightmap["probes"], map.map_settings.scale_factor) if not lightmap["probes"].is_empty() else {}
+	var points: PackedVector3Array = probes.get("points", PackedVector3Array())
+	t.check(points.size() > 8, "the room is filled with light probes, %d" % points.size())
+	t.check(points.size() > 0 and points[0].is_equal_approx(Vector3(3.75, 2.5, 3.75)), "the light_probe entity is one of them, first is %s" % [points[0] if points.size() > 0 else null])
+	var sh: PackedColorArray = probes.get("sh", PackedColorArray())
+	var lit := 0
+	for k in range(0, sh.size(), 9):
+		if sh[k].r > 0.0:
+			lit += 1
+	t.check(lit == points.size(), "every probe sees the lamp's bounce, %d of %d" % [lit, points.size()])
+	t.check(map.find_children("*", "LightmapProbe", true, false).size() == 1, "light_probe builds a LightmapProbe")
+	var reflections := map.find_children("*", "ReflectionProbe", true, false)
+	t.check(reflections.size() == 1, "env_reflection_probe builds a ReflectionProbe")
+	if reflections.size() == 1:
+		var r: ReflectionProbe = reflections[0]
+		t.check(r.size.is_equal_approx(Vector3(10, 4.5, 10)) and r.position.is_equal_approx(Vector3(0, 2.5, 0)), "the probe box is the brush, %s at %s" % [r.size, r.position])
+		t.check(is_equal_approx(r.intensity, 0.8) and r.box_projection and r.get_child_count() == 0, "its keys apply and the brush mesh is gone")
 	map.queue_free()
 	await t.process_frame

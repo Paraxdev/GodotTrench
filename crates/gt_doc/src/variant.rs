@@ -62,6 +62,12 @@ impl Writer {
         values.iter().for_each(|v| self.out.extend_from_slice(&v.to_le_bytes()));
     }
 
+    pub fn int32s(&mut self, values: &[i32]) {
+        self.u32(INT32S);
+        self.u32(values.len() as u32);
+        values.iter().for_each(|v| self.out.extend_from_slice(&v.to_le_bytes()));
+    }
+
     pub fn bytes(&mut self, bytes: &[u8]) {
         self.u32(BYTES);
         self.padded(bytes);
