@@ -1,12 +1,17 @@
-//! The CPU tracer: direct light with shadows from every light, then gather passes that bring in the sky, glowing
-//! surfaces and light bounced off the rest of the map.
+//! The tracer: direct light with shadows from every light, then gather passes that bring in the sky, glowing
+//! surfaces and light bounced off the rest of the map. CPU threads and the GPU, when there is one, take chunks of
+//! samples from one queue until it is empty, so each does as much as its speed allows.
 
+use std::ops::Range;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use glam::{Vec2, Vec3};
 
 use crate::atlas::Layout;
 use crate::bvh::Bvh;
+use crate::gpu::Gpu;
 use crate::raster::{Sample, Samples};
 use crate::sampling::{cone, cosine, hash, r2};
 use crate::{BakeError, BakeInput, Light, LightKind, Progress, Settings, Stage, filter};
@@ -14,7 +19,7 @@ use crate::{BakeError, BakeInput, Light, LightKind, Progress, Settings, Stage, f
 /// Samples handed to a worker at a time.
 const CHUNK: usize = 256;
 /// Share of a texel's rays meeting the back of a one sided surface past which the texel counts as inside a solid.
-const INSIDE: f32 = 0.15;
+pub(crate) const INSIDE: f32 = 0.15;
 
 pub struct Scene<'a> {
     pub input: &'a BakeInput,
@@ -86,14 +91,117 @@ pub struct Traced {
     pub valid: Vec<bool>,
 }
 
-pub fn run(scene: &Scene, samples: &Samples, settings: &Settings, progress: &Progress) -> Result<Traced, BakeError> {
+/// Who traces: CPU threads, the GPU, or both.
+pub struct Workers<'a> {
+    pub threads: usize,
+    pub gpu: Option<&'a Gpu>,
+    /// Leave the CPU threads idle unless the GPU fails.
+    pub gpu_only: bool,
+    /// Why the GPU stopped, when it did. The CPU finishes its work.
+    pub failed: Mutex<Option<String>>,
+    gpu_down: AtomicBool,
+}
+
+impl<'a> Workers<'a> {
+    pub fn new(threads: usize, gpu: Option<&'a Gpu>, gpu_only: bool) -> Self {
+        Self { threads: threads.max(1), gpu, gpu_only: gpu_only && gpu.is_some(), failed: Mutex::new(None), gpu_down: AtomicBool::new(false) }
+    }
+
+    fn gpu(&self) -> Option<&'a Gpu> {
+        self.gpu.filter(|_| !self.gpu_down.load(Ordering::Relaxed))
+    }
+
+    fn fail(&self, error: String) {
+        self.gpu_down.store(true, Ordering::Relaxed);
+        self.failed.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert(error);
+    }
+
+    /// Runs `cpu` for every sample index, or `gpu` over ranges when the GPU takes part. The GPU takes big chunks,
+    /// up to `gpu_chunk`, but never more than half of what is left so the CPU threads are not left waiting at the end.
+    fn run<T: Send + Default + Clone>(
+        &self,
+        n: usize,
+        progress: &Progress,
+        gpu_chunk: usize,
+        cpu: impl Fn(usize) -> T + Sync,
+        gpu: impl Fn(&Gpu, Range<usize>) -> Result<Vec<T>, String> + Sync,
+    ) -> Result<Vec<T>, BakeError> {
+        let Some(device) = self.gpu() else { return parallel(n, self.threads, progress, cpu) };
+        let next = Mutex::new(0usize);
+        let done = Mutex::new(Vec::<(usize, Vec<T>)>::new());
+        let take = |size: &dyn Fn(usize) -> usize| {
+            let mut at = next.lock().unwrap_or_else(|e| e.into_inner());
+            let start = *at;
+            *at = (start + size(n - start)).min(n);
+            (start < n).then_some(start..*at)
+        };
+        let cpu_range = |range: Range<usize>| {
+            let out: Vec<T> = range.clone().map(&cpu).collect();
+            progress.advance(range.len());
+            done.lock().unwrap_or_else(|e| e.into_inner()).push((range.start, out));
+        };
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                while !progress.is_cancelled() {
+                    let hybrid = !self.gpu_only;
+                    let Some(range) = take(&|left| if hybrid { gpu_chunk.min(left.div_ceil(2)).max(CHUNK) } else { gpu_chunk }) else { return };
+                    if self.gpu_down.load(Ordering::Relaxed) {
+                        cpu_range(range);
+                        continue;
+                    }
+
+                    match gpu(device, range.clone()) {
+                        Ok(out) => {
+                            progress.advance(range.len());
+                            done.lock().unwrap_or_else(|e| e.into_inner()).push((range.start, out));
+                        }
+                        Err(e) => {
+                            self.fail(e);
+                            cpu_range(range);
+                        }
+                    }
+                }
+            });
+            for _ in 0..self.threads {
+                s.spawn(|| {
+                    while !progress.is_cancelled() {
+                        if self.gpu_only && !self.gpu_down.load(Ordering::Relaxed) {
+                            if *next.lock().unwrap_or_else(|e| e.into_inner()) >= n {
+                                return;
+                            }
+
+                            std::thread::sleep(Duration::from_millis(5));
+                            continue;
+                        }
+
+                        let Some(range) = take(&|_| CHUNK) else { return };
+                        cpu_range(range);
+                    }
+                });
+            }
+        });
+
+        if progress.is_cancelled() {
+            return Err(BakeError::Cancelled);
+        }
+
+        let mut parts = done.into_inner().unwrap_or_else(|e| e.into_inner());
+        parts.sort_by_key(|(start, _)| *start);
+        Ok(parts.into_iter().flat_map(|(_, v)| v).collect())
+    }
+}
+
+pub fn run(scene: &Scene, samples: &Samples, settings: &Settings, progress: &Progress, workers: &Workers) -> Result<Traced, BakeError> {
     let n = samples.list.len();
-    let threads = match settings.threads {
-        0 => std::thread::available_parallelism().map_or(4, |p| p.get()),
-        t => t,
-    };
     progress.start(Stage::Direct, n);
-    let direct = parallel(n, threads, progress, |i| direct(scene, &samples.list[i], i as u32, settings))?;
+    let shadow_rays = scene.input.lights.len().max(1) as u32 * settings.shadow_samples.max(1);
+    let direct = workers.run(
+        n,
+        progress,
+        workers.gpu.map_or(0, |g| g.chunk(shadow_rays)),
+        |i| direct(scene, &samples.list[i], i as u32, settings),
+        |gpu, range| gpu.direct(range),
+    )?;
     let passes = settings.bounces.max(1);
     let mut prev = if settings.bounces > 0 {
         filter::spread(scene.layout, samples, |i| Some(direct[i].bounce))
@@ -106,7 +214,17 @@ pub fn run(scene: &Scene, samples: &Samples, settings: &Settings, progress: &Pro
     for pass in 0..passes {
         let label = if settings.bounces == 0 { 0 } else { pass + 1 };
         progress.start(Stage::Bounce(label.min(250) as u8), n);
-        let g = parallel(n, threads, progress, |i| gather(scene, &samples.list[i], i as u32, pass, &prev, settings))?;
+        if let Some(gpu) = workers.gpu() {
+            gpu.set_source(&prev);
+        }
+
+        let g = workers.run(
+            n,
+            progress,
+            workers.gpu.map_or(0, |g| g.chunk(settings.rays)),
+            |i| gather(scene, &samples.list[i], i as u32, pass, &prev, settings),
+            |gpu, range| gpu.gather(range, pass),
+        )?;
         if pass == 0 {
             for (i, g) in g.iter().enumerate() {
                 valid[i] = !g.inside;
@@ -124,6 +242,12 @@ pub fn run(scene: &Scene, samples: &Samples, settings: &Settings, progress: &Pro
     }
 
     Ok(Traced { direct, indirect, ao, valid })
+}
+
+/// `f` for every index on every core, in order.
+pub(crate) fn par_map<T: Send + Default + Clone>(n: usize, f: impl Fn(usize) -> T + Sync) -> Vec<T> {
+    let threads = std::thread::available_parallelism().map_or(4, |p| p.get());
+    parallel(n, threads, &Progress::default(), f).unwrap_or_default()
 }
 
 /// Runs `f` for every index on `threads` workers, in chunks so a cancel stops them quickly.

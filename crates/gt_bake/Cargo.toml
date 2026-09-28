@@ -9,3 +9,4 @@ description = "Light baking for GodotTrench maps: light, shadow and ambient occl
 [dependencies]
 glam.workspace = true
 bytemuck.workspace = true
+wgpu.workspace = true

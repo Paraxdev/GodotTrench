@@ -73,6 +73,8 @@ impl Quality {
 pub fn backend_name(b: Backend) -> &'static str {
     match b {
         Backend::Cpu => "cpu",
+        Backend::Gpu => "gpu",
+        Backend::Hybrid => "hybrid",
     }
 }
 
@@ -124,9 +126,8 @@ impl Options {
 
     pub fn settings(&self) -> Settings {
         let (rays, bounces, shadow_samples) = self.quality.tracing();
-        // Keep a core for the editor so it stays responsive while the bake runs.
-        let threads = std::thread::available_parallelism().map_or(2, |n| n.get()).saturating_sub(1).max(1);
-        Settings { texel_size: self.texel_size, rays, bounces, shadow_samples, backend: self.backend, threads, ..Settings::default() }
+        // Every core: the tracer threads only share out work, the editor's own thread still gets its turn.
+        Settings { texel_size: self.texel_size, rays, bounces, shadow_samples, backend: self.backend, threads: 0, ..Settings::default() }
     }
 }
 
@@ -137,18 +138,30 @@ pub struct Baked {
     pub seconds: f32,
     /// The texel size asked for, when the map had to be baked coarser to fit the largest atlas.
     pub coarsened_from: Option<f32>,
+    /// The GPU that took part.
+    pub gpu: Option<String>,
+    /// Why the GPU asked for was not used.
+    pub gpu_error: Option<String>,
 }
 
 impl Baked {
     pub fn summary(&self) -> String {
         let lm = &self.lightmap;
         let mut text = format!("Baked lighting in {:.1} s: {} surfaces in a {}×{} light map", self.seconds, self.counts.surfaces, lm.width, lm.height);
+        if let Some(gpu) = &self.gpu {
+            text += &format!(" on {gpu}");
+        }
+
         if !lm.probes.is_empty() {
             text += &format!(" and {} light probes", lm.probes.len());
         }
 
         if let Some(asked) = self.coarsened_from {
             text += &format!(", at {:.0} units per texel instead of {asked:.0} so it fits", lm.texel_size);
+        }
+
+        if let Some(e) = &self.gpu_error {
+            text += &format!(". The GPU was not used, {e}, so the CPU baked it");
         }
 
         text
@@ -178,11 +191,14 @@ impl Job {
                 input.materials = collected.material_names.iter().map(|name| collect::material(&mut materials, name)).collect();
                 let map = gt_bake::bake(&input, &settings, &shared).map_err(|e| e.to_string())?;
                 let coarsened_from = (map.texel_size > settings.texel_size * 1.01).then_some(settings.texel_size);
+                let (gpu, gpu_error) = (map.gpu.clone(), map.gpu_error.clone());
                 Ok(Baked {
                     lightmap: stored(map, collected.nodes, collected.scene),
                     counts: collected.counts,
                     seconds: started.elapsed().as_secs_f32(),
                     coarsened_from,
+                    gpu,
+                    gpu_error,
                 })
             })
             .expect("the bake thread starts");

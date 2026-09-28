@@ -8,6 +8,7 @@
 mod atlas;
 mod bvh;
 mod filter;
+mod gpu;
 pub mod probes;
 mod raster;
 mod sampling;
@@ -200,14 +201,20 @@ pub struct BakeInput {
 pub enum Backend {
     #[default]
     Cpu,
+    /// The GPU traces, the CPU only steps in when it fails.
+    Gpu,
+    /// The GPU and every CPU core trace together.
+    Hybrid,
 }
 
 impl Backend {
-    pub const ALL: [Backend; 1] = [Backend::Cpu];
+    pub const ALL: [Backend; 3] = [Backend::Cpu, Backend::Gpu, Backend::Hybrid];
 
     pub fn label(self) -> &'static str {
         match self {
             Backend::Cpu => "CPU",
+            Backend::Gpu => "GPU",
+            Backend::Hybrid => "CPU + GPU",
         }
     }
 }
@@ -231,6 +238,8 @@ pub struct Settings {
     pub backend: Backend,
     /// Map units between the light probes of the grid, 0 for only the probes placed by hand.
     pub probe_spacing: f32,
+    /// Accept a GPU that is emulated on the CPU, for tests.
+    pub software_gpu: bool,
     /// Worker threads for the CPU, 0 for one per core.
     pub threads: usize,
 }
@@ -247,6 +256,7 @@ impl Default for Settings {
             denoise: true,
             backend: Backend::Cpu,
             probe_spacing: 64.0,
+            software_gpu: false,
             threads: 0,
         }
     }
@@ -366,6 +376,10 @@ pub struct Lightmap {
     pub charts: Vec<ChartEntry>,
     /// Light arriving at points in the open, for objects that move.
     pub probes: Probes,
+    /// The GPU that took part, by its adapter name.
+    pub gpu: Option<String>,
+    /// Why the GPU asked for could not trace, the CPU did the work then.
+    pub gpu_error: Option<String>,
 }
 
 impl Lightmap {
@@ -381,7 +395,25 @@ pub fn bake(input: &BakeInput, settings: &Settings, progress: &Progress) -> Resu
     let layout = atlas::layout(&input.surfaces, settings).ok_or(BakeError::NothingToBake)?;
     let samples = raster::rasterize(&input.surfaces, &layout);
     let scene = trace::Scene::new(input, &layout, settings);
-    let result = trace::run(&scene, &samples, settings, progress)?;
+    let threads = match settings.threads {
+        0 => std::thread::available_parallelism().map_or(4, |p| p.get()),
+        t => t,
+    };
+    let (device, mut gpu_error) = match settings.backend {
+        Backend::Cpu => (None, None),
+        Backend::Gpu | Backend::Hybrid => match gpu::Gpu::new(&scene, &samples, settings) {
+            Ok(g) => (Some(g), None),
+            Err(e) => (None, Some(e)),
+        },
+    };
+    // The thread driving the GPU mostly waits on it, so the CPU threads keep every core.
+    let workers = trace::Workers::new(threads, device.as_ref(), settings.backend == Backend::Gpu);
+    let result = trace::run(&scene, &samples, settings, progress, &workers)?;
+    if let Some(e) = workers.failed.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        gpu_error = Some(e);
+    }
+
+    let gpu = device.as_ref().filter(|_| gpu_error.is_none()).map(|g| g.name.clone());
     let probes = light_probes(&scene, &samples, &result, settings, progress)?;
     progress.start(Stage::Finishing, 1);
     let (width, height) = (layout.width, layout.height);
@@ -389,7 +421,7 @@ pub fn bake(input: &BakeInput, settings: &Settings, progress: &Progress) -> Resu
     charts.sort_by_key(|c| c.key);
     let (light, shadow, ao) = filter::finish(&layout, &samples, &result, settings.denoise);
     progress.advance(1);
-    Ok(Lightmap { width, height, texel_size: layout.texel, light, shadow, ao, charts, probes })
+    Ok(Lightmap { width, height, texel_size: layout.texel, light, shadow, ao, charts, probes, gpu, gpu_error })
 }
 
 /// Probes on a grid and where placed by hand, with the indirect light arriving there. Godot lights moving objects with

@@ -5,7 +5,7 @@ use glam::Vec3;
 
 use crate::atlas::Layout;
 use crate::raster::Samples;
-use crate::trace::Traced;
+use crate::trace::{Traced, par_map};
 
 /// Filled texels spread into their empty neighbours this many times at most.
 const DILATE_STEPS: usize = 64;
@@ -43,34 +43,49 @@ pub fn spread(layout: &Layout, samples: &Samples, value: impl Fn(usize) -> Optio
 fn dilate<const N: usize>(layout: &Layout, charts: &[u32], filled: &mut [bool], data: &mut [[f32; N]]) {
     let (w, h) = (layout.width as i64, layout.height as i64);
     let mut frontier: Vec<usize> = (0..filled.len()).filter(|i| !filled[*i] && charts[*i] != u32::MAX).collect();
+    let threads = std::thread::available_parallelism().map_or(4, |p| p.get());
     for _ in 0..DILATE_STEPS {
-        let mut updates = Vec::new();
-        for &i in &frontier {
-            let (x, y) = (i as i64 % w, i as i64 / w);
-            let mut sum = [0.0f32; N];
-            let mut count = 0;
-            for dy in -1..=1 {
-                for dx in -1..=1 {
-                    let (nx, ny) = (x + dx, y + dy);
-                    if (dx, dy) == (0, 0) || nx < 0 || ny < 0 || nx >= w || ny >= h {
-                        continue;
-                    }
-
-                    let j = (ny * w + nx) as usize;
-                    if filled[j] && charts[j] == charts[i] {
-                        for (s, v) in sum.iter_mut().zip(data[j]) {
-                            *s += v;
+        let (filled_now, data_now) = (&*filled, &*data);
+        let step = |part: &[usize]| {
+            let mut updates = Vec::new();
+            for &i in part {
+                let (x, y) = (i as i64 % w, i as i64 / w);
+                let mut sum = [0.0f32; N];
+                let mut count = 0;
+                for dy in -1..=1 {
+                    for dx in -1..=1 {
+                        let (nx, ny) = (x + dx, y + dy);
+                        if (dx, dy) == (0, 0) || nx < 0 || ny < 0 || nx >= w || ny >= h {
+                            continue;
                         }
 
-                        count += 1;
+                        let j = (ny * w + nx) as usize;
+                        if filled_now[j] && charts[j] == charts[i] {
+                            for (s, v) in sum.iter_mut().zip(data_now[j]) {
+                                *s += v;
+                            }
+
+                            count += 1;
+                        }
                     }
+                }
+
+                if count > 0 {
+                    updates.push((i, sum.map(|s| s / count as f32)));
                 }
             }
 
-            if count > 0 {
-                updates.push((i, sum.map(|s| s / count as f32)));
-            }
-        }
+            updates
+        };
+        let updates: Vec<(usize, [f32; N])> = if frontier.len() < 4096 {
+            step(&frontier)
+        } else {
+            let part = frontier.len().div_ceil(threads);
+            std::thread::scope(|s| {
+                let jobs: Vec<_> = frontier.chunks(part).map(|c| s.spawn(move || step(c))).collect();
+                jobs.into_iter().flat_map(|j| j.join().unwrap_or_default()).collect()
+            })
+        };
 
         if updates.is_empty() {
             break;
@@ -90,46 +105,42 @@ fn dilate<const N: usize>(layout: &Layout, charts: &[u32], filled: &mut [bool], 
 fn denoise(layout: &Layout, samples: &Samples, traced: &Traced) -> Vec<Vec3> {
     const RADIUS: i64 = 2;
     let (w, h) = (layout.width as i64, layout.height as i64);
-    samples
-        .list
-        .iter()
-        .enumerate()
-        .map(|(i, s)| {
-            if !traced.valid[i] {
-                return traced.indirect[i];
-            }
+    par_map(samples.list.len(), |i| {
+        let s = &samples.list[i];
+        if !traced.valid[i] {
+            return traced.indirect[i];
+        }
 
-            let texel = layout.charts[s.chart as usize].texel;
-            let (x, y) = (s.pixel as i64 % w, s.pixel as i64 / w);
-            let (mut sum, mut weight) = (Vec3::ZERO, 0.0);
-            for dy in -RADIUS..=RADIUS {
-                for dx in -RADIUS..=RADIUS {
-                    let (nx, ny) = (x + dx, y + dy);
-                    if nx < 0 || ny < 0 || nx >= w || ny >= h {
-                        continue;
-                    }
-
-                    let j = samples.at[(ny * w + nx) as usize];
-                    if j == u32::MAX || !traced.valid[j as usize] {
-                        continue;
-                    }
-
-                    let o = &samples.list[j as usize];
-                    if o.chart != s.chart {
-                        continue;
-                    }
-
-                    let facing = s.normal.dot(o.normal).max(0.0).powi(8);
-                    let off_plane = (s.normal.dot(o.pos - s.pos) / texel).abs();
-                    let wgt = (-((dx * dx + dy * dy) as f32) / 4.5).exp() * facing * (-off_plane * 4.0).exp();
-                    sum += traced.indirect[j as usize] * wgt;
-                    weight += wgt;
+        let texel = layout.charts[s.chart as usize].texel;
+        let (x, y) = (s.pixel as i64 % w, s.pixel as i64 / w);
+        let (mut sum, mut weight) = (Vec3::ZERO, 0.0);
+        for dy in -RADIUS..=RADIUS {
+            for dx in -RADIUS..=RADIUS {
+                let (nx, ny) = (x + dx, y + dy);
+                if nx < 0 || ny < 0 || nx >= w || ny >= h {
+                    continue;
                 }
-            }
 
-            if weight > 0.0 { sum / weight } else { traced.indirect[i] }
-        })
-        .collect()
+                let j = samples.at[(ny * w + nx) as usize];
+                if j == u32::MAX || !traced.valid[j as usize] {
+                    continue;
+                }
+
+                let o = &samples.list[j as usize];
+                if o.chart != s.chart {
+                    continue;
+                }
+
+                let facing = s.normal.dot(o.normal).max(0.0).powi(8);
+                let off_plane = (s.normal.dot(o.pos - s.pos) / texel).abs();
+                let wgt = (-((dx * dx + dy * dy) as f32) / 4.5).exp() * facing * (-off_plane * 4.0).exp();
+                sum += traced.indirect[j as usize] * wgt;
+                weight += wgt;
+            }
+        }
+
+        if weight > 0.0 { sum / weight } else { traced.indirect[i] }
+    })
 }
 
 /// The finished light, shadow and ambient occlusion atlases.
@@ -152,7 +163,9 @@ pub fn finish(layout: &Layout, samples: &Samples, traced: &Traced, smooth: bool)
 
     let charts = chart_map(layout);
     let mut filled_rest = filled.clone();
-    dilate(layout, &charts, &mut filled, &mut light);
-    dilate(layout, &charts, &mut filled_rest, &mut rest);
+    std::thread::scope(|s| {
+        s.spawn(|| dilate(layout, &charts, &mut filled_rest, &mut rest));
+        dilate(layout, &charts, &mut filled, &mut light);
+    });
     (light, rest.iter().map(|r| r[0]).collect(), rest.iter().map(|r| r[1]).collect())
 }
