@@ -76,9 +76,9 @@ impl PinType {
         PinType::ALL.into_iter().find(|t| t.name() == name).unwrap_or(if name.is_empty() { PinType::Pulse } else { PinType::Variant })
     }
 
-    /// A declared pin's type: a pulse, or some value when the definition names a parameter.
+    /// A declared pin's type: a pulse without parameters, else the type of its first one.
     fn of(def: &gt_formats::game::IoDef) -> Self {
-        if def.parameter.trim().is_empty() { PinType::Pulse } else { PinType::Variant }
+        def.parameter_types().first().map_or(PinType::Pulse, |t| PinType::parse(t))
     }
 }
 
@@ -89,15 +89,19 @@ pub struct Pin {
     pub declared: bool,
     pub description: String,
     pub ty: PinType,
+    /// The values it passes or takes with their types, like `activator: node`, empty for a pulse.
+    pub values: String,
 }
 
 impl Pin {
     fn declared(def: &gt_formats::game::IoDef) -> Self {
-        Pin { name: def.name.clone(), declared: true, description: def.description.clone(), ty: PinType::of(def) }
+        let names = def.parameter.split(',').map(str::trim).filter(|p| !p.is_empty());
+        let values: Vec<String> = names.zip(def.parameter_types()).map(|(n, t)| format!("{n}: {t}")).collect();
+        Pin { name: def.name.clone(), declared: true, description: def.description.clone(), ty: PinType::of(def), values: values.join(", ") }
     }
 
     fn used(name: &str, ty: PinType) -> Self {
-        Pin { name: name.to_string(), declared: false, description: String::new(), ty }
+        Pin { name: name.to_string(), declared: false, description: String::new(), ty, values: String::new() }
     }
 }
 
@@ -286,7 +290,12 @@ impl GraphModel {
             let label = map.get(*id).and_then(|n| n.label.clone());
             let title = e.targetname().map(str::to_string).or(label).unwrap_or_else(|| e.classname.clone());
             let category = category(cx.game, &e.classname);
-            let subtitle = if title == e.classname { category.clone() } else { format!("{category} \u{b7} {}", e.classname) };
+            let subtitle = match (title == e.classname, category == e.classname) {
+                (true, true) => String::new(),
+                (true, false) => category.clone(),
+                (false, true) => e.classname.clone(),
+                (false, false) => format!("{category} \u{b7} {}", e.classname),
+            };
             let stored = map.get(*id).and_then(|n| n.graph);
             model.push(GraphNode {
                 key: NodeKey::Entity(*id),
@@ -700,10 +709,12 @@ mod tests {
         let g = build(&m, &[], &[]);
         let b = g.node(&NodeKey::Entity(button)).unwrap();
         assert_eq!((b.category.as_str(), b.subtitle.as_str()), ("func", "func \u{b7} func_button"), "the category is named, not only colored");
-        assert_eq!(b.outputs[b.output("pressed").unwrap()].ty, PinType::Variant, "pressed passes the activator along");
+        let pressed = &b.outputs[b.output("pressed").unwrap()];
+        assert_eq!((pressed.ty, pressed.values.as_str()), (PinType::Node, "activator: node"), "pressed passes the activator along");
         assert_eq!(b.outputs[b.output("released").unwrap()].ty, PinType::Pulse);
         let c = g.node(&NodeKey::Entity(counter)).unwrap();
         assert_eq!(c.category, "logic");
+        assert_eq!(c.inputs[c.input("add").unwrap()].ty, PinType::Int, "typed by the definition");
         assert_eq!(c.inputs[c.input("custom_amount").unwrap()].ty, PinType::Variant, "the map hands it a parameter");
         assert_eq!(c.inputs[c.input("custom").unwrap()].ty, PinType::Pulse);
 
