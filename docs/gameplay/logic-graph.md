@@ -62,12 +62,15 @@ category of your own, set with the `group` of a definition, gets a color of its 
 ## Wiring
 
 1. Drag from an output pin to an input pin. The connection is added to the source entity's outputs. A target without
-   a targetname gets a free one, like `door_2`, in the same step.
+   a targetname gets one in the same step: the name you gave it with *Rename* in the Outliner, so a light you called
+   `lamp` becomes the target `lamp`, else a free one like `door_2`. A name another entity has gets a number after it.
 2. Drop the wire on a node's title instead, to pick from all its inputs or type any name.
 3. Drop it on empty space to add a logic entity there, already wired to the pin you dragged from.
 
-Right click empty space, or use **Add**, to add a logic entity without a wire. The list is grouped by category, logic
-and math first, then other entities that have inputs or outputs, and the search field looks through all of them. New entities are
+Right click empty space, or use **Add**, to add a logic entity without a wire. Without a search the list is grouped by
+category, logic and math first, then other entities that have inputs or outputs. Type to search all of them: classes
+whose name starts with or contains the text come first, then those whose category or description does. The first row
+is highlighted, the up and down arrow keys move the highlight and Enter adds that class. New entities are
 point entities, and the Godot build makes a node for each, so they need a place in the map. They go on a layer called
 *Logic*, next to the entity they are wired to, or in front of the 3D view's camera.
 
@@ -77,6 +80,18 @@ undo works as everywhere else.
 
 > **Note:** Without the Gameplay entities pack there are no logic entities to add. The Add menu then offers to
 > install it.
+
+## Copy, paste and delete
+
+The graph shows entities of the map, so these keys work on the selected entities, brushes and all, while the pointer is
+over the graph.
+
+| Key | Does |
+| --- | --- |
+| Ctrl+C, Ctrl+V | Copy and paste. The copy lands one grid step from the original, wires and all, since there is no view under the pointer to put it in. Paste with the pointer over a view to place it there |
+| Ctrl+D | Duplicate, also one grid step from the original |
+| Delete | Removes the selected wire or frame. With none selected it deletes the selected **entities from the map**, not only their nodes. Wires from other entities to a deleted one turn red. Undo brings everything back |
+| Ctrl+A | Selects everything in the map, not only the nodes shown |
 
 ## Moving around
 
