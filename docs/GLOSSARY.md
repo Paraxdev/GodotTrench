@@ -15,6 +15,9 @@ A Godot transparency mode that cuts a texture off hard at an alpha threshold, so
 ## autoload
 A script or scene that Godot loads once at startup and keeps alive for the whole game, set up under Project Settings > Globals > Autoload. Game wide code, such as a score keeper or the hot reload listener, lives in one.
 
+## baked lighting
+Light that is traced once ahead of time and stored, instead of worked out every frame. GodotTrench bakes the light of the sun, sky, lamps and glowing materials into a light map with Godot > Bake Lighting, and Godot draws it through a LightmapGI.
+
 ## bloom
 The soft glow that bright lamps and glowing materials spread into the pixels around them. It is switched on with the worldspawn key glow_intensity.
 
@@ -81,6 +84,15 @@ Rebuilding the maps of a game that is already running each time you save in Godo
 ## hotspot
 A rectangle marked on a trim sheet and stored in the texture's .hotspots.json file. Hotspot Fit snaps the selected faces to the rectangle that matches them best, so a trim sheet can texture a room quickly.
 
+## light map
+A texture that holds the light reaching every spot of the static geometry, bounces included. Each face gets its own area of it.
+
+## light probe
+A point in open space that stores the light arriving from every direction. Moving objects take their light from the probes around them, so they match the baked lighting of the static geometry.
+
+## LightmapGI
+The Godot node that draws a light map and its light probes. A map built from a baked .gtm gets one named baked_lighting.
+
 ## Lit Preview
 A shading mode of the editor's 3D view, toggled with F3, that shows the map's lights, sun shadows, sky and fog. It lets you judge lighting before building in Godot, but it draws only the 64 strongest point and spot lights.
 
@@ -130,7 +142,7 @@ Godot's name for an event a node announces, such as a button being pressed. Ever
 The name you give an entity so other entities can reach it, like main_door. Outputs, prefab fixups and keys such as fixture find entities by it.
 
 ## texel
-One pixel of a texture as it lands on a surface. By default one texel covers one map unit, and the texel density, how many texels fit on an area, decides how sharp a texture looks.
+One pixel of a texture as it lands on a surface. By default one texel covers one map unit, and the texel density, how many texels fit on an area, decides how sharp a texture looks. A light map has texels too, and its texel size says how many map units one covers.
 
 ## texture size
 The world size that one repeat of a texture covers, set as metadata/texture_size on a Godot material. Without it one pixel covers one map unit, which stretches a high resolution photo over a huge area.

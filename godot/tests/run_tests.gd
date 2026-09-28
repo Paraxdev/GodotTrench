@@ -83,6 +83,7 @@ func _initialize() -> void:
 	await test_scripted_scene_map()
 	test_scatter_and_blend()
 	test_texture_size_override()
+	test_texture_settings()
 	test_builtin_dev_textures()
 	test_emission()
 	await test_night_environment()
@@ -107,6 +108,7 @@ func _initialize() -> void:
 	await load("res://tests/live_link_tests.gd").run(self)
 	await load("res://tests/nav_tests.gd").run(self)
 	await load("res://tests/gtm_file_tests.gd").run(self)
+	await load("res://tests/lightmap_tests.gd").run(self)
 	await load("res://tests/entity_tests.gd").new().run(self)
 	print("%d checks, %d failures" % [checks, failures.size()])
 	quit(1 if failures.size() > 0 else 0)
@@ -1154,6 +1156,49 @@ func test_face_cull() -> void:
 	check(hidden.size() == 1 and hidden[0].plane.normal.is_equal_approx(Vector3(0, 0, 1)), "the brush top under a blend sheet is hidden, got %s" % [hidden.map(func(f): return f.plane.normal)])
 	check(sheet.faces.all(func(f): return not f.render_hidden), "the blend sheet draws")
 	check(data.entities[0].pending_convex_points.is_empty() and data.entities[0].shapes.size() >= 1, "collision is still built")
+
+func test_texture_settings() -> void:
+	print("- per texture settings")
+	var node := box_node(1, Vector3.ZERO, Vector3(64, 64, 64))
+	for f in node["faces"]:
+		f["uv"] = { "u_axis": [0, 0, 1], "v_axis": [0, 1, 0], "offset": [13, 7], "scale": [2, 2] }
+	var other := box_node(2, Vector3(128, 0, 0), Vector3(192, 64, 64), "showcase/red_bricks")
+	for f in other["faces"]:
+		f["uv"] = { "u_axis": [0, 0, 1], "v_axis": [0, 1, 0], "offset": [13, 7], "scale": [2, 2] }
+	var json := {
+		"format": "godottrench-map", "version": 1,
+		"textures": { "showcase/cobble": { "projection": "world", "size": [256, 128], "bake": false } },
+		"layers": [{ "type": "layer", "id": 9, "children": [node, other] }],
+	}
+	var settings := (load(SETTINGS) as FuncGodotMapSettings).duplicate() as FuncGodotMapSettings
+	settings.save_generated_materials = false
+	var data := GodotTrenchParser.parse_dict(json, settings, FuncGodotData.ParseData.new(), "textures.gtm")
+	check(data.texture_sizes == { "showcase/cobble": Vector2(256, 128) }, "the repeat size is read, got %s" % data.texture_sizes)
+	var brushes: Array = data.entities[0].brushes
+	check(brushes.size() == 2, "both brushes parsed, got %d" % brushes.size())
+	for f in brushes[0].faces:
+		var normal := Vector3(f.plane.normal.y, f.plane.normal.z, f.plane.normal.x)
+		var axes := GodotTrenchParser.paraxial_axes(normal)
+		var expected := PackedVector3Array([GodotTrenchParser.to_id(axes[0]), GodotTrenchParser.to_id(axes[1])])
+		check(f.uv_axes == expected and f.uv.origin == Vector2.ZERO, "world projection ignores the face's alignment, got %s %s" % [f.uv_axes, f.uv.origin])
+	for f in brushes[1].faces:
+		check(f.uv.origin == Vector2(13, 7), "other textures keep their alignment")
+
+	# Built, the 64 unit cobble box covers a quarter of a 256 by 128 repeat at most, from the world origin.
+	var map := FuncGodotMap.new()
+	map.map_settings = settings
+	map.local_map_file = MAP
+	root.add_child(map)
+	map.build_from_text(JSON.stringify(json))
+	var reach := Vector2.ZERO
+	for mesh_instance in collect(map, func(n): return n is MeshInstance3D):
+		var mesh: ArrayMesh = mesh_instance.mesh
+		for i in mesh.get_surface_count():
+			if "cobble" in mesh.surface_get_material(i).resource_path or "cobble" in mesh.surface_get_name(i):
+				for uv in mesh.surface_get_arrays(i)[Mesh.ARRAY_TEX_UV]:
+					reach = reach.max(uv.abs())
+	check(reach.is_equal_approx(Vector2(0.25, 0.5)), "faces repeat at the set size, got %s" % reach)
+	map.free()
 
 func box_node(id: int, min_c: Vector3, max_c: Vector3, material := "showcase/cobble") -> Dictionary:
 	var vertices := []

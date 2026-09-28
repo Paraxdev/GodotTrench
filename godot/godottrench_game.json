@@ -431,6 +431,36 @@
               "dark"
             ]
           ]
+        },
+        {
+          "name": "bake_mode",
+          "type": "choices",
+          "default": "auto",
+          "description": "How Bake Lighting treats the light. Auto bakes it unless a targetname or start_on 0 lets I/O switch it, bounce bakes only its bounced light and keeps the direct light real time",
+          "options": [
+            [
+              "auto",
+              "auto"
+            ],
+            [
+              "baked",
+              "baked"
+            ],
+            [
+              "bounce only",
+              "bounce"
+            ],
+            [
+              "real time",
+              "realtime"
+            ]
+          ]
+        },
+        {
+          "name": "light_size",
+          "type": "float",
+          "default": "0.0",
+          "description": "Radius in meters of the lamp for soft baked shadows, 0 uses the shadow softness of the bake"
         }
       ],
       "script": "res://addons/func_godot/src/godottrench/entities/gt_light.gd",
@@ -538,6 +568,36 @@
               "dark"
             ]
           ]
+        },
+        {
+          "name": "bake_mode",
+          "type": "choices",
+          "default": "auto",
+          "description": "How Bake Lighting treats the light. Auto bakes it unless a targetname or start_on 0 lets I/O switch it, bounce bakes only its bounced light and keeps the direct light real time",
+          "options": [
+            [
+              "auto",
+              "auto"
+            ],
+            [
+              "baked",
+              "baked"
+            ],
+            [
+              "bounce only",
+              "bounce"
+            ],
+            [
+              "real time",
+              "realtime"
+            ]
+          ]
+        },
+        {
+          "name": "light_size",
+          "type": "float",
+          "default": "0.0",
+          "description": "Radius in meters of the lamp for soft baked shadows, 0 uses the shadow softness of the bake"
         }
       ],
       "script": "res://addons/func_godot/src/godottrench/entities/gt_spot_light.gd",
@@ -558,6 +618,136 @@
         },
         {
           "name": "toggle",
+          "parameter": ""
+        }
+      ]
+    },
+    {
+      "classname": "light_probe",
+      "type": "point",
+      "description": "An extra light probe for Bake Lighting. Moving objects here pick up the baked bounce light, on top of the probes placed on a grid",
+      "color": "#ffd966ff",
+      "node_class": "LightmapProbe",
+      "group": "light",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "properties": [],
+      "outputs": [],
+      "inputs": []
+    },
+    {
+      "classname": "env_reflection_probe",
+      "type": "solid",
+      "description": "The brush becomes the box of a ReflectionProbe, which captures its surroundings for reflections inside it",
+      "color": "#80d4ffff",
+      "node_class": "ReflectionProbe",
+      "group": "env",
+      "properties": [
+        {
+          "name": "intensity",
+          "type": "float",
+          "default": "1.0",
+          "description": "Brightness of the reflections"
+        },
+        {
+          "name": "update",
+          "type": "choices",
+          "default": "once",
+          "description": "Capture once when the scene starts, or every frame for moving objects (costly)",
+          "options": [
+            [
+              "once",
+              "once"
+            ],
+            [
+              "always",
+              "always"
+            ]
+          ]
+        },
+        {
+          "name": "box_projection",
+          "type": "bool",
+          "default": "1",
+          "description": "Lines reflections up with the box walls, good for rooms"
+        },
+        {
+          "name": "interior",
+          "type": "bool",
+          "default": "0",
+          "description": "Leaves the sky out, for rooms without windows"
+        },
+        {
+          "name": "max_distance",
+          "type": "float",
+          "default": "0.0",
+          "description": "Meters the probe sees past its box, 0 for the box only"
+        }
+      ],
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_reflection_probe.gd",
+      "outputs": [],
+      "inputs": []
+    },
+    {
+      "classname": "env_voxel_gi",
+      "type": "solid",
+      "description": "The brush becomes the box of a VoxelGI, real time bounce light that follows moving lights and objects. It is baked in the Godot editor when the map is built",
+      "color": "#b3ff80ff",
+      "node_class": "VoxelGI",
+      "group": "env",
+      "properties": [
+        {
+          "name": "subdiv",
+          "type": "choices",
+          "default": "128",
+          "description": "Voxels along the longest side, more is sharper and slower",
+          "options": [
+            [
+              "64",
+              "64"
+            ],
+            [
+              "128",
+              "128"
+            ],
+            [
+              "256",
+              "256"
+            ],
+            [
+              "512",
+              "512"
+            ]
+          ]
+        },
+        {
+          "name": "energy",
+          "type": "float",
+          "default": "1.0",
+          "description": "Brightness of the bounce light"
+        },
+        {
+          "name": "bake_on_build",
+          "type": "bool",
+          "default": "1",
+          "description": "Bakes the volume in the Godot editor each time the map is built"
+        }
+      ],
+      "script": "res://addons/func_godot/src/godottrench/entities/gt_voxel_gi.gd",
+      "outputs": [],
+      "inputs": [
+        {
+          "name": "bake_now",
           "parameter": ""
         }
       ]

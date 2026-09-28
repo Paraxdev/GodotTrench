@@ -1511,6 +1511,7 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
         ui.label(RichText::new(format!("{size}{details}")).weak());
     }
 
+    texture_settings(ui, state, &info.material);
     section(ui, "Alignment", "", true, |ui| {
         if info.explicit.is_none() {
             let mut uv = info.uv.clone();
@@ -1691,6 +1692,61 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
             });
         }
     });
+}
+
+/// Settings every face with `material` shares, kept with the map: how Bake Lighting treats it and how it tiles.
+fn texture_settings(ui: &mut Ui, state: &mut EditorState, material: &str) {
+    use gt_doc::textures::{Projection, SIZE_RANGE, TEXEL_SCALE_RANGE};
+    let current = state.doc.map.texture(material);
+    let mut set = current.clone();
+    let mut dragged = false;
+    let tip = "Shared by every face with this texture, in this map";
+    section(ui, "Texture Settings", tip, !current.is_default(), |ui| {
+        ui.label(RichText::new(format!("Applies to every face with {material}")).weak());
+        ui.checkbox(&mut set.bake, "Bake light onto it")
+            .on_hover_text("Off leaves these faces out of the light map, Godot then gives them the average baked light");
+        ui.checkbox(&mut set.casts, "Casts baked shadows").on_hover_text("Off lets light pass through these faces in the bake, for glass, grates and decals");
+        ui.horizontal(|ui| {
+            ui.label("Light map detail");
+            let r = ui.add(egui::DragValue::new(&mut set.texel_scale).range(TEXEL_SCALE_RANGE).speed(0.01).prefix("× "));
+            dragged |= r.dragged();
+            r.on_hover_text("Multiplies the light map texel size on these faces, below 1 for sharper shadows, above 1 to save space");
+        });
+        ui.horizontal(|ui| {
+            let mut own = set.size.is_some();
+            if ui
+                .checkbox(&mut own, "Repeat every")
+                .on_hover_text("Map units one repeat of the texture covers on every face, instead of its pixel size")
+                .changed()
+            {
+                set.size = own.then(|| state.materials.size(material).unwrap_or([128.0, 128.0]));
+            }
+
+            if let Some(size) = &mut set.size {
+                for v in size.iter_mut() {
+                    dragged |= ui.add(egui::DragValue::new(v).range(SIZE_RANGE).speed(1.0)).dragged();
+                }
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Projection");
+            for p in Projection::ALL {
+                let (label, hint) = match p {
+                    Projection::Face => ("Per face", "Each face keeps its own alignment"),
+                    Projection::World => ("World", "Every face projects from the world axis it faces, so the texture runs on seamlessly across brushes"),
+                };
+                ui.selectable_value(&mut set.projection, p, label).on_hover_text(hint);
+            }
+        });
+    });
+    if set != current {
+        let name = material.to_string();
+        if dragged {
+            state.doc.edit_coalesced("Texture Settings", move |m, _| m.set_texture(&name, set));
+        } else {
+            state.doc.edit("Texture Settings", move |m, _| m.set_texture(&name, set));
+        }
+    }
 }
 
 /// Short description of a Godot material's preview relevant settings.

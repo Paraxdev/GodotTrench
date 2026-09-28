@@ -1159,6 +1159,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gt_bake"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam",
+ "wgpu",
+]
+
+[[package]]
 name = "gt_core"
 version = "0.1.0"
 dependencies = [
@@ -1193,6 +1202,7 @@ dependencies = [
  "egui_kittest",
  "glam",
  "gltf",
+ "gt_bake",
  "gt_core",
  "gt_doc",
  "gt_formats",

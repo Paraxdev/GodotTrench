@@ -15,6 +15,7 @@ gt_geom.workspace = true
 gt_doc.workspace = true
 gt_formats.workspace = true
 gt_render.workspace = true
+gt_bake.workspace = true
 eframe.workspace = true
 egui.workspace = true
 egui-wgpu.workspace = true

@@ -58,7 +58,8 @@ impl LiveSession {
     pub fn step(&mut self, frame: Frame) -> Option<Value> {
         let Frame { map, dragging, idle } = frame;
         let mut ops = diff(&self.base, &map, dragging);
-        if ops.len() > RESYNC_OPS {
+        // Texture settings reach every face with the texture, so they rebuild the whole map.
+        if ops.len() > RESYNC_OPS || self.base.textures != map.textures {
             self.unsettled.clear();
             self.held.clear();
             let text = format::to_string(&map);
@@ -355,7 +356,9 @@ mod tests {
                 m.insert(layer, NodeKind::Entity(e));
             }
         });
-        assert_eq!(session.step(Frame { map: many, dragging: false, idle: false }).unwrap()["event"], "live_resync");
+        assert_eq!(session.step(Frame { map: many.clone(), dragging: false, idle: false }).unwrap()["event"], "live_resync");
+        let retiled = edit(&many, |m| m.set_texture("a", gt_doc::textures::TextureSettings { size: Some([64.0, 64.0]), ..Default::default() }));
+        assert_eq!(session.step(Frame { map: retiled, dragging: false, idle: false }).unwrap()["event"], "live_resync", "texture settings reach every face");
     }
 
     #[test]

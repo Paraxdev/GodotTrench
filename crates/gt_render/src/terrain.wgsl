@@ -37,6 +37,7 @@ struct VIn {
     @location(2) uv: vec2<f32>,
     // blend weights of the four layers
     @location(3) color: vec4<f32>,
+    @location(4) uv2: vec2<f32>,
 };
 
 struct VOut {
@@ -45,6 +46,7 @@ struct VOut {
     @location(1) normal: vec3<f32>,
     @location(2) flags: vec2<f32>,
     @location(3) weights: vec4<f32>,
+    @location(4) uv2: vec2<f32>,
 };
 
 @vertex
@@ -55,6 +57,7 @@ fn vs_main(v: VIn) -> VOut {
     o.normal = v.normal;
     o.flags = v.uv;
     o.weights = v.color;
+    o.uv2 = v.uv2;
     return o;
 }
 
@@ -186,7 +189,11 @@ fn fs_main(f: VOut) -> @location(0) vec4<f32> {
         n = normalize(nn + bend);
     }
     var rgb: vec3<f32>;
-    if (is_lit()) {
+    if (has_bake(f.uv2) && shows_map()) {
+        rgb = map_color(baked_light(f.uv2));
+    } else if (has_bake(f.uv2)) {
+        rgb = tonemap(base * baked_light(f.uv2) + glow);
+    } else if (is_lit()) {
         // Like brushes, emission joins the light before the tonemap.
         rgb = tonemap(base * light_at(f.world, n) + glow);
     } else {

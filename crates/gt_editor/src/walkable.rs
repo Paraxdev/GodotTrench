@@ -185,7 +185,8 @@ impl Walkable {
             }
 
             let normal = crate::scene::v3(normal.normalize_or(DVec3::Y));
-            let verts: Vec<MeshVertex> = points.iter().map(|p| MeshVertex { pos: crate::scene::v3(*p), normal, uv: [0.0, 0.0], color }).collect();
+            let verts: Vec<MeshVertex> =
+                points.iter().map(|p| MeshVertex { pos: crate::scene::v3(*p), normal, uv: [0.0, 0.0], color, uv2: gt_render::NO_UV2 }).collect();
             batch.add_polygon(WHITE_MATERIAL, &verts);
         }
 
