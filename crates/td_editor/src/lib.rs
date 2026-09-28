@@ -1,6 +1,7 @@
 pub mod addon_install;
 pub mod addon_wizard;
 pub mod app;
+pub mod bake;
 pub mod blend_tool;
 pub mod brand;
 pub mod camera;

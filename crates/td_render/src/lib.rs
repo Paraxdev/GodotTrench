@@ -20,7 +20,11 @@ pub struct MeshVertex {
     pub normal: [f32; 3],
     pub uv: [f32; 2],
     pub color: [f32; 4],
+    /// Light map coordinate, [`NO_UV2`] for surfaces the bake does not cover.
+    pub uv2: [f32; 2],
 }
+
+pub const NO_UV2: [f32; 2] = [-1.0, -1.0];
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -45,6 +49,8 @@ pub enum ShadeMode {
     Flat,
     /// Textured with scene lights, sun shadows, sky and fog.
     Lit,
+    /// Like `Lit`, with the baked light map on the surfaces it covers.
+    Baked,
     /// Edges only.
     Wireframe,
 }
@@ -300,7 +306,8 @@ impl MeshBatch {
             (Vec3::NEG_Z, [Vec3::new(max.x, min.y, min.z), Vec3::new(min.x, min.y, min.z), Vec3::new(min.x, max.y, min.z), Vec3::new(max.x, max.y, min.z)]),
         ];
         for (n, quad) in faces {
-            let verts: Vec<MeshVertex> = quad.iter().map(|p| MeshVertex { pos: p.to_array(), normal: n.to_array(), uv: [0.0, 0.0], color }).collect();
+            let verts: Vec<MeshVertex> =
+                quad.iter().map(|p| MeshVertex { pos: p.to_array(), normal: n.to_array(), uv: [0.0, 0.0], color, uv2: NO_UV2 }).collect();
             self.add_polygon(WHITE_MATERIAL, &verts);
         }
     }
@@ -419,6 +426,9 @@ pub struct Renderer {
     camera_bgl: wgpu::BindGroupLayout,
     material_bgl: wgpu::BindGroupLayout,
     terrain_bgl: wgpu::BindGroupLayout,
+    lightmap_bgl: wgpu::BindGroupLayout,
+    lightmap_bg: wgpu::BindGroup,
+    lightmap_buffer: wgpu::Buffer,
     sampler: wgpu::Sampler,
     sampler_nearest: wgpu::Sampler,
     mesh_opaque: wgpu::RenderPipeline,
@@ -511,6 +521,25 @@ impl Renderer {
                 texture_entry(13),
             ],
         });
+        let lightmap_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("light map"),
+            entries: &[
+                texture_entry(0),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                uniform_entry(2, wgpu::ShaderStages::FRAGMENT),
+            ],
+        });
+        let lightmap_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("light map params"),
+            size: 16,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let shadow_bgl = device
             .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor { label: Some("shadow"), entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX)] });
         let material_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -586,13 +615,14 @@ impl Renderer {
         });
 
         let common = include_str!("common.wgsl");
+        let baked = include_str!("lightmap.wgsl");
         let mesh_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("mesh"),
-            source: wgpu::ShaderSource::Wgsl(format!("{common}\n{}", include_str!("mesh.wgsl")).into()),
+            source: wgpu::ShaderSource::Wgsl(format!("{common}\n{baked}\n{}", include_str!("mesh.wgsl")).into()),
         });
         let terrain_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("terrain"),
-            source: wgpu::ShaderSource::Wgsl(format!("{common}\n{}", include_str!("terrain.wgsl")).into()),
+            source: wgpu::ShaderSource::Wgsl(format!("{common}\n{baked}\n{}", include_str!("terrain.wgsl")).into()),
         });
         let shadow_shader = device
             .create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("shadow"), source: wgpu::ShaderSource::Wgsl(include_str!("shadow.wgsl").into()) });
@@ -605,14 +635,14 @@ impl Renderer {
 
         let mesh_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("mesh"),
-            bind_group_layouts: &[Some(&camera_bgl), Some(&material_bgl)],
+            bind_group_layouts: &[Some(&camera_bgl), Some(&material_bgl), Some(&lightmap_bgl)],
             immediate_size: 0,
         });
         let line_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("line"), bind_group_layouts: &[Some(&camera_bgl)], immediate_size: 0 });
         let terrain_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("terrain"),
-            bind_group_layouts: &[Some(&camera_bgl), Some(&terrain_bgl)],
+            bind_group_layouts: &[Some(&camera_bgl), Some(&terrain_bgl), Some(&lightmap_bgl)],
             immediate_size: 0,
         });
         let shadow_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -621,7 +651,7 @@ impl Renderer {
             immediate_size: 0,
         });
 
-        let mesh_attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x4];
+        let mesh_attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x4, 4 => Float32x2];
         // One instance per segment, reading both endpoints of the line vertex pair.
         let line_attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4, 2 => Float32x3, 3 => Float32x4];
 
@@ -777,6 +807,8 @@ impl Renderer {
             cache: None,
         });
 
+        let lightmap_bg =
+            Self::lightmap_bind_group(&device, &lightmap_bgl, &lightmap_buffer, &solid_texture("no light map", wgpu::TextureFormat::Rgba8Unorm, [0; 4]));
         let mut r = Self {
             device,
             queue,
@@ -784,6 +816,9 @@ impl Renderer {
             camera_bgl,
             material_bgl,
             terrain_bgl,
+            lightmap_bgl,
+            lightmap_bg,
+            lightmap_buffer,
             sampler,
             sampler_nearest,
             mesh_opaque,
@@ -1049,6 +1084,69 @@ impl Renderer {
         key
     }
 
+    fn lightmap_bind_group(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, params: &wgpu::Buffer, view: &wgpu::TextureView) -> wgpu::BindGroup {
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("light map sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("light map"),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&sampler) },
+                wgpu::BindGroupEntry { binding: 2, resource: params.as_entire_binding() },
+            ],
+        })
+    }
+
+    /// Sets the light map the Baked mode draws with: `width` by `height` texels of red, green, blue and alpha half
+    /// floats. `show_map` draws the map itself instead of the textures lit by it, `tonemap` runs light values through
+    /// the preview's tonemap. None removes it.
+    pub fn set_lightmap(&mut self, map: Option<(u32, u32, &[u16])>, show_map: bool, tonemap: bool) {
+        let view = match map {
+            Some((w, h, texels)) if w > 0 && h > 0 && texels.len() == (w * h * 4) as usize => {
+                let texture = self.device.create_texture_with_data(
+                    &self.queue,
+                    &wgpu::TextureDescriptor {
+                        label: Some("light map"),
+                        size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[],
+                    },
+                    wgpu::util::TextureDataOrder::LayerMajor,
+                    bytemuck::cast_slice(texels),
+                );
+                Some(texture.create_view(&Default::default()))
+            }
+            _ => None,
+        };
+        let has = view.is_some();
+        let view = view.unwrap_or_else(|| {
+            self.device
+                .create_texture(&wgpu::TextureDescriptor {
+                    label: Some("no light map"),
+                    size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba16Float,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                })
+                .create_view(&Default::default())
+        });
+        let flag = |b: bool| if b { 1.0f32 } else { 0.0 };
+        self.queue.write_buffer(&self.lightmap_buffer, 0, bytemuck::cast_slice(&[flag(has), flag(show_map), flag(tonemap), 0.0]));
+        self.lightmap_bg = Self::lightmap_bind_group(&self.device, &self.lightmap_bgl, &self.lightmap_buffer, &view);
+    }
+
     /// Uploads lights. `shadow` is the sun's view projection when a shadow map was rendered for it.
     pub fn set_lighting(&mut self, lighting: &Lighting, shadow: Option<Mat4>) {
         let mut u: LightsUniform = bytemuck::Zeroable::zeroed();
@@ -1285,6 +1383,7 @@ impl Renderer {
                     ShadeMode::Textured => 0.0,
                     ShadeMode::Flat | ShadeMode::Wireframe => 1.0,
                     ShadeMode::Lit => 2.0,
+                    ShadeMode::Baked => 3.0,
                 },
                 if params.orthographic { 1.0 } else { 0.0 },
             ],
@@ -1313,6 +1412,7 @@ impl Renderer {
                 multiview_mask: None,
             });
             pass.set_bind_group(0, &target.camera_bg, &[]);
+            pass.set_bind_group(2, &self.lightmap_bg, &[]);
 
             let draw_meshes = |pass: &mut wgpu::RenderPass, pipeline: &wgpu::RenderPipeline, meshes: &[&GpuMesh]| {
                 if meshes.is_empty() {
@@ -1533,9 +1633,12 @@ mod tests {
     #[test]
     fn shaders_validate() {
         let common = include_str!("common.wgsl");
-        for (label, body) in [("mesh", include_str!("mesh.wgsl")), ("terrain", include_str!("terrain.wgsl")), ("sky", include_str!("sky.wgsl"))] {
-            validate(label, &format!("{common}\n{body}"));
+        let baked = include_str!("lightmap.wgsl");
+        for (label, body) in [("mesh", include_str!("mesh.wgsl")), ("terrain", include_str!("terrain.wgsl"))] {
+            validate(label, &format!("{common}\n{baked}\n{body}"));
         }
+
+        validate("sky", &format!("{common}\n{}", include_str!("sky.wgsl")));
 
         validate("line", include_str!("line.wgsl"));
         validate("shadow", include_str!("shadow.wgsl"));

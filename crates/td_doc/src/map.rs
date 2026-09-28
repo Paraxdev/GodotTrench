@@ -59,6 +59,8 @@ pub struct EditorData {
     pub cordon: Option<Aabb>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cordon_enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bake: Option<crate::lightmap::BakeOptions>,
 }
 
 /// Reference to another map placed with a transform (Hammer func_instance / prefab).
@@ -241,6 +243,8 @@ pub struct Map {
     /// Bounds of the prefab behind each instance path, in the prefab's own space. The editor fills this from the
     /// prefab files so instance bounds match what renders. Not saved.
     pub instance_extents: std::sync::Arc<BTreeMap<String, Aabb>>,
+    /// Baked lighting, see [`crate::lightmap`].
+    pub lightmap: Option<std::sync::Arc<crate::lightmap::Lightmap>>,
 }
 
 impl Default for Map {
@@ -259,6 +263,7 @@ impl Map {
             editor: EditorData::default(),
             unknown_chunks: Vec::new(),
             instance_extents: Default::default(),
+            lightmap: None,
         };
         map.add_layer("Default");
         map

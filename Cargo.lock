@@ -2994,6 +2994,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "td_bake"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam",
+]
+
+[[package]]
 name = "td_core"
 version = "0.1.0"
 dependencies = [
@@ -3035,6 +3043,7 @@ dependencies = [
  "ron",
  "serde",
  "serde_json",
+ "td_bake",
  "td_core",
  "td_doc",
  "td_formats",

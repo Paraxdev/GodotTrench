@@ -117,6 +117,7 @@ pub struct App {
     pub(crate) hotspot_editor: crate::hotspot_editor::HotspotEditor,
     link_dialog: LinkDialog,
     export_dialog: crate::export3d::dialog::ExportDialog,
+    pub(crate) bake_dialog: crate::bake::dialog::BakeDialog,
     keep_prefs: bool,
     window_fitted: bool,
     toolbar_fit: ToolbarFit,
@@ -150,7 +151,7 @@ pub struct App {
     pub(crate) tool_options_rect: egui::Rect,
 }
 
-const WINDOW_TITLES: [&str; 8] = [
+const WINDOW_TITLES: [&str; 10] = [
     "Shape Generator",
     "Create Terrain",
     "Keyboard Shortcuts",
@@ -159,6 +160,8 @@ const WINDOW_TITLES: [&str; 8] = [
     "Preferences",
     crate::export3d::dialog::TITLE,
     crate::export3d::dialog::PROGRESS_TITLE,
+    crate::bake::dialog::TITLE,
+    crate::bake::dialog::PROGRESS_TITLE,
 ];
 
 /// Who this frame's keys belong to. Decided before any widget runs, so it reads what egui knew at the end of the last
@@ -732,6 +735,7 @@ impl App {
             hotspot_editor: Default::default(),
             link_dialog: Default::default(),
             export_dialog: Default::default(),
+            bake_dialog: Default::default(),
             keep_prefs,
             window_fitted: false,
             toolbar_fit: ToolbarFit::default(),
@@ -821,6 +825,7 @@ impl App {
             Action::ShowTerrainDialog => self.terrain_dialog.open = true,
             Action::ExportGlb => self.export_dialog.open_for(crate::export3d::Format::Glb, &mut self.state),
             Action::ExportObj => self.export_dialog.open_for(crate::export3d::Format::Obj, &mut self.state),
+            Action::BakeLighting => self.bake_dialog.open(&mut self.state),
             Action::ShowKeymap => self.keymap.open = true,
             Action::ShowScatterPanel => reveal_tab(&mut self.dock, Tab::Scatter, Tab::Inspector),
             Action::ShowLinkDialog => {
@@ -1364,7 +1369,11 @@ impl App {
                 sub_menu(ui, Some(icons::shade(self.state.prefs.shade)), "Shading", |ui| {
                     for s in Shade::ALL {
                         let shortcut = m.shortcut(&Action::SetShade(s));
-                        let label = if s == Shade::Lit { "Lit Preview".to_string() } else { capitalize(s.label()) };
+                        let label = match s {
+                            Shade::Lit => "Lit Preview".to_string(),
+                            Shade::Baked => "Baked Lighting".to_string(),
+                            _ => capitalize(s.label()),
+                        };
                         if ui.add(menu_button(Some(icons::shade(s)), &label, shortcut).selected(self.state.prefs.shade == s)).clicked() {
                             m.actions.push(Action::SetShade(s));
                             ui.close();
@@ -1373,6 +1382,15 @@ impl App {
 
                     ui.separator();
                     m.item(ui, None, "Cycle Shading", Action::ToggleTextured);
+                    sub_menu(ui, None, "Baked View", |ui| {
+                        for v in crate::bake::View::ALL {
+                            let current = self.state.prefs.shade == Shade::Baked && self.state.prefs.bake_view == v;
+                            if ui.add(menu_button(current.then_some(icons::CHECK), v.label(), m.shortcut(&Action::SetBakeView(v)))).clicked() {
+                                m.actions.push(Action::SetBakeView(v));
+                                ui.close();
+                            }
+                        }
+                    });
                 });
                 sub_menu(ui, Some(icons::GRID), "Grid", |ui| {
                     m.item(ui, None, "Larger Grid", Action::GridUp);
@@ -1442,6 +1460,7 @@ impl App {
                 m.item_enabled(ui, Some(icons::GODOT), "Open Project in Godot Editor", Action::OpenGodotEditor, found, commands::GODOT_NOT_FOUND);
                 let open = self.state.godot_has_project();
                 m.item_enabled(ui, None, "Build in Godot", Action::BuildInGodot, open, "Needs the Godot editor with this project open");
+                m.item(ui, Some(icons::SHADE_BAKED), "Bake Lighting…", Action::BakeLighting);
                 let live = self.state.prefs.live_mode;
                 m.toggle_enabled(ui, "Live Mode", live, Action::ToggleLiveMode, live || self.state.prefs.live_link, commands::LIVE_LINK_OFF);
                 ui.separator();
@@ -2372,7 +2391,7 @@ impl eframe::App for App {
         self.scene.update(&mut self.renderer, &mut self.state, self.project_generation);
         let cam = &self.viewports[0].camera;
         let focus = cam.position + cam.forward() * 1200.0;
-        self.scene.update_shadows(&mut self.renderer, focus, self.state.prefs.shade == Shade::Lit);
+        self.scene.update_shadows(&mut self.renderer, focus, self.state.prefs.shade.is_lit());
 
         // The viewports read this to know a ctrl+click should grab all of a brush's faces for UV work. The UV
         // Editor is docked by default, so only its being the visible tab counts, else ctrl+click could never
@@ -2417,6 +2436,7 @@ impl eframe::App for App {
         self.hotspot_editor.show(&ctx, &mut self.state, &mut self.actions);
         self.link_dialog.show(&ctx, &mut self.state);
         self.export_dialog.show(&ctx, &mut self.state);
+        self.bake_dialog.show(&ctx, &mut self.state);
         panels::dnd_preview(&ctx, &mut self.state);
         // egui ids a window by its title text, which it holds as an Option.
         let window_id = |title: &str| egui::Id::new(Some(title));

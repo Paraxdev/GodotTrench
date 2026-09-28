@@ -57,6 +57,10 @@ pub enum Action {
     ToggleWalkable,
     ToggleTextured,
     SetShade(Shade),
+    /// Opens the Bake Lighting window.
+    BakeLighting,
+    /// Which of the baked maps the Baked view shows.
+    SetBakeView(crate::bake::View),
     CsgSubtract,
     CsgMerge,
     CsgIntersect,
@@ -241,6 +245,8 @@ impl Action {
             Action::StoreCamera(n) => format!("Store Camera {n}"),
             Action::RecallCamera(n) => format!("Recall Camera {n}"),
             Action::SetShade(s) => format!("Shade {}", s.label()),
+            Action::BakeLighting => "Bake Lighting".into(),
+            Action::SetBakeView(v) => format!("Baked View: {}", v.label()),
             Action::Justify(j) => format!("Justify Texture {}", j.label()),
             Action::TexelDensity(d) => format!("Texel Density {d}"),
             Action::MeshUv(k) => format!("Mesh UVs: {}", k.label()),
@@ -318,6 +324,10 @@ impl Action {
             Action::MakePlatform => "Turns the selected brushes into a func_platform, a lift that moves up and down",
             Action::ToggleLiveMode => "Sends every edit to the scene open in the Godot editor before you save",
             Action::ToggleWalkable => "Shades the floors a player can walk on, baked by Godot",
+            Action::BakeLighting => {
+                "Traces the light, shadows and ambient occlusion of the sun, the lights and the sky into light maps stored in the map, which \
+                 Godot builds into a LightmapGI"
+            }
             Action::ToggleGodotOverlays => "Shows the nodes added on top of the built map in Godot as ghost boxes",
             Action::RepeatLast => "Runs the last rotate, flip, nudge or duplicate again",
             Action::ShowProjectContent => {
@@ -587,6 +597,8 @@ pub fn bindable_actions() -> Vec<Action> {
         Action::ToggleTransformGizmo,
         Action::ToggleGodotOverlays,
         Action::ToggleWalkable,
+        Action::BakeLighting,
+        Action::SetShade(Shade::Baked),
         Action::OpenGodotEditor,
         Action::BuildInGodot,
         Action::ToggleLiveMode,
@@ -900,14 +912,25 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             state.prefs.shade = match state.prefs.shade {
                 Shade::Textured => Shade::Flat,
                 Shade::Flat => Shade::Lit,
-                Shade::Lit => Shade::Wireframe,
+                Shade::Lit if state.doc.map.lightmap.is_some() => Shade::Baked,
+                Shade::Lit | Shade::Baked => Shade::Wireframe,
                 Shade::Wireframe => Shade::Textured,
             };
             state.set_status(format!("Shading: {}", state.prefs.shade.label()));
         }
         Action::SetShade(s) => {
-            state.prefs.shade = if state.prefs.shade == s && s == Shade::Lit { Shade::Textured } else { s };
-            state.set_status(format!("Shading: {}", state.prefs.shade.label()));
+            state.prefs.shade = if state.prefs.shade == s && s.is_lit() { Shade::Textured } else { s };
+            if state.prefs.shade == Shade::Baked && state.doc.map.lightmap.is_none() {
+                state.set_status("Shading: baked, nothing is baked yet so the lit preview shows. Map > Bake Lighting makes the light maps");
+            } else {
+                state.set_status(format!("Shading: {}", state.prefs.shade.label()));
+            }
+        }
+        Action::SetBakeView(v) => {
+            state.prefs.bake_view = v;
+            state.prefs.shade = Shade::Baked;
+
+            state.set_status(format!("Baked view shows {}", v.label().to_lowercase()));
         }
         Action::CsgSubtract => {
             let cutters = state.doc.selection.brushes(&state.doc.map);
@@ -1125,6 +1148,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
 
         // Handled by the app, which owns dialogs, viewports and tool state.
         Action::ShowCommandPalette
+        | Action::BakeLighting
         | Action::ExportGlb
         | Action::ExportObj
         | Action::ShowShapeDialog
