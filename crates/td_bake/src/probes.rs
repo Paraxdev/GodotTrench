@@ -297,11 +297,8 @@ pub fn bsp(points: &[DVec3], tetrahedra: &[[u32; 4]]) -> Vec<BspNode> {
         return vec![BspNode { plane: [0.0, 1.0, 0.0, 0.0], over: -1, under: -1 }];
     }
 
-    let mut tested = vec![usize::MAX; planes.len()];
-    let mut nodes = Vec::new();
     let indices: Vec<usize> = (0..simplices.len()).collect();
-    build(points, &simplices, &indices, &mut tested, &mut nodes);
-    nodes
+    build(points, &simplices, &indices, planes.len(), 0)
 }
 
 /// 1 when the simplex lies over the plane, -1 under, 0 across and None when it is flat on it.
@@ -326,10 +323,14 @@ fn side(points: &[DVec3], s: &Simplex, plane: &Plane) -> Option<i32> {
     }
 }
 
-fn build(points: &[DVec3], simplices: &[Simplex], indices: &[usize], tested: &mut [usize], nodes: &mut Vec<BspNode>) -> i32 {
-    let node_index = nodes.len();
-    nodes.push(BspNode { plane: [0.0; 4], over: BspNode::EMPTY, under: BspNode::EMPTY });
+/// Subtrees with more simplices than this on both sides build on threads of their own, down to [`PARALLEL_DEPTH`].
+const PARALLEL_MIN: usize = 256;
+const PARALLEL_DEPTH: u32 = 4;
 
+/// The subtree over `indices`, its root first. Its child indices count from that root, a parent shifts them by where
+/// it places the subtree. Godot only needs children after their parent.
+fn build(points: &[DVec3], simplices: &[Simplex], indices: &[usize], plane_count: usize, depth: u32) -> Vec<BspNode> {
+    let mut tested = vec![false; plane_count];
     let mut best: Option<Plane> = None;
     let mut best_score = -1.0f64;
     // Godot tries the faces of every simplex, which is quadratic. Faces of a spread out sample choose nearly as well.
@@ -337,11 +338,11 @@ fn build(points: &[DVec3], simplices: &[Simplex], indices: &[usize], tested: &mu
     for &idx in indices.iter().step_by(stride) {
         let s = &simplices[idx];
         for j in 0..4 {
-            if tested[s.planes[j]] == node_index {
+            if tested[s.planes[j]] {
                 continue;
             }
 
-            tested[s.planes[j]] = node_index;
+            tested[s.planes[j]] = true;
             let [a, b, c] = FACE_ORDER[j].map(|k| points[s.vertices[k] as usize]);
             let Some(plane) = Plane::new(a, b, c) else { continue };
             let (mut over, mut under) = (0usize, 0usize);
@@ -455,17 +456,43 @@ fn build(points: &[DVec3], simplices: &[Simplex], indices: &[usize], tested: &mu
         over = indices.iter().enumerate().filter(|(i, _)| *i != lowest).map(|(_, idx)| *idx).collect();
     }
 
-    let child = |list: &[usize], nodes: &mut Vec<BspNode>, tested: &mut [usize]| match list.len() {
+    let subtree = |list: &[usize]| if list.len() > 1 { build(points, simplices, list, plane_count, depth + 1) } else { Vec::new() };
+    let (under_nodes, over_nodes) = if depth < PARALLEL_DEPTH && under.len().min(over.len()) > PARALLEL_MIN {
+        std::thread::scope(|s| {
+            let job = s.spawn(|| subtree(&under));
+            let over_nodes = subtree(&over);
+            (job.join().unwrap_or_default(), over_nodes)
+        })
+    } else {
+        (subtree(&under), subtree(&over))
+    };
+
+    let child = |list: &[usize], at: usize| match list.len() {
         0 => BspNode::EMPTY,
         1 => -(list[0] as i32 + 1),
-        _ => build(points, simplices, list, tested, nodes),
+        _ => at as i32,
     };
-    let under_child = child(&under, nodes, tested);
-    let over_child = child(&over, nodes, tested);
     let plane = best.expect("a plane was chosen above");
-    nodes[node_index] =
-        BspNode { plane: [plane.normal.x as f32, plane.normal.y as f32, plane.normal.z as f32, plane.d as f32], over: over_child, under: under_child };
-    node_index as i32
+    let over_at = 1 + under_nodes.len();
+    let mut nodes = Vec::with_capacity(over_at + over_nodes.len());
+    nodes.push(BspNode {
+        plane: [plane.normal.x as f32, plane.normal.y as f32, plane.normal.z as f32, plane.d as f32],
+        over: child(&over, over_at),
+        under: child(&under, 1),
+    });
+    for (offset, part) in [(1, under_nodes), (over_at, over_nodes)] {
+        nodes.extend(part.into_iter().map(|mut n| {
+            for c in [&mut n.over, &mut n.under] {
+                if *c >= 0 {
+                    *c += offset as i32;
+                }
+            }
+
+            n
+        }));
+    }
+
+    nodes
 }
 
 /// The tetrahedron holding `p` by walking the tree like Godot does, for tests.
@@ -517,7 +544,8 @@ mod tests {
 
     #[test]
     fn the_tree_finds_the_tetrahedron_holding_a_point() {
-        let points = grid(4, 0.2);
+        // Big enough that subtrees build on threads of their own.
+        let points = grid(8, 0.2);
         let tets = tetrahedralize(&points);
         let nodes = bsp(&points, &tets);
         for (i, n) in nodes.iter().enumerate() {
@@ -529,7 +557,7 @@ mod tests {
         let mut found = 0;
         for k in 0..200u32 {
             let u = r2(7, k);
-            let p = DVec3::new(0.5 + u.x as f64 * 5.0, 0.5 + u.y as f64 * 5.0, 0.5 + ((k * 37) % 100) as f64 / 100.0 * 5.0);
+            let p = DVec3::new(0.5 + u.x as f64 * 13.0, 0.5 + u.y as f64 * 13.0, 0.5 + ((k * 37) % 100) as f64 / 100.0 * 13.0);
             let Some(t) = find(&nodes, p) else { continue };
             let [a, b, c, d] = tets[t].map(|i| points[i as usize]);
             let parts =

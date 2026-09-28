@@ -170,7 +170,9 @@ impl BakeDialog {
 
 fn backend_hint(b: Backend) -> &'static str {
     match b {
-        Backend::Cpu => "Traces on every core but one, so the editor stays responsive. Works on every machine",
+        Backend::Cpu => "Traces on every core. Works on every machine",
+        Backend::Gpu => "Traces on the graphics card, much faster on a dedicated one. Falls back to the CPU when there is no usable GPU",
+        Backend::Hybrid => "The graphics card and every core share the work, each taking more while it keeps up. The fastest choice when both are strong",
     }
 }
 

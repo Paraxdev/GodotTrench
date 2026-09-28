@@ -190,3 +190,43 @@ fn probes_fill_the_open_space_with_light_from_the_glowing_ceiling() {
     let parts = vol(center, b, c, d) + vol(a, center, c, d) + vol(a, b, center, d) + vol(a, b, c, center);
     assert!((parts - vol(a, b, c, d)).abs() < 1e-3 * vol(a, b, c, d), "the tree uses map units, like the points");
 }
+
+#[test]
+fn the_gpu_and_hybrid_backends_bake_what_the_cpu_bakes() {
+    let mut surfaces = cube(0, Vec3::ZERO, Vec3::splat(128.0), true, 0);
+    surfaces.extend(cube(10, Vec3::new(0.0, -96.0, 0.0), Vec3::splat(32.0), false, 0));
+    let mut lamp = Light::omni(Vec3::new(-64.0, 64.0, 32.0), Vec3::splat(3.0), 400.0);
+    lamp.size = 8.0;
+    let input = BakeInput {
+        surfaces,
+        materials: vec![Material { albedo: Vec3::splat(0.7), ..Material::default() }],
+        lights: vec![lamp, Light::sun(Vec3::new(0.3, -1.0, 0.2), Vec3::ONE)],
+        sky: Sky::default(),
+        units_per_meter: 32.0,
+        probe_points: vec![],
+    };
+    let base = Settings { bounces: 1, rays: 32, software_gpu: true, probe_spacing: 0.0, ..settings() };
+    let cpu = bake(&input, &base, &Progress::default()).unwrap();
+    for backend in [Backend::Gpu, Backend::Hybrid] {
+        let map = bake(&input, &Settings { backend, ..base }, &Progress::default()).unwrap();
+        if let Some(e) = &map.gpu_error {
+            eprintln!("no GPU to test {backend:?} on: {e}");
+            return;
+        }
+
+        assert!(map.gpu.is_some());
+        let (mut worst, mut sum) = (0.0f32, 0.0f32);
+        for (a, b) in cpu.light.iter().zip(&map.light) {
+            let d = (Vec3::from(*a) - Vec3::from(*b)).abs().max_element();
+            worst = worst.max(d);
+            sum += d;
+        }
+
+        let mean = sum / cpu.light.len() as f32;
+        // Same rays on both, so only rounding and the half float bounce source tell them apart.
+        assert!(mean < 2e-3 && worst < 0.1, "{backend:?}: mean difference {mean}, worst {worst}");
+        let shadow = cpu.shadow.iter().zip(&map.shadow).map(|(a, b)| (a - b).abs()).sum::<f32>() / cpu.shadow.len() as f32;
+        let ao = cpu.ao.iter().zip(&map.ao).map(|(a, b)| (a - b).abs()).sum::<f32>() / cpu.ao.len() as f32;
+        assert!(shadow < 5e-3 && ao < 5e-3, "{backend:?}: shadow {shadow}, ambient occlusion {ao}");
+    }
+}

@@ -1034,7 +1034,8 @@ impl App {
             out = json!({
                 "width": result.lightmap.width, "height": result.lightmap.height, "texel_size": result.lightmap.texel_size,
                 "surfaces": c.surfaces, "baked_lights": c.baked_lights, "bounce_lights": c.bounce_lights, "realtime_lights": c.realtime_lights,
-                "seconds": result.seconds, "summary": result.summary(),
+                "seconds": result.seconds, "summary": result.summary(), "probes": result.lightmap.probes.len(),
+                "gpu": result.gpu, "gpu_error": result.gpu_error,
             });
             bake::apply(&mut self.state, result, options);
         }

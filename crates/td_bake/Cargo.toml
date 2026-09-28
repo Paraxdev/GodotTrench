@@ -9,3 +9,4 @@ description = "Light baking for TrenchDot maps: light, shadow and ambient occlus
 [dependencies]
 glam.workspace = true
 bytemuck.workspace = true
+wgpu.workspace = true
