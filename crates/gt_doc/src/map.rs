@@ -61,6 +61,25 @@ pub struct EditorData {
     pub cordon_enabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bake: Option<crate::lightmap::BakeOptions>,
+    /// Titled boxes that group nodes in the Logic graph.
+    #[serde(default, skip_serializing_if = "Vec::is_empty", deserialize_with = "graph_frames")]
+    pub graph_frames: Vec<GraphFrame>,
+}
+
+/// A titled, colored box behind nodes of the Logic graph, like a Blueprint comment. Editor only.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GraphFrame {
+    pub title: String,
+    /// Graph points: left, top, width and height.
+    pub rect: [f32; 4],
+    pub color: Color,
+}
+
+/// Frames only the editor reads, so a damaged one is dropped rather than refusing the whole map.
+fn graph_frames<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<GraphFrame>, D::Error> {
+    let value = serde_json::Value::deserialize(d)?;
+    let items = value.as_array().cloned().unwrap_or_default();
+    Ok(items.into_iter().filter_map(|v| serde_json::from_value::<GraphFrame>(v).ok()).filter(|f| f.rect.iter().all(|v| v.is_finite())).collect())
 }
 
 /// Reference to another map placed with a transform (Hammer func_instance / prefab).

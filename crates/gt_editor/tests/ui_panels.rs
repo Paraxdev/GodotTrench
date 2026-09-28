@@ -1155,6 +1155,47 @@ fn logic_graph_add_puts_a_new_node_in_free_space() {
 }
 
 #[test]
+fn logic_graph_frames_name_and_move_their_nodes() {
+    use gt_editor::logic_graph::model::NodeKey;
+
+    let mut f = Fixture::new();
+    let relay = named(&mut f, "logic_relay", "r", DVec3::ZERO);
+    let outside = named(&mut f, "logic_timer", "t", DVec3::ZERO);
+    f.state.doc.select(|_, s| s.select_node(relay));
+    let mut harness = logic_graph(f);
+    harness.get_by_label("Frame").click();
+    harness.run();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
+    harness.event(egui::Event::Text("Doors".into()));
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    let frames = &harness.state().state.doc.map.editor.graph_frames;
+    assert_eq!(frames.len(), 1);
+    assert_eq!(frames[0].title, "Doors", "the new frame's title field has the keyboard");
+
+    let node = |h: &Harness<'_, Fixture>, id| h.state().panels.logic.node_screen_rect(&NodeKey::Entity(id)).unwrap();
+    let (relay_before, timer_before) = (node(&harness, relay), node(&harness, outside));
+    let title = harness.state().panels.logic.frame_screen_rect(0).unwrap().left_top() + egui::vec2(60.0, 8.0);
+    drag_through(&mut harness, &[title, title + egui::vec2(20.0, 10.0), title + egui::vec2(80.0, 40.0)]);
+    assert_eq!(node(&harness, relay).min, relay_before.min + egui::vec2(80.0, 40.0), "the node inside moves with the frame");
+    assert_eq!(node(&harness, outside), timer_before, "a node outside stays");
+    assert_eq!(harness.state().state.doc.history.undo_labels().next(), Some("Move Frame"));
+
+    let title = harness.state().panels.logic.frame_screen_rect(0).unwrap().left_top() + egui::vec2(60.0, 8.0);
+    harness.hover_at(title);
+    harness.run();
+    for pressed in [true, false] {
+        harness.event(egui::Event::PointerButton { pos: title, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() });
+    }
+
+    harness.run();
+    harness.get_by_label("Delete Frame").click();
+    harness.run();
+    assert!(harness.state().state.doc.map.editor.graph_frames.is_empty());
+    assert!(harness.state().state.doc.map.entity(relay).is_some(), "deleting a frame keeps its nodes");
+}
+
+#[test]
 fn logic_graph_drop_on_empty_space_adds_a_wired_logic_entity() {
     use gt_editor::logic_graph::model::NodeKey;
 

@@ -74,6 +74,9 @@ pub const PIN_TYPES: [(&str, Color32); 9] = [
     ("variant", GRAY_5),
 ];
 
+/// Colors a Logic graph frame can take, the first unused one goes to a new frame.
+pub const FRAME_COLORS: [Color32; 6] = [BLUE, GREEN, ORANGE, MAGENTA, TEAL, YELLOW];
+
 pub fn pin_type_color(name: &str) -> Color32 {
     PIN_TYPES.iter().find(|(n, _)| *n == name).map_or(GRAY_5, |(_, c)| *c)
 }

@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 use egui::Pos2;
 use gt_core::{DVec3, NodeId};
+use gt_doc::map::GraphFrame;
 use gt_doc::{IoConnection, Map, NodeKind, ops};
 
 use super::model::{ConnectionId, NodeKey};
@@ -135,6 +136,21 @@ pub fn set_positions(state: &mut EditorState, label: &str, positions: &[(NodeId,
                 n.set_graph(p);
             }
         }
+    });
+}
+
+/// Changes the Logic graph's frames in one step. `moved` gives nodes new positions along with it, as moving a frame
+/// moves what is inside, and `pin` stores positions of nodes that have none yet.
+pub fn edit_frames(state: &mut EditorState, label: &str, moved: &[(NodeId, Pos2)], pin: &[(NodeId, Pos2)], f: impl FnOnce(&mut Vec<GraphFrame>)) {
+    state.doc.edit(label, |m, _| {
+        f(&mut m.editor.graph_frames);
+        for (id, p) in moved {
+            if let Some(n) = m.get_mut(*id) {
+                n.set_graph(Some([p.x, p.y]));
+            }
+        }
+
+        pin_positions(m, pin);
     });
 }
 
@@ -309,6 +325,22 @@ mod tests {
         assert_ne!(state.doc.map.entity(timer).unwrap().origin, state.doc.map.entity(relay).unwrap().origin, "not stacked on the first");
         state.undo();
         assert!(!state.doc.map.contains(timer));
+    }
+
+    #[test]
+    fn moving_a_frame_moves_its_nodes_in_one_step() {
+        let mut state = state();
+        let relay = add(&mut state, "logic_relay", "r");
+        let frame = GraphFrame { title: "Doors".into(), rect: [0.0, 0.0, 200.0, 100.0], color: gt_core::Color::rgb(0.2, 0.4, 0.8) };
+        edit_frames(&mut state, "Add Frame", &[], &[(relay, egui::pos2(10.0, 30.0))], |frames| frames.push(frame.clone()));
+        assert_eq!(state.doc.map.get(relay).unwrap().graph, Some([10.0, 30.0]), "the automatic layout is kept once a frame exists");
+        let steps = state.doc.history.undo_labels().count();
+        edit_frames(&mut state, "Move Frame", &[(relay, egui::pos2(60.0, 30.0))], &[], |frames| frames[0].rect[0] += 50.0);
+        assert_eq!(state.doc.map.editor.graph_frames[0].rect[0], 50.0);
+        assert_eq!(state.doc.map.get(relay).unwrap().graph, Some([60.0, 30.0]));
+        assert_eq!(state.doc.history.undo_labels().count(), steps + 1);
+        state.undo();
+        assert_eq!((state.doc.map.editor.graph_frames[0].rect[0], state.doc.map.get(relay).unwrap().graph), (0.0, Some([10.0, 30.0])));
     }
 
     #[test]

@@ -563,6 +563,24 @@ mod tests {
     }
 
     #[test]
+    fn graph_frames_round_trip_in_both_layouts() {
+        let mut m = sample();
+        let frame = crate::map::GraphFrame { title: "Door logic".into(), rect: [10.0, 20.0, 300.0, 200.0], color: gt_core::Color::rgb(0.2, 0.4, 0.8) };
+        m.editor.graph_frames.push(frame.clone());
+        let value = to_value(&m);
+        assert_eq!(value["editor"]["graph_frames"][0]["title"], "Door logic");
+        for back in [from_str(&to_string(&m)).unwrap(), from_bytes(&to_bytes(&m)).unwrap().map] {
+            assert_eq!(back.editor.graph_frames, vec![frame.clone()]);
+        }
+
+        let mut value = to_value(&m);
+        value["editor"]["graph_frames"] = serde_json::json!([{ "title": 3 }, value["editor"]["graph_frames"][0].clone()]);
+        let back = from_str(&value.to_string()).expect("a damaged frame does not refuse the map");
+        assert_eq!(back.editor.graph_frames, vec![frame], "only the damaged frame is dropped");
+        assert!(to_value(&sample())["editor"].get("graph_frames").is_none(), "no key without frames");
+    }
+
+    #[test]
     fn hand_edited_labels_that_name_nothing_are_dropped() {
         let m = sample();
         let layer = m.default_layer();

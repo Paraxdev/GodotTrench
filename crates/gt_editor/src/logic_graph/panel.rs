@@ -7,6 +7,7 @@ use egui::{Align2, Color32, FontId, Id, Order, PointerButton, Pos2, Rect, RichTe
 use gt_core::{DVec3, NodeId};
 use gt_doc::IoConnection;
 use gt_doc::issues::BUILTIN_INPUTS;
+use gt_doc::map::GraphFrame;
 
 use super::edit::{self, NewLink, Placement};
 use super::model::{ConnectionId, EdgeKind, GraphEdge, GraphModel, GraphNode, HEADER, Inputs, NodeKey, PIN_ROW, PinType, pin_label};
@@ -51,6 +52,10 @@ enum Hit {
     Pin(PinRef),
     Node(NodeKey),
     Edge(usize),
+    /// The title bar of a frame.
+    Frame(usize),
+    /// The corner that resizes a frame.
+    FrameCorner(usize),
     Empty,
 }
 
@@ -70,8 +75,22 @@ enum Drag {
         at: Pos2,
         add: bool,
     },
+    /// Moving a frame and the nodes inside it.
+    Frame {
+        index: usize,
+        keys: HashSet<NodeKey>,
+        offset: Vec2,
+    },
+    FrameSize {
+        index: usize,
+        size: Vec2,
+    },
     Pan,
 }
+
+/// Height of a frame's title bar in graph points.
+const FRAME_TITLE: f32 = 30.0;
+const FRAME_MIN: Vec2 = vec2(120.0, 60.0);
 
 enum Menu {
     /// Adds an entity at `at` in the graph, wired by `link`.
@@ -111,6 +130,10 @@ pub struct GraphState {
     zoom: f32,
     refit: bool,
     pub selected_edge: Option<ConnectionId>,
+    pub frames: Vec<GraphFrame>,
+    pub selected_frame: Option<usize>,
+    /// The frame whose title is being edited, and the text so far.
+    renaming: Option<(usize, String)>,
     drag: Option<Drag>,
     menu: Option<Menu>,
     menu_filter: String,
@@ -136,6 +159,9 @@ impl Default for GraphState {
             zoom: 1.0,
             refit: true,
             selected_edge: None,
+            frames: Vec::new(),
+            selected_frame: None,
+            renaming: None,
             drag: None,
             menu: None,
             menu_filter: String::new(),
@@ -206,6 +232,14 @@ impl GraphState {
         let external = state.overlay_ghosts.targetnames();
         self.model = GraphModel::build(&state.doc.map, &Inputs { game: &state.game, selected: &selected, external: &external });
         self.model.place();
+        self.frames = state.doc.map.editor.graph_frames.clone();
+        if self.selected_frame.is_some_and(|i| i >= self.frames.len()) {
+            self.selected_frame = None;
+        }
+
+        if self.renaming.as_ref().is_some_and(|(i, _)| *i >= self.frames.len()) {
+            self.renaming = None;
+        }
 
         let map = &state.doc.map;
         if let Some((id, i)) = self.selected_edge
@@ -234,9 +268,62 @@ impl GraphState {
     /// Where a node is drawn, following a drag in progress.
     fn node_pos(&self, n: &GraphNode) -> Pos2 {
         match &self.drag {
-            Some(Drag::Nodes { keys, offset }) if keys.contains(&n.key) => n.pos + *offset,
+            Some(Drag::Nodes { keys, offset } | Drag::Frame { keys, offset, .. }) if keys.contains(&n.key) => n.pos + *offset,
             _ => n.pos,
         }
+    }
+
+    /// A frame's rect in graph points, following a drag in progress.
+    fn frame_graph_rect(&self, i: usize) -> Rect {
+        let r = self.frames[i].rect;
+        let (mut min, mut size) = (pos2(r[0], r[1]), vec2(r[2], r[3]));
+        match &self.drag {
+            Some(Drag::Frame { index, offset, .. }) if *index == i => min += *offset,
+            Some(Drag::FrameSize { index, size: s }) if *index == i => size = *s,
+            _ => {}
+        }
+
+        Rect::from_min_size(min, size)
+    }
+
+    fn frame_rect(&self, i: usize) -> Rect {
+        let r = self.frame_graph_rect(i);
+        Rect::from_min_max(self.to_screen(r.min), self.to_screen(r.max))
+    }
+
+    fn frame_title_height(&self) -> f32 {
+        (FRAME_TITLE * self.zoom).max(18.0)
+    }
+
+    /// Entity nodes whose middle lies inside frame `i`, which move with it.
+    fn framed(&self, i: usize) -> HashSet<NodeKey> {
+        let r = self.frame_graph_rect(i);
+        self.model.nodes.iter().filter(|n| n.key.entity().is_some() && r.contains(n.rect().center())).map(|n| n.key.clone()).collect()
+    }
+
+    /// Entity nodes of the selected entities.
+    fn selected_nodes(&self, state: &EditorState) -> Vec<&GraphNode> {
+        let selected = selected_entities(state);
+        self.model.nodes.iter().filter(|n| n.key.entity().is_some_and(|id| selected.contains(&id))).collect()
+    }
+
+    /// Puts a new frame behind the selected nodes and starts editing its title.
+    fn frame_selection(&mut self, state: &mut EditorState) {
+        let nodes = self.selected_nodes(state);
+        if nodes.is_empty() {
+            return;
+        }
+
+        let bounds = nodes.iter().fold(Rect::NOTHING, |r, n| r.union(n.rect())).expand(24.0);
+        let bounds = Rect::from_min_max(bounds.min - vec2(0.0, FRAME_TITLE), bounds.max);
+        let used: Vec<Color32> = self.frames.iter().map(|f| color32(f.color)).collect();
+        let color = theme::FRAME_COLORS.into_iter().find(|c| !used.contains(c)).unwrap_or(theme::FRAME_COLORS[self.frames.len() % theme::FRAME_COLORS.len()]);
+        let frame = GraphFrame { title: "Frame".into(), rect: [bounds.min.x, bounds.min.y, bounds.width(), bounds.height()], color: doc_color(color) };
+        let index = self.frames.len();
+        edit::edit_frames(state, "Add Frame", &[], &self.unpinned(), |frames| frames.push(frame));
+        self.selected_frame = Some(index);
+        self.selected_edge = None;
+        self.renaming = Some((index, "Frame".into()));
     }
 
     fn node_rect(&self, n: &GraphNode) -> Rect {
@@ -254,6 +341,11 @@ impl GraphState {
         let n = self.model.node(key)?;
         let pin = if output { n.output(name) } else { n.input(name) }?;
         Some(self.pin_screen(n, output, pin))
+    }
+
+    /// Screen rect of a frame as last drawn.
+    pub fn frame_screen_rect(&self, i: usize) -> Option<Rect> {
+        (i < self.frames.len()).then(|| self.frame_rect(i))
     }
 
     /// Screen rect of a node as last drawn.
@@ -320,7 +412,22 @@ impl GraphState {
             }
         }
 
-        best.1.map_or(Hit::Empty, Hit::Edge)
+        if let Some(i) = best.1 {
+            return Hit::Edge(i);
+        }
+
+        for i in (0..self.frames.len()).rev() {
+            let r = self.frame_rect(i);
+            if r.right_bottom().distance(p) <= PIN_GRAB * 1.2 {
+                return Hit::FrameCorner(i);
+            }
+
+            if Rect::from_min_size(r.min, vec2(r.width(), self.frame_title_height())).contains(p) {
+                return Hit::Frame(i);
+            }
+        }
+
+        Hit::Empty
     }
 
     /// The pin a wire from `from` would connect to when dropped at `p`: a pin of the other kind within reach, else the
@@ -346,13 +453,37 @@ impl GraphState {
             return false;
         }
 
-        let busy = self.menu.is_some() || self.drag.is_some() || self.selected_edge.is_some();
+        let busy = self.menu.is_some() || self.drag.is_some() || self.selected_edge.is_some() || self.selected_frame.is_some();
         if busy && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
             if self.menu.take().is_none() && self.drag.take().is_none() {
                 self.selected_edge = None;
+                self.selected_frame = None;
             }
 
             return true;
+        }
+
+        if !self.selected_nodes(state).is_empty() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::C)) {
+            self.frame_selection(state);
+            return true;
+        }
+
+        if let Some(i) = self.selected_frame {
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F2)) {
+                self.renaming = Some((i, self.frames[i].title.clone()));
+                return true;
+            }
+
+            let delete =
+                ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete) || i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace));
+            if delete {
+                edit::edit_frames(state, "Delete Frame", &[], &[], |frames| {
+                    frames.remove(i);
+                });
+                self.selected_frame = None;
+            }
+
+            return delete;
         }
 
         let Some(id) = self.selected_edge else { return false };
@@ -393,6 +524,15 @@ impl GraphState {
         let taken: Vec<Rect> = self.model.nodes.iter().map(|n| n.rect()).collect();
         super::model::clear_spot(p, vec2(200.0, HEADER + PIN_ROW * 4.0 + 8.0), &taken)
     }
+}
+
+fn color32(c: gt_core::Color) -> Color32 {
+    let b = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    Color32::from_rgb(b(c.r), b(c.g), b(c.b))
+}
+
+fn doc_color(c: Color32) -> gt_core::Color {
+    gt_core::Color::rgb(c.r() as f32 / 255.0, c.g() as f32 / 255.0, c.b() as f32 / 255.0)
 }
 
 fn curve(a: Pos2, b: Pos2, zoom: f32) -> [Pos2; 4] {
@@ -537,6 +677,12 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: &
             gs.fit(MIN_ZOOM);
         }
 
+        let tip = "Puts a titled box behind the selected nodes, C over the graph does the same. Dragging its title moves everything inside";
+        let framed = ui.add_enabled(!gs.selected_nodes(state).is_empty(), egui::Button::new("Frame")).on_hover_text(tip).on_disabled_hover_text(tip);
+        if framed.clicked() {
+            gs.frame_selection(state);
+        }
+
         let start = match selected.as_slice() {
             [id] => state.doc.map.entity(*id).map(|e| (*id, logic_sim::start_outputs(state.game.entity(&e.classname), e))),
             _ => None,
@@ -635,6 +781,11 @@ fn interact(ui: &Ui, response: &egui::Response, state: &mut EditorState, gs: &mu
                 Some(Drag::Nodes { keys, offset: Vec2::ZERO })
             }
             Hit::Node(_) => None,
+            Hit::Frame(index) => {
+                gs.selected_frame = Some(index);
+                Some(Drag::Frame { index, keys: gs.framed(index), offset: Vec2::ZERO })
+            }
+            Hit::FrameCorner(index) => Some(Drag::FrameSize { index, size: gs.frame_graph_rect(index).size() }),
             Hit::Edge(_) | Hit::Empty => Some(Drag::Box { start: origin, at: origin, add }),
         };
     }
@@ -642,7 +793,8 @@ fn interact(ui: &Ui, response: &egui::Response, state: &mut EditorState, gs: &mu
     if let Some(p) = pointer {
         match &mut gs.drag {
             Some(Drag::Wire { at, .. }) | Some(Drag::Box { at, .. }) => *at = p,
-            Some(Drag::Nodes { offset, .. }) => *offset += response.drag_delta() / gs.zoom,
+            Some(Drag::Nodes { offset, .. } | Drag::Frame { offset, .. }) => *offset += response.drag_delta() / gs.zoom,
+            Some(Drag::FrameSize { size, .. }) => *size += response.drag_delta() / gs.zoom,
             _ => {}
         }
     }
@@ -663,6 +815,24 @@ fn interact(ui: &Ui, response: &egui::Response, state: &mut EditorState, gs: &mu
                 edit::set_positions(state, &label, &positions);
             }
             Drag::Wire { from, at } => finish_wire(&ctx, state, gs, from, at, visible),
+            Drag::Frame { index, keys, offset } if offset.length() >= 0.5 => {
+                let moved: Vec<(NodeId, Pos2)> =
+                    gs.model.nodes.iter().filter(|n| keys.contains(&n.key)).filter_map(|n| Some((n.key.entity()?, n.pos + offset))).collect();
+                edit::edit_frames(state, "Move Frame", &moved, &gs.unpinned(), |frames| {
+                    if let Some(f) = frames.get_mut(index) {
+                        f.rect[0] += offset.x;
+                        f.rect[1] += offset.y;
+                    }
+                });
+            }
+            Drag::FrameSize { index, size } => {
+                let size = size.max(FRAME_MIN);
+                edit::edit_frames(state, "Resize Frame", &[], &gs.unpinned(), |frames| {
+                    if let Some(f) = frames.get_mut(index) {
+                        (f.rect[2], f.rect[3]) = (size.x, size.y);
+                    }
+                });
+            }
             Drag::Box { start, at, add } => {
                 let area = Rect::from_two_pos(start, at);
                 let ids: Vec<NodeId> =
@@ -679,12 +849,25 @@ fn interact(ui: &Ui, response: &egui::Response, state: &mut EditorState, gs: &mu
 
     let Some(p) = pointer else { return };
     if response.double_clicked() {
-        if let Hit::Node(NodeKey::Entity(id)) = gs.hit(p, visible) {
-            select(state, &[id], false);
-            actions.push(Action::FocusSelection);
+        match gs.hit(p, visible) {
+            Hit::Node(NodeKey::Entity(id)) => {
+                select(state, &[id], false);
+                actions.push(Action::FocusSelection);
+            }
+            Hit::Frame(i) => gs.renaming = Some((i, gs.frames[i].title.clone())),
+            _ => {}
         }
     } else if response.clicked() {
-        match gs.hit(p, visible) {
+        let hit = gs.hit(p, visible);
+        if !matches!(hit, Hit::Frame(_) | Hit::FrameCorner(_)) {
+            gs.selected_frame = None;
+        }
+
+        match hit {
+            Hit::Frame(i) | Hit::FrameCorner(i) => {
+                gs.selected_frame = Some(i);
+                gs.selected_edge = None;
+            }
             Hit::Pin(PinRef { key: NodeKey::Entity(id), .. }) | Hit::Node(NodeKey::Entity(id)) => {
                 gs.selected_edge = None;
                 select(state, &[id], add);
@@ -763,6 +946,31 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
             painter.line_segment([pos2(canvas.min.x, y), pos2(canvas.max.x, y)], grid);
             y += step;
         }
+    }
+
+    for i in 0..gs.frames.len() {
+        let r = gs.frame_rect(i);
+        if !r.intersects(canvas) {
+            continue;
+        }
+
+        let color = color32(gs.frames[i].color);
+        let chosen = gs.selected_frame == Some(i);
+        painter.rect_filled(r, 6.0, color.gamma_multiply(0.08));
+        let title = Rect::from_min_size(r.min, vec2(r.width(), gs.frame_title_height()));
+        painter.rect_filled(title, egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, color.gamma_multiply(0.35));
+        painter.rect_stroke(r, 6.0, Stroke::new(if chosen { 2.5 } else { 1.5 }, if chosen { color } else { color.gamma_multiply(0.7) }), StrokeKind::Inside);
+        let font = FontId::proportional((15.0 * gs.zoom).max(MIN_TITLE));
+        painter.with_clip_rect(title.intersect(canvas)).text(
+            title.left_center() + vec2(10.0, 0.0),
+            Align2::LEFT_CENTER,
+            &gs.frames[i].title,
+            font,
+            theme::GRAY_7,
+        );
+        let corner = r.right_bottom();
+        let grip = 10.0;
+        painter.add(Shape::convex_polygon(vec![corner, corner - vec2(grip, 0.0), corner - vec2(0.0, grip)], color.gamma_multiply(0.7), Stroke::NONE));
     }
 
     let selected = selected_entities(state);
@@ -940,6 +1148,10 @@ fn overlays(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
         edge_editor(&ctx, state, gs, id);
     }
 
+    if gs.renaming.is_some() {
+        rename_frame(&ctx, state, gs);
+    }
+
     let Some(menu) = gs.menu.take() else { return };
     let screen = match &menu {
         Menu::Create { screen, .. } | Menu::Pin { screen, .. } | Menu::Context { screen, .. } => *screen,
@@ -1077,8 +1289,78 @@ fn pin_list(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, from: &Pi
     true
 }
 
+/// The title field over a frame being renamed. Enter or a click elsewhere keeps the text, Escape drops it.
+fn rename_frame(ctx: &egui::Context, state: &mut EditorState, gs: &mut GraphState) {
+    let Some((i, mut text)) = gs.renaming.take() else { return };
+    let r = gs.frame_rect(i);
+    let mut done = None;
+    egui::Area::new(Id::new("logic_frame_title")).order(Order::Foreground).fixed_pos(r.min + vec2(4.0, 2.0)).show(ctx, |ui| {
+        let field = ui.add(egui::TextEdit::singleline(&mut text).desired_width((r.width() - 8.0).clamp(80.0, 400.0)));
+        if !field.has_focus() && !field.lost_focus() {
+            field.request_focus();
+        }
+
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            done = Some(false);
+        } else if field.lost_focus() {
+            done = Some(true);
+        }
+    });
+    match done {
+        Some(true) => {
+            let title = text.trim().to_string();
+            if !title.is_empty() && gs.frames.get(i).is_some_and(|f| f.title != title) {
+                edit::edit_frames(state, "Rename Frame", &[], &[], |frames| frames[i].title = title);
+            }
+        }
+        Some(false) => {}
+        None => gs.renaming = Some((i, text)),
+    }
+}
+
+fn frame_menu(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, i: usize) -> bool {
+    if i >= gs.frames.len() {
+        return true;
+    }
+
+    if ui.button("Rename Frame").clicked() {
+        gs.renaming = Some((i, gs.frames[i].title.clone()));
+        return true;
+    }
+
+    let mut picked = None;
+    ui.horizontal(|ui| {
+        for c in theme::FRAME_COLORS {
+            let (rect, response) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
+            ui.painter().rect_filled(rect, 3.0, c);
+            if color32(gs.frames[i].color) == c {
+                ui.painter().rect_stroke(rect, 3.0, Stroke::new(2.0, theme::GRAY_7), StrokeKind::Outside);
+            }
+
+            if response.on_hover_text("Frame color").clicked() {
+                picked = Some(c);
+            }
+        }
+    });
+    if let Some(c) = picked {
+        edit::edit_frames(state, "Recolor Frame", &[], &[], |frames| frames[i].color = doc_color(c));
+        return true;
+    }
+
+    if ui.button("Delete Frame").on_hover_text("Removes the frame, the nodes stay").clicked() {
+        edit::edit_frames(state, "Delete Frame", &[], &[], |frames| {
+            frames.remove(i);
+        });
+        gs.selected_frame = None;
+        return true;
+    }
+
+    false
+}
+
 fn context_menu(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, hit: &Hit, actions: &mut Vec<Action>) -> bool {
     let key = match hit {
+        Hit::Frame(i) | Hit::FrameCorner(i) => return frame_menu(ui, state, gs, *i),
         Hit::Edge(i) => {
             let Some(e) = gs.model.edges.get(*i) else { return true };
             let id = e.id();
