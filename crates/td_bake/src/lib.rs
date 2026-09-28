@@ -8,6 +8,7 @@
 mod atlas;
 mod bvh;
 mod filter;
+pub mod probes;
 mod raster;
 mod sampling;
 mod trace;
@@ -16,7 +17,8 @@ use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 
 pub use atlas::{Chart, Layout, PAD};
 pub use bvh::{Bvh, Hit, Node, Tri};
-use glam::Vec3;
+use glam::{DVec3, Vec3};
+pub use probes::{BspNode, Probes};
 pub use raster::{Sample, Samples};
 
 /// Identifies a baked surface across saves: the node it belongs to and the face within it (0 for a terrain).
@@ -190,6 +192,8 @@ pub struct BakeInput {
     pub lights: Vec<Light>,
     pub sky: Sky,
     pub units_per_meter: f32,
+    /// Light probes placed by hand, on top of the grid.
+    pub probe_points: Vec<Vec3>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -225,13 +229,26 @@ pub struct Settings {
     /// Smooths the noise of the bounce light within each chart.
     pub denoise: bool,
     pub backend: Backend,
+    /// Map units between the light probes of the grid, 0 for only the probes placed by hand.
+    pub probe_spacing: f32,
     /// Worker threads for the CPU, 0 for one per core.
     pub threads: usize,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { texel_size: 16.0, max_size: 4096, rays: 128, bounces: 2, shadow_samples: 8, ao_distance: 64.0, denoise: true, backend: Backend::Cpu, threads: 0 }
+        Self {
+            texel_size: 16.0,
+            max_size: 4096,
+            rays: 128,
+            bounces: 2,
+            shadow_samples: 8,
+            ao_distance: 64.0,
+            denoise: true,
+            backend: Backend::Cpu,
+            probe_spacing: 64.0,
+            threads: 0,
+        }
     }
 }
 
@@ -249,6 +266,7 @@ pub enum Stage {
     Preparing,
     Direct,
     Bounce(u8),
+    Probes,
     Finishing,
 }
 
@@ -259,6 +277,7 @@ impl Stage {
             Stage::Direct => "Tracing direct light and shadows".into(),
             Stage::Bounce(0) => "Tracing sky light and ambient occlusion".into(),
             Stage::Bounce(k) => format!("Tracing bounce {k}"),
+            Stage::Probes => "Tracing the light probes".into(),
             Stage::Finishing => "Smoothing and filling the gutters".into(),
         }
     }
@@ -277,6 +296,7 @@ impl Progress {
         match self.stage.load(Ordering::Relaxed) {
             0 => Stage::Preparing,
             1 => Stage::Direct,
+            254 => Stage::Probes,
             255 => Stage::Finishing,
             k => Stage::Bounce(k - 2),
         }
@@ -293,7 +313,8 @@ impl Progress {
         let code = match stage {
             Stage::Preparing => 0,
             Stage::Direct => 1,
-            Stage::Bounce(k) => k.saturating_add(2).min(254),
+            Stage::Bounce(k) => k.saturating_add(2).min(253),
+            Stage::Probes => 254,
             Stage::Finishing => 255,
         };
         self.stage.store(code, Ordering::Relaxed);
@@ -343,6 +364,8 @@ pub struct Lightmap {
     /// Ambient occlusion, 1 where nothing is near.
     pub ao: Vec<f32>,
     pub charts: Vec<ChartEntry>,
+    /// Light arriving at points in the open, for objects that move.
+    pub probes: Probes,
 }
 
 impl Lightmap {
@@ -359,11 +382,38 @@ pub fn bake(input: &BakeInput, settings: &Settings, progress: &Progress) -> Resu
     let samples = raster::rasterize(&input.surfaces, &layout);
     let scene = trace::Scene::new(input, &layout, settings);
     let result = trace::run(&scene, &samples, settings, progress)?;
+    let probes = light_probes(&scene, &samples, &result, settings, progress)?;
     progress.start(Stage::Finishing, 1);
     let (width, height) = (layout.width, layout.height);
     let mut charts: Vec<ChartEntry> = layout.charts.iter().map(|c| ChartEntry { key: input.surfaces[c.surface].key, rows: c.rows(width, height) }).collect();
     charts.sort_by_key(|c| c.key);
     let (light, shadow, ao) = filter::finish(&layout, &samples, &result, settings.denoise);
     progress.advance(1);
-    Ok(Lightmap { width, height, texel_size: layout.texel, light, shadow, ao, charts })
+    Ok(Lightmap { width, height, texel_size: layout.texel, light, shadow, ao, charts, probes })
+}
+
+/// Probes on a grid and where placed by hand, with the indirect light arriving there. Godot lights moving objects with
+/// them, the direct light of baked lights never reaches those, like in Godot's own bake.
+fn light_probes(scene: &trace::Scene, samples: &Samples, traced: &trace::Traced, settings: &Settings, progress: &Progress) -> Result<Probes, BakeError> {
+    let points = probes::place(scene, settings.probe_spacing, &scene.input.probe_points);
+    if points.len() < 4 {
+        return Ok(Probes::default());
+    }
+
+    let source = filter::spread(scene.layout, samples, |i| traced.valid[i].then(|| traced.direct[i].bounce + traced.indirect[i]));
+    let threads = match settings.threads {
+        0 => std::thread::available_parallelism().map_or(4, |p| p.get()),
+        t => t,
+    };
+    progress.start(Stage::Probes, points.len());
+    let sh = trace::parallel(points.len(), threads, progress, |i| probes::capture(scene, &source, points[i], i as u32))?;
+    let upm = f64::from(scene.input.units_per_meter.max(1e-3));
+    let meters: Vec<DVec3> = points.iter().map(|p| p.as_dvec3() / upm).collect();
+    let tetrahedra = probes::tetrahedralize(&meters);
+    let mut bsp = probes::bsp(&meters, &tetrahedra);
+    for n in &mut bsp {
+        n.plane[3] = (f64::from(n.plane[3]) * upm) as f32;
+    }
+
+    Ok(Probes { points, sh, tetrahedra, bsp })
 }

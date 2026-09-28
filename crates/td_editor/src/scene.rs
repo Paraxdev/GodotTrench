@@ -303,9 +303,10 @@ fn push_line(list: &mut Vec<LineVertex>, a: DVec3, b: DVec3, color: [f32; 4]) {
     list.push(LineVertex { pos: v3(b), color });
 }
 
-/// A trigger or other Area3D entity, whose brushes are volumes drawn see-through rather than solid walls.
+/// A trigger, another Area3D entity or a probe volume, whose brushes are drawn see-through rather than solid walls.
 pub fn is_volume(game: &GameConfig, e: &Entity) -> bool {
-    e.classname.starts_with("trigger") || game.entity(&e.classname).is_some_and(|d| d.node_class == "Area3D")
+    e.classname.starts_with("trigger")
+        || game.entity(&e.classname).is_some_and(|d| d.node_class == "Area3D" || crate::code_refs::PROBE_VOLUMES.contains(&d.node_class.as_str()))
 }
 
 /// Striped stand-in textures for tool materials a project does not provide (special/trigger, special/clip, ...).
