@@ -60,7 +60,8 @@
       "outputs": [
         {
           "name": "input_event",
-          "parameter": "camera, event, event_position, normal, shape_idx"
+          "parameter": "camera, event, event_position, normal, shape_idx",
+          "type": "node, variant, vector3, vector3, int"
         },
         {
           "name": "mouse_entered",
@@ -131,7 +132,8 @@
       "outputs": [
         {
           "name": "input_event",
-          "parameter": "camera, event, event_position, normal, shape_idx"
+          "parameter": "camera, event, event_position, normal, shape_idx",
+          "type": "node, variant, vector3, vector3, int"
         },
         {
           "name": "mouse_entered",
@@ -202,7 +204,8 @@
       "outputs": [
         {
           "name": "input_event",
-          "parameter": "camera, event, event_position, normal, shape_idx"
+          "parameter": "camera, event, event_position, normal, shape_idx",
+          "type": "node, variant, vector3, vector3, int"
         },
         {
           "name": "mouse_entered",
@@ -467,7 +470,8 @@
       "outputs": [
         {
           "name": "switched",
-          "parameter": "on"
+          "parameter": "on",
+          "type": "bool"
         }
       ],
       "inputs": [
@@ -604,7 +608,8 @@
       "outputs": [
         {
           "name": "switched",
-          "parameter": "on"
+          "parameter": "on",
+          "type": "bool"
         }
       ],
       "inputs": [
@@ -831,7 +836,8 @@
       "outputs": [
         {
           "name": "reached",
-          "parameter": "train"
+          "parameter": "train",
+          "type": "node"
         }
       ],
       "inputs": []
@@ -981,7 +987,8 @@
         },
         {
           "name": "locked_use",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ],
       "inputs": [
@@ -1007,7 +1014,8 @@
         },
         {
           "name": "use",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ]
     },
@@ -1122,13 +1130,15 @@
         },
         {
           "name": "locked_use",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ],
       "inputs": [
         {
           "name": "open",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "close",
@@ -1136,7 +1146,8 @@
         },
         {
           "name": "toggle",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "lock",
@@ -1148,7 +1159,8 @@
         },
         {
           "name": "use",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ]
     },
@@ -1207,7 +1219,8 @@
       "inputs": [
         {
           "name": "open",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "close",
@@ -1215,7 +1228,8 @@
         },
         {
           "name": "toggle",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ]
     },
@@ -1371,7 +1385,8 @@
       "outputs": [
         {
           "name": "arrived",
-          "parameter": "corner"
+          "parameter": "corner",
+          "type": "node"
         },
         {
           "name": "finished",
@@ -1442,7 +1457,8 @@
       "outputs": [
         {
           "name": "pressed",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "released",
@@ -1450,13 +1466,15 @@
         },
         {
           "name": "locked_use",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ],
       "inputs": [
         {
           "name": "press",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "release",
@@ -1472,7 +1490,8 @@
         },
         {
           "name": "use",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ]
     },
@@ -1494,11 +1513,13 @@
       "outputs": [
         {
           "name": "body_entered",
-          "parameter": "body"
+          "parameter": "body",
+          "type": "node"
         },
         {
           "name": "body_exited",
-          "parameter": "body"
+          "parameter": "body",
+          "type": "node"
         }
       ],
       "inputs": []
@@ -1540,15 +1561,18 @@
       "outputs": [
         {
           "name": "triggered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "entered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "exited",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ],
       "inputs": [
@@ -1603,15 +1627,18 @@
       "outputs": [
         {
           "name": "triggered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "entered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "exited",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ],
       "inputs": [
@@ -1690,25 +1717,30 @@
       "outputs": [
         {
           "name": "called",
-          "parameter": "result"
+          "parameter": "result",
+          "type": "variant"
         },
         {
           "name": "triggered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "entered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "exited",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ],
       "inputs": [
         {
           "name": "trigger",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "enable",
@@ -1809,7 +1841,8 @@
       "outputs": [
         {
           "name": "spawned",
-          "parameter": "node"
+          "parameter": "node",
+          "type": "node"
         },
         {
           "name": "all_dead",
@@ -1821,15 +1854,18 @@
         },
         {
           "name": "triggered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "entered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "exited",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ],
       "inputs": [
@@ -1912,19 +1948,23 @@
       "outputs": [
         {
           "name": "hurt",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "triggered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "entered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "exited",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ],
       "inputs": [
@@ -1991,19 +2031,23 @@
       "outputs": [
         {
           "name": "teleported",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "triggered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "entered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "exited",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ],
       "inputs": [
@@ -2070,19 +2114,23 @@
       "outputs": [
         {
           "name": "pushed",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "triggered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "entered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "exited",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ],
       "inputs": [
@@ -2198,7 +2246,8 @@
       "outputs": [
         {
           "name": "spawned",
-          "parameter": "node"
+          "parameter": "node",
+          "type": "node"
         },
         {
           "name": "all_dead",
@@ -2281,17 +2330,20 @@
       "outputs": [
         {
           "name": "called",
-          "parameter": "result"
+          "parameter": "result",
+          "type": "variant"
         }
       ],
       "inputs": [
         {
           "name": "trigger",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "call_with",
-          "parameter": "parameter"
+          "parameter": "parameter",
+          "type": "variant"
         }
       ]
     },
@@ -2332,13 +2384,15 @@
       "outputs": [
         {
           "name": "triggered",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         }
       ],
       "inputs": [
         {
           "name": "trigger",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "enable",
@@ -2494,21 +2548,25 @@
         },
         {
           "name": "changed",
-          "parameter": "value"
+          "parameter": "value",
+          "type": "int"
         }
       ],
       "inputs": [
         {
           "name": "add",
-          "parameter": "amount"
+          "parameter": "amount",
+          "type": "variant"
         },
         {
           "name": "subtract",
-          "parameter": "amount"
+          "parameter": "amount",
+          "type": "variant"
         },
         {
           "name": "set_value",
-          "parameter": "new_value"
+          "parameter": "new_value",
+          "type": "variant"
         },
         {
           "name": "reset",
@@ -2594,13 +2652,15 @@
       "outputs": [
         {
           "name": "printed",
-          "parameter": "text"
+          "parameter": "text",
+          "type": "string"
         }
       ],
       "inputs": [
         {
           "name": "write",
-          "parameter": "parameter, activator"
+          "parameter": "parameter, activator",
+          "type": "variant, node"
         },
         {
           "name": "toggle",
@@ -2659,17 +2719,20 @@
       "outputs": [
         {
           "name": "ran",
-          "parameter": "result"
+          "parameter": "result",
+          "type": "variant"
         }
       ],
       "inputs": [
         {
           "name": "run",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "run_with",
-          "parameter": "parameter"
+          "parameter": "parameter",
+          "type": "variant"
         }
       ]
     },
@@ -2766,7 +2829,8 @@
         },
         {
           "name": "step",
-          "parameter": "index"
+          "parameter": "index",
+          "type": "int"
         },
         {
           "name": "finished",
@@ -2837,25 +2901,30 @@
       "outputs": [
         {
           "name": "finished",
-          "parameter": "anim"
+          "parameter": "anim",
+          "type": "string"
         }
       ],
       "inputs": [
         {
           "name": "play",
-          "parameter": "anim, activator"
+          "parameter": "anim, activator",
+          "type": "variant, node"
         },
         {
           "name": "queue",
-          "parameter": "anim, activator"
+          "parameter": "anim, activator",
+          "type": "variant, node"
         },
         {
           "name": "stop",
-          "parameter": "activator"
+          "parameter": "activator",
+          "type": "node"
         },
         {
           "name": "seek",
-          "parameter": "time, activator"
+          "parameter": "time, activator",
+          "type": "variant, node"
         }
       ]
     },
@@ -2956,7 +3025,8 @@
       "inputs": [
         {
           "name": "set_text",
-          "parameter": "new_text"
+          "parameter": "new_text",
+          "type": "variant"
         },
         {
           "name": "show",
@@ -2968,7 +3038,8 @@
         },
         {
           "name": "flash",
-          "parameter": "seconds"
+          "parameter": "seconds",
+          "type": "variant"
         }
       ]
     },
@@ -3046,7 +3117,8 @@
       "inputs": [
         {
           "name": "explode",
-          "parameter": "_activator"
+          "parameter": "_activator",
+          "type": "node"
         }
       ]
     },
@@ -3141,7 +3213,8 @@
       "outputs": [
         {
           "name": "damaged",
-          "parameter": "hp"
+          "parameter": "hp",
+          "type": "float"
         },
         {
           "name": "broken",
@@ -3151,15 +3224,18 @@
       "inputs": [
         {
           "name": "take_damage",
-          "parameter": "amount, _source"
+          "parameter": "amount, _source",
+          "type": "variant, node"
         },
         {
           "name": "ignite",
-          "parameter": "_activator"
+          "parameter": "_activator",
+          "type": "node"
         },
         {
           "name": "push",
-          "parameter": "direction"
+          "parameter": "direction",
+          "type": "variant"
         },
         {
           "name": "smash",
@@ -3246,7 +3322,8 @@
       "outputs": [
         {
           "name": "arrived",
-          "parameter": "corner"
+          "parameter": "corner",
+          "type": "node"
         },
         {
           "name": "reached_goal",
@@ -3268,15 +3345,18 @@
         },
         {
           "name": "walk_to",
-          "parameter": "corner"
+          "parameter": "corner",
+          "type": "variant"
         },
         {
           "name": "face",
-          "parameter": "target_name"
+          "parameter": "target_name",
+          "type": "variant"
         },
         {
           "name": "play_anim",
-          "parameter": "anim"
+          "parameter": "anim",
+          "type": "variant"
         }
       ]
     },
@@ -3565,7 +3645,8 @@
         },
         {
           "name": "set_and_test",
-          "parameter": "new_value"
+          "parameter": "new_value",
+          "type": "variant"
         }
       ]
     },
@@ -3649,7 +3730,8 @@
       "outputs": [
         {
           "name": "input_event",
-          "parameter": "camera, event, event_position, normal, shape_idx"
+          "parameter": "camera, event, event_position, normal, shape_idx",
+          "type": "node, variant, vector3, vector3, int"
         },
         {
           "name": "mouse_entered",

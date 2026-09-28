@@ -260,13 +260,29 @@ impl Clash {
     }
 }
 
+/// The types an I/O parameter can have, as [`IoDef::ty`] names them.
+pub const IO_TYPES: [&str; 8] = ["bool", "int", "float", "string", "vector3", "color", "node", "variant"];
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IoDef {
     pub name: String,
+    /// Names of the values the signal passes or the method takes, comma separated.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub parameter: String,
+    /// One of [`IO_TYPES`] for each name in `parameter`, comma separated. Empty when unknown, which reads as variant.
+    #[serde(default, rename = "type", skip_serializing_if = "String::is_empty")]
+    pub ty: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
+}
+
+impl IoDef {
+    /// The type of each parameter, variant where none is declared.
+    pub fn parameter_types(&self) -> Vec<&str> {
+        let declared: Vec<&str> = self.ty.split(',').map(str::trim).filter(|t| !t.is_empty()).collect();
+        let count = self.parameter.split(',').filter(|p| !p.trim().is_empty()).count();
+        (0..count).map(|i| declared.get(i).copied().unwrap_or("variant")).collect()
+    }
 }
 
 fn default_entity_color() -> Color {
@@ -640,6 +656,39 @@ mod tests {
 
         assert!(cfg.entity("logic_script").unwrap().inputs.iter().any(|i| i.name == "run"));
         assert!(cfg.entity("light").unwrap().script.ends_with("gt_light.gd"), "light has a switch script");
+    }
+
+    #[test]
+    fn every_parameter_of_the_built_in_entities_has_a_type() {
+        for cfg in [GameConfig::builtin(), GameConfig::gameplay_pack()] {
+            for def in &cfg.entities {
+                for io in def.inputs.iter().chain(&def.outputs) {
+                    let types: Vec<&str> = io.ty.split(',').map(str::trim).filter(|t| !t.is_empty()).collect();
+                    let names = io.parameter.split(',').filter(|p| !p.trim().is_empty()).count();
+                    assert_eq!(types.len(), names, "{}.{} has a type for each of its parameters", def.classname, io.name);
+                    assert!(types.iter().all(|t| IO_TYPES.contains(t)), "{}.{} uses known types: {}", def.classname, io.name, io.ty);
+                }
+            }
+        }
+
+        let cfg = GameConfig::gameplay_pack();
+        let add = cfg.entity("logic_counter").unwrap().inputs.iter().find(|i| i.name == "add").unwrap();
+        assert_eq!((add.parameter.as_str(), add.ty.as_str()), ("amount", "int"));
+    }
+
+    #[test]
+    fn an_io_type_is_optional_and_left_out_when_empty() {
+        let untyped: IoDef = serde_json::from_str(r#"{"name": "add", "parameter": "amount"}"#).unwrap();
+        assert!(untyped.ty.is_empty());
+        assert_eq!(untyped.parameter_types(), ["variant"], "an untyped parameter reads as variant");
+        assert_eq!(serde_json::to_string(&untyped).unwrap(), r#"{"name":"add","parameter":"amount"}"#);
+
+        let typed: IoDef = serde_json::from_str(r#"{"name": "hit", "parameter": "who, hp", "type": "node, float"}"#).unwrap();
+        assert_eq!(typed.parameter_types(), ["node", "float"]);
+        assert!(serde_json::to_string(&typed).unwrap().contains(r#""type":"node, float""#));
+
+        let none: IoDef = serde_json::from_str(r#"{"name": "reset"}"#).unwrap();
+        assert!(none.parameter_types().is_empty());
     }
 
     #[test]

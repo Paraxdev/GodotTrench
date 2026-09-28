@@ -16,7 +16,7 @@
         { "name": "wait", "type": "float", "default": "0", "description": "Seconds the train waits here" },
         { "name": "speed", "type": "float", "default": "0", "description": "New train speed in m/s from here on, 0 keeps it" }
       ],
-      "outputs": [{ "name": "reached", "parameter": "train", "description": "A train arrived here" }]
+      "outputs": [{ "name": "reached", "parameter": "train", "type": "node", "description": "A train arrived here" }]
     },
     {
       "classname": "prop_model", "type": "point", "description": "Model prop (.bbmodel, .glb, .gltf, .tscn) with optional collision", "color": "#8cd973ff", "node_class": "Node3D",
@@ -41,8 +41,8 @@
         { "name": "start_open", "type": "bool", "default": "0", "description": "Starts in the open position" },
         { "name": "interact", "type": "bool", "default": "1", "description": "Opens when a player calls use() on it" }
       ],
-      "outputs": [{ "name": "opened" }, { "name": "closed" }, { "name": "started_opening" }, { "name": "started_closing" }, { "name": "locked_use", "parameter": "activator" }],
-      "inputs": [{ "name": "open" }, { "name": "close" }, { "name": "toggle" }, { "name": "lock" }, { "name": "unlock" }, { "name": "use", "parameter": "activator" }],
+      "outputs": [{ "name": "opened" }, { "name": "closed" }, { "name": "started_opening" }, { "name": "started_closing" }, { "name": "locked_use", "parameter": "activator", "type": "node" }],
+      "inputs": [{ "name": "open" }, { "name": "close" }, { "name": "toggle" }, { "name": "lock" }, { "name": "unlock" }, { "name": "use", "parameter": "activator", "type": "node" }],
       "gizmos": [{ "type": "travel", "property": "travel" }]
     },
     {
@@ -60,8 +60,8 @@
         { "name": "start_open", "type": "bool", "default": "0", "description": "Starts open" },
         { "name": "interact", "type": "bool", "default": "1", "description": "Opens when a player calls use() on it" }
       ],
-      "outputs": [{ "name": "opened" }, { "name": "closed" }, { "name": "started_opening" }, { "name": "started_closing" }, { "name": "locked_use", "parameter": "activator" }],
-      "inputs": [{ "name": "open", "parameter": "activator" }, { "name": "close" }, { "name": "toggle", "parameter": "activator" }, { "name": "lock" }, { "name": "unlock" }, { "name": "use", "parameter": "activator" }],
+      "outputs": [{ "name": "opened" }, { "name": "closed" }, { "name": "started_opening" }, { "name": "started_closing" }, { "name": "locked_use", "parameter": "activator", "type": "node" }],
+      "inputs": [{ "name": "open", "parameter": "activator", "type": "node" }, { "name": "close" }, { "name": "toggle", "parameter": "activator", "type": "node" }, { "name": "lock" }, { "name": "unlock" }, { "name": "use", "parameter": "activator", "type": "node" }],
       "gizmos": [{ "type": "hinge", "property": "hinge", "angle": "open_angle", "axis": "axis" }]
     },
     {
@@ -103,7 +103,7 @@
         { "name": "start_active", "type": "bool", "default": "1", "description": "Starts moving on map load" },
         { "name": "orient", "type": "bool", "default": "0", "description": "Turns to face its direction of travel" }
       ],
-      "outputs": [{ "name": "arrived", "parameter": "corner" }, { "name": "finished" }],
+      "outputs": [{ "name": "arrived", "parameter": "corner", "type": "node" }, { "name": "finished" }],
       "inputs": [{ "name": "start" }, { "name": "stop" }, { "name": "toggle" }]
     },
     {
@@ -116,14 +116,14 @@
         { "name": "locked", "type": "bool", "default": "0", "description": "Fires locked_use instead of pressed" },
         { "name": "interact", "type": "bool", "default": "1", "description": "Pressed when a player calls use() on it" }
       ],
-      "outputs": [{ "name": "pressed", "parameter": "activator" }, { "name": "released" }, { "name": "locked_use", "parameter": "activator" }],
-      "inputs": [{ "name": "press", "parameter": "activator" }, { "name": "release" }, { "name": "lock" }, { "name": "unlock" }, { "name": "use", "parameter": "activator" }],
+      "outputs": [{ "name": "pressed", "parameter": "activator", "type": "node" }, { "name": "released" }, { "name": "locked_use", "parameter": "activator", "type": "node" }],
+      "inputs": [{ "name": "press", "parameter": "activator", "type": "node" }, { "name": "release" }, { "name": "lock" }, { "name": "unlock" }, { "name": "use", "parameter": "activator", "type": "node" }],
       "gizmos": [{ "type": "travel", "property": "travel" }]
     },
     {
       "classname": "trigger_area", "type": "solid", "description": "Plain Area3D volume firing body_entered and body_exited", "color": "#e6991aff", "node_class": "Area3D",
       "properties": [{ "name": "targetname", "type": "target_source", "description": "Name" }],
-      "outputs": [{ "name": "body_entered", "parameter": "body" }, { "name": "body_exited", "parameter": "body" }]
+      "outputs": [{ "name": "body_entered", "parameter": "body", "type": "node" }, { "name": "body_exited", "parameter": "body", "type": "node" }]
     },
     {
       "classname": "trigger_once", "type": "solid", "description": "Fires triggered the first time a body of filter_group enters, then disables itself", "color": "#e6991aff", "node_class": "Area3D",
@@ -134,7 +134,7 @@
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" },
         { "name": "once", "type": "bool", "default": "1", "description": "Disables itself after firing" }
       ],
-      "outputs": [{ "name": "triggered", "parameter": "activator" }, { "name": "entered", "parameter": "activator" }, { "name": "exited", "parameter": "activator" }],
+      "outputs": [{ "name": "triggered", "parameter": "activator", "type": "node" }, { "name": "entered", "parameter": "activator", "type": "node" }, { "name": "exited", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
     },
     {
@@ -146,7 +146,7 @@
         { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body fires it again" },
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
-      "outputs": [{ "name": "triggered", "parameter": "activator" }, { "name": "entered", "parameter": "activator" }, { "name": "exited", "parameter": "activator" }],
+      "outputs": [{ "name": "triggered", "parameter": "activator", "type": "node" }, { "name": "entered", "parameter": "activator", "type": "node" }, { "name": "exited", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
     },
     {
@@ -162,8 +162,8 @@
         { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body calls again" },
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
-      "outputs": [{ "name": "called", "parameter": "result" }, { "name": "triggered", "parameter": "activator" }, { "name": "entered", "parameter": "activator" }, { "name": "exited", "parameter": "activator" }],
-      "inputs": [{ "name": "trigger", "parameter": "activator" }, { "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
+      "outputs": [{ "name": "called", "parameter": "result", "type": "variant" }, { "name": "triggered", "parameter": "activator", "type": "node" }, { "name": "entered", "parameter": "activator", "type": "node" }, { "name": "exited", "parameter": "activator", "type": "node" }],
+      "inputs": [{ "name": "trigger", "parameter": "activator", "type": "node" }, { "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
     },
     {
       "classname": "trigger_spawn_area", "type": "solid", "description": "Spawns scenes at random spots inside its volume, when a body of filter_group enters or on input", "color": "#e64d4dff", "node_class": "Area3D",
@@ -182,7 +182,7 @@
         { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body fires it again" },
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
-      "outputs": [{ "name": "spawned", "parameter": "node" }, { "name": "all_dead" }, { "name": "exhausted" }, { "name": "triggered", "parameter": "activator" }, { "name": "entered", "parameter": "activator" }, { "name": "exited", "parameter": "activator" }],
+      "outputs": [{ "name": "spawned", "parameter": "node", "type": "node" }, { "name": "all_dead" }, { "name": "exhausted" }, { "name": "triggered", "parameter": "activator", "type": "node" }, { "name": "entered", "parameter": "activator", "type": "node" }, { "name": "exited", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "spawn" }, { "name": "start" }, { "name": "stop" }, { "name": "toggle" }, { "name": "kill_all" }, { "name": "enable" }, { "name": "disable" }]
     },
     {
@@ -196,7 +196,7 @@
         { "name": "filter_group", "type": "string", "default": "", "description": "Only bodies in this group, empty hurts any body" },
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
-      "outputs": [{ "name": "hurt", "parameter": "activator" }, { "name": "triggered", "parameter": "activator" }, { "name": "entered", "parameter": "activator" }, { "name": "exited", "parameter": "activator" }],
+      "outputs": [{ "name": "hurt", "parameter": "activator", "type": "node" }, { "name": "triggered", "parameter": "activator", "type": "node" }, { "name": "entered", "parameter": "activator", "type": "node" }, { "name": "exited", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
     },
     {
@@ -210,7 +210,7 @@
         { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body fires it again" },
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
-      "outputs": [{ "name": "teleported", "parameter": "activator" }, { "name": "triggered", "parameter": "activator" }, { "name": "entered", "parameter": "activator" }, { "name": "exited", "parameter": "activator" }],
+      "outputs": [{ "name": "teleported", "parameter": "activator", "type": "node" }, { "name": "triggered", "parameter": "activator", "type": "node" }, { "name": "entered", "parameter": "activator", "type": "node" }, { "name": "exited", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
     },
     {
@@ -223,7 +223,7 @@
         { "name": "once", "type": "bool", "default": "1", "description": "One impulse on entering instead of a steady push" },
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
       ],
-      "outputs": [{ "name": "pushed", "parameter": "activator" }, { "name": "triggered", "parameter": "activator" }, { "name": "entered", "parameter": "activator" }, { "name": "exited", "parameter": "activator" }],
+      "outputs": [{ "name": "pushed", "parameter": "activator", "type": "node" }, { "name": "triggered", "parameter": "activator", "type": "node" }, { "name": "entered", "parameter": "activator", "type": "node" }, { "name": "exited", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }],
       "gizmos": [{ "type": "travel", "property": "push" }]
     },
@@ -244,7 +244,7 @@
         { "name": "spawn_group", "type": "string", "default": "enemies", "description": "Group added to spawned nodes" },
         { "name": "snap_to_ground", "type": "bool", "default": "1", "description": "Drops spawns onto the floor below" }
       ],
-      "outputs": [{ "name": "spawned", "parameter": "node" }, { "name": "all_dead" }, { "name": "exhausted" }],
+      "outputs": [{ "name": "spawned", "parameter": "node", "type": "node" }, { "name": "all_dead" }, { "name": "exhausted" }],
       "inputs": [{ "name": "spawn" }, { "name": "start" }, { "name": "stop" }, { "name": "toggle" }, { "name": "kill_all" }],
       "gizmos": [{ "type": "radius", "property": "radius" }]
     },
@@ -257,8 +257,8 @@
         { "name": "method", "type": "string", "default": "", "description": "Method to call, C# PascalCase names work too" },
         { "name": "arguments", "type": "string", "default": "[]", "description": "JSON array. $activator, $self, $position and $parameter are replaced" }
       ],
-      "outputs": [{ "name": "called", "parameter": "result" }],
-      "inputs": [{ "name": "trigger", "parameter": "activator" }, { "name": "call_with", "parameter": "parameter" }]
+      "outputs": [{ "name": "called", "parameter": "result", "type": "variant" }],
+      "inputs": [{ "name": "trigger", "parameter": "activator", "type": "node" }, { "name": "call_with", "parameter": "parameter", "type": "variant" }]
     },
     {
       "classname": "logic_relay", "type": "point", "description": "Forwards trigger to its outputs, can be disabled", "color": "#c0c0c0ff", "node_class": "Node3D",
@@ -267,8 +267,8 @@
         { "name": "targetname", "type": "target_source", "description": "Name" },
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Ignores trigger until enabled" }
       ],
-      "outputs": [{ "name": "triggered", "parameter": "activator" }],
-      "inputs": [{ "name": "trigger", "parameter": "activator" }, { "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
+      "outputs": [{ "name": "triggered", "parameter": "activator", "type": "node" }],
+      "inputs": [{ "name": "trigger", "parameter": "activator", "type": "node" }, { "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
     },
     {
       "classname": "logic_timer", "type": "point", "description": "Fires timer every interval, optionally randomized", "color": "#c0c0c0ff", "node_class": "Node3D",
@@ -293,8 +293,8 @@
         { "name": "max", "type": "int", "default": "3", "description": "Upper limit" },
         { "name": "start_value", "type": "int", "default": "0", "description": "Initial value" }
       ],
-      "outputs": [{ "name": "hit_max" }, { "name": "hit_min" }, { "name": "changed", "parameter": "value" }],
-      "inputs": [{ "name": "add", "parameter": "amount" }, { "name": "subtract", "parameter": "amount" }, { "name": "set_value", "parameter": "value" }, { "name": "reset" }]
+      "outputs": [{ "name": "hit_max" }, { "name": "hit_min" }, { "name": "changed", "parameter": "value", "type": "int" }],
+      "inputs": [{ "name": "add", "parameter": "amount", "type": "int" }, { "name": "subtract", "parameter": "amount", "type": "int" }, { "name": "set_value", "parameter": "value", "type": "int" }, { "name": "reset" }]
     },
     {
       "classname": "logic_auto", "type": "point", "description": "Fires map_spawn once the map is loaded", "color": "#c0c0c0ff", "node_class": "Node3D",
@@ -311,8 +311,8 @@
         { "name": "show_label", "type": "bool", "default": "1", "description": "Floating label in debug builds" },
         { "name": "trace_all", "type": "bool", "default": "0", "description": "Print every I/O event in the map" }
       ],
-      "outputs": [{ "name": "printed", "parameter": "text" }],
-      "inputs": [{ "name": "write", "parameter": "parameter" }, { "name": "show" }, { "name": "hide" }, { "name": "toggle" }]
+      "outputs": [{ "name": "printed", "parameter": "text", "type": "string" }],
+      "inputs": [{ "name": "write", "parameter": "parameter", "type": "variant" }, { "name": "show" }, { "name": "hide" }, { "name": "toggle" }]
     },
     {
       "classname": "logic_script", "type": "point", "description": "Runs an inline GDScript snippet when fired, for logic the built-in inputs cannot express. Its snippet can read and change data like a player's health. Author provided code, runs at the map's trust level.", "color": "#ff5c8aff", "node_class": "Node3D",
@@ -323,8 +323,8 @@
         { "name": "source", "type": "string", "default": "", "description": "GDScript body. In scope: this, activator, parameter, io (GodotTrenchIO), tree (SceneTree). Example: activator.take_damage(25, this)" },
         { "name": "expression", "type": "string", "default": "", "description": "A single expression used when source is empty, same names in scope" }
       ],
-      "outputs": [{ "name": "ran", "parameter": "result" }],
-      "inputs": [{ "name": "run", "parameter": "activator" }, { "name": "run_with", "parameter": "parameter" }]
+      "outputs": [{ "name": "ran", "parameter": "result", "type": "variant" }],
+      "inputs": [{ "name": "run", "parameter": "activator", "type": "node" }, { "name": "run_with", "parameter": "parameter", "type": "variant" }]
     },
     {
       "classname": "logic_sequence", "type": "point", "description": "Cutscene timeline. On start it fires step_1 up to step_8 in order with a delay between them, so a scene can be scripted by wiring each step.", "color": "#c0c0c0ff", "node_class": "Node3D",
@@ -338,7 +338,7 @@
         { "name": "start_active", "type": "bool", "default": "0", "description": "Runs from map load" },
         { "name": "loop", "type": "bool", "default": "0", "description": "Restarts after the last step" }
       ],
-      "outputs": [{ "name": "step_1" }, { "name": "step_2" }, { "name": "step_3" }, { "name": "step_4" }, { "name": "step_5" }, { "name": "step_6" }, { "name": "step_7" }, { "name": "step_8" }, { "name": "step", "parameter": "index" }, { "name": "finished" }],
+      "outputs": [{ "name": "step_1" }, { "name": "step_2" }, { "name": "step_3" }, { "name": "step_4" }, { "name": "step_5" }, { "name": "step_6" }, { "name": "step_7" }, { "name": "step_8" }, { "name": "step", "parameter": "index", "type": "int" }, { "name": "finished" }],
       "inputs": [{ "name": "start" }, { "name": "stop" }, { "name": "reset" }]
     },
     {
@@ -351,8 +351,8 @@
         { "name": "animation", "type": "string", "default": "", "description": "Animation played when play has no name" },
         { "name": "speed", "type": "float", "default": "1.0", "description": "Playback speed scale" }
       ],
-      "outputs": [{ "name": "finished", "parameter": "anim" }],
-      "inputs": [{ "name": "play", "parameter": "name" }, { "name": "stop" }, { "name": "queue", "parameter": "name" }, { "name": "seek", "parameter": "time" }]
+      "outputs": [{ "name": "finished", "parameter": "anim", "type": "string" }],
+      "inputs": [{ "name": "play", "parameter": "name", "type": "string" }, { "name": "stop" }, { "name": "queue", "parameter": "name", "type": "string" }, { "name": "seek", "parameter": "time", "type": "float" }]
     },
     {
       "classname": "game_text", "type": "point", "description": "Shows a line of text in the world and/or on the HUD.", "color": "#66d9c2ff", "node_class": "Node3D",
@@ -369,7 +369,7 @@
         { "name": "billboard", "type": "bool", "default": "1", "description": "Turns to face the camera and draws over walls. Off keeps the entity's angles and hides behind walls, for signs" }
       ],
       "outputs": [{ "name": "shown" }, { "name": "hidden" }],
-      "inputs": [{ "name": "show" }, { "name": "hide" }, { "name": "set_text", "parameter": "text" }, { "name": "flash", "parameter": "seconds" }]
+      "inputs": [{ "name": "show" }, { "name": "hide" }, { "name": "set_text", "parameter": "text", "type": "string" }, { "name": "flash", "parameter": "seconds", "type": "float" }]
     },
     {
       "classname": "env_explosion", "type": "point", "description": "On explode it pushes rigid bodies away and calls take_damage on nodes within radius, then spawns an optional effect.", "color": "#ff7a33ff", "node_class": "Node3D",
@@ -384,7 +384,7 @@
         { "name": "effect_scene", "type": "resource", "description": "res:// scene spawned at the blast for particles or sound" }
       ],
       "outputs": [{ "name": "exploded" }],
-      "inputs": [{ "name": "explode", "parameter": "activator" }],
+      "inputs": [{ "name": "explode", "parameter": "activator", "type": "node" }],
       "gizmos": [{ "type": "radius", "property": "radius" }]
     },
     {
@@ -404,8 +404,8 @@
         { "name": "impact_speed", "type": "float", "default": "0", "description": "Breaks when it hits something faster than this in m/s, 0 never breaks on impact" },
         { "name": "debris_scene", "type": "resource", "description": "res:// scene spawned where it broke" }
       ],
-      "outputs": [{ "name": "damaged", "parameter": "hp" }, { "name": "broken" }],
-      "inputs": [{ "name": "smash" }, { "name": "ignite", "parameter": "activator" }, { "name": "push", "parameter": "direction" }, { "name": "take_damage", "parameter": "amount" }]
+      "outputs": [{ "name": "damaged", "parameter": "hp", "type": "float" }, { "name": "broken" }],
+      "inputs": [{ "name": "smash" }, { "name": "ignite", "parameter": "activator", "type": "node" }, { "name": "push", "parameter": "direction", "type": "vector3" }, { "name": "take_damage", "parameter": "amount", "type": "float" }]
     },
     {
       "classname": "npc_walker", "type": "point", "description": "A scripted actor that walks a chain of path_corner entities playing animations, for in game cutscenes.", "color": "#ff4d6dff", "node_class": "CharacterBody3D",
@@ -422,8 +422,8 @@
         { "name": "idle_anim", "type": "string", "default": "idle", "description": "Animation played while stopped" },
         { "name": "face_travel", "type": "bool", "default": "1", "description": "Turns to face its direction of travel" }
       ],
-      "outputs": [{ "name": "arrived", "parameter": "corner" }, { "name": "reached_goal" }, { "name": "finished" }],
-      "inputs": [{ "name": "start" }, { "name": "stop" }, { "name": "walk_to", "parameter": "corner" }, { "name": "play_anim", "parameter": "name" }, { "name": "face", "parameter": "target" }]
+      "outputs": [{ "name": "arrived", "parameter": "corner", "type": "node" }, { "name": "reached_goal" }, { "name": "finished" }],
+      "inputs": [{ "name": "start" }, { "name": "stop" }, { "name": "walk_to", "parameter": "corner", "type": "string" }, { "name": "play_anim", "parameter": "name", "type": "string" }, { "name": "face", "parameter": "target", "type": "string" }]
     },
     {
       "classname": "env_sound", "type": "point", "description": "A positional sound played through I/O", "color": "#66b3ffff", "node_class": "AudioStreamPlayer3D",
@@ -468,7 +468,7 @@
         { "name": "start_value", "type": "bool", "default": "0", "description": "Initial boolean value" }
       ],
       "outputs": [{ "name": "on_true" }, { "name": "on_false" }],
-      "inputs": [{ "name": "set_true" }, { "name": "set_false" }, { "name": "toggle" }, { "name": "test" }, { "name": "set_and_test", "parameter": "value" }]
+      "inputs": [{ "name": "set_true" }, { "name": "set_false" }, { "name": "toggle" }, { "name": "test" }, { "name": "set_and_test", "parameter": "value", "type": "bool" }]
     }
   ]
 }

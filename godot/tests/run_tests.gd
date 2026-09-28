@@ -67,6 +67,7 @@ func _initialize() -> void:
 	test_build_report()
 	await test_game_config()
 	test_game_config_lint()
+	test_game_config_io_types()
 	await test_io_targets()
 	await test_gameplay_entities()
 	await test_spawner()
@@ -767,6 +768,52 @@ func test_game_config() -> void:
 		var size: Array = by_name["info_player_start"]["size"]
 		check(size[0] == [-16.0, 0.0, -16.0] and size[1] == [16.0, 56.0, 16.0], "sizes converted to Y-up, got %s" % [size])
 
+func test_game_config_io_types() -> void:
+	print("- game config export types the I/O arguments")
+	var config: GodotTrenchGameConfig = load("res://demo/demo_game_config.tres")
+	var by_name := {}
+	for e in config.build_config()["entities"]:
+		by_name[e["classname"]] = e
+	var io_of := func(classname: String, list: String, io_name: String) -> Dictionary:
+		for io in by_name.get(classname, {}).get(list, []):
+			if io["name"] == io_name:
+				return io
+		return {}
+	var expected := [
+		["func_button", "outputs", "pressed", "activator", "node"],
+		["logic_counter", "outputs", "changed", "value", "int"],
+		["logic_counter", "inputs", "add", "amount", "variant"],
+		["light", "outputs", "switched", "on", "bool"],
+		["trigger_area", "outputs", "body_entered", "body", "node"],
+		["prop_physics", "outputs", "damaged", "hp", "float"],
+		["logic_debug", "outputs", "printed", "text", "string"],
+	]
+	for row in expected:
+		var io: Dictionary = io_of.call(row[0], row[1], row[2])
+		check(io.get("parameter", "") == row[3] and io.get("type", "") == row[4], "%s.%s is %s: %s, got %s" % [row[0], row[2], row[3], row[4], io])
+	check(not io_of.call("logic_counter", "inputs", "reset").has("type"), "an input without arguments has no types")
+	check(GodotTrenchGameConfig._io_type({ "type": TYPE_VECTOR3 }) == "vector3" and GodotTrenchGameConfig._io_type({ "type": TYPE_COLOR }) == "color", "vector and color arguments")
+	check(GodotTrenchGameConfig._io_type({ "type": TYPE_STRING_NAME }) == "string" and GodotTrenchGameConfig._io_type({ "type": TYPE_NIL }) == "variant", "names are strings and untyped arguments are variants")
+	check(GodotTrenchGameConfig._io_type({ "type": TYPE_OBJECT, "class_name": "Node3D" }) == "node", "an engine node class is a node")
+	check(GodotTrenchGameConfig._io_type({ "type": TYPE_OBJECT, "class_name": "GTRelay" }) == "node", "a script class extending Node3D is a node")
+	check(GodotTrenchGameConfig._io_type({ "type": TYPE_OBJECT, "class_name": "Resource" }) == "variant", "a resource is not a node")
+	# The editor's own definitions of the pack may narrow a Variant argument but never contradict a declared type.
+	var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://addons/func_godot/gameplay_pack/pack.json"))
+	var typed := 0
+	for def in manifest["entities"]:
+		for list in ["inputs", "outputs"]:
+			for io in def.get(list, []):
+				if not io.has("type"):
+					check(not io.has("parameter"), "%s.%s has a parameter and a type in pack.json" % [def["classname"], io["name"]])
+					continue
+				typed += 1
+				var exported: Dictionary = io_of.call(def["classname"], list, io["name"])
+				var have: PackedStringArray = str(exported.get("type", "")).split(", ", false)
+				var want: PackedStringArray = str(io["type"]).split(", ", false)
+				for i in want.size():
+					check(i < have.size() and (have[i] == want[i] or have[i] == "variant"), "%s.%s argument %d is %s in pack.json but the script declares %s" % [def["classname"], io["name"], i, want[i], have])
+	check(typed > 50, "pack.json types its parameters, %d found" % typed)
+
 func test_game_config_lint() -> void:
 	print("- game config export lint")
 	var fgd := FuncGodotFGDFile.new()
@@ -1338,9 +1385,10 @@ func test_csharp_entities() -> void:
 		check(props.has("walk_speed") and props["walk_speed"]["type"] == "float" and props["walk_speed"]["default"] == "3.5", "exported float with default, got %s" % [props.get("walk_speed")])
 		check(props.has("patrol_offset") and props["patrol_offset"]["default"] == "0 0 128", "exported Vector3 default")
 		check(props.has("start_asleep") and props["start_asleep"]["default"] == "1", "exported bool field")
-		check(guard["outputs"] == [{ "name": "alerted", "parameter": "activator, level" }], "signals become outputs, got %s" % [guard["outputs"]])
+		check(guard["outputs"] == [{ "name": "alerted", "parameter": "activator, level", "type": "node, int" }], "signals become outputs with their argument types, got %s" % [guard["outputs"]])
 		check(guard["inputs"].map(func(i): return i["name"]) == ["alert", "go_to_sleep"], "marked methods become inputs, got %s" % [guard["inputs"]])
 		check(entries[1]["type"] == "solid" and entries[1]["inputs"][0]["name"] == "try_code", "unmarked public methods are inputs when none are marked")
+		check(entries[1]["inputs"][0]["type"] == "string", "a C# string argument is a string, got %s" % [entries[1]["inputs"][0]])
 	var defs := GodotTrenchCSharp.definitions(PackedStringArray(["res://tests/csharp"]))
 	check(defs.has("npc_guard") and defs["npc_guard"] is FuncGodotFGDPointClass and defs["npc_guard"].node_class == "NpcGuard", "FuncGodot definitions from C#")
 	var config: GodotTrenchGameConfig = load("res://demo/demo_game_config.tres")
