@@ -133,6 +133,8 @@ pub struct App {
     last_tool: ToolKind,
     /// The layout from before Maximize View, restored when it is toggled off.
     maximized: Option<DockState<Tab>>,
+    /// Where the pointer is as this frame's shortcuts run, which can be further on than the views' hover state.
+    pointer: Option<egui::Pos2>,
     /// The view last under the pointer, the one Maximize View fills the area with.
     active_view: usize,
     project_maps: crate::welcome::ProjectMaps,
@@ -745,6 +747,7 @@ impl App {
             last_selected_scatter: None,
             last_tool: ToolKind::Select,
             maximized: None,
+            pointer: None,
             active_view: 0,
             project_maps: Default::default(),
             ui_had_focus: false,
@@ -774,8 +777,11 @@ impl App {
     }
 
     fn collect_input_actions(&mut self, ctx: &egui::Context) {
+        self.pointer = ctx.input(|i| i.pointer.latest_pos());
         help::open_on_f1(ctx, self.manual_under_pointer.as_deref());
-        let view_hovered = self.viewports.iter().any(|v| v.hovered);
+        let pointer = self.pointer;
+        let open = open_views(&self.dock);
+        let view_hovered = self.viewports.iter().enumerate().any(|(i, v)| v.hovered || (open.contains(&i) && pointer.is_some_and(|p| v.rect.contains(p))));
         let scope =
             key_scope(ctx, self.ui_had_focus || self.keymap.open || self.content_wizard.open, view_hovered, |id| self.viewports.iter().any(|v| v.id == id));
         if scope == KeyScope::Ui {
@@ -918,7 +924,9 @@ impl App {
     /// scrolled in, else the first shown view, the 3D view when it is open.
     fn view_to_maximize(&self) -> usize {
         let open = open_views(&self.dock);
-        let hovered = open.iter().copied().find(|i| self.viewports.get(*i).is_some_and(|v| v.hovered));
+        // A key pressed in the frame the pointer arrives comes before the view has seen it hover.
+        let under = |v: &crate::viewport::Viewport| v.hovered || self.pointer.is_some_and(|p| v.rect.contains(p));
+        let hovered = open.iter().copied().find(|i| self.viewports.get(*i).is_some_and(under));
         hovered.or(open.contains(&self.active_view).then_some(self.active_view)).unwrap_or_else(|| open.iter().copied().min().unwrap_or(0))
     }
 
