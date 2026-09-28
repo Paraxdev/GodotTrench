@@ -151,6 +151,8 @@ pub struct Node {
     /// Name given with Rename, shown in place of [`Node::default_name`]. Layers, groups and scatter sets keep their
     /// name in their own data instead.
     pub label: Option<String>,
+    /// Where an entity's node sits in the Logic graph, editor only. None leaves it to the automatic layout.
+    pub graph: Option<[f32; 2]>,
 }
 
 impl Node {
@@ -202,6 +204,11 @@ impl Node {
     /// carries its own are dropped.
     pub fn set_label(&mut self, label: Option<String>) {
         self.label = label.filter(|l| !l.trim().is_empty() && !self.kind.has_own_name());
+    }
+
+    /// Sets the Logic graph position, dropped when it is not a finite number.
+    pub fn set_graph(&mut self, pos: Option<[f32; 2]>) {
+        self.graph = pos.filter(|p| p.iter().all(|v| v.is_finite())).map(|p| p.map(f32::round));
     }
 
     /// The name from the node's kind and content, used while it has no label.
@@ -295,6 +302,7 @@ impl Map {
                 hidden: false,
                 locked: false,
                 label: None,
+                graph: None,
             },
         );
         self.layers.push(id);
@@ -427,7 +435,7 @@ impl Map {
         let Some(p) = self.nodes.get_mut(&parent) else { return false };
         p.children.push(id);
         self.next_id = self.next_id.max(id.0 + 1);
-        self.nodes.insert(id, Node { id, parent: Some(parent), children: Vec::new(), kind, hidden: false, locked: false, label: None });
+        self.nodes.insert(id, Node { id, parent: Some(parent), children: Vec::new(), kind, hidden: false, locked: false, label: None, graph: None });
         true
     }
 

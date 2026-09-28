@@ -64,6 +64,8 @@ struct FileNode {
     kind: FileKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "graph_pos")]
+    graph: Option<[f32; 2]>,
     #[serde(default, skip_serializing_if = "is_false")]
     hidden: bool,
     #[serde(default, skip_serializing_if = "is_false")]
@@ -74,6 +76,12 @@ struct FileNode {
 
 fn is_false(b: &bool) -> bool {
     !*b
+}
+
+/// Only the editor reads a graph position, so a hand edited one that is not two numbers is dropped rather than refusing
+/// the whole map.
+fn graph_pos<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<[f32; 2]>, D::Error> {
+    Ok(Option::<[f32; 2]>::deserialize(Value::deserialize(d)?).ok().flatten())
 }
 
 #[derive(Serialize, Deserialize)]
@@ -104,7 +112,7 @@ fn leaf_file_node(node: &Node) -> FileNode {
         NodeKind::Terrain(t) => FileKind::Terrain(t.clone()),
         NodeKind::Scatter(s) => FileKind::Scatter(s.clone()),
     };
-    FileNode { id: node.id.0, kind, label: node.label.clone(), hidden: node.hidden, locked: node.locked, children: Vec::new() }
+    FileNode { id: node.id.0, kind, label: node.label.clone(), graph: node.graph, hidden: node.hidden, locked: node.locked, children: Vec::new() }
 }
 
 pub fn to_value(map: &Map) -> Value {
@@ -252,7 +260,7 @@ fn insert_file_node(map: &mut Map, parent: Option<NodeId>, node: FileNode) {
             map.insert_with_id(id, p, kind);
         }
         None => {
-            map.nodes.insert(id, Node { id, parent: None, children: Vec::new(), kind, hidden: false, locked: false, label: None });
+            map.nodes.insert(id, Node { id, parent: None, children: Vec::new(), kind, hidden: false, locked: false, label: None, graph: None });
             map.layers.push(id);
         }
     }
@@ -261,6 +269,7 @@ fn insert_file_node(map: &mut Map, parent: Option<NodeId>, node: FileNode) {
         n.hidden = node.hidden;
         n.locked = node.locked;
         n.set_label(node.label);
+        n.set_graph(node.graph);
     }
 
     for c in node.children {
@@ -524,6 +533,33 @@ mod tests {
         assert!(m.rename(brush, ""));
         assert_eq!(m.get(brush).unwrap().name(), format!("brush{}", brush.0), "an empty name brings the default back");
         assert!(!m.rename(layer, ""), "a layer keeps its name");
+    }
+
+    #[test]
+    fn graph_positions_round_trip_in_both_layouts() {
+        let mut m = sample();
+        let layer = m.default_layer();
+        let brush = m.get(layer).unwrap().children[0];
+        m.get_mut(brush).unwrap().set_graph(Some([120.4, -36.6]));
+        let value = to_value(&m);
+        assert_eq!(value["layers"][0]["children"][0]["graph"], serde_json::json!([120.0, -37.0]), "rounded to whole points");
+        assert!(value["layers"][0].get("graph").is_none(), "no key without a position");
+
+        let from_text = from_str(&to_string(&m)).unwrap();
+        let from_binary = from_bytes(&to_bytes(&m)).unwrap().map;
+        for back in [from_text, from_binary] {
+            assert_eq!(back.get(brush).unwrap().graph, Some([120.0, -37.0]));
+            assert_eq!(back.get(layer).unwrap().graph, None);
+        }
+
+        let mut value = to_value(&m);
+        value["layers"][0]["children"][0]["graph"] = serde_json::json!("left");
+        let back = from_str(&value.to_string()).expect("a damaged position does not refuse the map");
+        assert_eq!(back.get(brush).unwrap().graph, None);
+        value["layers"][0]["children"][0].as_object_mut().unwrap().remove("graph");
+        assert_eq!(from_str(&value.to_string()).unwrap().get(brush).unwrap().graph, None, "files from before the key read as before");
+        m.get_mut(brush).unwrap().set_graph(Some([f32::NAN, 1.0]));
+        assert_eq!(m.get(brush).unwrap().graph, None, "never written as null");
     }
 
     #[test]
