@@ -38,17 +38,75 @@ impl NodeKey {
     }
 }
 
+/// What a pin carries, Blueprint style: a pulse is only an event, the others pass a value along.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PinType {
+    Pulse,
+    Bool,
+    Int,
+    Float,
+    String,
+    Vector3,
+    Color,
+    Node,
+    Variant,
+}
+
+impl PinType {
+    pub const ALL: [PinType; 9] =
+        [PinType::Pulse, PinType::Bool, PinType::Int, PinType::Float, PinType::String, PinType::Vector3, PinType::Color, PinType::Node, PinType::Variant];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            PinType::Pulse => "pulse",
+            PinType::Bool => "bool",
+            PinType::Int => "int",
+            PinType::Float => "float",
+            PinType::String => "string",
+            PinType::Vector3 => "vector3",
+            PinType::Color => "color",
+            PinType::Node => "node",
+            PinType::Variant => "variant",
+        }
+    }
+
+    /// A definition's type name. Names this editor does not know still carry some value.
+    pub fn parse(name: &str) -> Self {
+        let name = name.trim().to_lowercase();
+        PinType::ALL.into_iter().find(|t| t.name() == name).unwrap_or(if name.is_empty() { PinType::Pulse } else { PinType::Variant })
+    }
+
+    /// A declared pin's type: a pulse, or some value when the definition names a parameter.
+    fn of(def: &gt_formats::game::IoDef) -> Self {
+        if def.parameter.trim().is_empty() { PinType::Pulse } else { PinType::Variant }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Pin {
     pub name: String,
     /// From the entity definition. Other pins are names the map already uses.
     pub declared: bool,
     pub description: String,
+    pub ty: PinType,
 }
 
 impl Pin {
-    fn used(name: &str) -> Self {
-        Pin { name: name.to_string(), declared: false, description: String::new() }
+    fn declared(def: &gt_formats::game::IoDef) -> Self {
+        Pin { name: def.name.clone(), declared: true, description: def.description.clone(), ty: PinType::of(def) }
+    }
+
+    fn used(name: &str, ty: PinType) -> Self {
+        Pin { name: name.to_string(), declared: false, description: String::new(), ty }
+    }
+}
+
+/// The category a node is colored and grouped by: the definition's group, else the classname's first word, such as
+/// logic for logic_relay.
+pub fn category(game: &GameConfig, classname: &str) -> String {
+    match game.entity(classname).map(|d| d.group.trim()).filter(|g| !g.is_empty()) {
+        Some(group) => group.to_lowercase(),
+        None => classname.split('_').next().unwrap_or(classname).to_lowercase(),
     }
 }
 
@@ -56,12 +114,14 @@ impl Pin {
 pub struct GraphNode {
     pub key: NodeKey,
     pub title: String,
-    /// The classname, or what kind of marker this is.
+    /// The category and classname, or what kind of marker this is.
     pub subtitle: String,
     pub inputs: Vec<Pin>,
     pub outputs: Vec<Pin>,
-    /// The definition's color for entities, None for markers.
-    pub color: Option<[f32; 3]>,
+    /// What the entity is grouped and colored by, empty for markers.
+    pub category: String,
+    /// The entity has a definition, so pins it does not declare are worth a warning.
+    pub defined: bool,
     /// A logic_* helper entity, which only exists for its wiring.
     pub logic: bool,
     /// Shown only because it is selected, it has no wiring yet.
@@ -181,7 +241,7 @@ impl GraphModel {
         let resolve = |target: &str| -> &[NodeId] { if is_dynamic_target(target) { &[] } else { names.get(target).map(Vec::as_slice).unwrap_or_default() } };
 
         let mut shown: BTreeSet<NodeId> = BTreeSet::new();
-        let mut incoming: BTreeMap<NodeKey, Vec<&str>> = BTreeMap::new();
+        let mut incoming: BTreeMap<NodeKey, Vec<(&str, PinType)>> = BTreeMap::new();
         for (id, e) in map.entities() {
             if !e.outputs.is_empty() || e.classname.starts_with("logic_") {
                 shown.insert(id);
@@ -191,7 +251,8 @@ impl GraphModel {
                 let targets = resolve(&conn.target);
                 shown.extend(targets);
                 for key in target_keys(&conn.target, targets, cx.external) {
-                    incoming.entry(key).or_default().push(&conn.input);
+                    let ty = if conn.parameter.is_empty() { PinType::Pulse } else { PinType::Variant };
+                    incoming.entry(key).or_default().push((&conn.input, ty));
                 }
             }
         }
@@ -208,27 +269,24 @@ impl GraphModel {
         for id in &shown {
             let e = map.entity(*id).expect("shown ids are entities");
             let def = cx.game.entity(&e.classname);
-            let mut outputs: Vec<Pin> = def
-                .map(|d| d.outputs.iter().map(|o| Pin { name: o.name.clone(), declared: true, description: o.description.clone() }).collect())
-                .unwrap_or_default();
+            let mut outputs: Vec<Pin> = def.map(|d| d.outputs.iter().map(Pin::declared).collect()).unwrap_or_default();
             for conn in &e.outputs {
                 if find_pin(&outputs, &conn.output).is_none() {
-                    outputs.push(Pin::used(&conn.output));
+                    outputs.push(Pin::used(&conn.output, PinType::Pulse));
                 }
             }
 
-            let mut inputs: Vec<Pin> = def
-                .map(|d| d.inputs.iter().map(|i| Pin { name: i.name.clone(), declared: true, description: i.description.clone() }).collect())
-                .unwrap_or_default();
-            for name in incoming.get(&NodeKey::Entity(*id)).into_iter().flatten() {
+            let mut inputs: Vec<Pin> = def.map(|d| d.inputs.iter().map(Pin::declared).collect()).unwrap_or_default();
+            for (name, ty) in incoming.get(&NodeKey::Entity(*id)).into_iter().flatten() {
                 if find_pin(&inputs, name).is_none() {
-                    inputs.push(Pin::used(name));
+                    inputs.push(Pin::used(name, *ty));
                 }
             }
 
             let label = map.get(*id).and_then(|n| n.label.clone());
             let title = e.targetname().map(str::to_string).or(label).unwrap_or_else(|| e.classname.clone());
-            let subtitle = if title == e.classname { String::new() } else { e.classname.clone() };
+            let category = category(cx.game, &e.classname);
+            let subtitle = if title == e.classname { category.clone() } else { format!("{category} \u{b7} {}", e.classname) };
             let stored = map.get(*id).and_then(|n| n.graph);
             model.push(GraphNode {
                 key: NodeKey::Entity(*id),
@@ -236,7 +294,8 @@ impl GraphModel {
                 subtitle,
                 inputs,
                 outputs,
-                color: def.map(|d| [d.color.r, d.color.g, d.color.b]),
+                category,
+                defined: def.is_some(),
                 logic: e.classname.starts_with("logic_"),
                 unwired: !wired.contains(id),
                 stored,
@@ -254,9 +313,9 @@ impl GraphModel {
                 NodeKey::Missing(_) => "no entity has this name",
             };
             let mut inputs: Vec<Pin> = Vec::new();
-            for name in used {
+            for (name, ty) in used {
                 if find_pin(&inputs, name).is_none() {
-                    inputs.push(Pin::used(name));
+                    inputs.push(Pin::used(name, *ty));
                 }
             }
 
@@ -270,7 +329,8 @@ impl GraphModel {
                 subtitle: subtitle.to_string(),
                 inputs,
                 outputs: Vec::new(),
-                color: None,
+                category: String::new(),
+                defined: false,
                 logic: false,
                 unwired: false,
                 stored: None,
@@ -523,7 +583,7 @@ mod tests {
         assert!(g.node(&NodeKey::Entity(light)).is_none());
 
         let b = g.node(&NodeKey::Entity(button)).unwrap();
-        assert_eq!((b.title.as_str(), b.subtitle.as_str()), ("func_button", ""), "no targetname, the classname titles it once");
+        assert_eq!((b.title.as_str(), b.subtitle.as_str()), ("func_button", "func"), "no targetname, the classname titles it once");
         assert_eq!(b.outputs.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["pressed", "released", "locked_use"]);
         let d = g.node(&NodeKey::Entity(door)).unwrap();
         assert_eq!(d.title, "door");
@@ -628,6 +688,30 @@ mod tests {
         let mut again = build(&m, &[], &[]);
         again.place();
         assert_eq!(again.nodes.iter().map(|n| n.pos).collect::<Vec<_>>(), g.nodes.iter().map(|n| n.pos).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn nodes_have_a_category_and_typed_pins() {
+        let mut m = Map::new();
+        let mut with_value = conn("pressed", "c", "custom_amount");
+        with_value.parameter = "2".into();
+        let button = add(&mut m, "func_button", "b", vec![with_value, conn("pressed", "c", "custom")]);
+        let counter = add(&mut m, "logic_counter", "c", vec![]);
+        let g = build(&m, &[], &[]);
+        let b = g.node(&NodeKey::Entity(button)).unwrap();
+        assert_eq!((b.category.as_str(), b.subtitle.as_str()), ("func", "func \u{b7} func_button"), "the category is named, not only colored");
+        assert_eq!(b.outputs[b.output("pressed").unwrap()].ty, PinType::Variant, "pressed passes the activator along");
+        assert_eq!(b.outputs[b.output("released").unwrap()].ty, PinType::Pulse);
+        let c = g.node(&NodeKey::Entity(counter)).unwrap();
+        assert_eq!(c.category, "logic");
+        assert_eq!(c.inputs[c.input("custom_amount").unwrap()].ty, PinType::Variant, "the map hands it a parameter");
+        assert_eq!(c.inputs[c.input("custom").unwrap()].ty, PinType::Pulse);
+
+        let mut game = GameConfig::with_gameplay_pack();
+        game.entities.iter_mut().find(|d| d.classname == "logic_counter").unwrap().group = "Puzzles".into();
+        assert_eq!(category(&game, "logic_counter"), "puzzles", "a definition's group wins over the prefix");
+        assert_eq!(PinType::parse("Vector3"), PinType::Vector3);
+        assert_eq!(PinType::parse("matrix"), PinType::Variant, "an unknown type still carries a value");
     }
 
     #[test]

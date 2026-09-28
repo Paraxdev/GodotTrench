@@ -9,7 +9,7 @@ use gt_doc::IoConnection;
 use gt_doc::issues::BUILTIN_INPUTS;
 
 use super::edit::{self, NewLink, Placement};
-use super::model::{ConnectionId, EdgeKind, GraphEdge, GraphModel, GraphNode, HEADER, Inputs, NodeKey, PIN_ROW, pin_label};
+use super::model::{ConnectionId, EdgeKind, GraphEdge, GraphModel, GraphNode, HEADER, Inputs, NodeKey, PIN_ROW, PinType, pin_label};
 use crate::commands::Action;
 use crate::logic_sim::{self, SimResult};
 use crate::state::EditorState;
@@ -437,22 +437,34 @@ fn marker_color(key: &NodeKey) -> Option<Color32> {
 }
 
 /// Classes the Add menu offers: the logic entities first, then other point entities that take part in I/O.
-fn creatable(state: &EditorState) -> Vec<(String, String)> {
-    let mut logic: Vec<(String, String)> = Vec::new();
-    let mut other: Vec<(String, String)> = Vec::new();
+/// A category of the Add menu and its classes with their descriptions.
+type Group = (String, Vec<(String, String)>);
+
+/// Classes the Add menu offers, point entities that take part in I/O, by category with logic and math first.
+fn creatable(state: &EditorState) -> Vec<Group> {
+    let mut groups: std::collections::BTreeMap<(u8, String), Vec<(String, String)>> = Default::default();
     for d in state.game.point_entities() {
-        let entry = (d.classname.clone(), d.description.clone());
-        if d.classname.starts_with("logic_") {
-            logic.push(entry);
-        } else if !d.inputs.is_empty() || !d.outputs.is_empty() {
-            other.push(entry);
+        let helper = d.classname.starts_with("logic_") || d.classname.starts_with("math_");
+        if !helper && d.inputs.is_empty() && d.outputs.is_empty() {
+            continue;
         }
+
+        let category = super::model::category(&state.game, &d.classname);
+        let rank = match category.as_str() {
+            "logic" => 0,
+            "math" => 1,
+            _ => 2,
+        };
+        groups.entry((rank, category)).or_default().push((d.classname.clone(), d.description.clone()));
     }
 
-    logic.sort();
-    other.sort();
-    logic.extend(other);
-    logic
+    groups
+        .into_iter()
+        .map(|((_, category), mut classes)| {
+            classes.sort();
+            (category, classes)
+        })
+        .collect()
 }
 
 fn pack_missing(state: &EditorState) -> bool {
@@ -482,6 +494,21 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
     gs.refresh(state);
     let visible: Vec<usize> = (0..gs.model.nodes.len()).filter(|i| gs.node_rect(&gs.model.nodes[*i]).intersects(canvas)).collect();
     draw(ui, state, gs, &visible, hover.as_ref());
+    if let Some(Hit::Pin(p)) = &hover
+        && let Some(n) = gs.model.node(&p.key)
+        && let Some(pin) = if p.output { n.output(&p.name).map(|i| &n.outputs[i]) } else { n.input(&p.name).map(|i| &n.inputs[i]) }
+    {
+        let kind = if p.output { "output" } else { "input" };
+        let mut tip = format!("{} {kind}, {}", pin_label(&pin.name), pin.ty.name());
+        if !pin.description.is_empty() {
+            tip.push_str(&format!("\n{}", pin.description));
+        } else if !pin.declared {
+            tip.push_str("\nNot in the entity definition, used by the map");
+        }
+
+        response.clone().on_hover_text_at_pointer(tip);
+    }
+
     if strip > 0.0 {
         sim_list(ui, Rect::from_min_max(pos2(room.min.x, canvas.max.y + 4.0), room.max), state, gs);
     }
@@ -770,6 +797,9 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
             (3.0, theme::YELLOW)
         } else if hovered_edge == Some(i) {
             (2.5, theme::GRAY_7)
+        } else if e.kind == EdgeKind::Resolved {
+            let pin = gs.model.nodes[e.from].outputs.get(e.from_pin).map_or(PinType::Pulse, |p| p.ty);
+            (1.6, theme::pin_type_color(pin.name()))
         } else {
             (1.6, edge_color(e.kind))
         };
@@ -799,9 +829,9 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
         let marker = marker_color(&n.key);
         painter.rect_filled(r, rounding, if marker.is_some() { theme::GRAY_1 } else { theme::GRAY_2 });
         let header = Rect::from_min_size(r.min, vec2(r.width(), HEADER * gs.zoom));
-        if let Some(c) = n.color {
-            let c = Color32::from_rgb((c[0] * 255.0) as u8, (c[1] * 255.0) as u8, (c[2] * 255.0) as u8);
-            let strip = Rect::from_min_size(r.min, vec2(r.width(), 4.0 * gs.zoom));
+        let category = (!n.category.is_empty()).then(|| theme::category_color(&n.category));
+        if let Some(c) = category {
+            let strip = Rect::from_min_size(r.min, vec2(r.width(), 5.0 * gs.zoom.max(0.6)));
             painter.rect_filled(strip, egui::CornerRadius { nw: rounding as u8, ne: rounding as u8, sw: 0, se: 0 }, c);
         }
 
@@ -812,7 +842,7 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
         let title = FontId::proportional((14.0 * gs.zoom).max(MIN_TITLE));
         clip.text(header.min + vec2(10.0, 7.0) * gs.zoom.max(0.4), Align2::LEFT_TOP, &n.title, title, theme::GRAY_7);
         if detail {
-            text(header.min + vec2(10.0, 25.0) * gs.zoom, Align2::LEFT_TOP, &n.subtitle, 11.0, marker.unwrap_or(theme::GRAY_5));
+            text(header.min + vec2(10.0, 25.0) * gs.zoom, Align2::LEFT_TOP, &n.subtitle, 11.0, marker.or(category).unwrap_or(theme::GRAY_5));
         }
 
         let connected =
@@ -825,16 +855,21 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
             for (k, pin) in pins.iter().enumerate() {
                 let at = gs.pin_screen(n, output, k);
                 let hot = hovered_pin == Some((output, pin.name.as_str()));
-                let color = if hot { theme::GRAY_7 } else { theme::GRAY_5 };
+                let color = theme::pin_type_color(pin.ty.name());
                 let radius = PIN_RADIUS * gs.zoom.max(0.6) * if hot { 1.4 } else { 1.0 };
-                if connected(output, k) {
-                    painter.circle_filled(at, radius, if output { theme::ACCENT } else { color });
+                let (fill, stroke) = if connected(output, k) { (color, Stroke::NONE) } else { (Color32::TRANSPARENT, Stroke::new(1.5, color)) };
+                // A pulse is a triangle pointing the way the signal flows, a value a circle, so the shape tells them
+                // apart as well as the color.
+                if pin.ty == PinType::Pulse {
+                    let r = radius * 1.2;
+                    let points = vec![at + vec2(-r * 0.8, -r), at + vec2(r, 0.0), at + vec2(-r * 0.8, r)];
+                    painter.add(Shape::convex_polygon(points, fill, stroke));
                 } else {
-                    painter.circle_stroke(at, radius, Stroke::new(1.5, color));
+                    painter.circle(at, radius, fill, stroke);
                 }
 
                 if detail {
-                    let warn = n.color.is_some() && !pin.declared;
+                    let warn = n.defined && !pin.declared;
                     let label_color = if warn { theme::WARNING } else { theme::FG };
                     let (align, dx) = if output { (Align2::RIGHT_CENTER, -10.0) } else { (Align2::LEFT_CENTER, 10.0) };
                     text(at + vec2(dx * gs.zoom, 0.0), align, pin_label(&pin.name), 13.0, label_color);
@@ -951,9 +986,17 @@ fn create_list(
     }
 
     let filter = gs.menu_filter.to_lowercase();
-    let classes: Vec<(String, String)> = creatable(state).into_iter().filter(|(c, d)| c.contains(&filter) || d.to_lowercase().contains(&filter)).collect();
+    let matches = |(c, d): &(String, String)| c.contains(&filter) || d.to_lowercase().contains(&filter);
+    let groups: Vec<Group> = creatable(state)
+        .into_iter()
+        .map(|(category, classes)| {
+            let hit = category.contains(&filter);
+            (category, classes.into_iter().filter(|c| hit || matches(c)).collect::<Vec<_>>())
+        })
+        .filter(|(_, classes)| !classes.is_empty())
+        .collect();
     let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-    let mut chosen = enter.then(|| classes.first().map(|(c, _)| c.clone())).flatten();
+    let mut chosen = enter.then(|| groups.first().and_then(|(_, c)| c.first()).map(|(c, _)| c.clone())).flatten();
     if pack_missing(state) {
         let asked = actions.len();
         install_hint(ui, actions);
@@ -963,22 +1006,21 @@ fn create_list(
         }
     }
 
-    egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
-        let mut logic = true;
-        for (classname, description) in &classes {
-            if logic && !classname.starts_with("logic_") {
-                logic = false;
-                ui.separator();
-            }
-
-            let button = ui.selectable_label(false, classname);
-            let button = if description.is_empty() { button } else { button.on_hover_text(description) };
-            if button.clicked() {
-                chosen = Some(classname.clone());
-            }
+    egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+        for (category, classes) in &groups {
+            ui.label(RichText::new(category).strong().color(theme::category_color(category)));
+            ui.indent(category, |ui| {
+                for (classname, description) in classes {
+                    let button = ui.selectable_label(false, classname);
+                    let button = if description.is_empty() { button } else { button.on_hover_text(description) };
+                    if button.clicked() {
+                        chosen = Some(classname.clone());
+                    }
+                }
+            });
         }
 
-        if classes.is_empty() {
+        if groups.is_empty() {
             ui.label(RichText::new("No entity matches").weak());
         }
     });
