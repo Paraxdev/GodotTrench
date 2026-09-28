@@ -74,11 +74,14 @@ fires when the state actually changes.
 * **Outputs:** `switched(on)`
 * **Keys:** `light_energy` 1.0 (1.5 for spots), `light_color` 255 255 255, `start_on` 1, `shadows` 0 (costs more to
   render), `fixture`, `fixture_off` hide, and `omni_range` 10, or `spot_range` 15 and `spot_angle` 35 (the cone's half
-  angle in degrees)
+  angle in degrees), `bake_mode` auto, `light_size` 0
 
 **Fixtures** keep the lamp model in step with the light. Give the lamp's glowing geometry a targetname and put it in
 `fixture`, a trailing `*` matches a prefix so `hall_tube_*` covers every tube. It is shown while the light is on and
 hidden while off, with no wiring. With `fixture_off` set to `dark` it stays visible with its emission off.
+
+`bake_mode` and `light_size` decide how [Bake Lighting](../../editor/light-baking.md#light-keys) treats the light. With
+`auto` a light that I/O can switch, one with a targetname or `start_on` 0, stays real time.
 
 ## env_sound
 
@@ -103,3 +106,19 @@ A particle effect for fire, smoke, sparks, dust and rain, with built in looks so
 wide, high and deep). `color` tints it, and white keeps the effect's own colors. `size` sets the particle size in
 meters, 0 uses the effect's own. `blend` is `add` for glow or `mix` for smoke. The defaults of each effect look right
 on their own, so start with only `effect`.
+
+## light_probe, env_reflection_probe and env_voxel_gi
+
+Probes that light and reflect moving objects, see [Baked lighting in Godot](../../godot/baked-lighting.md). None has
+inputs or outputs.
+
+| Entity | What it is | Keys |
+| --- | --- | --- |
+| `light_probe` | A point that adds one light probe to the bake, for spots the probe grid misses | None |
+| `env_reflection_probe` | A brush volume that becomes a `ReflectionProbe` the size of the brush | `intensity` 1.0, `update` once, `box_projection` 1, `interior` 0, `max_distance` 0 |
+| `env_voxel_gi` | A brush volume that becomes a `VoxelGI` the size of the brush, baked in the Godot editor on each build | `subdiv` 128, `energy` 1.0, `bake_on_build` 1 |
+
+`update` set to `always` captures a reflection probe every frame for moving objects, which costs a lot. `box_projection`
+lines reflections up with the walls of a room, `interior` leaves the sky out for rooms without windows, and
+`max_distance` is how many meters the probe sees past its box. `subdiv` is 64, 128, 256 or 512 voxels along the
+longest side, more is sharper and slower to bake.

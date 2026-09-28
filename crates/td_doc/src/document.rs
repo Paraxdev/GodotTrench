@@ -305,7 +305,11 @@ impl Document {
             self.last_edit = None;
             crate::linked::sync(&snap.map, &mut self.map);
             self.selection.prune(&self.map);
-            if snap.map.nodes != self.map.nodes || snap.map.properties != self.map.properties || snap.map.layers != self.map.layers {
+            if snap.map.nodes != self.map.nodes
+                || snap.map.properties != self.map.properties
+                || snap.map.layers != self.map.layers
+                || snap.map.textures != self.map.textures
+            {
                 self.last_command = Some(snap.label.clone());
                 self.push_undo(snap);
                 self.changed();
@@ -386,7 +390,12 @@ impl Document {
         undo.truncate(first + 1);
         let step = undo.last_mut()?;
         let m = &self.map;
-        if step.map.nodes == m.nodes && step.map.properties == m.properties && step.map.layers == m.layers && step.map.editor == m.editor {
+        if step.map.nodes == m.nodes
+            && step.map.properties == m.properties
+            && step.map.layers == m.layers
+            && step.map.editor == m.editor
+            && step.map.textures == m.textures
+        {
             self.state = undo.pop()?.state;
             return None;
         }

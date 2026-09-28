@@ -921,7 +921,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::SetShade(s) => {
             state.prefs.shade = if state.prefs.shade == s && s.is_lit() { Shade::Textured } else { s };
             if state.prefs.shade == Shade::Baked && state.doc.map.lightmap.is_none() {
-                state.set_status("Shading: baked, nothing is baked yet so the lit preview shows. Map > Bake Lighting makes the light maps");
+                state.set_status("Shading: baked, nothing is baked yet so the lit preview shows. Godot > Bake Lighting makes the light maps");
             } else {
                 state.set_status(format!("Shading: {}", state.prefs.shade.label()));
             }

@@ -28,7 +28,7 @@ chunk header from random bytes, which is how it finds the next good chunk in a [
 
 A compressed payload is one zstd frame with a content checksum. A raw size above 1 GiB marks a damaged header. The
 editor writes the chunks in this order: one `HEAD` chunk, then the `NODE` chunks, then any unknown chunks it kept from
-the file it loaded, and an `END` chunk last.
+the file it loaded, an `LMAP` chunk when the map has baked lighting, and an `END` chunk last.
 
 ### HEAD
 
@@ -62,6 +62,36 @@ The `END` chunk lets a reader check that nothing is missing:
 The content id is a 64 bit FNV-1a hash of the raw `HEAD` and `NODE` payloads in file order, cut to its low 52 bits so
 it survives as a JSON number. Godot keeps it with the built scene, so a [live session](../godot/live-link.md) can tell
 that a map has not changed and skip rebuilding it.
+
+### LMAP
+
+The [baked lighting](../editor/light-baking.md), written only when the map has a bake. It is one dictionary with 18
+keys, stored as its own chunk so the rest of the map loads fast and an older editor keeps it untouched. The editor
+compresses it with a faster zstd level than the other chunks, since it is large. Positions and distances are in map units.
+
+| Key | Type | Meaning |
+| --- | --- | --- |
+| `version` | integer | Layout version, currently 1. A reader drops a bake with a newer one |
+| `width`, `height` | integer | Light map size in texels |
+| `scene` | integer | Fingerprint of the geometry, lights and sky the bake was made from, to tell when it is out of date |
+| `texel_size` | float | Map units per texel |
+| `light` | bytes | Linear light, three little endian half floats (red, green, blue) per texel, row by row |
+| `shadow` | bytes | How much of the sun reaches each texel, 0 to 255 |
+| `ao` | bytes | Ambient occlusion per texel, 255 where nothing is near |
+| `chart_keys` | int64 array | A node id and a face index per chart, the face is 0 for a terrain |
+| `chart_rows` | float32 array | Eight floats per chart, two rows `a b c d` that give the chart's 0 to 1 light map coordinate as `a*x + b*y + c*z + d` |
+| `nodes` | int64 array | Pairs of a node id and the fingerprint of its geometry when it was baked |
+| `stale` | int64 array | Nodes whose geometry changed since, or that are gone. Readers skip their charts |
+| `fallback` | float32 array | The average light as red, green and blue, for faces without a chart |
+| `probe_points` | float32 array | Light probe positions, three floats each |
+| `probe_sh` | float32 array | Nine red, green and blue spherical harmonics coefficients per probe, as Godot stores them |
+| `probe_tetrahedra` | int32 array | Four probe indices per tetrahedron |
+| `probe_bsp_planes` | float32 array | A plane per BSP node, normal and distance |
+| `probe_bsp_children` | int32 array | The child over and under each plane: another node when positive, tetrahedron `t` as `-t - 1`, nothing as the smallest int32 |
+
+The probe keys follow the layout of Godot's `LightmapGIData`, and a reader leaves the probes out when their sizes do
+not add up. A chunk that fails to load is dropped with a warning to bake again. In a JSON map the same dictionary sits
+under a top level `lightmap` key, with `light`, `shadow` and `ao` as base64 text.
 
 ### Other chunks
 

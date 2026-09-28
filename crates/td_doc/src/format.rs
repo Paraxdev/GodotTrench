@@ -48,6 +48,8 @@ struct FileMap {
     properties: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "is_default_editor")]
     editor: EditorData,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    textures: BTreeMap<String, crate::textures::TextureSettings>,
     layers: Vec<FileNode>,
 }
 
@@ -111,6 +113,7 @@ pub fn to_value(map: &Map) -> Value {
         version: FORMAT_VERSION,
         properties: map.properties.clone(),
         editor: map.editor.clone(),
+        textures: map.textures.clone(),
         layers: map.layers.iter().filter_map(|l| map.get(*l)).map(|l| to_file_node(map, l)).collect(),
     };
     serde_json::to_value(file).expect("map serializes")
@@ -362,6 +365,7 @@ fn from_value(mut value: Value) -> Result<Map, FormatError> {
         unknown_chunks: Vec::new(),
         instance_extents: Default::default(),
         lightmap,
+        textures: file.textures.into_iter().map(|(k, v)| (k, v.sanitized())).filter(|(_, v)| !v.is_default()).collect(),
     };
     for layer in file.layers {
         if matches!(layer.kind, FileKind::Layer(_)) {
@@ -430,6 +434,21 @@ mod tests {
         let l2 = m.add_layer("Details");
         m.get_mut(l2).unwrap().hidden = true;
         m
+    }
+
+    #[test]
+    fn texture_settings_survive_both_layouts() {
+        let mut m = sample();
+        let wallpaper = crate::textures::TextureSettings { size: Some([256.0, 128.0]), projection: crate::textures::Projection::World, ..Default::default() };
+        m.set_texture("backrooms/wallpaper", wallpaper.clone());
+        m.set_texture("glass", crate::textures::TextureSettings { bake: false, casts: false, ..Default::default() });
+        m.set_texture("plain", crate::textures::TextureSettings::default());
+        assert_eq!(m.textures.len(), 2, "default settings are not stored");
+        let back = from_bytes(&to_bytes(&m)).unwrap().map;
+        assert_eq!(back.textures, m.textures);
+        let json = from_bytes(to_string(&m).as_bytes()).unwrap().map;
+        assert_eq!(json.texture("backrooms/wallpaper"), wallpaper);
+        assert!(!json.texture("glass").bake && json.texture("missing").bake);
     }
 
     #[test]

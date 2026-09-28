@@ -46,6 +46,21 @@ the texture size, which is the material's `texture_size` when it has one, see
 A missing `uv` means `u_axis = [1, 0, 0]` and `v_axis = [0, 0, 1]` at scale 1. When `uv` is present, every key but
 `rotation` is required.
 
+## Texture settings
+
+The top level `textures` object holds settings that every face with a material shares, keyed by the material name. Only
+settings that differ from the default are written, and a material with none is left out.
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `bake` | bool | `true` | Faces get a place in the light map. Off, Godot gives them the average baked light |
+| `casts` | bool | `true` | Faces block light in the bake |
+| `texel_scale` | number | `1` | Multiplies the light map texel size on these faces, 0.125 to 16 |
+| `size` | `[w, h]` | none | Map units one repeat covers, used in place of the texture size above |
+| `projection` | string | `"face"` | `"world"` ignores each brush face's `uv` and uses the reset projection of its normal, offset 0 and scale 1 |
+
+`world` applies to brush faces only, mesh faces keep their projection.
+
 ## Displacement
 
 A quad face can carry a Hammer style displacement: a grid of vertices that are each pushed out along the face normal,

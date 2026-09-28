@@ -13,6 +13,7 @@ pub mod ops;
 pub mod scatter;
 pub mod selection;
 pub mod terrain;
+pub mod textures;
 mod variant;
 
 pub use document::{Document, History};

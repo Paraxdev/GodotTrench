@@ -245,6 +245,8 @@ pub struct Map {
     pub instance_extents: std::sync::Arc<BTreeMap<String, Aabb>>,
     /// Baked lighting, see [`crate::lightmap`].
     pub lightmap: Option<std::sync::Arc<crate::lightmap::Lightmap>>,
+    /// Settings of textures that differ from the defaults, by material name.
+    pub textures: BTreeMap<String, crate::textures::TextureSettings>,
 }
 
 impl Default for Map {
@@ -264,6 +266,7 @@ impl Map {
             unknown_chunks: Vec::new(),
             instance_extents: Default::default(),
             lightmap: None,
+            textures: BTreeMap::new(),
         };
         map.add_layer("Default");
         map
@@ -308,6 +311,21 @@ impl Map {
 
     pub fn contains(&self, id: NodeId) -> bool {
         self.nodes.contains_key(&id)
+    }
+
+    /// The settings of a texture, the defaults when it has none of its own.
+    pub fn texture(&self, material: &str) -> crate::textures::TextureSettings {
+        self.textures.get(material).cloned().unwrap_or_default()
+    }
+
+    /// Stores `settings` for a texture, dropping the entry when they are the defaults.
+    pub fn set_texture(&mut self, material: &str, settings: crate::textures::TextureSettings) {
+        let settings = settings.sanitized();
+        if settings.is_default() {
+            self.textures.remove(material);
+        } else {
+            self.textures.insert(material.to_string(), settings);
+        }
     }
 
     pub fn brush(&self, id: NodeId) -> Option<&Brush> {
