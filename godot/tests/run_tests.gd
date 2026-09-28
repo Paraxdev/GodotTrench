@@ -111,6 +111,7 @@ func _initialize() -> void:
 	await load("res://tests/gtm_file_tests.gd").run(self)
 	await load("res://tests/lightmap_tests.gd").run(self)
 	await load("res://tests/entity_tests.gd").new().run(self)
+	await load("res://tests/logic_math_tests.gd").new().run(self)
 	print("%d checks, %d failures" % [checks, failures.size()])
 	quit(1 if failures.size() > 0 else 0)
 
@@ -787,6 +788,12 @@ func test_game_config_io_types() -> void:
 		["trigger_area", "outputs", "body_entered", "body", "node"],
 		["prop_physics", "outputs", "damaged", "hp", "float"],
 		["logic_debug", "outputs", "printed", "text", "string"],
+		["math_calc", "inputs", "calculate", "value", "variant"],
+		["math_value", "outputs", "value", "value", "variant"],
+		["logic_gate", "outputs", "changed", "on", "bool"],
+		["logic_flipflop", "outputs", "changed", "on", "bool"],
+		["logic_random", "outputs", "picked", "index", "int"],
+		["logic_case", "inputs", "in_value", "value", "variant"],
 	]
 	for row in expected:
 		var io: Dictionary = io_of.call(row[0], row[1], row[2])
