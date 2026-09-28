@@ -4,3 +4,6 @@
 pub mod edit;
 pub mod layout;
 pub mod model;
+mod panel;
+
+pub use panel::{GraphState, PinRef, Simulation, show};

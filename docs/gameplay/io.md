@@ -18,6 +18,9 @@ Each output of an entity can hold any number of connections. One connection has 
 | Delay | Seconds to wait before calling the input, 0 calls it at once. Use it to stagger events, like lights coming on one after another |
 | Times | How many times the connection may fire. -1 means every time, 1 makes a one shot event |
 
+Connections are edited in the Inspector, one entity at a time, or all at once as wires between nodes in the
+[Logic graph](logic-graph.md). Both change the same outputs.
+
 In Godot an output is a signal and an input is a method: `func_button` has `signal pressed(activator)` and `func_door`
 has `func open()`. Your own scripts take part the same way, see [Custom entities](custom-entities.md).
 

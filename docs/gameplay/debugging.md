@@ -5,8 +5,8 @@ most thorough.
 
 1. **Issues panel.** It flags outputs aimed at a targetname no entity has, and inputs the target's class does not
    have. A typo in a targetname is the most common reason a door stays shut.
-2. **Logic panel.** It fires an output on paper and shows the whole chain, see
-   [Placing and wiring](placing.md#checking-wiring-without-godot).
+2. **Logic graph.** Broken targets show as red nodes, and **Simulate** fires an output on paper and highlights the
+   whole chain, see [The Logic graph](logic-graph.md#simulate).
 3. **F3 in game.** Add a `GodotTrenchDebugOverlay` node to your scene, or as an autoload. F3 lists outputs as they fire
    and draws every `Area3D` volume with its targetname, so you see whether a trigger never fired or fired at nothing.
    Toggle it again after spawning triggers, volumes are collected when it turns on. The key is the overlay's

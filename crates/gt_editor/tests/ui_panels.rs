@@ -1026,15 +1026,48 @@ fn history_panel_undoes_to_clicked_step() {
     assert_eq!(harness.state().state.doc.history.redo_labels().count(), 2);
 }
 
-#[test]
-fn logic_panel_fires_cascade_and_flags_broken_links() {
-    let mut f = Fixture::new();
+fn logic_graph(f: Fixture) -> Harness<'static, Fixture> {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(1000.0, 640.0))
+        .build_ui_state(|ui, f: &mut Fixture| gt_editor::logic_graph::show(ui, &mut f.state, &mut f.panels.logic, &mut f.actions), f);
+    harness.run();
+    harness
+}
+
+fn named(f: &mut Fixture, classname: &str, name: &str, at: DVec3) -> gt_core::NodeId {
     let layer = f.state.doc.map.default_layer();
-    f.state.doc.edit("wire", |m, _| {
-        let relay = ops::create_point_entity(m, layer, "logic_relay", DVec3::ZERO);
-        let e = m.entity_mut(relay).unwrap();
-        e.properties.insert("targetname".into(), "aaa".into());
-        e.outputs = vec![
+    f.state.doc.edit("add", |m, _| {
+        let id = ops::create_point_entity(m, layer, classname, at);
+        if !name.is_empty() {
+            m.entity_mut(id).unwrap().properties.insert("targetname".into(), name.into());
+        }
+
+        id
+    })
+}
+
+/// Drags with the primary button through the given points, a frame for each.
+fn drag_through(harness: &mut Harness<'_, Fixture>, points: &[egui::Pos2]) {
+    harness.hover_at(points[0]);
+    harness.run();
+    harness.drag_at(points[0]);
+    harness.run();
+    for p in &points[1..] {
+        harness.hover_at(*p);
+        harness.run();
+    }
+
+    harness.drop_at(*points.last().unwrap());
+    harness.run();
+}
+
+#[test]
+fn logic_graph_simulates_and_flags_broken_links() {
+    let mut f = Fixture::new();
+    let relay = named(&mut f, "logic_relay", "aaa", DVec3::ZERO);
+    named(&mut f, "light", "light1", DVec3::new(64.0, 0.0, 0.0));
+    f.state.doc.edit("wire", |m, s| {
+        m.entity_mut(relay).unwrap().outputs = vec![
             gt_doc::IoConnection {
                 output: "triggered".into(),
                 target: "light1".into(),
@@ -1045,17 +1078,82 @@ fn logic_panel_fires_cascade_and_flags_broken_links() {
             },
             gt_doc::IoConnection { output: "triggered".into(), target: "ghost".into(), input: "kill".into(), parameter: String::new(), delay: 0.0, times: -1 },
         ];
-        let light = ops::create_point_entity(m, layer, "light", DVec3::new(64.0, 0.0, 0.0));
-        m.entity_mut(light).unwrap().properties.insert("targetname".into(), "light1".into());
+        s.select_node(relay);
     });
 
-    let mut harness =
-        Harness::builder().with_size(egui::vec2(520.0, 800.0)).build_ui_state(|ui, f: &mut Fixture| panels::logic_panel(ui, &mut f.state, &mut f.panels), f);
+    let mut harness = logic_graph(f);
+    let model = &harness.state().panels.logic.model;
+    assert_eq!(model.nodes.len(), 3, "the relay, the light and a marker for the missing target");
+    harness.get_by_label("Simulate").click();
     harness.run();
-    harness.get_by_label("Fire").click();
+    harness.get_by_label("triggered").click();
     harness.run();
     assert!(harness.query_by_label("2 steps").is_some(), "both wired outputs are listed");
     assert!(harness.query_by_label("1 broken").is_some(), "the missing target is flagged");
+}
+
+#[test]
+fn logic_graph_drag_from_an_output_pin_to_an_input_pin_connects() {
+    use gt_editor::logic_graph::model::NodeKey;
+
+    let mut f = Fixture::new();
+    let relay = named(&mut f, "logic_relay", "r", DVec3::ZERO);
+    let door = named(&mut f, "func_door", "", DVec3::new(128.0, 0.0, 0.0));
+    named(&mut f, "func_door", "door_1", DVec3::new(256.0, 0.0, 0.0));
+    f.state.doc.select(|_, s| s.select_node(door));
+    let mut harness = logic_graph(f);
+
+    let logic = &harness.state().panels.logic;
+    let from = logic.pin_pos(&NodeKey::Entity(relay), true, "triggered").expect("the relay shows, it is a logic entity");
+    let to = logic.pin_pos(&NodeKey::Entity(door), false, "open").expect("the selected door shows");
+    let steps = harness.state().state.doc.history.undo_labels().count();
+    drag_through(&mut harness, &[from, from + egui::vec2(30.0, 10.0), (from + to.to_vec2()) / 2.0, to]);
+
+    let state = &harness.state().state;
+    let e = state.doc.map.entity(relay).unwrap();
+    assert_eq!(e.outputs.len(), 1, "one connection");
+    assert_eq!((e.outputs[0].output.as_str(), e.outputs[0].target.as_str(), e.outputs[0].input.as_str()), ("triggered", "door_2", "open"));
+    assert_eq!(state.doc.map.entity(door).unwrap().targetname(), Some("door_2"), "the unnamed door got a free name");
+    assert_eq!(state.doc.history.undo_labels().count(), steps + 1);
+    assert_eq!(harness.state().panels.logic.model.edges.len(), 1, "the graph follows the edit");
+
+    // A click on the wire opens its editor, whose Delete removes it again.
+    let logic = &harness.state().panels.logic;
+    let a = logic.pin_pos(&NodeKey::Entity(relay), true, "triggered").unwrap();
+    let b = logic.pin_pos(&NodeKey::Entity(door), false, "open").unwrap();
+    harness.hover_at((a + b.to_vec2()) / 2.0);
+    harness.run();
+    harness.drag_at((a + b.to_vec2()) / 2.0);
+    harness.run();
+    harness.drop_at((a + b.to_vec2()) / 2.0);
+    harness.run();
+    assert_eq!(harness.state().panels.logic.selected_edge, Some((relay, 0)));
+    harness.get_by_label("Delete").click();
+    harness.run();
+    assert!(harness.state().state.doc.map.entity(relay).unwrap().outputs.is_empty());
+}
+
+#[test]
+fn logic_graph_drop_on_empty_space_adds_a_wired_logic_entity() {
+    use gt_editor::logic_graph::model::NodeKey;
+
+    let mut f = Fixture::new();
+    let relay = named(&mut f, "logic_relay", "r", DVec3::new(32.0, 16.0, 0.0));
+    let mut harness = logic_graph(f);
+    let from = harness.state().panels.logic.pin_pos(&NodeKey::Entity(relay), true, "triggered").unwrap();
+    let empty = from + egui::vec2(260.0, 120.0);
+    drag_through(&mut harness, &[from, from + egui::vec2(40.0, 20.0), empty]);
+    harness.get_by_label("logic_timer").click();
+    harness.run();
+
+    let map = &harness.state().state.doc.map;
+    let (timer, e) =
+        map.entities().find(|(_, e)| e.classname == "logic_timer").unwrap_or_else(|| panic!("a timer was added: {}", harness.state().state.status));
+    assert_eq!(e.targetname(), Some("timer_1"));
+    assert_eq!(map.entity(relay).unwrap().outputs[0].target, "timer_1");
+    assert_eq!(map.entity(relay).unwrap().outputs[0].input, "start");
+    assert!(matches!(&map.get(map.layer_of(timer)).unwrap().kind, NodeKind::Layer(l) if l.name == "Logic"));
+    assert!(map.get(timer).unwrap().graph.is_some() && map.get(relay).unwrap().graph.is_some(), "the new node and the laid out one keep their places");
 }
 
 #[test]

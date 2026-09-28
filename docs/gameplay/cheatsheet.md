@@ -57,5 +57,5 @@ if not p.is_empty():
 
 ## Nothing happened?
 
-Check the Issues panel, then the Logic panel, then F3 in game, then log `GodotTrenchIO.events()`. See
+Check the Issues panel, then the Logic graph, then F3 in game, then log `GodotTrenchIO.events()`. See
 [Debugging wiring](debugging.md).

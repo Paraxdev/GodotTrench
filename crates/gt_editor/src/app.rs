@@ -43,14 +43,25 @@ pub enum Panel {
     Entities,
     History,
     Issues,
+    Logic,
     Uv,
     Reference,
     Scatter,
 }
 
 impl Panel {
-    pub const ALL: [Panel; 9] =
-        [Panel::Outliner, Panel::Inspector, Panel::Materials, Panel::Entities, Panel::History, Panel::Issues, Panel::Uv, Panel::Reference, Panel::Scatter];
+    pub const ALL: [Panel; 10] = [
+        Panel::Outliner,
+        Panel::Inspector,
+        Panel::Materials,
+        Panel::Entities,
+        Panel::History,
+        Panel::Issues,
+        Panel::Logic,
+        Panel::Uv,
+        Panel::Reference,
+        Panel::Scatter,
+    ];
 
     /// The tab tooltip: [`Panel::help`] with the key that renames, which the keymap can change.
     pub fn tooltip(self, ctx: &egui::Context, prefs: &Prefs) -> String {
@@ -78,6 +89,9 @@ impl Panel {
             Panel::History => "Every edit in order. Click an older entry to undo back to it, click a later one to redo.",
             Panel::Issues => {
                 "Problems found in the map, like invalid brushes, missing materials or outputs pointing at nothing. Click one to select the object, most offer a fix."
+            }
+            Panel::Logic => {
+                "The map's entity I/O as a graph. Each wired entity is a node, each output connection a wire. Drag from an output pin to an input pin to connect, click a wire to edit it, Simulate previews what an output sets off."
             }
             Panel::Uv => "Edits the UVs of selected mesh faces directly, like the UV editor of a 3D modelling program.",
             Panel::Scatter => {
@@ -233,6 +247,7 @@ fn panel_tab(panel: Panel) -> Tab {
         Panel::Entities => Tab::Entities,
         Panel::History => Tab::History,
         Panel::Issues => Tab::Issues,
+        Panel::Logic => Tab::Logic,
         Panel::Uv => Tab::Uv,
         Panel::Reference => Tab::Reference,
         Panel::Scatter => Tab::Scatter,
@@ -797,7 +812,7 @@ impl App {
 
             // While a view flies with WASD, Q and E, ToolSet::keys swallows plain keys so no single key shortcut fires.
             self.tools.flying |= self.viewports.iter().any(|v| v.is_flying());
-            if self.panels.uv.take_escape(ctx) || self.tools.keys(ctx, &mut self.state) {
+            if self.panels.uv.take_escape(ctx) || self.panels.logic.take_keys(ctx, &mut self.state) || self.tools.keys(ctx, &mut self.state) {
                 return;
             }
 
@@ -2309,7 +2324,7 @@ impl TabViewer for Tabs<'_> {
             Tab::Entities => panels::entity_browser(ui, self.state, self.panels, self.actions),
             Tab::History => panels::history(ui, self.state),
             Tab::Issues => panels::issues(ui, self.state, self.panels, self.actions),
-            Tab::Logic => panels::logic_panel(ui, self.state, self.panels),
+            Tab::Logic => crate::logic_graph::show(ui, self.state, &mut self.panels.logic, self.actions),
             Tab::Uv => panels::uv_editor(ui, self.state, self.panels, self.actions),
             Tab::Reference => panels::reference(ui, self.state, self.panels, self.actions),
             Tab::Scatter => crate::scatter_panel::scatter_panel(ui, self.state, self.actions, Some(&mut *self.renderer)),
@@ -2333,7 +2348,7 @@ impl TabViewer for Tabs<'_> {
     }
 
     fn scroll_bars(&self, tab: &Tab) -> [bool; 2] {
-        if matches!(tab, Tab::View(_)) { [false, false] } else { [true, true] }
+        if matches!(tab, Tab::View(_) | Tab::Logic) { [false, false] } else { [true, true] }
     }
 }
 
@@ -2407,6 +2422,10 @@ impl eframe::App for App {
         }
 
         self.scene.update(&mut self.renderer, &mut self.state, self.project_generation);
+        if let Some(vp) = self.viewports.iter().find(|v| !v.kind().is_2d()) {
+            self.state.view_focus = Some(vp.camera.position + vp.camera.forward() * 256.0);
+        }
+
         let cam = &self.viewports[0].camera;
         let focus = cam.position + cam.forward() * 1200.0;
         self.scene.update_shadows(&mut self.renderer, focus, self.state.prefs.shade.is_lit());

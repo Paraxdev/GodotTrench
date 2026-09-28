@@ -46,6 +46,7 @@
 * [How entity I/O works](gameplay/io.md)
 * [Targets, parameters and inputs](gameplay/parameters.md)
 * [Placing and wiring](gameplay/placing.md)
+* [The Logic graph](gameplay/logic-graph.md)
 * [Debugging wiring](gameplay/debugging.md)
 * [I/O cheatsheet](gameplay/cheatsheet.md)
 * [Entity reference](gameplay/entities/README.md)
