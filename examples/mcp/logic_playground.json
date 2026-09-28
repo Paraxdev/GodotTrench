@@ -1,0 +1,122 @@
+{
+  "format": "godottrench-mcp-script",
+  "vars": { "save_dir": "${project}/demo/maps" },
+  "title": "Logic Playground",
+  "description": "A hall for trying the math and logic nodes. Coin buttons add to a math_value score, math_calc turns it into points, math_compare and logic_gate open the vault door once enough coins are in and the lever is pulled, logic_random picks one of three lights and logic_case names it on a game_text, and a logic_flipflop switches the hall lamp. Built entirely from MCP tool calls.",
+  "steps": [
+    { "note": "A hall for the math and logic nodes. West side: three coin buttons add to a score, a red button resets it. Center: a lever. East side: a button draws a random light. The vault door in the north wall opens when the score is at least 3 and the lever is pulled." },
+    { "tool": "map_file", "args": { "op": "new" } },
+    { "tool": "set_map_properties", "args": { "properties": { "message": "Logic Playground", "sun_angles": "-40 -55", "sun_energy": "0.5", "ambient_color": "60 66 82", "sky_top_color": "40 54 92", "sky_horizon_color": "120 130 150", "sky_ground_color": "60 62 70" } } },
+
+    { "note": "The hall, 20 by 20 meters. The north wall leaves an opening for the vault door." },
+    { "tool": "create_brush", "args": { "min": [-320, 0, -320], "max": [320, 8, 320], "material": "showcase/cobble" }, "save": "floor" },
+    { "tool": "create_brush", "args": { "min": [-320, 248, -320], "max": [320, 256, 320], "material": "showcase/planks_dark" }, "save": "ceiling" },
+    { "tool": "create_brush", "args": { "min": [-320, 8, 312], "max": [320, 248, 320], "material": "showcase/stone_bricks" }, "save": "wall_south" },
+    { "tool": "create_brush", "args": { "min": [-320, 8, -320], "max": [-64, 248, -312], "material": "showcase/stone_bricks" }, "save": "wall_north_left" },
+    { "tool": "create_brush", "args": { "min": [64, 8, -320], "max": [320, 248, -312], "material": "showcase/stone_bricks" }, "save": "wall_north_right" },
+    { "tool": "create_brush", "args": { "min": [-64, 168, -320], "max": [64, 248, -312], "material": "showcase/stone_bricks" }, "save": "wall_north_top" },
+    { "tool": "create_brush", "args": { "min": [-320, 8, -320], "max": [-312, 248, 320], "material": "showcase/stone_bricks" }, "save": "wall_west" },
+    { "tool": "create_brush", "args": { "min": [312, 8, -320], "max": [320, 248, 320], "material": "showcase/stone_bricks" }, "save": "wall_east" },
+    { "tool": "create_entity", "args": { "classname": "info_player_start", "origin": [0, 8, 272], "angles": [0, 180, 0] } },
+
+    { "note": "The vault behind the door, with something gold to find." },
+    { "tool": "create_brush", "args": { "min": [-104, 0, -488], "max": [104, 8, -320], "material": "showcase/cobble" }, "save": "vault_floor" },
+    { "tool": "create_brush", "args": { "min": [-104, 168, -488], "max": [104, 176, -320], "material": "showcase/planks_dark" }, "save": "vault_ceiling" },
+    { "tool": "create_brush", "args": { "min": [-104, 8, -488], "max": [-96, 168, -320], "material": "showcase/stone_bricks" }, "save": "vault_west" },
+    { "tool": "create_brush", "args": { "min": [96, 8, -488], "max": [104, 168, -320], "material": "showcase/stone_bricks" }, "save": "vault_east" },
+    { "tool": "create_brush", "args": { "min": [-104, 8, -488], "max": [104, 168, -480], "material": "showcase/stone_bricks" }, "save": "vault_back" },
+    { "tool": "create_brush", "args": { "min": [-20, 8, -448], "max": [20, 40, -408], "material": "showcase/gold" }, "save": "treasure" },
+    { "tool": "create_entity", "args": { "classname": "light", "origin": [0, 132, -400], "properties": { "targetname": "vault_light", "light_energy": "2", "light_color": "255 210 120", "omni_range": "8" } } },
+    { "tool": "create_brush", "args": { "min": [-64, 8, -320], "max": [64, 168, -312], "material": "showcase/planks" }, "save": "door_leaf" },
+    { "tool": "gameplay", "args": { "op": "make_door", "ids": ["$door_leaf.ids.0"], "kind": "sliding", "direction": "up", "properties": { "targetname": "vault_door", "speed": "2", "wait": "-1", "interact": "0" } } },
+
+    { "note": "The hall lamp. A logic_flipflop turns it on and off from one button: on_a switches it on, on_b off." },
+    { "tool": "create_entity", "args": { "classname": "light", "origin": [0, 200, 0], "properties": { "targetname": "hall_lamp", "light_energy": "2.4", "light_color": "255 236 200", "omni_range": "18", "start_on": "1" } } },
+    { "tool": "gameplay", "args": { "op": "place", "classname": "logic_flipflop", "origin": [0, 40, 296], "properties": { "targetname": "hall_switch", "start_on": "1" }, "outputs": [
+      { "output": "on_a", "target": "hall_lamp", "input": "turn_on" },
+      { "output": "on_b", "target": "hall_lamp", "input": "turn_off" }
+    ] } },
+    { "tool": "create_brush", "args": { "min": [-12, 60, 304], "max": [12, 84, 312], "material": "showcase/plaster" }, "save": "lamp_button" },
+    { "tool": "gameplay", "args": { "op": "make_button", "ids": ["$lamp_button.ids.0"], "target": "hall_switch", "input": "trigger", "properties": { "targetname": "lamp_button" } } },
+    { "tool": "create_entity", "args": { "classname": "game_text", "origin": [0, 104, 296], "properties": { "text": "Hall lamp", "start_visible": "1", "world_size": "0.02" } } },
+
+    { "note": "West side, the score. Each coin button adds 1 to the math_value. Its changed output goes to a math_calc that multiplies by 10 for the points on the wall and to a math_compare that asks whether the score has reached 3." },
+    { "tool": "gameplay", "args": { "op": "place", "classname": "math_value", "origin": [-280, 40, 40], "properties": { "targetname": "score", "start_value": "0" }, "outputs": [
+      { "output": "changed", "target": "points", "input": "calculate" },
+      { "output": "changed", "target": "enough", "input": "set_and_compare" }
+    ] } },
+    { "tool": "gameplay", "args": { "op": "place", "classname": "math_calc", "origin": [-280, 40, 0], "properties": { "targetname": "points", "operation": "multiply", "operand": "10" }, "outputs": [
+      { "output": "result", "target": "points_text", "input": "set_text" }
+    ] } },
+    { "tool": "gameplay", "args": { "op": "place", "classname": "math_compare", "origin": [-280, 40, -40], "properties": { "targetname": "enough", "compare_value": "3" }, "outputs": [
+      { "output": "on_less", "target": "door_gate", "input": "set_a", "parameter": "false" },
+      { "output": "on_equal", "target": "door_gate", "input": "set_a", "parameter": "true" },
+      { "output": "on_greater", "target": "door_gate", "input": "set_a", "parameter": "true" }
+    ] } },
+    { "tool": "create_brush", "args": { "min": [-260, 8, 112], "max": [-236, 32, 136], "material": "showcase/gold" }, "save": "coin_1" },
+    { "tool": "gameplay", "args": { "op": "make_button", "ids": ["$coin_1.ids.0"], "target": "score", "input": "add", "properties": { "targetname": "coin_1" } } },
+    { "tool": "create_brush", "args": { "min": [-200, 8, 112], "max": [-176, 32, 136], "material": "showcase/gold" }, "save": "coin_2" },
+    { "tool": "gameplay", "args": { "op": "make_button", "ids": ["$coin_2.ids.0"], "target": "score", "input": "add", "properties": { "targetname": "coin_2" } } },
+    { "tool": "create_brush", "args": { "min": [-140, 8, 112], "max": [-116, 32, 136], "material": "showcase/gold" }, "save": "coin_3" },
+    { "tool": "gameplay", "args": { "op": "make_button", "ids": ["$coin_3.ids.0"], "target": "score", "input": "add", "properties": { "targetname": "coin_3" } } },
+    { "tool": "create_brush", "args": { "min": [-80, 8, 112], "max": [-56, 32, 136], "material": "showcase/red_paint" }, "save": "reset_brush" },
+    { "tool": "gameplay", "args": { "op": "make_button", "ids": ["$reset_brush.ids.0"], "target": "score", "input": "reset", "properties": { "targetname": "reset_button" } } },
+    { "tool": "create_entity", "args": { "classname": "game_text", "origin": [-180, 64, 124], "properties": { "text": "Coins, red button resets", "start_visible": "1", "world_size": "0.02" } } },
+    { "tool": "create_entity", "args": { "classname": "game_text", "origin": [-180, 170, 60], "properties": { "text": "Points", "start_visible": "1", "world_size": "0.03" } } },
+    { "tool": "create_entity", "args": { "classname": "game_text", "origin": [-180, 132, 60], "properties": { "targetname": "points_text", "text": "0", "start_visible": "1", "world_size": "0.08", "text_color": "255 220 120" } } },
+
+    { "note": "Center, the lever. The logic_gate is an and gate: a is set by the comparison above, b by the lever. Whenever its result flips it fires on_true or on_false, which open and close the vault door." },
+    { "tool": "gameplay", "args": { "op": "place", "classname": "logic_gate", "origin": [-280, 40, -80], "properties": { "targetname": "door_gate", "gate": "and" }, "outputs": [
+      { "output": "on_true", "target": "vault_door", "input": "open" },
+      { "output": "on_false", "target": "vault_door", "input": "close" }
+    ] } },
+    { "tool": "create_brush", "args": { "min": [-12, 8, 180], "max": [12, 52, 196], "material": "showcase/metal" }, "save": "lever_brush" },
+    { "tool": "gameplay", "args": { "op": "make_button", "ids": ["$lever_brush.ids.0"], "target": "door_gate", "input": "toggle_b", "properties": { "targetname": "lever" } } },
+    { "tool": "create_entity", "args": { "classname": "game_text", "origin": [0, 90, 188], "properties": { "text": "Lever", "start_visible": "1", "world_size": "0.02" } } },
+
+    { "note": "East side, the light lottery. The button triggers a relay that switches the three lights off, then asks a logic_random to pick one. Its out_1 to out_3 switch a light on, and picked(index) goes to a logic_case that writes the color on a game_text." },
+    { "tool": "create_entity", "args": { "classname": "light", "origin": [140, 170, -40], "properties": { "targetname": "red_light", "light_energy": "3.5", "light_color": "255 60 50", "omni_range": "7", "start_on": "0", "fixture": "bulb_red", "fixture_off": "dark" } } },
+    { "tool": "create_brush", "args": { "min": [132, 152, -48], "max": [148, 168, -32], "material": "showcase/lamp" }, "save": "bulb_red_brush" },
+    { "tool": "gameplay", "args": { "op": "brush_entity", "ids": ["$bulb_red_brush.ids.0"], "classname": "func_illusionary", "properties": { "targetname": "bulb_red" } } },
+    { "tool": "create_entity", "args": { "classname": "light", "origin": [200, 170, -40], "properties": { "targetname": "green_light", "light_energy": "3.5", "light_color": "60 255 90", "omni_range": "7", "start_on": "0", "fixture": "bulb_green", "fixture_off": "dark" } } },
+    { "tool": "create_brush", "args": { "min": [192, 152, -48], "max": [208, 168, -32], "material": "showcase/lamp" }, "save": "bulb_green_brush" },
+    { "tool": "gameplay", "args": { "op": "brush_entity", "ids": ["$bulb_green_brush.ids.0"], "classname": "func_illusionary", "properties": { "targetname": "bulb_green" } } },
+    { "tool": "create_entity", "args": { "classname": "light", "origin": [260, 170, -40], "properties": { "targetname": "blue_light", "light_energy": "3.5", "light_color": "70 120 255", "omni_range": "7", "start_on": "0", "fixture": "bulb_blue", "fixture_off": "dark" } } },
+    { "tool": "create_brush", "args": { "min": [252, 152, -48], "max": [268, 168, -32], "material": "showcase/lamp" }, "save": "bulb_blue_brush" },
+    { "tool": "gameplay", "args": { "op": "brush_entity", "ids": ["$bulb_blue_brush.ids.0"], "classname": "func_illusionary", "properties": { "targetname": "bulb_blue" } } },
+    { "tool": "gameplay", "args": { "op": "place", "classname": "logic_relay", "origin": [200, 40, 60], "properties": { "targetname": "draw_relay" }, "outputs": [
+      { "output": "triggered", "target": "red_light", "input": "turn_off" },
+      { "output": "triggered", "target": "green_light", "input": "turn_off" },
+      { "output": "triggered", "target": "blue_light", "input": "turn_off" },
+      { "output": "triggered", "target": "picker", "input": "pick" }
+    ] } },
+    { "tool": "gameplay", "args": { "op": "place", "classname": "logic_random", "origin": [240, 40, 60], "properties": { "targetname": "picker", "count": "3", "no_repeat": "1" }, "outputs": [
+      { "output": "out_1", "target": "red_light", "input": "turn_on" },
+      { "output": "out_2", "target": "green_light", "input": "turn_on" },
+      { "output": "out_3", "target": "blue_light", "input": "turn_on" },
+      { "output": "picked", "target": "color_case", "input": "in_value" }
+    ] } },
+    { "tool": "gameplay", "args": { "op": "place", "classname": "logic_case", "origin": [280, 40, 60], "properties": { "targetname": "color_case", "case_1": "1", "case_2": "2", "case_3": "3" }, "outputs": [
+      { "output": "on_case_1", "target": "lottery_text", "input": "set_text", "parameter": "Red light" },
+      { "output": "on_case_1", "target": "lottery_text", "input": "show" },
+      { "output": "on_case_2", "target": "lottery_text", "input": "set_text", "parameter": "Green light" },
+      { "output": "on_case_2", "target": "lottery_text", "input": "show" },
+      { "output": "on_case_3", "target": "lottery_text", "input": "set_text", "parameter": "Blue light" },
+      { "output": "on_case_3", "target": "lottery_text", "input": "show" }
+    ] } },
+    { "tool": "create_brush", "args": { "min": [188, 8, 112], "max": [212, 32, 136], "material": "showcase/white_paint" }, "save": "draw_brush" },
+    { "tool": "gameplay", "args": { "op": "make_button", "ids": ["$draw_brush.ids.0"], "target": "draw_relay", "input": "trigger", "properties": { "targetname": "draw_button" } } },
+    { "tool": "create_entity", "args": { "classname": "game_text", "origin": [200, 64, 124], "properties": { "text": "Draw a light", "start_visible": "1", "world_size": "0.02" } } },
+    { "tool": "create_entity", "args": { "classname": "game_text", "origin": [200, 110, -40], "properties": { "targetname": "lottery_text", "text": "", "world_size": "0.05", "text_color": "255 255 255" } } },
+
+    { "tool": "set_camera", "args": { "view": "3d", "position": [0, 200, 300], "look_at": [0, 60, -100] } },
+    { "tool": "run_action", "args": { "action": "store_camera", "args": { "slot": 1 } } },
+    { "tool": "set_camera", "args": { "view": "3d", "position": [-280, 170, 280], "look_at": [-180, 70, 60] } },
+    { "tool": "run_action", "args": { "action": "store_camera", "args": { "slot": 2 } } },
+    { "tool": "set_camera", "args": { "view": "3d", "position": [280, 170, 280], "look_at": [200, 80, -20] } },
+    { "tool": "run_action", "args": { "action": "store_camera", "args": { "slot": 3 } } },
+
+    { "tool": "validate_map", "args": {} },
+    { "tool": "map_file", "args": { "op": "save", "path": "${save_dir}/logic_playground.gtm" } }
+  ]
+}

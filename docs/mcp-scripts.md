@@ -15,6 +15,7 @@ examples for every tool. The runner below talks to the editor's HTTP MCP server,
 | `night_district.json` | An industrial street at night with a roller door and a viaduct train |
 | `sea_island.json` | The [sea island tutorial](tutorials/sea-island.md) |
 | `scripted_scene.json` | The [cutscene tutorial](tutorials/cutscene.md) |
+| `logic_playground.json` | A hall for the [math and logic nodes](gameplay/entities/logic.md): coins, a score, a gate on the vault door and a light lottery |
 
 ## Running them
 

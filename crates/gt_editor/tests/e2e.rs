@@ -711,6 +711,61 @@ fn texture_tool_apply_wrap_slide_scale() {
     assert!(colors > 20, "lit view with sky");
 }
 
+/// Replays examples/mcp/logic_playground.json and follows the wiring of its math and logic nodes with the simulation.
+fn replay_logic_playground(ed: &Editor, root: &std::path::Path, out: &std::path::Path) {
+    let path = root.join("examples/mcp/logic_playground.json").canonicalize().unwrap();
+    let summary = ed.call("run_script", json!({ "path": path, "vars": { "save_dir": out } }));
+    assert_eq!(summary["errors"], json!([]), "logic_playground");
+    assert_eq!(summary["ran"], summary["steps"], "logic_playground");
+    assert_eq!(ed.state()["map"]["cameras"], json!([1, 2, 3]), "logic_playground");
+    let issues = ed.call("validate_map", json!({}));
+    let errors: Vec<&Value> = issues["issues"].as_array().unwrap().iter().filter(|i| i["severity"] == "error").collect();
+    assert!(errors.is_empty(), "logic_playground: {errors:?}");
+
+    let saved = gt_doc::format::load(&out.join("logic_playground.gtm")).unwrap();
+    assert!(saved.problems.is_empty(), "logic_playground: {:?}", saved.problems);
+    let map = saved.map;
+    for class in ["math_value", "math_calc", "math_compare", "logic_gate", "logic_random", "logic_case", "logic_flipflop"] {
+        assert!(map.entities().any(|(_, e)| e.classname == class), "the playground uses {class}");
+    }
+
+    let coin = map.find_by_targetname("coin_1")[0];
+    let cascade = gt_editor::logic_sim::simulate(&map, coin, "pressed");
+    let links: Vec<String> = cascade.events.iter().map(|e| format!("{}.{}>{}.{}", e.source_name, e.output, e.target, e.input)).collect();
+    for link in [
+        "coin_1.pressed>score.add",
+        "score.changed>points.calculate",
+        "points.result>points_text.set_text",
+        "score.changed>enough.set_and_compare",
+        "enough.on_greater>door_gate.set_a",
+        "door_gate.on_true>vault_door.open",
+        "door_gate.on_false>vault_door.close",
+    ] {
+        assert!(links.iter().any(|l| l == link), "pressing a coin reaches {link}: {links:?}");
+    }
+
+    assert_eq!(cascade.broken(), 0, "every connection of the playground reaches an entity");
+    let draw = map.find_by_targetname("draw_button")[0];
+    let lottery = gt_editor::logic_sim::simulate(&map, draw, "pressed");
+    let links: Vec<String> = lottery.events.iter().map(|e| format!("{}.{}>{}.{}", e.source_name, e.output, e.target, e.input)).collect();
+    for link in ["picker.out_2>green_light.turn_on", "picker.picked>color_case.in_value", "color_case.on_case_3>lottery_text.set_text"] {
+        assert!(links.iter().any(|l| l == link), "drawing a light reaches {link}: {links:?}");
+    }
+
+    assert_eq!(lottery.broken(), 0);
+}
+
+#[test]
+#[ignore]
+fn logic_playground_script_replays() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let project = root.join("godot").canonicalize().unwrap();
+    let ed = Editor::launch_with("logic_playground", &["--project", project.to_str().unwrap()]);
+    let out = artifacts().join("logic_playground");
+    std::fs::create_dir_all(&out).unwrap();
+    replay_logic_playground(&ed, &root, &out);
+}
+
 /// Replays the showcase maps in examples/mcp against the demo project, the same way a user or an LLM would build them.
 #[test]
 #[ignore]
@@ -778,6 +833,8 @@ fn example_mcp_scripts_replay() {
         let (_, _, colors) = ed.screenshot("3d", script);
         assert!(colors > 40, "{script}: lit overview has {colors} colors");
     }
+
+    replay_logic_playground(&ed, &root, &out);
 
     // The night map's roller door keeps the beacon outputs passed to make_door next to the ones the wizard wires.
     let night = gt_doc::format::load(&out.join("night_district.gtm")).unwrap().map;

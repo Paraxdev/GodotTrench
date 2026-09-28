@@ -1,0 +1,14 @@
+[remap]
+
+importer="godottrench.gtm"
+type="GodotTrenchImportedMap"
+uid="uid://dop1hpx5k3c42"
+path="res://.godot/imported/logic_playground.gtm-476b39f6672912481b318117271efd67.tres"
+
+[deps]
+
+source_file="res://demo/maps/logic_playground.gtm"
+dest_files=["res://.godot/imported/logic_playground.gtm-476b39f6672912481b318117271efd67.tres"]
+
+[params]
+

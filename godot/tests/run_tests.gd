@@ -82,6 +82,7 @@ func _initialize() -> void:
 	await test_more_entities()
 	await test_scripted_scene()
 	await test_scripted_scene_map()
+	await test_logic_playground()
 	test_scatter_and_blend()
 	test_texture_size_override()
 	test_texture_settings()
@@ -1904,6 +1905,78 @@ func test_scripted_scene_map() -> void:
 	check(player.health < player.max_health, "the barrel blast hurt a player placed next to the map, health %s" % player.health)
 	check(hp_at_broken[0] == player.health, "broken fires after the blast so a readout sees the damage, got %s" % hp_at_broken[0])
 	player.queue_free()
+	map.queue_free()
+	await process_frame
+
+## Plays the hall built by examples/mcp/logic_playground.json: coin buttons, a lever, the vault door and the light lottery.
+func test_logic_playground() -> void:
+	print("- logic playground playthrough (logic_playground.gtm)")
+	var map := FuncGodotMap.new()
+	map.map_settings = load(SETTINGS)
+	map.local_map_file = "res://demo/maps/logic_playground.gtm"
+	root.add_child(map)
+	map.build()
+	await process_frame
+	var named := func(targetname: String) -> Node:
+		return find_targetname(map, targetname)
+	# A button's pressed output, without the button's own travel and cooldown.
+	var press := func(targetname: String, times := 1) -> void:
+		for i in times:
+			GodotTrenchIO.fire_output(named.call(targetname), &"pressed")
+	var door: GTDoor = named.call("vault_door")
+	var score: GTValue = named.call("score")
+	var points: GTText = named.call("points_text")
+	check(door != null and score != null and points != null, "the door, the score and the points text are built")
+	check(named.call("enough") is GTCompare and named.call("door_gate") is GTGate and named.call("picker") is GTRandom, "the comparison, the gate and the random pick are built")
+	check(named.call("color_case") is GTCase and named.call("hall_switch") is GTFlipFlop and named.call("points") is GTCalc, "the case, the flip flop and the calculation are built")
+	if not (door and score and points):
+		map.queue_free()
+		return
+	check(not door.is_open and score.current == 0, "the vault starts shut with a score of 0")
+	press.call("coin_1", 2)
+	check(score.current == 2 and points.text == "20", "two coins make a score of 2 and 20 points, got %s and %s" % [score.current, points.text])
+	press.call("lever")
+	check(not door.is_open, "the lever alone does not open the door while the score is below 3")
+	press.call("coin_2")
+	check(score.current == 3 and points.text == "30" and door.is_open, "the third coin reaches 3 and, with the lever pulled, opens the door")
+	press.call("coin_3")
+	check(door.is_open and points.text == "40", "a fourth coin keeps it open")
+	press.call("lever")
+	check(not door.is_open, "pulling the lever back closes the door")
+	press.call("lever")
+	check(door.is_open, "and pulling it again reopens it")
+	press.call("reset_button")
+	check(score.current == 0 and points.text == "0" and not door.is_open, "the red button resets the score and shuts the door")
+	press.call("coin_1", 3)
+	check(door.is_open, "the lever is still pulled, so three coins open it again")
+
+	var lights := { "red_light": "Red light", "green_light": "Green light", "blue_light": "Blue light" }
+	var text: GTText = named.call("lottery_text")
+	var last := ""
+	var seen := {}
+	var one_at_a_time := true
+	var no_repeat := true
+	var text_matches := true
+	for i in 30:
+		press.call("draw_button")
+		var lit: Array = lights.keys().filter(func(k): return named.call(k).is_on())
+		one_at_a_time = one_at_a_time and lit.size() == 1
+		if lit.size() == 1:
+			no_repeat = no_repeat and lit[0] != last
+			text_matches = text_matches and text.text == lights[lit[0]]
+			last = lit[0]
+			seen[last] = true
+	check(one_at_a_time, "every draw lights exactly one of the three lights")
+	check(no_repeat, "a draw never repeats the light before it")
+	check(text_matches, "the text names the light that is on")
+	check(seen.size() == 3, "all three lights come up, got %s" % [seen.keys()])
+
+	var lamp: GTLight = named.call("hall_lamp")
+	check(lamp.is_on(), "the hall lamp starts on")
+	press.call("lamp_button")
+	check(not lamp.is_on(), "the lamp button switches it off")
+	press.call("lamp_button")
+	check(lamp.is_on(), "and on again")
 	map.queue_free()
 	await process_frame
 
