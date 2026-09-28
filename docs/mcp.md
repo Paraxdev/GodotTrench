@@ -101,7 +101,7 @@ See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 | Map paths | `map_file open` and `open_tab` resolve the path to an absolute one before opening, so a later `save` cannot land somewhere else because the process directory changed |
 | Selection | `select` refuses unknown ids and skips hidden or locked nodes, listing them in `skipped` |
 | CSG | `csg_subtract`, `csg_merge`, `csg_intersect`, `csg_hollow` and `clip_apply` return `replaced`, old ids mapped to new ones |
-| Timeouts | Calls time out after 120 s, except `run_script` and `project_content` |
+| Timeouts | Calls time out after 120 s, except `run_script`, `project_content` and `bake_lighting` |
 | Content question | The question a new project gets about ready made content closes on the first call other than `get_state`, `screenshot` and `simulate_input`, and does not open again in that session |
 | Script variables | `$name/rest` (unbraced) is an error when `name` is a known variable, since only `$name` alone or `${name}/rest` expand it. Write `${project}/maps` |
 
@@ -120,4 +120,5 @@ See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 | `run_action` `reload_materials` | Rescans the texture folder now, though new files are found on their own anyway |
 | `set_editor` `live_link_port` | Talks to a Godot editor whose project sets another `godottrench/live_link_port` |
 | `scatter` `preset` | Adds the embedded Blockbench models a preset needs. A glTF preset in a project without the nature pack is an error that names `project_content` |
+| `bake_lighting` | Bakes like [Bake Lighting](editor/light-baking.md) and waits for it. Options left out keep what the map was last baked with. `bake: false` only switches the `view`, `remove: true` drops the bake. `out_of_date` says whether the map changed since |
 | `project_content` | `install: "nature"` or `"demo"` downloads from the release and answers once the files are in. Without arguments it says what the project has |

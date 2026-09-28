@@ -299,6 +299,31 @@ fn face_inspector_reset_is_undoable() {
 }
 
 #[test]
+fn face_inspector_texture_settings_apply_to_the_whole_texture() {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    let brush = Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "dev/grey").unwrap();
+    f.state.doc.edit("add", |m, s| {
+        let id = m.insert(layer, NodeKind::Brush(brush));
+        s.select_face(id, 0);
+    });
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(460.0, 900.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    assert!(harness.query_by_label("World").is_none(), "closed while the texture has no settings");
+    harness.get_by_label("Texture Settings").click();
+    harness.run();
+    harness.get_by_label("World").click();
+    harness.run();
+    harness.get_by_label("Bake light onto it").click();
+    harness.run();
+    let set = harness.state().state.doc.map.texture("dev/grey");
+    assert_eq!((set.projection, set.bake), (gt_doc::textures::Projection::World, false));
+    assert_eq!(harness.state().state.doc.history.undo_labels().next(), Some("Texture Settings"));
+}
+
+#[test]
 fn face_inspector_texture_tools() {
     let mut f = Fixture::new();
     let layer = f.state.doc.map.default_layer();

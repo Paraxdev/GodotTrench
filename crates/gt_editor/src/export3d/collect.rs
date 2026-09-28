@@ -165,6 +165,7 @@ struct Collector<'a> {
     options: &'a Options,
     progress: &'a Progress,
     upm: f64,
+    textures: &'a std::collections::BTreeMap<String, gt_doc::textures::TextureSettings>,
     pieces: HashMap<NodeId, FacePieces>,
     nodes: Vec<Node>,
     meshes: Vec<MeshData>,
@@ -207,6 +208,7 @@ pub fn collect(src: Sources, options: &Options, name: String, progress: &Progres
         options,
         progress,
         upm: game.units_per_meter.max(1e-6),
+        textures: &map.textures,
         pieces: std::mem::take(&mut cull.pieces),
         nodes: Vec::new(),
         meshes: Vec::new(),
@@ -310,9 +312,15 @@ impl Collector<'_> {
                 continue;
             }
 
-            let (mat, size) = self.materials.face(self.lib, self.game, &face.data.material, false);
+            let (mat, mut size) = self.materials.face(self.lib, self.game, &face.data.material, false);
+            let settings = self.textures.get(&face.data.material).cloned().unwrap_or_default();
+            if let Some([w, h]) = settings.size {
+                size = DVec2::new(w, h);
+            }
+
+            let face_uv = settings.face_uv(&face.data.uv, face.plane.normal);
             if let Some(grid) = gt_geom::displacement::grid(brush, fi) {
-                let uvs: Vec<[f32; 2]> = grid.base.iter().map(|p| uv(face.data.uv.uv(*p, size))).collect();
+                let uvs: Vec<[f32; 2]> = grid.base.iter().map(|p| uv(face_uv.uv(*p, size))).collect();
                 let indices: Vec<u32> = gt_geom::displacement::triangles(grid.size).flat_map(|(a, b, c)| [a as u32, b as u32, c as u32]).collect();
                 out.triangles(mat, &grid.positions, &grid.normals, &uvs, &indices);
                 continue;
@@ -320,7 +328,7 @@ impl Collector<'_> {
 
             for poly in polygons {
                 let normals = vec![face.plane.normal; poly.len()];
-                let uvs: Vec<[f32; 2]> = poly.iter().map(|p| uv(face.data.uv.uv(*p, size))).collect();
+                let uvs: Vec<[f32; 2]> = poly.iter().map(|p| uv(face_uv.uv(*p, size))).collect();
                 out.polygon(mat, &poly, &normals, &uvs);
             }
         }

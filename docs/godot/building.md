@@ -14,6 +14,7 @@ Add a `FuncGodotMap` to a scene and set it up in the Inspector:
 | Global Map File | A map file outside the project. When both are set, this one wins. |
 | Auto Rebuild On Save | Rebuilds the node whenever GodotTrench saves this map, while its scene is the current tab in the Godot editor, see [Rebuild on save](live.md#rebuild-on-save). On by default. |
 | Map Settings | Where textures, materials and entity definitions come from and how big a map unit is. Left empty, it uses the project setting `func_godot/default_map_settings`, see [Project setup](project-setup.md). |
+| Use Baked Lighting | Lights the map with the lighting [baked in the editor](baked-lighting.md). On by default, untick it to use another lightmapper. |
 | Warm Up Shaders | Compiles the map's shaders while it loads, so the first seconds of play do not stutter. See [Shader warm-up](warm-up.md). |
 
 **Build Map** in the Inspector generates everything and emits `build_complete`, **Clear Map** removes it again.

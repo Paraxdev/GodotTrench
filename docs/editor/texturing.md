@@ -55,6 +55,9 @@ By default one texture pixel covers one map unit, so a 64 pixel texture repeats 
 resolution textures, but a 1024 pixel photo would stretch over 32 meters. Set `metadata/texture_size` on the material to
 the world size one repeat should cover, see [Texture size](../godot/materials.md#texture-size).
 
+To set it for one map only, or to make a texture run on seamlessly across every face, use
+[Texture Settings](light-baking.md#texture-settings) in the Inspector. Its repeat size wins over the material's.
+
 ## Hotspots
 
 A trim sheet is one texture holding many strips and panels, like trims, vents and door frames. *Texture > Hotspot Fit*

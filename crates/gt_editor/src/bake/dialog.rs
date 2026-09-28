@@ -112,8 +112,8 @@ impl BakeDialog {
         ui.label(summary(&counts));
         ui.label(
             egui::RichText::new(
-                "Moving brush entities, triggers and tool textures are left out. A light's bake_mode key picks how it is baked, auto bakes it \
-                 unless its targetname lets I/O switch it.",
+                "Moving brush entities, triggers and tool textures are left out, and textures with Bake off in their settings. A light's \
+                 bake_mode key picks how it is baked, auto bakes it unless a targetname or start_on 0 lets I/O switch it.",
             )
             .weak(),
         );

@@ -92,6 +92,7 @@ pub fn is_static(map: &Map, game: &GameConfig, id: NodeId) -> bool {
 
 struct Builder<'a> {
     game: &'a GameConfig,
+    textures: &'a std::collections::BTreeMap<String, gt_doc::textures::TextureSettings>,
     materials: HashMap<String, u32>,
     names: Vec<String>,
     surfaces: Vec<Surface>,
@@ -124,7 +125,12 @@ impl Builder<'_> {
         }
 
         let axes = chart_axes(&positions, plane_normal);
-        self.surfaces.push(Surface { key, positions, normals, triangles, axes, material, ..Surface::default() });
+        let t = self.textures.get(&self.names[material as usize]).cloned().unwrap_or_default();
+        if !t.bake && !t.casts {
+            return;
+        }
+
+        self.surfaces.push(Surface { key, positions, normals, triangles, axes, material, receives: t.bake, casts: t.casts, texel_scale: t.texel_scale as f32 });
     }
 
     fn brush(&mut self, id: NodeId, brush: &Brush) {
@@ -340,7 +346,7 @@ pub fn sky(map: &Map) -> Sky {
 /// Gathers the bake of `map`. `softness`, 0 to 1, spreads lights without a size of their own, 0 keeps shadows hard.
 pub fn collect(map: &Map, game: &GameConfig, softness: f32) -> Collected {
     let upm = game.units_per_meter as f32;
-    let mut b = Builder { game, materials: HashMap::new(), names: Vec::new(), surfaces: Vec::new() };
+    let mut b = Builder { game, textures: &map.textures, materials: HashMap::new(), names: Vec::new(), surfaces: Vec::new() };
     let mut nodes = std::collections::BTreeMap::new();
     let mut scene = Fnv::default();
     for id in map.walk() {
@@ -404,6 +410,11 @@ pub fn collect(map: &Map, game: &GameConfig, softness: f32) -> Collected {
 
     let sky = sky(map);
     scene.bytes(format!("{sky:?}").as_bytes());
+    // Materials color the bounce, and their settings decide what is baked at all.
+    for name in &b.names {
+        scene.bytes(name.as_bytes()).bytes(format!("{:?}", map.textures.get(name)).as_bytes());
+    }
+
     counts.surfaces = b.surfaces.len();
     let materials = vec![Material::default(); b.names.len()];
     Collected {
@@ -492,6 +503,25 @@ mod tests {
         let f = |b: &Brush| fingerprint(&NodeKind::Brush(b.clone()));
         assert_eq!(f(&b), f(&retextured));
         assert_ne!(f(&b), f(&moved));
+    }
+
+    #[test]
+    fn texture_settings_decide_what_is_baked() {
+        use gt_doc::textures::TextureSettings;
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        map.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(32.0)), "glass").unwrap()));
+        map.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::X * 64.0, DVec3::splat(96.0)), "wall").unwrap()));
+        let game = GameConfig::default();
+        let before = collect(&map, &game, 0.0);
+        assert_eq!(before.counts.surfaces, 12);
+
+        map.set_texture("glass", TextureSettings { casts: false, texel_scale: 0.5, ..Default::default() });
+        map.set_texture("wall", TextureSettings { bake: false, casts: false, ..Default::default() });
+        let c = collect(&map, &game, 0.0);
+        assert_eq!(c.counts.surfaces, 6, "a texture neither baked nor casting is left out");
+        assert!(c.input.surfaces.iter().all(|s| s.receives && !s.casts && s.texel_scale == 0.5));
+        assert_ne!(c.scene, before.scene, "changed settings make the bake out of date");
     }
 
     #[test]

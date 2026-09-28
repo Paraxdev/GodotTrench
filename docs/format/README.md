@@ -33,7 +33,9 @@ builds them with [`gtm_parser.gd`](https://github.com/Paraxdev/godottrench_func/
 | `version` | integer | always | Map version, currently 1 |
 | `properties` | object of string to string | when not empty | Worldspawn keys, sorted by name |
 | `editor` | object | when not all default | Editor view state. It is never exported to Godot |
+| `textures` | object | when any texture has settings | [Texture settings](geometry.md#texture-settings) by material name |
 | `layers` | array of nodes | always | The map's [layer nodes](nodes.md#layer), in order. Everything else hangs below them |
+| `lightmap` | object | JSON maps with a bake | The baked lighting, which a binary map keeps in its [LMAP chunk](container.md#lmap) |
 
 Only `layer` nodes are read from `layers`. A map with no layers gets a `Default` layer when it loads.
 
@@ -60,6 +62,7 @@ The `editor` object holds view state that only matters inside the editor:
 | `cameras` | object, keys `"1"` to `"9"` | empty | Saved camera positions, each `{"position": [x, y, z], "yaw": r, "pitch": r}` with angles in radians |
 | `cordon` | `{"min": [x, y, z], "max": [x, y, z]}` | none | The cordon box in map units, used to work on one part of a big map |
 | `cordon_enabled` | bool | `false` | Hide objects outside the cordon and leave them out of cordoned exports |
+| `bake` | `{"quality", "texel_size", "softness", "backend"}` | none | The options the map was last [baked](../editor/light-baking.md) with, so the next bake starts from them |
 
 ## Versions and compatibility
 

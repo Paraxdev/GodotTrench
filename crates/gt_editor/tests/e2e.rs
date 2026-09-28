@@ -1152,6 +1152,37 @@ fn baked_lighting_shows_saves_and_goes_stale() {
 
 #[test]
 #[ignore]
+fn texture_settings_retile_every_face_and_save() {
+    let ed = Editor::launch("texture_settings");
+    let wall = ed.box_brush([0.0, 0.0, 0.0], [256.0, 128.0, 16.0]);
+    let side = ed.box_brush([256.0, 0.0, 0.0], [512.0, 128.0, 16.0]);
+    let faces = |b: u64| (0..6).map(|f| json!([b, f])).collect::<Vec<_>>();
+    ed.call("texture", json!({ "op": "apply", "material": "dev/orange", "faces": ([faces(wall), faces(side)].concat()) }));
+    ed.call("texture", json!({ "op": "shift", "texels": [37, 11], "faces": faces(side) }));
+    ed.call("set_camera", json!({ "view": "3d", "position": [256, 64, -100], "look_at": [256, 64, 0] }));
+    let args = json!({ "target": "3d", "width": 320, "height": 200 });
+    let before = shot(&ed, args.clone(), "per_face");
+
+    let set = ed.call("texture", json!({ "op": "settings", "material": "dev/orange", "projection": "world", "size": [64, 64], "bake": false }));
+    assert_eq!((set["projection"].as_str(), set["size"].clone(), set["bake"].as_bool()), (Some("world"), json!([64.0, 64.0]), Some(false)), "{set}");
+    let world = shot(&ed, args.clone(), "world");
+    assert!(image_difference(&before, &world) > 1.0, "the new repeat size and projection show in the view");
+    assert!(ed.call_err("texture", json!({ "op": "settings", "material": "dev/orange", "projection": "sideways" })).contains("projection"));
+
+    let path = artifacts().join("texture_settings.gtm");
+    ed.call("map_file", json!({ "op": "save", "path": path }));
+    ed.call("map_file", json!({ "op": "open", "path": path }));
+    let kept = ed.call("texture", json!({ "op": "settings", "material": "dev/orange" }));
+    assert_eq!(kept, set, "saved with the map");
+
+    let cleared = ed.call("texture", json!({ "op": "settings", "material": "dev/orange", "size": null, "projection": "face", "bake": true }));
+    assert!(cleared["size"].is_null() && cleared["projection"] == "face", "{cleared}");
+    ed.call("run_action", json!({ "action": "undo" }));
+    assert_eq!(ed.call("texture", json!({ "op": "settings", "material": "dev/orange" })), set, "undo brings them back");
+}
+
+#[test]
+#[ignore]
 fn a_camera_inside_a_trigger_sees_out_of_it() {
     let ed = Editor::launch("trigger_inside");
     ed.box_brush([-512.0, -16.0, -512.0], [512.0, 0.0, 512.0]);

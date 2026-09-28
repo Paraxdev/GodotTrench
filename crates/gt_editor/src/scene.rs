@@ -117,6 +117,7 @@ fn build_drag_batches(renderer: &Renderer, game: &GameConfig, base: &Map, nodes:
         instance_bounds: HashMap::new(),
         model_bounds: HashMap::new(),
         charts: HashMap::new(),
+        textures: &base.textures,
     };
     for id in nodes {
         match base.get(*id).map(|n| &n.kind) {
@@ -296,6 +297,7 @@ struct Builder<'a> {
     model_bounds: HashMap<NodeId, Aabb>,
     /// Light map coordinates of the faces of the node being built, empty when it is not baked.
     charts: HashMap<u32, [[f32; 4]; 2]>,
+    textures: &'a std::collections::BTreeMap<String, gt_doc::textures::TextureSettings>,
 }
 
 fn push_line(list: &mut Vec<LineVertex>, a: DVec3, b: DVec3, color: [f32; 4]) {
@@ -523,7 +525,19 @@ impl Builder<'_> {
     }
 
     fn tex_size(&self, mat: &str) -> DVec2 {
+        if let Some([w, h]) = self.textures.get(mat).and_then(|t| t.size) {
+            return DVec2::new(w, h);
+        }
+
         self.renderer.material_size(mat).map(|s| DVec2::new(s[0] as f64, s[1] as f64)).unwrap_or(DVec2::splat(self.fallback))
+    }
+
+    /// A brush face's projection after its texture's settings.
+    fn face_uv<'f>(&self, data: &'f gt_geom::FaceData, normal: DVec3) -> std::borrow::Cow<'f, gt_geom::FaceUv> {
+        match self.textures.get(&data.material) {
+            Some(t) => t.face_uv(&data.uv, normal),
+            None => std::borrow::Cow::Borrowed(&data.uv),
+        }
     }
 
     /// Batch for a surface: blended materials and see-through tool faces sort as transparent, cull disabled materials skip culling.
@@ -562,6 +576,7 @@ impl Builder<'_> {
         for (fi, face) in brush.faces.iter().enumerate() {
             let mat = face.data.material.as_str();
             let size = self.tex_size(mat);
+            let face_uv = self.face_uv(&face.data, face.plane.normal);
             let n = v3(face.plane.normal);
             // Like Hammer, only the displacement surfaces of a displacement brush are real geometry.
             let tool = see_through || self.game.is_tool_texture(mat) || (has_disp && face.data.disp.is_none());
@@ -574,7 +589,7 @@ impl Builder<'_> {
                 let blend = self.blend_material(&face.data);
                 let verts: Vec<MeshVertex> = (0..grid.size * grid.size)
                     .map(|k| {
-                        let uv = face.data.uv.uv(grid.base[k], size);
+                        let uv = face_uv.uv(grid.base[k], size);
                         let a = grid.alphas[k];
                         let c = if blend.is_some() {
                             [color[0], color[1], color[2], a]
@@ -627,7 +642,7 @@ impl Builder<'_> {
                 .enumerate()
                 .map(|(k, i)| {
                     let p = brush.vertices[*i as usize];
-                    let uv = face.data.uv.uv(p, size);
+                    let uv = face_uv.uv(p, size);
                     let c = face_vertex_color(color, painted.then(|| face.data.colors[k]), blend.is_some());
                     MeshVertex { pos: v3(p), normal: n, uv: [uv.x as f32, uv.y as f32], color: c, uv2: self.uv2(fi, p) }
                 })
@@ -641,7 +656,7 @@ impl Builder<'_> {
                         let piece_verts: Vec<MeshVertex> = piece
                             .iter()
                             .map(|p| {
-                                let uv = face.data.uv.uv(*p, size);
+                                let uv = face_uv.uv(*p, size);
                                 let vc = painted.then(|| mix_corners(gt_geom::polygon::corner_weights(&corners, &tris, *p), |k| face.data.colors[k]));
                                 MeshVertex {
                                     pos: v3(*p),
@@ -1319,6 +1334,7 @@ fn build_bucket<'a>(ctx: &BucketCtx<'a>, ids: &[NodeId]) -> Builder<'a> {
         instance_bounds: HashMap::new(),
         model_bounds: HashMap::new(),
         charts: HashMap::new(),
+        textures: &map.textures,
     };
     let is_selected = |id: NodeId| ctx.selection.nodes.contains(&id) || map.ancestors(id).iter().any(|a| ctx.selection.nodes.contains(a));
     for &id in ids {
@@ -1489,6 +1505,7 @@ impl SceneCache {
                     || prev.editor.cordon != map.editor.cordon
                     || prev.editor.cordon_enabled != map.editor.cordon_enabled
                     || !same_lightmap(&prev.lightmap, &map.lightmap)
+                    || prev.textures != map.textures
             }
         };
         self.wireframe = wireframe;

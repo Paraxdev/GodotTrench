@@ -479,6 +479,37 @@ impl App {
 
                 rects.len()
             }
+            "settings" => {
+                let material = args["material"]
+                    .as_str()
+                    .map(str::to_string)
+                    .or_else(|| faces.first().and_then(|(id, f)| tex::face_info(&self.state.doc.map, *id, *f)).map(|i| i.material))
+                    .unwrap_or_else(|| self.state.current_material.clone());
+                let mut set = serde_json::to_value(self.state.doc.map.texture(&material)).unwrap_or_default();
+                for key in ["bake", "casts", "texel_scale", "size", "projection"] {
+                    match args.get(key) {
+                        Some(Value::Null) => {
+                            set.as_object_mut().map(|o| o.remove(key));
+                        }
+                        Some(v) => set[key] = v.clone(),
+                        None => {}
+                    }
+                }
+
+                let set: gt_doc::textures::TextureSettings = match serde_json::from_value(set) {
+                    Ok(s) => s,
+                    Err(e) => return err(format!("bad texture settings: {e}, projection is face or world, size is [w, h] in map units or null")),
+                };
+                if set != self.state.doc.map.texture(&material) {
+                    let name = material.clone();
+                    self.state.doc.edit("Texture Settings", move |m, _| m.set_texture(&name, set));
+                }
+
+                let set = self.state.doc.map.texture(&material);
+                return ok(
+                    json!({ "material": material, "bake": set.bake, "casts": set.casts, "texel_scale": set.texel_scale, "size": set.size, "projection": set.projection.name() }),
+                );
+            }
             "material_info" => {
                 let material = args["material"].as_str().map(str::to_string).unwrap_or_else(|| self.state.current_material.clone());
                 let info = self.state.materials.info(&material);

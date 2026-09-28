@@ -1,4 +1,4 @@
-//! Map > Bake Lighting: traces the light, shadow and ambient occlusion maps of the static geometry on a worker
+//! Godot > Bake Lighting: traces the light, shadow and ambient occlusion maps of the static geometry on a worker
 //! thread and stores them in the map, where the Baked view mode shows them and the Godot addon builds them into a
 //! LightmapGI.
 
