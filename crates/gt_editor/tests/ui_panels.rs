@@ -1106,6 +1106,8 @@ fn logic_graph_drag_from_an_output_pin_to_an_input_pin_connects() {
     let logic = &harness.state().panels.logic;
     let from = logic.pin_pos(&NodeKey::Entity(relay), true, "triggered").expect("the relay shows, it is a logic entity");
     let to = logic.pin_pos(&NodeKey::Entity(door), false, "open").expect("the selected door shows");
+    let rects = |h: &Harness<'_, Fixture>| [relay, door].map(|id| h.state().panels.logic.node_screen_rect(&NodeKey::Entity(id)).unwrap());
+    let before = rects(&harness);
     let steps = harness.state().state.doc.history.undo_labels().count();
     drag_through(&mut harness, &[from, from + egui::vec2(30.0, 10.0), (from + to.to_vec2()) / 2.0, to]);
 
@@ -1116,6 +1118,7 @@ fn logic_graph_drag_from_an_output_pin_to_an_input_pin_connects() {
     assert_eq!(state.doc.map.entity(door).unwrap().targetname(), Some("door_2"), "the unnamed door got a free name");
     assert_eq!(state.doc.history.undo_labels().count(), steps + 1);
     assert_eq!(harness.state().panels.logic.model.edges.len(), 1, "the graph follows the edit");
+    assert_eq!(rects(&harness), before, "the nodes stay where they were instead of being laid out again");
 
     // A click on the wire opens its editor, whose Delete removes it again.
     let logic = &harness.state().panels.logic;
@@ -1131,6 +1134,24 @@ fn logic_graph_drag_from_an_output_pin_to_an_input_pin_connects() {
     harness.get_by_label("Delete").click();
     harness.run();
     assert!(harness.state().state.doc.map.entity(relay).unwrap().outputs.is_empty());
+}
+
+#[test]
+fn logic_graph_add_puts_a_new_node_in_free_space() {
+    use gt_editor::logic_graph::model::NodeKey;
+
+    let mut f = Fixture::new();
+    let relay = named(&mut f, "logic_relay", "r", DVec3::ZERO);
+    let mut harness = logic_graph(f);
+    harness.get_by_label("Add").click();
+    harness.run();
+    harness.get_by_label("logic_counter").click();
+    harness.run();
+    let map = &harness.state().state.doc.map;
+    let (counter, _) = map.entities().find(|(_, e)| e.classname == "logic_counter").expect("a counter was added");
+    let logic = &harness.state().panels.logic;
+    let (a, b) = (logic.node_screen_rect(&NodeKey::Entity(relay)).unwrap(), logic.node_screen_rect(&NodeKey::Entity(counter)).unwrap());
+    assert!(!a.intersects(b), "{a:?} and {b:?} overlap");
 }
 
 #[test]

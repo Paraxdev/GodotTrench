@@ -35,8 +35,18 @@ fn io(output: &str, target: String, input: &str) -> IoConnection {
     IoConnection { output: output.into(), target, input: input.into(), parameter: String::new(), delay: 0.0, times: -1 }
 }
 
-/// Adds an output on `from` that calls `input` on `to`, and names `to` when it has no targetname.
-pub fn connect(state: &mut EditorState, from: NodeId, output: &str, to: &NodeKey, input: &str) -> Result<IoConnection, String> {
+/// Stores the positions of nodes that have none yet.
+fn pin_positions(m: &mut Map, pin: &[(NodeId, Pos2)]) {
+    for (id, p) in pin {
+        if let Some(n) = m.get_mut(*id).filter(|n| n.graph.is_none()) {
+            n.set_graph(Some([p.x, p.y]));
+        }
+    }
+}
+
+/// Adds an output on `from` that calls `input` on `to`, and names `to` when it has no targetname. `pin` stores graph
+/// positions along with it, so the picture holds still instead of being laid out again.
+pub fn connect(state: &mut EditorState, from: NodeId, output: &str, to: &NodeKey, input: &str, pin: &[(NodeId, Pos2)]) -> Result<IoConnection, String> {
     let map = &state.doc.map;
     let source = map.entity(from).ok_or("The source is no longer an entity")?;
     let unnamed = match to {
@@ -52,6 +62,7 @@ pub fn connect(state: &mut EditorState, from: NodeId, output: &str, to: &NodeKey
     let conn = state.doc.edit(&format!("Connect {output} to {input}"), |m, _| {
         let conn = io(output, target_of(m, to)?, input);
         m.entity_mut(from)?.outputs.push(conn.clone());
+        pin_positions(m, pin);
         Some(conn)
     });
     let conn = conn.ok_or("Could not connect")?;
@@ -177,11 +188,7 @@ pub fn create(state: &mut EditorState, classname: &str, place: Placement, link: 
         let id = ops::create_point_entity(m, layer, &classname, origin);
         m.entity_mut(id)?.properties.insert("targetname".into(), name.clone());
         m.get_mut(id)?.set_graph(Some([at.x, at.y]));
-        for (other, p) in pin {
-            if let Some(n) = m.get_mut(*other).filter(|n| n.graph.is_none()) {
-                n.set_graph(Some([p.x, p.y]));
-            }
-        }
+        pin_positions(m, pin);
 
         match &link {
             Some(NewLink::From { source, output: out }) => m.entity_mut(*source)?.outputs.push(io(out, name, &input)),
@@ -231,13 +238,13 @@ mod tests {
         let door = add(&mut state, "func_door", "");
         let steps = state.doc.history.undo_labels().count();
 
-        let conn = connect(&mut state, button, "pressed", &NodeKey::Entity(door), "open").unwrap();
+        let conn = connect(&mut state, button, "pressed", &NodeKey::Entity(door), "open", &[]).unwrap();
         assert_eq!(conn.target, "door_2", "a readable name no other entity has");
         assert_eq!(state.doc.map.entity(door).unwrap().targetname(), Some("door_2"));
         assert_eq!(state.doc.map.entity(button).unwrap().outputs, vec![conn.clone()]);
         assert_eq!(state.doc.history.undo_labels().count(), steps + 1, "naming and wiring are one undo step");
         assert_eq!(state.doc.history.undo_labels().next(), Some("Connect pressed to open"));
-        assert!(connect(&mut state, button, "pressed", &NodeKey::Entity(door), "open").is_err(), "the same connection twice is refused");
+        assert!(connect(&mut state, button, "pressed", &NodeKey::Entity(door), "open", &[]).is_err(), "the same connection twice is refused");
 
         let game = state.game.clone();
         let g = GraphModel::build(&state.doc.map, &Inputs { game: &game, selected: &Default::default(), external: &Default::default() });
@@ -257,7 +264,7 @@ mod tests {
     fn connecting_to_a_marker_uses_its_text() {
         let mut state = state();
         let relay = add(&mut state, "logic_relay", "r");
-        let conn = connect(&mut state, relay, "triggered", &NodeKey::Dynamic("!player".into()), "kill").unwrap();
+        let conn = connect(&mut state, relay, "triggered", &NodeKey::Dynamic("!player".into()), "kill", &[]).unwrap();
         assert_eq!(conn.target, "!player");
     }
 
@@ -265,7 +272,7 @@ mod tests {
     fn editing_a_connection_is_one_step() {
         let mut state = state();
         let relay = add(&mut state, "logic_relay", "r");
-        let conn = connect(&mut state, relay, "triggered", &NodeKey::Missing("ghost".into()), "open").unwrap();
+        let conn = connect(&mut state, relay, "triggered", &NodeKey::Missing("ghost".into()), "open", &[]).unwrap();
         let steps = state.doc.history.undo_labels().count();
         update(&mut state, (relay, 0), IoConnection { delay: 1.5, ..conn.clone() });
         update(&mut state, (relay, 0), IoConnection { delay: 2.0, ..conn });

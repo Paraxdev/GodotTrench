@@ -23,6 +23,12 @@ const PIN_GRAB: f32 = 10.0;
 const EDGE_GRAB: f32 = 6.0;
 /// Below this zoom pin names and edge labels are left out, they would be too small to read.
 const DETAIL_ZOOM: f32 = 0.45;
+/// The least a graph opens at, where names can still be read.
+const READABLE_ZOOM: f32 = 0.6;
+/// Titles stay at least this big when zoomed out, clipped to their node, so an overview still says what is what.
+const MIN_TITLE: f32 = 10.0;
+/// Other text shrinks with the zoom only down to this share of its size.
+const MIN_TEXT: f32 = 0.7;
 
 const CONTROLS: &str = "Drag from an output pin on the right of a node to an input pin on the left of another to connect them. \
 Drop on empty space to add a logic entity there, or right click the canvas.\n\
@@ -110,6 +116,9 @@ pub struct GraphState {
     pub sim: Option<Simulation>,
     hovered: bool,
     canvas: Rect,
+    /// The view follows the panel's size until the user zooms or pans.
+    navigated: bool,
+    fitted: Vec2,
 }
 
 impl Default for GraphState {
@@ -132,6 +141,8 @@ impl Default for GraphState {
             sim: None,
             hovered: false,
             canvas: Rect::NOTHING,
+            navigated: false,
+            fitted: Vec2::ZERO,
         }
     }
 }
@@ -178,6 +189,7 @@ impl GraphState {
         if !same_doc {
             self.doc = Some(state.doc.mark());
             self.refit = true;
+            self.navigated = false;
             self.selected_edge = None;
             self.sim = None;
             self.drag = None;
@@ -253,7 +265,8 @@ impl GraphState {
         curve(a, b, self.zoom)
     }
 
-    fn fit(&mut self) {
+    /// Zooms to show every node, but not below `min`, where the view shows the top left of the graph instead.
+    fn fit(&mut self, min: f32) {
         let bounds = self.model.nodes.iter().fold(Rect::NOTHING, |r, n| r.union(n.rect()));
         if !bounds.is_positive() || !self.canvas.is_positive() {
             self.zoom = 1.0;
@@ -262,8 +275,12 @@ impl GraphState {
         }
 
         let room = self.canvas.shrink(24.0);
-        self.zoom = (room.width() / bounds.width()).min(room.height() / bounds.height()).clamp(MIN_ZOOM, 1.0);
+        self.zoom = (room.width() / bounds.width()).min(room.height() / bounds.height()).clamp(min, 1.0);
         self.pan = room.center() - self.canvas.min - bounds.center().to_vec2() * self.zoom;
+        if bounds.width() * self.zoom > room.width() {
+            self.pan.x = room.min.x - self.canvas.min.x - bounds.min.x * self.zoom;
+        }
+
         if bounds.height() * self.zoom > room.height() {
             self.pan.y = room.min.y - self.canvas.min.y - bounds.min.y * self.zoom;
         }
@@ -360,7 +377,19 @@ impl GraphState {
     /// Graph positions of the wired entity nodes that still follow the automatic layout, stored along with a first
     /// hand placed node so the rest of the picture holds still.
     fn unpinned(&self) -> Vec<(NodeId, Pos2)> {
-        self.model.nodes.iter().filter(|n| n.stored.is_none() && !n.unwired).filter_map(|n| Some((n.key.entity()?, n.pos))).collect()
+        self.unpinned_with(&[])
+    }
+
+    /// [`Self::unpinned`] plus the nodes of `keys`, such as both ends of a new wire.
+    fn unpinned_with(&self, keys: &[&NodeKey]) -> Vec<(NodeId, Pos2)> {
+        let pinned = |n: &&GraphNode| n.stored.is_none() && (!n.unwired || keys.contains(&&n.key));
+        self.model.nodes.iter().filter(pinned).filter_map(|n| Some((n.key.entity()?, n.pos))).collect()
+    }
+
+    /// A graph position near `p` where a new node overlaps none.
+    fn free_spot(&self, p: Pos2) -> Pos2 {
+        let taken: Vec<Rect> = self.model.nodes.iter().map(|n| n.rect()).collect();
+        super::model::clear_spot(p, vec2(200.0, HEADER + PIN_ROW * 4.0 + 8.0), &taken)
     }
 }
 
@@ -435,9 +464,11 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
     let canvas = Rect::from_min_size(canvas.min, canvas.size().max(vec2(120.0, 120.0)));
     let response = ui.allocate_rect(canvas, Sense::click_and_drag());
     gs.canvas = canvas;
-    if gs.refit && !gs.model.nodes.is_empty() {
-        gs.fit();
+    let resized = !gs.navigated && (gs.fitted - canvas.size()).length() > 1.0;
+    if (gs.refit || resized) && !gs.model.nodes.is_empty() {
+        gs.fit(READABLE_ZOOM);
         gs.refit = false;
+        gs.fitted = canvas.size();
     }
 
     gs.hovered = response.hovered() || response.dragged() || gs.drag.is_some();
@@ -454,7 +485,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
 fn toolbar(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: &mut Vec<Action>) {
     ui.horizontal_wrapped(|ui| {
         ui.menu_button("Add", |ui| {
-            let at = gs.to_graph(gs.canvas.center()) - vec2(80.0, HEADER);
+            let at = gs.free_spot(gs.to_graph(gs.canvas.center()) - vec2(100.0, HEADER));
             let near = selected_entities(state).into_iter().next();
             create_list(ui, state, gs, at, None, near, actions);
         })
@@ -469,7 +500,7 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: &
         }
 
         if ui.button("Fit").on_hover_text("Zooms to show every node").clicked() {
-            gs.fit();
+            gs.fit(MIN_ZOOM);
         }
 
         let start = match selected.as_slice() {
@@ -528,6 +559,7 @@ fn navigate(ui: &Ui, response: &egui::Response, gs: &mut GraphState) {
         let (scroll, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
         let factor = pinch * (scroll * 0.002).exp();
         if factor != 1.0 {
+            gs.navigated = true;
             let anchor = gs.to_graph(p);
             gs.zoom = (gs.zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
             gs.pan = p - gs.canvas.min - anchor.to_vec2() * gs.zoom;
@@ -535,6 +567,7 @@ fn navigate(ui: &Ui, response: &egui::Response, gs: &mut GraphState) {
     }
 
     if response.dragged_by(PointerButton::Middle) || response.dragged_by(PointerButton::Secondary) {
+        gs.navigated = true;
         gs.pan += response.drag_delta();
         if gs.drag.is_none() {
             gs.drag = Some(Drag::Pan);
@@ -638,7 +671,7 @@ fn interact(ui: &Ui, response: &egui::Response, state: &mut EditorState, gs: &mu
     } else if response.secondary_clicked() {
         let hit = gs.hit(p, visible);
         let menu = match hit {
-            Hit::Empty => Menu::Create { screen: p, at: gs.to_graph(p), link: None, near: selected_entities(state).into_iter().next() },
+            Hit::Empty => Menu::Create { screen: p, at: gs.free_spot(gs.to_graph(p)), link: None, near: selected_entities(state).into_iter().next() },
             hit => Menu::Context { screen: p, hit },
         };
         gs.open_menu(&ctx, menu);
@@ -649,7 +682,7 @@ fn finish_wire(ctx: &egui::Context, state: &mut EditorState, gs: &mut GraphState
     if let Some(to) = gs.drop_pin(&from, at, visible) {
         let (out, input) = if from.output { (&from, &to) } else { (&to, &from) };
         if let Some(source) = out.key.entity()
-            && let Err(e) = edit::connect(state, source, &out.name, &input.key, &input.name)
+            && let Err(e) = edit::connect(state, source, &out.name, &input.key, &input.name, &gs.unpinned_with(&[&out.key, &input.key]))
         {
             state.set_status(e);
         }
@@ -669,7 +702,8 @@ fn finish_wire(ctx: &egui::Context, state: &mut EditorState, gs: &mut GraphState
             };
             // The new node lands with the pin the wire ends on under the pointer.
             let graph = gs.to_graph(at);
-            let at = if from.output { graph - vec2(0.0, HEADER + PIN_ROW * 0.5) } else { graph - vec2(160.0, HEADER + PIN_ROW * 0.5) };
+            let at = if from.output { graph - vec2(0.0, HEADER + PIN_ROW * 0.5) } else { graph - vec2(200.0, HEADER + PIN_ROW * 0.5) };
+            let at = gs.free_spot(at);
             Menu::Create { screen: gs.to_screen(graph), at, link, near }
         }
     };
@@ -707,7 +741,8 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
     let sim_nodes: BTreeSet<NodeId> =
         gs.sim.as_ref().map(|s| s.result.events.iter().flat_map(|e| std::iter::once(e.source).chain(e.resolved.iter().copied())).collect()).unwrap_or_default();
     let detail = gs.zoom >= DETAIL_ZOOM;
-    let font = |size: f32| FontId::proportional(size * gs.zoom);
+    // Text scales with the zoom, but never below a size that can still be read.
+    let font = |size: f32| FontId::proportional((size * gs.zoom).max(size * MIN_TEXT));
 
     let hovered_edge = match hover {
         Some(Hit::Edge(i)) => Some(*i),
@@ -763,14 +798,14 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
             painter.rect_filled(strip, egui::CornerRadius { nw: rounding as u8, ne: rounding as u8, sw: 0, se: 0 }, c);
         }
 
-        let text = |ui_pos: Pos2, align: Align2, s: &str, size: f32, color: Color32| {
-            if size * gs.zoom >= 5.0 {
-                painter.with_clip_rect(r.intersect(canvas)).text(ui_pos, align, s, font(size), color);
-            }
+        let clip = painter.with_clip_rect(r.shrink(2.0).intersect(canvas));
+        let text = |at: Pos2, align: Align2, s: &str, size: f32, color: Color32| {
+            clip.text(at, align, s, font(size), color);
         };
-        text(header.min + vec2(10.0, 8.0) * gs.zoom, Align2::LEFT_TOP, &n.title, 13.0, theme::GRAY_7);
+        let title = FontId::proportional((14.0 * gs.zoom).max(MIN_TITLE));
+        clip.text(header.min + vec2(10.0, 7.0) * gs.zoom.max(0.4), Align2::LEFT_TOP, &n.title, title, theme::GRAY_7);
         if detail {
-            text(header.min + vec2(10.0, 24.0) * gs.zoom, Align2::LEFT_TOP, &n.subtitle, 11.0, marker.unwrap_or(theme::GRAY_5));
+            text(header.min + vec2(10.0, 25.0) * gs.zoom, Align2::LEFT_TOP, &n.subtitle, 11.0, marker.unwrap_or(theme::GRAY_5));
         }
 
         let connected =
@@ -795,7 +830,7 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
                     let warn = n.color.is_some() && !pin.declared;
                     let label_color = if warn { theme::WARNING } else { theme::FG };
                     let (align, dx) = if output { (Align2::RIGHT_CENTER, -10.0) } else { (Align2::LEFT_CENTER, 10.0) };
-                    text(at + vec2(dx * gs.zoom, 0.0), align, pin_label(&pin.name), 12.0, label_color);
+                    text(at + vec2(dx * gs.zoom, 0.0), align, pin_label(&pin.name), 13.0, label_color);
                 }
             }
         }
@@ -989,7 +1024,7 @@ fn pin_list(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, from: &Pi
     let other = PinRef { key: to.clone(), output: !from.output, name };
     let (out, input) = if from.output { (from, &other) } else { (&other, from) };
     if let Some(source) = out.key.entity()
-        && let Err(e) = edit::connect(state, source, &out.name, &input.key, &input.name)
+        && let Err(e) = edit::connect(state, source, &out.name, &input.key, &input.name, &gs.unpinned_with(&[&out.key, &input.key]))
     {
         state.set_status(e);
     }
@@ -1150,7 +1185,7 @@ fn sim_list(ctx: &egui::Context, state: &mut EditorState, gs: &mut GraphState) {
 
                 egui::ScrollArea::vertical().max_height(130.0).show(ui, |ui| {
                     for (i, ev) in sim.result.events.iter().enumerate() {
-                        let mut text = format!("{}. {}.{} \u{2192} {}.{}", i + 1, ev.source_name, ev.output, ev.target, ev.input);
+                        let mut text = format!("{}. {}.{} -> {}.{}", i + 1, ev.source_name, ev.output, ev.target, ev.input);
                         if ev.time > 0.0 {
                             text.push_str(&format!("  at {}s", crate::widgets::format_number(ev.time)));
                         }

@@ -580,6 +580,19 @@ fn ensure_tab(dock: &mut DockState<Tab>, tab: Tab, beside: Tab) {
     }
 }
 
+/// Grows the dock below the views to at least `BOTTOM_ROOM` of the height they share when `tab` is in it.
+fn make_room(dock: &mut DockState<Tab>, tab: Tab) {
+    let Some(path) = dock.find_tab(&tab) else { return };
+    let Some(parent) = path.node.parent() else { return };
+    if path.node == parent.right()
+        && let Node::Vertical(split) = &mut dock[path.surface][parent]
+    {
+        split.fraction = split.fraction.min(1.0 - BOTTOM_ROOM);
+    }
+}
+
+const BOTTOM_ROOM: f32 = 0.55;
+
 /// Whether `tab` is open and the one showing in its leaf.
 fn tab_shown(dock: &DockState<Tab>, tab: &Tab) -> bool {
     dock.find_tab(tab).is_some_and(|p| dock.leaf(egui_dock::NodePath { surface: p.surface, node: p.node }).is_ok_and(|leaf| leaf.active == p.tab))
@@ -1474,7 +1487,14 @@ impl App {
                     for tab in PANEL_TABS {
                         let open = self.dock.find_tab(&tab).is_some();
                         if ui.add(menu_button(open.then_some(icons::CHECK), tab_title(tab), None)).clicked() {
-                            show_tab(&mut self.dock, tab);
+                            // The graph needs room: it opens in the wide bottom dock, grown to about half the middle.
+                            if tab == Tab::Logic {
+                                reveal_tab(&mut self.dock, tab, Tab::Materials);
+                                make_room(&mut self.dock, tab);
+                            } else {
+                                show_tab(&mut self.dock, tab);
+                            }
+
                             ui.close();
                         }
                     }
@@ -2661,6 +2681,18 @@ mod tests {
         let back = dock.find_tab(&Tab::Outliner).expect("a closed Outliner comes back");
         assert_eq!(back.node_path(), dock.find_tab(&Tab::History).unwrap().node_path(), "next to History");
         assert!(shown(&dock).contains(&Tab::Outliner));
+    }
+
+    #[test]
+    fn the_logic_graph_opens_with_room_in_the_bottom_dock() {
+        let mut dock = default_dock();
+        reveal_tab(&mut dock, Tab::Logic, Tab::Materials);
+        make_room(&mut dock, Tab::Logic);
+        let path = dock.find_tab(&Tab::Logic).unwrap();
+        assert_eq!(path.node, dock.find_tab(&Tab::Materials).unwrap().node, "next to Materials");
+        let Node::Vertical(split) = &dock[path.surface][path.node.parent().unwrap()] else { panic!("the bottom dock sits below the views") };
+        assert!((split.fraction - (1.0 - BOTTOM_ROOM)).abs() < 1e-6);
+        assert!(view_grid(dock.main_surface()).is_some(), "the views keep their grid");
     }
 
     #[test]
