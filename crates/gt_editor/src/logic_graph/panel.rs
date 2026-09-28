@@ -27,6 +27,8 @@ const DETAIL_ZOOM: f32 = 0.45;
 const READABLE_ZOOM: f32 = 0.6;
 /// Titles stay at least this big when zoomed out, clipped to their node, so an overview still says what is what.
 const MIN_TITLE: f32 = 10.0;
+/// Height of the simulation's step list below the canvas.
+const SIM_STRIP: f32 = 140.0;
 /// Other text shrinks with the zoom only down to this share of its size.
 const MIN_TEXT: f32 = 0.7;
 
@@ -460,8 +462,9 @@ fn pack_missing(state: &EditorState) -> bool {
 pub fn show(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: &mut Vec<Action>) {
     gs.refresh(state);
     toolbar(ui, state, gs, actions);
-    let canvas = ui.available_rect_before_wrap();
-    let canvas = Rect::from_min_size(canvas.min, canvas.size().max(vec2(120.0, 120.0)));
+    let room = ui.available_rect_before_wrap();
+    let strip = if gs.sim.is_some() { SIM_STRIP.min(room.height() * 0.4) } else { 0.0 };
+    let canvas = Rect::from_min_size(room.min, (room.size() - vec2(0.0, strip)).max(vec2(120.0, 120.0)));
     let response = ui.allocate_rect(canvas, Sense::click_and_drag());
     gs.canvas = canvas;
     let resized = !gs.navigated && (gs.fitted - canvas.size()).length() > 1.0;
@@ -479,6 +482,10 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
     gs.refresh(state);
     let visible: Vec<usize> = (0..gs.model.nodes.len()).filter(|i| gs.node_rect(&gs.model.nodes[*i]).intersects(canvas)).collect();
     draw(ui, state, gs, &visible, hover.as_ref());
+    if strip > 0.0 {
+        sim_list(ui, Rect::from_min_max(pos2(room.min.x, canvas.max.y + 4.0), room.max), state, gs);
+    }
+
     overlays(ui, state, gs, actions);
 }
 
@@ -898,10 +905,6 @@ fn overlays(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
         edge_editor(&ctx, state, gs, id);
     }
 
-    if gs.sim.is_some() {
-        sim_list(&ctx, state, gs);
-    }
-
     let Some(menu) = gs.menu.take() else { return };
     let screen = match &menu {
         Menu::Create { screen, .. } | Menu::Pin { screen, .. } | Menu::Context { screen, .. } => *screen,
@@ -1154,64 +1157,58 @@ fn edge_editor(ctx: &egui::Context, state: &mut EditorState, gs: &mut GraphState
     }
 }
 
-fn sim_list(ctx: &egui::Context, state: &mut EditorState, gs: &mut GraphState) {
+/// The steps of a simulation, in a strip below the canvas so they never cover the highlighted wires.
+fn sim_list(ui: &mut Ui, rect: Rect, state: &mut EditorState, gs: &mut GraphState) {
     let Some(sim) = &gs.sim else { return };
-    let canvas = gs.canvas;
     let name = state.doc.map.entity(sim.start).map(|e| e.targetname().unwrap_or(&e.classname).to_string()).unwrap_or_default();
     let mut clear = false;
     let mut pick = None;
-    egui::Area::new(Id::new("logic_sim_list")).order(Order::Middle).fixed_pos(pos2(canvas.min.x + 8.0, canvas.max.y - 200.0)).constrain_to(canvas).show(
-        ctx,
-        |ui| {
-            egui::Frame::popup(ui.style()).show(ui, |ui| {
-                ui.set_max_width(360.0);
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new(format!("{name}.{}", sim.output)).strong());
-                    let r = &sim.result;
-                    ui.label(format!("{} steps", r.events.len()));
-                    if r.broken() > 0 {
-                        ui.label(RichText::new(format!("{} broken", r.broken())).color(theme::ERROR));
-                    }
+    ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new(format!("{name}.{}", sim.output)).strong());
+            let r = &sim.result;
+            ui.label(format!("{} steps", r.events.len()));
+            if r.broken() > 0 {
+                ui.label(RichText::new(format!("{} broken", r.broken())).color(theme::ERROR));
+            }
 
-                    if r.truncated {
-                        ui.label(RichText::new("truncated, feedback loop").weak());
-                    }
+            if r.truncated {
+                ui.label(RichText::new("truncated, feedback loop").weak());
+            }
 
-                    clear = ui.small_button("Clear").clicked();
-                });
-                if sim.result.events.is_empty() {
-                    ui.label(RichText::new("That output is not wired to anything.").weak());
+            clear = ui.small_button("Clear").clicked();
+        });
+        if sim.result.events.is_empty() {
+            ui.label(RichText::new("That output is not wired to anything.").weak());
+        }
+
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            for (i, ev) in sim.result.events.iter().enumerate() {
+                let mut text = format!("{}. {}.{} -> {}.{}", i + 1, ev.source_name, ev.output, ev.target, ev.input);
+                if ev.time > 0.0 {
+                    text.push_str(&format!("  at {}s", crate::widgets::format_number(ev.time)));
                 }
 
-                egui::ScrollArea::vertical().max_height(130.0).show(ui, |ui| {
-                    for (i, ev) in sim.result.events.iter().enumerate() {
-                        let mut text = format!("{}. {}.{} -> {}.{}", i + 1, ev.source_name, ev.output, ev.target, ev.input);
-                        if ev.time > 0.0 {
-                            text.push_str(&format!("  at {}s", crate::widgets::format_number(ev.time)));
-                        }
-
-                        let color = if ev.broken() {
-                            theme::ERROR
-                        } else if ev.dynamic {
-                            theme::INFO
-                        } else {
-                            ui.visuals().text_color()
-                        };
-                        let hint = if ev.dynamic {
-                            "Found when the map runs, not followed further"
-                        } else if ev.broken() {
-                            "No entity has this targetname"
-                        } else {
-                            "Selects this connection"
-                        };
-                        if ui.selectable_label(false, RichText::new(text).color(color)).on_hover_text(hint).clicked() {
-                            pick = Some((ev.source, ev.connection));
-                        }
-                    }
-                });
-            });
-        },
-    );
+                let color = if ev.broken() {
+                    theme::ERROR
+                } else if ev.dynamic {
+                    theme::INFO
+                } else {
+                    ui.visuals().text_color()
+                };
+                let hint = if ev.dynamic {
+                    "Found when the map runs, not followed further"
+                } else if ev.broken() {
+                    "No entity has this targetname"
+                } else {
+                    "Selects this connection"
+                };
+                if ui.selectable_label(false, RichText::new(text).color(color)).on_hover_text(hint).clicked() {
+                    pick = Some((ev.source, ev.connection));
+                }
+            }
+        });
+    });
     if clear {
         gs.sim = None;
     }
