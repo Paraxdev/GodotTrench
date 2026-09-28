@@ -126,7 +126,7 @@ pub fn to_bytes(map: &Map) -> Vec<u8> {
     match &map.lightmap {
         Some(lm) => {
             let mut chunks = map.unknown_chunks.clone();
-            chunks.push(crate::binary::bulk_chunk(crate::lightmap::TAG, &lm.to_chunk()));
+            chunks.push(crate::binary::bulk_chunk(crate::lightmap::TAG, &lm.to_chunk(&lm.stale_nodes(map))));
             crate::binary::encode(&to_value(map), &chunks)
         }
         None => crate::binary::encode(&to_value(map), &map.unknown_chunks),
@@ -389,7 +389,7 @@ pub fn save(map: &Map, path: &Path) -> Result<(), FormatError> {
         (Some(lm), true) => {
             let mut value = to_value(map);
             if let Some(obj) = value.as_object_mut() {
-                obj.insert("lightmap".into(), lm.to_json());
+                obj.insert("lightmap".into(), lm.to_json(&lm.stale_nodes(map)));
             }
 
             crate::json_fmt::to_string(&value).into_bytes()
@@ -452,7 +452,18 @@ mod tests {
         let path = dir.join("lit.json");
         save(&m, &path).unwrap();
         assert_eq!(load(&path).unwrap().map.lightmap, m.lightmap);
+        let saved: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(saved["lightmap"]["stale"], serde_json::json!([2]), "node 2 changed since its fingerprint was taken");
         std::fs::remove_dir_all(&dir).ok();
+
+        let lm = m.lightmap.as_ref().unwrap();
+        let mut fresh = (**lm).clone();
+        let print = m.get(NodeId(2)).and_then(|n| crate::lightmap::fingerprint(&n.kind));
+        fresh.nodes.insert(2, print.expect("node 2 is geometry"));
+        assert!(fresh.stale_nodes(&m).is_empty());
+        let mut gone = m.clone();
+        gone.remove(NodeId(2));
+        assert_eq!(fresh.stale_nodes(&gone), vec![2], "a deleted node is stale too");
     }
 
     #[test]

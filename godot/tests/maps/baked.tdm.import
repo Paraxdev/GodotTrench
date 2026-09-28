@@ -1,0 +1,14 @@
+[remap]
+
+importer="trenchdot.tdm"
+type="TrenchDotImportedMap"
+uid="uid://c64ci55gehyvw"
+path="res://.godot/imported/baked.tdm-dae2df0ff4c5c110578c1120a33f42c2.tres"
+
+[deps]
+
+source_file="res://tests/maps/baked.tdm"
+dest_files=["res://.godot/imported/baked.tdm-dae2df0ff4c5c110578c1120a33f42c2.tres"]
+
+[params]
+
