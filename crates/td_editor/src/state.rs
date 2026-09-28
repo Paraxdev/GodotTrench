@@ -352,6 +352,8 @@ pub struct EditorState {
     pub outliner_hover: Option<NodeId>,
     /// World position under the mouse in the last hovered viewport.
     pub cursor_world: Option<DVec3>,
+    /// A point a little in front of the 3D view's camera, for things placed from a panel with no better spot.
+    pub view_focus: Option<DVec3>,
     pub focus_request: Option<Aabb>,
     pub hollow_thickness: f64,
     /// Whether faces CSG Subtract carves take the cutter's or the target's material.
@@ -501,6 +503,7 @@ impl EditorState {
             renaming: None,
             outliner_hover: None,
             cursor_world: None,
+            view_focus: None,
             focus_request: None,
             hollow_thickness: 16.0,
             carve_material: Default::default(),

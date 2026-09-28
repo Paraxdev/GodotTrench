@@ -53,7 +53,7 @@ pub const PAGES: &[(Topic<'static>, &str, &str)] = &[
     (Panel("Entities"), "gameplay/placing", "placing-entities"),
     (Panel("History"), "editor/organizing", "history"),
     (Panel("Issues"), "editor/organizing", "issues"),
-    (Panel("Logic"), "gameplay/placing", "checking-wiring-without-godot"),
+    (Panel("Logic"), "gameplay/logic-graph", ""),
     (Panel("UV Editor"), "editor/uv-editor", ""),
     (Panel("Reference"), "gameplay/placing", "code-for-any-entity"),
     (Panel("Scatter"), "editor/scatter", "scatter-sets"),

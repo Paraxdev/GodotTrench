@@ -29,21 +29,19 @@ hinge, how far it travels, or its radius, instead of typing numbers.
 
 Outputs are set in the **Inspector**, where each connection is one row with the fields explained in
 [How entity I/O works](io.md). To connect two entities quickly, select both and use
-*Gameplay > Logic > Link Two Selected Entities...*, which opens a dialog to pick the output and input.
+*Gameplay > Logic > Link Two Selected Entities...*, which opens a dialog to pick the output and input. The
+[Logic graph](logic-graph.md) shows all the wiring at once and connects entities by dragging from pin to pin.
 
 > **Warning:** The Link dialog does not take the entity you clicked first as the source. Check the direction and press
 > ⇄ to swap it if needed.
 
 ## Checking wiring without Godot
 
-Open the **Logic** panel (*View > Panels*), pick a named entity and one of its outputs, and press **Fire**. It lists
-every `source.output → target.input` step that would follow, with delays, so you can follow a long chain without
-building and running the game. Two colours point out steps worth a second look:
-
-| Colour | Meaning |
-| --- | --- |
-| Red | The target does not exist, usually a typo in a targetname |
-| Blue | A runtime target like `!player` or `@enemies`, which only exists in game, so it is not followed further |
+Select an entity in the [Logic graph](logic-graph.md#simulate), press **Simulate** and pick an output. The graph
+highlights every `source.output → target.input` step that would follow and lists them with their delays, so you can
+follow a long chain without building and running the game. Red marks a target that does not exist, usually a typo in a
+targetname, and blue a runtime target like `!player` or `@enemies`, which only exists in game and is not followed
+further.
 
 ## Code for any entity
 

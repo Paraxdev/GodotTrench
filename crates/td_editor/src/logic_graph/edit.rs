@@ -136,9 +136,21 @@ pub enum NewLink {
     To { target: NodeKey, input: String },
 }
 
-/// Places a point entity for the graph on the Logic layer and wires it. It lands near `near` in the map, else at
-/// `fallback`, and at `at` in the graph. The new entity is selected.
-pub fn create(state: &mut EditorState, classname: &str, at: Pos2, near: Option<NodeId>, fallback: DVec3, link: Option<NewLink>) -> Result<NodeId, String> {
+/// Where a new entity goes, in the map and in the graph.
+pub struct Placement<'a> {
+    /// Graph position of the new node.
+    pub at: Pos2,
+    /// The entity it lands near in the map.
+    pub near: Option<NodeId>,
+    /// Map position when there is nothing to land near.
+    pub fallback: DVec3,
+    /// Positions stored along with it, so nodes of the automatic layout stay where they are once one node has its own.
+    pub pin: &'a [(NodeId, Pos2)],
+}
+
+/// Places a point entity for the graph on the Logic layer, wires it and selects it.
+pub fn create(state: &mut EditorState, classname: &str, place: Placement, link: Option<NewLink>) -> Result<NodeId, String> {
+    let Placement { at, near, fallback, pin } = place;
     let game = &state.game;
     let input = super::model::default_input(game, classname);
     let output = super::model::default_output(game, classname);
@@ -165,6 +177,12 @@ pub fn create(state: &mut EditorState, classname: &str, at: Pos2, near: Option<N
         let id = ops::create_point_entity(m, layer, &classname, origin);
         m.entity_mut(id)?.properties.insert("targetname".into(), name.clone());
         m.get_mut(id)?.set_graph(Some([at.x, at.y]));
+        for (other, p) in pin {
+            if let Some(n) = m.get_mut(*other).filter(|n| n.graph.is_none()) {
+                n.set_graph(Some([p.x, p.y]));
+            }
+        }
+
         match &link {
             Some(NewLink::From { source, output: out }) => m.entity_mut(*source)?.outputs.push(io(out, name, &input)),
             Some(NewLink::To { target, input: into }) => {
@@ -261,11 +279,13 @@ mod tests {
         let button = add(&mut state, "func_button", "b");
         state.doc.edit("move", |m, _| m.entity_mut(button).unwrap().origin = DVec3::new(64.0, 0.0, 0.0));
         let link = NewLink::From { source: button, output: "pressed".into() };
-        let relay = create(&mut state, "logic_relay", egui::pos2(300.0, 40.0), Some(button), DVec3::ZERO, Some(link)).unwrap();
+        let place = Placement { at: egui::pos2(300.0, 40.0), near: Some(button), fallback: DVec3::ZERO, pin: &[(button, egui::pos2(10.0, 10.0))] };
+        let relay = create(&mut state, "logic_relay", place, Some(link)).unwrap();
 
         let map = &state.doc.map;
         let node = map.get(relay).unwrap();
         assert_eq!(node.graph, Some([300.0, 40.0]));
+        assert_eq!(map.get(button).unwrap().graph, Some([10.0, 10.0]), "the rest of the layout is kept in the same step");
         let layer = map.layer_of(relay);
         assert!(matches!(&map.get(layer).unwrap().kind, NodeKind::Layer(l) if l.name == LAYER));
         let e = map.entity(relay).unwrap();
@@ -275,15 +295,8 @@ mod tests {
         assert_eq!(state.doc.selection.nodes.iter().copied().collect::<Vec<_>>(), [relay]);
 
         let before = state.doc.map.layers.len();
-        let timer = create(
-            &mut state,
-            "logic_timer",
-            egui::pos2(0.0, 0.0),
-            Some(button),
-            DVec3::ZERO,
-            Some(NewLink::To { target: NodeKey::Entity(relay), input: "trigger".into() }),
-        )
-        .unwrap();
+        let place = Placement { at: egui::pos2(0.0, 0.0), near: Some(button), fallback: DVec3::ZERO, pin: &[] };
+        let timer = create(&mut state, "logic_timer", place, Some(NewLink::To { target: NodeKey::Entity(relay), input: "trigger".into() })).unwrap();
         assert_eq!(state.doc.map.layers.len(), before, "the Logic layer is reused");
         assert_eq!(state.doc.map.entity(timer).unwrap().outputs, vec![io("timer", "relay_1".into(), "trigger")]);
         assert_ne!(state.doc.map.entity(timer).unwrap().origin, state.doc.map.entity(relay).unwrap().origin, "not stacked on the first");

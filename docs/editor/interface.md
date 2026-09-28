@@ -30,7 +30,7 @@ button lists them, so you can open a finished one instead. The card goes away on
 | Scatter | Right | The models the [Scatter](scatter.md) tool paints |
 | Materials | Bottom | Your project's textures |
 | Models | Bottom | [Model files](models.md) to place |
-| Logic | Starts closed | Fires an output on paper and shows what it would trigger |
+| Logic | Starts closed | The [entity wiring as a graph](../gameplay/logic-graph.md), to connect entities and preview what an output sets off |
 | Reference | Starts closed | Code for using an entity class from your scripts |
 
 Open any panel from *View > Panels*, and *Reset Layout* in the same menu restores the defaults.
