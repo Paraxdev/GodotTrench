@@ -9,13 +9,14 @@ use gt_doc::map::GraphFrame;
 use gt_doc::{IoConnection, Map, NodeKind, ops};
 
 use super::model::{ConnectionId, NodeKey};
-use crate::entity_wizards::{name_base, unique_name_in};
+use crate::entity_wizards::{name_base, name_from_label, unique_name_in};
 use crate::state::EditorState;
 
 /// The layer new logic entities go into.
 pub const LAYER: &str = "Logic";
 
-/// The text an output targets to reach `to`, naming an entity that has no targetname yet inside `m`.
+/// The text an output targets to reach `to`, naming an entity that has no targetname yet inside `m`: after the name it
+/// was given with Rename when it has one, else after its class.
 fn target_of(m: &mut Map, to: &NodeKey) -> Option<String> {
     match to {
         NodeKey::Entity(id) => {
@@ -24,7 +25,8 @@ fn target_of(m: &mut Map, to: &NodeKey) -> Option<String> {
                 return Some(name.to_string());
             }
 
-            let name = unique_name_in(m, name_base(&e.classname));
+            let label = m.get(*id).and_then(|n| n.label.as_deref());
+            let name = label.and_then(|l| name_from_label(m, l)).unwrap_or_else(|| unique_name_in(m, name_base(&e.classname)));
             m.entity_mut(*id)?.properties.insert("targetname".into(), name.clone());
             Some(name)
         }
@@ -274,6 +276,29 @@ mod tests {
         assert_eq!(state.doc.map.entity(button).unwrap().outputs, vec![conn]);
         state.undo();
         assert_eq!(state.doc.map.entity(door).unwrap().targetname(), None, "one undo takes the name back with the wire");
+    }
+
+    #[test]
+    fn an_entity_renamed_in_the_outliner_gets_that_name_as_its_target() {
+        let mut state = state();
+        let button = add(&mut state, "func_button", "b");
+        let lamp = add(&mut state, "light", "");
+        let second = add(&mut state, "light", "");
+        let odd = add(&mut state, "light", "");
+        let bare = add(&mut state, "func_door", "");
+        state.doc.edit("rename", |m, _| {
+            m.get_mut(lamp).unwrap().set_label(Some("lamp".into()));
+            m.get_mut(second).unwrap().set_label(Some("lamp".into()));
+            m.get_mut(odd).unwrap().set_label(Some(" Big red *light*! ".into()));
+            m.get_mut(bare).unwrap().set_label(Some("!?".into()));
+        });
+
+        let target = |state: &mut EditorState, id: NodeId| connect(state, button, "pressed", &NodeKey::Entity(id), "turn_on", &[]).unwrap().target;
+        assert_eq!(target(&mut state, lamp), "lamp", "the label names the target instead of light_1");
+        assert_eq!(target(&mut state, second), "lamp_2", "unique like every generated name");
+        assert_eq!(target(&mut state, odd), "Big_red_light", "nothing a target could not carry");
+        assert_eq!(state.doc.map.entity(lamp).unwrap().targetname(), Some("lamp"));
+        assert_eq!(target(&mut state, bare), "door_1", "a label with nothing usable in it leaves the class to name it");
     }
 
     #[test]

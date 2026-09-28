@@ -1060,6 +1060,17 @@ fn wire(f: &mut Fixture, from: gt_core::NodeId, output: &str, target: &str, inpu
     });
 }
 
+/// A right click with the pointer at `pos`.
+fn right_click_at(harness: &mut Harness<'_, Fixture>, pos: egui::Pos2) {
+    harness.hover_at(pos);
+    harness.run();
+    for pressed in [true, false] {
+        harness.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Secondary, pressed, modifiers: egui::Modifiers::NONE });
+    }
+
+    harness.run();
+}
+
 /// Drags with the primary button through the given points, a frame for each.
 fn drag_through(harness: &mut Harness<'_, Fixture>, points: &[egui::Pos2]) {
     harness.hover_at(points[0]);
@@ -1195,6 +1206,86 @@ fn logic_graph_nodes_with_settings_keep_their_pins_under_the_pointer() {
     drag_through(&mut harness, &[from, from + egui::vec2(30.0, 10.0), (from + to.to_vec2()) / 2.0, to]);
     let outputs = &harness.state().state.doc.map.entity(counter).unwrap().outputs;
     assert!(outputs.iter().any(|o| (o.output.as_str(), o.input.as_str()) == ("hit_max", "turn_on")), "the wire starts at the pin that was drawn: {outputs:?}");
+}
+
+/// The classes the add search created, besides the ones the test started with.
+fn added_classes(harness: &Harness<'_, Fixture>, before: usize) -> Vec<String> {
+    let mut all: Vec<(u64, String)> = harness.state().state.doc.map.entities().map(|(id, e)| (id.0, e.classname.clone())).collect();
+    all.sort();
+    all.into_iter().skip(before).map(|(_, c)| c).collect()
+}
+
+#[test]
+fn logic_graph_search_ranks_names_first_and_arrows_move_the_choice() {
+    let open = || {
+        let mut f = Fixture::new();
+        named(&mut f, "logic_relay", "r", DVec3::ZERO);
+        let mut harness = logic_graph(f);
+        right_click_at(&mut harness, egui::pos2(600.0, 420.0));
+        harness.get_by_role(egui::accesskit::Role::TextInput).type_text("tim");
+        harness.run();
+        harness
+    };
+
+    let mut harness = open();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(added_classes(&harness, 1), ["logic_timer"], "the class named like the text comes before those that only describe it");
+
+    let mut harness = open();
+    harness.key_press(egui::Key::ArrowDown);
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    let added = added_classes(&harness, 1);
+    assert_eq!(added.len(), 1);
+    assert_ne!(added[0], "logic_timer", "one arrow down moves to the next row, whose description mentions time");
+
+    let mut harness = open();
+    harness.key_press(egui::Key::ArrowDown);
+    harness.key_press(egui::Key::ArrowUp);
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(added_classes(&harness, 1), ["logic_timer"], "and back up");
+}
+
+#[test]
+fn logic_graph_right_click_list_is_as_tall_as_the_add_menu_allows() {
+    let mut f = Fixture::new();
+    named(&mut f, "logic_relay", "r", DVec3::ZERO);
+    let mut harness = logic_graph(f);
+    let menu_height = |h: &Harness<'_, Fixture>| {
+        h.ctx.memory(|m| {
+            let rects = m.areas().visible_layer_ids().into_iter().filter(|l| l.order == egui::Order::Foreground).filter_map(|l| m.area_rect(l.id));
+            rects.map(|r| r.height()).fold(0.0, f32::max)
+        })
+    };
+    right_click_at(&mut harness, egui::pos2(300.0, 600.0));
+    let first = menu_height(&harness);
+    assert!(first > 250.0, "many rows show, not four: {first}");
+
+    // A short list, such as after a search, must not size the next one.
+    harness.get_by_role(egui::accesskit::Role::TextInput).type_text("relay");
+    harness.run();
+    assert!(menu_height(&harness) < first / 2.0, "the search narrows the list: {}", menu_height(&harness));
+    harness.key_press(egui::Key::Escape);
+    harness.run();
+    right_click_at(&mut harness, egui::pos2(300.0, 200.0));
+    assert!((menu_height(&harness) - first).abs() < 2.0, "the next menu shows the whole list again: {} against {first}", menu_height(&harness));
+}
+
+#[test]
+fn logic_graph_knows_when_the_pointer_is_over_it() {
+    let mut f = Fixture::new();
+    named(&mut f, "logic_relay", "r", DVec3::ZERO);
+    let mut harness = logic_graph(f);
+    harness.hover_at(egui::pos2(600.0, 400.0));
+    harness.run();
+    assert!(harness.state().panels.logic.hovered(), "Ctrl+V there pastes beside the copy, no view is under the pointer");
+    harness.hover_at(egui::pos2(900.0, 5.0));
+    harness.run();
+    assert!(!harness.state().panels.logic.hovered(), "over the toolbar the keys belong to the editor");
 }
 
 #[test]

@@ -61,6 +61,20 @@ pub fn unique_name_in(map: &gt_doc::Map, base: &str) -> String {
     (1..).map(|i| format!("{base}_{i}")).find(|n| !taken.contains(n.as_str())).unwrap_or_else(|| base.to_string())
 }
 
+/// A targetname from the name an entity was given with Rename: the label with anything a target could not carry turned
+/// into underscores, and a number after it when another entity has that name. None when nothing usable is left.
+pub fn name_from_label(map: &gt_doc::Map, label: &str) -> Option<String> {
+    let words: Vec<String> = label.split(|c: char| !(c.is_alphanumeric() || c == '-')).filter(|w| !w.is_empty()).map(str::to_string).collect();
+    let base = words.join("_");
+    let base = base.trim_start_matches('-');
+    if base.is_empty() {
+        return None;
+    }
+
+    let taken: std::collections::BTreeSet<&str> = map.entities().filter_map(|(_, e)| e.targetname()).collect();
+    Some(std::iter::once(base.to_string()).chain((2..).map(|i| format!("{base}_{i}"))).find(|n| !taken.contains(n.as_str())).unwrap_or_default())
+}
+
 /// The word a generated targetname starts with: `door` for func_door_rotating, `relay` for logic_relay, `trigger` for
 /// any trigger.
 pub fn name_base(classname: &str) -> &str {

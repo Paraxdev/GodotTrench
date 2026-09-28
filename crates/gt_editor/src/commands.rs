@@ -92,6 +92,9 @@ pub enum Action {
     SnapVertices,
     ApplyMaterial(String),
     Paste(String),
+    /// Paste when the pointer is not over a view, so there is no place to put it: one grid step from where it was
+    /// copied, like Duplicate.
+    PasteBeside(String),
     Copy,
     Cut,
     OpenGroup,
@@ -714,6 +717,35 @@ fn edit_or<T>(state: &mut EditorState, label: &str, why: &str, f: impl FnOnce(&m
     result
 }
 
+/// Pastes clipboard text under the insert parent and selects it. It lands centered under the pointer in the views,
+/// snapped to the grid, or, when `beside`, one grid step from where it was copied.
+fn paste(state: &mut EditorState, text: &str, beside: bool) {
+    let cursor = state.cursor_world.filter(|_| !beside);
+    let (snap, grid, opts, parent) = (state.snap, state.grid, state.opts(), state.insert_parent());
+    let result = state.doc.try_edit("Paste", |m, s| {
+        let ids = format::paste_nodes(m, parent, text)?;
+        s.clear();
+        s.nodes.extend(ids.iter().copied());
+        let b = m.bounds_of(ids.iter().copied());
+        let offset = match cursor {
+            Some(cursor) if !b.is_empty() => {
+                let offset = cursor - b.center();
+                if snap { gt_core::snap_vec_to_grid(offset, grid) } else { offset }
+            }
+            _ if beside => DVec3::splat(grid),
+            _ => DVec3::ZERO,
+        };
+        if offset != DVec3::ZERO {
+            ops::translate_selection(m, s, DVec3::new(offset.x, 0.0, offset.z), opts);
+        }
+
+        Ok::<_, format::FormatError>(ids)
+    });
+    if result.is_err() {
+        state.set_status("Clipboard does not contain GodotTrench objects");
+    }
+}
+
 fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
     if matches!(action, Action::Rotate { .. } | Action::Flip { .. } | Action::Nudge(_) | Action::Duplicate) {
         state.last_repeatable = Some(action.clone());
@@ -1105,29 +1137,8 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
 
             state.set_status(format!("Copied {} objects", roots.len()));
         }
-        Action::Paste(text) => {
-            let cursor = state.cursor_world;
-            let (snap, grid) = (state.snap, state.grid);
-            let result = state.doc.try_edit("Paste", |m, s| {
-                let ids = format::paste_nodes(m, parent, &text)?;
-                s.clear();
-                s.nodes.extend(ids.iter().copied());
-                // Paste at cursor: center the pasted objects under the mouse, snapped to grid.
-                let b = m.bounds_of(ids.iter().copied());
-                if let Some(cursor) = cursor
-                    && !b.is_empty()
-                {
-                    let offset = cursor - b.center();
-                    let offset = if snap { gt_core::snap_vec_to_grid(offset, grid) } else { offset };
-                    ops::translate_selection(m, s, DVec3::new(offset.x, 0.0, offset.z), opts);
-                }
-
-                Ok::<_, format::FormatError>(ids)
-            });
-            if result.is_err() {
-                state.set_status("Clipboard does not contain GodotTrench objects");
-            }
-        }
+        Action::Paste(text) => paste(state, &text, false),
+        Action::PasteBeside(text) => paste(state, &text, true),
         Action::OpenGroup => {
             let groups: Vec<NodeId> = state
                 .doc
@@ -2593,6 +2604,23 @@ mod tests {
         assert_eq!(b.center().x, 512.0);
         execute(&mut state, Action::Undo, &ctx);
         assert_eq!(state.doc.map.brushes().count(), 2, "one undo takes the paste and its move back");
+    }
+
+    #[test]
+    fn paste_beside_ignores_a_stale_cursor_and_moves_one_grid_step() {
+        let mut state = EditorState::new(Default::default());
+        let ctx = egui::Context::default();
+        let brush = brush_at(&mut state, 64.0);
+        let text = format::nodes_to_string(&state.doc.map, &[brush]);
+        let before = state.doc.map.bounds_of([brush]).center();
+        state.cursor_world = Some(DVec3::new(-1280.0, 0.0, 900.0));
+        let grid = state.grid;
+        execute(&mut state, Action::PasteBeside(text), &ctx);
+        assert_eq!(state.doc.history.undo_labels().next(), Some("Paste"));
+        assert_eq!(state.doc.map.brushes().count(), 2);
+        let pasted = state.doc.map.bounds_of(state.doc.selection.nodes.iter().copied()).center();
+        assert_eq!((pasted.x - before.x, pasted.z - before.z), (grid, grid), "next to the original like Duplicate, not at the cursor");
+        assert_eq!(pasted.y, before.y);
     }
 
     #[test]

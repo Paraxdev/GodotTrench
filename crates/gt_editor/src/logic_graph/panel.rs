@@ -137,6 +137,8 @@ pub struct GraphState {
     drag: Option<Drag>,
     menu: Option<Menu>,
     menu_filter: String,
+    /// The highlighted row of the search list, moved by the arrow keys.
+    menu_cursor: usize,
     menu_opened: u64,
     pub sim: Option<Simulation>,
     hovered: bool,
@@ -165,6 +167,7 @@ impl Default for GraphState {
             drag: None,
             menu: None,
             menu_filter: String::new(),
+            menu_cursor: 0,
             menu_opened: 0,
             sim: None,
             hovered: false,
@@ -336,6 +339,11 @@ impl GraphState {
         self.to_screen(pos2(x, p.y + n.head + PIN_ROW * (pin as f32 + 0.5)))
     }
 
+    /// The pointer is over the graph, so keys act on it.
+    pub fn hovered(&self) -> bool {
+        self.hovered
+    }
+
     /// Screen position of a pin as last drawn, for tests that drive the canvas with the pointer.
     pub fn pin_pos(&self, key: &NodeKey, output: bool, name: &str) -> Option<Pos2> {
         let n = self.model.node(key)?;
@@ -504,6 +512,7 @@ impl GraphState {
     fn open_menu(&mut self, ctx: &egui::Context, menu: Menu) {
         self.menu = Some(menu);
         self.menu_filter.clear();
+        self.menu_cursor = 0;
         self.menu_opened = ctx.cumulative_pass_nr();
     }
 
@@ -1167,15 +1176,20 @@ fn overlays(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
         Menu::Create { screen, .. } | Menu::Pin { screen, .. } | Menu::Context { screen, .. } => *screen,
     };
     let mut keep = true;
-    let area = egui::Area::new(Id::new("logic_graph_menu")).order(Order::Foreground).fixed_pos(screen).constrain_to(ctx.content_rect()).show(&ctx, |ui| {
-        egui::Frame::menu(ui.style()).show(ui, |ui| {
-            keep = match &menu {
-                Menu::Create { at, link, near, .. } => !create_list(ui, state, gs, *at, link.clone(), *near, actions),
-                Menu::Pin { from, to, .. } => !pin_list(ui, state, gs, from, to),
-                Menu::Context { hit, .. } => !context_menu(ui, state, gs, hit, actions),
-            };
-        });
-    });
+    // Every menu is a new area. A reused one keeps the size of the last menu, so after a short list the next one would
+    // scroll in a few rows.
+    let area = egui::Area::new(Id::new(("logic_graph_menu", gs.menu_opened))).order(Order::Foreground).fixed_pos(screen).constrain_to(ctx.content_rect()).show(
+        &ctx,
+        |ui| {
+            egui::Frame::menu(ui.style()).show(ui, |ui| {
+                keep = match &menu {
+                    Menu::Create { at, link, near, .. } => !create_list(ui, state, gs, *at, link.clone(), *near, actions),
+                    Menu::Pin { from, to, .. } => !pin_list(ui, state, gs, from, to),
+                    Menu::Context { hit, .. } => !context_menu(ui, state, gs, hit, actions),
+                };
+            });
+        },
+    );
     let pressed_at = ctx.input(|i| if i.pointer.any_pressed() { i.pointer.interact_pos() } else { None });
     let clicked_away = pressed_at.is_some_and(|p| !area.response.rect.contains(p)) && ctx.cumulative_pass_nr() > gs.menu_opened;
     if keep && !clicked_away && !ctx.input(|i| i.key_pressed(egui::Key::Escape)) && gs.menu.is_none() {
@@ -1189,6 +1203,45 @@ fn install_hint(ui: &mut Ui, actions: &mut Vec<Action>) {
     if ui.button("Install Gameplay Entities").on_hover_text(tip).clicked() {
         actions.push(Action::InstallGameplayEntities);
     }
+}
+
+/// One class of the Add menu.
+struct Entry {
+    category: String,
+    classname: String,
+    description: String,
+}
+
+/// How well a class fits the search text, lower is better: the classname or one of its words starts with it, the
+/// classname contains it, the category is it, the description contains it. None when it does not match at all.
+fn match_rank(e: &Entry, filter: &str) -> Option<u8> {
+    let name = e.classname.to_lowercase();
+    if name.starts_with(filter) || name.split('_').any(|w| w.starts_with(filter)) {
+        Some(0)
+    } else if name.contains(filter) {
+        Some(1)
+    } else if e.category.contains(filter) {
+        Some(2)
+    } else if e.description.to_lowercase().contains(filter) {
+        Some(3)
+    } else {
+        None
+    }
+}
+
+/// The classes to list for the search text. Without any they follow the categories of the Add menu, with some they
+/// are sorted by how well they match, so the first row is the best guess.
+fn listed(groups: Vec<Group>, filter: &str) -> Vec<Entry> {
+    let all = groups
+        .into_iter()
+        .flat_map(|(category, classes)| classes.into_iter().map(move |(classname, description)| Entry { category: category.clone(), classname, description }));
+    if filter.is_empty() {
+        return all.collect();
+    }
+
+    let mut ranked: Vec<(u8, Entry)> = all.filter_map(|e| Some((match_rank(&e, filter)?, e))).collect();
+    ranked.sort_by_key(|(rank, _)| *rank);
+    ranked.into_iter().map(|(_, e)| e).collect()
 }
 
 /// The searchable list of classes to add. Returns true when it is done.
@@ -1207,18 +1260,30 @@ fn create_list(
         field.request_focus();
     }
 
-    let filter = gs.menu_filter.to_lowercase();
-    let matches = |(c, d): &(String, String)| c.contains(&filter) || d.to_lowercase().contains(&filter);
-    let groups: Vec<Group> = creatable(state)
-        .into_iter()
-        .map(|(category, classes)| {
-            let hit = category.contains(&filter);
-            (category, classes.into_iter().filter(|c| hit || matches(c)).collect::<Vec<_>>())
-        })
-        .filter(|(_, classes)| !classes.is_empty())
-        .collect();
+    let filter = gs.menu_filter.trim().to_lowercase();
+    let entries = listed(creatable(state), &filter);
+    if field.changed() {
+        gs.menu_cursor = 0;
+    }
+
+    let last = entries.len().saturating_sub(1);
+    let mut moved = false;
+    if field.has_focus() && !entries.is_empty() {
+        let (down, up) =
+            ui.input_mut(|i| (i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown), i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp)));
+        moved = down || up;
+        gs.menu_cursor = if down {
+            gs.menu_cursor + 1
+        } else if up {
+            gs.menu_cursor.saturating_sub(1)
+        } else {
+            gs.menu_cursor
+        };
+    }
+
+    gs.menu_cursor = gs.menu_cursor.min(last);
     let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-    let mut chosen = enter.then(|| groups.first().and_then(|(_, c)| c.first()).map(|(c, _)| c.clone())).flatten();
+    let mut chosen = enter.then(|| entries.get(gs.menu_cursor).map(|e| e.classname.clone())).flatten();
     if pack_missing(state) {
         let asked = actions.len();
         install_hint(ui, actions);
@@ -1228,21 +1293,38 @@ fn create_list(
         }
     }
 
-    egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-        for (category, classes) in &groups {
-            ui.label(RichText::new(category).strong().color(theme::category_color(category)));
-            ui.indent(category, |ui| {
-                for (classname, description) in classes {
-                    let button = ui.selectable_label(false, classname);
-                    let button = if description.is_empty() { button } else { button.on_hover_text(description) };
-                    if button.clicked() {
-                        chosen = Some(classname.clone());
-                    }
+    let height = (ui.ctx().content_rect().height() - 90.0).clamp(120.0, 320.0);
+    egui::ScrollArea::vertical().max_height(height).show(ui, |ui| {
+        let mut heading = None;
+        for (i, e) in entries.iter().enumerate() {
+            if filter.is_empty() && heading != Some(&e.category) {
+                heading = Some(&e.category);
+                ui.label(RichText::new(&e.category).strong().color(theme::category_color(&e.category)));
+            }
+
+            let row = ui.horizontal(|ui| {
+                if filter.is_empty() {
+                    ui.add_space(ui.spacing().indent);
                 }
+
+                let button = ui.selectable_label(i == gs.menu_cursor, &e.classname);
+                if !filter.is_empty() {
+                    ui.label(RichText::new(&e.category).small().color(theme::category_color(&e.category)));
+                }
+
+                button
             });
+            let button = if e.description.is_empty() { row.inner } else { row.inner.on_hover_text(&e.description) };
+            if moved && i == gs.menu_cursor {
+                button.scroll_to_me(None);
+            }
+
+            if button.clicked() {
+                chosen = Some(e.classname.clone());
+            }
         }
 
-        if groups.is_empty() {
+        if entries.is_empty() {
             ui.label(RichText::new("No entity matches").weak());
         }
     });

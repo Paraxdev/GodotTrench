@@ -834,6 +834,8 @@ impl App {
                 match e {
                     egui::Event::Copy => self.actions.push(Action::Copy),
                     egui::Event::Cut => self.actions.push(Action::Cut),
+                    // Over the graph the pointer has no place in the world, the last one in a view would be far away.
+                    egui::Event::Paste(text) if self.panels.logic.hovered() => self.actions.push(Action::PasteBeside(text)),
                     egui::Event::Paste(text) => self.actions.push(Action::Paste(text)),
                     _ => {}
                 }
