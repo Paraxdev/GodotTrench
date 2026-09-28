@@ -1,7 +1,8 @@
-//! A pure preview of how entity I/O cascades through a map, for the Logic panel. It resolves each output's
+//! A pure preview of how entity I/O cascades through a map, for Simulate in the Logic graph. It resolves each output's
 //! targets by targetname the way the runtime does, then follows a small table of which inputs make an entity
 //! fire its own outputs, so a wired scene can be checked without launching Godot. It models the wiring and the
-//! common entity logic, not full runtime behavior.
+//! common entity logic, not full runtime behavior. Each event carries the connection it went through and when it
+//! arrives, so a timed replay can build on the same events.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -13,11 +14,15 @@ use gt_doc::issues::is_dynamic_target;
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimEvent {
     pub source: NodeId,
+    /// Index of the connection in the source entity's outputs.
+    pub connection: usize,
     pub source_name: String,
     pub output: String,
     pub target: String,
     pub input: String,
     pub delay: f64,
+    /// Seconds after the first output fired that the input arrives, the delays along the chain added up.
+    pub time: f64,
     /// Target nodes the name resolved to, empty when the target is dynamic or unresolved.
     pub resolved: Vec<NodeId>,
     /// A runtime target (!player, @group, a node path or a wildcard) that cannot be resolved here.
@@ -91,10 +96,10 @@ pub fn simulate(map: &Map, start: NodeId, output: &str) -> SimResult {
 
     let mut events: Vec<SimEvent> = Vec::new();
     let mut fired: HashMap<(NodeId, usize), i32> = HashMap::new();
-    let mut queue: VecDeque<(NodeId, String, usize)> = VecDeque::new();
-    queue.push_back((start, output.to_string(), 0));
+    let mut queue: VecDeque<(NodeId, String, usize, f64)> = VecDeque::new();
+    queue.push_back((start, output.to_string(), 0, 0.0));
 
-    while let Some((source, out, depth)) = queue.pop_front() {
+    while let Some((source, out, depth, at)) = queue.pop_front() {
         if depth > MAX_DEPTH {
             continue;
         }
@@ -119,13 +124,16 @@ pub fn simulate(map: &Map, start: NodeId, output: &str) -> SimResult {
                 return SimResult { events, truncated: true };
             }
 
+            let time = at + conn.delay.max(0.0);
             events.push(SimEvent {
                 source,
+                connection: i,
                 source_name: source_name.clone(),
                 output: out.clone(),
                 target: conn.target.clone(),
                 input: conn.input.clone(),
                 delay: conn.delay,
+                time,
                 resolved: resolved.clone(),
                 dynamic,
                 depth,
@@ -133,7 +141,7 @@ pub fn simulate(map: &Map, start: NodeId, output: &str) -> SimResult {
             for t in resolved {
                 if let Some(target_entity) = map.entity(t) {
                     for next in triggered_outputs(&target_entity.classname, &conn.input) {
-                        queue.push_back((t, (*next).to_string(), depth + 1));
+                        queue.push_back((t, (*next).to_string(), depth + 1, time));
                     }
                 }
             }
@@ -194,6 +202,22 @@ mod tests {
         assert!(chain.contains(&("r1.triggered".into(), "c1.add".into())), "{chain:?}");
         assert!(chain.contains(&("c1.changed".into(), "l1.turn_on".into())), "counter cascades into the light: {chain:?}");
         assert_eq!(res.broken(), 1, "the ghost target is flagged broken");
+        assert_eq!(res.events[1].connection, 1, "each event names the connection it went through");
+    }
+
+    #[test]
+    fn delays_add_up_along_the_chain() {
+        let mut m = Map::new();
+        let l = m.default_layer();
+        let relay = entity(&mut m, l, "logic_relay", "r1", &[("triggered", "r2", "trigger")]);
+        entity(&mut m, l, "logic_relay", "r2", &[("triggered", "l1", "turn_on")]);
+        entity(&mut m, l, "light", "l1", &[]);
+        for (id, delay) in [(relay, 0.5), (m.find_by_targetname("r2")[0], 1.25)] {
+            m.entity_mut(id).unwrap().outputs[0].delay = delay;
+        }
+
+        let times: Vec<f64> = simulate(&m, relay, "triggered").events.iter().map(|e| e.time).collect();
+        assert_eq!(times, [0.5, 1.75]);
     }
 
     #[test]

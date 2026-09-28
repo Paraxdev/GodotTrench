@@ -18,7 +18,7 @@ pub struct ClassIo<'a> {
 pub const BUILTIN_INPUTS: [&str; 6] = ["kill", "show", "hide", "enable", "disable", "toggle"];
 
 /// The runtime also finds `open` as `Open` or `open` as a C# or GDScript method, so names compare loosely.
-fn io_name_matches(a: &str, b: &str) -> bool {
+pub fn io_name_matches(a: &str, b: &str) -> bool {
     let norm = |s: &str| s.chars().filter(|c| *c != '_').flat_map(char::to_lowercase).collect::<String>();
     norm(a) == norm(b)
 }

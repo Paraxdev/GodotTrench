@@ -22,6 +22,7 @@ pub mod hotspot_editor;
 pub mod icons;
 pub mod live_link;
 pub mod live_sync;
+pub mod logic_graph;
 pub mod logic_sim;
 pub mod materials;
 pub mod mcp;

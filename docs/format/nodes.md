@@ -8,6 +8,7 @@ A map's content is a tree of nodes. Every node has the same outer shape, with it
 | `type` | string | always | `layer`, `group`, `entity`, `brush`, `mesh`, `terrain`, `scatter` or `instance` |
 | type fields | | | The keys of that node type, see below, [Geometry](geometry.md) and [Terrain and scatter](terrain-scatter.md) |
 | `label` | string | when set | Name given with *Rename*, see below |
+| `graph` | array of 2 numbers | when set | Where an entity's node sits in the Logic graph |
 | `hidden` | bool | when `true` | Hidden in the editor |
 | `locked` | bool | when `true` | Cannot be selected or edited in the editor |
 | `children` | array of nodes | when not empty | Child nodes, in order |
@@ -20,6 +21,10 @@ name such as `brush12`. Layers, groups and scatter sets never have one, their `n
 node `terrain_<id>_<label>` and ignores the key elsewhere, since brushes and meshes merge into their entity and an
 entity takes its node name from `targetname`. Editors older than the key read files that carry it and drop it when they
 save.
+
+`graph` is editor state only, like `hidden` and `locked`. It holds the position of an entity's node in the Logic
+graph, in graph points, and only nodes someone moved have it. Godot ignores it, and a value that is not two
+numbers is dropped on load.
 
 ## Ids
 

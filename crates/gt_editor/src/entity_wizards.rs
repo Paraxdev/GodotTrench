@@ -53,8 +53,23 @@ fn default_angle() -> f64 {
 
 /// A targetname not used yet, `base` followed by a number.
 pub fn unique_name(state: &EditorState, base: &str) -> String {
-    let taken: std::collections::BTreeSet<String> = state.doc.map.entities().filter_map(|(_, e)| e.targetname().map(str::to_string)).collect();
-    (1..).map(|i| format!("{base}_{i}")).find(|n| !taken.contains(n)).unwrap_or_else(|| base.to_string())
+    unique_name_in(&state.doc.map, base)
+}
+
+pub fn unique_name_in(map: &gt_doc::Map, base: &str) -> String {
+    let taken: std::collections::BTreeSet<&str> = map.entities().filter_map(|(_, e)| e.targetname()).collect();
+    (1..).map(|i| format!("{base}_{i}")).find(|n| !taken.contains(n.as_str())).unwrap_or_else(|| base.to_string())
+}
+
+/// The word a generated targetname starts with: `door` for func_door_rotating, `relay` for logic_relay, `trigger` for
+/// any trigger.
+pub fn name_base(classname: &str) -> &str {
+    let mut words = classname.split('_').filter(|w| !w.is_empty());
+    let first = words.next().unwrap_or("entity");
+    match words.next() {
+        Some(second) if !matches!(first, "trigger" | "light" | "prop") => second,
+        _ => first,
+    }
 }
 
 fn geometry_of(state: &EditorState, ids: &[NodeId]) -> Vec<NodeId> {
@@ -222,8 +237,7 @@ pub fn ensure_targetname(state: &mut EditorState, id: NodeId) -> Option<String> 
         return Some(n.to_string());
     }
 
-    let base = e.classname.split_once('_').map(|(_, rest)| rest).unwrap_or(&e.classname).to_string();
-    let name = unique_name(state, &base);
+    let name = unique_name(state, name_base(&e.classname));
     state.doc.edit("Name Entity", |m, _| {
         if let Some(e) = m.entity_mut(id) {
             e.properties.insert("targetname".into(), name.clone());
