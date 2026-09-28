@@ -15,6 +15,7 @@ tall as the middle of the window, since a graph needs room. Drag the divider or 
 | What you see | What it means |
 | --- | --- |
 | Node title | The entity's targetname, else its name from *Rename*, else its classname. Below it are the category and the classname |
+| Gray lines under the title | The settings that differ from the entity's defaults, like `max 3`, `wait 2 s` or `once`, cut to two short lines. A node without them is at its defaults. The Inspector shows all of them |
 | Header color | The category: the definition's group, else the classname's first word, so `logic_relay` is *logic*. See [Colors](#colors) |
 | Pins | Inputs on the left, outputs on the right, from the [entity definition](entities/README.md) plus any name the map already uses on that entity. A filled pin has a wire. Hover a pin for its type and the values it passes |
 | Yellow pin name | The name is not in the entity's definition, the Issues panel warns about it too |

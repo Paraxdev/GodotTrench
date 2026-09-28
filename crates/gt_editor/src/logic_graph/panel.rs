@@ -10,7 +10,7 @@ use gt_doc::issues::BUILTIN_INPUTS;
 use gt_doc::map::GraphFrame;
 
 use super::edit::{self, NewLink, Placement};
-use super::model::{ConnectionId, EdgeKind, GraphEdge, GraphModel, GraphNode, HEADER, Inputs, NodeKey, PIN_ROW, PinType, node_title, pin_label};
+use super::model::{ConnectionId, EdgeKind, GraphEdge, GraphModel, GraphNode, HEADER, Inputs, NodeKey, PIN_ROW, PinType, SETTING_ROW, node_title, pin_label};
 use crate::commands::Action;
 use crate::logic_sim::{self, SimResult};
 use crate::state::EditorState;
@@ -333,7 +333,7 @@ impl GraphState {
     fn pin_screen(&self, n: &GraphNode, output: bool, pin: usize) -> Pos2 {
         let p = self.node_pos(n);
         let x = if output { p.x + n.size.x } else { p.x };
-        self.to_screen(pos2(x, p.y + HEADER + PIN_ROW * (pin as f32 + 0.5)))
+        self.to_screen(pos2(x, p.y + n.head + PIN_ROW * (pin as f32 + 0.5)))
     }
 
     /// Screen position of a pin as last drawn, for tests that drive the canvas with the pointer.
@@ -440,7 +440,7 @@ impl GraphState {
         }
 
         let n = visible.iter().rev().map(|i| &self.model.nodes[*i]).find(|n| self.node_rect(n).contains(p))?;
-        let top = self.node_rect(n).min.y + HEADER * self.zoom;
+        let top = self.node_rect(n).min.y + n.head * self.zoom;
         let row = ((p.y - top) / (PIN_ROW * self.zoom)).floor();
         let pins = if from.output { &n.inputs } else { &n.outputs };
         (row >= 0.0).then(|| pins.get(row as usize)).flatten().map(|pin| PinRef { key: n.key.clone(), output: !from.output, name: pin.name.clone() })
@@ -1058,6 +1058,9 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
         clip.text(header.min + vec2(10.0, 7.0) * gs.zoom.max(0.4), Align2::LEFT_TOP, &n.title, title, theme::GRAY_7);
         if detail {
             text(header.min + vec2(10.0, 25.0) * gs.zoom, Align2::LEFT_TOP, &n.subtitle, 11.0, marker.or(category).unwrap_or(theme::GRAY_5));
+            for (row, line) in n.settings.iter().enumerate() {
+                text(header.min + vec2(10.0, HEADER + SETTING_ROW * row as f32 + 1.0) * gs.zoom, Align2::LEFT_TOP, line, 11.0, theme::GRAY_6);
+            }
         }
 
         let connected =

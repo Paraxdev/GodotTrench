@@ -1171,6 +1171,33 @@ fn logic_graph_drag_from_an_output_pin_to_an_input_pin_connects() {
 }
 
 #[test]
+fn logic_graph_nodes_with_settings_keep_their_pins_under_the_pointer() {
+    use gt_editor::logic_graph::model::NodeKey;
+
+    let mut f = Fixture::new();
+    let counter = named(&mut f, "logic_counter", "count", DVec3::ZERO);
+    f.state.doc.edit("set", |m, _| {
+        let props = &mut m.entity_mut(counter).unwrap().properties;
+        props.insert("max".into(), "5".into());
+        props.insert("min".into(), "-2".into());
+    });
+    let lamp = named(&mut f, "light", "lamp", DVec3::new(128.0, 0.0, 0.0));
+    wire(&mut f, counter, "changed", "lamp", "toggle");
+    let mut harness = logic_graph(f);
+
+    let logic = &harness.state().panels.logic;
+    let node = logic.model.node(&NodeKey::Entity(counter)).unwrap();
+    assert_eq!(node.settings, ["min -2 \u{b7} max 5"]);
+    let from = logic.pin_pos(&NodeKey::Entity(counter), true, "hit_max").unwrap();
+    let to = logic.pin_pos(&NodeKey::Entity(lamp), false, "turn_on").unwrap();
+    let top = logic.node_screen_rect(&NodeKey::Entity(counter)).unwrap().min.y;
+    assert!(from.y - top > gt_editor::logic_graph::model::HEADER * 0.5, "the pins sit below the title and the settings");
+    drag_through(&mut harness, &[from, from + egui::vec2(30.0, 10.0), (from + to.to_vec2()) / 2.0, to]);
+    let outputs = &harness.state().state.doc.map.entity(counter).unwrap().outputs;
+    assert!(outputs.iter().any(|o| (o.output.as_str(), o.input.as_str()) == ("hit_max", "turn_on")), "the wire starts at the pin that was drawn: {outputs:?}");
+}
+
+#[test]
 fn logic_graph_add_puts_a_new_node_in_free_space() {
     use gt_editor::logic_graph::model::NodeKey;
 

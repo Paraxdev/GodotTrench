@@ -141,6 +141,10 @@ pub struct GraphNode {
     pub unwired: bool,
     /// The position saved in the map.
     pub stored: Option<[f32; 2]>,
+    /// Key settings under the title, up to [`SETTING_LINES`] lines: the properties set away from their defaults.
+    pub settings: Vec<String>,
+    /// Height of the title and settings, where the pin rows start.
+    pub head: f32,
     /// Top left corner in graph space, the stored position or the automatic layout's.
     pub pos: Pos2,
     pub size: Vec2,
@@ -153,11 +157,11 @@ impl GraphNode {
 
     /// Graph space position of an input pin, on the left edge.
     pub fn input_pos(&self, pin: usize) -> Pos2 {
-        pos2(self.pos.x, self.pos.y + HEADER + PIN_ROW * (pin as f32 + 0.5))
+        pos2(self.pos.x, self.pos.y + self.head + PIN_ROW * (pin as f32 + 0.5))
     }
 
     pub fn output_pos(&self, pin: usize) -> Pos2 {
-        pos2(self.pos.x + self.size.x, self.pos.y + HEADER + PIN_ROW * (pin as f32 + 0.5))
+        pos2(self.pos.x + self.size.x, self.pos.y + self.head + PIN_ROW * (pin as f32 + 0.5))
     }
 
     pub fn input(&self, name: &str) -> Option<usize> {
@@ -172,6 +176,9 @@ impl GraphNode {
 /// Height of a node's title area and of one pin row, in graph points.
 pub const HEADER: f32 = 42.0;
 pub const PIN_ROW: f32 = 22.0;
+/// Height of one line of settings, and how many a node shows.
+pub const SETTING_ROW: f32 = 14.0;
+pub const SETTING_LINES: usize = 2;
 const MIN_WIDTH: f32 = 160.0;
 const MAX_WIDTH: f32 = 320.0;
 /// Rough width of a character, the layout must not depend on fonts to stay the same everywhere.
@@ -316,6 +323,8 @@ impl GraphModel {
                 logic: e.classname.starts_with("logic_"),
                 unwired: !wired.contains(id),
                 stored,
+                settings: def.map(|d| setting_tokens(e, d)).unwrap_or_default(),
+                head: HEADER,
                 pos: Pos2::ZERO,
                 size: Vec2::ZERO,
             });
@@ -351,6 +360,8 @@ impl GraphModel {
                 logic: false,
                 unwired: false,
                 stored: None,
+                settings: Vec::new(),
+                head: HEADER,
                 pos: Pos2::ZERO,
                 size: Vec2::ZERO,
             });
@@ -377,7 +388,7 @@ impl GraphModel {
         }
 
         for node in &mut model.nodes {
-            node.size = node_size(node);
+            node_size(node);
         }
 
         model
@@ -522,7 +533,8 @@ pub fn edge_label(conn: &IoConnection) -> String {
     parts.join("  ")
 }
 
-fn node_size(node: &GraphNode) -> Vec2 {
+/// Sets a node's size and packs its settings into the lines that fit.
+fn node_size(node: &mut GraphNode) {
     let rows = node.inputs.len().max(node.outputs.len()).max(1);
     let text = |s: &str| s.chars().count() as f32 * CHAR;
     let mut width = text(&node.title).max(text(&node.subtitle)) + 28.0;
@@ -532,7 +544,78 @@ fn node_size(node: &GraphNode) -> Vec2 {
         width = width.max(left + right + 44.0);
     }
 
-    vec2(width.clamp(MIN_WIDTH, MAX_WIDTH).round(), HEADER + PIN_ROW * rows as f32 + 8.0)
+    let width = width.clamp(MIN_WIDTH, MAX_WIDTH).round();
+    node.settings = pack_settings(&node.settings, ((width - 20.0) / SETTING_CHAR) as usize);
+    node.head = HEADER + SETTING_ROW * node.settings.len() as f32 + if node.settings.is_empty() { 0.0 } else { 3.0 };
+    node.size = vec2(width, node.head + PIN_ROW * rows as f32 + 8.0);
+}
+
+/// Rough width of a character of the smaller settings text.
+const SETTING_CHAR: f32 = 6.2;
+
+/// The properties of an entity set away from the definition's defaults, each as a short phrase like `max 3`, `wait 2 s`
+/// or `once`, in the order of the definition. Only kinds of value that read well in a few characters.
+fn setting_tokens(e: &gt_doc::Entity, def: &gt_formats::EntityDef) -> Vec<String> {
+    use gt_formats::PropertyType as T;
+    let mut tokens = Vec::new();
+    for p in &def.properties {
+        let Some(value) = e.property(&p.name).map(str::trim) else { continue };
+        let default = p.default.trim();
+        let number = |v: &str| v.parse::<f64>().ok();
+        let truthy = |v: &str| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on");
+        let name = &p.name;
+        let token = match p.ty {
+            T::Bool if truthy(value) != truthy(default) => Some(if truthy(value) { name.clone() } else { format!("{name} off") }),
+            T::Int | T::Float if number(value).is_some() && number(value) != number(default) => {
+                let unit = if p.description.to_lowercase().starts_with("seconds") { " s" } else { "" };
+                Some(format!("{name} {}{unit}", crate::widgets::format_number(number(value).unwrap_or_default())))
+            }
+            T::Choices if value != default => {
+                let label = p.options.iter().find(|(_, v)| v == value).map_or(value, |(l, _)| l.as_str());
+                Some(format!("{name} {label}"))
+            }
+            T::String | T::TargetDestination if value != default && !value.is_empty() => Some(format!("{name} {}", value.lines().next().unwrap_or_default())),
+            _ => None,
+        };
+        tokens.extend(token);
+    }
+
+    tokens
+}
+
+/// Fills lines of at most `width` characters with the settings, `\u{b7}` between them, and ends the last line with an
+/// ellipsis when some do not fit.
+fn pack_settings(tokens: &[String], width: usize) -> Vec<String> {
+    let width = width.max(8);
+    let clip = |s: &str, at: usize| -> String {
+        if s.chars().count() <= at { s.to_string() } else { s.chars().take(at.saturating_sub(1)).collect::<String>() + "\u{2026}" }
+    };
+    let mut lines: Vec<String> = Vec::new();
+    let mut left = tokens.iter().peekable();
+    while lines.len() < SETTING_LINES && left.peek().is_some() {
+        let mut line = String::new();
+        while let Some(t) = left.peek() {
+            let joined = if line.is_empty() { (*t).clone() } else { format!("{line} \u{b7} {t}") };
+            if joined.chars().count() > width && !line.is_empty() {
+                break;
+            }
+
+            line = clip(&joined, width);
+            left.next();
+        }
+
+        lines.push(line);
+    }
+
+    if left.peek().is_some()
+        && let Some(last) = lines.last_mut()
+        && !last.ends_with('\u{2026}')
+    {
+        let keep: String = last.chars().take(width - 2).collect();
+        *last = format!("{} \u{2026}", keep.trim_end());
+    }
+
+    lines
 }
 
 /// How a pin name is shown, an empty one being a connection without an output or input.
@@ -731,6 +814,56 @@ mod tests {
         assert_eq!(category(&game, "logic_counter"), "puzzles", "a definition's group wins over the prefix");
         assert_eq!(PinType::parse("Vector3"), PinType::Vector3);
         assert_eq!(PinType::parse("matrix"), PinType::Variant, "an unknown type still carries a value");
+    }
+
+    #[test]
+    fn nodes_show_the_settings_that_differ_from_the_defaults() {
+        let mut m = Map::new();
+        let set = |m: &mut Map, id: NodeId, props: &[(&str, &str)]| {
+            for (k, v) in props {
+                m.entity_mut(id).unwrap().properties.insert((*k).into(), (*v).into());
+            }
+        };
+        let plain = add(&mut m, "logic_counter", "plain", vec![]);
+        let counter = add(&mut m, "logic_counter", "count", vec![]);
+        set(&mut m, counter, &[("max", "5"), ("min", "0"), ("start_value", "2")]);
+        let timer = add(&mut m, "logic_timer", "tick", vec![]);
+        set(&mut m, timer, &[("interval", "2.5"), ("once", "1"), ("start_on", "0"), ("random_max", "0")]);
+        let door = add(&mut m, "func_door", "d", vec![]);
+        set(&mut m, door, &[("wait", "2"), ("speed", "5"), ("targetname", "d")]);
+        let unknown = add(&mut m, "prop_unknown", "u", vec![]);
+        set(&mut m, unknown, &[("max", "9")]);
+
+        let g = build(&m, &[plain, counter, timer, door, unknown], &[]);
+        let lines = |id: NodeId| g.node(&NodeKey::Entity(id)).unwrap().settings.clone();
+        assert!(lines(plain).is_empty(), "nothing set, nothing shown");
+        assert_eq!(lines(counter), ["max 5 \u{b7} start_value 2"], "a value equal to its default is left out");
+        assert_eq!(lines(timer), ["interval 2.5 s", "start_on off \u{b7} once"], "a bool is its name, or off when the default is on");
+        assert_eq!(lines(door), ["speed 5 \u{b7} wait 2 s"], "only a time in seconds gets the unit, not a speed per second");
+        assert!(lines(unknown).is_empty(), "no definition, no defaults to compare with");
+
+        let plain_node = g.node(&NodeKey::Entity(plain)).unwrap();
+        let shown = g.node(&NodeKey::Entity(counter)).unwrap();
+        assert_eq!(plain_node.head, HEADER);
+        assert_eq!(shown.head, HEADER + SETTING_ROW + 3.0);
+        assert_eq!(shown.size.y, shown.head + PIN_ROW * 4.0 + 8.0, "the node grows by the lines");
+        assert_eq!(shown.input_pos(0).y - shown.pos.y, shown.head + PIN_ROW * 0.5, "the pins start below the settings");
+    }
+
+    #[test]
+    fn settings_are_packed_into_two_short_lines() {
+        let tokens: Vec<String> = ["max 3", "min -1", "start_value 2", "steps 5", "interval 1.5 s", "loop"].map(String::from).to_vec();
+        let lines = pack_settings(&tokens, 24);
+        assert_eq!(lines.len(), SETTING_LINES);
+        assert!(lines.iter().all(|l| l.chars().count() <= 24), "{lines:?}");
+        assert_eq!(lines[0], "max 3 \u{b7} min -1");
+        assert!(lines[1].ends_with('\u{2026}'), "what does not fit is marked: {lines:?}");
+        assert_eq!(pack_settings(&tokens[..2], 24), ["max 3 \u{b7} min -1"]);
+
+        let long = pack_settings(&["message a rather long piece of text that goes on".to_string()], 20);
+        assert_eq!(long.len(), 1);
+        assert!(long[0].chars().count() <= 20 && long[0].ends_with('\u{2026}'), "{long:?}");
+        assert!(pack_settings(&[], 20).is_empty());
     }
 
     #[test]
