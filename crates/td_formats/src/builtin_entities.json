@@ -46,7 +46,7 @@
         { "name": "light_size", "type": "float", "default": "0", "description": "Radius in meters of the lamp for soft baked shadows, 0 uses the shadow softness of the bake" }
       ],
       "inputs": [{ "name": "turn_on" }, { "name": "turn_off" }, { "name": "toggle" }],
-      "outputs": [{ "name": "switched", "parameter": "on" }]
+      "outputs": [{ "name": "switched", "parameter": "on", "type": "bool" }]
     },
     { "classname": "func_detail", "type": "solid", "description": "Detail brushes", "color": "#99cc99ff", "node_class": "StaticBody3D", "properties": [] },
     { "classname": "func_geo", "type": "solid", "description": "Geometry without collision", "color": "#9999e6ff", "node_class": "Node3D", "properties": [] },
@@ -68,7 +68,7 @@
         { "name": "light_size", "type": "float", "default": "0", "description": "Radius in meters of the lamp for soft baked shadows, 0 uses the shadow softness of the bake" }
       ],
       "inputs": [{ "name": "turn_on" }, { "name": "turn_off" }, { "name": "toggle" }],
-      "outputs": [{ "name": "switched", "parameter": "on" }]
+      "outputs": [{ "name": "switched", "parameter": "on", "type": "bool" }]
     },
     {
       "classname": "light_probe", "type": "point", "description": "An extra light probe for Bake Lighting. Moving objects here pick up the baked bounce light, on top of the probes placed on a grid", "color": "#ffd966ff", "node_class": "LightmapProbe",
