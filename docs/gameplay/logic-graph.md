@@ -5,8 +5,10 @@ every output connection is a wire from an output pin on the right of one node to
 The graph is a view of the same outputs the Inspector edits, so a change in either shows in the other at once, and the
 map, the Godot build and the game work exactly as they did without it.
 
-Open it from *View > Panels > Logic*. It needs room, so drag its tab into the bottom dock next to Materials, or into a
-view's place.
+Open it from *View > Panels > Logic*. It opens next to Materials below the views and makes that dock about half as
+tall as the middle of the window, since a graph needs room. Drag the divider or the tab to change that.
+
+![The Logic panel of the Night District demo map: button_2 wired to garage_door and garage_door to garage_beacon, with Simulate highlighting the three steps pressing the button sets off, and hall_entry switching three lights on with delays](../assets/logic-graph/simulate.png)
 
 ## Reading the graph
 
@@ -53,15 +55,16 @@ undo works as everywhere else.
 | Tidy up | **Arrange** lays out the selected nodes by signal flow. With fewer than two selected, every node goes back to the automatic layout |
 | See everything | **Fit** |
 
-Nodes nobody moved follow the automatic layout, left to right the way signals flow. Once you move one, the others keep
-their places, and a new node appears next to what it is wired to. Blue and red marker nodes are not entities, so they
+Nodes nobody moved follow the automatic layout, left to right the way signals flow, and the view zooms to fit the
+panel until you zoom or pan yourself. Once you move a node or wire something in the graph, the others keep their
+places, and a new node appears next to what it is wired to. Blue and red marker nodes are not entities, so they
 cannot be moved. They sit next to the node that targets them.
 
 ## Simulate
 
 Select one entity, press **Simulate** and pick one of its outputs, or right click a node. The graph numbers every wire
-the output would set off in yellow, and a list at the bottom left shows each step with the time it arrives after the
-delays. It follows the runtime's rules: targets are found by targetname, and relays, timers, counters, doors and the
+the output would set off in yellow, and a list below the graph shows each step with the time it arrives after the
+delays. **Clear** ends the preview. It follows the runtime's rules: targets are found by targetname, and relays, timers, counters, doors and the
 other common entities pass the chain on. Runtime targets like `!player` are shown but not followed. Click a step to
 select its wire.
 
