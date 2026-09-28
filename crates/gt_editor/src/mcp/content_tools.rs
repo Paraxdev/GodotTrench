@@ -982,6 +982,76 @@ impl App {
         ok(json!({ "properties": self.state.doc.map.properties }))
     }
 
+    pub(crate) fn tool_bake_lighting(&mut self, args: &Value) -> ToolResult {
+        use crate::bake::{self, Options, Quality, View};
+        let view = match args["view"].as_str() {
+            None => None,
+            Some(name) => match View::ALL.into_iter().find(|v| v.name() == name) {
+                Some(v) => Some(v),
+                None => return err(format!("unknown view {name}, use lit, light, shadow or occlusion")),
+            },
+        };
+        if args["remove"].as_bool() == Some(true) {
+            if self.state.doc.map.lightmap.is_none() {
+                return err("the map has no baked lighting");
+            }
+
+            self.state.doc.edit("Remove Baked Lighting", |m, _| m.lightmap = None);
+            return ok(json!({ "removed": true }));
+        }
+
+        let mut options = Options::of(&self.state.doc.map);
+        if let Some(name) = args["quality"].as_str() {
+            match Quality::from_name(name) {
+                Some(q) => options.quality = q,
+                None => return err(format!("unknown quality {name}, use preview, medium, high or final")),
+            }
+        }
+
+        if let Some(t) = args["texel_size"].as_f64() {
+            options.texel_size = (t as f32).clamp(*bake::TEXEL_RANGE.start(), *bake::TEXEL_RANGE.end());
+        }
+
+        if let Some(s) = args["softness"].as_f64() {
+            options.softness = (s as f32).clamp(0.0, 1.0);
+        }
+
+        if let Some(name) = args["backend"].as_str() {
+            match gt_bake::Backend::ALL.into_iter().find(|b| bake::backend_name(*b) == name) {
+                Some(b) => options.backend = b,
+                None => return err(format!("unknown backend {name}")),
+            }
+        }
+
+        let baked = args["bake"].as_bool() != Some(false);
+        let mut out = json!({});
+        if baked {
+            let result = match bake::Job::run_blocking(&self.state, options) {
+                Ok(r) => r,
+                Err(e) => return err(format!("bake failed: {e}")),
+            };
+            let c = result.counts;
+            out = json!({
+                "width": result.lightmap.width, "height": result.lightmap.height, "texel_size": result.lightmap.texel_size,
+                "surfaces": c.surfaces, "baked_lights": c.baked_lights, "bounce_lights": c.bounce_lights, "realtime_lights": c.realtime_lights,
+                "seconds": result.seconds, "summary": result.summary(),
+            });
+            bake::apply(&mut self.state, result, options);
+        }
+
+        if let Some(v) = view {
+            self.state.prefs.bake_view = v;
+        }
+
+        if baked || view.is_some() {
+            self.state.prefs.shade = crate::state::Shade::Baked;
+        }
+
+        out["has_bake"] = json!(self.state.doc.map.lightmap.is_some());
+        out["out_of_date"] = json!(bake::is_out_of_date(&self.state.doc.map, &self.state.game));
+        ok(out)
+    }
+
     pub(crate) fn tool_terrain_edit(&mut self, args: &Value) -> ToolResult {
         use gt_doc::terrain::{SculptBrush, SculptMode};
         let given = match optional_id(args, "id") {

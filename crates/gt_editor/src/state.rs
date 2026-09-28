@@ -21,6 +21,8 @@ pub enum Shade {
     /// Textured with the map's lights, sun shadows, sky and fog.
     Lit,
     Wireframe,
+    /// Like Lit, with the baked light map on the surfaces it covers.
+    Baked,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,10 +41,16 @@ impl Shade {
             Shade::Flat => "flat",
             Shade::Lit => "lit",
             Shade::Wireframe => "wireframe",
+            Shade::Baked => "baked",
         }
     }
 
-    pub const ALL: [Shade; 4] = [Shade::Textured, Shade::Flat, Shade::Lit, Shade::Wireframe];
+    pub const ALL: [Shade; 5] = [Shade::Textured, Shade::Flat, Shade::Lit, Shade::Baked, Shade::Wireframe];
+
+    /// Lit with the scene's lights, sky and fog, baked or not.
+    pub fn is_lit(&self) -> bool {
+        matches!(self, Shade::Lit | Shade::Baked)
+    }
 
     pub fn from_name(name: &str) -> Option<Shade> {
         Self::ALL.into_iter().find(|s| s.label().eq_ignore_ascii_case(name))
@@ -190,6 +198,8 @@ pub struct Prefs {
     pub recent_files: Vec<PathBuf>,
     pub recent_projects: Vec<PathBuf>,
     pub shade: Shade,
+    /// Which baked map the Baked shading shows.
+    pub bake_view: crate::bake::View,
     pub invert_y: bool,
     pub mcp_http: bool,
     pub mcp_port: u16,
@@ -281,6 +291,7 @@ impl Default for Prefs {
             recent_files: Vec::new(),
             recent_projects: Vec::new(),
             shade: Shade::Textured,
+            bake_view: crate::bake::View::Lit,
             invert_y: false,
             mcp_http: false,
             mcp_port: crate::DEFAULT_MCP_PORT,
@@ -616,6 +627,7 @@ impl EditorState {
             Shade::Flat => ShadeMode::Flat,
             Shade::Lit => ShadeMode::Lit,
             Shade::Wireframe => ShadeMode::Wireframe,
+            Shade::Baked => ShadeMode::Baked,
         }
     }
 

@@ -18,6 +18,8 @@ const BATCH_BYTES: usize = 64 * 1024;
 const MAX_RAW: u32 = 1 << 30;
 /// Past 15 zstd gets several times slower for a few percent, and autosave writes big maps every few minutes.
 const LEVEL: i32 = 15;
+/// Baked light maps run to tens of megabytes, where the higher levels take seconds.
+const BULK_LEVEL: i32 = 3;
 
 pub const HEAD: [u8; 4] = *b"HEAD";
 pub const NODE: [u8; 4] = *b"NODE";
@@ -177,8 +179,24 @@ pub fn encode(value: &Value, unknown: &[RawChunk]) -> Vec<u8> {
     out
 }
 
+/// A chunk holding `raw`, compressed at a level that keeps saving quick for payloads of many megabytes.
+pub fn bulk_chunk(tag: [u8; 4], raw: &[u8]) -> RawChunk {
+    let data = compress_at(raw, BULK_LEVEL);
+    RawChunk { tag, flags: FLAG_ZSTD, raw_size: raw.len() as u32, data: data.into() }
+}
+
+/// The uncompressed payload of a chunk, None when it is damaged.
+pub fn chunk_payload(chunk: &RawChunk) -> Option<Vec<u8>> {
+    let h = Header { tag: chunk.tag, flags: chunk.flags, raw: chunk.raw_size, stored: chunk.data.len() };
+    payload(&h, &chunk.data)
+}
+
 fn compress(raw: &[u8]) -> Vec<u8> {
-    let mut c = zstd::bulk::Compressor::new(LEVEL).expect("zstd level is valid");
+    compress_at(raw, LEVEL)
+}
+
+fn compress_at(raw: &[u8], level: i32) -> Vec<u8> {
+    let mut c = zstd::bulk::Compressor::new(level).expect("zstd level is valid");
     c.include_checksum(true).expect("zstd accepts the checksum flag");
     c.compress(raw).expect("zstd compresses into a growing buffer")
 }

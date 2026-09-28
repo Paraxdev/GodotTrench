@@ -338,7 +338,7 @@ pub fn tool_definitions() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": {
                 "grid": { "type": "number", "exclusiveMinimum": 0, "description": "positive, clamped to 0.125..1024" }, "snap": { "type": "boolean" }, "uv_lock": { "type": "boolean" },
                 "tool": { "type": "string" }, "material": { "type": "string" }, "textured": { "type": "boolean" },
-                "shade": { "type": "string", "enum": ["textured", "flat", "lit", "wireframe"] },
+                "shade": { "type": "string", "enum": ["textured", "flat", "lit", "baked", "wireframe"] },
                 "mesh_component": { "type": "string", "enum": ["vertex", "edge", "face"] },
                 "scatter_items": { "type": "array", "items": { "type": "string" } },
                 "brush_radius": { "type": "number" },
@@ -473,6 +473,17 @@ pub fn tool_definitions() -> Vec<Value> {
             "name": "set_map_properties",
             "description": "Sets worldspawn keys, e.g. message, sun_angles, sun_color, sun_energy, ambient_color, sky_top_color, sky_horizon_color, sky_ground_color, fog_color, fog_density, ambient_energy, sky_energy, glow_intensity (Godot glow for emissive materials and lamps), ssr (1 turns on Godot's screen space reflections for wet streets and glossy floors). null removes a key.",
             "inputSchema": { "type": "object", "properties": { "properties": { "type": "object" } }, "required": ["properties"] }
+        }),
+        json!({
+            "name": "bake_lighting",
+            "description": "Bakes the light, sun shadow and ambient occlusion maps of the static geometry into the map, like Godot > Bake Lighting, and switches the view to baked shading. The Godot addon builds the stored bake into a LightmapGI. Moving brush entities, triggers and tool textures are left out. A light's bake_mode key (auto, baked, bounce, realtime) picks how it is baked, auto bakes it unless a targetname or start_on 0 lets I/O switch it. quality: preview, medium, high or final. texel_size: map units per light map texel, 2 to 128, 16 by default. softness 0..1 spreads lights without a light_size so shadows get soft edges. Options not given keep what the map was last baked with. view: lit (textures with the bake), light, shadow or occlusion shows that map. bake: false only changes the view. remove: true drops the bake. Returns the atlas size, the counts, whether the map has a bake (has_bake) and whether it changed since (out_of_date).",
+            "inputSchema": { "type": "object", "properties": {
+                "quality": { "type": "string", "enum": ["preview", "medium", "high", "final"] },
+                "texel_size": { "type": "number" }, "softness": { "type": "number" },
+                "backend": { "type": "string", "enum": ["cpu"] },
+                "view": { "type": "string", "enum": ["lit", "light", "shadow", "occlusion"] },
+                "bake": { "type": "boolean" }, "remove": { "type": "boolean" }
+            } }
         }),
         json!({
             "name": "terrain_edit",

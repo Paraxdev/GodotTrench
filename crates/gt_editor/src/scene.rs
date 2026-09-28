@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
 
 use glam::Vec3;
 use gt_core::{Aabb, Color, DMat4, DVec2, DVec3, NodeId};
@@ -115,6 +116,7 @@ fn build_drag_batches(renderer: &Renderer, game: &GameConfig, base: &Map, nodes:
         stats: SceneStats::default(),
         instance_bounds: HashMap::new(),
         model_bounds: HashMap::new(),
+        charts: HashMap::new(),
     };
     for id in nodes {
         match base.get(*id).map(|n| &n.kind) {
@@ -176,6 +178,16 @@ pub struct SceneCache {
     fixtures: gt_doc::entity::OffFixtures,
     /// Set while the cache holds the selected nodes built as if unselected, for a beauty shot.
     selection_hidden: bool,
+    /// The light map on the GPU and the view it was uploaded for.
+    lightmap: Option<(Arc<gt_doc::lightmap::Lightmap>, crate::bake::View)>,
+}
+
+fn same_lightmap(a: &Option<Arc<gt_doc::lightmap::Lightmap>>, b: &Option<Arc<gt_doc::lightmap::Lightmap>>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+        (None, None) => true,
+        _ => false,
+    }
 }
 
 pub fn v3(v: DVec3) -> [f32; 3] {
@@ -282,6 +294,8 @@ struct Builder<'a> {
     stats: SceneStats,
     instance_bounds: HashMap<NodeId, Aabb>,
     model_bounds: HashMap<NodeId, Aabb>,
+    /// Light map coordinates of the faces of the node being built, empty when it is not baked.
+    charts: HashMap<u32, [[f32; 4]; 2]>,
 }
 
 fn push_line(list: &mut Vec<LineVertex>, a: DVec3, b: DVec3, color: [f32; 4]) {
@@ -425,6 +439,7 @@ fn build_scatter(
                                 normal: (normal_m * v.normal).normalize_or_zero().to_array(),
                                 uv: v.uv,
                                 color: tint,
+                                uv2: gt_render::NO_UV2,
                             })
                             .collect();
                         out.triangles += part.indices.len() / 3;
@@ -525,6 +540,10 @@ impl Builder<'_> {
         }
     }
 
+    fn uv2(&self, face: usize, p: DVec3) -> [f32; 2] {
+        self.charts.get(&(face as u32)).map_or(gt_render::NO_UV2, |rows| crate::bake::uv2(rows, p))
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn brush(
         &mut self,
@@ -562,7 +581,13 @@ impl Builder<'_> {
                             // Without a blend material the weight is shown as a green shift.
                             [color[0] * (1.0 - 0.35 * a), color[1], color[2] * (1.0 - 0.35 * a), color[3]]
                         };
-                        MeshVertex { pos: v3(grid.positions[k]), normal: v3(grid.normals[k]), uv: [uv.x as f32, uv.y as f32], color: c }
+                        MeshVertex {
+                            pos: v3(grid.positions[k]),
+                            normal: v3(grid.normals[k]),
+                            uv: [uv.x as f32, uv.y as f32],
+                            color: c,
+                            uv2: self.uv2(fi, grid.positions[k]),
+                        }
                     })
                     .collect();
                 let indices: Vec<u32> = gt_geom::displacement::triangles(grid.size).flat_map(|(a, b, c)| [a as u32, b as u32, c as u32]).collect();
@@ -603,7 +628,7 @@ impl Builder<'_> {
                     let p = brush.vertices[*i as usize];
                     let uv = face.data.uv.uv(p, size);
                     let c = face_vertex_color(color, painted.then(|| face.data.colors[k]), blend.is_some());
-                    MeshVertex { pos: v3(p), normal: n, uv: [uv.x as f32, uv.y as f32], color: c }
+                    MeshVertex { pos: v3(p), normal: n, uv: [uv.x as f32, uv.y as f32], color: c, uv2: self.uv2(fi, p) }
                 })
                 .collect();
             let key = self.draw_key(blend.as_deref().unwrap_or(mat));
@@ -617,7 +642,13 @@ impl Builder<'_> {
                             .map(|p| {
                                 let uv = face.data.uv.uv(*p, size);
                                 let vc = painted.then(|| mix_corners(gt_geom::polygon::corner_weights(&corners, &tris, *p), |k| face.data.colors[k]));
-                                MeshVertex { pos: v3(*p), normal: n, uv: [uv.x as f32, uv.y as f32], color: face_vertex_color(color, vc, blend.is_some()) }
+                                MeshVertex {
+                                    pos: v3(*p),
+                                    normal: n,
+                                    uv: [uv.x as f32, uv.y as f32],
+                                    color: face_vertex_color(color, vc, blend.is_some()),
+                                    uv2: self.uv2(fi, *p),
+                                }
                             })
                             .collect();
                         self.stats.triangles += piece_verts.len().saturating_sub(2);
@@ -687,7 +718,13 @@ impl Builder<'_> {
                 .map(|(k, i)| {
                     let uv = mesh.corner_uv(fi, k, size);
                     let c = face_vertex_color(color, painted.then(|| face.data.colors[k]), blend.is_some());
-                    MeshVertex { pos: v3(mesh.vertices[*i as usize]), normal: v3(normals[fi][k]), uv: [uv.x as f32, uv.y as f32], color: c }
+                    MeshVertex {
+                        pos: v3(mesh.vertices[*i as usize]),
+                        normal: v3(normals[fi][k]),
+                        uv: [uv.x as f32, uv.y as f32],
+                        color: c,
+                        uv2: self.uv2(fi, mesh.vertices[*i as usize]),
+                    }
                 })
                 .collect();
             let corner_tris = mesh.triangulate_corners(fi);
@@ -714,6 +751,7 @@ impl Builder<'_> {
                                     normal: Vec3::from_array(normal).normalize_or_zero().to_array(),
                                     uv: mix_corners(w, |k| verts[k].uv),
                                     color: face_vertex_color(color, vc, blend.is_some()),
+                                    uv2: self.uv2(fi, *p),
                                 }
                             })
                             .collect();
@@ -773,6 +811,7 @@ impl Builder<'_> {
                             normal: (normal_m * v.normal).normalize_or_zero().to_array(),
                             uv: v.uv,
                             color: fill,
+                            uv2: gt_render::NO_UV2,
                         })
                         .collect();
                     self.stats.triangles += part.indices.len() / 3;
@@ -832,7 +871,8 @@ impl Builder<'_> {
         let corners = [center - x - z, center + x - z, center + x + z, center - x + z];
         let uvs = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
         let color = if selected { [1.0, 0.7, 0.7, 0.95] } else { [1.0, 1.0, 1.0, 0.9] };
-        let verts: Vec<MeshVertex> = corners.iter().zip(uvs).map(|(p, uv)| MeshVertex { pos: v3(*p), normal: v3(y), uv, color }).collect();
+        let verts: Vec<MeshVertex> =
+            corners.iter().zip(uvs).map(|(p, uv)| MeshVertex { pos: v3(*p), normal: v3(y), uv, color, uv2: gt_render::NO_UV2 }).collect();
         // Both windings so the preview is visible from either side.
         self.transparent.add_polygon(material, &verts);
         let back: Vec<MeshVertex> = verts.iter().rev().copied().collect();
@@ -937,7 +977,13 @@ impl Builder<'_> {
                     for (i, j) in tri {
                         let p = t.vertex(i, j);
                         indices.push(verts.len() as u32);
-                        verts.push(MeshVertex { pos: v3(p), normal: v3(t.normal(i, j)), uv: [(p.x / tile) as f32, (p.z / tile) as f32], color: tint });
+                        verts.push(MeshVertex {
+                            pos: v3(p),
+                            normal: v3(t.normal(i, j)),
+                            uv: [(p.x / tile) as f32, (p.z / tile) as f32],
+                            color: tint,
+                            uv2: gt_render::NO_UV2,
+                        });
                     }
                 }
             }
@@ -977,6 +1023,7 @@ impl Builder<'_> {
                                 normal: (normal_m * v.normal).normalize_or_zero().to_array(),
                                 uv: v.uv,
                                 color: tint,
+                                uv2: gt_render::NO_UV2,
                             })
                             .collect();
                         let key = material.unwrap_or(&part.material);
@@ -1032,6 +1079,7 @@ fn build_terrain(
     chunks_to_build: Option<&BTreeSet<usize>>,
     previous: Option<TerrainGpu>,
     wireframe: bool,
+    chart: Option<[[f32; 4]; 2]>,
 ) -> TerrainGpu {
     let layers: Vec<(String, f32, f32, f32)> = t
         .layers
@@ -1059,7 +1107,9 @@ fn build_terrain(
         for j in cj..=cj + h {
             for i in ci..=ci + w {
                 let weights = t.weights(i, j);
-                verts.push(MeshVertex { pos: v3(t.vertex(i, j)), normal: v3(t.normal(i, j)), uv: [flag, 0.0], color: weights });
+                let p = t.vertex(i, j);
+                let uv2 = chart.map_or(gt_render::NO_UV2, |rows| crate::bake::uv2(&rows, p));
+                verts.push(MeshVertex { pos: v3(p), normal: v3(t.normal(i, j)), uv: [flag, 0.0], color: weights, uv2 });
             }
         }
 
@@ -1267,6 +1317,7 @@ fn build_bucket<'a>(ctx: &BucketCtx<'a>, ids: &[NodeId]) -> Builder<'a> {
         stats: SceneStats::default(),
         instance_bounds: HashMap::new(),
         model_bounds: HashMap::new(),
+        charts: HashMap::new(),
     };
     let is_selected = |id: NodeId| ctx.selection.nodes.contains(&id) || map.ancestors(id).iter().any(|a| ctx.selection.nodes.contains(a));
     for &id in ids {
@@ -1298,6 +1349,7 @@ fn build_bucket<'a>(ctx: &BucketCtx<'a>, ids: &[NodeId]) -> Builder<'a> {
         let is_trigger = entity.is_some_and(|e| is_volume(ctx.game, e));
         builder.volume = is_trigger;
         builder.dark = in_set(&ctx.fixtures.dark);
+        builder.charts = crate::bake::charts_of(map, id);
         match &node.kind {
             NodeKind::Brush(brush) => {
                 builder.brush(brush, tint, selected, |fi| ctx.selected_faces.contains(&(id, fi)), edge_2d, is_trigger, EDGE_COLOR, ctx.pieces.get(&id))
@@ -1311,6 +1363,7 @@ fn build_bucket<'a>(ctx: &BucketCtx<'a>, ids: &[NodeId]) -> Builder<'a> {
         }
     }
 
+    builder.charts.clear();
     builder
 }
 
@@ -1341,6 +1394,29 @@ impl SceneCache {
         self.walkable_generation = None;
     }
 
+    fn upload_lightmap(&mut self, renderer: &mut Renderer, state: &EditorState) {
+        let view = state.prefs.bake_view;
+        let current = state.doc.map.lightmap.clone().map(|lm| (lm, view));
+        let same = match (&self.lightmap, &current) {
+            (Some((a, av)), Some((b, bv))) => Arc::ptr_eq(a, b) && av == bv,
+            (None, None) => true,
+            _ => false,
+        };
+        if same {
+            return;
+        }
+
+        match &current {
+            Some((lm, view)) => {
+                let texels = crate::bake::preview_texels(lm, *view);
+                renderer.set_lightmap(Some((lm.width, lm.height, &texels)), *view != crate::bake::View::Lit, *view == crate::bake::View::Light);
+            }
+            None => renderer.set_lightmap(None, false, false),
+        }
+
+        self.lightmap = current;
+    }
+
     fn bucket_of(id: NodeId) -> usize {
         (id.0 % BUCKETS) as usize
     }
@@ -1366,9 +1442,10 @@ impl SceneCache {
             self.walkable_generation = walkable;
         }
 
+        self.upload_lightmap(renderer, state);
         let prefab_generation = state.prefabs.generation;
         let model_generation = state.models.generation;
-        let lit = state.prefs.shade == crate::state::Shade::Lit;
+        let lit = state.prefs.shade.is_lit();
         let wireframe = state.prefs.shade == crate::state::Shade::Wireframe;
         if self.revision == state.doc.revision
             && self.project_generation == project_generation
@@ -1410,6 +1487,7 @@ impl SceneCache {
                     || self.wireframe != wireframe
                     || prev.editor.cordon != map.editor.cordon
                     || prev.editor.cordon_enabled != map.editor.cordon_enabled
+                    || !same_lightmap(&prev.lightmap, &map.lightmap)
             }
         };
         self.wireframe = wireframe;
@@ -1637,11 +1715,14 @@ impl SceneCache {
                     let prev_terrain = self.prev_map.as_ref().and_then(|p| p.terrain(id));
                     let prev_selected = self.prev_selection.nodes.contains(&id)
                         || self.prev_map.as_ref().is_some_and(|p| p.ancestors(id).iter().any(|a| self.prev_selection.nodes.contains(a)));
-                    let chunks = match (prev_terrain, &previous, full || selected != prev_selected) {
+                    let chart = crate::bake::charts_of(&map, id).get(&0).copied();
+                    // Sculpting drops the bake of the whole terrain, so every chunk loses its light map coordinates.
+                    let prev_chart = self.prev_map.as_ref().and_then(|p| crate::bake::charts_of(p, id).get(&0).copied());
+                    let chunks = match (prev_terrain, &previous, full || selected != prev_selected || chart != prev_chart) {
                         (Some(old), Some(_), false) => changed_chunks(old, t),
                         _ => None,
                     };
-                    let gpu = build_terrain(renderer, t, selected, chunks.as_ref(), previous, wireframe);
+                    let gpu = build_terrain(renderer, t, selected, chunks.as_ref(), previous, wireframe, chart);
                     self.terrains.insert(id, gpu);
                 }
                 _ => {

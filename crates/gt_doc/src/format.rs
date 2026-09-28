@@ -123,7 +123,14 @@ pub fn to_string(map: &Map) -> String {
 
 /// The map in the binary container that `.gtm` files are saved in.
 pub fn to_bytes(map: &Map) -> Vec<u8> {
-    crate::binary::encode(&to_value(map), &map.unknown_chunks)
+    match &map.lightmap {
+        Some(lm) => {
+            let mut chunks = map.unknown_chunks.clone();
+            chunks.push(crate::binary::bulk_chunk(crate::lightmap::TAG, &lm.to_chunk()));
+            crate::binary::encode(&to_value(map), &chunks)
+        }
+        None => crate::binary::encode(&to_value(map), &map.unknown_chunks),
+    }
 }
 
 /// Identifies the map content the way the END chunk of `to_bytes` records it.
@@ -287,8 +294,16 @@ pub fn from_str(text: &str) -> Result<Map, FormatError> {
 
 /// Reads a map file of either kind, told apart by its first bytes.
 pub fn from_bytes(bytes: &[u8]) -> Result<Loaded, FormatError> {
-    let (value, problems, unknown) = file_value(bytes)?;
+    let (value, mut problems, mut unknown) = file_value(bytes)?;
     let mut map = from_value(value)?;
+    if let Some(at) = unknown.iter().position(|c| c.tag == crate::lightmap::TAG) {
+        let chunk = unknown.remove(at);
+        map.lightmap = crate::binary::chunk_payload(&chunk).and_then(|raw| crate::lightmap::Lightmap::from_chunk(&raw)).map(std::sync::Arc::new);
+        if map.lightmap.is_none() {
+            problems.push("the baked lighting is damaged or from a newer editor and was dropped, bake the lighting again".into());
+        }
+    }
+
     map.unknown_chunks = unknown;
     Ok(Loaded { map, problems })
 }
@@ -333,6 +348,7 @@ fn from_value(mut value: Value) -> Result<Map, FormatError> {
 
     migrate(&mut value, version);
     fill_defaults(&mut value);
+    let lightmap = value.get("lightmap").and_then(crate::lightmap::Lightmap::from_json).map(std::sync::Arc::new);
     let file: FileMap = serde_json::from_value(value)?;
     file.layers.iter().try_for_each(validate)?;
 
@@ -345,6 +361,7 @@ fn from_value(mut value: Value) -> Result<Map, FormatError> {
         editor: file.editor,
         unknown_chunks: Vec::new(),
         instance_extents: Default::default(),
+        lightmap,
     };
     for layer in file.layers {
         if matches!(layer.kind, FileKind::Layer(_)) {
@@ -368,7 +385,19 @@ pub fn load(path: &Path) -> Result<Loaded, FormatError> {
 pub fn save(map: &Map, path: &Path) -> Result<(), FormatError> {
     let tmp = path.with_extension("gtm.tmp");
     let json = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("json"));
-    std::fs::write(&tmp, if json { to_string(map).into_bytes() } else { to_bytes(map) })?;
+    let bytes = match (&map.lightmap, json) {
+        (Some(lm), true) => {
+            let mut value = to_value(map);
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("lightmap".into(), lm.to_json());
+            }
+
+            crate::json_fmt::to_string(&value).into_bytes()
+        }
+        (None, true) => to_string(map).into_bytes(),
+        (_, false) => to_bytes(map),
+    };
+    std::fs::write(&tmp, bytes)?;
     std::fs::rename(&tmp, path)?;
     Ok(())
 }
@@ -401,6 +430,29 @@ mod tests {
         let l2 = m.add_layer("Details");
         m.get_mut(l2).unwrap().hidden = true;
         m
+    }
+
+    #[test]
+    fn baked_lighting_survives_both_layouts() {
+        let mut m = sample();
+        let mut lm = crate::lightmap::Lightmap { width: 4, height: 2, texel_size: 16.0, scene: 5, ..Default::default() };
+        lm.light = (0..24).map(|i| crate::lightmap::f32_to_f16(i as f32 * 0.25)).collect();
+        lm.shadow = vec![255; 8];
+        lm.ao = (0..8).map(|i| i as u8 * 30).collect();
+        lm.charts.push(crate::lightmap::Chart { node: 2, face: 4, rows: [[0.25, 0.0, 0.0, 0.5], [0.0, 0.0, 0.5, 0.125]] });
+        lm.nodes.insert(2, 77);
+        m.lightmap = Some(std::sync::Arc::new(lm));
+        let back = from_bytes(&to_bytes(&m)).unwrap();
+        assert!(back.problems.is_empty(), "{:?}", back.problems);
+        assert_eq!(back.map.lightmap, m.lightmap);
+        assert!(back.map.unknown_chunks.is_empty(), "the chunk is read, not kept as unknown");
+
+        let dir = std::env::temp_dir().join(format!("gt_lightmap_json_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("lit.json");
+        save(&m, &path).unwrap();
+        assert_eq!(load(&path).unwrap().map.lightmap, m.lightmap);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

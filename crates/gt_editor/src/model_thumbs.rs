@@ -140,8 +140,11 @@ fn render_model(renderer: &mut Renderer, scratch: &mut Option<ViewTarget>, model
             continue;
         }
 
-        let verts: Vec<MeshVertex> =
-            part.vertices.iter().map(|v| MeshVertex { pos: v.pos.to_array(), normal: v.normal.to_array(), uv: v.uv, color: [1.0; 4] }).collect();
+        let verts: Vec<MeshVertex> = part
+            .vertices
+            .iter()
+            .map(|v| MeshVertex { pos: v.pos.to_array(), normal: v.normal.to_array(), uv: v.uv, color: [1.0; 4], uv2: gt_render::NO_UV2 })
+            .collect();
         batch.add_triangles(&part.material, &verts, &part.indices);
     }
 

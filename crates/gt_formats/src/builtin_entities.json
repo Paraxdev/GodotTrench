@@ -9,6 +9,7 @@
         { "name": "sun_angles", "type": "string", "default": "-40 -45", "description": "Sun pitch and yaw in degrees" },
         { "name": "sun_color", "type": "color", "default": "255 245 224", "description": "Sun color" },
         { "name": "sun_energy", "type": "float", "default": "1.1", "description": "Sun brightness" },
+        { "name": "sun_bake_mode", "type": "choices", "default": "auto", "description": "How Bake Lighting treats the sun: baked with its shadow, only its bounced light, or left real time", "options": [["auto", "auto"], ["baked", "baked"], ["bounce only", "bounce"], ["real time", "realtime"]] },
         { "name": "ambient_color", "type": "color", "default": "66 71 84", "description": "Ambient light" },
         { "name": "sky_top_color", "type": "color", "default": "82 128 199", "description": "Sky zenith" },
         { "name": "sky_horizon_color", "type": "color", "default": "184 204 224", "description": "Sky horizon" },
@@ -56,7 +57,9 @@
         { "name": "start_on", "type": "bool", "default": "1", "description": "Starts switched on" },
         { "name": "shadows", "type": "bool", "default": "0", "description": "Casts shadows, costs more to render" },
         { "name": "fixture", "type": "target_destination", "default": "", "description": "Targetname of the lamp geometry (* for a prefix) that follows the light: shown while on, hidden or dark while off" },
-        { "name": "fixture_off", "type": "choices", "default": "hide", "description": "What a fixture does while the light is off", "options": [["hide", "hide"], ["dark (emission off)", "dark"]] }
+        { "name": "fixture_off", "type": "choices", "default": "hide", "description": "What a fixture does while the light is off", "options": [["hide", "hide"], ["dark (emission off)", "dark"]] },
+        { "name": "bake_mode", "type": "choices", "default": "auto", "description": "How Bake Lighting treats the light. Auto bakes it unless a targetname or start_on 0 lets I/O switch it, bounce bakes only its bounced light and keeps the direct light real time", "options": [["auto", "auto"], ["baked", "baked"], ["bounce only", "bounce"], ["real time", "realtime"]] },
+        { "name": "light_size", "type": "float", "default": "0", "description": "Radius in meters of the lamp for soft baked shadows, 0 uses the shadow softness of the bake" }
       ],
       "inputs": [{ "name": "turn_on" }, { "name": "turn_off" }, { "name": "toggle" }],
       "outputs": [{ "name": "switched", "parameter": "on" }]
@@ -483,7 +486,9 @@
         { "name": "start_on", "type": "bool", "default": "1", "description": "Starts switched on" },
         { "name": "shadows", "type": "bool", "default": "0", "description": "Casts shadows, costs more to render" },
         { "name": "fixture", "type": "target_destination", "default": "", "description": "Targetname of the lamp geometry (* for a prefix) that follows the light: shown while on, hidden or dark while off" },
-        { "name": "fixture_off", "type": "choices", "default": "hide", "description": "What a fixture does while the light is off", "options": [["hide", "hide"], ["dark (emission off)", "dark"]] }
+        { "name": "fixture_off", "type": "choices", "default": "hide", "description": "What a fixture does while the light is off", "options": [["hide", "hide"], ["dark (emission off)", "dark"]] },
+        { "name": "bake_mode", "type": "choices", "default": "auto", "description": "How Bake Lighting treats the light. Auto bakes it unless a targetname or start_on 0 lets I/O switch it, bounce bakes only its bounced light and keeps the direct light real time", "options": [["auto", "auto"], ["baked", "baked"], ["bounce only", "bounce"], ["real time", "realtime"]] },
+        { "name": "light_size", "type": "float", "default": "0", "description": "Radius in meters of the lamp for soft baked shadows, 0 uses the shadow softness of the bake" }
       ],
       "inputs": [{ "name": "turn_on" }, { "name": "turn_off" }, { "name": "toggle" }],
       "outputs": [{ "name": "switched", "parameter": "on" }]

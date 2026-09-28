@@ -121,6 +121,8 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("View: Shade Textured".into(), Action::SetShade(Shade::Textured)),
         ("View: Shade Flat".into(), Action::SetShade(Shade::Flat)),
         ("View: Lit Preview".into(), Action::SetShade(Shade::Lit)),
+        ("View: Baked Lighting".into(), Action::SetShade(Shade::Baked)),
+        ("Godot: Bake Lighting".into(), Action::BakeLighting),
         ("View: Shade Wireframe".into(), Action::SetShade(Shade::Wireframe)),
         ("View: Set Cordon from Selection".into(), Action::SetCordonFromSelection),
         ("View: Toggle Cordon".into(), Action::ToggleCordon),

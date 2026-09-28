@@ -970,7 +970,7 @@ impl Viewport {
             params.grid_size = 0.0;
         }
 
-        let lit = state.prefs.shade == crate::state::Shade::Lit;
+        let lit = state.prefs.shade.is_lit();
         let mut frame = Frame::default();
         frame.overlay_lines.extend(grid.as_ref());
         scene.fill_frame(&mut frame, is_2d, lit, overlays);
@@ -992,7 +992,7 @@ impl Viewport {
             orthographic: is_2d,
             clear: if is_2d {
                 crate::theme::linear(crate::theme::GRAY_0)
-            } else if state.prefs.shade == crate::state::Shade::Lit {
+            } else if state.prefs.shade.is_lit() {
                 BG_LIT
             } else {
                 crate::theme::linear(crate::theme::GRAY_1)
@@ -1015,7 +1015,7 @@ impl Viewport {
             frame.overlay_lines.extend(grid.as_ref());
         }
 
-        let lit = state.prefs.shade == crate::state::Shade::Lit;
+        let lit = state.prefs.shade.is_lit();
         scene.fill_frame(&mut frame, is_2d, lit, true);
         frame.sky = !is_2d && lit;
         frame.overlay_lines.extend(tools.as_ref());
