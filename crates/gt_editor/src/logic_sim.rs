@@ -61,6 +61,17 @@ pub fn triggered_outputs(classname: &str, input: &str) -> &'static [&'static str
         ("logic_sequence", "start") => &["step_1", "step_2", "step_3", "step_4", "step_5", "step_6", "step_7", "step_8", "step", "finished"],
         ("logic_branch", "test" | "set_and_test") => &["on_true", "on_false"],
         ("logic_counter", "add" | "subtract" | "set_value" | "reset") => &["changed"],
+        ("logic_gate", "set_a" | "set_b" | "toggle_a" | "toggle_b") => &["changed", "on_true", "on_false"],
+        ("logic_gate", "test") => &["on_true", "on_false"],
+        ("logic_random", "pick") => &["picked", "out_1", "out_2", "out_3", "out_4", "out_5", "out_6", "out_7", "out_8"],
+        ("logic_random", "roll") => &["on_success", "on_fail"],
+        ("logic_case", "in_value") => &["on_case_1", "on_case_2", "on_case_3", "on_case_4", "on_case_5", "on_case_6", "on_case_7", "on_case_8", "on_default"],
+        ("logic_flipflop", "trigger") => &["changed", "on_a", "on_b"],
+        ("logic_flipflop", "reset") => &["changed"],
+        ("math_calc", "calculate") => &["result"],
+        ("math_compare", "compare" | "set_and_compare") => &["on_less", "on_equal", "on_not_equal", "on_greater"],
+        ("math_value", "set_value" | "add" | "reset") => &["changed"],
+        ("math_value", "get_value") => &["value"],
         ("logic_timer", "start" | "fire") => &["timer"],
         ("logic_call", "trigger" | "call_with") => &["called"],
         ("trigger_call", "trigger") => &["called", "triggered"],
@@ -239,6 +250,65 @@ mod tests {
         let res = simulate(&m, r, "triggered");
         assert_eq!(res.events.len(), 1);
         assert!(res.events[0].dynamic && !res.events[0].broken(), "!player is a runtime target, not broken");
+    }
+
+    #[test]
+    fn math_and_logic_nodes_pass_the_cascade_on() {
+        let mut m = Map::new();
+        let l = m.default_layer();
+        let button = entity(&mut m, l, "func_button", "b", &[("pressed", "score", "add")]);
+        entity(&mut m, l, "math_value", "score", &[("changed", "cmp", "set_and_compare")]);
+        entity(&mut m, l, "math_compare", "cmp", &[("on_greater", "gate", "set_a"), ("on_equal", "gate", "set_a")]);
+        entity(&mut m, l, "logic_gate", "gate", &[("on_true", "pick", "pick"), ("changed", "flip", "trigger")]);
+        entity(&mut m, l, "logic_random", "pick", &[("out_2", "case", "in_value"), ("picked", "calc", "calculate")]);
+        entity(&mut m, l, "math_calc", "calc", &[("result", "case", "in_value")]);
+        entity(&mut m, l, "logic_case", "case", &[("on_case_2", "l1", "turn_on"), ("on_default", "l2", "turn_on")]);
+        entity(&mut m, l, "logic_flipflop", "flip", &[("on_a", "l1", "turn_on")]);
+        entity(&mut m, l, "light", "l1", &[]);
+        entity(&mut m, l, "light", "l2", &[]);
+
+        let res = simulate(&m, button, "pressed");
+        let chain: Vec<String> = res.events.iter().map(|e| format!("{}.{}>{}.{}", e.source_name, e.output, e.target, e.input)).collect();
+        for step in [
+            "b.pressed>score.add",
+            "score.changed>cmp.set_and_compare",
+            "cmp.on_greater>gate.set_a",
+            "cmp.on_equal>gate.set_a",
+            "gate.on_true>pick.pick",
+            "gate.changed>flip.trigger",
+            "pick.out_2>case.in_value",
+            "pick.picked>calc.calculate",
+            "calc.result>case.in_value",
+            "case.on_case_2>l1.turn_on",
+            "case.on_default>l2.turn_on",
+            "flip.on_a>l1.turn_on",
+        ] {
+            assert!(chain.iter().any(|c| c == step), "{step} is in the cascade: {chain:?}");
+        }
+
+        assert_eq!(res.broken(), 0, "every target resolves");
+    }
+
+    #[test]
+    fn the_table_only_fires_outputs_the_new_entities_declare() {
+        let game = gt_formats::GameConfig::gameplay_pack();
+        let classes = ["math_calc", "math_compare", "math_value", "logic_gate", "logic_random", "logic_case", "logic_flipflop"];
+        for class in classes {
+            let def = game.entity(class).unwrap();
+            let mut fires = false;
+            for input in &def.inputs {
+                for out in triggered_outputs(class, &input.name) {
+                    fires = true;
+                    assert!(def.outputs.iter().any(|o| o.name == *out), "{class}.{} fires {out}, which {class} does not declare", input.name);
+                }
+            }
+
+            assert!(fires, "{class} has an input the simulation follows");
+        }
+
+        let first = |class: &str| crate::logic_graph::model::default_input(&game, class);
+        assert_eq!([first("math_calc"), first("math_compare"), first("logic_random")], ["calculate", "compare", "pick"]);
+        assert_eq!([first("logic_case"), first("logic_flipflop"), first("logic_gate")], ["in_value", "trigger", "set_a"]);
     }
 
     #[test]
