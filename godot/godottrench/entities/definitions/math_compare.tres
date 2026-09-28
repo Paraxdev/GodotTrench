@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://godottrench/entities/scripts/gt_compare.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "math_compare"
+description = "Compares a stored number with another and fires on_less, on_equal or on_greater"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"compare_value": 0.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"compare_value": "The number the stored value is compared with"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7529412, 0.7529412, 0.7529412, 1),
+"size": AABB(-8, -8, 0, 8, 8, 16),
+"inputs": ["set_value", "set_compare_value", "compare", "set_and_compare"],
+"outputs": ["on_less", "on_equal", "on_not_equal", "on_greater"]
+})
+node_class = "Node3D"

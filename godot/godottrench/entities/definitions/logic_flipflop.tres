@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://godottrench/entities/scripts/gt_flipflop.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "logic_flipflop"
+description = "Alternates between on_a and on_b each time it is triggered"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"start_on": false
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"start_on": "Starts on, so the first trigger fires on_b"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7529412, 0.7529412, 0.7529412, 1),
+"size": AABB(-8, -8, 0, 8, 8, 16),
+"inputs": ["trigger", "reset"],
+"outputs": ["on_a", "on_b", "changed"]
+})
+node_class = "Node3D"

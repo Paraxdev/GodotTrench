@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://godottrench/entities/scripts/gt_gate.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "logic_gate"
+description = "Combines two stored booleans with and, or, xor, nand, nor, xnor or not"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"gate": {
+"and": "and",
+"or": "or",
+"xor": "xor",
+"nand": "nand",
+"nor": "nor",
+"xnor": "xnor",
+"not": "not"
+},
+"start_a": false,
+"start_b": false
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"gate": ["How a and b are combined. not looks at a only", "and"],
+"start_a": "Initial value of a",
+"start_b": "Initial value of b"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7529412, 0.7529412, 0.7529412, 1),
+"size": AABB(-8, -8, 0, 8, 8, 16),
+"inputs": ["set_a", "set_b", "toggle_a", "toggle_b", "test"],
+"outputs": ["on_true", "on_false", "changed"]
+})
+node_class = "Node3D"

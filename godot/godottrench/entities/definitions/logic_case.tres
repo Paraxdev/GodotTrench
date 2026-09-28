@@ -1,0 +1,39 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://godottrench/entities/scripts/gt_case.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "logic_case"
+description = "Fires the output of the first case that matches the value it receives"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"case_1": "",
+"case_2": "",
+"case_3": "",
+"case_4": "",
+"case_5": "",
+"case_6": "",
+"case_7": "",
+"case_8": ""
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"case_1": "Value that fires on_case_1, empty to skip it",
+"case_2": "Value that fires on_case_2, empty to skip it",
+"case_3": "Value that fires on_case_3, empty to skip it",
+"case_4": "Value that fires on_case_4, empty to skip it",
+"case_5": "Value that fires on_case_5, empty to skip it",
+"case_6": "Value that fires on_case_6, empty to skip it",
+"case_7": "Value that fires on_case_7, empty to skip it",
+"case_8": "Value that fires on_case_8, empty to skip it"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7529412, 0.7529412, 0.7529412, 1),
+"size": AABB(-8, -8, 0, 8, 8, 16),
+"inputs": ["in_value"],
+"outputs": ["on_case_1", "on_case_2", "on_case_3", "on_case_4", "on_case_5", "on_case_6", "on_case_7", "on_case_8", "on_default"]
+})
+node_class = "Node3D"

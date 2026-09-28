@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://godottrench/entities/scripts/gt_value.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "math_value"
+description = "Stores a number or text, like a score, and fires when it changes"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"start_value": "0"
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"start_value": "Number or text it starts with and reset returns to"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7529412, 0.7529412, 0.7529412, 1),
+"size": AABB(-8, -8, 0, 8, 8, 16),
+"inputs": ["set_value", "add", "get_value", "reset"],
+"outputs": ["value", "changed"]
+})
+node_class = "Node3D"

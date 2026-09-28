@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://godottrench/entities/scripts/gt_random.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "logic_random"
+description = "Picks one of several outputs at random, or succeeds with a chance"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"count": 3,
+"no_repeat": false,
+"chance": 50.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"count": "How many outputs pick chooses from, 1 to 8",
+"no_repeat": "Never picks the same output twice in a row",
+"chance": "Percent chance that roll fires on_success, 0 to 100"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7529412, 0.7529412, 0.7529412, 1),
+"size": AABB(-8, -8, 0, 8, 8, 16),
+"inputs": ["pick", "roll"],
+"outputs": ["out_1", "out_2", "out_3", "out_4", "out_5", "out_6", "out_7", "out_8", "picked", "on_success", "on_fail"]
+})
+node_class = "Node3D"

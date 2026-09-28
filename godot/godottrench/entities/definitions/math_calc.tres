@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://godottrench/entities/scripts/gt_calc.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "math_calc"
+description = "Applies a math operation to the number it receives and fires the result"
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": "",
+"operation": {
+"add": "add",
+"subtract": "subtract",
+"multiply": "multiply",
+"divide": "divide",
+"modulo": "modulo",
+"power": "power",
+"min": "min",
+"max": "max",
+"abs": "abs",
+"negate": "negate",
+"round": "round",
+"floor": "floor",
+"ceil": "ceil"
+},
+"operand": 1.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name",
+"operation": ["What to do with the incoming number and the operand. modulo never gives a negative remainder", "add"],
+"operand": "The second number. abs, negate, round, floor and ceil ignore it"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.7529412, 0.7529412, 0.7529412, 1),
+"size": AABB(-8, -8, 0, 8, 8, 16),
+"inputs": ["calculate"],
+"outputs": ["result"]
+})
+node_class = "Node3D"

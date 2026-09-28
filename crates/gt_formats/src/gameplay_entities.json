@@ -469,6 +469,95 @@
       ],
       "outputs": [{ "name": "on_true" }, { "name": "on_false" }],
       "inputs": [{ "name": "set_true" }, { "name": "set_false" }, { "name": "toggle" }, { "name": "test" }, { "name": "set_and_test", "parameter": "value", "type": "bool" }]
+    },
+    {
+      "classname": "math_calc", "type": "point", "description": "Applies a math operation to the number it receives and fires the result", "color": "#c0c0c0ff", "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_calc.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "operation", "type": "choices", "default": "add", "description": "What to do with the incoming number and the operand. modulo never gives a negative remainder", "options": [["add", "add"], ["subtract", "subtract"], ["multiply", "multiply"], ["divide", "divide"], ["modulo", "modulo"], ["power", "power"], ["min", "min"], ["max", "max"], ["abs", "abs"], ["negate", "negate"], ["round", "round"], ["floor", "floor"], ["ceil", "ceil"]] },
+        { "name": "operand", "type": "float", "default": "1", "description": "The second number. abs, negate, round, floor and ceil ignore it" }
+      ],
+      "outputs": [{ "name": "result", "parameter": "value", "type": "variant", "description": "The answer. Nothing fires for a division by zero" }],
+      "inputs": [{ "name": "calculate", "parameter": "value", "type": "float", "description": "Runs the operation on this number, 0 when there is none" }]
+    },
+    {
+      "classname": "math_compare", "type": "point", "description": "Compares a stored number with another and fires on_less, on_equal or on_greater", "color": "#c0c0c0ff", "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_compare.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "compare_value", "type": "float", "default": "0", "description": "The number the stored value is compared with" }
+      ],
+      "outputs": [{ "name": "on_less" }, { "name": "on_equal" }, { "name": "on_not_equal", "description": "Fires with on_less and on_greater" }, { "name": "on_greater" }],
+      "inputs": [{ "name": "set_value", "parameter": "value", "type": "variant", "description": "Stores the value without comparing" }, { "name": "set_compare_value", "parameter": "value", "type": "variant", "description": "Changes what it compares with" }, { "name": "compare", "description": "Compares the stored value now" }, { "name": "set_and_compare", "parameter": "value", "type": "variant", "description": "Stores the value, then compares" }]
+    },
+    {
+      "classname": "math_value", "type": "point", "description": "Stores a number or text, like a score, and fires when it changes", "color": "#c0c0c0ff", "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_value.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "start_value", "type": "string", "default": "0", "description": "Number or text it starts with and reset returns to" }
+      ],
+      "outputs": [{ "name": "value", "parameter": "value", "type": "variant", "description": "Fires when get_value asks for it" }, { "name": "changed", "parameter": "value", "type": "variant", "description": "Fires with the new value whenever it changes" }],
+      "inputs": [{ "name": "set_value", "parameter": "value", "type": "variant" }, { "name": "add", "parameter": "amount", "type": "variant", "description": "Adds to a number, appends to text. Adds 1 when there is no amount" }, { "name": "get_value", "description": "Fires value with the stored value" }, { "name": "reset" }]
+    },
+    {
+      "classname": "logic_gate", "type": "point", "description": "Combines two stored booleans with and, or, xor, nand, nor, xnor or not", "color": "#c0c0c0ff", "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_gate.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "gate", "type": "choices", "default": "and", "description": "How a and b are combined. not looks at a only", "options": [["and", "and"], ["or", "or"], ["xor", "xor"], ["nand", "nand"], ["nor", "nor"], ["xnor", "xnor"], ["not", "not"]] },
+        { "name": "start_a", "type": "bool", "default": "0", "description": "Initial value of a" },
+        { "name": "start_b", "type": "bool", "default": "0", "description": "Initial value of b" }
+      ],
+      "outputs": [{ "name": "on_true", "description": "Fires when the result turns true, and on test" }, { "name": "on_false", "description": "Fires when the result turns false, and on test" }, { "name": "changed", "parameter": "on", "type": "bool", "description": "Fires with the new result when it flips" }],
+      "inputs": [{ "name": "set_a", "parameter": "value", "type": "bool", "description": "Sets a, true when there is no value" }, { "name": "set_b", "parameter": "value", "type": "bool", "description": "Sets b, true when there is no value" }, { "name": "toggle_a" }, { "name": "toggle_b" }, { "name": "test", "description": "Fires on_true or on_false for the current result" }]
+    },
+    {
+      "classname": "logic_random", "type": "point", "description": "Picks one of several outputs at random, or succeeds with a chance", "color": "#c0c0c0ff", "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_random.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "count", "type": "int", "default": "3", "description": "How many outputs pick chooses from, 1 to 8" },
+        { "name": "no_repeat", "type": "bool", "default": "0", "description": "Never picks the same output twice in a row" },
+        { "name": "chance", "type": "float", "default": "50", "description": "Percent chance that roll fires on_success, 0 to 100" }
+      ],
+      "outputs": [{ "name": "out_1" }, { "name": "out_2" }, { "name": "out_3" }, { "name": "out_4" }, { "name": "out_5" }, { "name": "out_6" }, { "name": "out_7" }, { "name": "out_8" }, { "name": "picked", "parameter": "index", "type": "int", "description": "Which output pick chose" }, { "name": "on_success" }, { "name": "on_fail" }],
+      "inputs": [{ "name": "pick", "description": "Fires one of out_1 to out_N" }, { "name": "roll", "description": "Fires on_success or on_fail" }]
+    },
+    {
+      "classname": "logic_case", "type": "point", "description": "Fires the output of the first case that matches the value it receives", "color": "#c0c0c0ff", "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_case.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "case_1", "type": "string", "default": "", "description": "Value that fires on_case_1, empty to skip it" },
+        { "name": "case_2", "type": "string", "default": "", "description": "Value that fires on_case_2, empty to skip it" },
+        { "name": "case_3", "type": "string", "default": "", "description": "Value that fires on_case_3, empty to skip it" },
+        { "name": "case_4", "type": "string", "default": "", "description": "Value that fires on_case_4, empty to skip it" },
+        { "name": "case_5", "type": "string", "default": "", "description": "Value that fires on_case_5, empty to skip it" },
+        { "name": "case_6", "type": "string", "default": "", "description": "Value that fires on_case_6, empty to skip it" },
+        { "name": "case_7", "type": "string", "default": "", "description": "Value that fires on_case_7, empty to skip it" },
+        { "name": "case_8", "type": "string", "default": "", "description": "Value that fires on_case_8, empty to skip it" }
+      ],
+      "outputs": [{ "name": "on_case_1" }, { "name": "on_case_2" }, { "name": "on_case_3" }, { "name": "on_case_4" }, { "name": "on_case_5" }, { "name": "on_case_6" }, { "name": "on_case_7" }, { "name": "on_case_8" }, { "name": "on_default", "description": "Fires when no case matches" }],
+      "inputs": [{ "name": "in_value", "parameter": "value", "type": "variant", "description": "Numbers match by value, text must match exactly" }]
+    },
+    {
+      "classname": "logic_flipflop", "type": "point", "description": "Alternates between on_a and on_b each time it is triggered", "color": "#c0c0c0ff", "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_flipflop.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "start_on", "type": "bool", "default": "0", "description": "Starts on, so the first trigger fires on_b" }
+      ],
+      "outputs": [{ "name": "on_a", "description": "Fires when it turns on" }, { "name": "on_b", "description": "Fires when it turns off" }, { "name": "changed", "parameter": "on", "type": "bool" }],
+      "inputs": [{ "name": "trigger" }, { "name": "reset", "description": "Back to the starting state without firing on_a or on_b" }]
     }
   ]
 }

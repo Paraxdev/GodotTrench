@@ -3651,6 +3651,658 @@
       ]
     },
     {
+      "classname": "math_calc",
+      "type": "point",
+      "description": "Applies a math operation to the number it receives and fires the result",
+      "color": "#c0c0c0ff",
+      "node_class": "Node3D",
+      "group": "math",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "operation",
+          "type": "choices",
+          "default": "add",
+          "description": "What to do with the incoming number and the operand. modulo never gives a negative remainder",
+          "options": [
+            [
+              "add",
+              "add"
+            ],
+            [
+              "subtract",
+              "subtract"
+            ],
+            [
+              "multiply",
+              "multiply"
+            ],
+            [
+              "divide",
+              "divide"
+            ],
+            [
+              "modulo",
+              "modulo"
+            ],
+            [
+              "power",
+              "power"
+            ],
+            [
+              "min",
+              "min"
+            ],
+            [
+              "max",
+              "max"
+            ],
+            [
+              "abs",
+              "abs"
+            ],
+            [
+              "negate",
+              "negate"
+            ],
+            [
+              "round",
+              "round"
+            ],
+            [
+              "floor",
+              "floor"
+            ],
+            [
+              "ceil",
+              "ceil"
+            ]
+          ]
+        },
+        {
+          "name": "operand",
+          "type": "float",
+          "default": "1.0",
+          "description": "The second number. abs, negate, round, floor and ceil ignore it"
+        }
+      ],
+      "script": "res://godottrench/entities/scripts/gt_calc.gd",
+      "outputs": [
+        {
+          "name": "result",
+          "parameter": "value",
+          "type": "variant"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "calculate",
+          "parameter": "value",
+          "type": "variant"
+        }
+      ]
+    },
+    {
+      "classname": "math_compare",
+      "type": "point",
+      "description": "Compares a stored number with another and fires on_less, on_equal or on_greater",
+      "color": "#c0c0c0ff",
+      "node_class": "Node3D",
+      "group": "math",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "compare_value",
+          "type": "float",
+          "default": "0.0",
+          "description": "The number the stored value is compared with"
+        }
+      ],
+      "script": "res://godottrench/entities/scripts/gt_compare.gd",
+      "outputs": [
+        {
+          "name": "on_less",
+          "parameter": ""
+        },
+        {
+          "name": "on_equal",
+          "parameter": ""
+        },
+        {
+          "name": "on_not_equal",
+          "parameter": ""
+        },
+        {
+          "name": "on_greater",
+          "parameter": ""
+        }
+      ],
+      "inputs": [
+        {
+          "name": "set_value",
+          "parameter": "new_value",
+          "type": "variant"
+        },
+        {
+          "name": "set_compare_value",
+          "parameter": "new_value",
+          "type": "variant"
+        },
+        {
+          "name": "compare",
+          "parameter": ""
+        },
+        {
+          "name": "set_and_compare",
+          "parameter": "new_value",
+          "type": "variant"
+        }
+      ]
+    },
+    {
+      "classname": "math_value",
+      "type": "point",
+      "description": "Stores a number or text, like a score, and fires when it changes",
+      "color": "#c0c0c0ff",
+      "node_class": "Node3D",
+      "group": "math",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "start_value",
+          "type": "string",
+          "default": "0",
+          "description": "Number or text it starts with and reset returns to"
+        }
+      ],
+      "script": "res://godottrench/entities/scripts/gt_value.gd",
+      "outputs": [
+        {
+          "name": "value",
+          "parameter": "value",
+          "type": "variant"
+        },
+        {
+          "name": "changed",
+          "parameter": "value",
+          "type": "variant"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "set_value",
+          "parameter": "new_value",
+          "type": "variant"
+        },
+        {
+          "name": "add",
+          "parameter": "amount",
+          "type": "variant"
+        },
+        {
+          "name": "get_value",
+          "parameter": ""
+        },
+        {
+          "name": "reset",
+          "parameter": ""
+        }
+      ]
+    },
+    {
+      "classname": "logic_gate",
+      "type": "point",
+      "description": "Combines two stored booleans with and, or, xor, nand, nor, xnor or not",
+      "color": "#c0c0c0ff",
+      "node_class": "Node3D",
+      "group": "logic",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "gate",
+          "type": "choices",
+          "default": "and",
+          "description": "How a and b are combined. not looks at a only",
+          "options": [
+            [
+              "and",
+              "and"
+            ],
+            [
+              "or",
+              "or"
+            ],
+            [
+              "xor",
+              "xor"
+            ],
+            [
+              "nand",
+              "nand"
+            ],
+            [
+              "nor",
+              "nor"
+            ],
+            [
+              "xnor",
+              "xnor"
+            ],
+            [
+              "not",
+              "not"
+            ]
+          ]
+        },
+        {
+          "name": "start_a",
+          "type": "bool",
+          "default": "0",
+          "description": "Initial value of a"
+        },
+        {
+          "name": "start_b",
+          "type": "bool",
+          "default": "0",
+          "description": "Initial value of b"
+        }
+      ],
+      "script": "res://godottrench/entities/scripts/gt_gate.gd",
+      "outputs": [
+        {
+          "name": "on_true",
+          "parameter": ""
+        },
+        {
+          "name": "on_false",
+          "parameter": ""
+        },
+        {
+          "name": "changed",
+          "parameter": "on",
+          "type": "bool"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "set_a",
+          "parameter": "value",
+          "type": "variant"
+        },
+        {
+          "name": "set_b",
+          "parameter": "value",
+          "type": "variant"
+        },
+        {
+          "name": "toggle_a",
+          "parameter": ""
+        },
+        {
+          "name": "toggle_b",
+          "parameter": ""
+        },
+        {
+          "name": "test",
+          "parameter": ""
+        }
+      ]
+    },
+    {
+      "classname": "logic_random",
+      "type": "point",
+      "description": "Picks one of several outputs at random, or succeeds with a chance",
+      "color": "#c0c0c0ff",
+      "node_class": "Node3D",
+      "group": "logic",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "count",
+          "type": "int",
+          "default": "3",
+          "description": "How many outputs pick chooses from, 1 to 8"
+        },
+        {
+          "name": "no_repeat",
+          "type": "bool",
+          "default": "0",
+          "description": "Never picks the same output twice in a row"
+        },
+        {
+          "name": "chance",
+          "type": "float",
+          "default": "50.0",
+          "description": "Percent chance that roll fires on_success, 0 to 100"
+        }
+      ],
+      "script": "res://godottrench/entities/scripts/gt_random.gd",
+      "outputs": [
+        {
+          "name": "out_1",
+          "parameter": ""
+        },
+        {
+          "name": "out_2",
+          "parameter": ""
+        },
+        {
+          "name": "out_3",
+          "parameter": ""
+        },
+        {
+          "name": "out_4",
+          "parameter": ""
+        },
+        {
+          "name": "out_5",
+          "parameter": ""
+        },
+        {
+          "name": "out_6",
+          "parameter": ""
+        },
+        {
+          "name": "out_7",
+          "parameter": ""
+        },
+        {
+          "name": "out_8",
+          "parameter": ""
+        },
+        {
+          "name": "picked",
+          "parameter": "index",
+          "type": "int"
+        },
+        {
+          "name": "on_success",
+          "parameter": ""
+        },
+        {
+          "name": "on_fail",
+          "parameter": ""
+        }
+      ],
+      "inputs": [
+        {
+          "name": "pick",
+          "parameter": ""
+        },
+        {
+          "name": "roll",
+          "parameter": ""
+        }
+      ]
+    },
+    {
+      "classname": "logic_case",
+      "type": "point",
+      "description": "Fires the output of the first case that matches the value it receives",
+      "color": "#c0c0c0ff",
+      "node_class": "Node3D",
+      "group": "logic",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "case_1",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_1, empty to skip it"
+        },
+        {
+          "name": "case_2",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_2, empty to skip it"
+        },
+        {
+          "name": "case_3",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_3, empty to skip it"
+        },
+        {
+          "name": "case_4",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_4, empty to skip it"
+        },
+        {
+          "name": "case_5",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_5, empty to skip it"
+        },
+        {
+          "name": "case_6",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_6, empty to skip it"
+        },
+        {
+          "name": "case_7",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_7, empty to skip it"
+        },
+        {
+          "name": "case_8",
+          "type": "string",
+          "default": "",
+          "description": "Value that fires on_case_8, empty to skip it"
+        }
+      ],
+      "script": "res://godottrench/entities/scripts/gt_case.gd",
+      "outputs": [
+        {
+          "name": "on_case_1",
+          "parameter": ""
+        },
+        {
+          "name": "on_case_2",
+          "parameter": ""
+        },
+        {
+          "name": "on_case_3",
+          "parameter": ""
+        },
+        {
+          "name": "on_case_4",
+          "parameter": ""
+        },
+        {
+          "name": "on_case_5",
+          "parameter": ""
+        },
+        {
+          "name": "on_case_6",
+          "parameter": ""
+        },
+        {
+          "name": "on_case_7",
+          "parameter": ""
+        },
+        {
+          "name": "on_case_8",
+          "parameter": ""
+        },
+        {
+          "name": "on_default",
+          "parameter": ""
+        }
+      ],
+      "inputs": [
+        {
+          "name": "in_value",
+          "parameter": "value",
+          "type": "variant"
+        }
+      ]
+    },
+    {
+      "classname": "logic_flipflop",
+      "type": "point",
+      "description": "Alternates between on_a and on_b each time it is triggered",
+      "color": "#c0c0c0ff",
+      "node_class": "Node3D",
+      "group": "logic",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "target_source",
+          "default": "",
+          "description": "Name"
+        },
+        {
+          "name": "start_on",
+          "type": "bool",
+          "default": "0",
+          "description": "Starts on, so the first trigger fires on_b"
+        }
+      ],
+      "script": "res://godottrench/entities/scripts/gt_flipflop.gd",
+      "outputs": [
+        {
+          "name": "on_a",
+          "parameter": ""
+        },
+        {
+          "name": "on_b",
+          "parameter": ""
+        },
+        {
+          "name": "changed",
+          "parameter": "on",
+          "type": "bool"
+        }
+      ],
+      "inputs": [
+        {
+          "name": "trigger",
+          "parameter": ""
+        },
+        {
+          "name": "reset",
+          "parameter": ""
+        }
+      ]
+    },
+    {
       "classname": "infodecal",
       "type": "point",
       "description": "Projected decal. Projects along its local -Y axis, GodotTrench aligns it to the surface it is dropped on.",
