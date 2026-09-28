@@ -10,7 +10,8 @@ nothing and edit it in the Inspector.
 | `glow_intensity` | 0 | Above 0, lamps and [glowing materials](materials.md#glowing-materials) bloom in Godot |
 | `ssr` | 0 | 1 turns on screen space reflections, so wet streets and glossy floors mirror the lamps |
 
-The editor's Lit Preview shows all of these except glow and reflections, so check those in Godot.
+The editor's Lit Preview shows all of these except glow and reflections, so check those in Godot. To get the bounce of
+the lamps without paying for it every frame, [bake the lighting](../editor/light-baking.md).
 
 ## Lamp fixtures
 

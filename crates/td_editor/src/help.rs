@@ -120,6 +120,7 @@ pub const PAGES: &[(Topic<'static>, &str, &str)] = &[
     (Section("Outputs"), "gameplay/placing", "wiring"),
     (Section("Alignment"), "editor/texturing", "the-texture-tool"),
     (Section("Texture Tools"), "editor/texturing", ""),
+    (Section("Texture Settings"), "editor/light-baking", "texture-settings"),
 ];
 
 pub fn page(topic: Topic) -> Option<(&'static str, &'static str)> {

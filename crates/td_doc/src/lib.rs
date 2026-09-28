@@ -6,12 +6,14 @@ pub mod entity;
 pub mod format;
 pub mod issues;
 mod json_fmt;
+pub mod lightmap;
 pub mod linked;
 pub mod map;
 pub mod ops;
 pub mod scatter;
 pub mod selection;
 pub mod terrain;
+pub mod textures;
 mod variant;
 
 pub use document::{Document, History};

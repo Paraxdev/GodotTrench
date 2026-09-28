@@ -603,6 +603,7 @@ impl App {
             "code_reference" => self.tool_code_reference(&args),
             "hierarchy" => self.tool_hierarchy(&args),
             "set_map_properties" => self.tool_set_map_properties(&args),
+            "bake_lighting" => self.tool_bake_lighting(&args),
             "terrain_edit" => self.tool_terrain_edit(&args),
             "duplicate" => self.tool_duplicate(&args),
             "run_script" => self.tool_run_script(&args, ctx),
@@ -1068,7 +1069,7 @@ impl App {
                 let name = a["shade"].as_str().unwrap_or("lit");
                 match crate::state::Shade::from_name(name) {
                     Some(s) => Action::SetShade(s),
-                    None => return err(format!("unknown shade {name}, use textured, flat, lit or wireframe")),
+                    None => return err(format!("unknown shade {name}, use textured, flat, lit, baked or wireframe")),
                 }
             }
             "edit_mesh" => Action::EditMesh,
@@ -1502,7 +1503,7 @@ impl App {
         let shade = match args["shade"].as_str() {
             Some(s) => match crate::state::Shade::from_name(s) {
                 Some(shade) => Some(shade),
-                None => return err(format!("unknown shade {s}, use textured, flat, lit or wireframe")),
+                None => return err(format!("unknown shade {s}, use textured, flat, lit, baked or wireframe")),
             },
             None => None,
         };

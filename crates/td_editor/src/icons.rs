@@ -62,6 +62,7 @@ icons! {
     SHADE_FLAT = "paint-bucket",
     SHADE_LIT = "sun",
     SHADE_WIREFRAME = "box",
+    SHADE_BAKED = "lightbulb",
     LAYER = "layers",
     GROUP = "group",
     ENTITY = "diamond",
@@ -136,6 +137,7 @@ pub fn shade(shade: Shade) -> Icon {
         Shade::Flat => SHADE_FLAT,
         Shade::Lit => SHADE_LIT,
         Shade::Wireframe => SHADE_WIREFRAME,
+        Shade::Baked => SHADE_BAKED,
     }
 }
 
