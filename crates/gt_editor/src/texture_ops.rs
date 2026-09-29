@@ -520,16 +520,19 @@ pub fn paste_alignment(state: &mut EditorState, faces: &[(NodeId, usize)], with_
     n
 }
 
-/// Applies a material to faces, resetting their projection to face aligned at the current scale when `reset`.
+/// Applies a material to faces, resetting their projection to face aligned when `reset`. A material with a world size
+/// (texture_size) resets to scale 1, where one repeat covers that size, others keep the face's current scale.
 pub fn apply_material(state: &mut EditorState, faces: &[(NodeId, usize)], material: &str, reset_alignment: bool) -> usize {
     let targets = infos(state, faces);
     let n = targets.len();
+    let world_sized = state.materials.world_size(material).is_some();
     state.note_material(material);
     state.doc.edit("Apply Material", |m, _| {
         for t in &targets {
             set_material(m, t.id, t.face, material);
             if reset_alignment && t.explicit.is_none() {
-                set_uv(m, t.id, t.face, FaceUv::face_aligned(t.plane.normal, t.uv.scale.abs()));
+                let scale = if world_sized { DVec2::ONE } else { t.uv.scale.abs() };
+                set_uv(m, t.id, t.face, FaceUv::face_aligned(t.plane.normal, scale));
             }
         }
     });

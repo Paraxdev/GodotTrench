@@ -963,6 +963,19 @@ metadata/texture_size = Vector2(80, 48)
         lib.remember_size("photo", [64, 32]);
         assert_eq!(lib.size("photo"), Some([128.0, 48.0]), "loading the texture does not undo the override");
         assert_eq!(lib.info("photo").and_then(|m| m.texture_size), Some([128.0, 48.0]));
+
+        // A face scaled for a pixel sized texture takes the world size's own scale when reset onto it.
+        let mut state = crate::state::EditorState::new(crate::state::Prefs::default());
+        state.materials = lib;
+        let layer = state.doc.map.default_layer();
+        let mut brush = gt_geom::Brush::from_aabb(&gt_core::Aabb::new(gt_core::DVec3::ZERO, gt_core::DVec3::splat(32.0)), "plain").unwrap();
+        brush.faces.iter_mut().for_each(|f| f.data.uv.scale = gt_core::DVec2::splat(1.0 / 32.0));
+        let id = state.doc.edit("add", |m, _| m.insert(layer, gt_doc::NodeKind::Brush(brush)));
+        let scale = |state: &crate::state::EditorState| state.doc.map.brush(id).unwrap().faces[0].data.uv.scale;
+        crate::texture_ops::apply_material(&mut state, &[(id, 0)], "photo", true);
+        assert_eq!(scale(&state), gt_core::DVec2::ONE, "one repeat covers the texture_size");
+        crate::texture_ops::apply_material(&mut state, &[(id, 1)], "plain", true);
+        assert_eq!(state.doc.map.brush(id).unwrap().faces[1].data.uv.scale, gt_core::DVec2::splat(1.0 / 32.0), "a pixel sized texture keeps the scale");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
