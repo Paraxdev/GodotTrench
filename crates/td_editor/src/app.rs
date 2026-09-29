@@ -32,6 +32,7 @@ enum Tab {
     Uv,
     Reference,
     Scatter,
+    Prefabs,
 }
 
 /// A dockable side panel, used to map panels to tabs and to show a hover tooltip on each tab.
@@ -47,10 +48,11 @@ pub enum Panel {
     Uv,
     Reference,
     Scatter,
+    Prefabs,
 }
 
 impl Panel {
-    pub const ALL: [Panel; 10] = [
+    pub const ALL: [Panel; 11] = [
         Panel::Outliner,
         Panel::Inspector,
         Panel::Materials,
@@ -61,6 +63,7 @@ impl Panel {
         Panel::Uv,
         Panel::Reference,
         Panel::Scatter,
+        Panel::Prefabs,
     ];
 
     /// The tab tooltip: [`Panel::help`] with the key that renames, which the keymap can change.
@@ -97,6 +100,9 @@ impl Panel {
             Panel::Scatter => {
                 "The active scatter set as model cards: drag models in from the Models panel, switch them on or off and weigh them. Below are the surfaces the set paints onto, with an eyedropper, and the brush."
             }
+            Panel::Prefabs => {
+                "Ready made pieces to paste, drawn from above: stairs, doorways, pillars and more that come with the editor, and the project's own from res://prefab_library. Click one to paste it at the pointer, right click to copy or open it, and add the selection as a new one."
+            }
             Panel::Reference => {
                 "How to use the selected entity from code: GDScript and C# snippets, the FGD resource, and buttons that create the script in your project. Drag the divider to resize the class list, double click it to fit the names."
             }
@@ -126,6 +132,8 @@ pub struct App {
     pub(crate) deferred: Vec<Deferred>,
     palette: CommandPalette,
     shape_dialog: ShapeDialog,
+    trim_dialog: crate::trim::TrimDialog,
+    fill_dialog: crate::random_fill::RandomFillDialog,
     terrain_dialog: TerrainDialog,
     keymap: KeymapWindow,
     pub(crate) hotspot_editor: crate::hotspot_editor::HotspotEditor,
@@ -219,8 +227,20 @@ pub(crate) fn key_scope(ctx: &egui::Context, had_focus: bool, view_hovered: bool
 const PREFS_LABEL_WIDTH: f32 = 180.0;
 const UI_SCALE_PRESETS: [f32; 6] = [0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
-const PANEL_TABS: [Tab; 11] =
-    [Tab::Outliner, Tab::Inspector, Tab::Materials, Tab::Models, Tab::Entities, Tab::History, Tab::Issues, Tab::Logic, Tab::Uv, Tab::Reference, Tab::Scatter];
+const PANEL_TABS: [Tab; 12] = [
+    Tab::Outliner,
+    Tab::Inspector,
+    Tab::Materials,
+    Tab::Models,
+    Tab::Prefabs,
+    Tab::Entities,
+    Tab::History,
+    Tab::Issues,
+    Tab::Logic,
+    Tab::Uv,
+    Tab::Reference,
+    Tab::Scatter,
+];
 
 fn tab_title(tab: Tab) -> &'static str {
     match tab {
@@ -236,6 +256,7 @@ fn tab_title(tab: Tab) -> &'static str {
         Tab::Uv => "UV Editor",
         Tab::Reference => "Reference",
         Tab::Scatter => "Scatter",
+        Tab::Prefabs => "Prefabs",
     }
 }
 
@@ -251,6 +272,7 @@ fn panel_tab(panel: Panel) -> Tab {
         Panel::Uv => Tab::Uv,
         Panel::Reference => Tab::Reference,
         Panel::Scatter => Tab::Scatter,
+        Panel::Prefabs => Tab::Prefabs,
     }
 }
 
@@ -652,7 +674,7 @@ fn default_dock() -> DockState<Tab> {
     let surface = dock.main_surface_mut();
     let [center, _right] = surface.split_right(NodeIndex::root(), 0.78, vec![Tab::Inspector, Tab::Entities, Tab::Uv, Tab::Scatter]);
     let [center, _left] = surface.split_left(center, 0.2, vec![Tab::Outliner, Tab::History, Tab::Issues]);
-    let [views, _bottom] = surface.split_below(center, 0.72, vec![Tab::Materials, Tab::Models]);
+    let [views, _bottom] = surface.split_below(center, 0.72, vec![Tab::Materials, Tab::Models, Tab::Prefabs]);
     let [left_col, right_col] = surface.split_right(views, 0.5, vec![Tab::View(1)]);
     surface.split_below(left_col, 0.5, vec![Tab::View(2)]);
     surface.split_below(right_col, 0.5, vec![Tab::View(3)]);
@@ -739,6 +761,7 @@ impl App {
         let mut dock = dock.unwrap_or_else(default_dock);
         ensure_tab(&mut dock, Tab::Models, Tab::Materials);
         ensure_tab(&mut dock, Tab::Scatter, Tab::Inspector);
+        ensure_tab(&mut dock, Tab::Prefabs, Tab::Models);
         Self {
             state,
             renderer: Renderer::new(render_state),
@@ -760,6 +783,8 @@ impl App {
             deferred: Vec::new(),
             palette: CommandPalette::default(),
             shape_dialog: ShapeDialog::default(),
+            trim_dialog: Default::default(),
+            fill_dialog: Default::default(),
             terrain_dialog: TerrainDialog::default(),
             keymap: KeymapWindow::default(),
             hotspot_editor: Default::default(),
@@ -858,6 +883,8 @@ impl App {
         match action {
             Action::ShowCommandPalette => self.palette.toggle(),
             Action::ShowShapeDialog => self.shape_dialog.open = true,
+            Action::ShowTrimDialog => self.trim_dialog.open = true,
+            Action::ShowRandomFillDialog => self.fill_dialog.open = true,
             Action::ShowTerrainDialog => self.terrain_dialog.open = true,
             Action::ExportGlb => self.export_dialog.open_for(crate::export3d::Format::Glb, &mut self.state),
             Action::ExportObj => self.export_dialog.open_for(crate::export3d::Format::Obj, &mut self.state),
@@ -1140,6 +1167,8 @@ impl App {
             menu(ui, "Brush", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 m.item(ui, Some(icons::SHAPES), "Shape Generator…", Action::ShowShapeDialog);
+                m.item(ui, None, "Add Trim…", Action::ShowTrimDialog);
+                m.item(ui, None, "Random Fill…", Action::ShowRandomFillDialog);
                 m.item(ui, Some(icons::BRUSH), "Box from Last Bounds", Action::CreateBrushFromBounds);
                 ui.separator();
                 sub_menu(ui, Some(icons::CSG_SUBTRACT), "CSG", |ui| {
@@ -2372,6 +2401,7 @@ impl TabViewer for Tabs<'_> {
             Tab::Uv => panels::uv_editor(ui, self.state, self.panels, self.actions),
             Tab::Reference => panels::reference(ui, self.state, self.panels, self.actions),
             Tab::Scatter => crate::scatter_panel::scatter_panel(ui, self.state, self.actions, Some(&mut *self.renderer)),
+            Tab::Prefabs => crate::prefab_panel::show(ui, self.state, &mut self.panels.prefabs, self.actions),
         }
     }
 
@@ -2512,6 +2542,8 @@ impl eframe::App for App {
 
         self.palette.show(&ctx, &self.state, &mut self.actions);
         self.shape_dialog.show(&ctx, &mut self.state);
+        self.trim_dialog.show(&ctx, &mut self.state);
+        self.fill_dialog.show(&ctx, &mut self.state);
         self.terrain_dialog.show(&ctx, &mut self.state);
         self.keymap.show(&ctx, &mut self.state);
         self.hotspot_editor.show(&ctx, &mut self.state, &mut self.actions);
