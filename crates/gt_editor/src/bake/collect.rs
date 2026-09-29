@@ -456,7 +456,7 @@ pub fn material(lib: &mut MaterialLibrary, name: &str) -> Material {
         }
         None => Vec3::ZERO,
     };
-    Material { albedo, emission, double_sided: info.double_sided }
+    Material { albedo, emission, double_sided: info.double_sided, see_through: info.is_transparent() }
 }
 
 #[cfg(test)]

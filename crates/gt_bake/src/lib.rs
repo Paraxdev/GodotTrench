@@ -74,11 +74,13 @@ pub struct Material {
     pub emission: Vec3,
     /// Both sides are surfaces. Rays meeting the back of a one sided surface are inside a solid.
     pub double_sided: bool,
+    /// Blended, like glass or water. Light passes it untinted, so its surfaces still receive light but never block it.
+    pub see_through: bool,
 }
 
 impl Default for Material {
     fn default() -> Self {
-        Self { albedo: Vec3::splat(0.5), emission: Vec3::ZERO, double_sided: false }
+        Self { albedo: Vec3::splat(0.5), emission: Vec3::ZERO, double_sided: false, see_through: false }
     }
 }
 

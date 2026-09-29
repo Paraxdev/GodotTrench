@@ -151,6 +151,25 @@ fn a_glowing_ceiling_lights_the_room_without_any_light() {
 }
 
 #[test]
+fn a_glowing_ceiling_shines_through_glass_but_not_through_a_board() {
+    let bake_with = |see_through: bool| {
+        let mut surfaces = cube(0, Vec3::ZERO, Vec3::splat(128.0), true, 0);
+        let ceiling = surfaces.iter_mut().find(|s| s.normals[0].y < -0.5).unwrap();
+        ceiling.material = 1;
+        // A pane across the whole room just under the ceiling, facing down.
+        surfaces.push(quad(20, Vec3::new(0.0, 120.0, 0.0), Vec3::X * 128.0, Vec3::Z * 128.0, 2));
+        let pane = Material { albedo: Vec3::splat(0.9), double_sided: true, see_through, ..Material::default() };
+        let materials = vec![Material::default(), Material { emission: Vec3::splat(2.0), ..Material::default() }, pane];
+        let input = BakeInput { surfaces, materials, lights: vec![], sky: Sky::NONE, units_per_meter: 32.0, ..Default::default() };
+        let map = bake(&input, &settings(), &Progress::default()).unwrap();
+        value(&map, 3, Vec3::new(0.0, -128.0, 0.0)).0
+    };
+    let (glass, board) = (bake_with(true), bake_with(false));
+    assert!(glass.x > 0.3, "{glass}");
+    assert!(board.x < 0.01, "{board}");
+}
+
+#[test]
 fn a_cancelled_bake_stops() {
     let progress = Progress::default();
     progress.cancel();
