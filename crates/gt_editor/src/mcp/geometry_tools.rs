@@ -83,10 +83,16 @@ impl App {
         let size = bounds.size();
         let thickness = args["thickness"].as_f64().unwrap_or(8.0);
         let divisions = args["divisions"].as_u64().unwrap_or(4) as usize;
+        let axis = match args["axis"].as_str().map(gt_geom::shapes::Axis::parse) {
+            None => gt_geom::shapes::Axis::Y,
+            Some(Some(a)) => a,
+            Some(None) => return err("axis is x, y or z"),
+        };
+        let (upright, turn) = axis.frame(&bounds);
         let mut mesh = match args["shape"].as_str().unwrap_or("cuboid") {
             "cuboid" | "box" => mesh_shapes::cuboid(&bounds, &material),
-            "cylinder" => mesh_shapes::cylinder(&bounds, sides, &material),
-            "cone" => mesh_shapes::cone(&bounds, sides, &material),
+            "cylinder" => mesh_shapes::cylinder(&upright, sides, &material).transformed(&turn, true),
+            "cone" => mesh_shapes::cone(&upright, sides, &material).transformed(&turn, true),
             "sphere" => mesh_shapes::sphere(&bounds, sides, (sides / 2).max(3), &material),
             "torus" => mesh_shapes::torus(bounds.center(), (size.x * 0.5 - thickness).max(1.0), thickness, sides, (sides / 2).max(3), &material),
             "grid" => mesh_shapes::grid(&bounds, divisions, divisions, &material),

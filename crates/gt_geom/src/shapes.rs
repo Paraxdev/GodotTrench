@@ -2,9 +2,66 @@
 
 use std::f64::consts::TAU;
 
-use gt_core::{Aabb, DVec2, DVec3};
+use gt_core::{Aabb, DMat4, DVec2, DVec3};
 
 use crate::brush::{Brush, FaceData};
+use crate::uv::FaceUv;
+
+/// The world axis a round shape (cylinder, cone) runs along.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Axis {
+    X,
+    #[default]
+    Y,
+    Z,
+}
+
+impl Axis {
+    pub const ALL: [Axis; 3] = [Axis::X, Axis::Y, Axis::Z];
+
+    pub fn parse(s: &str) -> Option<Axis> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "x" => Some(Axis::X),
+            "y" => Some(Axis::Y),
+            "z" => Some(Axis::Z),
+            _ => None,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Axis::X => "X",
+            Axis::Y => "Y",
+            Axis::Z => "Z",
+        }
+    }
+
+    /// The bounds to build an upright shape in, and the turn that lays it along this axis so it fills `bounds`.
+    pub fn frame(self, bounds: &Aabb) -> (Aabb, DMat4) {
+        let c = bounds.center();
+        let s = bounds.size() * 0.5;
+        let (half, turn) = match self {
+            Axis::Y => return (*bounds, DMat4::IDENTITY),
+            Axis::X => (DVec3::new(s.y, s.x, s.z), DMat4::from_rotation_z(-std::f64::consts::FRAC_PI_2)),
+            Axis::Z => (DVec3::new(s.x, s.z, s.y), DMat4::from_rotation_x(std::f64::consts::FRAC_PI_2)),
+        };
+        (Aabb::new(c - half, c + half), DMat4::from_translation(c) * turn * DMat4::from_translation(-c))
+    }
+
+    /// Lays a brush built in [`Axis::frame`]'s bounds along this axis, with its textures aligned to the new faces.
+    pub fn lay(self, brush: Brush, bounds: &Aabb) -> Brush {
+        if self == Axis::Y {
+            return brush;
+        }
+
+        let mut b = brush.transformed(&self.frame(bounds).1, false);
+        for f in &mut b.faces {
+            f.data.uv = FaceUv::face_aligned(f.plane.normal, f.data.uv.scale);
+        }
+
+        b
+    }
+}
 
 fn hull(points: &[DVec3], material: &str) -> Option<Brush> {
     Brush::from_points(points, &[], material).ok()
@@ -199,5 +256,27 @@ mod tests {
         assert_eq!(pipe(&b(), 12, 8.0, "m").len(), 12);
         assert_eq!(arch(&b(), 8, 8.0, "m").len(), 8);
         assert_eq!(stairs(&b(), 4, "m").len(), 4);
+    }
+
+    #[test]
+    fn a_cylinder_lies_along_the_axis_it_is_given() {
+        let bounds = Aabb::new(DVec3::new(-100.0, 70.0, 20.0), DVec3::new(100.0, 78.0, 28.0));
+        for (axis, along) in [(Axis::X, DVec3::X), (Axis::Z, DVec3::Z)] {
+            let bounds = if axis == Axis::Z { Aabb::new(DVec3::new(20.0, 70.0, -100.0), DVec3::new(28.0, 78.0, 100.0)) } else { bounds };
+            let (local, _) = axis.frame(&bounds);
+            let c = axis.lay(cylinder(&local, 10, "m").unwrap(), &bounds);
+            c.validate().unwrap();
+            let got = c.bounds();
+            let inside = got.min.cmpge(bounds.min - 1e-6).all() && got.max.cmple(bounds.max + 1e-6).all();
+            let full_length = (got.size().dot(along) - bounds.size().dot(along)).abs() < 1e-6;
+            assert!(inside && full_length, "{axis:?} runs the length of its bounds, got {got:?}");
+            let caps = c.faces.iter().filter(|f| f.plane.normal.dot(along).abs() > 0.999).count();
+            assert_eq!(caps, 2, "{axis:?} has its round ends facing along the axis");
+            assert!(c.faces.iter().all(|f| !f.data.uv.is_degenerate_for(f.plane.normal)));
+        }
+
+        let (local, _) = Axis::X.frame(&bounds);
+        let tip = Axis::X.lay(cone(&local, 8, "m").unwrap(), &bounds);
+        assert!(tip.vertices.iter().any(|v| (v.x - 100.0).abs() < 1e-6), "a cone along X points to +X");
     }
 }

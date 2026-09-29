@@ -173,6 +173,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "uv_scale": { "type": "number" },
                 "entity": { "type": "object", "properties": { "classname": { "type": "string" }, "properties": { "type": "object" }, "outputs": outputs_schema() } },
                 "shape": { "type": "string", "enum": ["box", "cylinder", "cone", "sphere", "wedge", "spike", "arch", "pipe", "stairs", "spiral_stairs", "gable", "text"] }, "turns": { "type": "number" }, "ridge_x": { "type": "boolean" },
+                "axis": { "type": "string", "enum": ["x", "y", "z"], "description": "cylinder and cone: the axis they run along inside the bounds, y (upright) by default, the cone's tip at the max end" },
                 "text": { "type": "string" }, "standing": { "type": "boolean" }, "spacing": { "type": "number" },
                 "material": { "type": "string" },
                 "sides": { "type": "integer" },
@@ -187,6 +188,7 @@ pub fn tool_definitions() -> Vec<Value> {
             "inputSchema": { "type": "object", "properties": {
                 "shape": { "type": "string" },
                 "min": vec3_schema("minimum corner"), "max": vec3_schema("maximum corner"),
+                "axis": { "type": "string", "enum": ["x", "y", "z"], "description": "cylinder and cone: the axis they run along, y by default" },
                 "material": { "type": "string" }, "sides": { "type": "integer" }, "thickness": { "type": "number" },
                 "divisions": { "type": "integer" }, "opening_width": { "type": "number" }, "opening_height": { "type": "number" },
                 "ridge_z": { "type": "boolean" }, "overhang": { "type": "number" },
