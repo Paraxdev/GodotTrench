@@ -8,6 +8,20 @@
       "properties": [{ "name": "targetname", "type": "target_source", "description": "Name trigger_teleport refers to" }]
     },
     {
+      "classname": "info_landmark", "type": "point", "description": "The shared point of a connector room between two streamed sections. Both maps hold an identical copy of the room with a landmark of the same name at the same spot, and GTSectionStreamer lines the next section up on it.", "color": "#4de6ccff", "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_landmark.gd",
+      "size": [[-8, 0, -8], [8, 16, 8]],
+      "properties": [{ "name": "targetname", "type": "string", "description": "Name, the same in both copies of the connector" }]
+    },
+    {
+      "classname": "func_section_stream", "type": "solid", "description": "One half of a connector room between two streamed sections. While the player stands in it, GTSectionStreamer loads the section it names, swapping sections around the shared info_landmark. Give a connector two, one per side, meeting where neither end of the room can be seen.", "color": "#4de6ccff", "node_class": "Area3D",
+      "script": "res://godottrench/entities/scripts/gt_section_stream.gd",
+      "properties": [
+        { "name": "section", "type": "string", "description": "The section on this side: its scene path, or a name found in the streamer's sections folder" },
+        { "name": "landmark", "type": "string", "description": "Name of the info_landmark in this connector" }
+      ]
+    },
+    {
       "classname": "path_corner", "type": "point", "description": "One stop of a func_train path. target names the next corner.", "color": "#aaccffff", "node_class": "Marker3D",
       "script": "res://godottrench/entities/scripts/gt_path_corner.gd",
       "properties": [

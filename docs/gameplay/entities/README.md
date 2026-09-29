@@ -13,6 +13,7 @@ keys (the settings in the Inspector). How outputs connect to inputs is explained
 | [Triggers](triggers.md) | Invisible volumes that react when a body walks into them, to start events, hurt, teleport, push or spawn |
 | [Spawners and paths](actors.md) | Spawning enemies or pickups, teleport destinations, path corners and scripted cutscene characters |
 | [Props, lights and effects](effects.md) | Breakable physics props, static models, explosions, on screen text, switchable lights, sound, particles and light probes |
+| [Streamed sections](sections.md) | Landmarks and connector volumes for playing several maps as one world with no loading screen |
 
 ## Installing and customizing
 

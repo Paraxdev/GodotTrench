@@ -344,7 +344,8 @@ pub fn fgd_resource(def: &EntityDef) -> String {
 
     out +=
         &format!("\n[resource]\nscript = ExtResource(\"1_class\")\nclassname = {}\ndescription = {}\n", gd_string(&def.classname), gd_string(&def.description));
-    if solid && def.classname.starts_with("trigger") {
+    // Volumes are invisible in the game, the same rule as the editor's scene::is_volume.
+    if solid && (def.classname.starts_with("trigger") || def.node_class == "Area3D") {
         out += "build_visuals = false\n";
     }
 

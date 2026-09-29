@@ -112,6 +112,7 @@ func _initialize() -> void:
 	await load("res://tests/gtm_file_tests.gd").run(self)
 	await load("res://tests/lightmap_tests.gd").run(self)
 	await load("res://tests/entity_tests.gd").new().run(self)
+	await load("res://tests/section_tests.gd").new().run(self)
 	await load("res://tests/logic_math_tests.gd").new().run(self)
 	print("%d checks, %d failures" % [checks, failures.size()])
 	quit(1 if failures.size() > 0 else 0)

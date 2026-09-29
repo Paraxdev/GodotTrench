@@ -23,3 +23,25 @@ stream your own content alongside:
 ```gdscript
 streamer.area_loaded.connect(func(key, bounds): spawn_wildlife(bounds))
 ```
+
+## Streaming sections
+
+To play several maps as one world without loading screens, split it into sections and join them with connector
+rooms. Only one section is in the scene tree at a time. The next one loads in the background while the player
+explores, and swaps in while the player walks through a connector, lined up so the room around them stays exactly the
+same. This needs the [Gameplay entities pack](../gameplay/entities/README.md#installing-and-customizing).
+
+1. Build a connector room: a corridor with a bend on each side, so neither end can be seen from its middle. Put an
+   `info_landmark` in the middle, and two `func_section_stream` volumes, one covering each half, meeting in the
+   middle. Add it to the [prefab library](../editor/prefab-library.md) so every copy is the same.
+2. In each map that meets another, paste the connector where the two meet, name its landmark, for example
+   `lm_hall_cellar`, and set each half's `section` to the section on that side and `landmark` to the landmark's name.
+   Both maps get the same copy with the same names, turned the same way.
+3. Bake lighting in every section map. SDFGI only notices geometry a swap brings in once its cascades scroll, so a
+   swapped in section would stay unlit, while baked lighting comes with the section.
+4. Make a scene per section with its built map, the usual way.
+5. Add a `GTSectionStreamer` node to your world scene, set its `first_section` and its player, see
+   [GTSectionStreamer](../gameplay/entities/sections.md#gtsectionstreamer).
+
+> **Tip:** Keep a landmark's position a multiple of 480 map units, or any size all the connector's textures repeat
+> at, so the textures line up the same way in both copies.

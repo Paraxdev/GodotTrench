@@ -31,6 +31,70 @@
       ]
     },
     {
+      "classname": "info_landmark",
+      "type": "point",
+      "description": "The shared point of a connector room between two streamed sections. Both maps hold an identical copy of the room with a landmark of the same name at the same spot, and GTSectionStreamer lines the next section up on it.",
+      "color": "#4de6ccff",
+      "size": [
+        [
+          -8.0,
+          0.0,
+          -8.0
+        ],
+        [
+          8.0,
+          16.0,
+          8.0
+        ]
+      ],
+      "node_class": "Node3D",
+      "script": "res://godottrench/entities/scripts/gt_landmark.gd",
+      "group": "info",
+      "properties": [
+        {
+          "name": "targetname",
+          "type": "string",
+          "default": "",
+          "description": "Name, the same in both copies of the connector"
+        }
+      ]
+    },
+    {
+      "classname": "func_section_stream",
+      "type": "solid",
+      "description": "One half of a connector room between two streamed sections. While the player stands in it, GTSectionStreamer loads the section it names, swapping sections around the shared info_landmark. Give a connector two, one per side, meeting where neither end of the room can be seen.",
+      "color": "#4de6ccff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Area3D",
+      "script": "res://godottrench/entities/scripts/gt_section_stream.gd",
+      "group": "func",
+      "properties": [
+        {
+          "name": "section",
+          "type": "string",
+          "default": "",
+          "description": "The section on this side: its scene path, or a name found in the streamer's sections folder"
+        },
+        {
+          "name": "landmark",
+          "type": "string",
+          "default": "",
+          "description": "Name of the info_landmark in this connector"
+        }
+      ]
+    },
+    {
       "classname": "path_corner",
       "type": "point",
       "description": "One stop of a func_train path. target names the next corner.",
@@ -3574,8 +3638,10 @@
     "definitions/func_door_rotating.tres": "0a3952ab5ba12de041e18ef2c70c3b05d63c02d545c6d2f6c1a4c6a0689cd6f8",
     "definitions/func_gate.tres": "bf7c90f0c8d171275f3675a487d061db3f4395e89a048964439be02942b9400e",
     "definitions/func_platform.tres": "70e99e797d91d75e11536b868c006983eedb1204b33f7ae6b00606b9904b65da",
+    "definitions/func_section_stream.tres": "0b7d38737606ab699e041cf06be74209dfd79b315682eb64c9c317940d506a03",
     "definitions/func_train.tres": "d13d3ee0f30dcc94f6186b9b77505bc8a6766384151024e585e5a84641dff53d",
     "definitions/game_text.tres": "6c5b7e37e8f29c41c97e8f3a1df5926fa3a8920530a437fdf547861ec2d9a866",
+    "definitions/info_landmark.tres": "76ede71cda831cc7247c58a2ada7849a7d9b27b3268acf2563081be6bb21f642",
     "definitions/info_spawner.tres": "873dd96a484f093e93c85b18bb741e080bc5f650eba3947e81e5b91e3e9241ed",
     "definitions/info_teleport_destination.tres": "edd3f0a451318aa29c807bb4c8d704f190c0096b2e31022acabe991934f047e8",
     "definitions/logic_animate.tres": "32c6ba99cc6e3821745f86544bdc3c2e901944367f30f28d8f65153d5f2a6db7",
@@ -3607,7 +3673,7 @@
     "definitions/trigger_push.tres": "ed357b87e9306f466c9eaf9da422be3e9baf2b3414e6da9bbdcbf5115f111578",
     "definitions/trigger_spawn_area.tres": "ec0bf93bda90ff67cb08f0c22bfd1b71127125f755af0beac092ed0e2e789aa3",
     "definitions/trigger_teleport.tres": "d9becda8571efebbc7b3323aa3a7f83e02029e0bf69ec4f882ef6a554a8e2269",
-    "gameplay_fgd.tres": "66721982b5dda52618c9c9e398f43c442d0dfaf37ed0f9c0ff62c8d030b6cfce",
+    "gameplay_fgd.tres": "79776641f2c3b45c4b4d1b8fc2596daf3cf6523038b431a3f1074eabe1ce65a8",
     "scripts/gt_animate.gd": "e2a89d1457bb13fff22b01fcc40ab7310676ab6429c18acbbc3d5d75eacc726e",
     "scripts/gt_auto.gd": "b5f11ac5da18b8b48b1cde59c69f5dee070f033cbed63886b763a23a48957a9b",
     "scripts/gt_branch.gd": "c42e7e15ffaf3ecce3e7623a71956c9da3e41a1476724d2e2f10888a54419858",
@@ -3623,6 +3689,7 @@
     "scripts/gt_flipflop.gd": "c756c525edfe4ad6101dbf982ddbdb687fb3c8a2de8a32fcf6101c6d72871c14",
     "scripts/gt_gate.gd": "c0b636fb7359697ff24be62638bb7812c5015c7c6289470064004f95249f763c",
     "scripts/gt_hurt.gd": "275c6da6850a236d327939f5f4d6c2555ed35def6334fbbc447ac9c01520ac33",
+    "scripts/gt_landmark.gd": "a4acaf7fbca137fed9291b17f26cd64a29f17d44a321583448d03d6321f1eba8",
     "scripts/gt_logic_call.gd": "457b852274de6845d26eb9aed95ffc9a23281feb4e8006afeec1ab4636f42d36",
     "scripts/gt_math.gd": "75f86d6e47cc9b0c27dd83f2fb28663821ec01d9cd09db5191c1fc0468f79902",
     "scripts/gt_npc.gd": "75613fbf3569750a3cc13c41cddb9376e4e896e0705353700be68b9392aa5935",
@@ -3634,6 +3701,8 @@
     "scripts/gt_random.gd": "88c8af643d663363a5e49fdd947ca7ee2063e2289d8123aadbf5502b30673f5e",
     "scripts/gt_relay.gd": "8f558b5dff7a574e8e6cd182329e72045c0d47e9c40bce82198b65779e855868",
     "scripts/gt_script.gd": "7362481c5be1de6455f6830ea33f630787666338e0b28e2094fac1b9109cd901",
+    "scripts/gt_section_stream.gd": "ffff5c980094f702624c72ae8a2601646eedca6d740f32e7b6f347dd370cec21",
+    "scripts/gt_section_streamer.gd": "d18c9df15d150b62561a5818f45719646d8bdf4746ec6b0a86b4d1389b481450",
     "scripts/gt_sequence.gd": "22f9072e887ea44973594fcdad44be84a5b47dc7d2e9f9daf466927544253967",
     "scripts/gt_sound.gd": "817077251862517d36da9fca744f8accc4c0d57f34b01348490efb8aa5d7d632",
     "scripts/gt_spawn_area.gd": "6c5dda770fbdd431a6dc11408c93980b7cfcc56821d6a8cf37e61484f742dc4f",

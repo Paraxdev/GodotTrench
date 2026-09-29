@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://godottrench/entities/scripts/gt_landmark.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "info_landmark"
+description = "The shared point of a connector room between two streamed sections. Both maps hold an identical copy of the room with a landmark of the same name at the same spot, and GTSectionStreamer lines the next section up on it."
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"targetname": ""
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"targetname": "Name, the same in both copies of the connector"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.3019608, 0.9019608, 0.8, 1),
+"size": AABB(-8, -8, 0, 8, 8, 16)
+})
+node_class = "Node3D"
