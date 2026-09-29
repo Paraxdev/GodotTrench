@@ -1548,6 +1548,7 @@ pub fn open_map_in_tab(state: &mut EditorState, path: &std::path::Path) -> Resul
 
 /// How an instance node refers to a prefab file: relative to the map, res:// inside the project, or absolute.
 pub fn prefab_reference(prefab: &std::path::Path, map_path: Option<&std::path::Path>, project_root: Option<&std::path::Path>) -> String {
+    let prefab = &crate::state::absolute(prefab);
     if let Some(dir) = map_path.and_then(|m| m.parent())
         && let Ok(rel) = prefab.strip_prefix(dir)
     {
