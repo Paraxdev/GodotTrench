@@ -1439,9 +1439,14 @@ fn rename_frame(ctx: &egui::Context, state: &mut EditorState, gs: &mut GraphStat
     let r = gs.frame_rect(i);
     let mut done = None;
     egui::Area::new(Id::new("logic_frame_title")).order(Order::Foreground).fixed_pos(r.min + vec2(4.0, 2.0)).show(ctx, |ui| {
-        let field = ui.add(egui::TextEdit::singleline(&mut text).desired_width((r.width() - 8.0).clamp(80.0, 400.0)));
+        let mut output = egui::TextEdit::singleline(&mut text).desired_width((r.width() - 8.0).clamp(80.0, 400.0)).show(ui);
+        let field = output.response.clone();
         if !field.has_focus() && !field.lost_focus() {
             field.request_focus();
+            // Typing replaces the old title rather than adding to it.
+            let all = egui::text::CCursorRange::two(egui::text::CCursor::new(0), egui::text::CCursor::new(text.chars().count()));
+            output.state.cursor.set_char_range(Some(all));
+            output.state.store(ui.ctx(), field.id);
         }
 
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
