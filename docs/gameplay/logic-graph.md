@@ -76,7 +76,8 @@ category, logic and math first, then other entities that have inputs or outputs.
 whose name starts with or contains the text come first, then those whose category or description does. The first row
 is highlighted, the up and down arrow keys move the highlight and Enter adds that class. New entities are
 point entities, and the Godot build makes a node for each, so they need a place in the map. They go on a layer called
-*Logic*, next to the entity they are wired to, or in front of the 3D view's camera.
+*Logic*, next to the entity they are wired to, or in front of the 3D view's camera. Each gets a free targetname at
+once, like `relay_2`, which titles its node. Change it in the Inspector, since *Rename* only sets the Outliner name.
 
 Click a wire to edit its output, target, input, parameter, delay and times in the box at the top right. Its **Delete**
 button, or the Delete key while the pointer is over the graph, removes it. Right click anywhere along a wire, not only

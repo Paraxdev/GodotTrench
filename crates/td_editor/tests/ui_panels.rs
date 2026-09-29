@@ -1469,13 +1469,12 @@ fn logic_graph_frames_name_and_move_their_nodes() {
     let mut harness = logic_graph(f);
     harness.get_by_label("Frame").click();
     harness.run();
-    harness.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::A);
     harness.event(egui::Event::Text("Doors".into()));
     harness.key_press(egui::Key::Enter);
     harness.run();
     let frames = &harness.state().state.doc.map.editor.graph_frames;
     assert_eq!(frames.len(), 1);
-    assert_eq!(frames[0].title, "Doors", "the new frame's title field has the keyboard");
+    assert_eq!(frames[0].title, "Doors", "the new frame's title field has the keyboard, and typing replaces the default title");
 
     let node = |h: &Harness<'_, Fixture>, id| h.state().panels.logic.node_screen_rect(&NodeKey::Entity(id)).unwrap();
     let (relay_before, timer_before) = (node(&harness, relay), node(&harness, outside));
