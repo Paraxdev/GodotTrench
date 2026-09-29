@@ -848,6 +848,10 @@ impl EditorState {
             let _ = std::fs::remove_file(untitled);
         }
 
+        if let Some(folder) = self.prefab_library.folder.clone().filter(|f| path.starts_with(absolute(f))) {
+            self.prefab_library.rescan(folder.parent());
+        }
+
         if let Some(map_path) = autosave_source(path) {
             self.set_status(format!(
                 "Saved into the autosave file {}, Godot uses {}, Save As to write the real map",
