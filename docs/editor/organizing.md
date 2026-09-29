@@ -41,7 +41,8 @@ Unlink Groups* breaks the link when one copy has to differ.
 ## Prefabs
 
 For pieces you reuse across maps, *Edit > Prefabs > Create from Selection…* saves the selection as its own `.gtm` and
-replaces it with an instance. Every instance updates when the prefab file changes.
+replaces it with an instance. Every instance updates when the prefab file changes. For pieces you paste once and then
+shape freely, use the [prefab library](prefab-library.md).
 
 > **Note:** Save the map once before creating a prefab. Prefab paths are stored relative to the map.
 

@@ -331,11 +331,13 @@ fn dialog_action(name: &str) -> Option<&'static str> {
     })
 }
 
-/// Pastes GodotTrench clipboard text under `parent` as one undo step, moved by `offset` or centered on `origin`.
+/// Pastes GodotTrench clipboard text, or TrenchBroom's, under `parent` as one undo step, moved by `offset` or centered
+/// on `origin`.
 pub(super) fn paste_text(state: &mut EditorState, text: &str, parent: NodeId, origin: Option<DVec3>, offset: Option<DVec3>) -> Result<Vec<NodeId>, String> {
     let opts = ops::EditOptions { uv_lock: state.uv_lock, grid: 0.0 };
+    let text = crate::commands::clipboard_text(&state.game, text).into_owned();
     state.doc.try_edit("Paste", |m, s| {
-        let ids = format::paste_nodes(m, parent, text).map_err(|e| format!("not GodotTrench clipboard text: {e}"))?;
+        let ids = format::paste_nodes(m, parent, &text).map_err(|e| format!("not GodotTrench or TrenchBroom clipboard text: {e}"))?;
         if ids.is_empty() {
             return Err("the text holds no objects to paste".to_string());
         }
@@ -598,6 +600,9 @@ impl App {
             "texture" => self.tool_texture(&args),
             "create_terrain" => self.tool_create_terrain(&args),
             "scatter" => self.tool_scatter(&args),
+            "prefab_library" => self.tool_prefab_library(&args),
+            "trim" => self.tool_trim(&args),
+            "random_fill" => self.tool_random_fill(&args),
             "blend" => self.tool_blend(&args),
             "gameplay" => self.tool_gameplay(&args),
             "code_reference" => self.tool_code_reference(&args),
@@ -2245,6 +2250,28 @@ mod tests {
         assert_eq!(s.doc.map.bounds_of(ids.iter().copied()).center(), DVec3::new(100.0, 8.0, 0.0));
         let moved = paste_text(&mut s, &text, layer, None, Some(DVec3::new(0.0, 0.0, 64.0))).unwrap();
         assert_eq!(s.doc.map.bounds_of(moved.iter().copied()).min, DVec3::new(0.0, 0.0, 64.0));
+    }
+
+    #[test]
+    fn pastes_brushes_copied_in_trenchbroom() {
+        let mut s = state();
+        let layer = s.doc.map.default_layer();
+        // A 64 by 32 by 16 box, Quake Z up: 64 along x, 32 along y, 16 tall.
+        let face = |a: &str, b: &str, c: &str| format!("( {a} ) ( {b} ) ( {c} ) __TB_empty 0 0 0 1 1\n");
+        let text = format!(
+            "// brush 0\n{{\n{}{}{}{}{}{}}}\n",
+            face("0 0 0", "0 1 0", "0 0 1"),
+            face("0 0 0", "0 0 1", "1 0 0"),
+            face("0 0 0", "1 0 0", "0 1 0"),
+            face("64 32 16", "64 32 17", "64 33 16"),
+            face("64 32 16", "65 32 16", "64 32 17"),
+            face("64 32 16", "64 33 16", "65 32 16"),
+        );
+        let ids = paste_text(&mut s, &text, layer, None, None).unwrap();
+        assert_eq!(ids.len(), 1);
+        let size = s.doc.map.bounds_of(ids.iter().copied()).size();
+        // The same axes as opening a .map, FuncGodot's: Quake x runs along z, Quake y along x, Quake z is up.
+        assert!((size - DVec3::new(32.0, 16.0, 64.0)).length() < 1e-6, "{size}");
     }
 
     #[test]

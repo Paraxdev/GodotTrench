@@ -1649,3 +1649,29 @@ fn mesh_inspector_names_the_materials_a_placed_model_draws_with() {
     harness.run();
     assert!(harness.query_by_label_contains("Materials:").is_none(), "a mesh without faces lists none");
 }
+
+#[test]
+fn prefabs_panel_shows_the_library_and_pastes_a_clicked_card() {
+    let f = Fixture::new();
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(640.0, 900.0))
+        .build_ui_state(|ui, f: &mut Fixture| gt_editor::prefab_panel::show(ui, &mut f.state, &mut f.panels.prefabs, &mut f.actions), f);
+    harness.run();
+    for name in ["Straight stair 8", "Archway", "Round pillar", "Crate stack"] {
+        assert!(harness.query_by_label(name).is_some(), "a card for {name}");
+    }
+
+    harness.get_by_label("Archway").click();
+    harness.run();
+    match harness.state().actions.as_slice() {
+        [Action::Paste(text)] => assert!(text.contains("godottrench-clipboard"), "the click pastes the entry's objects"),
+        other => panic!("expected one paste, got {other:?}"),
+    }
+
+    // The search field is the first text input, the Add the selection fields stay folded away.
+    harness.get_all_by_role(egui::accesskit::Role::TextInput).next().unwrap().click();
+    harness.run();
+    harness.get_all_by_role(egui::accesskit::Role::TextInput).next().unwrap().type_text("pillar");
+    harness.run();
+    assert!(harness.query_by_label("Archway").is_none() && harness.query_by_label("Square pillar").is_some(), "the search filters the cards");
+}

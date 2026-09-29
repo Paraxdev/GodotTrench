@@ -108,6 +108,8 @@ pub enum Action {
     OpenPrefab,
     ShowCommandPalette,
     ShowShapeDialog,
+    ShowTrimDialog,
+    ShowRandomFillDialog,
     ShowTerrainDialog,
     ShowKeymap,
     ShowUvEditor,
@@ -717,13 +719,28 @@ fn edit_or<T>(state: &mut EditorState, label: &str, why: &str, f: impl FnOnce(&m
     result
 }
 
+/// Clipboard text in GodotTrench's own format: as it is, or brushes and entities copied in TrenchBroom (Quake map text)
+/// converted, with other games' tool textures renamed to the project's.
+pub fn clipboard_text<'a>(game: &gt_formats::GameConfig, text: &'a str) -> std::borrow::Cow<'a, str> {
+    if serde_json::from_str::<serde::de::IgnoredAny>(text).is_ok() {
+        return std::borrow::Cow::Borrowed(text);
+    }
+
+    let options = gt_formats::vmf::ImportOptions { tools: game.tool_textures.clone(), ..Default::default() };
+    match gt_formats::quake_map::import_clipboard(text, &options) {
+        Ok(map) => std::borrow::Cow::Owned(format::nodes_to_string(&map, &map.layers)),
+        Err(_) => std::borrow::Cow::Borrowed(text),
+    }
+}
+
 /// Pastes clipboard text under the insert parent and selects it. It lands centered under the pointer in the views,
 /// snapped to the grid, or, when `beside`, one grid step from where it was copied.
 fn paste(state: &mut EditorState, text: &str, beside: bool) {
+    let text = clipboard_text(&state.game, text).into_owned();
     let cursor = state.cursor_world.filter(|_| !beside);
     let (snap, grid, opts, parent) = (state.snap, state.grid, state.opts(), state.insert_parent());
     let result = state.doc.try_edit("Paste", |m, s| {
-        let ids = format::paste_nodes(m, parent, text)?;
+        let ids = format::paste_nodes(m, parent, &text)?;
         s.clear();
         s.nodes.extend(ids.iter().copied());
         let b = m.bounds_of(ids.iter().copied());
@@ -1168,6 +1185,8 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         | Action::ExportGlb
         | Action::ExportObj
         | Action::ShowShapeDialog
+        | Action::ShowTrimDialog
+        | Action::ShowRandomFillDialog
         | Action::ShowTerrainDialog
         | Action::ShowKeymap
         | Action::ShowUvEditor
@@ -2301,43 +2320,56 @@ fn explode_instances(state: &mut EditorState) {
         s.clear();
         for (id, inst, text) in contents {
             let parent = m.get(id).and_then(|n| n.parent).unwrap_or(m.default_layer());
-            let Ok(ids) = format::paste_nodes(m, parent, &text) else { continue };
-            let mut sel = gt_doc::Selection::default();
-            sel.nodes.extend(ids.iter().copied());
-            ops::transform_selection(m, &sel, &crate::prefabs::instance_transform(&inst), ops::EditOptions { uv_lock: true, grid: 0.0 });
-            if !inst.fixup.is_empty() {
-                for new_id in sel.transformables(m) {
-                    if let Some(e) = m.entity_mut(new_id) {
-                        let declared = game.entity(&e.classname).into_iter().flat_map(|d| &d.properties);
-                        let declared = declared
-                            .filter(|p| matches!(p.ty, gt_formats::game::PropertyType::TargetSource | gt_formats::game::PropertyType::TargetDestination))
-                            .map(|p| p.name.as_str());
-                        let keys: std::collections::BTreeSet<&str> = gt_doc::map::FIXUP_KEYS.into_iter().chain(declared).collect();
-                        for key in keys {
-                            if let Some(v) = e.properties.get_mut(key)
-                                && let Some(fixed) = inst.fixup_name(v)
-                            {
-                                *v = fixed;
-                            }
-                        }
-
-                        for o in &mut e.outputs {
-                            if let Some(fixed) = inst.fixup_name(&o.target) {
-                                o.target = fixed;
-                            }
-                        }
-                    }
-
-                    if let Some(gt_doc::NodeKind::Instance(nested)) = m.get_mut(new_id).map(|n| &mut n.kind) {
-                        nested.fixup = inst.nested_fixup(&nested.fixup);
-                    }
-                }
+            let ids = place_copy(m, game, parent, &text, &inst);
+            if ids.is_empty() {
+                continue;
             }
 
             m.remove(id);
             s.nodes.extend(ids);
         }
     });
+}
+
+/// Pastes clipboard `text` under `parent` placed as `inst` would place its prefab: moved and turned by its origin and
+/// angles, every entity name prefixed with its fixup so copies keep their wiring apart. Returns the new root ids.
+pub fn place_copy(m: &mut gt_doc::Map, game: &gt_formats::GameConfig, parent: NodeId, text: &str, inst: &gt_doc::map::Instance) -> Vec<NodeId> {
+    let Ok(ids) = format::paste_nodes(m, parent, text) else { return Vec::new() };
+    let mut sel = gt_doc::Selection::default();
+    sel.nodes.extend(ids.iter().copied());
+    ops::transform_selection(m, &sel, &crate::prefabs::instance_transform(inst), ops::EditOptions { uv_lock: true, grid: 0.0 });
+    if inst.fixup.is_empty() {
+        return ids;
+    }
+
+    for new_id in sel.transformables(m) {
+        if let Some(e) = m.entity_mut(new_id) {
+            let declared = game.entity(&e.classname).into_iter().flat_map(|d| &d.properties);
+            let declared = declared
+                .filter(|p| matches!(p.ty, gt_formats::game::PropertyType::TargetSource | gt_formats::game::PropertyType::TargetDestination))
+                .map(|p| p.name.as_str());
+            let keys: std::collections::BTreeSet<&str> = gt_doc::map::FIXUP_KEYS.into_iter().chain(declared).collect();
+            for key in keys {
+                if let Some(v) = e.properties.get_mut(key)
+                    && let Some(fixed) = inst.fixup_name(v)
+                {
+                    *v = fixed;
+                }
+            }
+
+            for o in &mut e.outputs {
+                if let Some(fixed) = inst.fixup_name(&o.target) {
+                    o.target = fixed;
+                }
+            }
+        }
+
+        if let Some(gt_doc::NodeKind::Instance(nested)) = m.get_mut(new_id).map(|n| &mut n.kind) {
+            nested.fixup = inst.nested_fixup(&nested.fixup);
+        }
+    }
+
+    ids
 }
 
 fn first_selected_material(state: &EditorState) -> Option<String> {

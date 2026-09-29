@@ -109,6 +109,8 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("Brush: Snap Vertices to Grid".into(), Action::SnapVertices),
         ("Brush: Move to World".into(), Action::MoveToWorld),
         ("Brush: Shape Generator".into(), Action::ShowShapeDialog),
+        ("Brush: Add Trim (baseboards, molding)".into(), Action::ShowTrimDialog),
+        ("Brush: Random Fill from the prefab library".into(), Action::ShowRandomFillDialog),
         ("Displacement: Create (power 2)".into(), Action::CreateDisplacement(2)),
         ("Displacement: Create (power 3)".into(), Action::CreateDisplacement(3)),
         ("Displacement: Create (power 4)".into(), Action::CreateDisplacement(4)),

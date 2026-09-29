@@ -32,6 +32,9 @@ other map.
 TrenchBroom layers and groups stay layers and groups, and Quake tool textures become the project's tool textures the
 same way.
 
+Brushes copied in TrenchBroom also paste straight into an open map with Ctrl+V, converted the same way, see
+[Prefab library](prefab-library.md#pasting-from-trenchbroom).
+
 Sky faces collide in Godot but draw nothing. The worldspawn key `sky_source` keeps the texture they had, and converting
 the textures turns it into a procedural sky, see [Converting textures](importing-textures.md#skies).
 

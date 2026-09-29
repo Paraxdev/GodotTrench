@@ -9,7 +9,7 @@ use gt_doc::{IoConnection, NodeKind, ScatterItem, ops};
 use serde_json::{Value, json};
 
 use super::ToolResult;
-use super::tools::{Child, check_container, editable_ids, face_list, id_list, optional_id, require_id, resolve_parent, uint};
+use super::tools::{Child, check_container, editable_ids, face_list, id_list, optional_id, paste_text, require_id, resolve_parent, uint};
 use crate::app::App;
 
 fn vec3(v: &Value) -> Option<DVec3> {
@@ -138,6 +138,162 @@ pub fn content_result(outcome: &crate::content::Outcome) -> ToolResult {
 }
 
 impl App {
+    /// Random fill: a grid of cells covered with prefab library pieces picked by weight.
+    pub(crate) fn tool_random_fill(&mut self, args: &Value) -> ToolResult {
+        use crate::random_fill::{FillOptions, FillPiece};
+        let mut opts = FillOptions::default();
+        let Some(list) = args["pieces"].as_array() else { return err("pieces needs [{name, weight, rotate}], names from prefab_library op list") };
+        for p in list {
+            let Some(name) = p["name"].as_str() else { return err("every piece needs a name") };
+            opts.pieces.push(FillPiece { name: name.to_string(), weight: p["weight"].as_f64().unwrap_or(1.0), rotate: p["rotate"].as_bool().unwrap_or(true) });
+        }
+
+        if let Some(v) = vec3(&args["min"]) {
+            opts.min = v;
+        }
+
+        if let Some(c) = args["cells"].as_array().filter(|c| c.len() == 2) {
+            opts.cells = [c[0].as_u64().unwrap_or(1).clamp(1, 512) as usize, c[1].as_u64().unwrap_or(1).clamp(1, 512) as usize];
+        }
+
+        opts.cell = args["cell"].as_f64().unwrap_or(opts.cell).max(1.0);
+        opts.empty = args["empty"].as_f64().unwrap_or(0.0);
+        opts.seed = args["seed"].as_u64().unwrap_or(opts.seed).max(1);
+        opts.cluster = args["cluster"].as_f64().unwrap_or(opts.cluster);
+        opts.cluster_size = args["cluster_size"].as_f64().unwrap_or(opts.cluster_size);
+        let counts = |placements: &[crate::random_fill::Placement]| {
+            opts.pieces
+                .iter()
+                .enumerate()
+                .map(|(k, p)| json!({ "name": p.name, "cells": placements.iter().filter(|x| x.piece == k).count() }))
+                .collect::<Vec<_>>()
+        };
+        if args["preview"].as_bool() == Some(true) {
+            let placements = crate::random_fill::plan(&opts);
+            return ok(json!({ "pieces": counts(&placements), "sketch": crate::random_fill::sketch(&opts, &placements) }));
+        }
+
+        let replace = args["replace"].as_u64().map(NodeId);
+        match crate::random_fill::apply(&mut self.state, &opts, replace) {
+            Ok(filled) => ok(json!({
+                "ok": true, "group": filled.group.0, "pieces": counts(&filled.placements),
+                "sketch": crate::random_fill::sketch(&opts, &filled.placements)
+            })),
+            Err(e) => err(e),
+        }
+    }
+
+    /// Trim strips along face edges: baseboards, crown molding, borders.
+    pub(crate) fn tool_trim(&mut self, args: &Value) -> ToolResult {
+        let mut opts = crate::trim::TrimOptions { material: self.state.current_material.clone(), ..Default::default() };
+        if let Some(name) = args["edges"].as_str() {
+            match crate::trim::TrimEdges::from_name(name) {
+                Some(e) => opts.edges = e,
+                None => return err(format!("unknown edges {name}, use bottom, top, sides or all")),
+            }
+        }
+
+        for (key, slot) in [("height", &mut opts.height), ("depth", &mut opts.depth), ("inset", &mut opts.inset)] {
+            if let Some(v) = args[key].as_f64() {
+                *slot = v.max(0.0);
+            }
+        }
+
+        if let Some(m) = args["material"].as_str() {
+            opts.material = m.to_string();
+        }
+
+        opts.on_floor = args["on_floor"].as_bool().unwrap_or(opts.on_floor);
+        opts.collision = args["collision"].as_bool().unwrap_or(opts.collision);
+        let faces = if args["faces"].is_array() {
+            match face_list(args, "faces") {
+                Ok(f) => f,
+                Err(e) => return err(e),
+            }
+        } else if args["ids"].is_array() {
+            let mut sel = gt_doc::Selection::default();
+            match id_list(args, "ids") {
+                Ok(ids) => sel.nodes.extend(ids),
+                Err(e) => return err(e),
+            }
+
+            crate::trim::faces_for(&self.state.doc.map, &sel)
+        } else {
+            crate::trim::faces_for(&self.state.doc.map, &self.state.doc.selection)
+        };
+        match crate::trim::apply(&mut self.state, &faces, &opts) {
+            Ok((id, count)) => {
+                let b = self.state.doc.map.bounds(id);
+                ok(json!({ "ok": true, "id": id.0, "strips": count, "bounds": bounds_json(&b) }))
+            }
+            Err(e) => err(e),
+        }
+    }
+
+    /// The prefab library: list its entries, paste or copy one, or add objects to the project's library.
+    pub(crate) fn tool_prefab_library(&mut self, args: &Value) -> ToolResult {
+        let op = args["op"].as_str().unwrap_or("list");
+        if op == "list" {
+            let query = args["query"].as_str().unwrap_or("").to_lowercase();
+            let entries: Vec<Value> = self
+                .state
+                .prefab_library
+                .entries
+                .iter()
+                .filter(|e| query.is_empty() || e.key().to_lowercase().contains(&query))
+                .map(|e| {
+                    let source = if e.source == crate::prefab_library::Source::BuiltIn { "builtin" } else { "project" };
+                    json!({ "name": e.key(), "source": source, "size": arr(e.bounds.size()), "path": e.path.as_ref().map(|p| p.display().to_string()) })
+                })
+                .collect();
+            return ok(json!({ "entries": entries, "folder": self.state.prefab_library.folder.as_ref().map(|p| p.display().to_string()) }));
+        }
+
+        if op == "add" {
+            let Some(root) = self.state.game.project_root.clone() else {
+                return err("open a Godot project first, entries are saved in its prefab_library folder");
+            };
+            let ids = if args["ids"].is_array() {
+                match id_list(args, "ids") {
+                    Ok(ids) => ids,
+                    Err(e) => return err(e),
+                }
+            } else {
+                gt_doc::ops::selection_roots(&self.state.doc.map, &self.state.doc.selection)
+            };
+            let (name, category) = (args["name"].as_str().unwrap_or(""), args["category"].as_str().unwrap_or(""));
+            let keep = args["keep_position"].as_bool().unwrap_or(false);
+            return match self.state.prefab_library.add(&self.state.doc.map, &ids, category, name, &root, keep) {
+                Ok(path) => ok(json!({ "ok": true, "path": path.display().to_string() })),
+                Err(e) => err(e),
+            };
+        }
+
+        let Some(key) = args["name"].as_str() else { return err(format!("{op} needs name, category/name from op list")) };
+        let Some(entry) = self.state.prefab_library.find(key).cloned() else { return err(format!("no prefab {key}, op list shows what there is")) };
+        let text = match self.state.prefab_library.text(&entry) {
+            Ok(t) => t,
+            Err(e) => return err(e),
+        };
+        match op {
+            "copy" => ok(json!({ "name": entry.key(), "text": text })),
+            "paste" => {
+                let parent = match resolve_parent(&self.state, &args["parent"], Child::Other) {
+                    Ok(p) => p,
+                    Err(e) => return err(e),
+                };
+                match paste_text(&mut self.state, &text, parent, vec3(&args["origin"]), vec3(&args["offset"])) {
+                    Ok(ids) => {
+                        let b = self.state.doc.map.bounds_of(ids.iter().copied());
+                        self.state.set_status(format!("Pasted {}", entry.name));
+                        ok(json!({ "ok": true, "ids": ids.iter().map(|i| i.0).collect::<Vec<_>>(), "bounds": bounds_json(&b) }))
+                    }
+                    Err(e) => err(e),
+                }
+            }
+            _ => err(format!("unknown op {op}, use list, paste, copy or add")),
+        }
+    }
     pub(crate) fn content_status(&self) -> Value {
         let root = self.state.game.project_root.clone();
         let has = |f: fn(&std::path::Path) -> bool| root.as_deref().is_some_and(f);

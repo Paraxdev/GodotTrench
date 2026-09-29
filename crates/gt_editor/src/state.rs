@@ -332,6 +332,7 @@ pub struct EditorState {
     pub materials: MaterialLibrary,
     /// The placeable models under `res://models`, shown in the Models panel.
     pub model_library: crate::models::ModelLibrary,
+    pub prefab_library: crate::prefab_library::PrefabLibrary,
     pub prefs: Prefs,
     pub grid: f64,
     pub snap: bool,
@@ -488,6 +489,7 @@ impl EditorState {
             game,
             materials,
             model_library,
+            prefab_library: crate::prefab_library::PrefabLibrary::new(None),
             prefs,
             grid: 16.0,
             snap: true,
@@ -1000,6 +1002,7 @@ impl EditorState {
 
         self.materials.rescan(&game);
         self.model_library.rescan(&game);
+        self.prefab_library.rescan(Some(root));
         self.game = game;
         self.restart_game_watch();
         let p = root.to_path_buf();

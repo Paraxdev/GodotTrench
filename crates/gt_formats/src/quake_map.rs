@@ -599,6 +599,14 @@ pub fn import_with(src: &str, options: &crate::vmf::ImportOptions) -> Result<(Ma
     Ok((map, report))
 }
 
+/// Brushes and entities copied in TrenchBroom, or any Quake map text, as a map to paste from. TrenchBroom copies world
+/// brushes without the worldspawn around them, so text that does not read as entities is read again as bare brushes.
+pub fn import_clipboard(src: &str, options: &crate::vmf::ImportOptions) -> Result<Map, MapError> {
+    import_with(src, options)
+        .map(|(map, _)| map)
+        .or_else(|first| import_with(&format!("{{\n\"classname\" \"worldspawn\"\n{src}\n}}"), options).map(|(map, _)| map).map_err(|_| first))
+}
+
 pub fn import_report(src: &str) -> Result<(Map, ImportReport), MapError> {
     let (mut map, report) = parse_map(src)?;
     crate::vmf::rename_tool_faces(&mut map, "", |f| {
@@ -744,6 +752,33 @@ mod tests {
         light.angles = DVec3::new(10.0, 45.0, 0.0);
         m.insert(g, NodeKind::Entity(light));
         m
+    }
+
+    #[test]
+    fn reads_trenchbroom_clipboard_text() {
+        let options = crate::vmf::ImportOptions::default();
+        // What TrenchBroom puts on the clipboard for one selected world brush, a 64 unit cube in Valve format.
+        let bare = "// brush 0\n{\n\
+            ( -32 -32 -32 ) ( -32 -31 -32 ) ( -32 -32 -31 ) __TB_empty [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1\n\
+            ( -32 -32 -32 ) ( -32 -32 -31 ) ( -31 -32 -32 ) __TB_empty [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1\n\
+            ( -32 -32 -32 ) ( -31 -32 -32 ) ( -32 -31 -32 ) __TB_empty [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1\n\
+            ( 32 32 32 ) ( 32 33 32 ) ( 33 32 32 ) __TB_empty [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1\n\
+            ( 32 32 32 ) ( 33 32 32 ) ( 32 32 33 ) __TB_empty [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1\n\
+            ( 32 32 32 ) ( 32 32 33 ) ( 32 33 32 ) __TB_empty [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1\n}\n";
+        let map = import_clipboard(bare, &options).unwrap();
+        assert_eq!(map.brush_count(), 1);
+        let b = map.bounds_of(map.layers.clone());
+        assert!((b.size() - DVec3::splat(64.0)).length() < 1e-6, "{b:?}");
+
+        // A group copies as its func_group around the brushes, entities as themselves.
+        let grouped = format!(
+            "// entity 0\n{{\n\"classname\" \"func_group\"\n\"_tb_type\" \"_tb_group\"\n\"_tb_name\" \"stairs\"\n\"_tb_id\" \"7\"\n{bare}}}\n\
+             // entity 1\n{{\n\"classname\" \"light\"\n\"origin\" \"0 0 64\"\n}}\n"
+        );
+        let map = import_clipboard(&grouped, &options).unwrap();
+        assert_eq!((map.brush_count(), map.entity_count()), (1, 1));
+        assert!(map.walk().iter().any(|id| matches!(map.get(*id).map(|n| &n.kind), Some(NodeKind::Group(g)) if g.name == "stairs")));
+        assert!(import_clipboard("just some words", &options).is_err());
     }
 
     #[test]

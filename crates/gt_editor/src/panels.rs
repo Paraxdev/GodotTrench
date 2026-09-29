@@ -58,6 +58,7 @@ pub struct PanelState {
     reference_kind: usize,
     reference_list_width: Option<f32>,
     pub logic: crate::logic_graph::GraphState,
+    pub prefabs: crate::prefab_panel::PrefabPanel,
 }
 
 impl Default for PanelState {
@@ -97,6 +98,7 @@ impl Default for PanelState {
             reference_kind: 0,
             reference_list_width: None,
             logic: Default::default(),
+            prefabs: Default::default(),
         }
     }
 }

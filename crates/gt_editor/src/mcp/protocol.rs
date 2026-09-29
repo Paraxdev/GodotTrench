@@ -415,6 +415,34 @@ pub fn tool_definitions() -> Vec<Value> {
             } }
         }),
         json!({
+            "name": "random_fill",
+            "description": "Covers a grid of cells with pieces from the prefab library (see prefab_library op list), each cell's piece picked by weight, like Brush > Random Fill. pieces: [{name (category/name), weight, rotate (random 90 degree turns, default true)}]. empty: weight of leaving a cell empty. min: the grid's corner [x, y, z], y being the floor. cell: cell size in map units (128). cells: [nx, nz]. seed: same seed, same layout. cluster 0..1 gathers each piece into patches of about cluster_size cells (0.5, 4). Pieces should be one cell wide and centered on the origin. The result is one group of plain copies, each copy's entity names prefixed rf<seed>_<n>- so wiring stays apart. replace: a group id from an earlier fill to remove first (reroll). preview: true only returns the layout. Returns the group, cells per piece and a sketch (a letter per piece in order, . empty).",
+            "inputSchema": { "type": "object", "properties": {
+                "pieces": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "weight": { "type": "number" }, "rotate": { "type": "boolean" } }, "required": ["name"] } },
+                "empty": { "type": "number" }, "min": vec3_schema("grid corner"), "cell": { "type": "number" },
+                "cells": { "type": "array", "items": { "type": "integer" } }, "seed": { "type": "integer" }, "cluster": { "type": "number" },
+                "cluster_size": { "type": "number" }, "replace": { "type": "integer" }, "preview": { "type": "boolean" }
+            }, "required": ["pieces"] }
+        }),
+        json!({
+            "name": "trim",
+            "description": "Lays strips of brush along face edges, standing out from the face: baseboards on bottom edges, crown molding on top edges, borders around floor faces, frames around openings. Works on faces [[brush, face], ...], or the upright faces of brushes in ids, or the selection. edges: bottom (default), top, sides or all. height: how far the strip runs over the face (6), depth: how far it stands out (2), inset: gap from the edge (0), material (the current one). on_floor (default true) skips bottom edges with no floor under them, like the underside of a lintel. collision false (default) wraps the strips in func_detail_illusionary. Where two trimmed faces meet one strip reaches into the corner, so they never overlap.",
+            "inputSchema": { "type": "object", "properties": {
+                "faces": { "type": "array", "items": { "type": "array", "items": { "type": "integer" } } }, "ids": { "type": "array", "items": { "type": "integer" } },
+                "edges": { "type": "string", "enum": ["bottom", "top", "sides", "all"] }, "height": { "type": "number" }, "depth": { "type": "number" },
+                "inset": { "type": "number" }, "material": { "type": "string" }, "on_floor": { "type": "boolean" }, "collision": { "type": "boolean" }
+            } }
+        }),
+        json!({
+            "name": "prefab_library",
+            "description": "The prefab library of the Prefabs panel: ready made pieces (stairs, doorways, pillars, rooms, details) that come with the editor on dev materials, and the project's own .gtm files in res://prefab_library, one folder per category. ops: list {query} (name is category/name, size in map units, source builtin or project), paste {name, origin (centers it there), offset, parent} (plain copies, no link back), copy {name} (the clipboard text), add {name, category, ids (default the selection), keep_position} (saves them as a new project entry, moved so their bottom center sits on the origin, or where they are with keep_position, for kit pieces built around the origin). run_action paste also takes TrenchBroom clipboard text.",
+            "inputSchema": { "type": "object", "properties": {
+                "op": { "type": "string", "enum": ["list", "paste", "copy", "add"] }, "name": { "type": "string" }, "query": { "type": "string" },
+                "category": { "type": "string" }, "origin": vec3_schema("paste: center here"), "offset": vec3_schema("paste: move by"),
+                "parent": { "type": "integer" }, "ids": { "type": "array", "items": { "type": "integer" } }, "keep_position": { "type": "boolean" }
+            } }
+        }),
+        json!({
             "name": "scatter",
             "description": "Scatter trees, rocks and foliage into scatter sets that live on their own layers and only cover their target surfaces. A set is its own palette: its items are the models it scatters, each switched on or off for painting. ops: palette {items: [model path or {source, weight, scale: [min, max], spacing, align, tilt, sink, enabled}], preset: {presets}, kind: props|foliage} (the listed models become the active set's painted models, the others are switched off and keep their instances; without an active set this starts one), install_models (writes the 18 embedded Blockbench nature models to res://godottrench/nature, keeping files already there; the glTF trees and bushes are a download, see project_content), new_set {name, preset or items, targets, collision, cast_shadows, visibility_range, chunk_size, material}, activate {id}, paint {center [x, y, z] or [x, z] dropped onto what is below, scattered props included, normal, radius, density, slope, height, falloff, avoid_other_sets, only_targets, exposed_only, clearance, seed, erase} (erase true removes instead; a set without targets takes the surface under the first dab as its target, which can be another set's instances), stroke {points, ...}, erase {center, radius, amount}, fill {id, targets, density, slope, height, exposed_only, clearance, seed} (whole target area; exposed_only skips points with geometry above them within clearance units, default 512, so nothing grows under slabs), toggle_target {target} (a scatter set works too, so foliage grows on scattered rocks), material {material, item} (retextures the whole set, or one item when item is given, empty clears it), clear, get {id}, to_entities {id}. Items or a preset passed to paint, stroke or fill become the active set's painted models; other settings apply to that call only. Painting a set whose models are all switched off is an error.".replace("{presets}", &presets),
             "inputSchema": { "type": "object", "properties": {
