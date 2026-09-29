@@ -1636,11 +1636,17 @@ impl App {
                 Some(ent)
             }
         };
+        let axis = match args["axis"].as_str().map(shapes::Axis::parse) {
+            None => shapes::Axis::Y,
+            Some(Some(a)) => a,
+            Some(None) => return err("axis is x, y or z"),
+        };
+        let (upright, _) = axis.frame(&bounds);
         let mut letter_bounds: Vec<Aabb> = Vec::new();
         let brushes: Vec<Brush> = match args["shape"].as_str().unwrap_or("box") {
             "box" => Brush::from_aabb(&bounds, &material).into_iter().collect(),
-            "cylinder" => shapes::cylinder(&bounds, sides, &material).into_iter().collect(),
-            "cone" => shapes::cone(&bounds, sides, &material).into_iter().collect(),
+            "cylinder" => shapes::cylinder(&upright, sides, &material).map(|b| axis.lay(b, &bounds)).into_iter().collect(),
+            "cone" => shapes::cone(&upright, sides, &material).map(|b| axis.lay(b, &bounds)).into_iter().collect(),
             "spike" => shapes::spike(&bounds, &material).into_iter().collect(),
             "wedge" => shapes::wedge(&bounds, &material).into_iter().collect(),
             "sphere" => shapes::sphere(&bounds, sides, (sides / 2).max(3), &material),

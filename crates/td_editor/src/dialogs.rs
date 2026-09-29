@@ -400,6 +400,7 @@ pub struct ShapeDialog {
     steps: usize,
     as_mesh: bool,
     smooth: bool,
+    axis: shapes::Axis,
     text: TextShape,
 }
 
@@ -431,7 +432,17 @@ impl TextShape {
 
 impl Default for ShapeDialog {
     fn default() -> Self {
-        Self { open: false, kind: ShapeKind::Cylinder, sides: 16, thickness: 16.0, steps: 8, as_mesh: false, smooth: true, text: TextShape::default() }
+        Self {
+            open: false,
+            kind: ShapeKind::Cylinder,
+            sides: 16,
+            thickness: 16.0,
+            steps: 8,
+            as_mesh: false,
+            smooth: true,
+            axis: shapes::Axis::Y,
+            text: TextShape::default(),
+        }
     }
 }
 
@@ -444,9 +455,10 @@ impl ShapeDialog {
         };
         let as_mesh = self.as_mesh || self.kind.mesh_only();
         let size = bounds.size();
+        let (upright, turn) = self.axis.frame(bounds);
         match (self.kind, as_mesh) {
-            (ShapeKind::Cylinder, true) => smooth(mesh_shapes::cylinder(bounds, self.sides, material)),
-            (ShapeKind::Cone, true) => smooth(mesh_shapes::cone(bounds, self.sides, material)),
+            (ShapeKind::Cylinder, true) => smooth(mesh_shapes::cylinder(&upright, self.sides, material).transformed(&turn, true)),
+            (ShapeKind::Cone, true) => smooth(mesh_shapes::cone(&upright, self.sides, material).transformed(&turn, true)),
             (ShapeKind::Sphere, true) => smooth(mesh_shapes::sphere(bounds, self.sides, (self.sides / 2).max(3), material)),
             (ShapeKind::Torus, _) => {
                 let r = size.x.min(size.z) * 0.5;
@@ -469,8 +481,8 @@ impl ShapeDialog {
             (ShapeKind::GableRoof, _) => vec![NodeKind::Mesh(mesh_shapes::gable_roof(bounds, size.z > size.x, self.thickness, self.thickness, material))],
             (ShapeKind::Spire, _) => vec![NodeKind::Mesh(mesh_shapes::spire(bounds, 4, material))],
             (ShapeKind::Grid, _) => vec![NodeKind::Mesh(mesh_shapes::grid(bounds, self.steps, self.steps, material))],
-            (ShapeKind::Cylinder, false) => brushes(shapes::cylinder(bounds, self.sides, material).into_iter().collect()),
-            (ShapeKind::Cone, false) => brushes(shapes::cone(bounds, self.sides, material).into_iter().collect()),
+            (ShapeKind::Cylinder, false) => brushes(shapes::cylinder(&upright, self.sides, material).map(|b| self.axis.lay(b, bounds)).into_iter().collect()),
+            (ShapeKind::Cone, false) => brushes(shapes::cone(&upright, self.sides, material).map(|b| self.axis.lay(b, bounds)).into_iter().collect()),
             (ShapeKind::Sphere, false) => brushes(shapes::sphere(bounds, self.sides, (self.sides / 2).max(3), material)),
             (ShapeKind::Wedge, _) => brushes(shapes::wedge(bounds, material).into_iter().collect()),
             (ShapeKind::Spike, _) => brushes(shapes::spike(bounds, material).into_iter().collect()),
@@ -510,6 +522,17 @@ impl ShapeDialog {
                 } else {
                     "thickness "
                 }));
+            }
+
+            if matches!(self.kind, ShapeKind::Cylinder | ShapeKind::Cone) {
+                ui.horizontal(|ui| {
+                    ui.label("Axis");
+                    for a in shapes::Axis::ALL {
+                        ui.selectable_value(&mut self.axis, a, a.label());
+                    }
+                })
+                .response
+                .on_hover_text("The axis the shape runs along, Y stands it upright, X or Z lays it down like a pipe");
             }
 
             if matches!(self.kind, ShapeKind::Stairs | ShapeKind::SpiralStairs | ShapeKind::Grid) {
@@ -1126,6 +1149,20 @@ mod tests {
         for k in [ShapeKind::Torus, ShapeKind::ArchWall, ShapeKind::GableRoof, ShapeKind::Spire, ShapeKind::Grid] {
             d.kind = k;
             assert!(!d.generate(&bounds, "m").is_empty(), "{k:?}");
+        }
+    }
+
+    #[test]
+    fn shape_dialog_lays_a_cylinder_down_along_its_axis() {
+        let bounds = Aabb::new(DVec3::new(-100.0, 70.0, -4.0), DVec3::new(100.0, 78.0, 4.0));
+        for as_mesh in [false, true] {
+            let d = ShapeDialog { kind: ShapeKind::Cylinder, axis: shapes::Axis::X, as_mesh, sides: 10, ..Default::default() };
+            let got = match d.generate(&bounds, "m").as_slice() {
+                [NodeKind::Brush(b)] => b.bounds(),
+                [NodeKind::Mesh(m)] => m.bounds(),
+                other => panic!("one shape, got {}", other.len()),
+            };
+            assert!((got.size().x - 200.0).abs() < 1e-6 && got.size().y <= 8.0 + 1e-6, "runs along X, got {got:?}");
         }
     }
 

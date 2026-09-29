@@ -54,6 +54,9 @@ vertices.
 hand drawn brushes. Some are always made as a smooth [mesh](meshes.md), and cylinders, cones and spheres can be. The
 **Text** shape builds block letters from brushes, for signs and floor lettering.
 
+Cylinders and cones stand upright by default. Pick **X** or **Z** under **Axis** to lay one down along that axis inside
+the same box, for pipes, logs or a beam, instead of rotating it afterwards.
+
 ## CSG
 
 | Operation | Key | Result |
