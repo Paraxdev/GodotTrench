@@ -21,7 +21,7 @@ Select the objects, open **Add the selection**, give the piece a name and a cate
 saves them as a `.gtm` in `res://prefab_library/<category>/`, moved so the bottom center of the selection sits on the
 origin, and the piece shows up as a card. **Keep position** leaves it where it is instead, for a piece you built
 around the map's origin on purpose, like the pieces of a [random fill](random-fill.md) kit. Every `.gtm` in that folder is a piece, so you can also save maps there
-yourself, or share a folder of pieces between projects.
+yourself with *Save As*, and they show up as cards right away, or share a folder of pieces between projects.
 
 The built-in pieces use the `dev/` materials every project has. Retexture a pasted piece with the Materials panel, or
 build your own pieces in your project's materials.

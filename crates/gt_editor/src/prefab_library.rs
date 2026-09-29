@@ -283,4 +283,19 @@ mod tests {
         assert_eq!(library.find("kept").unwrap().bounds, Aabb::new(DVec3::new(100.0, 32.0, 200.0), DVec3::new(164.0, 96.0, 232.0)), "keeps its position");
         std::fs::remove_dir_all(&root).unwrap();
     }
+
+    #[test]
+    fn a_map_saved_into_the_library_folder_shows_up_right_away() {
+        let root = std::env::temp_dir().join(format!("gt_prefab_save_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mut state = crate::state::EditorState::new(crate::state::Prefs::default());
+        state.prefab_library.rescan(Some(&root));
+        let layer = state.doc.map.default_layer();
+        state.doc.edit("add", |m, _| m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(32.0)), "dev/grey").unwrap())));
+        let folder = root.join(FOLDER).join("connectors");
+        std::fs::create_dir_all(&folder).unwrap();
+        state.save_map(&folder.join("level_0_to_1.gtm")).unwrap();
+        assert!(state.prefab_library.find("connectors/level 0 to 1").is_some(), "Save As into the folder rescans the library");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 }
