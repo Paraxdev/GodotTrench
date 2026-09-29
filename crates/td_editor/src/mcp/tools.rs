@@ -841,7 +841,8 @@ impl App {
                 continue;
             }
 
-            let bounds = self.state.instance_bounds.get(&id).copied().unwrap_or_else(|| map.bounds(id));
+            let resolved = self.state.instance_bounds.get(&id).or_else(|| self.state.model_bounds.get(&id));
+            let bounds = resolved.copied().unwrap_or_else(|| map.bounds(id));
             if !filter.matches(map, id, &bounds) {
                 continue;
             }

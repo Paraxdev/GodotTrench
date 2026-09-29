@@ -1287,6 +1287,11 @@ fn emissive_model_materials_glow_in_the_lit_preview() {
     let img = shot(&ed, json!({ "target": "3d", "width": 200, "height": 200 }), "lit");
     let center = img.get_pixel(100, 100).0;
     assert!(center[0] > 180 && center[2] < 120, "the emissive panel glows orange instead of rendering black, got {center:?}");
+
+    let listed = ed.call("list_nodes", json!({ "classname": "prop_model" }));
+    let bounds = &listed["nodes"][0]["bounds"];
+    let (min, max) = (bounds["min"].as_array().unwrap(), bounds["max"].as_array().unwrap());
+    assert!(max[1].as_f64().unwrap() > 60.0 && min[0].as_f64().unwrap() < -30.0, "list_nodes gives the 2 m panel's bounds, not the entity box: {bounds}");
 }
 
 #[test]
