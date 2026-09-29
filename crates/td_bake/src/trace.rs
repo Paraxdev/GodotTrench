@@ -42,7 +42,7 @@ impl<'a> Scene<'a> {
         let mut tri_surface = Vec::new();
         let (mut lo, mut hi) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
         for (si, s) in input.surfaces.iter().enumerate() {
-            if !s.casts {
+            if !s.casts || input.materials.get(s.material as usize).is_some_and(|m| m.see_through) {
                 continue;
             }
 

@@ -318,7 +318,7 @@ impl MaterialLibrary {
             scan_dir(&mat_root, &mat_root, &[self.material_ext.clone(), "material".into()], &mut files);
             for f in files {
                 let file = f.path.clone();
-                let parsed = file.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| godot_material::parse(&t));
+                let parsed = file.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| self.parse_material(&t));
                 if let Some([w, h]) = parsed.as_ref().and_then(|m| m.texture_size) {
                     self.world_sizes.insert(f.name.to_ascii_lowercase(), [w as f64, h as f64]);
                 }
@@ -492,7 +492,11 @@ impl MaterialLibrary {
                 [self.material_ext.as_str(), "material"].iter().map(|ext| root.join(format!("{name}.{ext}"))).find(|p| p.is_file())?
             }
         };
-        godot_material::parse(&std::fs::read_to_string(file).ok()?)
+        self.parse_material(&std::fs::read_to_string(file).ok()?)
+    }
+
+    fn parse_material(&self, text: &str) -> Option<GodotMaterial> {
+        godot_material::parse_with(text, |res| std::fs::read_to_string(self.resolve_res(res)?).ok())
     }
 
     /// Companion map such as `wall_normal.png` next to the albedo image. When the albedo is itself a
