@@ -132,6 +132,17 @@ pub fn to_string(map: &Map) -> String {
     crate::json_fmt::to_string(&to_value(map))
 }
 
+/// [`to_string`] with the bake under `lightmap`, the readable layout of a whole map file and of the live link.
+pub fn to_string_with_lightmap(map: &Map) -> String {
+    let Some(lm) = &map.lightmap else { return to_string(map) };
+    let mut value = to_value(map);
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert("lightmap".into(), lm.to_json(&lm.stale_nodes(map)));
+    }
+
+    crate::json_fmt::to_string(&value)
+}
+
 /// The map in the binary container that `.gtm` files are saved in.
 pub fn to_bytes(map: &Map) -> Vec<u8> {
     match &map.lightmap {
@@ -421,18 +432,7 @@ pub fn load(path: &Path) -> Result<Loaded, FormatError> {
 pub fn save(map: &Map, path: &Path) -> Result<(), FormatError> {
     let tmp = path.with_extension("gtm.tmp");
     let json = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("json"));
-    let bytes = match (&map.lightmap, json) {
-        (Some(lm), true) => {
-            let mut value = to_value(map);
-            if let Some(obj) = value.as_object_mut() {
-                obj.insert("lightmap".into(), lm.to_json(&lm.stale_nodes(map)));
-            }
-
-            crate::json_fmt::to_string(&value).into_bytes()
-        }
-        (None, true) => to_string(map).into_bytes(),
-        (_, false) => to_bytes(map),
-    };
+    let bytes = if json { to_string_with_lightmap(map).into_bytes() } else { to_bytes(map) };
     std::fs::write(&tmp, bytes)?;
     std::fs::rename(&tmp, path)?;
     Ok(())

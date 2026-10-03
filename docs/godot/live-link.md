@@ -49,8 +49,11 @@ that map first unless it was last built from the same text.
 Paths are absolute with forward slashes, and only `FuncGodotMap` nodes in the edited scene, the scene tab Godot shows,
 with *Auto Rebuild On Save* on take part. `scene` is its `res://` path, or empty with no scene open. `waiting` lists the
 other open scene tabs that use the map. After a `map_saved` they build the file when their tab is shown, after a
-`build` they do not. `text` is the whole map as JSON. `content` is the content id in the END chunk of the saved file,
-so a scene built from an unchanged file is not built again when a session starts.
+`build` they do not. `text` is the whole map as JSON, with the baked lighting under `lightmap` when the map has a bake,
+so a live build keeps it. That adds about 11 bytes per atlas texel, around 11 MB for a 1024 by 1024 atlas, so the
+editor sends the whole map again only when a session starts, after a new bake or after a big change. `content` is the
+content id in the END chunk of the saved file, so a scene built from an unchanged file is not built again when a session
+starts.
 
 When the port is taken, usually by a second Godot editor with the same project, the addon warns once in the Output
 panel and tries the port again every three seconds, so it takes over when the other editor closes.

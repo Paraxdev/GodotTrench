@@ -512,7 +512,7 @@ impl Worker {
             Request::Build { path, map, live } => {
                 let key = path_key(&path);
                 self.sessions.remove(&key);
-                let text = gt_doc::format::to_string(&map);
+                let text = gt_doc::format::to_string_with_lightmap(&map);
                 let status = match self.long_call(json!({ "event": "build", "path": path, "text": text, "force": true })) {
                     Ok(reply) if reply["ok"].as_bool() == Some(true) => match reply["rebuilt"].as_u64() {
                         Some(0) | None => nothing_built(&reply, &path, false),
@@ -541,7 +541,7 @@ impl Worker {
                 let pending = self.shared.0.lock().unwrap_or_else(|e| e.into_inner()).live.take();
                 if let Some(map) = &build {
                     self.sessions.remove(&key);
-                    message["text"] = json!(gt_doc::format::to_string(map));
+                    message["text"] = json!(gt_doc::format::to_string_with_lightmap(map));
                 } else if let Some(job) = pending {
                     // Godot has to hold the latest edits before it draws them.
                     self.live(job);

@@ -45,7 +45,7 @@ pub struct LiveSession {
 
 impl LiveSession {
     pub fn begin(path: String, map: Map) -> (Self, Value) {
-        let message = json!({ "event": "live_begin", "path": path, "text": format::to_string(&map), "content": format::content_id(&map) });
+        let message = json!({ "event": "live_begin", "path": path, "text": format::to_string_with_lightmap(&map), "content": format::content_id(&map) });
         (Self { path, epoch: 0, base: map, unsettled: BTreeSet::new(), held: BTreeSet::new() }, message)
     }
 
@@ -58,11 +58,11 @@ impl LiveSession {
     pub fn step(&mut self, frame: Frame) -> Option<Value> {
         let Frame { map, dragging, idle } = frame;
         let mut ops = diff(&self.base, &map, dragging);
-        // Texture settings reach every face with the texture, so they rebuild the whole map.
-        if ops.len() > RESYNC_OPS || self.base.textures != map.textures {
+        // Texture settings reach every face with the texture and a new bake every baked face, so they rebuild the whole map.
+        if ops.len() > RESYNC_OPS || self.base.textures != map.textures || !crate::scene::same_lightmap(&self.base.lightmap, &map.lightmap) {
             self.unsettled.clear();
             self.held.clear();
-            let text = format::to_string(&map);
+            let text = format::to_string_with_lightmap(&map);
             self.base = map;
             return Some(json!({ "event": "live_resync", "path": self.path, "text": text }));
         }
@@ -358,7 +358,25 @@ mod tests {
         });
         assert_eq!(session.step(Frame { map: many.clone(), dragging: false, idle: false }).unwrap()["event"], "live_resync");
         let retiled = edit(&many, |m| m.set_texture("a", gt_doc::textures::TextureSettings { size: Some([64.0, 64.0]), ..Default::default() }));
-        assert_eq!(session.step(Frame { map: retiled, dragging: false, idle: false }).unwrap()["event"], "live_resync", "texture settings reach every face");
+        assert_eq!(
+            session.step(Frame { map: retiled.clone(), dragging: false, idle: false }).unwrap()["event"],
+            "live_resync",
+            "texture settings reach every face"
+        );
+
+        let mut baked = retiled;
+        let mut lm = gt_doc::lightmap::Lightmap { width: 2, height: 1, texel_size: 16.0, ..Default::default() };
+        lm.light = vec![0; 6];
+        lm.shadow = vec![255; 2];
+        lm.ao = vec![255; 2];
+        baked.lightmap = Some(std::sync::Arc::new(lm));
+        let msg = session.step(Frame { map: baked.clone(), dragging: false, idle: false }).unwrap();
+        assert_eq!(msg["event"], "live_resync", "a new bake reaches every baked face");
+        let sent: serde_json::Value = serde_json::from_str(msg["text"].as_str().unwrap()).unwrap();
+        assert_eq!(sent["lightmap"]["width"], 2, "Godot gets the bake with the map");
+        assert!(session.step(Frame { map: baked.clone(), dragging: false, idle: false }).is_none(), "the same bake is not sent again");
+        let (_, begin) = LiveSession::begin("a.gtm".into(), baked);
+        assert!(begin["text"].as_str().unwrap().contains("\"lightmap\""), "a new session starts with the bake");
     }
 
     #[test]
