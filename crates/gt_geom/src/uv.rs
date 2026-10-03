@@ -21,7 +21,7 @@ impl Default for FaceUv {
 }
 
 impl FaceUv {
-    /// Axis aligned projection picked from the dominant normal axis, without mirroring on opposite sides.
+    /// Axis aligned projection picked from the dominant normal axis, see [`paraxial_axes`].
     pub fn paraxial(normal: DVec3, scale: DVec2) -> Self {
         let (u, v) = paraxial_axes(normal);
         Self { u_axis: u, v_axis: v, offset: DVec2::ZERO, scale, rotation: 0.0 }
@@ -286,6 +286,10 @@ impl Justify {
     }
 }
 
+/// Texture axes of a reset face. Walls on opposite sides are not mirrored, each reads left to right seen from outside,
+/// but floors and ceilings share one mapping (u along +X, v along +Z), so a ceiling reads mirrored seen from below.
+/// Faces store their own axes, and the addon's world projection repeats this function in gtm_parser.gd, so changing it
+/// would retexture existing maps.
 pub fn paraxial_axes(normal: DVec3) -> (DVec3, DVec3) {
     match gt_core::major_axis(normal) {
         0 => {

@@ -883,10 +883,12 @@ impl Terrain {
         t
     }
 
-    /// Terrains stay axis aligned: translation and scale are applied, rotation is ignored.
+    /// Terrains stay axis aligned: translation and scale are applied, rotation is ignored. A negative scale along x or z
+    /// mirrors the heights, paint and holes like brushes and meshes mirror, which also turns a half turn about Y.
     pub fn transformed(&self, m: &gt_core::DMat4) -> Terrain {
         let (scale, _, _) = m.to_scale_rotation_translation();
         let mut t = self.clone();
+        t.mirror(m.x_axis.x < 0.0, m.z_axis.z < 0.0);
         let size = self.size();
         let center = self.origin + DVec3::new(size.x * 0.5, 0.0, size.y * 0.5);
         let new_center = m.transform_point3(center);
@@ -901,6 +903,40 @@ impl Terrain {
         let new_size = t.size();
         t.origin = gt_core::snap_vec(new_center - DVec3::new(new_size.x * 0.5, 0.0, new_size.y * 0.5));
         t
+    }
+
+    /// Reverses the vertex and cell order along x and/or z, keeping the origin.
+    fn mirror(&mut self, x: bool, z: bool) {
+        if !x && !z {
+            return;
+        }
+
+        let [w, d] = self.resolution.map(|r| r as usize);
+        let flip = |i: usize, j: usize, w: usize, d: usize| (if z { d - 1 - j } else { j }) * w + if x { w - 1 - i } else { i };
+        let heights = self.heights.clone();
+        let splat = self.splat.clone();
+        for j in 0..d {
+            for i in 0..w {
+                let (to, from) = (j * w + i, flip(i, j, w, d));
+                if let Some(h) = heights.get(from) {
+                    self.heights[to] = *h;
+                }
+
+                if splat.len() == w * d * 4 {
+                    self.splat[to * 4..to * 4 + 4].copy_from_slice(&splat[from * 4..from * 4 + 4]);
+                }
+            }
+        }
+
+        let (cw, cd) = (w.saturating_sub(1), d.saturating_sub(1));
+        if self.holes.len() == cw * cd {
+            let holes = self.holes.clone();
+            for j in 0..cd {
+                for i in 0..cw {
+                    self.holes[j * cw + i] = holes[flip(i, j, cw, cd)];
+                }
+            }
+        }
     }
 
     /// Resizes the grid, resampling heights, weights and holes. Cells stay square, so `resolution` bounds the vertex
@@ -1007,6 +1043,43 @@ mod tests {
         assert!(t.ray_cast(&Ray::new(DVec3::new(5.0, 100.0, 5.0), DVec3::NEG_Y)).is_none());
         t.set_holes(DVec3::ZERO, 15.0, false);
         assert!(t.holes.is_empty());
+    }
+
+    #[test]
+    fn negative_scale_mirrors_heights_paint_and_holes() {
+        let mut t = flat();
+        t.layers.push(TerrainLayer::new("rock", 128.0));
+        t.raise(DVec3::new(-200.0, 0.0, -100.0), 80.0, 50.0);
+        t.paint_layer(DVec3::new(-200.0, 0.0, -100.0), 80.0, 1, 1.0);
+        t.set_holes(DVec3::new(-260.0, 0.0, 200.0), 30.0, true);
+        let shifted = gt_core::DMat4::from_translation(DVec3::new(64.0, 0.0, 0.0));
+        let flip_x = shifted * gt_core::DMat4::from_scale(DVec3::new(-1.0, 1.0, 1.0));
+        let m = t.transformed(&flip_x);
+        assert_eq!(m.origin, t.origin + DVec3::new(64.0, 0.0, 0.0), "the bounds land where the mirrored bounds are");
+        let peak = |t: &Terrain, x: f64, z: f64| t.height_at(x, z).unwrap();
+        assert!(peak(&t, -200.0, -100.0) > 40.0 && peak(&t, 200.0, -100.0) < 1e-6);
+        assert!(peak(&m, 264.0, -100.0) > 40.0 && peak(&m, -136.0, -100.0) < 1e-6, "the hill moved to the other side");
+        let [w, d] = t.resolution;
+        for j in 0..d {
+            for i in 0..w {
+                assert_eq!(m.heights[m.index(i, j)], t.heights[t.index(w - 1 - i, j)]);
+                assert_eq!(m.weights(i, j), t.weights(w - 1 - i, j));
+            }
+        }
+
+        let [cw, cd] = t.cells();
+        for cj in 0..cd {
+            for ci in 0..cw {
+                assert_eq!(m.is_hole(ci, cj), t.is_hole(cw - 1 - ci, cj));
+            }
+        }
+
+        assert!(t.holes.iter().any(|h| *h != 0));
+
+        let flip_z = t.transformed(&gt_core::DMat4::from_scale(DVec3::new(1.0, 1.0, -1.0)));
+        assert!(peak(&flip_z, -200.0, 100.0) > 40.0 && peak(&flip_z, -200.0, -100.0) < 1e-6);
+        let same = t.transformed(&gt_core::DMat4::from_scale(DVec3::new(2.0, 1.0, 2.0)));
+        assert_eq!(same.heights, t.heights, "a positive scale keeps the grid order");
     }
 
     #[test]
