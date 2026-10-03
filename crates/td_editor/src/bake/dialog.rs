@@ -133,7 +133,7 @@ impl BakeDialog {
 
             ui.label("Texel size").on_hover_text("Map units one light map texel covers");
             ui.horizontal(|ui| {
-                ui.add(egui::DragValue::new(&mut o.texel_size).range(TEXEL_RANGE).speed(0.25).suffix(" units"));
+                ui.add(egui::DragValue::new(&mut o.texel_size).range(TEXEL_RANGE).speed(0.25).suffix(" u"));
                 let meters = o.texel_size / state.game.units_per_meter.max(1.0) as f32;
                 ui.label(egui::RichText::new(format!("{:.0} cm, smaller is sharper and slower", meters * 100.0)).weak());
             });

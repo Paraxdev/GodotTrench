@@ -205,7 +205,7 @@ pub fn view_hint(
             ui.label(RichText::new(CAMERA_3D_HELP).weak());
             ui.add_space(6.0);
             ui.horizontal_wrapped(|ui| {
-                ui.hyperlink_to("Getting started guide", GETTING_STARTED_URL).on_hover_text(GETTING_STARTED_URL);
+                ui.hyperlink_to("Getting Started Guide", GETTING_STARTED_URL).on_hover_text(GETTING_STARTED_URL);
                 let maps = maps.get(ui.ctx(), root.as_deref());
                 if !maps.is_empty() {
                     ui.menu_button("Open a map from this project", |ui| maps_menu(ui, root.as_deref(), maps, actions))
@@ -332,7 +332,7 @@ mod tests {
         harness.run();
         assert!(harness.state().view_hovered, "the card's text lets the camera behind it take the mouse");
 
-        harness.get_by_label("Getting started guide").click();
+        harness.get_by_label("Getting Started Guide").click();
         harness.run();
         assert_eq!(harness.state().opened, [GETTING_STARTED_URL], "the link reaches the app, which opens it in the browser");
 

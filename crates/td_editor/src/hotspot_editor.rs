@@ -93,7 +93,7 @@ impl HotspotEditor {
         egui::Window::new("Hotspot Editor").open(&mut open).default_size([640.0, 560.0]).resizable(true).show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.label(RichText::new(&self.material).strong());
-                if ui.button("Use current material").clicked() && self.material != state.current_material {
+                if ui.button("Use Current Material").clicked() && self.material != state.current_material {
                     self.material = state.current_material.clone();
                     return;
                 }

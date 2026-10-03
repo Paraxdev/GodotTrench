@@ -10,7 +10,7 @@ Godot 4.7, CI tests the addon on 4.7.2. Use the .NET build if you want to write 
 
 ## 1. Open the project in the editor
 
-Choose *Godot > Open Godot Project…*, or the **Open Godot project…** button in the toolbar, and pick the project
+Choose *Godot > Open Godot Project…*, or the **Open Godot Project…** button in the toolbar, and pick the project
 folder or any folder inside it. The editor reopens it on the next start.
 
 ## 2. Install the addon

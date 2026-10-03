@@ -521,10 +521,10 @@ fn selection_summary_offers_door_wizards() {
         .with_size(egui::vec2(520.0, 700.0))
         .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
     harness.run();
-    assert!(harness.query_by_label("Door, hinge right").is_none(), "the Gameplay section starts collapsed");
+    assert!(harness.query_by_label("Hinged Door, right hinge").is_none(), "the Gameplay section starts collapsed");
     harness.get_by_label("Gameplay").click();
     harness.run();
-    harness.get_by_label("Door, hinge right").click();
+    harness.get_by_label("Hinged Door, right hinge").click();
     harness.run();
     assert!(matches!(
         harness.state().actions.as_slice(),
@@ -973,7 +973,7 @@ fn material_menu_opens_the_hotspot_editor_on_the_clicked_material() {
     }
 
     harness.run_steps(2);
-    harness.get_by_label("Hotspot editor").click();
+    harness.get_by_label("Hotspot Editor").click();
     harness.run_steps(2);
     assert_eq!(harness.state().actions, vec![Action::EditHotspots("bricks/red".into())]);
     assert_eq!(harness.state().state.current_material, "dev/grey", "opening the editor does not change the current material");

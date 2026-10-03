@@ -50,7 +50,7 @@ Ticking *Follow cursor* ignores the targets and paints on any surface or scatter
 | Left drag | Paint |
 | Shift+left drag | Erase, from the active set only |
 | Ctrl+wheel | Resize the brush |
-| **Fill targets** | Cover every target in one go, within the slope and height limits |
+| **Fill Targets** | Cover every target in one go, within the slope and height limits |
 
 **Density** is how many placements the brush tries per 64 by 64 units, and each model's spacing limits how many
 actually fit. **Exposed only** skips points with geometry above them, which keeps grass out from under balconies and
@@ -65,4 +65,5 @@ A set's **Kind** decides what Godot builds.
 | props | MultiMeshes with collision and shadows. Models whose scenes carry scripts are instanced one by one so the scripts run |
 | foliage | MultiMeshes without collision or shadows, hidden beyond 2400 units by default. Meant for grass and small plants |
 
-*Bake to entities* replaces a set with one `prop_model` entity per instance, for when you need to edit single props.
+**To Entities** in the Scatter panel, or *Terrain > Scatter > Scatter Sets to Entities* for the selected sets, replaces
+a set with one `prop_model` entity per instance, for when you need to edit single props.

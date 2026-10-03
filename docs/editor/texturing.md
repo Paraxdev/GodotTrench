@@ -44,7 +44,7 @@ Texture tool, which edits alignment in place like Hammer's face edit mode. It wo
 Alt+right click is how a texture, like a trim or a row of bricks, runs cleanly around a corner.
 
 The tool options bar has **Justify** buttons that push the texture to a face's left, right, top, bottom or center, or
-fit it to the face. With *Treat as one* ticked they justify several faces as a single area, so one texture spans
+fit it to the face. With *Treat as One* ticked they justify several faces as a single area, so one texture spans
 all of them. **Align to View** projects the texture along the 3D camera.
 
 For faces with explicit UVs, and for meshes, use the [UV Editor](uv-editor.md).

@@ -51,6 +51,20 @@ fn default_angle() -> f64 {
     95.0
 }
 
+impl DoorKind {
+    /// The name the Gameplay menu, the Inspector and the palette show.
+    pub fn label(&self) -> &'static str {
+        match self {
+            DoorKind::Hinged { side: HingeSide::Left, .. } => "Hinged Door, left hinge",
+            DoorKind::Hinged { side: HingeSide::Right, .. } => "Hinged Door, right hinge",
+            DoorKind::Sliding { direction: SlideDirection::Up, .. } => "Sliding Door, up",
+            DoorKind::Sliding { direction: SlideDirection::Down, .. } => "Sliding Door, down",
+            DoorKind::Sliding { direction: SlideDirection::Left, .. } => "Sliding Door, sideways",
+            DoorKind::Sliding { direction: SlideDirection::Right, .. } => "Sliding Door, sideways right",
+        }
+    }
+}
+
 /// A targetname not used yet, `base` followed by a number.
 pub fn unique_name(state: &EditorState, base: &str) -> String {
     unique_name_in(&state.doc.map, base)

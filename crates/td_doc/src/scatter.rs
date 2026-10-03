@@ -45,6 +45,11 @@ impl ScatterCollision {
             ScatterCollision::Trimesh => "trimesh",
         }
     }
+
+    /// Foliage gets no collision, props a convex hull.
+    pub fn default_for(kind: ScatterKind) -> Self {
+        if kind == ScatterKind::Foliage { ScatterCollision::None } else { ScatterCollision::Convex }
+    }
 }
 
 fn one() -> f64 {
@@ -214,7 +219,7 @@ pub struct Scatter {
 
 impl Scatter {
     pub fn new(name: impl Into<String>, kind: ScatterKind, items: Vec<ScatterItem>) -> Self {
-        let collision = if kind == ScatterKind::Foliage { ScatterCollision::None } else { ScatterCollision::Convex };
+        let collision = ScatterCollision::default_for(kind);
         Self {
             name: name.into(),
             kind,
@@ -227,6 +232,14 @@ impl Scatter {
             static_props_multimesh: false,
             material: None,
             instances: Vec::new(),
+        }
+    }
+
+    /// Switches the kind and resets collision to that kind's default.
+    pub fn set_kind(&mut self, kind: ScatterKind) {
+        if self.kind != kind {
+            self.kind = kind;
+            self.collision = ScatterCollision::default_for(kind);
         }
     }
 
@@ -820,6 +833,18 @@ mod tests {
             let t = (origin.y - y) / -dir.y;
             (t >= 0.0).then(|| SurfaceHit { point: origin + dir * t, normal: DVec3::Y, node })
         }
+    }
+
+    #[test]
+    fn set_kind_resets_collision_only_on_change() {
+        let mut set = Scatter::new("grass", ScatterKind::Props, Vec::new());
+        set.collision = ScatterCollision::Trimesh;
+        set.set_kind(ScatterKind::Props);
+        assert_eq!(set.collision, ScatterCollision::Trimesh);
+        set.set_kind(ScatterKind::Foliage);
+        assert_eq!(set.collision, ScatterCollision::None);
+        set.set_kind(ScatterKind::Props);
+        assert_eq!(set.collision, ScatterCollision::Convex);
     }
 
     #[test]
