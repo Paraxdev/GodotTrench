@@ -73,7 +73,7 @@ is usually a typo or a file that was renamed or never committed:
 | `missing_classes` | Entity classes that no entity definition describes | The entity builds as a plain node without its script, a point entity as an empty `Marker3D` |
 | `missing_models` | Model paths that do not exist, with the entities using each | The prop has no model |
 | `missing_materials` | Face textures with neither a material file nor an image | The faces show the placeholder texture |
-| `unknown_tool_textures` | Tool textures like `special/clip` that the map settings name differently | The faces are drawn with the tool texture instead of being left out |
+| `unknown_tool_textures` | Tool textures like `special/clip` that the map settings name differently | The faces still draw nothing, but an origin brush does not set its entity origin |
 | `unresolved_targets` | Outputs and target keys whose target matches no targetname in the map or its overlays | The output fires at nothing |
 
 Tick *Print Build Report* in *Build Flags*, or add `FuncGodotMap.BuildFlags.PRINT_REPORT` to `build_flags` in code, to

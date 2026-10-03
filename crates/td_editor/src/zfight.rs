@@ -59,13 +59,7 @@ fn depth_key(dist: f64) -> i64 {
 
 /// Tool textures, hints and nodraw faces build no visual mesh.
 pub(crate) fn draws(game: &GameConfig, material: &str) -> bool {
-    let lower = material.to_ascii_lowercase();
-    let name = lower.rsplit('/').next().unwrap_or_default();
-    !lower.is_empty()
-        && !game.is_tool_texture(&lower)
-        && !lower.starts_with("special/")
-        && !lower.starts_with("tools/")
-        && !matches!(name, "clip" | "skip" | "origin" | "sky" | "trigger" | "nodraw" | "hint" | "hintskip" | "caulk" | "null" | "areaportal")
+    !material.is_empty() && !game.is_tool_texture(material)
 }
 
 fn gather(map: &Map, game: &GameConfig, look: &dyn Fn(&str) -> Look) -> Vec<Face> {

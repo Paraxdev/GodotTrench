@@ -83,7 +83,9 @@ onto the next. The Godot build ignores both `transform` and `link_id`.
 | `outputs` | array | omitted | I/O connections, see below |
 
 Property values are strings whatever their FGD type, for example `"travel": "0 168 0"`. An `angles`, `angle` or
-`mangle` property wins over the node's `angles`. The build ignores `origin` and `angles` of a brush entity, since its
+`mangle` property wins over the node's `angles`, read the Quake way: pitch negated and yaw turned by 180 degrees,
+`mangle` as yaw, pitch and roll on `light` classes, and `angle` -1 or -2 for straight up or down. The editor draws the
+entity facing the same way, and turning it there moves the property into the node's `angles`. The build ignores `origin` and `angles` of a brush entity, since its
 brushes already sit where they belong.
 
 Each output is one [I/O connection](../gameplay/io.md): when this entity fires a signal, call a method on a target.

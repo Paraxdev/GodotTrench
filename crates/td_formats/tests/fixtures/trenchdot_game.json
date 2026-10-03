@@ -9,9 +9,9 @@
       "png",
       "jpg",
       "jpeg",
-      "bmp",
+      "webp",
       "tga",
-      "webp"
+      "bmp"
     ],
     "material_dir": "",
     "material_extension": "tres",
