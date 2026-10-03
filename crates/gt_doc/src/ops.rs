@@ -518,8 +518,13 @@ pub fn csg_hollow(map: &mut Map, sel: &mut Selection, thickness: f64) -> Replace
 }
 
 /// Moves the selected brushes into a new brush entity.
+/// The selected geometry a brush entity would take in, everything but terrain.
+pub fn brush_entity_geometry(map: &Map, sel: &Selection) -> Vec<NodeId> {
+    sel.geometry(map).into_iter().filter(|id| map.terrain(*id).is_none()).collect()
+}
+
 pub fn create_brush_entity(map: &mut Map, sel: &mut Selection, classname: &str, parent: NodeId) -> Option<NodeId> {
-    let brushes: Vec<NodeId> = sel.geometry(map).into_iter().filter(|id| map.terrain(*id).is_none()).collect();
+    let brushes = brush_entity_geometry(map, sel);
     if brushes.is_empty() {
         return None;
     }

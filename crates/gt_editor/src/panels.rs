@@ -156,6 +156,8 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
 
     let row_h = 20.0;
     let mut toggles: Vec<(NodeId, u8)> = Vec::new();
+    // Hide or lock from the menu of a selected row, for the whole selection: (hide, value).
+    let mut selection_flag: Option<(bool, bool)> = None;
     let mut clicked: Option<(NodeId, egui::Modifiers)> = None;
     let mut set_layer: Option<NodeId> = None;
     let mut renamed: Option<(NodeId, Option<String>)> = None;
@@ -331,12 +333,22 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
 
                         item(ui, "Focus", Action::FocusSelection);
                         if ui.button(if node.hidden { "Show" } else { "Hide" }).clicked() {
-                            toggles.push((*id, 1));
+                            if selected {
+                                selection_flag = Some((true, !node.hidden));
+                            } else {
+                                toggles.push((*id, 1));
+                            }
+
                             ui.close();
                         }
 
                         if ui.button(if node.locked { "Unlock" } else { "Lock" }).clicked() {
-                            toggles.push((*id, 2));
+                            if selected {
+                                selection_flag = Some((false, !node.locked));
+                            } else {
+                                toggles.push((*id, 2));
+                            }
+
                             ui.close();
                         }
 
@@ -356,6 +368,28 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
         }
     });
     ps.outliner_offset = output.state.offset.y;
+    if let Some((hide, value)) = selection_flag {
+        let label = match (hide, value) {
+            (true, true) => "Hide",
+            (true, false) => "Show",
+            (false, true) => "Lock",
+            (false, false) => "Unlock",
+        };
+        state.doc.edit(label, |m, s| {
+            let roots = gt_doc::ops::selection_roots(m, s);
+            if hide {
+                gt_doc::ops::set_hidden(m, &roots, value);
+            } else {
+                gt_doc::ops::set_locked(m, &roots, value);
+            }
+
+            // Like Hide Selected and Lock Selected, objects that can no longer be picked leave the selection.
+            if value {
+                s.clear();
+            }
+        });
+    }
+
     if state.outliner_hover != hovered {
         state.outliner_hover = hovered;
         ui.ctx().request_repaint();
@@ -569,11 +603,11 @@ fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mu
     section(ui, "Mesh Operations", "", true, |ui| {
         ui.horizontal_wrapped(|ui| {
             for (label, action) in [
-                ("Edit (Tab)", Action::EditMesh),
-                ("To Brushes", Action::ConvertToBrushes),
+                ("Edit Mesh", Action::EditMesh),
+                ("Convert to Brushes", Action::ConvertToBrushes),
                 ("Subdivide", Action::MeshOp(crate::mesh_tool::MeshOp::Subdivide)),
                 ("Solidify", Action::MeshOp(crate::mesh_tool::MeshOp::Solidify)),
-                ("Weld", Action::MeshOp(crate::mesh_tool::MeshOp::MergeByDistance)),
+                ("Merge by Distance", Action::MeshOp(crate::mesh_tool::MeshOp::MergeByDistance)),
                 ("Flip Normals", Action::MeshOp(crate::mesh_tool::MeshOp::Flip)),
             ] {
                 if ui.small_button(label).clicked() {
@@ -708,10 +742,12 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
         ui.end_row();
         ui.label("Kind");
         ui.horizontal(|ui| {
+            let mut kind = edited.kind;
             for k in gt_doc::ScatterKind::ALL {
-                changed |=
-                    ui.selectable_value(&mut edited.kind, k, k.label()).on_hover_text("props keep scenes and collision, foliage uses MultiMesh").changed();
+                changed |= ui.selectable_value(&mut kind, k, k.label()).on_hover_text("props keep scenes and collision, foliage uses MultiMesh").changed();
             }
+
+            edited.set_kind(kind);
         });
         ui.end_row();
         ui.label("Collision");
@@ -761,7 +797,7 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
                 changed = true;
             }
 
-            if ui.small_button("use current").on_hover_text(state.current_material.clone()).clicked() {
+            if ui.small_button("Use Current").on_hover_text(state.current_material.clone()).clicked() {
                 edited.material = Some(state.current_material.clone());
                 changed = true;
             }
@@ -797,7 +833,7 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
             }
         }
 
-        if ui.small_button("Clear Instances").clicked() {
+        if ui.small_button("Clear Instances").on_hover_text("Remove every placed instance, keep the models").clicked() {
             state.doc.edit("Clear Scatter", |m, _| {
                 if let Some(s) = m.scatter_mut(id) {
                     s.instances.clear();
@@ -838,7 +874,7 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
             ui.label(format!("Layer {i}"));
             ui.horizontal(|ui| {
                 changed |= ui.add(egui::TextEdit::singleline(&mut layer.material).desired_width(130.0)).changed();
-                changed |= ui.add(egui::DragValue::new(&mut layer.tile).range(8.0..=16384.0).prefix("tile ")).changed();
+                changed |= ui.add(egui::DragValue::new(&mut layer.tile).range(8.0..=16384.0).prefix("tile ").suffix(" u")).changed();
                 changed |= ui
                     .add(egui::DragValue::new(&mut layer.detile).range(0.0..=1.0).speed(0.02).prefix("detile "))
                     .on_hover_text("Turns and shifts every tile by a fixed random amount and blends the joins, so the repeat stops showing. Good for paths, costs four texture reads per projection")
@@ -944,11 +980,15 @@ fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Act
                     "Convert brushes to a mesh and edit it Blender style. Tab edits meshes this way, but on brushes it opens the Vertex tool and converts nothing",
                     Action::EditMesh,
                 ),
-                ("To Mesh", "Convert the selected brushes to meshes", Action::ConvertToMesh),
+                ("Convert to Mesh", "Convert the selected brushes to meshes", Action::ConvertToMesh),
                 ("Join Meshes", "Join the selected meshes and brushes into one mesh", Action::JoinMeshes),
                 ("Duplicate Linked", "Linked copies update together when one is edited", Action::DuplicateLinked),
-                ("Cordon", "Limit the views and export to the selection bounds", Action::SetCordonFromSelection),
-                ("Blend material", "Current material blends into these faces", Action::SetBlendMaterial),
+                (
+                    "Cordon",
+                    "Hide everything outside the selection bounds in the views. Export > .map, cordon only leaves it out of the file too",
+                    Action::SetCordonFromSelection,
+                ),
+                ("Set Blend Material", "Current material blends into these faces", Action::SetBlendMaterial),
             ],
         );
     });
@@ -968,33 +1008,15 @@ fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Act
     });
     section(ui, "Gameplay", "Doors, lifts and trigger volumes from the selection", false, |ui| {
         sub_heading(ui, "Doors and movers");
-        buttons(
-            ui,
-            actions,
-            vec![
-                (
-                    "Door, hinge left",
-                    "func_door_rotating hinged on the left end, with a trigger that opens it",
-                    Action::MakeDoor { kind: DoorKind::Hinged { side: HingeSide::Left, angle: 95.0 }, trigger: true },
-                ),
-                (
-                    "Door, hinge right",
-                    "func_door_rotating hinged on the right end, with a trigger that opens it",
-                    Action::MakeDoor { kind: DoorKind::Hinged { side: HingeSide::Right, angle: 95.0 }, trigger: true },
-                ),
-                (
-                    "Sliding door up",
-                    "func_door that slides up by its height",
-                    Action::MakeDoor { kind: DoorKind::Sliding { direction: SlideDirection::Up, lip: 4.0 }, trigger: true },
-                ),
-                (
-                    "Sliding door sideways",
-                    "func_door that slides along its width",
-                    Action::MakeDoor { kind: DoorKind::Sliding { direction: SlideDirection::Left, lip: 4.0 }, trigger: true },
-                ),
-                ("Lift", "func_platform that travels up, drag its travel handle", Action::MakePlatform),
-            ],
-        );
+        let doors = [
+            (DoorKind::Hinged { side: HingeSide::Left, angle: 95.0 }, "func_door_rotating hinged on the left end, with a trigger that opens it"),
+            (DoorKind::Hinged { side: HingeSide::Right, angle: 95.0 }, "func_door_rotating hinged on the right end, with a trigger that opens it"),
+            (DoorKind::Sliding { direction: SlideDirection::Up, lip: 4.0 }, "func_door that slides up by its height, with a trigger that opens it"),
+            (DoorKind::Sliding { direction: SlideDirection::Left, lip: 4.0 }, "func_door that slides along its width, with a trigger that opens it"),
+        ];
+        let mut list: Vec<(&str, &str, Action)> = doors.into_iter().map(|(kind, tip)| (kind.label(), tip, Action::MakeDoor { kind, trigger: true })).collect();
+        list.push(("Lift, Moving Platform", "func_platform that travels up, drag its travel handle", Action::MakePlatform));
+        buttons(ui, actions, list);
         sub_heading(ui, "Volumes around the selection");
         buttons(
             ui,
@@ -1555,7 +1577,7 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
                 }
             }
 
-            ui.checkbox(&mut state.treat_as_one, "Treat as one");
+            ui.checkbox(&mut state.treat_as_one, "Treat as One");
         });
         ui.horizontal_wrapped(|ui| {
             let mut op: Option<(&str, UvOp)> = None;
@@ -1602,7 +1624,7 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
     });
     section(ui, "Texture Tools", "", true, |ui| {
         ui.horizontal_wrapped(|ui| {
-            ui.label("Texel density");
+            ui.label("Texel Density");
             for d in [0.25, 0.5, 1.0, 2.0, 4.0] {
                 if ui.small_button(format!("{d}")).on_hover_text(format!("{d} world units per texture pixel")).clicked() {
                     actions.push(Action::TexelDensity(d));
@@ -1619,7 +1641,7 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
                 actions.push(Action::PasteAlignment);
             }
 
-            if ui.button("Hotspot").on_hover_text("Fit to the best rectangle of <texture>.hotspots.json").clicked() {
+            if ui.button("Hotspot Fit").on_hover_text("Fit to the best rectangle of <texture>.hotspots.json").clicked() {
                 actions.push(Action::HotspotTexture);
             }
 
@@ -1969,12 +1991,12 @@ fn material_interactions(resp: egui::Response, state: &mut EditorState, name: &s
             ui.close();
         }
 
-        if ui.button("Hotspot editor").clicked() {
+        if ui.button("Hotspot Editor").clicked() {
             actions.push(Action::EditHotspots(name.to_string()));
             ui.close();
         }
 
-        if ui.button("Copy name").clicked() {
+        if ui.button("Copy Name").clicked() {
             ui.ctx().copy_text(name.to_string());
             ui.close();
         }
@@ -2002,7 +2024,7 @@ pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
             }
         });
         ui.checkbox(&mut ps.material_used_only, "Used in map");
-        ui.checkbox(&mut ps.material_favorites_only, "★ Favourites");
+        ui.checkbox(&mut ps.material_favorites_only, "★ Favorites");
         ui.add(egui::Slider::new(&mut ps.thumb_size, 40.0..=160.0).show_value(false));
         if ui.small_button("⟳").on_hover_text("Reload materials and Godot material settings").clicked() {
             actions.push(Action::ReloadMaterials);
@@ -2797,12 +2819,12 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
     ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for issue in &ps.issues {
             ui.horizontal(|ui| {
-                let (icon, color) = match issue.severity {
-                    Severity::Error => ("⛔", theme::ERROR),
-                    Severity::Warning => ("⚠", theme::WARNING),
-                    Severity::Info => ("ℹ", theme::INFO),
+                let (tag, color) = match issue.severity {
+                    Severity::Error => ("Error", theme::ERROR),
+                    Severity::Warning => ("Warning", theme::WARNING),
+                    Severity::Info => ("Info", theme::INFO),
                 };
-                ui.label(RichText::new(icon).color(color));
+                ui.label(RichText::new(tag).small().strong().color(color));
                 let name = issue.node.and_then(|n| state.doc.map.get(n)).map(|n| n.name()).unwrap_or_default();
                 if ui.selectable_label(false, format!("{}  {}", issue.message, RichText::new(name).weak().text())).clicked() {
                     select = issue.node;

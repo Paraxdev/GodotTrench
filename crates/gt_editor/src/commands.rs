@@ -234,53 +234,170 @@ pub enum Action {
 }
 
 impl Action {
+    /// The name of the command in the keymap. No catch-all arm, so a new action has to be named.
     pub fn label(&self) -> String {
-        match self {
-            Action::Rotate { axis, degrees } => format!("Rotate {} {degrees}°", axis_name(*axis)),
-            Action::Flip { axis } => format!("Flip {}", axis_name(*axis)),
-            Action::SetTool(t) => format!("{} Tool", t.label()),
-            Action::CreateBrushEntity(c) => format!("Create {c}"),
-            Action::CreatePointEntity { classname, .. } => format!("Create {classname}"),
-            Action::PlaceEntities { classnames, .. } => match classnames.as_slice() {
-                [one] => format!("Create {one}"),
-                many => format!("Place {} Entities", many.len()),
-            },
-            Action::PlaceModel { path, .. } => {
-                format!("Place {}", path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Model".into()))
+        let text = match self {
+            Action::NewMap => "New Map",
+            Action::OpenMap => "Open Map",
+            Action::OpenMapFile(path) => return format!("Open {}", path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Map".into())),
+            Action::OpenProject => "Open Godot Project",
+            Action::Save => "Save",
+            Action::SaveAs => "Save As",
+            Action::Undo => "Undo",
+            Action::Redo => "Redo",
+            Action::RepeatLast => "Repeat Last",
+            Action::Delete => "Delete",
+            Action::Duplicate => "Duplicate",
+            Action::Rename => "Rename",
+            Action::SelectAll => "Select All",
+            Action::SelectNone => "Select None",
+            Action::SelectInverse => "Select Inverse",
+            Action::SelectTouching => "Select Touching",
+            Action::SelectInside => "Select Inside",
+            Action::SelectSiblings => "Select Siblings",
+            Action::SelectSameMaterial => "Select Same Material",
+            Action::Group => "Group",
+            Action::Ungroup => "Ungroup",
+            Action::HideSelected => "Hide Selected",
+            Action::IsolateSelected => "Isolate Selected",
+            Action::UnhideAll => "Show All",
+            Action::LockSelected => "Lock Selected",
+            Action::UnlockAll => "Unlock All",
+            Action::GridDown => "Smaller Grid",
+            Action::GridUp => "Larger Grid",
+            Action::ToggleSnap => "Toggle Snap to Grid",
+            Action::ToggleUvLock => "Toggle UV Lock",
+            Action::ToggleTransformGizmo => "Toggle Transform Gizmo",
+            Action::ToggleGodotOverlays => "Toggle Godot Overlays",
+            Action::ToggleWalkable => "Toggle Walkable Area",
+            Action::ToggleTextured => "Cycle Shading",
+            Action::SetShade(s) => return format!("Shading: {}", s.title()),
+            Action::BakeLighting => "Bake Lighting",
+            Action::SetBakeView(v) => return format!("Baked View: {}", v.label()),
+            Action::CsgSubtract => "CSG Subtract",
+            Action::CsgMerge => "CSG Convex Merge",
+            Action::CsgIntersect => "CSG Intersect",
+            Action::CsgHollow => "Hollow",
+            Action::Rotate { axis, degrees } => return format!("Rotate {} {degrees}°", axis_name(*axis)),
+            Action::Flip { axis } => return format!("Flip {}", axis_name(*axis)),
+            Action::SetTool(t) => return format!("{} Tool", t.label()),
+            Action::FocusSelection => "Focus Selection",
+            Action::CreateBrushEntity(c) => return format!("Create {c}"),
+            Action::CreatePointEntity { classname, .. } => return format!("Create {classname}"),
+            Action::PlaceEntities { classnames, .. } => {
+                return match classnames.as_slice() {
+                    [one] => format!("Create {one}"),
+                    many => format!("Place {} Entities", many.len()),
+                };
             }
-            Action::MeshOp(op) => format!("Mesh: {}", op.label()),
-            Action::StoreCamera(n) => format!("Store Camera {n}"),
-            Action::RecallCamera(n) => format!("Recall Camera {n}"),
-            Action::SetShade(s) => format!("Shade {}", s.label()),
-            Action::BakeLighting => "Bake Lighting".into(),
-            Action::SetBakeView(v) => format!("Baked View: {}", v.label()),
-            Action::Justify(j) => format!("Justify Texture {}", j.label()),
-            Action::TexelDensity(d) => format!("Texel Density {d}"),
-            Action::MeshUv(k) => format!("Mesh UVs: {}", k.label()),
-            Action::ToggleEditMode => "Edit Mode".into(),
-            Action::ToggleMaximizeView => "Maximize View".into(),
-            Action::ViewLayout(1) => "Single View Layout".into(),
-            Action::ViewLayout(2) => "Two View Layout".into(),
-            Action::ViewLayout(_) => "Four View Layout".into(),
-            Action::ToggleView(i) => format!("Toggle View {}", i + 1),
-            Action::UiScaleUp => "Increase UI Scale".into(),
-            Action::UiScaleDown => "Decrease UI Scale".into(),
-            Action::UiScaleReset => "Reset UI Scale".into(),
-            Action::ShowPreferences => "Preferences".into(),
-            Action::ToggleTransformGizmo => "Toggle Transform Gizmo".into(),
-            Action::ToggleGodotOverlays => "Toggle Godot Overlays".into(),
-            Action::ToggleWalkable => "Toggle Walkable Area".into(),
-            Action::OpenGodotEditor => "Open Project in Godot".into(),
-            Action::RunGodotProject => "Run Godot Project".into(),
-            Action::FocusGodot => "Show Godot Editor".into(),
-            Action::BuildInGodot => "Build in Godot".into(),
-            Action::ToggleLiveMode => "Toggle Godot Live Mode".into(),
-            Action::ExportGlb => "Export glTF Binary (.glb)".into(),
-            Action::ExportObj => "Export Wavefront OBJ (.obj)".into(),
-            Action::ShowProjectContent => "Add Content to Project".into(),
-            Action::ShowAddonSetup => "Install or Update the GodotTrench Addon".into(),
-            other => format!("{other:?}"),
-        }
+            Action::MoveToWorld => "Move Brushes to World",
+            Action::MoveToLayer(_) => "Move Selection to Layer",
+            Action::AddLayer => "Add Layer",
+            Action::SnapVertices => "Snap Vertices to Grid",
+            Action::ApplyMaterial(m) => return format!("Apply Material {m}"),
+            Action::Paste(_) | Action::PasteBeside(_) => "Paste",
+            Action::Copy => "Copy",
+            Action::Cut => "Cut",
+            Action::OpenGroup => "Open Group",
+            Action::CloseGroup => "Close Group",
+            Action::ReloadProject => "Reload Game Config",
+            Action::CreateBrushFromBounds => "Box from Last Bounds",
+            Action::Nudge(_) => "Nudge by Grid",
+            Action::CreatePrefab => "Create Prefab from Selection",
+            Action::InsertPrefab => "Insert Prefab",
+            Action::ExplodeInstances => "Explode Prefab Instance",
+            Action::OpenPrefab => "Open Prefab",
+            Action::ShowCommandPalette => "Command Palette",
+            Action::ShowShapeDialog => "Shape Generator",
+            Action::ShowTrimDialog => "Add Trim",
+            Action::ShowRandomFillDialog => "Random Fill",
+            Action::ShowTerrainDialog => "Create Terrain",
+            Action::ShowKeymap => "Keyboard Shortcuts",
+            Action::ShowUvEditor => "UV Editor",
+            Action::OpenGodotEditor => "Open Project in Godot Editor",
+            Action::RunGodotProject => "Run Project",
+            Action::FocusGodot => "Show Godot Editor",
+            Action::BuildInGodot => "Build in Godot",
+            Action::ToggleLiveMode => "Toggle Live Mode",
+            Action::CreateDisplacement(power) => return format!("Create Displacement, Power {power}"),
+            Action::RemoveDisplacement => "Remove Displacement",
+            Action::SewDisplacements => "Sew Displacements",
+            Action::ImportQuakeMap => "Import .map",
+            Action::ExportQuakeMap => "Export .map",
+            Action::ExportQuakeMapCordon => "Export .map, Cordon Only",
+            Action::ExportGlb => "Export glTF Binary (.glb)",
+            Action::ExportObj => "Export Wavefront OBJ (.obj)",
+            Action::ImportVmf => "Import .vmf",
+            Action::ConvertTextures => "Convert Textures",
+            Action::ImportModel(ModelImport::Mesh) => "Import Blockbench Model as Mesh",
+            Action::ImportModel(ModelImport::Brushes) => "Import Blockbench Model as Brushes",
+            Action::ImportModel(ModelImport::Prop) => "Import Model Prop",
+            Action::PlaceModel { path, .. } => {
+                return format!("Place {}", path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "Model".into()));
+            }
+            Action::ReloadModels => "Reload Models",
+            Action::CreateDecal { .. } => "Create Decal",
+            Action::ConvertToMesh => "Convert Brushes to Mesh",
+            Action::ConvertToBrushes => "Convert Meshes to Brushes",
+            Action::JoinMeshes => "Join Meshes",
+            Action::EditMesh => "Edit Mesh",
+            Action::ToggleEditMode => "Toggle Edit Mode",
+            Action::MeshOp(op) => return format!("Mesh: {}", op.label()),
+            Action::DuplicateLinked => "Duplicate Linked",
+            Action::UnlinkGroups => "Unlink Groups",
+            Action::SetCordonFromSelection => "Set Cordon from Selection",
+            Action::ToggleCordon => "Toggle Cordon",
+            Action::ClearCordon => "Clear Cordon",
+            Action::StoreCamera(n) => return format!("Store Camera Bookmark {n}"),
+            Action::RecallCamera(n) => return format!("Go to Camera Bookmark {n}"),
+            Action::NewTab => "New Tab",
+            Action::CloseTab => "Close Tab",
+            Action::NextTab => "Next Tab",
+            Action::HotspotTexture => "Hotspot Fit",
+            Action::TerrainFlatten => "Flatten Terrain",
+            Action::TerrainAutoPaint => "Auto Paint Terrain Layers",
+            Action::Justify(j) => return format!("Justify Texture {}", j.label()),
+            Action::ToggleTreatAsOne => "Toggle Treat as One",
+            Action::AlignTextureToView => "Align Texture to 3D View",
+            Action::ResetTexture => "Reset Texture Alignment",
+            Action::CopyAlignment => "Copy Material and Alignment",
+            Action::PasteAlignment => "Paste Alignment",
+            Action::TexelDensity(d) => return format!("Texel Density: {d} units per pixel"),
+            Action::MeshUv(k) => return format!("Mesh UVs: {}", k.label()),
+            Action::ShowHotspotEditor => "Hotspot Editor",
+            Action::EditHotspots(m) => return format!("Edit Hotspots of {m}"),
+            Action::ReloadMaterials => "Reload Materials",
+            Action::ActivateScatter(_) => "Activate Scatter Set",
+            Action::NewScatterSet => "New Empty Scatter Set",
+            Action::ScatterFill => "Fill Scatter Targets",
+            Action::ScatterPreset(p) => return format!("New Scatter Set from Preset {p}"),
+            Action::ShowScatterPanel => "Scatter Panel",
+            Action::InstallNatureModels => "Install Nature Models",
+            Action::ShowProjectContent => "Add Content to Project",
+            Action::ShowAddonSetup => "Install or Update Addon",
+            Action::InstallGameplayEntities => "Install Gameplay Entities",
+            Action::ScatterToEntities => "Scatter Sets to Entities",
+            Action::SetBlendMaterial => "Set Blend Material",
+            Action::ClearBlendMaterial => "Clear Blend Material",
+            Action::SetBlendTiling { .. } => "Set Blend Tiling",
+            Action::MakeDoor { kind, trigger } => {
+                return if *trigger { kind.label().to_string() } else { format!("{}, without Trigger", kind.label()) };
+            }
+            Action::MakePlatform => "Lift, Moving Platform",
+            Action::ShowLinkDialog => "Link Two Selected Entities",
+            Action::VolumeAroundSelection(class) => return format!("{class} Around Selection"),
+            Action::ShowReference => "Entity and Code Reference",
+            Action::ShowPreferences => "Preferences",
+            Action::ToggleMaximizeView => "Maximize View",
+            Action::ViewLayout(1) => "Single View",
+            Action::ViewLayout(2) => "Two Views",
+            Action::ViewLayout(_) => "Four Views",
+            Action::ToggleView(i) => return format!("Toggle View {}", i + 1),
+            Action::UiScaleUp => "Increase Interface Scale",
+            Action::UiScaleDown => "Decrease Interface Scale",
+            Action::UiScaleReset => "Reset Interface Scale",
+        };
+        text.to_string()
     }
 
     /// What a command does in plain words, for the ones whose name assumes level editor jargon.
@@ -318,7 +435,7 @@ impl Action {
             }
             Action::ToggleTreatAsOne => "Aligns textures across all selected faces as if they were one surface",
             Action::HotspotTexture => "Fits the selected faces to the best matching rectangle of a trim sheet, read from <texture>.hotspots.json",
-            Action::TexelDensity(_) => "Sets how many texture pixels cover each map unit on the selected faces",
+            Action::TexelDensity(_) => "Sets how many map units each texture pixel covers on the selected faces",
             Action::SetBlendMaterial => "Uses the current material as a second texture on the selected faces, painted in with the Blend tool",
             Action::CreateDisplacement(_) => "Splits the selected face into a grid of points you can raise and lower, for uneven ground",
             Action::SewDisplacements => "Joins the edges of neighbouring displacements so they leave no gaps",
@@ -375,6 +492,16 @@ const NONE: Modifiers = Modifiers::NONE;
 const DIGITS: [Key; 9] = [Key::Num1, Key::Num2, Key::Num3, Key::Num4, Key::Num5, Key::Num6, Key::Num7, Key::Num8, Key::Num9];
 
 pub const PRESETS: [&str; 3] = ["trenchbroom", "hammer", "blender"];
+
+/// The name a keymap preset is shown under, the stored id when it is not one of [`PRESETS`].
+pub fn preset_label(preset: &str) -> &str {
+    match preset {
+        "trenchbroom" => "TrenchBroom",
+        "hammer" => "Hammer",
+        "blender" => "Blender",
+        other => other,
+    }
+}
 
 /// TrenchBroom defaults plus GodotTrench additions.
 fn trenchbroom_bindings() -> Vec<(KeyboardShortcut, Action)> {
@@ -632,6 +759,11 @@ pub fn bindable_actions() -> Vec<Action> {
 
 pub fn shortcut_text(ctx: &egui::Context, prefs: &Prefs, action: &Action) -> Option<String> {
     shortcuts(prefs).into_iter().find(|(_, a)| a == action).map(|(s, _)| ctx.format_shortcut(&s))
+}
+
+/// The active binding of `action` written out like "Ctrl+Shift+1", for status lines and other text without a context.
+pub fn shortcut_hint(prefs: &Prefs, action: &Action) -> Option<String> {
+    shortcuts(prefs).into_iter().find(|(_, a)| a == action).map(|(s, _)| shortcut_to_text(&s))
 }
 
 /// `InputState::consume_shortcut` that also matches digits by their physical key. With Shift held the logical key is
@@ -970,14 +1102,14 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 Shade::Lit | Shade::Baked => Shade::Wireframe,
                 Shade::Wireframe => Shade::Textured,
             };
-            state.set_status(format!("Shading: {}", state.prefs.shade.label()));
+            state.set_status(format!("Shading: {}", state.prefs.shade.title()));
         }
         Action::SetShade(s) => {
             state.prefs.shade = if state.prefs.shade == s && s.is_lit() { Shade::Textured } else { s };
             if state.prefs.shade == Shade::Baked && state.doc.map.lightmap.is_none() {
                 state.set_status("Shading: baked, nothing is baked yet so the lit preview shows. Godot > Bake Lighting makes the light maps");
             } else {
-                state.set_status(format!("Shading: {}", state.prefs.shade.label()));
+                state.set_status(format!("Shading: {}", state.prefs.shade.title()));
             }
         }
         Action::SetBakeView(v) => {
@@ -1438,7 +1570,8 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::SetBlendMaterial => {
             let material = state.current_material.clone();
             let n = crate::blend_tool::set_blend_material(state, Some(&material));
-            state.set_status(format!("{material} blends into {n} faces, paint the blend with the Blend tool (Shift+G)"));
+            let keys = shortcut_hint(&state.prefs, &Action::SetTool(ToolKind::Blend)).map(|k| format!(" ({k})")).unwrap_or_default();
+            state.set_status(format!("{material} blends into {n} faces, paint the blend with the Blend tool{keys}"));
         }
         Action::ClearBlendMaterial => {
             let n = crate::blend_tool::set_blend_material(state, None);
@@ -1718,6 +1851,15 @@ pub fn drop_target(state: &EditorState, ray: &gt_core::Ray, kind: crate::camera:
     Some((front.point, Some(front.normal)))
 }
 
+/// Shows an imported map in place of a document without unsaved changes, else in a new tab.
+fn open_imported(state: &mut EditorState, doc: Document) {
+    if state.doc.is_modified() {
+        state.open_tab(doc);
+    } else {
+        state.reset_document(doc);
+    }
+}
+
 /// Opens a Quake `.map` as a new, unsaved GodotTrench document, in a tab when the current map has unsaved changes.
 pub fn import_quake_map(state: &mut EditorState, path: &std::path::Path) -> Result<gt_formats::quake_map::ImportReport, String> {
     let text = gt_formats::vmf::read_text(path).map_err(|e| e.to_string())?;
@@ -1725,12 +1867,7 @@ pub fn import_quake_map(state: &mut EditorState, path: &std::path::Path) -> Resu
     let (map, report) = gt_formats::quake_map::import_with(&text, &options).map_err(|e| e.to_string())?;
     let mut doc = Document::from_map(map, None);
     doc.revision += 1;
-    if state.doc.is_modified() {
-        state.open_tab(doc);
-    } else {
-        state.reset_document(doc);
-    }
-
+    open_imported(state, doc);
     let mut status = format!("Imported {}", path.display());
     if report.skipped_patches > 0 {
         status += &format!(", {} Quake 3 patches left out", report.skipped_patches);
@@ -1740,13 +1877,14 @@ pub fn import_quake_map(state: &mut EditorState, path: &std::path::Path) -> Resu
     Ok(report)
 }
 
-/// Opens a Hammer `.vmf` in a new tab, with its instances inlined and Valve tool materials renamed to the project's.
+/// Opens a Hammer `.vmf` with its instances inlined and Valve tool materials renamed to the project's. Like a `.map`
+/// import it replaces a document without unsaved changes and opens a new tab otherwise.
 pub fn import_vmf(state: &mut EditorState, path: &std::path::Path) -> Result<gt_formats::vmf::ImportReport, String> {
     let options = gt_formats::vmf::ImportOptions { tools: state.game.tool_textures.clone(), ..Default::default() };
     let (map, report) = gt_formats::vmf::import_file(path, &options).map_err(|e| e.to_string())?;
     let mut doc = Document::from_map(map, None);
     doc.revision += 1;
-    state.open_tab(doc);
+    open_imported(state, doc);
     let mut status = format!("Imported {}", path.display());
     if report.instances > 0 {
         status += &format!(", {} instances inlined", report.instances);
@@ -2388,6 +2526,28 @@ fn first_selected_material(state: &EditorState) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bindable_actions_have_readable_labels() {
+        for action in bindable_actions() {
+            let label = action.label();
+            // The Debug form of a variant joins words without spaces and puts its payload in parentheses.
+            let camel = label
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|w| !["glTF", "GodotTrench", "TrenchBroom"].contains(w))
+                .any(|w| w.chars().zip(w.chars().skip(1)).any(|(a, b)| a.is_lowercase() && b.is_uppercase()));
+            let payload = label.chars().zip(label.chars().skip(1)).any(|(a, b)| a.is_alphanumeric() && b == '(');
+            assert!(!camel && !payload, "{action:?} reads {label}");
+        }
+    }
+
+    #[test]
+    fn the_empty_bookmark_hint_follows_the_keymap() {
+        let mut state = EditorState::new(Default::default());
+        assert_eq!(shortcut_hint(&state.prefs, &Action::StoreCamera(3)).as_deref(), Some("Ctrl+Shift+3"));
+        state.prefs.key_overrides.insert(Action::StoreCamera(3).binding_id(), "Alt+F7".into());
+        assert_eq!(shortcut_hint(&state.prefs, &Action::StoreCamera(3)).as_deref(), Some("Alt+F7"));
+    }
 
     #[test]
     fn file_dialogs_start_in_the_map_folder_else_the_project() {

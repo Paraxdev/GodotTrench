@@ -1354,14 +1354,14 @@ fn view_panes_maximize_close_and_come_back() {
         ed.input("window", json!([{ "type": "move", "x": 10, "y": 10 }, { "type": "key", "key": "F1" }, { "type": "text", "text": command }, { "type": "key", "key": "Enter" }]));
     };
     ed.input("front", json!([{ "type": "move" }]));
-    palette(&ed, "single view layout");
+    palette(&ed, "single view");
     assert!(ed.screenshot("3d", "single_3d").0 > docked * 3 / 2, "Single View starts with the 3D view");
-    palette(&ed, "four view layout");
+    palette(&ed, "four views");
     assert_eq!(width(&ed), docked);
     ed.input("front", json!([{ "type": "click", "button": "middle" }]));
-    palette(&ed, "single view layout");
+    palette(&ed, "single view");
     assert!(width(&ed) > docked * 3 / 2, "Single View keeps the view worked in last");
-    palette(&ed, "four view layout");
+    palette(&ed, "four views");
 }
 
 /// F1 over a toolbar tool and a Ctrl+click on it open the tool's page of the manual. The system opener is replaced by a

@@ -7,7 +7,7 @@ its coping.
 1. Select the walls (every upright face of the selected brushes gets trim), or pick single faces with the face tool.
 2. Choose which **Edges**: bottom, top, sides or all.
 3. Set **Height** (how far the strip runs over the face), **Depth** (how far it stands out) and **Inset** (a gap
-   between the edge and the strip). **Use current** takes the material selected in the Materials panel.
+   between the edge and the strip). **Use Current** takes the material selected in the Materials panel.
 4. Click **Add Trim**. The strips land in one group, or in a `func_detail_illusionary` when **Collision** is off, so
    players do not snag on them.
 

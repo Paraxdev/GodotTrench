@@ -34,15 +34,20 @@ pub fn scatter_panel(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Act
 fn set_row(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>) {
     let active = tool::active_set(state);
     let rename_id = ui.id().with("scatter_rename");
+    let focus_id = rename_id.with("focus");
     let mut renaming: Option<String> = ui.data(|d| d.get_temp(rename_id));
     ui.horizontal_wrapped(|ui| {
         ui.label("Set");
         match (&mut renaming, active) {
             (Some(name), Some(id)) => {
                 let edit = ui.add(egui::TextEdit::singleline(name).desired_width(150.0));
-                edit.request_focus();
-                if edit.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    if !name.trim().is_empty() {
+                if ui.data_mut(|d| d.remove_temp::<bool>(focus_id)).is_some() {
+                    edit.request_focus();
+                }
+
+                if edit.lost_focus() {
+                    let cancelled = ui.input(|i| i.key_pressed(egui::Key::Escape));
+                    if !cancelled && !name.trim().is_empty() {
                         tool::rename_set(state, id, name.trim());
                     }
 
@@ -87,6 +92,7 @@ fn set_row(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>) {
         if let Some(id) = active {
             if renaming.is_none() && ui.small_button("Rename").clicked() {
                 renaming = state.doc.map.scatter(id).map(|s| s.name.clone());
+                ui.data_mut(|d| d.insert_temp(focus_id, true));
             }
 
             if icons::button(ui, icons::DELETE, 16.0, "Delete set", "Delete this set, its instances and its empty layer").clicked() {
@@ -308,7 +314,7 @@ fn item_cards(ui: &mut Ui, state: &mut EditorState, id: NodeId, set: gt_doc::Sca
                             changed = true;
                         }
 
-                        if ui.small_button("use current").on_hover_text(current_material.clone()).clicked() {
+                        if ui.small_button("Use Current").on_hover_text(current_material.clone()).clicked() {
                             item.material = Some(current_material.clone());
                             changed = true;
                         }
@@ -495,9 +501,7 @@ fn brush_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>) {
         if kind != set.kind {
             state.doc.edit("Scatter Kind", |m, _| {
                 if let Some(s) = m.scatter_mut(id) {
-                    s.kind = kind;
-                    s.collision =
-                        if kind == ScatterKind::Foliage { gt_doc::scatter::ScatterCollision::None } else { gt_doc::scatter::ScatterCollision::Convex };
+                    s.set_kind(kind);
                 }
             });
         }
@@ -558,12 +562,12 @@ fn action_row(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>, a
         }
 
         ui.separator();
-        if ui.button("Fill targets").on_hover_text("Cover the set's targets, or the selected surfaces, in one go").clicked() {
+        if ui.button("Fill Targets").on_hover_text("Cover the set's targets, or the selected surfaces, in one go").clicked() {
             actions.push(Action::ScatterFill);
         }
 
         ui.add_enabled_ui(active.is_some(), |ui| {
-            if ui.button("Clear").on_hover_text("Remove every placed instance, keep the models").clicked()
+            if ui.button("Clear Instances").on_hover_text("Remove every placed instance, keep the models").clicked()
                 && let Some(id) = active
             {
                 state.doc.edit("Clear Scatter", |m, _| {
@@ -573,15 +577,15 @@ fn action_row(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>, a
                 });
             }
 
-            if ui.button("Bake to entities").on_hover_text("Replace the set with one prop entity per instance").clicked()
+            if ui.button("To Entities").on_hover_text("Replace the set with one prop entity per instance").clicked()
                 && let Some(id) = active
             {
                 let n = tool::bake_to_entities(state, id);
-                state.set_status(format!("Baked {n} scatter instances into prop entities"));
+                state.set_status(format!("Converted {n} scatter instances to entities"));
             }
         });
     });
-    if ui.small_button("Install nature models…").on_hover_text(format!("Adds trees, bushes, rocks and grass to {}", gt_doc::scatter::NATURE_DIR)).clicked() {
+    if ui.small_button("Install Nature Models…").on_hover_text(format!("Adds trees, bushes, rocks and grass to {}", gt_doc::scatter::NATURE_DIR)).clicked() {
         actions.push(Action::InstallNatureModels);
     }
 }

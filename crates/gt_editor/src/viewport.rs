@@ -1265,7 +1265,8 @@ fn context_menu(ui: &mut Ui, cx: &mut ViewCtx) {
             }
         }
     });
-    ui.add_enabled_ui(has_sel, |ui| {
+    let has_brushes = !gt_doc::ops::brush_entity_geometry(&cx.state.doc.map, &cx.state.doc.selection).is_empty();
+    ui.add_enabled_ui(has_brushes, |ui| {
         ui.menu_button("Create Brush Entity", |ui| {
             for c in solid_classes {
                 if ui.button(&c).clicked() {
@@ -1288,7 +1289,7 @@ fn context_menu(ui: &mut Ui, cx: &mut ViewCtx) {
         Some(("Isolate", Action::IsolateSelected)),
         None,
         Some(("CSG Subtract", Action::CsgSubtract)),
-        Some(("CSG Merge", Action::CsgMerge)),
+        Some(("CSG Convex Merge", Action::CsgMerge)),
         Some(("CSG Intersect", Action::CsgIntersect)),
         Some(("Hollow", Action::CsgHollow)),
         None,

@@ -1138,7 +1138,7 @@ impl ToolSet {
                 let hint = if !has_terrain && gt_doc::terrain::displacement_faces(&state.doc.map, &[]).is_empty() {
                     "Sculpt: no terrain or displacements. Terrain > Create Terrain, or select quad faces and use Brush > Displacement".to_string()
                 } else {
-                    format!("Sculpt {:?}: drag to apply, Shift inverts, Ctrl smooths", state.sculpt.mode)
+                    format!("Sculpt {}: drag to apply, Shift inverts, Ctrl smooths", state.sculpt.mode.label())
                 };
                 painter.text(
                     rect.left_bottom() + Vec2::new(8.0, -8.0),

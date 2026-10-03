@@ -249,7 +249,7 @@ impl RandomFillDialog {
                 ui.label("Seed");
                 ui.horizontal(|ui| {
                     ui.add(egui::DragValue::new(&mut self.opts.seed).range(1..=u32::MAX as u64));
-                    if ui.small_button("🎲").on_hover_text("A new random seed").clicked() {
+                    if ui.small_button("Random").on_hover_text("A new random seed").clicked() {
                         self.opts.seed = crate::commands::time_seed().max(1) % u32::MAX as u64;
                     }
                 });

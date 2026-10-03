@@ -458,7 +458,8 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
             uv_state.gizmo = !uv_state.gizmo;
         }
 
-        if chip(ui, icons::UV_LOCK, state.uv_lock, "UV Lock", "UV lock: textures stay attached while objects move (Ctrl+Shift+U)") {
+        let keys = crate::commands::shortcut_text(ui.ctx(), &state.prefs, &Action::ToggleUvLock).map(|k| format!(" ({k})")).unwrap_or_default();
+        if chip(ui, icons::UV_LOCK, state.uv_lock, "UV Lock", &format!("UV lock: textures stay attached while objects move{keys}")) {
             actions.push(Action::ToggleUvLock);
         }
 

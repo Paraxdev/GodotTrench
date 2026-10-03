@@ -215,7 +215,7 @@ impl AddonWizard {
             }
         } else if !status.exported {
             ui.label("Next, open the project in Godot once. The addon then writes godottrench_game.json with the project's entities and textures, and the editor loads it by itself.");
-            if !godot_open && state.godot.found() && ui.button("Open in Godot").clicked() {
+            if !godot_open && state.godot.found() && ui.button("Open Project in Godot Editor").clicked() {
                 crate::commands::execute(state, crate::commands::Action::OpenGodotEditor, ui.ctx());
             }
         } else {

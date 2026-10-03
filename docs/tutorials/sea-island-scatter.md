@@ -14,11 +14,11 @@ sets keep their distance from each other and nothing grows through a trunk.
 1. **Preset** > *mixed woodland*, **Rename** it `woodland` and target the terrain.
 2. In the Brush section set **Density** 0.16, **Slope** 0 to 30 and tick **Height**, 120 to 2000. The slope range
    keeps trees off the cliffs, and the height range keeps them off the beach.
-3. Click **Fill targets** to plant the whole terrain at once.
+3. Click **Fill Targets** to plant the whole terrain at once.
 
 Density counts attempts per 64 x 64 units, so 0.16 is roughly one tree every 5 m.
 
-![The woodland after Fill targets](../assets/sea-island/scatter-woodland.jpg)
+![The woodland after Fill Targets](../assets/sea-island/scatter-woodland.jpg)
 
 Hold **Shift** and drag along each path with radius 260 to erase the trees there. Erase a clearing on the main
 hilltop (radius about 520) and a meadow behind the beach (about 700).
@@ -33,7 +33,7 @@ detailed trees placed where the player will look closely.
 | Set | Preset | How to place it | Radius | Density | Slope | Height |
 | --- | --- | --- | --- | --- | --- | --- |
 | Hero trees | detailed forest | Single clicks where the paths leave the beach and around the hilltop clearing | 260 | 0.08 | 0 to 30 | off |
-| Bushes | bushes | **Fill targets**, then erase along the paths with radius 190 | | 0.35 | 0 to 32 | 45 to 200 |
+| Bushes | bushes | **Fill Targets**, then erase along the paths with radius 190 | | 0.35 | 0 to 32 | 45 to 200 |
 | Boulders | boulders | One stroke along the top of the cliffs | 1100 | 0.035 | 12 to 50 | 20 to 2000 |
 
 ![Hero trees at the foot of the path](../assets/sea-island/scatter-hero-trees.jpg)
@@ -49,7 +49,7 @@ detailed trees placed where the player will look closely.
 2. Paint the open meadows with radius 650, density 2.5, slope 0 to 28, height 45 to 2000. Erase it off the paths with
    radius 170.
 3. For grass on the boulders, start one more *grass* set. With the eyedropper, click a boulder instead of the
-   terrain, so the boulder set becomes its target. **Fill targets** with density 6 and slope 0 to 45.
+   terrain, so the boulder set becomes its target. **Fill Targets** with density 6 and slope 0 to 45.
 
 ![Meadow grass behind the beach](../assets/sea-island/scatter-meadow.jpg)
 

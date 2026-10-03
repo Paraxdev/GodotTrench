@@ -259,7 +259,7 @@ impl TrimDialog {
                 ui.label("Material");
                 ui.horizontal(|ui| {
                     ui.label(&opts.material);
-                    if ui.small_button("Use current").on_hover_text(format!("Use {}", state.current_material)).clicked() {
+                    if ui.small_button("Use Current").on_hover_text(format!("Use {}", state.current_material)).clicked() {
                         opts.material = state.current_material.clone();
                     }
                 });

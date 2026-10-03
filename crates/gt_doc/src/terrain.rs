@@ -44,6 +44,22 @@ impl SculptMode {
         SculptMode::Unhole,
     ];
 
+    pub fn label(&self) -> &'static str {
+        match self {
+            SculptMode::Raise => "Raise",
+            SculptMode::Lower => "Lower",
+            SculptMode::Smooth => "Smooth",
+            SculptMode::Flatten => "Flatten",
+            SculptMode::Noise => "Noise",
+            SculptMode::PaintAlpha => "Paint Alpha",
+            SculptMode::EraseAlpha => "Erase Alpha",
+            SculptMode::Terrace => "Terrace",
+            SculptMode::PaintLayer => "Paint Layer",
+            SculptMode::Hole => "Hole",
+            SculptMode::Unhole => "Unhole",
+        }
+    }
+
     pub fn is_paint(&self) -> bool {
         matches!(self, SculptMode::PaintAlpha | SculptMode::EraseAlpha | SculptMode::PaintLayer | SculptMode::Hole | SculptMode::Unhole)
     }

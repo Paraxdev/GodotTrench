@@ -34,6 +34,16 @@ pub enum TextureFilter {
     Linear,
 }
 
+impl TextureFilter {
+    pub fn label(&self) -> &'static str {
+        match self {
+            TextureFilter::Auto => "Auto (Godot material)",
+            TextureFilter::Nearest => "Nearest (pixel art)",
+            TextureFilter::Linear => "Linear",
+        }
+    }
+}
+
 impl Shade {
     pub fn label(&self) -> &'static str {
         match self {
@@ -42,6 +52,17 @@ impl Shade {
             Shade::Lit => "lit",
             Shade::Wireframe => "wireframe",
             Shade::Baked => "baked",
+        }
+    }
+
+    /// The name the View > Shading menu, the toolbar, the palette and the keymap show.
+    pub fn title(&self) -> &'static str {
+        match self {
+            Shade::Textured => "Textured",
+            Shade::Flat => "Flat",
+            Shade::Lit => "Lit Preview",
+            Shade::Wireframe => "Wireframe",
+            Shade::Baked => "Baked Lighting",
         }
     }
 
