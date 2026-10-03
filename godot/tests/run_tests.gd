@@ -65,6 +65,7 @@ func _initialize() -> void:
 	test_entity_pack()
 	test_clashes()
 	test_build_report()
+	test_nodraw_tool_textures()
 	await test_game_config()
 	test_game_config_lint()
 	test_game_config_io_types()
@@ -148,6 +149,20 @@ func test_parser() -> void:
 	fix_ctx.map_settings = load(SETTINGS)
 	var keys := GodotTrenchParser._fixup_keys(fix_ctx, "trigger_teleport")
 	check("destination" in keys and "call_target" in keys and "targetname" in keys, "teleport destinations and call targets get the fixup, got %s" % [keys])
+	# killtarget and parent are targets by their name, the way the game config exports them and Explode Instance fixes them.
+	var killer := FuncGodotFGDPointClass.new()
+	killer.classname = "gt_tests_killer"
+	killer.class_properties = { "killtarget": "", "parent": "", "label": "" }
+	var plain := FuncGodotFGDPointClass.new()
+	plain.classname = "gt_tests_plain_parent"
+	plain.class_properties = { "parent": "" }
+	plain.meta_properties = { "property_types": { "parent": "string" } }
+	fix_ctx.entity_defs = { "gt_tests_killer": killer, "gt_tests_plain_parent": plain }
+	keys = GodotTrenchParser._fixup_keys(fix_ctx, "gt_tests_killer")
+	check("killtarget" in keys and "parent" in keys and not "label" in keys, "killtarget and parent get the fixup, got %s" % [keys])
+	check(not "parent" in GodotTrenchParser._fixup_keys(fix_ctx, "gt_tests_plain_parent"), "unless declared a plain string")
+	var exported := GodotTrenchGameConfig._property_def("killtarget", "", null)
+	check(exported["type"] == "target_destination", "the game config exports killtarget as a target")
 
 	# Face planes must point out of their brush.
 	var floor_brush: FuncGodotData.BrushData = world.brushes[0]
@@ -694,8 +709,54 @@ func test_clashes() -> void:
 	if clashes.size() == 1:
 		check(clashes[0]["definitions"] == ["res://godottrench/entities/definitions/func_door.tres", "res://tests/my_func_door.tres"], "listed in merge order, got %s" % [clashes[0]["definitions"]])
 	check(fgd.get_entity_definitions()["func_door"].description == "my door", "the later definition is the one maps get")
+	door.node_groups = ["doors", ""]
+	config.map_settings = FuncGodotMapSettings.new()
+	config.map_settings.entity_node_groups = ["entities", "doors"]
+	var exported: Array = config.build_config()["entities"].filter(func(e): return e["classname"] == "func_door")
+	check(exported.size() == 1 and exported[0].get("node_groups") == ["entities", "doors"], "node groups are exported for @group targets, got %s" % [exported])
 	var demo: GodotTrenchGameConfig = load("res://demo/demo_game_config.tres")
 	check(not demo.build_config().has("clashes"), "the demo defines each classname once")
+
+func test_nodraw_tool_textures() -> void:
+	print("- nodraw tool textures draw nothing, like the editor shows them")
+	var settings: FuncGodotMapSettings = load(SETTINGS).duplicate()
+	settings.save_generated_materials = false
+	for t in ["special/nodraw", "Special/Trigger", "tools/toolsnodraw", "gt/anything", "common/caulk", "special/occluder"]:
+		check(FuncGodotUtil.filter_face(t, settings), "%s builds no visual mesh" % t)
+	for t in ["showcase/cobble", "brick/clipper", "special_brick"]:
+		check(not FuncGodotUtil.filter_face(t, settings), "%s draws" % t)
+	check(FuncGodotUtil.is_skip("special/hint", settings) and not FuncGodotUtil.is_skip("special/playerclip", settings), "hint builds nothing, playerclip collides")
+
+	# One box per texture, far apart: each colliding box adds 12 triangles to the concave shape of func_geo.
+	var textures := ["showcase/cobble", "special/nodraw", "special/trigger", "special/playerclip", "special/hint", "special/occluder"]
+	var children := []
+	for i in textures.size():
+		children.append(box_node(10 + i, Vector3(i * 128, 0, 0), Vector3(i * 128 + 64, 64, 64), textures[i]))
+	var geo := { "id": 2, "type": "entity", "classname": "func_geo", "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "properties": {}, "children": children }
+	var path := OS.get_temp_dir().path_join("gt_nodraw_test.gtm")
+	var map_json := { "format": "godottrench-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": [geo] }] }
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify(map_json))
+	var map := FuncGodotMap.new()
+	map.map_settings = settings
+	map.global_map_file = path
+	root.add_child(map)
+	map.build()
+	var names := []
+	for m: MeshInstance3D in collect(map, func(n): return n is MeshInstance3D and n.mesh):
+		for s in m.mesh.get_surface_count():
+			names.append(m.mesh.surface_get_name(s))
+	check(names == ["showcase/cobble"], "only the cobble box draws, got %s" % [names])
+	var triangles := 0
+	for c: CollisionShape3D in collect(map, func(n): return n is CollisionShape3D and n.shape is ConcavePolygonShape3D):
+		triangles += c.shape.get_faces().size() / 3
+	check(triangles == 5 * 12, "every box but the hint one collides, got %d triangles" % triangles)
+	var occluders := collect(map, func(n): return n is OccluderInstance3D and n.occluder)
+	var occluded := 0
+	for o: OccluderInstance3D in occluders:
+		occluded += (o.occluder as ArrayOccluder3D).indices.size() / 3
+	check(occluded == 2 * 12, "the cobble and occluder boxes feed the occluder, got %d triangles" % occluded)
+	map.free()
+	DirAccess.remove_absolute(path)
 
 func test_build_report() -> void:
 	print("- the build report names what is missing, once each")
@@ -1156,7 +1217,7 @@ func test_texture_size_override() -> void:
 	settings.save_generated_materials = false
 	var decal := "showcase/red_bricks" + GodotTrenchDecalMesh.SUFFIX
 	var brush := FuncGodotData.BrushData.new()
-	for texture in ["showcase/red_bricks", decal, "special/trigger"]:
+	for texture in ["showcase/red_bricks", decal, "special/trigger", "gt_tests/no_such_texture"]:
 		var face := FuncGodotData.FaceData.new()
 		face.texture = texture
 		brush.faces.append(face)
@@ -1167,7 +1228,21 @@ func test_texture_size_override() -> void:
 	var sizes: Dictionary = FuncGodotUtil.build_texture_map(entities, settings)[1]
 	check(sizes.get("showcase/red_bricks") == Vector2(64, 64), "faces use the world size, got %s" % sizes.get("showcase/red_bricks"))
 	check(sizes.get(decal) == Vector2(64, 64), "a decal repeats like its base material, got %s" % sizes.get(decal))
-	check(sizes.get("special/trigger") == Vector2(64, 64), "no material file, the pixel size, got %s" % sizes.get("special/trigger"))
+	check(not sizes.has("special/trigger"), "a tool texture builds no material")
+	check(sizes.get("gt_tests/no_such_texture") == Vector2(64, 64), "no material file, the placeholder's pixel size, got %s" % sizes.get("gt_tests/no_such_texture"))
+	check(settings.texture_file_extensions == ["png", "jpg", "jpeg", "webp", "tga", "bmp"], "images are looked up in the editor's order")
+
+	# A material without an albedo texture or an image of its name falls back to the editor's 64 pixels.
+	var material_dir := OS.get_temp_dir().path_join("gt_no_albedo_%d" % OS.get_process_id())
+	DirAccess.make_dir_recursive_absolute(material_dir)
+	ResourceSaver.save(StandardMaterial3D.new(), material_dir.path_join("plain.tres"))
+	var bare := settings.duplicate() as FuncGodotMapSettings
+	bare.base_material_dir = material_dir
+	brush.faces[0].texture = "plain"
+	check(FuncGodotUtil.build_texture_map(entities, bare)[1].get("plain") == Vector2(64, 64), "a material without albedo uses the fallback size")
+	brush.faces[0].texture = "showcase/red_bricks"
+	DirAccess.remove_absolute(material_dir.path_join("plain.tres"))
+	DirAccess.remove_absolute(material_dir)
 	var uv := FuncGodotUtil.get_valve_uv(Vector3(64, 0, 32), Vector3.RIGHT, Vector3.BACK, Transform2D.IDENTITY, sizes["showcase/red_bricks"])
 	check(uv.is_equal_approx(Vector2(1.0, 0.5)), "one world size along u is one repeat, got %s" % uv)
 
@@ -1630,6 +1705,16 @@ func test_light() -> void:
 	check(not light.is_on() and switched.back() == false, "toggle switches it off, got %s" % [switched])
 	light.queue_free()
 	await process_frame
+
+	# The keys Bake Lighting reads shape the real time light the same way.
+	var omni := GTLight.new()
+	omni._func_godot_apply_properties({ "light_size": "0.25", "omni_attenuation": "2.0", "light_indirect_energy": "0.5" })
+	check(near(omni.light_size, 0.25) and near(omni.omni_attenuation, 2.0) and near(omni.light_indirect_energy, 0.5), "omni light keys reach the OmniLight3D")
+	omni.free()
+	var spot := GTSpotLight.new()
+	spot._func_godot_apply_properties({ "light_size": 0.5, "spot_attenuation": 3.0, "spot_angle_attenuation": 0.25, "light_indirect_energy": 2.0 })
+	check(near(spot.light_size, 0.5) and near(spot.spot_attenuation, 3.0) and near(spot.spot_angle_attenuation, 0.25) and near(spot.light_indirect_energy, 2.0), "spot light keys reach the SpotLight3D")
+	spot.free()
 
 func test_text() -> void:
 	print("- game_text in world and hud")

@@ -78,11 +78,15 @@ fires when the state actually changes. They are part of the addon's core, so eve
 * **Outputs:** `switched(on)`
 * **Keys:** `light_energy` 1.0 (1.5 for spots), `light_color` 255 255 255, `start_on` 1, `shadows` 0 (costs more to
   render), `fixture`, `fixture_off` hide, and `omni_range` 10, or `spot_range` 15 and `spot_angle` 35 (the cone's half
-  angle in degrees), `bake_mode` auto, `light_size` 0
+  angle in degrees), `bake_mode` auto, `light_size` 0, `light_indirect_energy` 1, and `omni_attenuation` 1, or
+  `spot_attenuation` 1 and `spot_angle_attenuation` 1. These last keys set the Godot light properties of the same
+  name, and the bake uses them too
 
 **Fixtures** keep the lamp model in step with the light. Give the lamp's glowing geometry a targetname and put it in
 `fixture`, a trailing `*` matches a prefix so `hall_tube_*` covers every tube. It is shown while the light is on and
-hidden while off, with no wiring. With `fixture_off` set to `dark` it stays visible with its emission off.
+hidden while off, with no wiring. With `fixture_off` set to `dark` it stays visible with its emission off. `fixture`
+takes the other [target](../parameters.md#targets) forms too, `@lamps` for a node group and `/root/...` for a node
+path. The editor previews every form but the node path, which only Godot can resolve.
 
 `bake_mode` and `light_size` decide how [Bake Lighting](../../editor/light-baking.md#light-keys) treats the light. With
 `auto` a light that I/O can switch, one with a targetname or `start_on` 0, stays real time.

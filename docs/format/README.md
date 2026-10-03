@@ -47,7 +47,7 @@ keys and turns them into a sky, fog and a sun:
 | `sun_angles`, `sun_color`, `sun_energy` | The directional sun light: where it points, its color and how bright it is |
 | `ambient_color`, `ambient_energy` | Light that reaches surfaces the sun does not, so shadows are not pitch black |
 | `sky_top_color`, `sky_horizon_color`, `sky_ground_color`, `sky_energy` | The procedural sky gradient and its brightness |
-| `sky_panorama` | A `res://` image that replaces the procedural sky |
+| `sky_panorama` | A `res://` image that replaces the procedural sky in Godot. The editor preview and its bake keep using the sky colors |
 | `fog_color`, `fog_density` | Distance fog |
 | `glow_intensity`, `ssr` | Bloom on bright surfaces, and screen space reflections when `ssr` is `1` |
 

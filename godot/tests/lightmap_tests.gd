@@ -11,6 +11,7 @@ const BAKED := "res://tests/maps/baked.gtm"
 static func run(t) -> void:
 	print("- baked lighting")
 	await _test_synthetic(t)
+	await _test_live(t)
 	await _test_editor_bake(t)
 
 static func _map_json() -> Dictionary:
@@ -138,6 +139,36 @@ static func _test_synthetic(t) -> void:
 
 	map = _build(t, path, false)
 	t.check(map.get_node_or_null(GodotTrenchLightmap.NODE_NAME) == null and _uv2s(map).is_empty(), "use_baked_lighting off leaves the bake out")
+	map.queue_free()
+	DirAccess.remove_absolute(path)
+	await t.process_frame
+
+## The live link sends the bake along with the map text, so a live build keeps it. A node moved since leaves its
+## charts out of a later full build.
+static func _test_live(t) -> void:
+	var path := OS.get_temp_dir().path_join("gt_live_lightmap_test.gtm")
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify({ "format": "godottrench-map", "version": 1, "layers": [] }))
+	var map := FuncGodotMap.new()
+	map.map_settings = load(SETTINGS)
+	map.global_map_file = path
+	t.root.add_child(map)
+	var maps: Array[FuncGodotMap] = [map]
+	var session := GodotTrenchLiveSession.new(path, maps)
+	# Brush 4 is baked too here, so the map keeps a bake once brush 2 moves.
+	var json := _map_json()
+	for face in 6:
+		json["lightmap"]["chart_keys"].append_array([4, face])
+		json["lightmap"]["chart_rows"].append_array([1.0 / 128.0, 0.0, 0.0, 0.25, 0.0, 0.0, 1.0 / 128.0, 0.25])
+	t.check(session.begin(JSON.stringify(json)), "the session takes a baked map")
+	t.check(map.get_node_or_null(GodotTrenchLightmap.NODE_NAME) is LightmapGI, "a live build keeps the bake")
+	t.check(_uv2s(map).get(Vector3(2, 0, 2)) is Vector2 and (_uv2s(map)[Vector3(2, 0, 2)] as Vector2).is_equal_approx(Vector2(0.75, 0.5)), "baked faces map into the atlas")
+	t.check(session.apply([{ "op": "translate", "ids": [2], "offset": [0.0, 0.0, 64.0] }]), "translate applies")
+	map.build_from_text(session.text())
+	# The nodes of the first build go at the end of the frame.
+	await t.process_frame
+	var moved = _uv2s(map).get(Vector3(2, 0, 4))
+	t.check(moved is Vector2 and (moved as Vector2).is_equal_approx(Vector2(0.5, 2.5 / 3.0)), "the moved brush uses the fallback row in a full build, got %s" % [moved])
+	t.check(map.get_node_or_null(GodotTrenchLightmap.NODE_NAME) is LightmapGI, "and the rest keeps the bake")
 	map.queue_free()
 	DirAccess.remove_absolute(path)
 	await t.process_frame
