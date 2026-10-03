@@ -80,7 +80,9 @@ names `static`, `dynamic` and `disabled` work too. A real time light also lights
 [light probes](../godot/baked-lighting.md#light-probes).
 
 `light_size` is the radius of the lamp in meters. A bigger lamp casts softer shadows, and 0 uses the dialog's shadow
-softness instead.
+softness instead. `light_indirect_energy` scales the bounced light, and `omni_attenuation`, `spot_attenuation` and
+`spot_angle_attenuation` shape the falloff. The Godot light gets all of them as its properties of the same name, so
+the real time light matches the bake.
 
 ## When a bake goes out of date
 
