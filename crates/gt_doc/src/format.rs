@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::entity::Entity;
 use crate::map::{EditorData, Group, Instance, Layer, Map, Node, NodeKind};
-use crate::scatter::Scatter;
+use crate::scatter::{Scatter, ScatterKind};
 
 pub const FORMAT_NAME: &str = "godottrench-map";
 pub const FORMAT_VERSION: u32 = 1;
@@ -277,14 +277,20 @@ fn insert_file_node(map: &mut Map, parent: Option<NodeId>, node: FileNode) {
     }
 }
 
-/// Defaults that depend on another key, which serde cannot express. A foliage set without `collision` has none, as
-/// in `Scatter::new` and the Godot scatter reader.
+/// Defaults that depend on another key, which serde cannot express. A scatter set missing a setting gets what
+/// `Scatter::new` gives its kind, so a foliage set without `collision` has none.
 fn fill_defaults(node: &mut Value) {
     if node.get("type").and_then(Value::as_str) == Some("scatter")
-        && node.get("kind").and_then(Value::as_str) == Some("foliage")
         && let Some(obj) = node.as_object_mut()
     {
-        obj.entry("collision").or_insert_with(|| Value::from("none"));
+        let kind = if obj.get("kind").and_then(Value::as_str) == Some("foliage") { ScatterKind::Foliage } else { ScatterKind::Props };
+        if let Ok(Value::Object(defaults)) = serde_json::to_value(Scatter::new("", kind, Vec::new())) {
+            for key in ["collision", "cast_shadows", "visibility_range", "chunk_size"] {
+                if let Some(v) = defaults.get(key) {
+                    obj.entry(key).or_insert_with(|| v.clone());
+                }
+            }
+        }
     }
 
     for list in ["children", "layers", "nodes"] {
@@ -335,7 +341,20 @@ fn file_value(bytes: &[u8]) -> Result<FileValue, FormatError> {
 
 /// Any map file in the readable JSON layout, for `godottrench --dump` and `--to-json`.
 pub fn file_to_json(bytes: &[u8]) -> Result<(String, Vec<String>), FormatError> {
-    let (value, problems, _) = file_value(bytes)?;
+    let (mut value, mut problems, unknown) = file_value(bytes)?;
+    if let Some(chunk) = unknown.iter().find(|c| c.tag == crate::lightmap::TAG) {
+        // The chunk decodes to the JSON layout already, `save` to a .json path writes the same key.
+        let decoded = crate::binary::chunk_payload(chunk).and_then(|raw| crate::variant::decode(&raw).ok());
+        match decoded.filter(|v| crate::lightmap::Lightmap::from_json(v).is_some()) {
+            Some(lightmap) => {
+                if let Some(obj) = value.as_object_mut() {
+                    obj.insert("lightmap".into(), lightmap);
+                }
+            }
+            None => problems.push("the baked lighting is damaged or from a newer editor and was dropped, bake the lighting again".into()),
+        }
+    }
+
     Ok((crate::json_fmt::to_string(&value), problems))
 }
 
@@ -474,6 +493,11 @@ mod tests {
         assert!(back.problems.is_empty(), "{:?}", back.problems);
         assert_eq!(back.map.lightmap, m.lightmap);
         assert!(back.map.unknown_chunks.is_empty(), "the chunk is read, not kept as unknown");
+        let (dumped, problems) = file_to_json(&to_bytes(&m)).unwrap();
+        assert!(problems.is_empty(), "{problems:?}");
+        let dumped: Value = serde_json::from_str(&dumped).unwrap();
+        assert_eq!(dumped["lightmap"]["stale"], serde_json::json!([2]));
+        assert_eq!(from_str(&dumped.to_string()).unwrap().lightmap, m.lightmap, "the JSON dump keeps the bake");
 
         let dir = std::env::temp_dir().join(format!("gt_lightmap_json_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -651,6 +675,19 @@ mod tests {
         let back = from_str(&v.to_string()).unwrap();
         let id = back.get(layer).unwrap().children[0];
         assert_eq!(back.scatter(id).unwrap().collision, crate::scatter::ScatterCollision::Convex);
+    }
+
+    #[test]
+    fn scatter_missing_settings_match_a_new_set() {
+        let m = Map::new();
+        let layer = m.default_layer();
+        let mut v = to_value(&m);
+        for kind in ScatterKind::ALL {
+            v["layers"][0]["children"] = serde_json::json!([{ "id": 50, "type": "scatter", "name": "s", "kind": kind.label(), "items": [] }]);
+            let back = from_str(&v.to_string()).unwrap();
+            let loaded = back.scatter(back.get(layer).unwrap().children[0]).unwrap();
+            assert_eq!(*loaded, Scatter::new("s", kind, Vec::new()), "{kind:?}");
+        }
     }
 
     #[test]

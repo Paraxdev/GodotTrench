@@ -36,10 +36,15 @@ impl FaceUv {
         Self { u_axis: u, v_axis: v, offset: DVec2::ZERO, scale, rotation: 0.0 }
     }
 
+    /// The scale with near zero components treated as 1, so callers never divide by zero.
+    fn safe_scale(&self) -> DVec2 {
+        let pick = |s: f64| if s.abs() < 1e-9 { 1.0 } else { s };
+        DVec2::new(pick(self.scale.x), pick(self.scale.y))
+    }
+
     pub fn texel(&self, p: DVec3) -> DVec2 {
-        let sx = if self.scale.x.abs() < 1e-9 { 1.0 } else { self.scale.x };
-        let sy = if self.scale.y.abs() < 1e-9 { 1.0 } else { self.scale.y };
-        DVec2::new(p.dot(self.u_axis) / sx + self.offset.x, p.dot(self.v_axis) / sy + self.offset.y)
+        let s = self.safe_scale();
+        DVec2::new(p.dot(self.u_axis) / s.x + self.offset.x, p.dot(self.v_axis) / s.y + self.offset.y)
     }
 
     /// Normalized UV for a texture of the given pixel size.
@@ -79,8 +84,9 @@ impl FaceUv {
             let new_offset = offset - a.dot(translation) / scale;
             (a / len, scale / len, new_offset)
         };
-        let (u, su, ou) = map_axis(self.u_axis, self.scale.x, self.offset.x);
-        let (v, sv, ov) = map_axis(self.v_axis, self.scale.y, self.offset.y);
+        let scale = self.safe_scale();
+        let (u, su, ou) = map_axis(self.u_axis, scale.x, self.offset.x);
+        let (v, sv, ov) = map_axis(self.v_axis, scale.y, self.offset.y);
         let mut out = Self { u_axis: u, v_axis: v, offset: DVec2::new(ou, ov), scale: DVec2::new(su, sv), rotation: self.rotation };
         out.snap();
         out
@@ -89,8 +95,9 @@ impl FaceUv {
     /// Applies translation only, keeping texels attached (cheap uv lock for moves).
     pub fn translated(&self, offset: DVec3) -> Self {
         let mut out = self.clone();
-        out.offset.x -= offset.dot(self.u_axis) / self.scale.x;
-        out.offset.y -= offset.dot(self.v_axis) / self.scale.y;
+        let scale = self.safe_scale();
+        out.offset.x -= offset.dot(self.u_axis) / scale.x;
+        out.offset.y -= offset.dot(self.v_axis) / scale.y;
         out
     }
 
@@ -371,5 +378,17 @@ mod tests {
         let moved = uv.transformed(&m);
         let p = DVec3::new(5.0, 0.0, 7.0);
         assert!((uv.texel(p) - moved.texel(m.transform_point3(p))).length() < 1e-6);
+    }
+
+    #[test]
+    fn zero_scale_stays_finite_under_moves() {
+        let uv = FaceUv::paraxial(DVec3::Y, DVec2::ZERO);
+        let moved = uv.translated(DVec3::new(8.0, 0.0, 4.0));
+        assert!(moved.offset.is_finite(), "{}", moved.offset);
+        let m = DMat4::from_rotation_translation(DQuat::from_rotation_y(0.3), DVec3::new(3.0, 1.0, 2.0));
+        let t = uv.transformed(&m);
+        assert!(t.offset.is_finite() && t.scale.is_finite(), "{} {}", t.offset, t.scale);
+        let p = DVec3::new(5.0, 0.0, 7.0);
+        assert!((uv.texel(p) - t.texel(m.transform_point3(p))).length() < 1e-6);
     }
 }

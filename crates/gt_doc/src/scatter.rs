@@ -291,6 +291,9 @@ impl Scatter {
             item.spacing *= uniform;
             item.sink *= uniform;
         }
+
+        self.visibility_range *= uniform;
+        self.chunk_size *= uniform;
     }
 
     /// Removes a palette entry together with its instances.
@@ -1032,5 +1035,7 @@ mod tests {
         let i = set.instances[0];
         assert!((i.position - DVec3::new(0.0, 0.0, -20.0)).length() < 1e-9);
         assert!((i.angles.y - 90.0).abs() < 1e-6 && (i.scale - 2.0).abs() < 1e-9);
+        assert!((set.items[0].spacing - 96.0).abs() < 1e-9);
+        assert!((set.visibility_range - 4800.0).abs() < 1e-9 && (set.chunk_size - 2.0 * DEFAULT_CHUNK_SIZE).abs() < 1e-9);
     }
 }

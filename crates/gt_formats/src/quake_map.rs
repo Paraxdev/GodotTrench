@@ -229,7 +229,9 @@ pub fn export_with(map: &Map, options: ExportOptions) -> String {
                     }
                 }
 
-                props.extend(e.properties.iter().filter(|(k, _)| k.as_str() != "origin").map(|(k, v)| (k.clone(), v.clone())));
+                // Point entities wrote their origin above, a brush entity keeps the one it was imported with.
+                let point = node.children.is_empty();
+                props.extend(e.properties.iter().filter(|(k, _)| !point || k.as_str() != "origin").map(|(k, v)| (k.clone(), v.clone())));
                 props.extend(container(id));
                 let _ = writeln!(out, "// entity {entity_index}\n{{");
                 write_props(&mut out, &props);
@@ -405,6 +407,11 @@ fn standard_axes(id_normal: DVec3, rotation: f64) -> (DVec3, DVec3) {
     (u, v)
 }
 
+/// Editors write a scale of 0 to mean the default of 1.
+fn nonzero_scale(sx: f64, sy: f64) -> DVec2 {
+    DVec2::new(if sx == 0.0 { 1.0 } else { sx }, if sy == 0.0 { 1.0 } else { sy })
+}
+
 fn parse_f(tok: Option<Tok>, line: usize) -> Result<f64, MapError> {
     match tok {
         Some(Tok::Word(w)) => w.parse().map_err(|_| MapError::Syntax { line, message: format!("expected number, got {w}") }),
@@ -457,7 +464,7 @@ fn parse_brush(lx: &mut Lexer) -> Result<Option<Brush>, MapError> {
                     let sx = parse_f(lx.next(), line)?;
                     let sy = parse_f(lx.next(), line)?;
                     lookahead = None;
-                    FaceUv { u_axis: from_id(u), v_axis: from_id(v), offset: DVec2::new(ou, ov), scale: DVec2::new(sx, sy), rotation }
+                    FaceUv { u_axis: from_id(u), v_axis: from_id(v), offset: DVec2::new(ou, ov), scale: nonzero_scale(sx, sy), rotation }
                 } else {
                     let ou = parse_f(lookahead.take(), line)?;
                     let ov = parse_f(lx.next(), line)?;
@@ -465,13 +472,7 @@ fn parse_brush(lx: &mut Lexer) -> Result<Option<Brush>, MapError> {
                     let sx = parse_f(lx.next(), line)?;
                     let sy = parse_f(lx.next(), line)?;
                     let (u, v) = standard_axes(id_plane.normal, rotation);
-                    FaceUv {
-                        u_axis: from_id(u),
-                        v_axis: from_id(v),
-                        offset: DVec2::new(ou, ov),
-                        scale: DVec2::new(if sx == 0.0 { 1.0 } else { sx }, if sy == 0.0 { 1.0 } else { sy }),
-                        rotation,
-                    }
+                    FaceUv { u_axis: from_id(u), v_axis: from_id(v), offset: DVec2::new(ou, ov), scale: nonzero_scale(sx, sy), rotation }
                 };
                 // Quake 2 / 3 surface flags trail the face line, skip up to the next face or the brush end.
                 let _ = lookahead;
@@ -745,6 +746,7 @@ mod tests {
         m.insert(g, NodeKind::Brush(rotated));
         let mut door = Entity::new("func_door");
         door.properties.insert("targetname".into(), "door1".into());
+        door.properties.insert("origin".into(), "16 0 32".into());
         let d = m.insert(layer, NodeKind::Entity(door));
         m.insert(d, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::new(0.0, 0.0, -8.0), DVec3::new(32.0, 64.0, 8.0)), "base/metal").unwrap()));
         let mut light = Entity::new("light");
@@ -790,6 +792,8 @@ mod tests {
         assert_eq!(back.brush_count(), original.brush_count());
         assert_eq!(back.entity_count(), original.entity_count());
         assert_eq!(back.properties.get("message").map(String::as_str), Some("hello"));
+        let door = back.entities().find(|(_, e)| e.classname == "func_door").unwrap();
+        assert_eq!(door.1.properties.get("origin").map(String::as_str), Some("16 0 32"), "brush entities keep their origin key");
 
         let total = |m: &Map| m.bounds_of(m.layers.clone());
         let (a, b) = (total(&original), total(&back));
@@ -850,6 +854,20 @@ mod tests {
         // Quake angle 90 faces +Y (id), which is +X in GodotTrench.
         let facing = start.rotation() * DVec3::NEG_Z;
         assert!(gt_core::vec_approx_eq(facing, DVec3::X), "{facing}");
+    }
+
+    #[test]
+    fn valve_zero_scale_imports_as_one() {
+        let src = "{\n\"classname\" \"worldspawn\"\n{\n\
+            ( -32 -32 -32 ) ( -32 -31 -32 ) ( -32 -32 -31 ) wall [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 0 0\n\
+            ( -32 -32 -32 ) ( -32 -32 -31 ) ( -31 -32 -32 ) wall [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 0 1\n\
+            ( -32 -32 -32 ) ( -31 -32 -32 ) ( -32 -31 -32 ) wall [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 0\n\
+            ( 32 32 32 ) ( 32 33 32 ) ( 33 32 32 ) wall [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1\n\
+            ( 32 32 32 ) ( 33 32 32 ) ( 32 32 33 ) wall [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1\n\
+            ( 32 32 32 ) ( 32 32 33 ) ( 32 33 32 ) wall [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1\n}\n}\n";
+        let m = import(src).unwrap();
+        let (_, b) = m.brushes().next().unwrap();
+        assert!(b.faces.iter().all(|f| f.data.uv.scale == DVec2::ONE), "{:?}", b.faces.iter().map(|f| f.data.uv.scale).collect::<Vec<_>>());
     }
 
     #[test]

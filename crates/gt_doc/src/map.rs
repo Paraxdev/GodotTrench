@@ -87,7 +87,9 @@ fn graph_frames<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<GraphFrame
 pub struct Instance {
     /// Path relative to the referencing map, or a res:// path.
     pub path: String,
+    #[serde(default)]
     pub origin: DVec3,
+    #[serde(default)]
     pub angles: DVec3,
     /// Prefix applied to targetnames inside the instance so several copies do not collide.
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -814,6 +816,8 @@ mod tests {
         assert_eq!(a.nested_fixup("b"), "a-b");
         assert_eq!(a.nested_fixup(""), "a");
         assert_eq!(inst("").nested_fixup("b"), "b");
+        let bare: Instance = serde_json::from_str(r#"{ "path": "p.gtm" }"#).unwrap();
+        assert_eq!(bare, inst(""), "origin and angles default to zero like an entity's");
     }
 
     #[test]

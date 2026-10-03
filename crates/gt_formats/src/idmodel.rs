@@ -119,7 +119,8 @@ pub fn parse_md2(data: &[u8]) -> Result<IdModel, String> {
         let vi = [r.u16(o)? as usize, r.u16(o + 2)? as usize, r.u16(o + 4)? as usize];
         let sti = [r.u16(o + 6)? as usize, r.u16(o + 8)? as usize, r.u16(o + 10)? as usize];
         let p: Vec<[f32; 3]> = vi.iter().map(|&k| *positions.get(k).unwrap_or(&[0.0; 3])).collect();
-        let n = face_normal(p[0], p[1], p[2]);
+        // Front faces wind clockwise in id models.
+        let n = face_normal(p[0], p[2], p[1]);
         for k in 0..3 {
             indices.push(vertices.len() as u32);
             vertices.push(IdVertex { pos: p[k], normal: n, uv: *st.get(sti[k]).unwrap_or(&[0.0, 0.0]) });

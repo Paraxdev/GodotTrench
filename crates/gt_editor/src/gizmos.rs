@@ -188,10 +188,11 @@ pub fn handles(state: &EditorState) -> Vec<(GizmoHandle, DVec3, String)> {
                     out.push((h(0), t.center + fwd * len, format!("{range} {}", fmt_num(t.number(state, range)))));
                     out.push((h(1), t.center + fwd * len + side * len * half.tan(), format!("{}°", fmt_num(t.number(state, angle)))));
                 }
-                GizmoDef::Box { property } => {
-                    let s = t.vector(state, property);
+                GizmoDef::Box { property, half } => {
+                    let v = t.vector(state, property);
+                    let s = v * if *half { 2.0 } else { 1.0 };
                     for (k, axis) in [DVec3::X, DVec3::Y, DVec3::Z].into_iter().enumerate() {
-                        out.push((h(k as u8), t.center + axis * s[k] * 0.5, fmt_num(s[k])));
+                        out.push((h(k as u8), t.center + axis * s[k] * 0.5, fmt_num(v[k])));
                     }
                 }
                 GizmoDef::Point { property, world } => {
@@ -269,8 +270,8 @@ pub fn lines(state: &EditorState, out: &mut Vec<LineVertex>) {
                         line(out, t.center, end + (a * th.cos() + b * th.sin()) * rim, [RANGE[0], RANGE[1], RANGE[2], 0.35]);
                     }
                 }
-                GizmoDef::Box { property } => {
-                    let s = t.vector(state, property);
+                GizmoDef::Box { property, half } => {
+                    let s = t.vector(state, property) * if *half { 2.0 } else { 1.0 };
                     box_lines(out, &Aabb::from_center_size(t.center, s.abs()).corners(), GHOST);
                 }
                 GizmoDef::Point { property, world } => {
@@ -356,10 +357,11 @@ pub fn drag(state: &mut EditorState, handle: GizmoHandle, start: DVec3, cam: &Ca
             let deg = ((side / along).atan().to_degrees() / angle_step).round() * angle_step;
             (angle.clone(), fmt_num(deg.clamp(1.0, 89.0)), format!("{angle} {}°", fmt_num(deg)))
         }
-        (GizmoDef::Box { property }, k) => {
+        (GizmoDef::Box { property, half }, k) => {
             let mut s = t.vector(state, property);
             let axis = (k as usize).min(2);
-            s[axis] = state.snap_scalar(((world - t.center)[axis]).abs() * 2.0).max(1.0);
+            let full = state.snap_scalar(((world - t.center)[axis]).abs() * 2.0).max(1.0);
+            s[axis] = if *half { full * 0.5 } else { full };
             (property.clone(), fmt_vec3(s), format!("{property} {}", fmt_vec3(s)))
         }
         (GizmoDef::Point { property, world: absolute }, _) => {

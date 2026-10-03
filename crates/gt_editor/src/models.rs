@@ -214,12 +214,12 @@ fn load(path: &Path, units_per_meter: f64) -> Result<Model, String> {
         "md2" => {
             let data = std::fs::read(path).map_err(|e| e.to_string())?;
             let mesh = gt_formats::idmodel::parse_md2(&data).map_err(|e| e.to_string())?;
-            Ok(id_model_to_model(path, mesh, units_per_meter))
+            Ok(id_model_to_model(path, mesh))
         }
         "md3" => {
             let data = std::fs::read(path).map_err(|e| e.to_string())?;
             let mesh = gt_formats::idmodel::parse_md3(&data).map_err(|e| e.to_string())?;
-            Ok(id_model_to_model(path, mesh, units_per_meter))
+            Ok(id_model_to_model(path, mesh))
         }
         _ => Err(format!("unsupported model format {ext}")),
     }
@@ -288,10 +288,11 @@ fn parse_stl(data: &[u8]) -> Result<Vec<[[f32; 3]; 3]>, String> {
 }
 
 /// Converts a parsed id Software model (md2/md3) into a placeable model, saving the skin as a texture
-/// when the file names one that sits next to it.
-fn id_model_to_model(path: &Path, mesh: gt_formats::idmodel::IdModel, units_per_meter: f64) -> Model {
+/// when the file names one that sits next to it. id models are Z-up in Quake units, read as map units the way
+/// `.map` import reads brushes.
+fn id_model_to_model(path: &Path, mesh: gt_formats::idmodel::IdModel) -> Model {
     let base = format!("model:{}", path.display());
-    let scale = units_per_meter as f32;
+    let y_up = |v: [f32; 3]| gt_formats::quake_map::from_id(Vec3::from(v).as_dvec3()).as_vec3();
     let mut textures = Vec::new();
     let mut parts = Vec::new();
     let mut bounds = Aabb::EMPTY;
@@ -308,12 +309,14 @@ fn id_model_to_model(path: &Path, mesh: gt_formats::idmodel::IdModel, units_per_
             .unwrap_or_else(|| gt_render::WHITE_MATERIAL.to_string());
         let mut vertices = Vec::with_capacity(surf.vertices.len());
         for v in &surf.vertices {
-            let pos = Vec3::from(v.pos) * scale;
+            let pos = y_up(v.pos);
             bounds.include_point(pos.as_dvec3());
-            vertices.push(ModelVertex { pos, normal: Vec3::from(v.normal).normalize_or(Vec3::Y), uv: v.uv });
+            vertices.push(ModelVertex { pos, normal: y_up(v.normal).normalize_or(Vec3::Y), uv: v.uv });
         }
 
-        parts.push(ModelPart { material, vertices, indices: surf.indices.clone() });
+        // id front faces wind clockwise, the axis swap is a rotation that keeps that, so flip them to counter clockwise.
+        let indices = surf.indices.as_chunks::<3>().0.iter().flat_map(|t| [t[0], t[2], t[1]]).collect();
+        parts.push(ModelPart { material, vertices, indices });
     }
 
     Model { parts, textures, emission: HashMap::new(), surfaces: HashMap::new(), bounds }
@@ -895,6 +898,21 @@ pub(crate) fn emissive_gltf(dir: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn id_models_stand_up_in_map_units() {
+        use gt_formats::idmodel::{IdModel, IdSurface, IdVertex};
+        // A 56 unit tall Quake model: a triangle in the id XZ plane facing -Y (id), which is -X here. Clockwise
+        // seen from the front, as id models wind them.
+        let v = |pos: [f32; 3]| IdVertex { pos, normal: [0.0, -1.0, 0.0], uv: [0.0, 0.0] };
+        let surface = IdSurface { skin: None, vertices: vec![v([0.0, 0.0, 0.0]), v([0.0, 0.0, 56.0]), v([16.0, 0.0, 0.0])], indices: vec![0, 1, 2] };
+        let model = id_model_to_model(Path::new("x.md2"), IdModel { surfaces: vec![surface] });
+        assert!((model.bounds.size() - DVec3::new(0.0, 56.0, 16.0)).length() < 1e-6, "{:?}", model.bounds);
+        let part = &model.parts[0];
+        let p: Vec<Vec3> = part.indices.iter().map(|i| part.vertices[*i as usize].pos).collect();
+        let winding = (p[1] - p[0]).cross(p[2] - p[0]).normalize();
+        assert!((winding - Vec3::NEG_X).length() < 1e-6 && (part.vertices[0].normal - Vec3::NEG_X).length() < 1e-6, "{winding}");
+    }
 
     fn aabb(dim: f64) -> Aabb {
         Aabb::new(DVec3::ZERO, DVec3::splat(dim))

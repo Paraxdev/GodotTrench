@@ -86,12 +86,27 @@ impl Default for TextureConfig {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ToolTextures {
+    #[serde(default = "default_clip")]
     pub clip: String,
+    #[serde(default = "default_skip")]
     pub skip: String,
+    #[serde(default = "default_origin")]
     pub origin: String,
     /// Faces that show the sky in Quake and Source. They collide but build no visual mesh.
     #[serde(default = "default_sky")]
     pub sky: String,
+}
+
+fn default_clip() -> String {
+    "special/clip".into()
+}
+
+fn default_skip() -> String {
+    "special/skip".into()
+}
+
+fn default_origin() -> String {
+    "special/origin".into()
 }
 
 fn default_sky() -> String {
@@ -100,7 +115,7 @@ fn default_sky() -> String {
 
 impl Default for ToolTextures {
     fn default() -> Self {
-        Self { clip: "special/clip".into(), skip: "special/skip".into(), origin: "special/origin".into(), sky: default_sky() }
+        Self { clip: default_clip(), skip: default_skip(), origin: default_origin(), sky: default_sky() }
     }
 }
 
@@ -189,6 +204,10 @@ fn one() -> f64 {
     1.0
 }
 
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
 /// Editable viewport helper bound to entity properties.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -217,8 +236,12 @@ pub enum GizmoDef {
         #[serde(default = "one")]
         scale: f64,
     },
-    /// Box of size "x y z" centered on the entity.
-    Box { property: String },
+    /// Box of size "x y z" centered on the entity, or of half extents when `half` is set.
+    Box {
+        property: String,
+        #[serde(default, skip_serializing_if = "is_false")]
+        half: bool,
+    },
     /// Point ("x y z"), relative to the entity center unless `world` is set.
     Point {
         property: String,
@@ -233,7 +256,7 @@ impl GizmoDef {
             GizmoDef::Hinge { property, .. }
             | GizmoDef::Travel { property }
             | GizmoDef::Radius { property, .. }
-            | GizmoDef::Box { property }
+            | GizmoDef::Box { property, .. }
             | GizmoDef::Point { property, .. } => property.clone(),
             GizmoDef::Cone { range, .. } => range.clone(),
         }
@@ -338,8 +361,8 @@ impl EntityDef {
             out.push(GizmoDef::Cone { angle: "spot_angle".into(), range: "spot_range".into(), scale: units_per_meter });
         }
 
-        if has("size") && self.kind == EntityKind::Point {
-            out.push(GizmoDef::Box { property: "size".into() });
+        if self.kind == EntityKind::Point && self.property("size").is_some_and(|p| p.ty == PropertyType::Vector3) {
+            out.push(GizmoDef::Box { property: "size".into(), half: false });
         }
 
         for point in ["target_offset", "look_at", "exit_offset"] {
@@ -437,8 +460,8 @@ impl GameConfig {
     }
 
     pub fn is_tool_texture(&self, material: &str) -> bool {
-        let m = material.to_ascii_lowercase();
-        m == self.tool_textures.clip || m == self.tool_textures.skip || m == self.tool_textures.origin || m == self.tool_textures.sky
+        let t = &self.tool_textures;
+        [&t.clip, &t.skip, &t.origin, &t.sky].iter().any(|tool| tool.eq_ignore_ascii_case(material))
     }
 
     /// Used when no project is open, and for a project that has not exported its config yet. Lists the core entities
@@ -692,6 +715,15 @@ mod tests {
     }
 
     #[test]
+    fn tool_textures_fill_missing_keys_and_match_any_case() {
+        let tools: ToolTextures = serde_json::from_str(r#"{ "clip": "Tools/Clip" }"#).unwrap();
+        assert_eq!((tools.skip.as_str(), tools.origin.as_str(), tools.sky.as_str()), ("special/skip", "special/origin", "special/sky"));
+        let cfg = GameConfig { tool_textures: tools, ..GameConfig::builtin() };
+        assert!(cfg.is_tool_texture("tools/clip") && cfg.is_tool_texture("TOOLS/CLIP") && cfg.is_tool_texture("Special/Skip"));
+        assert!(!cfg.is_tool_texture("tools/clipper"));
+    }
+
+    #[test]
     fn gizmos_are_declared_or_inferred() {
         let cfg = GameConfig::with_gameplay_pack();
         let door = cfg.entity("func_door_rotating").unwrap();
@@ -700,5 +732,11 @@ mod tests {
         assert!(matches!(&light.gizmos(32.0)[..], [GizmoDef::Radius { scale, .. }] if *scale == 32.0), "omni_range is meters");
         assert!(cfg.entity("info_spawner").unwrap().gizmos(32.0).iter().any(|g| matches!(g, GizmoDef::Radius { property, .. } if property == "radius")));
         assert!(cfg.entity("func_detail").unwrap().gizmos(32.0).is_empty());
+        let prop = cfg.entity("prop_physics").unwrap();
+        assert_eq!(prop.gizmos(32.0), [GizmoDef::Box { property: "size".into(), half: true }], "size is half extents");
+        assert!(!cfg.entity("env_particles").unwrap().gizmos(32.0).iter().any(|g| matches!(g, GizmoDef::Box { .. })), "a float size is no box");
+        let mut boxed = prop.clone();
+        boxed.gizmos.clear();
+        assert_eq!(boxed.gizmos(32.0), [GizmoDef::Box { property: "size".into(), half: false }], "an undeclared vector3 size is full size");
     }
 }
