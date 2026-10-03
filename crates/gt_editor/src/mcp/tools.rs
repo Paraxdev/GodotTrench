@@ -78,6 +78,16 @@ fn view_kind(name: &str) -> Option<ViewKind> {
     }
 }
 
+/// The name `view_kind` reads back, so get_state reports views the way set_camera and screenshot take them.
+fn view_name(kind: ViewKind) -> &'static str {
+    match kind {
+        ViewKind::Perspective => "3d",
+        ViewKind::Top => "top",
+        ViewKind::Front => "front",
+        ViewKind::Side => "side",
+    }
+}
+
 fn png(img: &image::RgbaImage) -> Vec<u8> {
     let mut out = Cursor::new(Vec::new());
     let _ = img.write_to(&mut out, image::ImageFormat::Png);
@@ -219,6 +229,22 @@ pub(super) fn pair_list(args: &Value, key: &str) -> Result<Vec<(u64, u64)>, Stri
 
 pub(super) fn face_list(args: &Value, key: &str) -> Result<Vec<(NodeId, usize)>, String> {
     Ok(pair_list(args, key)?.into_iter().map(|(n, f)| (NodeId(n), f as usize)).collect())
+}
+
+/// Optional `[x, y, z]` argument: absent is None, present but malformed is an error instead of being ignored.
+pub(super) fn optional_vec3(args: &Value, key: &str) -> Result<Option<DVec3>, String> {
+    match &args[key] {
+        Value::Null => Ok(None),
+        v => vec3(v).map(Some).ok_or_else(|| format!("{key} must be [x, y, z] numbers, got {v}")),
+    }
+}
+
+/// Optional `[x, y]` argument, see [`optional_vec3`].
+pub(super) fn optional_vec2(args: &Value, key: &str) -> Result<Option<DVec2>, String> {
+    match &args[key] {
+        Value::Null => Ok(None),
+        v => vec2(v).map(Some).ok_or_else(|| format!("{key} must be [x, y] numbers, got {v}")),
+    }
 }
 
 /// What is being placed under a parent: geometry may also go into brush entities.
@@ -618,7 +644,7 @@ impl App {
             "set_face" => self.tool_set_face(&args),
             "map_file" => self.tool_map_file(&args),
             "open_project" => {
-                let path = std::path::PathBuf::from(args["path"].as_str().unwrap_or_default());
+                let Some(path) = args["path"].as_str().filter(|p| !p.is_empty()).map(std::path::PathBuf::from) else { return err("path required") };
                 match gt_formats::game::find_project_root(&path) {
                     Some(root) => {
                         self.state.load_project(&root);
@@ -637,15 +663,26 @@ impl App {
             "set_camera" => {
                 let Some(kind) = args["view"].as_str().and_then(view_kind) else { return err("unknown view") };
                 let Some(vp) = self.viewports.iter_mut().find(|v| v.kind() == kind) else { return err("view not open") };
-                if let Some(p) = vec3(&args["position"]) {
+                let focus = match &args["focus"] {
+                    Value::Null => None,
+                    f => match (vec3(&f["min"]), vec3(&f["max"])) {
+                        (Some(min), Some(max)) => Some(Aabb::new(min, max)),
+                        _ => return err("focus needs min and max [x, y, z]"),
+                    },
+                };
+                let (position, look_at, center) = match (optional_vec3(&args, "position"), optional_vec3(&args, "look_at"), optional_vec3(&args, "center")) {
+                    (Ok(p), Ok(l), Ok(c)) => (p, l, c),
+                    (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => return err(e),
+                };
+                if let Some(p) = position {
                     vp.camera.position = p;
                 }
 
-                if let Some(t) = vec3(&args["look_at"]) {
+                if let Some(t) = look_at {
                     vp.camera.look_at(t);
                 }
 
-                if let Some(c) = vec3(&args["center"]) {
+                if let Some(c) = center {
                     vp.camera.center = c;
                 }
 
@@ -653,8 +690,8 @@ impl App {
                     vp.camera.zoom = z.clamp(0.005, 64.0);
                 }
 
-                if let (Some(min), Some(max)) = (vec3(&args["focus"]["min"]), vec3(&args["focus"]["max"])) {
-                    vp.focus(&Aabb::new(min, max));
+                if let Some(b) = focus {
+                    vp.focus(&b);
                 }
 
                 ctx.request_repaint();
@@ -759,7 +796,7 @@ impl App {
                 let c = &v.camera;
                 let rect = json!([v.rect.min.x, v.rect.min.y, v.rect.width(), v.rect.height()]);
                 if c.kind.is_2d() {
-                    json!({ "view": c.kind.label(), "center": arr(c.center), "zoom": c.zoom, "rect": rect })
+                    json!({ "view": view_name(c.kind), "center": arr(c.center), "zoom": c.zoom, "rect": rect })
                 } else {
                     json!({ "view": "3d", "position": arr(c.position), "forward": arr(c.forward()), "rect": rect })
                 }
@@ -1143,8 +1180,10 @@ impl App {
                 };
                 let reference =
                     crate::commands::prefab_reference(std::path::Path::new(path), self.state.doc.path.as_deref(), self.state.game.project_root.as_deref());
-                let origin = vec3(&a["origin"]).unwrap_or_default();
-                let angles = vec3(&a["angles"]).unwrap_or_default();
+                let (origin, angles) = match (optional_vec3(a, "origin"), optional_vec3(a, "angles")) {
+                    (Ok(o), Ok(r)) => (o.unwrap_or_default(), r.unwrap_or_default()),
+                    (Err(e), _) | (_, Err(e)) => return err(e),
+                };
                 let fixup = a["fixup"].as_str().unwrap_or_default().to_string();
                 let id = self.state.doc.edit("Insert Prefab", |m, s| {
                     let id = m.insert(parent, NodeKind::Instance(gt_doc::map::Instance { path: reference.clone(), origin, angles, fixup }));
@@ -1237,10 +1276,11 @@ impl App {
         let Some(classname) = args["classname"].as_str().map(str::trim).filter(|c| !c.is_empty()).map(str::to_string) else {
             return err("classname required");
         };
-        let origin = vec3(&args["origin"]).unwrap_or_default();
-        let angles = vec3(&args["angles"]).unwrap_or_default();
-        let props: Vec<(String, String)> =
-            args["properties"].as_object().map(|o| o.iter().map(|(k, v)| (k.clone(), value_string(v))).collect()).unwrap_or_default();
+        let (origin, angles) = match (optional_vec3(args, "origin"), optional_vec3(args, "angles")) {
+            (Ok(o), Ok(r)) => (o.unwrap_or_default(), r.unwrap_or_default()),
+            (Err(e), _) | (_, Err(e)) => return err(e),
+        };
+        let props = args["properties"].as_object().map(property_pairs).unwrap_or_default();
         let outputs: Vec<IoConnection> = match args.get("outputs").filter(|o| !o.is_null()) {
             Some(o) => match serde_json::from_value(o.clone()) {
                 Ok(list) => list,
@@ -1289,7 +1329,10 @@ impl App {
             return err(e);
         }
 
-        let origin = vec3(&args["origin"]).unwrap_or_default();
+        let origin = match optional_vec3(args, "origin") {
+            Ok(o) => o.unwrap_or_default(),
+            Err(e) => return err(e),
+        };
         match crate::commands::import_model(&mut self.state, path, mode, origin) {
             Ok((n, status)) => {
                 ok(json!({ "objects": n, "status": status, "selection": self.state.doc.selection.nodes.iter().map(|i| i.0).collect::<Vec<_>>() }))
@@ -1479,6 +1522,7 @@ impl App {
                     "missing_textures": report.missing,
                 }))
             }),
+            "" => Err("op required, use new, open, open_tab, save, import_map, import_vmf, convert_textures, export_map, export_glb or export_obj".to_string()),
             _ => Err(format!("unknown op {op}, use new, open, open_tab, save, import_map, import_vmf, convert_textures, export_map, export_glb or export_obj")),
         };
         self.project_generation += 1;
@@ -1624,7 +1668,7 @@ impl App {
             Some(e) => {
                 let mut ent = gt_doc::Entity::new(e.get("classname").and_then(|c| c.as_str()).unwrap_or("func_detail"));
                 if let Some(props) = e.get("properties").and_then(|p| p.as_object()) {
-                    ent.properties.extend(props.iter().map(|(k, v)| (k.clone(), value_string(v))));
+                    ent.properties.extend(property_pairs(props));
                 }
 
                 if let Some(outs) = e.get("outputs").filter(|o| !o.is_null()) {
@@ -1794,8 +1838,10 @@ impl App {
             return err("classname cannot be empty");
         }
 
-        let origin = vec3(&args["origin"]);
-        let angles = vec3(&args["angles"]);
+        let (origin, angles) = match (optional_vec3(args, "origin"), optional_vec3(args, "angles")) {
+            (Ok(o), Ok(r)) => (o, r),
+            (Err(e), _) | (_, Err(e)) => return err(e),
+        };
         let props = args["properties"].as_object().cloned();
         let outputs: Option<Vec<IoConnection>> = match args.get("outputs").filter(|v| !v.is_null()) {
             Some(v) => match serde_json::from_value(v.clone()) {
@@ -1941,8 +1987,10 @@ impl App {
         }
 
         let material = args["material"].as_str().map(str::to_string);
-        let offset = vec2(&args["offset"]);
-        let scale = vec2(&args["scale"]);
+        let (offset, scale) = match (optional_vec2(args, "offset"), optional_vec2(args, "scale")) {
+            (Ok(o), Ok(s)) => (o, s),
+            (Err(e), _) | (_, Err(e)) => return err(e),
+        };
         let rotate = args["rotate_by"].as_f64();
         let fit = args["fit"].as_bool().unwrap_or(false);
         let mat_name = material.clone().unwrap_or_else(|| brush.faces[face].data.material.clone());
@@ -2013,22 +2061,26 @@ impl App {
         let events = args["events"].as_array().ok_or("events must be an array")?;
         for ev in events {
             let mut modifiers = Modifiers::NONE;
-            for m in ev["modifiers"].as_array().into_iter().flatten().filter_map(|m| m.as_str()) {
-                match m {
-                    "ctrl" => {
+            for m in ev["modifiers"].as_array().into_iter().flatten() {
+                match m.as_str() {
+                    Some("ctrl") => {
                         modifiers.ctrl = true;
                         modifiers.command = true;
                     }
-                    "shift" => modifiers.shift = true,
-                    "alt" => modifiers.alt = true,
-                    _ => {}
+                    Some("shift") => modifiers.shift = true,
+                    Some("alt") => modifiers.alt = true,
+                    _ => return Err(format!("unknown modifier {m}, use ctrl, shift or alt")),
                 }
             }
 
-            let button = match ev["button"].as_str().unwrap_or("left") {
-                "right" => PointerButton::Secondary,
-                "middle" => PointerButton::Middle,
-                _ => PointerButton::Primary,
+            let button = match &ev["button"] {
+                Value::Null => PointerButton::Primary,
+                b => match b.as_str() {
+                    Some("left") => PointerButton::Primary,
+                    Some("right") => PointerButton::Secondary,
+                    Some("middle") => PointerButton::Middle,
+                    _ => return Err(format!("unknown button {b}, use left, right or middle")),
+                },
             };
             let step = |events: Vec<Event>| InputStep { events, modifiers };
             let press = |pos: Pos2, pressed: bool| Event::PointerButton { pos, button, pressed, modifiers };
@@ -2094,6 +2146,11 @@ pub fn mesh_op_names() -> Vec<String> {
     crate::mesh_tool::MeshOp::ALL.iter().map(|o| o.label().to_ascii_lowercase().replace(' ', "_")).collect()
 }
 
+/// Entity properties to store on a new entity. Null means no value, as in update_entity, so those keys are left out.
+fn property_pairs(props: &serde_json::Map<String, Value>) -> Vec<(String, String)> {
+    props.iter().filter(|(_, v)| !v.is_null()).map(|(k, v)| (k.clone(), value_string(v))).collect()
+}
+
 fn value_string(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -2125,6 +2182,29 @@ mod tests {
         );
         assert_eq!(path_value(None::<&std::path::Path>), Value::Null);
         assert_eq!(id_list(&json!({ "ids": [[1, 2], 3, [[4]]] }), "ids"), Ok(vec![NodeId(1), NodeId(2), NodeId(3), NodeId(4)]), "joined id lists flatten");
+    }
+
+    #[test]
+    fn malformed_vectors_are_errors_and_missing_ones_are_not() {
+        assert_eq!(optional_vec3(&json!({}), "origin"), Ok(None));
+        assert_eq!(optional_vec3(&json!({ "origin": [1, 2, 3] }), "origin"), Ok(Some(DVec3::new(1.0, 2.0, 3.0))));
+        assert!(optional_vec3(&json!({ "origin": [1, 2] }), "origin").unwrap_err().contains("origin must be [x, y, z]"));
+        assert!(optional_vec3(&json!({ "origin": "0 0 0" }), "origin").is_err());
+        assert_eq!(optional_vec2(&json!({ "scale": [0.5, 2] }), "scale"), Ok(Some(DVec2::new(0.5, 2.0))));
+        assert!(optional_vec2(&json!({ "scale": 2 }), "scale").is_err());
+    }
+
+    #[test]
+    fn views_are_reported_by_the_names_set_camera_takes() {
+        for kind in [ViewKind::Perspective, ViewKind::Top, ViewKind::Front, ViewKind::Side] {
+            assert_eq!(view_kind(view_name(kind)), Some(kind));
+        }
+    }
+
+    #[test]
+    fn null_properties_are_left_out_of_new_entities() {
+        let props = json!({ "a": "x", "b": null, "c": [1, 2] });
+        assert_eq!(property_pairs(props.as_object().unwrap()), vec![("a".to_string(), "x".to_string()), ("c".to_string(), "1 2".to_string())]);
     }
 
     #[test]

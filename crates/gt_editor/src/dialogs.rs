@@ -665,7 +665,8 @@ pub fn make_terrain(
     sea_level: Option<f64>,
 ) -> Terrain {
     let mut t = Terrain::new(origin, [resolution, resolution], cell_size, "");
-    t.layers = layers.iter().filter(|(m, _)| !m.is_empty()).map(|(m, tile)| TerrainLayer::new(m.clone(), *tile)).collect();
+    t.layers =
+        layers.iter().filter(|(m, _)| !m.is_empty()).take(gt_geom::heightfield::MAX_LAYERS).map(|(m, tile)| TerrainLayer::new(m.clone(), *tile)).collect();
     match heightmap {
         Some((values, size)) => {
             t.import_heightmap(values, size, params.height);

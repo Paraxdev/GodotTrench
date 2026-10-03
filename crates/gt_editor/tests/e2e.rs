@@ -2089,3 +2089,47 @@ fn a_new_project_asks_about_content_but_not_an_agent_at_work() {
     assert_eq!(std::fs::read_to_string(old.join("addons/func_godot/plugin.cfg")).unwrap(), "[plugin]\nversion=\"0.0.1\"\n");
     assert!(!old.join(".godottrench").exists(), "nothing changes without a click");
 }
+
+#[test]
+#[ignore]
+fn malformed_arguments_are_errors_not_defaults() {
+    let ed = Editor::launch("strict_args");
+    let brush = ed.box_brush([0.0, 0.0, 0.0], [64.0, 64.0, 64.0]);
+    assert!(ed.call_err("create_entity", json!({ "classname": "info_null", "origin": [1, 2] })).contains("origin must be [x, y, z]"));
+    assert!(ed.call_err("set_face", json!({ "id": brush, "face": 0, "scale": "big" })).contains("scale must be [x, y]"));
+    assert!(ed.call_err("set_camera", json!({ "view": "3d", "position": [0, "a", 0] })).contains("position"));
+    assert!(ed.call_err("duplicate", json!({ "ids": [brush], "offset": 64 })).contains("offset"));
+    assert!(ed.call_err("texture", json!({ "op": "shift", "faces": [[brush]], "texels": [8, 0] })).contains("pairs"));
+    assert!(ed.call_err("texture", json!({ "op": "wrap", "faces": [[brush, 1]], "source": [brush] })).contains("source"));
+    let shifted = ed.call("texture", json!({ "op": "shift", "faces": [[brush.to_string(), "0"]], "texels": [8, 0] }));
+    assert_eq!(shifted["changed"], json!(1), "text ids work like elsewhere");
+    assert!(ed.call_err("simulate_input", json!({ "events": [{ "type": "click", "x": 5, "y": 5, "modifiers": ["meta"] }] })).contains("modifier"));
+    assert!(ed.call_err("gameplay", json!({ "op": "make_door", "ids": [brush], "side": "up" })).contains("side must be left or right"));
+    assert!(ed.call_err("map_file", json!({})).starts_with("op required"));
+    assert!(ed.call_err("open_project", json!({})).contains("path required"));
+
+    let mesh = ed.call("create_mesh", json!({}))["id"].as_u64().unwrap();
+    assert!(ed.call_err("create_mesh", json!({ "min": [0, 0, 0] })).contains("min and max"));
+    assert!(ed.call_err("mesh_edit", json!({ "id": mesh, "op": "set_material", "faces": [0] })).contains("material required"));
+    assert!(ed.call_err("mesh_edit", json!({ "id": mesh, "op": "translate", "verts": [0] })).contains("offset"));
+    assert!(ed.call_err("mesh_edit", json!({ "id": mesh, "op": "bisect", "point": [0, 0, 0], "normal": [0, 0, 0] })).contains("normal"));
+
+    let e = ed.call("create_entity", json!({ "classname": "info_null", "properties": { "targetname": "a", "gone": null } }))["id"].clone();
+    let props = ed.call("get_node", json!({ "id": e }))["properties"].clone();
+    assert_eq!(props["targetname"], "a");
+    assert!(props.get("gone").is_none(), "null leaves the key out: {props}");
+    assert_eq!(ed.call("hierarchy", json!({ "op": "rename", "id": e, "name": "door" }))["changed"], json!(true));
+    assert_eq!(ed.call("hierarchy", json!({ "op": "rename", "id": e, "name": "door" }))["changed"], json!(false));
+
+    ed.call("hierarchy", json!({ "op": "set_flags", "ids": [brush], "locked": true }));
+    assert!(ed.call_err("texture", json!({ "op": "shift", "faces": [[brush, 0]], "texels": [8, 0] })).contains("locked"));
+    assert!(ed.call_err("trim", json!({ "ids": [brush] })).contains("locked"));
+    let read = ed.call("texture", json!({ "op": "get", "faces": [[brush, 0]] }));
+    assert_eq!(read["faces"].as_array().map(Vec::len), Some(1), "reading a locked face stays allowed");
+
+    let views: Vec<Value> = ed.state()["cameras"].as_array().unwrap().iter().map(|c| c["view"].clone()).collect();
+    assert!(views.contains(&json!("top")), "{views:?}");
+    for v in views {
+        ed.call("set_camera", json!({ "view": v }));
+    }
+}

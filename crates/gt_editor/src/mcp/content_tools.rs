@@ -9,7 +9,7 @@ use gt_doc::{IoConnection, NodeKind, ScatterItem, ops};
 use serde_json::{Value, json};
 
 use super::ToolResult;
-use super::tools::{Child, check_container, editable_ids, face_list, id_list, optional_id, paste_text, require_id, resolve_parent, uint};
+use super::tools::{Child, check_container, editable_ids, face_list, id_list, optional_id, optional_vec3, paste_text, require_id, resolve_parent, uint};
 use crate::app::App;
 
 fn vec3(v: &Value) -> Option<DVec3> {
@@ -75,6 +75,14 @@ fn string_map(v: &Value) -> Vec<(String, String)> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// Optional snake_case enum argument: absent is None, an unknown value is an error naming the choices.
+fn optional_enum<T: serde::de::DeserializeOwned>(args: &Value, key: &str, choices: &str) -> Result<Option<T>, String> {
+    match &args[key] {
+        Value::Null => Ok(None),
+        v => serde_json::from_value(v.clone()).map(Some).map_err(|_| format!("{key} must be {choices}, got {v}")),
+    }
 }
 
 fn outputs(v: &Value) -> Result<Vec<IoConnection>, String> {
@@ -173,7 +181,10 @@ impl App {
             return ok(json!({ "pieces": counts(&placements), "sketch": crate::random_fill::sketch(&opts, &placements) }));
         }
 
-        let replace = args["replace"].as_u64().map(NodeId);
+        let replace = match optional_id(args, "replace") {
+            Ok(r) => r,
+            Err(e) => return err(e),
+        };
         match crate::random_fill::apply(&mut self.state, &opts, replace) {
             Ok(filled) => ok(json!({
                 "ok": true, "group": filled.group.0, "pieces": counts(&filled.placements),
@@ -206,13 +217,13 @@ impl App {
         opts.on_floor = args["on_floor"].as_bool().unwrap_or(opts.on_floor);
         opts.collision = args["collision"].as_bool().unwrap_or(opts.collision);
         let faces = if args["faces"].is_array() {
-            match face_list(args, "faces") {
+            match face_list(args, "faces").and_then(|f| editable_ids(&self.state, &f.iter().map(|(id, _)| *id).collect::<Vec<_>>()).map(|_| f)) {
                 Ok(f) => f,
                 Err(e) => return err(e),
             }
         } else if args["ids"].is_array() {
             let mut sel = gt_doc::Selection::default();
-            match id_list(args, "ids") {
+            match id_list(args, "ids").and_then(|i| editable_ids(&self.state, &i)) {
                 Ok(ids) => sel.nodes.extend(ids),
                 Err(e) => return err(e),
             }
@@ -819,11 +830,17 @@ impl App {
             "make_door" => {
                 let kind = match args["kind"].as_str().unwrap_or("hinged") {
                     "hinged" | "rotating" => wiz::DoorKind::Hinged {
-                        side: serde_json::from_value(args["side"].clone()).unwrap_or_default(),
+                        side: match optional_enum(args, "side", "left or right") {
+                            Ok(s) => s.unwrap_or_default(),
+                            Err(e) => return err(e),
+                        },
                         angle: args["angle"].as_f64().unwrap_or(95.0),
                     },
                     "sliding" => wiz::DoorKind::Sliding {
-                        direction: serde_json::from_value(args["direction"].clone()).unwrap_or_default(),
+                        direction: match optional_enum(args, "direction", "up, down, left or right") {
+                            Ok(d) => d.unwrap_or_default(),
+                            Err(e) => return err(e),
+                        },
                         lip: args["lip"].as_f64().unwrap_or(4.0),
                     },
                     other => return err(format!("kind must be hinged or sliding, got {other}")),
@@ -1084,9 +1101,10 @@ impl App {
                     return err("layers, groups and scatter sets need a name");
                 }
 
-                let _ = self.state.doc.try_edit("Rename", |m, _| if m.rename(id, name) { Ok(()) } else { Err(()) });
+                // rename only refuses a name the node already has, so that is reported as unchanged rather than an error.
+                let changed = self.state.doc.try_edit("Rename", |m, _| if m.rename(id, name) { Ok(()) } else { Err(()) }).is_ok();
                 let name = self.state.doc.map.get(id).map(|n| n.name()).unwrap_or_default();
-                ok(json!({ "id": id.0, "name": name }))
+                ok(json!({ "id": id.0, "name": name, "changed": changed }))
             }
             "set_flags" => {
                 let list = match id_list(args, "ids") {
@@ -1386,11 +1404,13 @@ impl App {
             return err(e);
         }
 
-        let offset = vec3(&args["offset"]).unwrap_or(DVec3::new(self.state.grid, 0.0, 0.0));
+        let (offset, pivot) = match (optional_vec3(args, "offset"), optional_vec3(args, "pivot")) {
+            (Ok(o), Ok(p)) => (o.unwrap_or(DVec3::new(self.state.grid, 0.0, 0.0)), p),
+            (Err(e), _) | (_, Err(e)) => return err(e),
+        };
         let count = args["count"].as_u64().unwrap_or(1).clamp(1, 512) as usize;
         let linked = args["linked"].as_bool().unwrap_or(false);
         let rotate = args["rotate_y"].as_f64().unwrap_or(0.0);
-        let pivot = vec3(&args["pivot"]);
         let opts = ops::EditOptions { uv_lock: true, grid: 0.0 };
         let parent = match resolve_parent(&self.state, &Value::Null, Child::Other) {
             Ok(p) => p,

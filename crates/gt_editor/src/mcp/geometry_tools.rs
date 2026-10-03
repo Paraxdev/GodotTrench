@@ -6,7 +6,7 @@ use gt_geom::mesh_shapes;
 use serde_json::{Value, json};
 
 use super::ToolResult;
-use super::tools::{Child, pair_list, require_id, resolve_parent, uint_list};
+use super::tools::{Child, editable_ids, face_list, optional_vec3, pair_list, require_id, resolve_parent, uint, uint_list};
 use crate::app::App;
 
 fn vec3(v: &Value) -> Option<DVec3> {
@@ -75,9 +75,15 @@ fn mesh_rotation(args: &Value) -> Result<Option<gt_core::DQuat>, String> {
 impl App {
     pub(crate) fn tool_create_mesh(&mut self, args: &Value) -> ToolResult {
         let material = args["material"].as_str().map(str::to_string).unwrap_or_else(|| self.state.current_material.clone());
-        let bounds = match (vec3(&args["min"]), vec3(&args["max"])) {
-            (Some(a), Some(b)) => Aabb::new(a, b),
-            _ => Aabb::new(DVec3::splat(-32.0), DVec3::splat(32.0)),
+        let bounds = match (optional_vec3(args, "min"), optional_vec3(args, "max")) {
+            (Ok(Some(a)), Ok(Some(b))) => Aabb::new(a, b),
+            (Ok(None), Ok(None)) => Aabb::new(DVec3::splat(-32.0), DVec3::splat(32.0)),
+            (Err(e), _) | (_, Err(e)) => return err(e),
+            _ => return err("pass both min and max, or neither for a 64 unit shape around the origin"),
+        };
+        let translate = match optional_vec3(args, "translate") {
+            Ok(t) => t,
+            Err(e) => return err(e),
         };
         let sides = args["sides"].as_u64().unwrap_or(16) as usize;
         let size = bounds.size();
@@ -152,7 +158,7 @@ impl App {
             Err(e) => return err(e),
         }
 
-        if let Some(t) = vec3(&args["translate"]) {
+        if let Some(t) = translate {
             mesh = mesh.transformed(&DMat4::from_translation(t), false);
         }
 
@@ -227,6 +233,10 @@ impl App {
                 }
                 "bisect" => {
                     let (Some(point), Some(normal)) = (vec3(&a["point"]), vec3(&a["normal"])) else { return Err("point and normal required".to_string()) };
+                    if normal.length_squared() < 1e-12 {
+                        return Err("normal must not be zero".to_string());
+                    }
+
                     let plane = Plane::from_point_normal(point, normal);
                     let on = mesh.bisect(&plane, (!faces.is_empty()).then_some(faces.as_slice()));
                     match a["delete"].as_str() {
@@ -268,7 +278,9 @@ impl App {
                 "set_material_in_box" => {
                     let (Some(min), Some(max)) = (vec3(&a["min"]), vec3(&a["max"])) else { return Err("min and max required".to_string()) };
                     let region = Aabb::new(min, max);
-                    let material = a["material"].as_str().unwrap_or_default().to_string();
+                    let Some(material) = a["material"].as_str().filter(|m| !m.is_empty()).map(str::to_string) else {
+                        return Err("material required".to_string());
+                    };
                     let mut n = 0;
                     for f in 0..mesh.faces.len() {
                         if region.contains_point(mesh.face_center(f)) {
@@ -286,7 +298,8 @@ impl App {
                 "bevel_edges" => json!({ "faces": mesh.bevel_edges(&edges, a["width"].as_f64().unwrap_or(4.0)) }),
                 "bevel_vertices" => json!({ "faces": mesh.bevel_vertices(&verts, a["width"].as_f64().unwrap_or(4.0)) }),
                 "translate" => {
-                    mesh.transform_vertices(&verts, &DMat4::from_translation(vec3(&a["offset"]).unwrap_or_default()));
+                    let Some(offset) = vec3(&a["offset"]) else { return Err("offset [x, y, z] required".to_string()) };
+                    mesh.transform_vertices(&verts, &DMat4::from_translation(offset));
                     json!({})
                 }
                 "smooth" => {
@@ -311,7 +324,7 @@ impl App {
                     json!({})
                 }
                 "set_material" => {
-                    let material = a["material"].as_str().unwrap_or_default();
+                    let Some(material) = a["material"].as_str().filter(|m| !m.is_empty()) else { return Err("material required".to_string()) };
                     for f in &faces {
                         if let Some(face) = mesh.faces.get_mut(*f) {
                             face.data.material = material.to_string();
@@ -347,10 +360,16 @@ impl App {
 
     pub(crate) fn tool_texture(&mut self, args: &Value) -> ToolResult {
         use crate::texture_ops as tex;
-        let face_list = |v: &Value| -> Vec<(NodeId, usize)> {
-            v.as_array().into_iter().flatten().filter_map(|f| Some((NodeId(f.get(0)?.as_u64()?), f.get(1)?.as_u64()? as usize))).collect()
+        let op = args["op"].as_str().unwrap_or_default();
+        let mut faces = match face_list(args, "faces") {
+            Ok(f) => f,
+            Err(e) => return err(e),
         };
-        let mut faces = face_list(&args["faces"]);
+        let edits = !matches!(op, "" | "get" | "pick" | "settings" | "material_info" | "set_hotspots");
+        if edits && let Err(e) = editable_ids(&self.state, &faces.iter().map(|(id, _)| *id).collect::<Vec<_>>()) {
+            return err(e);
+        }
+
         if faces.is_empty() {
             faces = tex::target_faces(&self.state);
         }
@@ -365,7 +384,6 @@ impl App {
                 _ => vec2(v),
             }
         };
-        let op = args["op"].as_str().unwrap_or_default();
         let changed = match op {
             "apply" => {
                 let material = args["material"].as_str().map(str::to_string).unwrap_or_else(|| self.state.current_material.clone());
@@ -385,8 +403,9 @@ impl App {
             }
             "reset" => tex::reset(&mut self.state, &faces, vec2(&args["scale"]).unwrap_or(DVec2::ONE)),
             "wrap" => {
-                let source = face_list(&json!([args["source"].clone()]));
-                let Some(src) = source.first().copied() else { return err("source [node, face] required") };
+                let source = &args["source"];
+                let pair = source.as_array().filter(|p| p.len() == 2).and_then(|p| Some((NodeId(uint(&p[0])?), uint(&p[1])? as usize)));
+                let Some(src) = pair else { return err(format!("source [node, face] required, got {source}")) };
                 let targets: Vec<(NodeId, usize)> = faces.iter().copied().filter(|f| *f != src).collect();
                 tex::wrap_from(&mut self.state, src, &targets, args["material"].as_str())
             }
@@ -407,12 +426,22 @@ impl App {
                 tex::mesh_uv(&mut self.state, &faces, kind, view)
             }
             "uv_adjust" => {
-                let mut corners: Vec<tex::UvCorner> = args["corners"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|c| Some((NodeId(c.get(0)?.as_u64()?), c.get(1)?.as_u64()? as usize, c.get(2)?.as_u64()? as usize)))
-                    .collect();
+                let corner = |c: &Value| -> Option<tex::UvCorner> {
+                    let c = c.as_array().filter(|c| c.len() == 3)?;
+                    Some((NodeId(uint(&c[0])?), uint(&c[1])? as usize, uint(&c[2])? as usize))
+                };
+                let mut corners: Vec<tex::UvCorner> = match &args["corners"] {
+                    Value::Null => Vec::new(),
+                    Value::Array(list) => match list.iter().map(|c| corner(c).ok_or(c)).collect::<Result<Vec<_>, _>>() {
+                        Ok(c) => c,
+                        Err(c) => return err(format!("corners must hold [mesh, face, corner] triples of non-negative integers, got {c}")),
+                    },
+                    other => return err(format!("corners must be an array of [mesh, face, corner], got {other}")),
+                };
+                if let Err(e) = editable_ids(&self.state, &corners.iter().map(|c| c.0).collect::<Vec<_>>()) {
+                    return err(e);
+                }
+
                 for (id, f, _) in &corners {
                     if !faces.contains(&(*id, *f)) {
                         faces.push((*id, *f));
