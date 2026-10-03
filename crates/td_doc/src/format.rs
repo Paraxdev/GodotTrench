@@ -228,6 +228,9 @@ fn file_kind_to_node(kind: FileKind) -> NodeKind {
     }
 }
 
+/// How far pasted nodes move in the Logic graph, so the copies cascade off the originals instead of hiding them.
+pub const PASTE_GRAPH_OFFSET: f32 = 40.0;
+
 fn insert_fresh(map: &mut Map, parent: NodeId, node: FileNode, copies: &mut BTreeMap<NodeId, NodeId>) -> NodeId {
     let id = map.insert(parent, file_kind_to_node(node.kind));
     copies.insert(NodeId(node.id), id);
@@ -235,6 +238,7 @@ fn insert_fresh(map: &mut Map, parent: NodeId, node: FileNode, copies: &mut BTre
         n.hidden = node.hidden;
         n.locked = node.locked;
         n.set_label(node.label);
+        n.set_graph(node.graph.map(|p| p.map(|v| v + PASTE_GRAPH_OFFSET)));
     }
 
     for c in node.children {
@@ -584,6 +588,23 @@ mod tests {
         assert_eq!(from_str(&value.to_string()).unwrap().get(brush).unwrap().graph, None, "files from before the key read as before");
         m.get_mut(brush).unwrap().set_graph(Some([f32::NAN, 1.0]));
         assert_eq!(m.get(brush).unwrap().graph, None, "never written as null");
+    }
+
+    #[test]
+    fn paste_keeps_graph_positions_beside_the_originals() {
+        let mut m = sample();
+        let layer = m.default_layer();
+        let brush = m.get(layer).unwrap().children[0];
+        m.get_mut(brush).unwrap().set_graph(Some([120.0, -40.0]));
+        let text = nodes_to_string(&m, &[brush]);
+        let pasted = paste_nodes(&mut m, layer, &text).unwrap();
+        let o = PASTE_GRAPH_OFFSET;
+        assert_eq!(m.get(pasted[0]).unwrap().graph, Some([120.0 + o, -40.0 + o]));
+        assert_eq!(m.get(brush).unwrap().graph, Some([120.0, -40.0]));
+        m.get_mut(brush).unwrap().set_graph(None);
+        let text = nodes_to_string(&m, &[brush]);
+        let pasted = paste_nodes(&mut m, layer, &text).unwrap();
+        assert_eq!(m.get(pasted[0]).unwrap().graph, None, "nodes the automatic layout places stay that way");
     }
 
     #[test]
