@@ -179,9 +179,26 @@ pub fn resolve(args: &Value, vars: &BTreeMap<String, Value>) -> Result<Value, St
     })
 }
 
-/// Keys of tool results whose values are node ids, alone or in (nested) arrays.
+/// Keys of tool results whose values are node ids, alone or in (nested) arrays. Counts such as hierarchy's `moved` are
+/// not ids.
 fn is_id_key(key: &str) -> bool {
-    matches!(key, "id" | "ids" | "selection" | "letters" | "copies" | "entity") || key.ends_with("_id") || key.ends_with("_ids")
+    matches!(
+        key,
+        "id" | "ids"
+            | "selection"
+            | "selected"
+            | "nodes"
+            | "letters"
+            | "copies"
+            | "entity"
+            | "group"
+            | "parent"
+            | "insert_parent"
+            | "current_layer"
+            | "open_groups"
+            | "targets"
+    ) || key.ends_with("_id")
+        || key.ends_with("_ids")
 }
 
 /// The `replaced` map of a tool result, `{"old id": [new ids]}`.
@@ -215,12 +232,15 @@ fn rewrite_ids(v: &mut Value, replaced: &BTreeMap<u64, Vec<u64>>) {
                 };
             }
         }
+
+        // list_nodes keeps whole node records under `nodes`.
+        Value::Object(_) => follow_replacements(v, replaced),
         _ => {}
     }
 }
 
-/// Rewrites the node ids inside a saved result after a later step replaced some of them. Ids are the values under
-/// `id`, `ids`, `selection`, `letters`, `copies`, `entity` and keys ending in `_id` or `_ids`, at any depth. In a list
+/// Rewrites the node ids inside a saved result after a later step replaced some of them. Ids are the values under the
+/// keys [`is_id_key`] lists and keys ending in `_id` or `_ids`, at any depth. In a list
 /// a replaced id gives way to all of its replacements in place (none when it was removed, like a CSG cutter), a
 /// single id becomes its one replacement, the list of them when there are several, and null when it was removed.
 pub fn follow_replacements(saved: &mut Value, replaced: &BTreeMap<u64, Vec<u64>>) {
@@ -317,5 +337,25 @@ mod tests {
         let mut single = json!({ "id": 12, "other_id": 10, "gone_id": 11, "count": 10, "faces": [[10, 3]] });
         follow_replacements(&mut single, &replaced);
         assert_eq!(single, json!({ "id": 22, "other_id": [20, 21], "gone_id": null, "count": 10, "faces": [[10, 3]] }));
+    }
+
+    #[test]
+    fn every_key_that_carries_node_ids_follows_replacements() {
+        let replaced = replacements(&json!({ "replaced": { "10": [20, 21], "12": [22] } }));
+        let mut saved = json!({
+            "selected": [10, 13], "group": 12, "insert_parent": 12, "targets": [10], "parent": 12, "open_groups": [12],
+            "nodes": [{ "id": 10, "parent": 12, "selected": true, "children": 10 }], "moved": 10,
+            "set": { "targets": [12], "layer": 10 },
+        });
+        follow_replacements(&mut saved, &replaced);
+        assert_eq!(saved["selected"], json!([20, 21, 13]));
+        assert_eq!(saved["group"], 22);
+        assert_eq!(saved["insert_parent"], 22);
+        assert_eq!(saved["targets"], json!([20, 21]));
+        assert_eq!(saved["parent"], 22);
+        assert_eq!(saved["open_groups"], json!([22]));
+        assert_eq!(saved["nodes"], json!([{ "id": [20, 21], "parent": 22, "selected": true, "children": 10 }]), "records keep their counts");
+        assert_eq!(saved["moved"], 10, "hierarchy reparent's moved is a count");
+        assert_eq!(saved["set"], json!({ "targets": [22], "layer": 10 }));
     }
 }

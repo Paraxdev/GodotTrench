@@ -79,8 +79,9 @@ An unknown name is an error. A `$` that cannot start a name, like `"$5"`, stays 
 
 CSG and clip steps replace the brushes they cut with new ones that have new ids. The runner rewrites ids saved by
 earlier steps to match, so `"$wall.ids"` still means the whole wall after a window is cut into it, and a removed brush
-drops out. Only values under `id`, `ids`, `selection`, `letters`, `copies`, `entity` and keys ending in `_id` or `_ids`
-are rewritten.
+drops out. Only values under keys that carry node ids are rewritten: `id`, `ids`, `selection`, `selected`, `nodes`,
+`letters`, `copies`, `entity`, `group`, `parent`, `insert_parent`, `current_layer`, `open_groups`, `targets` and keys
+ending in `_id` or `_ids`. Counts such as `moved` from `hierarchy reparent` stay as they are, use its `ids` instead.
 
 > **Tip:** Spell out every brush setting in `scatter` and `blend` calls. Anything left out comes from the editor's
 > current Scatter panel or Blend tool settings.
