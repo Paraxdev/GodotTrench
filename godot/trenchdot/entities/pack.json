@@ -2598,6 +2598,13 @@
           "parameter": "amount",
           "type": "float"
         }
+      ],
+      "gizmos": [
+        {
+          "type": "box",
+          "property": "size",
+          "half": true
+        }
       ]
     },
     {
@@ -3664,7 +3671,7 @@
     "definitions/npc_walker.tres": "a5f377efb323e122dd495f5c5692afb41fac79b541036e5572b43e53517e8c47",
     "definitions/path_corner.tres": "ddd63fab9d25b6e36a0e25b15d391e92aa8c39f783f7533652a6799375809e58",
     "definitions/prop_model.tres": "3a74840e2689521f8dede4380014bfc4c6b4a1f2e194991d8a3b93446e0a8ac9",
-    "definitions/prop_physics.tres": "3ebb46d3e26c2f05e657ac382c687093b594bcc28f4c91726ba6a539b93531c0",
+    "definitions/prop_physics.tres": "6984f1aa6843eee6f2411fe8bd1147b54ee4c5a3d72d0eb1dc53577360e180a9",
     "definitions/trigger_area.tres": "bdefa1cd8ffafff83f7ac277d2f7994b0ee46cb5acd36f1e6ac4fb9f207d65f6",
     "definitions/trigger_call.tres": "c521e1e0af5fd71fc7256dabd98cdb2471762ce3a176e14a8a1add9435f01807",
     "definitions/trigger_hurt.tres": "ff7be1df81a7a8b89a31a797de8fd0e2fedc8c67c6e5365ee6a7a8f02792f4a5",
