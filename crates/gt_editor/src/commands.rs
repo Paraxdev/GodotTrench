@@ -845,7 +845,7 @@ pub fn execute(state: &mut EditorState, action: Action, ctx: &egui::Context) {
 fn edit_or<T>(state: &mut EditorState, label: &str, why: &str, f: impl FnOnce(&mut gt_doc::Map, &mut gt_doc::Selection) -> Option<T>) -> Option<T> {
     let result = state.doc.try_edit(label, |m, s| f(m, s).ok_or(())).ok();
     if result.is_none() {
-        state.set_status(why);
+        state.fail_status(why);
     }
 
     result
@@ -891,7 +891,7 @@ fn paste(state: &mut EditorState, text: &str, beside: bool) {
         Ok::<_, format::FormatError>(ids)
     });
     if result.is_err() {
-        state.set_status("Clipboard does not contain GodotTrench objects");
+        state.fail_status("Clipboard does not contain GodotTrench objects");
     }
 }
 
@@ -920,7 +920,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         }
         Action::CloseTab => {
             if state.doc.is_modified() {
-                state.set_status("Save or discard changes before closing the tab (File > Save)");
+                state.fail_status("Save or discard changes before closing the tab (File > Save)");
             } else if !state.close_tab() {
                 state.reset_document(Document::new());
             }
@@ -936,19 +936,19 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             if let Some(path) = picked
                 && let Err(e) = open_map_in_tab(state, &path)
             {
-                state.set_status(format!("Open failed: {e}"));
+                state.fail_status(format!("Open failed: {e}"));
             }
         }
         Action::OpenMapFile(path) => {
             if let Err(e) = open_map_in_tab(state, &path) {
-                state.set_status(format!("Open failed: {e}"));
+                state.fail_status(format!("Open failed: {e}"));
             }
         }
         Action::OpenProject => {
             if let Some(dir) = rfd::FileDialog::new().set_title("Select Godot project folder").pick_folder() {
                 match gt_formats::game::find_project_root(&dir) {
                     Some(root) => state.load_project(&root),
-                    None => state.set_status("No project.godot found in that folder or its parents"),
+                    None => state.fail_status("No project.godot found in that folder or its parents"),
                 }
             }
         }
@@ -960,7 +960,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::Save => match state.doc.path.clone() {
             Some(p) => {
                 if let Err(e) = state.save_map(&p) {
-                    state.set_status(format!("Save failed: {e}"));
+                    state.fail_status(format!("Save failed: {e}"));
                 }
             }
             None => execute(state, Action::SaveAs, ctx),
@@ -971,7 +971,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             if let Some(path) = picked
                 && let Err(e) = state.save_map(&path)
             {
-                state.set_status(format!("Save failed: {e}"));
+                state.fail_status(format!("Save failed: {e}"));
             }
         }
         Action::Undo => {
@@ -986,7 +986,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         }
         Action::RepeatLast => match state.last_repeatable.clone() {
             Some(last) => execute(state, last, ctx),
-            None => state.set_status("Nothing to repeat yet, Repeat Last runs the last rotate, flip, nudge or duplicate again"),
+            None => state.fail_status("Nothing to repeat yet, Repeat Last runs the last rotate, flip, nudge or duplicate again"),
         },
         Action::Delete => {
             if state.doc.selection.nodes.is_empty() {
@@ -1001,7 +1001,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 state.renaming = Some(id);
                 state.outliner_reveal = Some(id);
             }
-            None => state.set_status("Select one object to rename it"),
+            None => state.fail_status("Select one object to rename it"),
         },
         Action::Duplicate => {
             let offset = DVec3::new(grid, 0.0, grid);
@@ -1128,14 +1128,14 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                     state.replaced = replaced;
                     state.set_status(format!("Subtracted from {n} brushes"));
                 }
-                (Err(()), []) => state.set_status("Select the box to cut out, then Subtract. It cuts every brush it overlaps"),
+                (Err(()), []) => state.fail_status("Select the box to cut out, then Subtract. It cuts every brush it overlaps"),
                 (Err(()), [one]) => {
                     let name = state.doc.map.get(*one).map(|n| n.name()).unwrap_or_default();
-                    state.set_status(format!(
+                    state.fail_status(format!(
                         "Nothing to cut, the selected {name} overlaps no other brush and was kept. Select the box that pokes into the wall"
                     ));
                 }
-                (Err(()), _) => state.set_status(
+                (Err(()), _) => state.fail_status(
                     "Nothing to cut, the selected brushes overlap no other brush and were kept. Select only the boxes to cut out, every selected brush cuts",
                 ),
             }
@@ -1155,26 +1155,26 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::CsgHollow => {
             let t = state.hollow_thickness.max(state.grid.min(state.hollow_thickness));
             if state.doc.selection.brushes(&state.doc.map).is_empty() {
-                state.set_status("Select a solid brush to hollow it into a room");
+                state.fail_status("Select a solid brush to hollow it into a room");
                 return;
             }
 
             match state.doc.try_edit("Hollow", |m, s| Some(ops::csg_hollow(m, s, t)).filter(|r| !r.is_empty()).ok_or(())) {
                 Ok(replaced) => state.replaced = replaced,
-                Err(()) => state.set_status(format!(
+                Err(()) => state.fail_status(format!(
                     "Nothing to hollow, the selection is too thin for walls {t} units thick on each side. Lower Wall thickness in Brush > CSG"
                 )),
             }
         }
         Action::Rotate { axis, degrees } => {
-            let center = ops::selection_center(&state.doc.map, &state.doc.selection, grid);
+            let center = ops::selection_center(&state.doc.map, &state.doc.selection, opts.grid);
             let mut dir = DVec3::ZERO;
             dir[axis] = 1.0;
             let m = ops::rotation_about(center, dir, degrees);
             state.doc.edit("Rotate", |map, s| ops::transform_selection(map, s, &m, opts));
         }
         Action::Flip { axis } => {
-            let center = ops::selection_center(&state.doc.map, &state.doc.selection, grid);
+            let center = ops::selection_center(&state.doc.map, &state.doc.selection, opts.grid);
             let m = ops::flip_about(center, axis);
             state.doc.edit("Flip", |map, s| ops::transform_selection(map, s, &m, opts));
         }
@@ -1220,7 +1220,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 state.tool = ToolKind::Vertex;
                 state.set_status("Vertex editing the selected brushes (Tab returns). To edit them as a mesh, use Mesh > Edit Mesh");
             } else {
-                state.set_status("Select a brush or mesh, then Tab edits its vertices");
+                state.fail_status("Select a brush or mesh, then Tab edits its vertices");
             }
         }
         Action::ConvertToMesh => {
@@ -1252,7 +1252,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::PlaceEntities { classnames, at, normal, row } => place_entities(state, &classnames, at, normal, row),
         Action::PlaceModel { path, at } => match place_model_mesh(state, &path, at) {
             Ok(msg) => state.set_status(msg),
-            Err(e) => state.set_status(format!("Place model failed: {e}")),
+            Err(e) => state.fail_status(format!("Place model failed: {e}")),
         },
         Action::CreateDecal { material, at, normal, size } => create_decal(state, &material, at, normal, size),
         Action::MoveToWorld => {
@@ -1339,7 +1339,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::BuildInGodot => build_in_godot(state),
         Action::ToggleLiveMode => {
             if !state.prefs.live_mode && !state.prefs.live_link {
-                state.set_status(LIVE_LINK_OFF);
+                state.fail_status(LIVE_LINK_OFF);
                 return;
             }
 
@@ -1353,11 +1353,12 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::CreateDisplacement(power) => {
             let faces = displacement_candidates(state);
             let n = state.doc.edit("Create Displacement", |m, _| gt_doc::terrain::create_displacements(m, &faces, power));
-            state.set_status(if n == 0 {
-                "Select quad faces (Shift+click) or brushes with a top face".to_string()
+            if n == 0 {
+                state.fail_status("Select quad faces (Shift+click) or brushes with a top face");
             } else {
-                format!("{n} displacement(s) with power {power}")
-            });
+                state.set_status(format!("{n} displacement(s) with power {power}"));
+            }
+
             if n > 0 {
                 state.tool = ToolKind::Sculpt;
             }
@@ -1397,7 +1398,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             if let Some(path) = file_dialog(state, |d| d.add_filter("Quake / TrenchBroom map", &["map"]).pick_file()) {
                 match import_quake_map(state, &path) {
                     Ok(_) => crate::texture_convert::offer_for_map(state, &path),
-                    Err(e) => state.set_status(format!("Import failed: {e}")),
+                    Err(e) => state.fail_status(format!("Import failed: {e}")),
                 }
             }
         }
@@ -1405,7 +1406,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             if let Some(path) = file_dialog(state, |d| d.add_filter("Hammer map", &["vmf"]).pick_file()) {
                 match import_vmf(state, &path) {
                     Ok(_) => crate::texture_convert::offer_for_map(state, &path),
-                    Err(e) => state.set_status(format!("Import failed: {e}")),
+                    Err(e) => state.fail_status(format!("Import failed: {e}")),
                 }
             }
         }
@@ -1416,7 +1417,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 let options = gt_formats::quake_map::ExportOptions { cordon: action == Action::ExportQuakeMapCordon, ..Default::default() };
                 match std::fs::write(&path, gt_formats::quake_map::export_with(&state.doc.map, options)) {
                     Ok(()) => state.set_status(format!("Exported {}", path.display())),
-                    Err(e) => state.set_status(format!("Export failed: {e}")),
+                    Err(e) => state.fail_status(format!("Export failed: {e}")),
                 }
             }
         }
@@ -1427,7 +1428,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 let at = state.snap(state.cursor_world.unwrap_or(DVec3::ZERO));
                 match import_model(state, &path, mode, at) {
                     Ok((_, status)) => state.set_status(status),
-                    Err(e) => state.set_status(format!("Import failed: {e}")),
+                    Err(e) => state.fail_status(format!("Import failed: {e}")),
                 }
             }
         }
@@ -1441,7 +1442,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::SetCordonFromSelection => {
             let b = selection_bounds(state);
             if b.is_empty() {
-                state.set_status("Select the objects that define the cordon");
+                state.fail_status("Select the objects that define the cordon");
                 return;
             }
 
@@ -1452,7 +1453,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         }
         Action::ToggleCordon => {
             if state.doc.map.editor.cordon.is_none() {
-                state.set_status("No cordon set, use View > Cordon > Set Cordon from Selection");
+                state.fail_status("No cordon set, use View > Cordon > Set Cordon from Selection");
                 return;
             }
 
@@ -1479,12 +1480,12 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             Some(face) => {
                 crate::texture_ops::eyedropper(state, *face);
             }
-            None => state.set_status("Select a face to copy its alignment"),
+            None => state.fail_status("Select a face to copy its alignment"),
         },
         Action::PasteAlignment => {
             let faces = crate::texture_ops::target_faces(state);
             if crate::texture_ops::paste_alignment(state, &faces, false) == 0 {
-                state.set_status("Nothing to paste, copy a face alignment first");
+                state.fail_status("Nothing to paste, copy a face alignment first");
             }
         }
         Action::TexelDensity(d) => {
@@ -1499,11 +1500,11 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::AlignTextureToView | Action::MeshUv(_) | Action::ShowHotspotEditor | Action::EditHotspots(_) => {}
         Action::HotspotTexture => {
             let n = hotspot_texture(state);
-            state.set_status(if n == 0 {
-                "No hotspot rectangles for the selected faces' materials (add <texture>.hotspots.json)".to_string()
+            if n == 0 {
+                state.fail_status("No hotspot rectangles for the selected faces' materials (add <texture>.hotspots.json)");
             } else {
-                format!("Hotspot textured {n} face(s)")
-            });
+                state.set_status(format!("Hotspot textured {n} face(s)"));
+            }
         }
         Action::CreatePrefab => create_prefab(state),
         Action::ExplodeInstances => explode_instances(state),
@@ -1526,10 +1527,10 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             match crate::prefabs::resolve(&inst.path, state.doc.path.as_deref(), state.game.project_root.as_deref()) {
                 Some(p) => {
                     if let Err(e) = open_map_in_tab(state, &p) {
-                        state.set_status(format!("Cannot open prefab: {e}"));
+                        state.fail_status(format!("Cannot open prefab: {e}"));
                     }
                 }
-                None => state.set_status("Cannot resolve prefab path"),
+                None => state.fail_status("Cannot resolve prefab path"),
             }
         }
         Action::ActivateScatter(id) => {
@@ -1549,7 +1550,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             let mut rng = gt_doc::scatter::Rng::new(if seed == 0 { time_seed() } else { seed });
             match crate::scatter_tool::fill(state, &mut rng) {
                 Ok(n) => state.set_status(format!("Filled the scatter targets with {n} instances")),
-                Err(e) => state.set_status(e),
+                Err(e) => state.fail_status(e),
             }
         }
         Action::ScatterPreset(name) => {
@@ -1560,7 +1561,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::InstallNatureModels | Action::ShowProjectContent | Action::ShowAddonSetup => {}
         Action::InstallGameplayEntities => match crate::entity_pack::install_in_project(state) {
             Ok(report) => state.set_status(report.summary()),
-            Err(e) => state.set_status(e),
+            Err(e) => state.fail_status(e),
         },
         Action::ScatterToEntities => {
             let sets: Vec<NodeId> = state.doc.selection.nodes.iter().copied().filter(|id| state.doc.map.scatter(*id).is_some()).collect();
@@ -1584,7 +1585,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::MakeDoor { kind, trigger } => {
             let ids: Vec<NodeId> = state.doc.selection.nodes.iter().copied().collect();
             if let Err(e) = crate::entity_wizards::make_door(state, &ids, &kind, trigger) {
-                state.set_status(e);
+                state.fail_status(e);
             }
         }
         Action::MakePlatform => {
@@ -1593,19 +1594,19 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             let travel = DVec3::new(0.0, (b.size().y * 4.0).max(grid * 8.0), 0.0);
             match crate::entity_wizards::make_platform(state, &ids, travel, 0) {
                 Ok(_) => state.set_status("func_platform created, drag the travel handle to set where it goes"),
-                Err(e) => state.set_status(e),
+                Err(e) => state.fail_status(e),
             }
         }
         Action::VolumeAroundSelection(classname) => {
             let b = state.doc.map.bounds_of(state.doc.selection.nodes.iter().copied());
             if b.is_empty() {
-                state.set_status("Select what the volume should surround");
+                state.fail_status("Select what the volume should surround");
                 return;
             }
 
             let props = crate::volume_tool::default_props(&classname);
             if let Err(e) = crate::entity_wizards::make_volume(state, &classname, &b.expanded(grid), &props, Vec::new()) {
-                state.set_status(e);
+                state.fail_status(e);
             }
         }
 
@@ -1700,12 +1701,12 @@ pub fn prefab_reference(prefab: &std::path::Path, map_path: Option<&std::path::P
 fn create_prefab(state: &mut EditorState) {
     let roots = ops::selection_roots(&state.doc.map, &state.doc.selection);
     if roots.is_empty() {
-        state.set_status("Select objects to turn into a prefab");
+        state.fail_status("Select objects to turn into a prefab");
         return;
     }
 
     let Some(map_path) = state.doc.path.clone() else {
-        state.set_status("Save the map first, prefab paths are stored relative to it");
+        state.fail_status("Save the map first, prefab paths are stored relative to it");
         return;
     };
     let Some(path) = file_dialog(state, |d| d.add_filter("GodotTrench map", &["gtm"]).set_file_name("prefab.gtm").save_file()) else {
@@ -1724,7 +1725,7 @@ fn create_prefab(state: &mut EditorState) {
     sel.nodes.extend(ids);
     ops::translate_selection(&mut prefab, &sel, -pivot, ops::EditOptions { uv_lock: true, grid: 0.0 });
     if let Err(e) = format::save(&prefab, &path) {
-        state.set_status(format!("Could not save prefab: {e}"));
+        state.fail_status(format!("Could not save prefab: {e}"));
         return;
     }
 
@@ -1915,7 +1916,7 @@ fn model_texture_folder(state: &EditorState, path: &std::path::Path) -> String {
 /// res://models made after asking. `None` with a status when there is no project or the user declines.
 fn prop_model_in_project(state: &mut EditorState, path: &std::path::Path) -> Option<std::path::PathBuf> {
     let Some(root) = state.game.project_root.clone() else {
-        state.set_status("Open a Godot project first, a model prop has to reference a file Godot can load");
+        state.fail_status("Open a Godot project first, a model prop has to reference a file Godot can load");
         return None;
     };
     if gt_formats::game::to_res_path(&root, path).is_some() {
@@ -1928,7 +1929,7 @@ fn prop_model_in_project(state: &mut EditorState, path: &std::path::Path) -> Opt
         .set_buttons(rfd::MessageButtons::YesNo)
         .show();
     if copy != rfd::MessageDialogResult::Yes {
-        state.set_status("Model not imported, a model prop has to be inside the Godot project");
+        state.fail_status("Model not imported, a model prop has to be inside the Godot project");
         return None;
     }
 
@@ -1939,7 +1940,7 @@ fn prop_model_in_project(state: &mut EditorState, path: &std::path::Path) -> Opt
             Some(target)
         }
         Err(e) => {
-            state.set_status(format!("Could not copy the model into the project: {e}"));
+            state.fail_status(format!("Could not copy the model into the project: {e}"));
             None
         }
     }
@@ -2365,12 +2366,12 @@ fn displacement_candidates(state: &EditorState) -> Vec<(NodeId, usize)> {
 
 fn launch_godot(state: &mut EditorState, editor: bool) {
     let Some(root) = state.game.project_root.clone() else {
-        state.set_status("Open a Godot project first");
+        state.fail_status("Open a Godot project first");
         return;
     };
     state.godot.refresh(&state.prefs.godot_path, Some(&root));
     let Some(exe) = state.godot.exe.clone() else {
-        state.set_status(GODOT_NOT_FOUND);
+        state.fail_status(GODOT_NOT_FOUND);
         return;
     };
     let mut cmd = std::process::Command::new(&exe);
@@ -2385,7 +2386,7 @@ fn launch_godot(state: &mut EditorState, editor: bool) {
 
     match cmd.spawn() {
         Ok(_) => state.set_status(format!("Launched {}", exe.display())),
-        Err(e) => state.set_status(format!("Could not launch Godot: {e}")),
+        Err(e) => state.fail_status(format!("Could not launch Godot: {e}")),
     }
 }
 
@@ -2401,7 +2402,7 @@ fn toggle_walkable(state: &mut EditorState) {
 
     let offline = || format!("Godot is not running with the GodotTrench addon on port {}, open the project in the Godot editor", state.prefs.live_link_port);
     match crate::walkable::unavailable(state).or_else(|| (!state.link_state.connected).then(offline)) {
-        Some(why) => state.set_status(format!("Cannot show the walkable area: {why}")),
+        Some(why) => state.fail_status(format!("Cannot show the walkable area: {why}")),
         None => {
             state.walkable.set_on(true);
             state.set_status("Baking the walkable area in Godot");
@@ -2411,7 +2412,7 @@ fn toggle_walkable(state: &mut EditorState) {
 
 fn build_in_godot(state: &mut EditorState) {
     let Some(path) = state.doc.path.clone() else {
-        state.set_status("Save the map into the Godot project first, Godot builds maps from their file path");
+        state.fail_status("Save the map into the Godot project first, Godot builds maps from their file path");
         return;
     };
     match &state.link {
@@ -2419,7 +2420,7 @@ fn build_in_godot(state: &mut EditorState) {
             link.request(crate::live_link::Request::Build { path: crate::live_link::godot_path(&path), map: state.doc.map.clone(), live: state.live_active() });
             state.set_status("Building in Godot…");
         }
-        _ => state.set_status("Godot is not open with this project, open it with the Godot button in the toolbar"),
+        _ => state.fail_status("Godot is not open with this project, open it with the Godot button in the toolbar"),
     }
 }
 
@@ -2439,7 +2440,7 @@ fn selected_instances(state: &EditorState) -> Vec<(NodeId, gt_doc::map::Instance
 fn explode_instances(state: &mut EditorState) {
     let instances = selected_instances(state);
     if instances.is_empty() {
-        state.set_status("Select prefab instances to explode");
+        state.fail_status("Select prefab instances to explode");
         return;
     }
 
@@ -2447,7 +2448,7 @@ fn explode_instances(state: &mut EditorState) {
     for (id, inst) in &instances {
         let Some(path) = crate::prefabs::resolve(&inst.path, state.doc.path.as_deref(), state.game.project_root.as_deref()) else { continue };
         let Some(prefab) = state.prefabs.get(&path).map.clone() else {
-            state.set_status(format!("Cannot load prefab {}", path.display()));
+            state.fail_status(format!("Cannot load prefab {}", path.display()));
             return;
         };
         let exported = prefab.layers.iter().filter_map(|l| prefab.get(*l)).filter(|n| !matches!(&n.kind, gt_doc::NodeKind::Layer(l) if l.omit_from_export));

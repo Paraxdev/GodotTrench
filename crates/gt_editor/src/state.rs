@@ -364,6 +364,8 @@ pub struct EditorState {
     pub open_groups: Vec<NodeId>,
     pub status: String,
     status_time: Instant,
+    /// The status line reports that the last command failed or had nothing to do, set by [`Self::fail_status`].
+    status_failed: bool,
     /// Bounds of the last created or selected brush, used for the depth of brushes drawn in 2D views.
     pub last_bounds: Aabb,
     /// Node picked in a view that the outliner should expand to and scroll into sight.
@@ -521,6 +523,7 @@ impl EditorState {
             open_groups: Vec::new(),
             status: "Welcome to GodotTrench".into(),
             status_time: Instant::now(),
+            status_failed: false,
             last_bounds: Aabb::new(DVec3::ZERO, DVec3::splat(64.0)),
             outliner_reveal: None,
             renaming: None,
@@ -599,6 +602,17 @@ impl EditorState {
     pub fn set_status(&mut self, msg: impl Into<String>) {
         self.status = msg.into();
         self.status_time = Instant::now();
+        self.status_failed = false;
+    }
+
+    /// Shows why a command failed or did nothing. MCP's run_action turns it into an error.
+    pub fn fail_status(&mut self, msg: impl Into<String>) {
+        self.set_status(msg);
+        self.status_failed = true;
+    }
+
+    pub fn status_failed(&self) -> bool {
+        self.status_failed
     }
 
     pub fn status_age(&self) -> f32 {

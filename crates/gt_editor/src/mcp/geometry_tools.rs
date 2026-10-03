@@ -6,7 +6,7 @@ use gt_geom::mesh_shapes;
 use serde_json::{Value, json};
 
 use super::ToolResult;
-use super::tools::{Child, editable_ids, face_list, optional_vec3, pair_list, require_id, resolve_parent, uint, uint_list};
+use super::tools::{Child, editable_ids, face_list, optional_vec3, pair_list, require_id, resolve_parent, ridge_along_x, uint, uint_list};
 use crate::app::App;
 
 fn vec3(v: &Value) -> Option<DVec3> {
@@ -111,7 +111,10 @@ impl App {
             ),
             "gable_roof" => mesh_shapes::gable_roof(
                 &bounds,
-                args["ridge_z"].as_bool().unwrap_or(false),
+                match ridge_along_x(args, true) {
+                    Ok(x) => !x,
+                    Err(e) => return err(e),
+                },
                 args["thickness"].as_f64().unwrap_or(4.0),
                 args["overhang"].as_f64().unwrap_or(8.0),
                 &material,
@@ -587,10 +590,14 @@ impl App {
     pub(crate) fn tool_create_terrain(&mut self, args: &Value) -> ToolResult {
         let resolution = args["resolution"].as_u64().unwrap_or(65).clamp(3, 2049) as u32;
         let cell = args["cell_size"].as_f64().unwrap_or(64.0);
-        let origin = vec3(&args["origin"]).unwrap_or_else(|| {
-            let side = (resolution - 1) as f64 * cell;
-            DVec3::new(-side * 0.5, 0.0, -side * 0.5)
-        });
+        let half = (resolution - 1) as f64 * cell * 0.5;
+        // origin is the terrain's minimum corner, center the point it is laid out around.
+        let origin = match (optional_vec3(args, "origin"), optional_vec3(args, "center")) {
+            (Ok(Some(_)), Ok(Some(_))) => return err("pass origin (the minimum corner) or center, not both"),
+            (Ok(Some(o)), Ok(None)) => o,
+            (Ok(None), Ok(c)) => c.unwrap_or_default() - DVec3::new(half, 0.0, half),
+            (Err(e), _) | (_, Err(e)) => return err(e),
+        };
         let mut params = gt_geom::heightfield::TerrainGen::default();
         if let Some(shape) = args["shape"].as_str() {
             match serde_json::from_value(json!(shape)) {

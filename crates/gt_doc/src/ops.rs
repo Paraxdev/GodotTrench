@@ -156,10 +156,15 @@ pub fn scale_bounds(old: &Aabb, new: &Aabb) -> DMat4 {
     DMat4::from_translation(new.min) * DMat4::from_scale(s) * DMat4::from_translation(-old.min)
 }
 
+/// Center of the selected nodes' bounds, snapped to `grid` (at least 1 unit), or exact when `grid` is 0.
 pub fn selection_center(map: &Map, sel: &Selection, grid: f64) -> DVec3 {
     let b = map.bounds_of(sel.nodes.iter().copied());
     if b.is_empty() {
         return DVec3::ZERO;
+    }
+
+    if grid <= 0.0 {
+        return b.center();
     }
 
     gt_core::snap_vec_to_grid(b.center(), grid.max(1.0))

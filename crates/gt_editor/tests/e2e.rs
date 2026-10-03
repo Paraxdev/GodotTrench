@@ -2133,3 +2133,76 @@ fn malformed_arguments_are_errors_not_defaults() {
         ed.call("set_camera", json!({ "view": v }));
     }
 }
+
+#[test]
+#[ignore]
+fn tool_defaults_paths_and_aliases_agree() {
+    let dir = artifacts().join("tool_defaults");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("maps")).unwrap();
+    std::fs::create_dir_all(dir.join("scripts")).unwrap();
+    std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+    let ed = Editor::launch_with("tool_defaults", &["--project", dir.to_str().unwrap()]);
+    let bounds = |v: &Value| -> Vec<f64> { ["min", "max"].iter().flat_map(|k| v[*k].as_array().unwrap().iter().map(|x| x.as_f64().unwrap())).collect() };
+
+    // Rotate defaults to 90 degrees about Y and pivots on the exact center unless snapping is on.
+    ed.call("set_editor", json!({ "grid": 16, "snap": false }));
+    let brush = ed.box_brush([0.0, 0.0, 0.0], [10.0, 8.0, 30.0]);
+    ed.call("select", json!({ "ids": [brush] }));
+    let turned = ed.call("transform", json!({ "rotate": {} }));
+    assert!(approx(&bounds(&turned["bounds"]), &[-10.0, 0.0, 10.0, 20.0, 8.0, 20.0]), "{turned}");
+    ed.call("run_action", json!({ "action": "undo" }));
+    ed.call("select", json!({ "ids": [brush] }));
+    let snapped = ed.call("transform", json!({ "rotate": { "axis": "y", "degrees": 90 }, "snap": true }));
+    assert!(approx(&bounds(&snapped["bounds"]), &[-16.0, 0.0, 6.0, 14.0, 8.0, 16.0]), "{snapped}");
+    assert!(ed.call_err("transform", json!({ "flip": "x", "uv_lock": "on" })).contains("uv_lock"));
+    assert!(ed.call_err("run_action", json!({ "action": "rotate", "args": { "axis": "w" } })).contains("axis"));
+    assert!(ed.call_err("run_action", json!({ "action": "flip", "args": { "axis": 2 } })).contains("axis"));
+    let undo_steps = ed.state()["undo"].clone();
+    assert_eq!(ed.call("run_action", json!({ "action": "undo", "args": { "steps": 0 } }))["steps"], 0);
+    assert_eq!(ed.state()["undo"], undo_steps, "zero steps undoes nothing");
+    assert!(ed.call_err("run_action", json!({ "action": "toggle_cordon" })).contains("No cordon"));
+
+    let platform = ed.call("gameplay", json!({ "op": "make_platform", "ids": [brush], "mode": "ping_pong" }));
+    assert_eq!(platform["properties"]["mode"], "1");
+    let layer = ed.state()["editor"]["current_layer"].clone();
+    let moved = ed.call("hierarchy", json!({ "op": "reparent", "ids": [platform["id"]], "parent": layer }));
+    assert_eq!((moved["moved"].clone(), moved["ids"].clone()), (json!(1), json!([platform["id"]])));
+
+    // A terrain's origin is its corner, center lays it out around a point.
+    let t = ed.call("create_terrain", json!({ "center": [1000, 0, 0], "resolution": 9, "cell_size": 64 }));
+    let tb = bounds(&t["bounds"]);
+    assert!(approx(&[tb[0], tb[2], tb[3], tb[5]], &[744.0, -256.0, 1256.0, 256.0]), "{t}");
+    assert!(ed.call_err("create_terrain", json!({ "center": [0, 0, 0], "origin": [0, 0, 0] })).contains("not both"));
+    assert!(ed.call_err("terrain_edit", json!({ "id": t["id"], "op": "clear_layer" })).contains("layer"));
+    assert!(ed.call_err("terrain_edit", json!({ "id": t["id"], "op": "sculpt", "center": [1000, 0], "mode": "dig" })).contains("erase_alpha"));
+
+    // res:// and relative paths start at the project for every file argument.
+    let saved = ed.call("map_file", json!({ "op": "save", "path": "maps/defaults.gtm" }));
+    assert!(dir.join("maps/defaults.gtm").is_file(), "{saved}");
+    let exported = ed.call("map_file", json!({ "op": "export_map", "path": "res://maps/defaults.map" }));
+    assert!(dir.join("maps/defaults.map").is_file());
+    assert_eq!(exported["exported"], exported["path"]);
+    assert!(exported["map_path"].as_str().unwrap().ends_with("maps/defaults.gtm"), "{exported}");
+    assert_eq!(ed.call("changes_since", json!({ "file": "res://maps/defaults.gtm" }))["since"], "the map file res://maps/defaults.gtm");
+    assert!(ed.call_err("changes_since", json!({ "file": "maps/defaults.gtm", "undo_steps": 1 })).contains("not both"));
+
+    // Saved selections follow brushes a later step replaced.
+    let script = json!({ "format": "godottrench-mcp-script", "steps": [
+        { "tool": "create_brush", "args": { "min": [0, 0, 400], "max": [128, 64, 416] }, "save": "wall" },
+        { "tool": "select", "args": { "ids": "$wall.ids" }, "save": "sel" },
+        { "tool": "create_brush", "args": { "min": [48, 0, 390], "max": [80, 48, 426] } },
+        { "tool": "run_action", "args": { "action": "csg_subtract" } },
+        { "tool": "select", "args": { "ids": "$sel.selected" }, "save": "pieces" }
+    ] });
+    std::fs::write(dir.join("scripts/cut.json"), script.to_string()).unwrap();
+    let ran = ed.call("run_script", json!({ "path": "res://scripts/cut.json" }));
+    assert_eq!(ran["errors"], json!([]), "{ran}");
+    assert!(ran["vars"]["pieces"]["selected"].as_array().unwrap().len() >= 2, "{ran}");
+
+    let r = ed.try_rpc("tools/call", json!({ "name": "screenshot", "arguments": { "target": "3d", "width": 320 } })).unwrap();
+    let png = base64::engine::general_purpose::STANDARD.decode(r["result"]["content"][0]["data"].as_str().expect("image")).unwrap();
+    let img = image::load_from_memory(&png).unwrap();
+    assert_eq!(img.width(), 320, "width alone sizes the capture");
+    assert!(img.height() >= 16 && img.height() < 640, "{}", img.height());
+}

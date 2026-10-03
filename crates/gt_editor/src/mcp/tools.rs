@@ -133,8 +133,9 @@ fn issues_json(map: &gt_doc::Map, found: &[issues::Issue]) -> Vec<Value> {
         .collect()
 }
 
-/// A map path from an MCP call: `res://` and relative paths start at the open project.
-fn project_path(game: &gt_formats::GameConfig, path: &str) -> std::path::PathBuf {
+/// A file path from an MCP call: `res://` and relative paths start at the open project, or without one at the
+/// editor's working directory. Absolute paths stay as they are.
+pub(super) fn project_path(game: &gt_formats::GameConfig, path: &str) -> std::path::PathBuf {
     let rel = path.strip_prefix("res://").unwrap_or(path);
     match &game.project_root {
         Some(root) if std::path::Path::new(rel).is_relative() => root.join(rel),
@@ -247,6 +248,26 @@ pub(super) fn optional_vec2(args: &Value, key: &str) -> Result<Option<DVec2>, St
     }
 }
 
+/// Optional boolean argument: absent is None, anything but true or false is an error.
+pub(super) fn bool_arg(args: &Value, key: &str) -> Result<Option<bool>, String> {
+    match &args[key] {
+        Value::Null => Ok(None),
+        Value::Bool(b) => Ok(Some(*b)),
+        v => Err(format!("{key} must be true or false, got {v}")),
+    }
+}
+
+/// Whether a gable ridge runs along X. create_brush names it `ridge_x` and create_mesh `ridge_z`, so both take either;
+/// `default_x` is the tool's own axis when neither is given.
+pub(super) fn ridge_along_x(args: &Value, default_x: bool) -> Result<bool, String> {
+    match (bool_arg(args, "ridge_x")?, bool_arg(args, "ridge_z")?) {
+        (Some(x), Some(z)) if x == z => Err("ridge_x and ridge_z disagree, pass only one of them".into()),
+        (Some(x), _) => Ok(x),
+        (None, Some(z)) => Ok(!z),
+        (None, None) => Ok(default_x),
+    }
+}
+
 /// What is being placed under a parent: geometry may also go into brush entities.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Child {
@@ -314,7 +335,8 @@ pub(super) fn editable_ids(state: &EditorState, ids: &[NodeId]) -> Result<Vec<No
     Ok(ids.to_vec())
 }
 
-/// Status messages `commands::execute` shows when an action did nothing, so MCP callers get an error instead.
+/// Status messages of a failed action that did not come through [`EditorState::fail_status`], such as tool and wizard
+/// messages from outside `commands::execute`.
 fn is_failure_status(s: &str) -> bool {
     const PREFIXES: [&str; 19] = [
         "Save failed",
@@ -338,6 +360,19 @@ fn is_failure_status(s: &str) -> bool {
         "Godot is not open",
     ];
     PREFIXES.iter().any(|p| s.starts_with(p))
+}
+
+/// Size of an offscreen editor capture. Width or height alone keeps the aspect ratio of the pane, each side clamped
+/// to 16..4096.
+fn offscreen_size(width: Option<u64>, height: Option<u64>, pane: [f64; 2]) -> Option<(u64, u64)> {
+    let aspect = if pane[0] >= 1.0 && pane[1] >= 1.0 { pane[0] / pane[1] } else { 16.0 / 9.0 };
+    let (w, h) = match (width, height) {
+        (Some(w), Some(h)) => (w, h),
+        (Some(w), None) => (w, (w as f64 / aspect).round() as u64),
+        (None, Some(h)) => ((h as f64 * aspect).round() as u64, h),
+        (None, None) => return None,
+    };
+    Some((w.clamp(16, 4096), h.clamp(16, 4096)))
 }
 
 /// Actions that open a native file dialog, which would block the UI thread, with the MCP call to use instead.
@@ -703,7 +738,8 @@ impl App {
                 let target = args["target"].as_str().unwrap_or("window");
                 let Some(kind) = view_kind(target) else { return err("unknown target, or window screenshots, which cannot run inside scripts") };
                 let Some(vp) = self.viewports.iter().find(|v| v.kind() == kind) else { return err("view not open") };
-                let sized = args["width"].as_u64().zip(args["height"].as_u64());
+                let pane = vp.target().map(|t| [t.size[0] as f64, t.size[1] as f64]).unwrap_or([vp.rect.width() as f64, vp.rect.height() as f64]);
+                let sized = offscreen_size(args["width"].as_u64(), args["height"].as_u64(), pane);
                 // Offscreen captures are beauty shots unless asked otherwise, a docked capture keeps what the pane shows.
                 let overlays = args["overlays"].as_bool().unwrap_or(sized.is_none());
                 let size = match sized {
@@ -912,6 +948,11 @@ impl App {
         (age <= started.elapsed().as_secs_f32()).then(|| self.state.status.clone())
     }
 
+    /// The status this action set when it reports a failure, through `fail_status` or a known failure message.
+    fn action_failure(&self, started: Instant) -> Option<String> {
+        self.fresh_status(started).filter(|s| self.state.status_failed() || is_failure_status(s))
+    }
+
     fn tool_run_action(&mut self, args: &Value, ctx: &egui::Context) -> ToolResult {
         let name = args["action"].as_str().unwrap_or_default();
         let a = &args["args"];
@@ -934,7 +975,18 @@ impl App {
             }
             "undo" | "redo" => {
                 let action = if name == "undo" { Action::Undo } else { Action::Redo };
-                for _ in 1..a["steps"].as_u64().unwrap_or(1) {
+                let steps = match &a["steps"] {
+                    Value::Null => 1,
+                    v => match uint(v) {
+                        Some(n) => n,
+                        None => return err(format!("steps must be a non-negative integer, got {v}")),
+                    },
+                };
+                if steps == 0 {
+                    return ok(json!({ "ok": true, "steps": 0, "status": Value::Null }));
+                }
+
+                for _ in 1..steps {
                     crate::commands::execute(&mut self.state, action.clone(), ctx);
                 }
 
@@ -981,8 +1033,27 @@ impl App {
             "csg_merge" => Action::CsgMerge,
             "csg_intersect" => Action::CsgIntersect,
             "csg_hollow" => Action::CsgHollow,
-            "rotate" => Action::Rotate { axis: axis_index(&a["axis"]).unwrap_or(1), degrees: a["degrees"].as_f64().unwrap_or(90.0) },
-            "flip" => Action::Flip { axis: axis_index(&a["axis"]).unwrap_or(0) },
+            "rotate" | "flip" => {
+                let axis = match &a["axis"] {
+                    Value::Null => usize::from(name == "rotate"),
+                    v => match axis_index(v) {
+                        Some(i) => i,
+                        None => return err(format!("{name} axis must be x, y or z, got {v}")),
+                    },
+                };
+                if name == "flip" {
+                    Action::Flip { axis }
+                } else {
+                    let degrees = match &a["degrees"] {
+                        Value::Null => 90.0,
+                        v => match v.as_f64() {
+                            Some(d) => d,
+                            None => return err(format!("rotate degrees must be a number, got {v}")),
+                        },
+                    };
+                    Action::Rotate { axis, degrees }
+                }
+            }
             "focus_selection" => Action::FocusSelection,
             "create_brush_entity" => Action::CreateBrushEntity(a["classname"].as_str().unwrap_or("func_detail").to_string()),
             "place_entities" => Action::PlaceEntities {
@@ -1095,12 +1166,11 @@ impl App {
                     return err(format!("unknown mesh op {op_name}, use one of {}", mesh_op_names().join(", ")));
                 };
                 let _ = self.run_app_action(Action::MeshOp(op));
-                let status = self.fresh_status(started);
-                if let Some(s) = status.as_deref().filter(|s| is_failure_status(s)) {
+                if let Some(s) = self.action_failure(started) {
                     return err(s);
                 }
 
-                return ok(json!({ "ok": true, "status": status }));
+                return ok(json!({ "ok": true, "status": self.fresh_status(started) }));
             }
             "store_camera" | "recall_camera" => {
                 let slot = a["slot"].as_u64().unwrap_or(1).clamp(1, 9) as u8;
@@ -1259,11 +1329,11 @@ impl App {
             }
         }
 
-        let status = self.fresh_status(started);
-        if let Some(s) = status.as_deref().filter(|s| is_failure_status(s)) {
+        if let Some(s) = self.action_failure(started) {
             return err(s);
         }
 
+        let status = self.fresh_status(started);
         let mut result = json!({ "ok": true, "status": status, "brushes": self.state.doc.map.brush_count(), "selection": self.state.doc.selection.nodes.iter().map(|i| i.0).collect::<Vec<_>>() });
         if !self.state.replaced.is_empty() {
             result["replaced"] = replaced_json(&self.state.replaced);
@@ -1309,7 +1379,8 @@ impl App {
 
     fn tool_import_model(&mut self, args: &Value) -> ToolResult {
         let Some(path) = args["path"].as_str() else { return err("path required") };
-        let path = std::path::Path::new(path);
+        let path = project_path(&self.state.game, path);
+        let path = path.as_path();
         if !path.is_file() {
             return err(format!("no file at {}", path_text(path)));
         }
@@ -1422,7 +1493,7 @@ impl App {
     fn import_textures(&mut self, map_file: &std::path::Path, args: &Value) -> Result<Value, String> {
         let sources = match args["textures"].as_str() {
             Some("auto") | None => crate::texture_convert::sources_for_map(&self.state, map_file),
-            Some(p) => vec![std::path::PathBuf::from(p)],
+            Some(p) => vec![project_path(&self.state.game, p)],
         };
         let lib = gt_formats::texture_import::scan(&sources);
         let wanted = crate::texture_convert::convertible(&self.state, &lib);
@@ -1442,10 +1513,11 @@ impl App {
 
     fn tool_map_file(&mut self, args: &Value) -> ToolResult {
         let op = args["op"].as_str().unwrap_or_default();
-        // A relative path resolves against the process directory, which a later save should not depend on.
+        // Without a project a relative path resolves against the process directory, which a later save should not
+        // depend on.
         let path = args["path"]
             .as_str()
-            .map(std::path::PathBuf::from)
+            .map(|p| project_path(&self.state.game, p))
             .map(|p| if matches!(op, "open" | "open_tab") { std::path::absolute(&p).unwrap_or(p) } else { p });
         let need = |p: Option<std::path::PathBuf>| p.ok_or_else(|| format!("map_file {op} needs a path"));
         let modified = self.state.doc.is_modified();
@@ -1493,7 +1565,7 @@ impl App {
             "open_tab" => need(path).and_then(|p| crate::commands::open_map_in_tab(&mut self.state, &p)).map(|()| json!({})),
             "export_map" => need(path).and_then(|p| {
                 std::fs::write(&p, gt_formats::quake_map::export(&self.state.doc.map))
-                    .map(|()| json!({ "path": path_text(&p), "map_path": path_value(self.state.doc.path.as_ref()) }))
+                    .map(|()| json!({ "path": path_text(&p), "exported": path_text(&p), "map_path": path_value(self.state.doc.path.as_ref()) }))
                     .map_err(|e| format!("cannot write {}: {e}", path_text(&p)))
             }),
             "export_glb" | "export_obj" => need(path).and_then(|p| {
@@ -1512,6 +1584,7 @@ impl App {
                 self.state.set_status(report.summary(&p));
                 Ok(json!({
                     "path": path_text(&p),
+                    "exported": path_text(&p),
                     "map_path": path_value(self.state.doc.path.as_ref()),
                     "objects": report.objects,
                     "meshes": report.meshes,
@@ -1703,7 +1776,11 @@ impl App {
             }
             "gable" => {
                 let (a, b) = (bounds.min, bounds.max);
-                let pts: Vec<DVec3> = if args["ridge_x"].as_bool().unwrap_or(false) {
+                let along_x = match ridge_along_x(args, false) {
+                    Ok(x) => x,
+                    Err(e) => return err(e),
+                };
+                let pts: Vec<DVec3> = if along_x {
                     let cz = (a.z + b.z) * 0.5;
                     vec![
                         DVec3::new(a.x, a.y, a.z),
@@ -1886,7 +1963,8 @@ impl App {
     }
 
     /// Applied in order translate, rotate, flip, scale_to as one undo step. rotate and flip pivot on the selection
-    /// center as it is at that step, so a translated selection flips in place at its new position.
+    /// center as it is at that step, so a translated selection flips in place at its new position. The pivot snaps to
+    /// the grid only while snapping is on, and `snap` and `uv_lock` override the editor settings for this call.
     fn tool_transform(&mut self, args: &Value) -> ToolResult {
         if self.state.doc.selection.nodes.is_empty() {
             return err("nothing selected");
@@ -1914,7 +1992,21 @@ impl App {
                         None => return err("rotate.axis must be x, y or z"),
                     },
                 };
-                Some((axis, r.get("degrees").and_then(|d| d.as_f64()).unwrap_or(0.0), r.get("center").and_then(vec3)))
+                let degrees = match r.get("degrees") {
+                    None | Some(Value::Null) => 90.0,
+                    Some(d) => match d.as_f64() {
+                        Some(d) => d,
+                        None => return err(format!("rotate.degrees must be a number, got {d}")),
+                    },
+                };
+                let center = match r.get("center") {
+                    None | Some(Value::Null) => None,
+                    Some(c) => match vec3(c) {
+                        Some(c) => Some(c),
+                        None => return err(format!("rotate.center must be [x, y, z], got {c}")),
+                    },
+                };
+                Some((axis, degrees, center))
             }
             _ => return err("rotate must be {axis, degrees, center}"),
         };
@@ -1936,8 +2028,12 @@ impl App {
             return err("pass translate, rotate, flip or scale_to");
         }
 
-        let opts = self.state.opts();
-        let grid = self.state.grid;
+        let (snap, uv_lock) = match (bool_arg(args, "snap"), bool_arg(args, "uv_lock")) {
+            (Ok(s), Ok(u)) => (s.unwrap_or(self.state.snap), u.unwrap_or(self.state.uv_lock)),
+            (Err(e), _) | (_, Err(e)) => return err(e),
+        };
+        let grid = if snap { self.state.grid } else { 0.0 };
+        let opts = ops::EditOptions { uv_lock, grid };
         let started = !self.state.doc.in_transaction();
         self.state.doc.begin("Transform");
         if let Some(t) = translate {
@@ -2362,6 +2458,29 @@ mod tests {
     }
 
     #[test]
+    fn one_capture_side_keeps_the_pane_aspect() {
+        let pane = [800.0, 400.0];
+        assert_eq!(offscreen_size(None, None, pane), None);
+        assert_eq!(offscreen_size(Some(1000), Some(300), pane), Some((1000, 300)));
+        assert_eq!(offscreen_size(Some(1000), None, pane), Some((1000, 500)));
+        assert_eq!(offscreen_size(None, Some(300), pane), Some((600, 300)));
+        assert_eq!(offscreen_size(Some(9000), None, pane), Some((4096, 4096)), "each side is clamped");
+        assert_eq!(offscreen_size(Some(4), None, [0.0, 0.0]), Some((16, 16)));
+    }
+
+    #[test]
+    fn gable_ridge_takes_either_name() {
+        assert_eq!(ridge_along_x(&json!({}), false), Ok(false));
+        assert_eq!(ridge_along_x(&json!({}), true), Ok(true));
+        assert_eq!(ridge_along_x(&json!({ "ridge_x": true }), false), Ok(true));
+        assert_eq!(ridge_along_x(&json!({ "ridge_z": true }), true), Ok(false));
+        assert_eq!(ridge_along_x(&json!({ "ridge_z": false }), false), Ok(true));
+        assert_eq!(ridge_along_x(&json!({ "ridge_x": true, "ridge_z": false }), false), Ok(true));
+        assert!(ridge_along_x(&json!({ "ridge_x": true, "ridge_z": true }), false).is_err());
+        assert!(ridge_along_x(&json!({ "ridge_x": "yes" }), false).is_err());
+    }
+
+    #[test]
     fn failure_statuses_and_dialog_actions() {
         assert!(is_failure_status("Save failed: disk full"));
         assert!(is_failure_status("Select brushes first"));
@@ -2370,6 +2489,27 @@ mod tests {
         assert!(dialog_action("save_as").is_some());
         assert!(dialog_action("export_obj").is_some_and(|use_instead| use_instead.contains("export_obj")));
         assert!(dialog_action("undo").is_none());
+
+        // Commands report failures through fail_status, which run_action turns into errors whatever the wording.
+        let ctx = egui::Context::default();
+        let mut s = state();
+        s.prefs.live_link = false;
+        for action in [Action::ToggleCordon, Action::ToggleLiveMode, Action::HotspotTexture, Action::CreateDisplacement(3), Action::CsgHollow] {
+            crate::commands::execute(&mut s, action.clone(), &ctx);
+            assert!(s.status_failed(), "{action:?}: {}", s.status);
+        }
+
+        crate::commands::execute(&mut s, Action::GridUp, &ctx);
+        assert!(!s.status_failed(), "a later success clears the failure");
+        // A message worded like a failure must not slip through set_status in commands.rs.
+        let source = include_str!("../commands.rs");
+        for (i, line) in source.lines().enumerate() {
+            let Some(at) = line.find("set_status(") else { continue };
+            let arg = line[at + "set_status(".len()..].trim_start_matches("format!(");
+            let Some(text) = arg.strip_prefix('"') else { continue };
+            assert!(!is_failure_status(text), "commands.rs:{} reports a failure with set_status, use fail_status", i + 1);
+        }
+
         let names = mesh_op_names();
         for n in ["merge_by_distance", "dissolve_vertices", "select_linked", "mirror_y", "mirror_z"] {
             assert!(names.iter().any(|x| x == n), "{n}");

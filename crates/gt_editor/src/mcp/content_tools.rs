@@ -9,7 +9,9 @@ use gt_doc::{IoConnection, NodeKind, ScatterItem, ops};
 use serde_json::{Value, json};
 
 use super::ToolResult;
-use super::tools::{Child, check_container, editable_ids, face_list, id_list, optional_id, optional_vec3, paste_text, require_id, resolve_parent, uint};
+use super::tools::{
+    Child, bool_arg, check_container, editable_ids, face_list, id_list, optional_id, optional_vec3, paste_text, require_id, resolve_parent, uint,
+};
 use crate::app::App;
 
 fn vec3(v: &Value) -> Option<DVec3> {
@@ -145,6 +147,20 @@ pub fn content_result(outcome: &crate::content::Outcome) -> ToolResult {
     }))
 }
 
+/// func_platform's mode: 0 toggle, 1 ping pong, 2 once, by number or by name.
+fn platform_mode(v: &Value) -> Result<u8, String> {
+    match v {
+        Value::Null => Ok(0),
+        Value::String(name) => match name.trim().to_ascii_lowercase().replace([' ', '-'], "_").as_str() {
+            "toggle" => Ok(0),
+            "ping_pong" | "pingpong" => Ok(1),
+            "once" => Ok(2),
+            other => other.parse().map_err(|_| format!("mode is toggle, ping_pong or once (or 0, 1, 2), not {name}")),
+        },
+        v => uint(v).map(|m| m as u8).ok_or_else(|| format!("mode is toggle, ping_pong or once (or 0, 1, 2), not {v}")),
+    }
+}
+
 impl App {
     /// Random fill: a grid of cells covered with prefab library pieces picked by weight.
     pub(crate) fn tool_random_fill(&mut self, args: &Value) -> ToolResult {
@@ -187,7 +203,7 @@ impl App {
         };
         match crate::random_fill::apply(&mut self.state, &opts, replace) {
             Ok(filled) => ok(json!({
-                "ok": true, "group": filled.group.0, "pieces": counts(&filled.placements),
+                "ok": true, "group": filled.group.0, "id": filled.group.0, "pieces": counts(&filled.placements),
                 "sketch": crate::random_fill::sketch(&opts, &filled.placements)
             })),
             Err(e) => err(e),
@@ -853,7 +869,11 @@ impl App {
             }
             "make_platform" => {
                 let travel = vec3(&args["travel"]).unwrap_or(DVec3::new(0.0, 128.0, 0.0));
-                wiz::make_platform(&mut self.state, &target_ids, travel, args["mode"].as_u64().unwrap_or(0) as u8).map(|id| {
+                let mode = match platform_mode(&args["mode"]) {
+                    Ok(m) => m,
+                    Err(e) => return err(e),
+                };
+                wiz::make_platform(&mut self.state, &target_ids, travel, mode).map(|id| {
                     self.apply_wizard_properties(id, &args["properties"], "Platform Properties");
                     self.apply_wizard_outputs(id, &wizard_outputs);
                     entity_json(self, id)
@@ -1087,7 +1107,7 @@ impl App {
                 }
 
                 self.state.doc.edit("Reparent", |m, _| list.iter().for_each(|id| m.reparent(*id, parent)));
-                ok(json!({ "moved": list.len() }))
+                ok(json!({ "moved": list.len(), "ids": list.iter().map(|i| i.0).collect::<Vec<_>>() }))
             }
             "rename" => {
                 let id = match require_id(args, "id") {
@@ -1265,7 +1285,7 @@ impl App {
             let changed = match op.as_str() {
                 "sculpt" | "sculpt_path" => {
                     let mode: SculptMode = serde_json::from_value(a["mode"].clone())
-                        .map_err(|_| "mode must be raise, lower, smooth, flatten, noise, terrace, paint_layer, hole or unhole".to_string())?;
+                        .map_err(|_| "mode must be raise, lower, smooth, flatten, noise, terrace, paint_alpha, erase_alpha, paint_layer, hole or unhole".to_string())?;
                     let points: Vec<DVec3> = if op == "sculpt" {
                         point(&a["center"]).into_iter().collect()
                     } else {
@@ -1368,7 +1388,12 @@ impl App {
                         }
                     }
                 }
-                "clear_layer" => t.clear_layer(a["layer"].as_u64().unwrap_or(1) as usize),
+
+                // Clearing wipes paint everywhere, so the layer is never guessed.
+                "clear_layer" => match uint(&a["layer"]) {
+                    Some(layer) => t.clear_layer(layer as usize),
+                    None => return Err("clear_layer needs layer, the index of the blend layer to clear (0 to 3)".to_string()),
+                },
                 other => {
                     return Err(format!(
                         "unknown terrain op {other}, use sculpt, sculpt_path, paint_path, flatten_rect, ramp, erode, auto_paint, set_layers, holes or clear_layer, or only probe"
@@ -1411,7 +1436,11 @@ impl App {
         let count = args["count"].as_u64().unwrap_or(1).clamp(1, 512) as usize;
         let linked = args["linked"].as_bool().unwrap_or(false);
         let rotate = args["rotate_y"].as_f64().unwrap_or(0.0);
-        let opts = ops::EditOptions { uv_lock: true, grid: 0.0 };
+        let uv_lock = match bool_arg(args, "uv_lock") {
+            Ok(u) => u.unwrap_or(self.state.uv_lock),
+            Err(e) => return err(e),
+        };
+        let opts = ops::EditOptions { uv_lock, grid: 0.0 };
         let parent = match resolve_parent(&self.state, &Value::Null, Child::Other) {
             Ok(p) => p,
             Err(e) if linked => return err(e),
@@ -1458,13 +1487,14 @@ impl App {
         let cwd = || std::env::current_dir().map(super::tools::path_text).unwrap_or_default();
         let (doc, dir) = match args["path"].as_str() {
             Some(path) => {
-                let text = match std::fs::read_to_string(path) {
+                let file = super::tools::project_path(&self.state.game, path);
+                let text = match std::fs::read_to_string(&file) {
                     Ok(t) => t,
                     Err(e) => return err(format!("cannot read {path}: {e}")),
                 };
                 match serde_json::from_str::<Value>(&text) {
                     Ok(v) => {
-                        let parent = std::path::Path::new(path).parent().map(super::tools::path_text).unwrap_or_default();
+                        let parent = file.parent().map(super::tools::path_text).unwrap_or_default();
                         (v, if parent.is_empty() { cwd() } else { parent })
                     }
                     Err(e) => return err(format!("{path}: {e}")),
@@ -1587,6 +1617,18 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn platform_mode_takes_names_and_numbers() {
+        for (v, mode) in
+            [(json!(null), 0), (json!(1), 1), (json!("2"), 2), (json!("toggle"), 0), (json!("ping pong"), 1), (json!("Ping_Pong"), 1), (json!("once"), 2)]
+        {
+            assert_eq!(platform_mode(&v), Ok(mode), "{v}");
+        }
+
+        assert!(platform_mode(&json!("loop")).unwrap_err().contains("ping_pong"));
+        assert!(platform_mode(&json!(true)).is_err());
+    }
 
     #[test]
     fn resample_keeps_ends_and_spacing() {

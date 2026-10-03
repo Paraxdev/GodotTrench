@@ -98,7 +98,8 @@ See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 | Errors | A tool that could not do its job returns `isError`, including a failed `run_action` |
 | File dialogs | Actions that open one are refused, use `map_file` with a path. `run_action save` needs a map that already has a file |
 | Unsaved tabs | `run_action close_tab` refuses unsaved changes unless `args.discard` is true. `args.close_others` closes every tab but the active one instead |
-| Map paths | `map_file open` and `open_tab` resolve the path to an absolute one before opening, so a later `save` cannot land somewhere else because the process directory changed |
+| File paths | `res://` and relative paths in `map_file`, `run_script`, `import_model`, `changes_since` and `validate_map` start at the open project, or at the editor's working directory without one. `map_file open` and `open_tab` resolve the path to an absolute one before opening, so a later `save` cannot land somewhere else |
+| Editor settings | `transform` and `run_action rotate` and `flip` pivot on the selection center, snapped to the grid only while snapping is on, and keep textures locked while UV lock is on. `transform` takes `snap` and `uv_lock` to override that for one call, `duplicate` takes `uv_lock`. `run_action sculpt` and `blend` use the tool settings a person can change, `terrain_edit` uses fixed defaults |
 | Selection | `select` refuses unknown ids and skips hidden or locked nodes, listing them in `skipped` |
 | CSG | `csg_subtract`, `csg_merge`, `csg_intersect`, `csg_hollow` and `clip_apply` return `replaced`, old ids mapped to new ones |
 | Timeouts | Calls time out after 120 s, except `run_script`, `project_content` and `bake_lighting` |
@@ -114,8 +115,11 @@ See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 | `run_action` `create_decal` | Places a [decal](editor/decals.md), use it instead of thin brushes |
 | `create_brush` | `openings` carves doors and windows, `{min, max, count, step, rows, row_step}` repeats one as a grid |
 | `create_mesh` `rotate` | `[x, y, z]` degrees in Godot's YXZ order, so `[0, 0, 90]` lays a cylinder along X |
-| `transform` | Applies translate, rotate, flip and scale_to in that order, as one undo step |
-| `terrain_edit` | `probe [x, z]` without `op` only reads the height |
+| `transform` | Applies translate, rotate, flip and scale_to in that order, as one undo step. `rotate` turns 90 degrees about Y unless told otherwise |
+| `create_terrain` | `origin` is the terrain's minimum corner, unlike other tools. `center` places it around a point instead |
+| `create_brush`, `create_mesh` | A gable ridge runs along Z for brushes and along X for meshes. Both tools take `ridge_x` and `ridge_z` |
+| `map_file` exports | `path` is the written file, kept for older callers, `exported` names it too and `map_path` is the open map |
+| `terrain_edit` | `probe [x, z]` without `op` only reads the height. `clear_layer` needs `layer` |
 | `validate_map` | Accepts any method or property of the target's Godot class or script as an input. `coplanar_faces` flags faces that will flicker. Every issue has `bounds`. `path` checks a saved map without opening it, `project: true` checks every map in the project |
 | `run_action` `reload_materials` | Rescans the texture folder now, though new files are found on their own anyway |
 | `set_editor` `live_link_port` | Talks to a Godot editor whose project sets another `godottrench/live_link_port` |

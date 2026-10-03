@@ -319,8 +319,12 @@ impl App {
         let doc = &self.state.doc;
         let limit = args["limit"].as_u64().unwrap_or(100) as usize;
         let loaded;
+        if !args["file"].is_null() && !args["undo_steps"].is_null() {
+            return ToolResult::Error("pass file or undo_steps, not both".into());
+        }
+
         let (old, since) = if let Some(path) = args["file"].as_str() {
-            loaded = match gt_doc::format::load(std::path::Path::new(path)) {
+            loaded = match gt_doc::format::load(&super::tools::project_path(&self.state.game, path)) {
                 Ok(l) => l.map,
                 Err(e) => return ToolResult::Error(format!("cannot read {path}: {e}")),
             };
