@@ -358,8 +358,16 @@ impl BbModel {
         mesh
     }
 
-    /// Cubes as brushes with Valve UVs matching the Blockbench mapping. `tex_pixels` gives each texture's pixel size.
-    pub fn to_brushes(&self, scale: f64, offset: DVec3, material: impl Fn(Option<usize>) -> String, tex_pixels: impl Fn(Option<usize>) -> DVec2) -> Vec<Brush> {
+    /// Cubes as brushes with Valve UVs matching the Blockbench mapping. `tex_pixels` gives each texture's pixel size, and
+    /// sides the cube leaves out get `skip`, the project's skip tool texture.
+    pub fn to_brushes(
+        &self,
+        scale: f64,
+        offset: DVec3,
+        material: impl Fn(Option<usize>) -> String,
+        tex_pixels: impl Fn(Option<usize>) -> DVec2,
+        skip: &str,
+    ) -> Vec<Brush> {
         let place = DMat4::from_translation(offset) * DMat4::from_scale(DVec3::splat(scale));
         let mut out = Vec::new();
         for cube in &self.cubes {
@@ -372,7 +380,7 @@ impl BbModel {
             for face in &mut brush.faces {
                 let Some((_, poly)) = cube.faces.iter().find(|(dir, _)| (m.transform_vector3(dir.basis().0).normalize() - face.plane.normal).length() < 1e-3)
                 else {
-                    face.data.material = "special/skip".into();
+                    face.data.material = skip.into();
                     continue;
                 };
                 let px = tex_pixels(poly.texture);
@@ -509,8 +517,10 @@ mod tests {
         let mesh = m.to_mesh(2.0, DVec3::ZERO, |_| "bark".into());
         mesh.validate().unwrap();
         assert_eq!(mesh.faces.len(), 8);
-        let brushes = m.to_brushes(2.0, DVec3::ZERO, |_| "bark".into(), |_| DVec2::splat(16.0));
+        let brushes = m.to_brushes(2.0, DVec3::ZERO, |_| "bark".into(), |_| DVec2::splat(16.0), "tools/skip");
         assert_eq!(brushes.len(), 2);
+        let materials: Vec<&str> = brushes.iter().flat_map(|b| &b.faces).map(|f| f.data.material.as_str()).collect();
+        assert!(materials.contains(&"tools/skip") && !materials.contains(&"special/skip"), "sides the cubes leave out take the given skip texture");
         let trunk = &brushes[0];
         trunk.validate().unwrap();
         let (_, south) = m.cubes[0].faces.iter().find(|(d, _)| *d == CubeFace::South).unwrap();
