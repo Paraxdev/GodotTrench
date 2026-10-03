@@ -1032,7 +1032,7 @@ func test_scatter_and_blend() -> void:
 	print("- scatter sets and blend materials")
 	var settings: FuncGodotMapSettings = load(SETTINGS)
 	var data := {
-		"type": "scatter", "name": "trees", "kind": "props", "collision": "convex", "cast_shadows": true, "visibility_range": 3200,
+		"type": "scatter", "name": "trees", "kind": "props", "collision": "convex", "cast_shadows": true, "visibility_range": 3200, "chunk_size": 0,
 		"items": [{ "source": "res://demo/models/pine.bbmodel" }, { "source": "res://demo/models/missing.bbmodel" }],
 		"instances": [[0, 320, 0, 0, 0, 90, 0, 2.0], [0, -320, 16, 64, 0, 0, 0, 1.0], [1, 0, 0, 0, 0, 0, 0, 1.0]],
 	}
@@ -1096,6 +1096,24 @@ func test_scatter_and_blend() -> void:
 	check(collect(reloaded, func(n): return n is MultiMeshInstance3D).size() == 1, "scatter sets survive saving the scene")
 	reloaded.free()
 	map_node.free()
+
+	# Keys a set leaves out take the defaults the editor gives its kind.
+	var bare := { "type": "scatter", "name": "bare", "items": [], "instances": [] }
+	var props_set := GodotTrenchScatter.create(bare.merged({ "kind": "props" }), Transform3D.IDENTITY, settings)
+	check(props_set.collision == "convex" and near(props_set.chunk_size, 2048.0), "a props set defaults to convex collision and 2048 unit chunks")
+	props_set.free()
+	var foliage_set := GodotTrenchScatter.create(bare.merged({ "kind": "foliage" }), Transform3D.IDENTITY, settings)
+	check(foliage_set.collision == "none" and near(foliage_set.chunk_size, 2048.0), "a foliage set defaults to no collision and 2048 unit chunks")
+	foliage_set.free()
+	var foliage_data := data.duplicate(true)
+	for key in ["kind", "collision", "cast_shadows", "visibility_range", "chunk_size"]:
+		foliage_data.erase(key)
+	foliage_data["kind"] = "foliage"
+	foliage_data["instances"] = [[0, 32, 0, 0, 0, 0, 0, 1.0]]
+	var foliage := GodotTrenchScatter.create(foliage_data, Transform3D.IDENTITY, settings)
+	var foliage_meshes := collect(foliage, func(n): return n is MultiMeshInstance3D)
+	check(foliage_meshes.size() == 1 and foliage_meshes[0].cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and near(foliage_meshes[0].visibility_range_end, 75.0), "foliage defaults to no shadows and a 2400 unit visibility range")
+	foliage.free()
 
 	var blend := GodotTrenchBlend.key("showcase/cobble", "showcase/grass")
 	check(GodotTrenchBlend.is_blend(blend) and GodotTrenchBlend.parts(blend) == PackedStringArray(["showcase/cobble", "showcase/grass"]), "blend texture names round trip")

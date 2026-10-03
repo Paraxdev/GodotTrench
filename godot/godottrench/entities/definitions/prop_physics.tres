@@ -38,6 +38,7 @@ meta_properties = Dictionary[String, Variant]({
 "color": Color(0.7254902, 0.5019608, 0.23921569, 1),
 "size": AABB(-16, -16, 0, 16, 16, 32),
 "property_types": {"model": "resource", "size": "vector3", "debris_scene": "resource"},
+"gizmos": [{"type": "box", "property": "size", "half": true}],
 "inputs": ["smash", "ignite", "push", "take_damage"],
 "outputs": ["damaged", "broken"]
 })

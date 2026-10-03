@@ -49,7 +49,8 @@
       "outputs": [{ "name": "switched", "parameter": "on", "type": "bool" }]
     },
     { "classname": "func_detail", "type": "solid", "description": "Detail brushes", "color": "#99cc99ff", "node_class": "StaticBody3D", "properties": [] },
-    { "classname": "func_geo", "type": "solid", "description": "Geometry without collision", "color": "#9999e6ff", "node_class": "Node3D", "properties": [] },
+    { "classname": "func_detail_illusionary", "type": "solid", "description": "Detail brushes without collision, which do not occlude", "color": "#c2e0c2ff", "node_class": "Node3D", "properties": [] },
+    { "classname": "func_geo", "type": "solid", "description": "Collidable geometry that also occludes what is behind it", "color": "#9999e6ff", "node_class": "StaticBody3D", "properties": [] },
     { "classname": "func_illusionary", "type": "solid", "description": "Visible geometry without collision", "color": "#b3b3ffff", "node_class": "Node3D", "properties": [] },
     {
       "classname": "light_spot", "type": "point", "description": "Switchable spot light", "color": "#ffe64dff", "node_class": "SpotLight3D",

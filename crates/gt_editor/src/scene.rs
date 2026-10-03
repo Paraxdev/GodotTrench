@@ -213,16 +213,44 @@ pub fn entity_box(game: &GameConfig, e: &Entity) -> Aabb {
     game.entity(&e.classname).map(|d| d.bounds()).unwrap_or(Aabb::new(DVec3::splat(-8.0), DVec3::splat(8.0))).translated(e.origin)
 }
 
-/// "r g b" in 0..255 (FuncGodot) or 0..1.
+/// "r g b" read the way the color field and the addon read it, see [`crate::widgets::parse_color`].
 pub fn parse_color(s: &str) -> Option<Vec3> {
-    let v: Vec<f32> = s.split_whitespace().filter_map(|p| p.parse().ok()).collect();
-    if v.len() < 3 {
+    if s.split_whitespace().filter(|p| p.parse::<f32>().is_ok()).count() < 3 {
         return None;
     }
 
-    let scale = if v.iter().take(3).any(|c| *c > 1.0) { 255.0 } else { 1.0 };
-    Some(Vec3::new(v[0], v[1], v[2]) / scale)
+    Some(Vec3::from_array(crate::widgets::parse_color(s).0))
 }
+
+/// The entity's value for `key`, or its definition's default, since Godot fills keys a map leaves out from the FGD.
+pub fn entity_value<'a>(game: &'a GameConfig, e: &'a Entity, key: &str) -> Option<&'a str> {
+    e.property(key).or_else(|| game.entity(&e.classname)?.property(key).map(|p| p.default.as_str()).filter(|d| !d.trim().is_empty()))
+}
+
+pub fn entity_float(game: &GameConfig, e: &Entity, key: &str) -> Option<f32> {
+    entity_value(game, e, key).and_then(|s| s.trim().parse::<f32>().ok()).filter(|v| v.is_finite())
+}
+
+/// A bool property as the addon reads it: 1, true or yes in any case, or any other nonzero integer.
+pub fn parse_bool(s: &str) -> bool {
+    let s = s.trim();
+    ["1", "true", "yes"].iter().any(|t| s.eq_ignore_ascii_case(t)) || s.parse::<i64>().is_ok_and(|n| n != 0)
+}
+
+/// Whether a light is on when the map starts. start_on defaults to on, like the light and light_spot definitions.
+pub fn light_starts_on(game: &GameConfig, e: &Entity) -> bool {
+    entity_value(game, e, "start_on").is_none_or(parse_bool)
+}
+
+/// Fallbacks for a light whose definition is missing a key, equal to the built-in light and light_spot defaults.
+pub struct LightDefaults {
+    pub energy: f32,
+    pub range: f32,
+    pub angle: f32,
+}
+
+pub const OMNI_DEFAULTS: LightDefaults = LightDefaults { energy: 1.0, range: 10.0, angle: 0.0 };
+pub const SPOT_DEFAULTS: LightDefaults = LightDefaults { energy: 1.5, range: 15.0, angle: 35.0 };
 
 fn linear(c: Vec3) -> Vec3 {
     Vec3::new(gt_render::srgb_to_linear(c.x), gt_render::srgb_to_linear(c.y), gt_render::srgb_to_linear(c.z))
@@ -1266,23 +1294,25 @@ pub fn compute_lighting(map: &Map, game: &GameConfig) -> Lighting {
         let node_class = game.entity(&e.classname).map(|d| d.node_class.as_str()).unwrap_or("");
         let is_light =
             matches!(node_class, "OmniLight3D" | "SpotLight3D" | "DirectionalLight3D") || (node_class.is_empty() && e.classname.starts_with("light"));
-        if !is_light || e.property("start_on") == Some("0") {
+        if !is_light || !light_starts_on(game, e) {
             continue;
         }
 
-        let color = e.property("light_color").and_then(parse_color).unwrap_or(Vec3::ONE);
-        let energy = e.property("light_energy").and_then(|s| s.parse().ok()).unwrap_or(1.0f32);
+        let directional = node_class == "DirectionalLight3D" || e.classname.contains("directional") || e.classname == "light_environment";
+        let spot = !directional && (node_class == "SpotLight3D" || e.classname.contains("spot"));
+        let defaults = if spot { SPOT_DEFAULTS } else { OMNI_DEFAULTS };
+        let color = entity_value(game, e, "light_color").and_then(parse_color).unwrap_or(Vec3::ONE);
+        let energy = entity_float(game, e, "light_energy").unwrap_or(defaults.energy);
         let forward = (e.rotation() * DVec3::NEG_Z).as_vec3();
-        if node_class == "DirectionalLight3D" || e.classname.contains("directional") || e.classname == "light_environment" {
+        if directional {
             lighting.sun_direction = forward;
             lighting.sun_color = color;
             lighting.sun_energy = energy;
             continue;
         }
 
-        let spot = node_class == "SpotLight3D" || e.classname.contains("spot");
-        let range_m = e.property(if spot { "spot_range" } else { "omni_range" }).and_then(|s| s.parse().ok()).unwrap_or(10.0f32);
-        let cone = e.property("spot_angle").and_then(|s| s.parse::<f32>().ok()).unwrap_or(45.0);
+        let range_m = entity_float(game, e, if spot { "spot_range" } else { "omni_range" }).unwrap_or(defaults.range);
+        let cone = entity_float(game, e, "spot_angle").unwrap_or(defaults.angle);
         lighting.lights.push(PointLight {
             position: e.origin.as_vec3(),
             range: range_m * upm,
@@ -2120,6 +2150,31 @@ mod tests {
         assert_eq!(fixture_material(true, "night/neon", has), "dark:night/neon");
         assert_eq!(fixture_material(false, "night/neon", has), "night/neon", "lamps that start on keep their glow");
         assert_eq!(fixture_material(true, "dev/grey", has), "dev/grey", "materials that never glow have no dark copy");
+    }
+
+    #[test]
+    fn colors_read_like_the_color_field() {
+        assert_eq!(parse_color("255 128 0"), Some(Vec3::new(1.0, 128.0 / 255.0, 0.0)));
+        assert_eq!(parse_color("1.0 0.5 0.25"), Some(Vec3::new(1.0, 0.5, 0.25)), "unit floats");
+        assert_eq!(parse_color("1 1 1"), Some(Vec3::splat(1.0 / 255.0)), "integers are 0 to 255");
+        assert_eq!(parse_color("1 0.5"), None);
+    }
+
+    #[test]
+    fn preview_lights_fall_back_to_their_definition_defaults() {
+        let game = GameConfig::builtin();
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        map.insert(layer, NodeKind::Entity(gt_doc::entity::Entity::new("light_spot")));
+        let mut off = gt_doc::entity::Entity::new("light_spot");
+        off.properties.insert("start_on".into(), "false".into());
+        map.insert(layer, NodeKind::Entity(off));
+        let lighting = compute_lighting(&map, &game);
+        assert_eq!(lighting.lights.len(), 1, "start_on false counts as off");
+        let spot = &lighting.lights[0];
+        assert_eq!(spot.range, 15.0 * game.units_per_meter as f32);
+        assert!((spot.energy - 1.5 * 1.6).abs() < 1e-5);
+        assert!((spot.spot.unwrap().1 - 35f32.to_radians().cos()).abs() < 1e-6);
     }
 
     #[test]

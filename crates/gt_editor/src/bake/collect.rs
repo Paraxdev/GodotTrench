@@ -9,7 +9,7 @@ use gt_formats::GameConfig;
 use gt_geom::{Brush, Mesh, Terrain};
 
 use crate::materials::MaterialLibrary;
-use crate::scene::parse_color;
+use crate::scene::{OMNI_DEFAULTS, SPOT_DEFAULTS, entity_float, entity_value, light_starts_on, parse_color};
 
 /// Node classes whose geometry moves or is not drawn, so it neither takes a light map nor casts baked shadows.
 const DYNAMIC_CLASSES: [&str; 5] = ["AnimatableBody3D", "RigidBody3D", "CharacterBody3D", "VehicleBody3D", "Area3D"];
@@ -254,12 +254,14 @@ pub fn light_of(game: &GameConfig, e: &Entity, upm: f32, softness: f32) -> Optio
     }
 
     let class = game.entity(&e.classname).map(|d| d.node_class.as_str()).unwrap_or("");
-    let switchable = e.targetname().is_some() || e.property("start_on") == Some("0");
+    let switchable = e.targetname().is_some() || !light_starts_on(game, e);
     let mode = BakeMode::parse(e.property("bake_mode")).resolve(switchable);
-    let color = linear(e.property("light_color").and_then(parse_color).unwrap_or(Vec3::ONE)) * float(e, "light_energy").unwrap_or(1.0).max(0.0);
-    let forward = (e.rotation() * DVec3::NEG_Z).as_vec3();
     let directional = class == "DirectionalLight3D" || e.classname.contains("directional") || e.classname == "light_environment";
     let spot = !directional && (class == "SpotLight3D" || e.classname.contains("spot"));
+    let defaults = if spot { SPOT_DEFAULTS } else { OMNI_DEFAULTS };
+    let energy = entity_float(game, e, "light_energy").unwrap_or(defaults.energy).max(0.0);
+    let color = linear(entity_value(game, e, "light_color").and_then(parse_color).unwrap_or(Vec3::ONE)) * energy;
+    let forward = (e.rotation() * DVec3::NEG_Z).as_vec3();
     let size = float(e, "light_size").unwrap_or(0.0).max(0.0) * upm;
     let mut light = Light::omni(e.origin.as_vec3(), color, 0.0);
     light.direction = forward;
@@ -271,9 +273,9 @@ pub fn light_of(game: &GameConfig, e: &Entity, upm: f32, softness: f32) -> Optio
     } else {
         light.kind = if spot { LightKind::Spot } else { LightKind::Omni };
         let range_key = if spot { "spot_range" } else { "omni_range" };
-        light.range = float(e, range_key).unwrap_or(if spot { 15.0 } else { 10.0 }).max(0.0) * upm;
+        light.range = entity_float(game, e, range_key).unwrap_or(defaults.range).max(0.0) * upm;
         light.attenuation = float(e, if spot { "spot_attenuation" } else { "omni_attenuation" }).unwrap_or(1.0);
-        light.spot_cos = float(e, "spot_angle").unwrap_or(45.0).clamp(0.1, 179.0).to_radians().cos();
+        light.spot_cos = entity_float(game, e, "spot_angle").unwrap_or(defaults.angle).clamp(0.1, 179.0).to_radians().cos();
         light.spot_attenuation = float(e, "spot_angle_attenuation").unwrap_or(1.0);
         light.size = size.max(softness * LIGHT_SOFTNESS * upm);
     }
@@ -291,10 +293,28 @@ pub fn light_of(game: &GameConfig, e: &Entity, upm: f32, softness: f32) -> Optio
     Some((light, mode))
 }
 
+/// What Godot builds from the worldspawn key "environment", GodotTrenchEnvironment.mode in the addon.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EnvironmentMode {
+    Full,
+    SunOnly,
+    None,
+}
+
+impl EnvironmentMode {
+    pub fn of(map: &Map) -> EnvironmentMode {
+        match map.properties.get("environment").map(|v| v.trim().to_ascii_lowercase()).as_deref() {
+            Some("0" | "none") => EnvironmentMode::None,
+            Some("sun_only") => EnvironmentMode::SunOnly,
+            _ => EnvironmentMode::Full,
+        }
+    }
+}
+
 /// The worldspawn sun, or None when the map builds no sun.
 fn sun(map: &Map, softness: f32) -> Option<(Light, BakeMode)> {
     let props = &map.properties;
-    if props.get("environment").is_some_and(|v| v.trim() == "0") {
+    if EnvironmentMode::of(map) == EnvironmentMode::None {
         return None;
     }
 
@@ -325,7 +345,7 @@ fn sun(map: &Map, softness: f32) -> Option<(Light, BakeMode)> {
 /// The sky and ambient light rays leaving the map see, as the addon's WorldEnvironment builds them.
 pub fn sky(map: &Map) -> Sky {
     let props = &map.properties;
-    if props.get("environment").is_some_and(|v| v.trim() == "0") {
+    if EnvironmentMode::of(map) != EnvironmentMode::Full {
         return Sky::NONE;
     }
 
@@ -493,6 +513,33 @@ mod tests {
 
             assert!(s.axes[0].dot(s.normals[0]).abs() < 1e-5 && s.axes[1].dot(s.normals[0]).abs() < 1e-5);
         }
+    }
+
+    #[test]
+    fn environment_modes_match_the_addon() {
+        let mut map = Map::new();
+        assert!(sun(&map, 0.0).is_some() && sky(&map).energy > 0.0);
+        for (value, has_sun, has_sky) in [("0", false, false), ("None", false, false), ("sun_only", true, false), ("1", true, true)] {
+            map.properties.insert("environment".into(), value.into());
+            assert_eq!(sun(&map, 0.0).is_some(), has_sun, "sun with environment {value}");
+            assert_eq!(sky(&map).energy > 0.0, has_sky, "sky with environment {value}");
+        }
+    }
+
+    #[test]
+    fn lights_fall_back_to_their_definition_defaults() {
+        let game = GameConfig::builtin();
+        let spot = Entity::new("light_spot");
+        let (light, _) = light_of(&game, &spot, 32.0, 0.0).unwrap();
+        assert!((light.range - 15.0 * 32.0).abs() < 1e-4);
+        assert!((light.spot_cos - 35f32.to_radians().cos()).abs() < 1e-6);
+        assert!((light.color - Vec3::splat(1.5)).length() < 1e-5, "light_energy 1.5 from the definition");
+        let (omni, _) = light_of(&game, &Entity::new("light"), 32.0, 0.0).unwrap();
+        assert!((omni.range - 10.0 * 32.0).abs() < 1e-4 && (omni.color - Vec3::ONE).length() < 1e-5);
+
+        let mut off = Entity::new("light");
+        off.properties.insert("start_on".into(), "false".into());
+        assert_eq!(light_of(&game, &off, 32.0, 0.0).unwrap().1, BakeMode::Realtime, "a light that starts off stays switchable");
     }
 
     #[test]

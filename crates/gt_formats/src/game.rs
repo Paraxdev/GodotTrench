@@ -615,6 +615,7 @@ mod tests {
                 "env_reflection_probe",
                 "env_voxel_gi",
                 "func_detail",
+                "func_detail_illusionary",
                 "func_geo",
                 "func_illusionary",
                 "info_player_start",

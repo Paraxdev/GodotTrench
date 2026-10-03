@@ -25,6 +25,10 @@ static func run(t) -> void:
 	_test_terrain_layer_ambient_occlusion(t)
 	_test_terrain_height_at_follows_triangles(t)
 	_test_brush_bad_index_is_skipped(t)
+	_test_property_values_read_like_the_editor(t)
+	_test_environment_sun_keys(t)
+	_test_decal_uses_the_map_scale(t)
+	_test_origin_texture_and_zero_uv_scale(t)
 	await t.process_frame
 
 static func _box(id: int, mn: Vector3, mx: Vector3, material: String) -> Dictionary:
@@ -382,3 +386,69 @@ static func _test_brush_bad_index_is_skipped(t) -> void:
 	t.check(data != null, "the map still parses")
 	if data:
 		t.check(data.entities[0].brushes.size() == 1, "the malformed brush is dropped, the valid one is kept, got %d brushes" % data.entities[0].brushes.size())
+
+## Colors and bools in map values read the way the editor reads them, and a light that starts off stays switchable.
+static func _test_property_values_read_like_the_editor(t) -> void:
+	print("- colors and bools read like the editor")
+	t.check(GodotTrenchIO.to_color("1.0 0.8 0.5").is_equal_approx(Color(1.0, 0.8, 0.5)), "unit float colors stay as they are")
+	t.check(GodotTrenchIO.to_color("255 128 0").is_equal_approx(Color8(255, 128, 0)), "integer colors are 0 to 255")
+	t.check(GodotTrenchIO.to_color("1 1 1").is_equal_approx(Color8(1, 1, 1)), "1 1 1 without a decimal point is 0 to 255 like in the editor")
+	var map := {
+		"format": "godottrench-map", "version": 1, "properties": {},
+		"layers": [{ "id": 1, "type": "layer", "name": "Default", "children": [
+			{ "id": 2, "type": "entity", "classname": "light", "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0],
+				"properties": { "light_color": "1.0 0.8 0.5", "start_on": "false", "shadows": "True" } },
+		] }],
+	}
+	var data := FuncGodotParser.new().parse_gtm(map, load(SETTINGS), "props.gtm")
+	var lights := data.entities.filter(func(e): return str(e.properties.get("classname", "")) == "light")
+	t.check(lights.size() == 1, "the light parsed")
+	if lights.size() == 1:
+		var props: Dictionary = lights[0].properties
+		t.check(props["light_color"] is Color and (props["light_color"] as Color).is_equal_approx(Color(1.0, 0.8, 0.5)), "a unit color property is not read as 0 to 255, got %s" % [props["light_color"]])
+		t.check(props["start_on"] is bool and props["start_on"] == false, "start_on false is false")
+		t.check(props["shadows"] is bool and props["shadows"] == true, "shadows True is true")
+		t.check(GodotTrenchLightmap.bake_mode(props, "bake_mode") == Light3D.BAKE_DISABLED, "a parsed start_on false keeps the light switchable")
+	for value in [false, 0, "0"]:
+		t.check(GodotTrenchLightmap.bake_mode({ "start_on": value }, "bake_mode") == Light3D.BAKE_DISABLED, "start_on %s keeps the light out of the bake" % [value])
+	t.check(GodotTrenchLightmap.bake_mode({ "start_on": true }, "bake_mode") == Light3D.BAKE_STATIC, "a light that starts on is baked")
+
+## Sun keys alone build the sun the editor previews, and ssr takes any bool spelling.
+static func _test_environment_sun_keys(t) -> void:
+	print("- sun keys alone build the sun")
+	for key in ["sun_color", "sun_energy", "ambient_color", "sun_bake_mode"]:
+		t.check(GodotTrenchEnvironment.wants_environment({ key: "1" }), "%s alone builds the environment" % key)
+	var holder := Node3D.new()
+	var nodes := GodotTrenchEnvironment.build(holder, { "sun_color": "255 0 0", "sun_energy": "2", "ssr": "true" })
+	var suns := nodes.filter(func(n): return n is DirectionalLight3D)
+	t.check(suns.size() == 1 and suns[0].light_color.is_equal_approx(Color.RED) and t.near(suns[0].light_energy, 2.0), "the sun takes sun_color and sun_energy")
+	var envs := nodes.filter(func(n): return n is WorldEnvironment)
+	t.check(envs.size() == 1 and envs[0].environment.ssr_enabled, "ssr true turns on screen space reflections")
+	holder.free()
+
+## A projected decal's size follows its map's units per meter, not the project default.
+static func _test_decal_uses_the_map_scale(t) -> void:
+	print("- decal size uses the map scale")
+	var settings := (load(SETTINGS) as FuncGodotMapSettings).duplicate() as FuncGodotMapSettings
+	settings.inverse_scale_factor = 64.0
+	var map := FuncGodotMap.new()
+	map.map_settings = settings
+	var decal := GodotTrenchDecal.new()
+	decal._func_godot_apply_properties({ "size": Vector3(64, 32, 128) })
+	map.add_child(decal)
+	t.check(t.near(decal.size, Vector3(1, 0.5, 2)), "decal size in meters at 64 units per meter, got %s" % decal.size)
+	map.free()
+
+## Origin brushes match their texture in any case, and a zero UV scale counts as 1 like FaceUv::texel.
+static func _test_origin_texture_and_zero_uv_scale(t) -> void:
+	print("- origin texture case and zero uv scale")
+	var settings: FuncGodotMapSettings = load(SETTINGS)
+	var origin := GodotTrenchParser._parse_brush(settings, Transform3D.IDENTITY, _box(1, Vector3(-8, -8, -8), Vector3(8, 8, 8), settings.origin_texture.to_upper()))
+	t.check(origin != null and origin.origin, "an origin brush in upper case is still an origin brush")
+	var box := _box(2, Vector3(-8, -8, -8), Vector3(8, 8, 8), "showcase/cobble")
+	for f in box["faces"]:
+		f["uv"] = { "u_axis": [1.0, 0.0, 0.0], "v_axis": [0.0, 0.0, 1.0], "offset": [0.0, 0.0], "scale": [0.0, 0.0] }
+	var brush := GodotTrenchParser._parse_brush(settings, Transform3D.IDENTITY, box)
+	t.check(brush != null and t.near(brush.faces[0].uv.x.x, settings.scale_factor) and t.near(brush.faces[0].uv.y.y, settings.scale_factor), "a zero uv scale counts as 1")
+	var uv := FuncGodotUtil.get_valve_uv(Vector3(4, 0, 2), Vector3.RIGHT, Vector3.BACK, Transform2D(Vector2.ZERO, Vector2.ZERO, Vector2.ZERO))
+	t.check(uv.is_finite() and t.near(uv.x, 4.0) and t.near(uv.y, 2.0), "get_valve_uv treats a zero scale as 1, got %s" % uv)
