@@ -9,7 +9,7 @@ base64 text in JSON, and raw bytes in the [binary container](container.md#value-
 | --- | --- | --- | --- |
 | `origin` | `[x, y, z]` | required | World position of the first vertex |
 | `resolution` | `[nx, nz]` | required | Vertex count along X and Z, at least 2 each |
-| `cell_size` | number | required | Map units between neighbouring vertices |
+| `cell_size` | number | required | Map units between neighboring vertices |
 | `heights` | base64 | required | Little endian 32 bit floats, one height per vertex |
 | `layers` | array | required | Up to four texture layers, see below |
 | `splat` | base64 | omitted | Four weight bytes per vertex, one per layer, saying how much each layer shows there |

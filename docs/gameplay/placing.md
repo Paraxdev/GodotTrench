@@ -7,7 +7,7 @@ panel into a view, or double click its card to place it at the cursor. Ctrl or S
 dragging them drops them all in a row.
 
 A drop lands on the first solid surface under the pointer, passing trigger volumes and other entities. A 2D view
-cannot show depth, so the marker there is labelled with the height (or depth) it lands at. To place something inside
+cannot show depth, so the marker there is labeled with the height (or depth) it lands at. To place something inside
 a room with a roof in the Top view, hold Alt while you drop: the entity passes the roof and lands on the floor inside.
 In the Front and Side views Alt passes the near wall and puts the entity halfway across the room.
 
@@ -29,7 +29,7 @@ hinge, how far it travels, or its radius, instead of typing numbers.
 
 Outputs are set in the **Inspector**, where each connection is one row with the fields explained in
 [How entity I/O works](io.md). To connect two entities quickly, select both and use
-*Gameplay > Logic > Link Two Selected Entities...*, which opens a dialog to pick the output and input. The
+*Gameplay > Logic > Link Two Selected Entities…*, which opens a dialog to pick the output and input. The
 [Logic graph](logic-graph.md) shows all the wiring at once and connects entities by dragging from pin to pin.
 
 > **Warning:** The Link dialog does not take the entity you clicked first as the source. Check the direction and press

@@ -23,6 +23,7 @@ does.
 
 | Event | Fields | Reply |
 | --- | --- | --- |
+| `hello` | | `project` and `godot` (version), a quick check that the link answers |
 | `status` | | `project`, `godot` (version), `pid`, `scene` (the scene tab Godot shows) and `maps: [{path, epoch}]` for it |
 | `map_saved` | `path` | `rebuilt`, the number of map nodes rebuilt from the file, `scene` and `waiting` |
 | `build` | `path`, `text` | Like `map_saved`, built from `text` instead of the file |

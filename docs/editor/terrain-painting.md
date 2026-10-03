@@ -22,12 +22,12 @@ give softer edges than one strong pass.
 
 Slope and height make huge brushes safe, a hill sized brush in slope mode only turns the cliffs to rock.
 
-The falloff decides how the strength fades from the centre of the brush to its rim.
+The falloff decides how the strength fades from the center of the brush to its rim.
 
 | Falloff | Shape |
 | --- | --- |
 | smooth | A gentle fade, the usual choice |
-| linear | An even fade from centre to rim |
+| linear | An even fade from center to rim |
 | constant | The whole disc at the same strength, for hard edges |
 | spray | Random speckles, for pebbles and flowers |
 

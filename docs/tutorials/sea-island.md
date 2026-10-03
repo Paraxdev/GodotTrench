@@ -7,7 +7,7 @@ used for the pictures, in map units at 32 per meter.
 
 ## Create the terrain
 
-Open *Terrain > Create Terrain...* and set:
+Open *Terrain > Create Terrain…* and set:
 
 | Setting | Value and why |
 | --- | --- |

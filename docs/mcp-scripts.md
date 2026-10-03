@@ -28,7 +28,8 @@ python tools/mcp_script.py run examples/mcp/sea_island.json   # replay a script
 python tools/mcp_script.py shot view.png --pos 4300,900,3300 --look 2200,700,1200 --shade lit
 ```
 
-The scripts save into `godot/demo/maps/showcase`, `scripted_scene.json` into `godot/demo/maps`. A run stops at the
+The scripts save into `godot/demo/maps/showcase`, `scripted_scene.json` and `logic_playground.json` into
+`godot/demo/maps`. A run stops at the
 first failed step unless you pass `--continue-on-error`, and `--url` points the runner at an editor on another port.
 Each run is one undo step, named after the script's `label` or its file.
 
@@ -54,8 +55,9 @@ Each run is one undo step, named after the script's `label` or its file.
 script can save to different places.
 
 A step without `tool` is a comment. A step with `save` stores its result under that name, so later steps can use the
-ids it created. `screenshot`, `simulate_input` and `run_script` cannot run inside a script. The summary a run returns
-counts tool calls as `steps` and comments as `notes`.
+ids it created. `screenshot`, `simulate_input`, `walkability` and `run_script` cannot run inside a script, and neither
+can `project_content` installs other than `gameplay`. The summary a run returns counts tool calls as `steps` and
+comments as `notes`.
 
 Strings in `args` can refer to saved results and a few built-in variables:
 

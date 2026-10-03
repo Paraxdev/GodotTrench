@@ -11,12 +11,12 @@
 
 Dropping a material on a terrain sets a terrain layer instead, see [Terrain layers](terrain-layers.md).
 
-Right click a thumbnail for more: add it to your favourites, select the faces that use it, open the hotspot editor, or
+Right click a thumbnail for more: add it to your favorites, select the faces that use it, open the hotspot editor, or
 *Show in File Manager* to open the folder of its texture with the file selected, for example to edit it.
 
 UV lock (Ctrl+Shift+U) is on by default, so textures stay attached to a brush while you move it.
 
-## Built in colours
+## Built in colors
 
 The Materials panel always offers `dev/grey`, `dev/dark`, `dev/orange`, `dev/blue` and `dev/green`, grid textures
 for blocking out a level before it has art. Color coding rooms with them survives the build, since the addon ships the
@@ -67,5 +67,5 @@ close to its normal scale. The rectangles are read from `<texture>.hotspots.json
 
 ## Vertex paint
 
-The **Paint** tool (P) paints vertex colours onto brush faces, for dirt, tint and fake lighting. Pick the colour in the
+The **Paint** tool (P) paints vertex colors onto brush faces, for dirt, tint and fake lighting. Pick the color in the
 tool options bar, next to the brush radius and strength. Ctrl+wheel resizes the brush.

@@ -39,7 +39,7 @@ without a bigger tile, but it costs extra texture reads, so leave it at 0 where 
 ## How it looks in Godot
 
 Each layer is projected from above and from the sides, so cliffs show rock instead of a smear, and it matches the
-editor. Each layer uses its material's colour texture, normal map, roughness and emission. Ambient occlusion is used
+editor. Each layer uses its material's color texture, normal map, roughness and emission. Ambient occlusion is used
 when it sits in the roughness texture, like in an ORM texture, or when the layer has no roughness texture.
 
 ![The painted cliffs of the sea island in Godot](../assets/terrain-painting/godot-cliffs.jpg)
