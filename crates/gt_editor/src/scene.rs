@@ -183,7 +183,7 @@ pub struct SceneCache {
     lightmap: Option<(Arc<gt_doc::lightmap::Lightmap>, crate::bake::View)>,
 }
 
-fn same_lightmap(a: &Option<Arc<gt_doc::lightmap::Lightmap>>, b: &Option<Arc<gt_doc::lightmap::Lightmap>>) -> bool {
+pub(crate) fn same_lightmap(a: &Option<Arc<gt_doc::lightmap::Lightmap>>, b: &Option<Arc<gt_doc::lightmap::Lightmap>>) -> bool {
     match (a, b) {
         (Some(a), Some(b)) => Arc::ptr_eq(a, b),
         (None, None) => true,
@@ -1589,7 +1589,7 @@ impl SceneCache {
             dirty.extend(prev_drag_nodes.iter().copied());
         }
 
-        let fixtures = if lit { gt_doc::entity::off_fixtures(&map) } else { Default::default() };
+        let fixtures = if lit { gt_doc::entity::off_fixtures(&map, &|e, g| state.game.in_node_group(&e.classname, g)) } else { Default::default() };
         if fixtures != self.fixtures {
             let changed = fixtures.hidden.symmetric_difference(&self.fixtures.hidden).chain(fixtures.dark.symmetric_difference(&self.fixtures.dark));
             let changed: BTreeSet<NodeId> = changed.copied().collect();

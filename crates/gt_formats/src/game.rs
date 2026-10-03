@@ -84,6 +84,15 @@ impl Default for TextureConfig {
     }
 }
 
+/// Folders whose textures all build no visual mesh, like the project's tool textures. FuncGodotUtil in the Godot addon
+/// keeps the same list, `nodraw_lists_match_the_addon` compares them.
+pub const NODRAW_FOLDERS: [&str; 3] = ["special/", "tools/", "gt/"];
+
+/// Texture names that build no visual mesh in any folder. In Godot most still collide like clip, `skip`, `origin`,
+/// `hint`, `hintskip`, `null` and `areaportal` build nothing at all, and `occluder` faces feed the occluder.
+pub const NODRAW_NAMES: [&str; 13] =
+    ["clip", "skip", "origin", "sky", "trigger", "nodraw", "hint", "hintskip", "caulk", "null", "areaportal", "playerclip", "occluder"];
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ToolTextures {
     #[serde(default = "default_clip")]
@@ -198,6 +207,9 @@ pub struct EntityDef {
     /// Viewport handles for properties. Inferred from property names when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub gizmos: Vec<GizmoDef>,
+    /// Godot node groups the built node joins, so an `@group` target names it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub node_groups: Vec<String>,
 }
 
 fn one() -> f64 {
@@ -440,6 +452,11 @@ impl GameConfig {
         self.entities.iter().find(|e| e.classname == classname)
     }
 
+    /// Whether Godot puts the node built for `classname` in the node group `group`.
+    pub fn in_node_group(&self, classname: &str, group: &str) -> bool {
+        self.entity(classname).is_some_and(|d| d.node_groups.iter().any(|g| g == group))
+    }
+
     pub fn point_entities(&self) -> impl Iterator<Item = &EntityDef> {
         self.entities.iter().filter(|e| e.kind == EntityKind::Point && e.classname != "worldspawn")
     }
@@ -459,9 +476,17 @@ impl GameConfig {
         self.resolve_res(&self.textures.base_dir)
     }
 
+    /// Whether faces with `material` build no visual mesh in Godot: the project's clip, skip, origin and sky textures,
+    /// anything in a [`NODRAW_FOLDERS`] folder and anything named one of [`NODRAW_NAMES`].
     pub fn is_tool_texture(&self, material: &str) -> bool {
         let t = &self.tool_textures;
-        [&t.clip, &t.skip, &t.origin, &t.sky].iter().any(|tool| tool.eq_ignore_ascii_case(material))
+        if [&t.clip, &t.skip, &t.origin, &t.sky].iter().any(|tool| tool.eq_ignore_ascii_case(material)) {
+            return true;
+        }
+
+        let lower = material.to_ascii_lowercase();
+        let name = lower.rsplit('/').next().unwrap_or_default();
+        NODRAW_FOLDERS.iter().any(|f| lower.starts_with(f)) || NODRAW_NAMES.contains(&name)
     }
 
     /// Used when no project is open, and for a project that has not exported its config yet. Lists the core entities
@@ -721,7 +746,24 @@ mod tests {
         assert_eq!((tools.skip.as_str(), tools.origin.as_str(), tools.sky.as_str()), ("special/skip", "special/origin", "special/sky"));
         let cfg = GameConfig { tool_textures: tools, ..GameConfig::builtin() };
         assert!(cfg.is_tool_texture("tools/clip") && cfg.is_tool_texture("TOOLS/CLIP") && cfg.is_tool_texture("Special/Skip"));
-        assert!(!cfg.is_tool_texture("tools/clipper"));
+        assert!(!cfg.is_tool_texture("brick/clipper") && !cfg.is_tool_texture("special_brick") && !cfg.is_tool_texture(""));
+        for nodraw in ["special/trigger", "Special/NoDraw", "special/anything", "tools/toolsnodraw", "gt/occluder", "common/caulk", "e1u1/hint", "playerclip"] {
+            assert!(cfg.is_tool_texture(nodraw), "{nodraw}");
+        }
+    }
+
+    /// The Godot addon hides the same faces, see FuncGodotUtil.filter_face.
+    #[test]
+    fn nodraw_lists_match_the_addon() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../godot/addons/func_godot/src/util/func_godot_util.gd");
+        let src = std::fs::read_to_string(&path).expect("the addon submodule is checked out");
+        let list = |name: &str| -> Vec<String> {
+            let line = src.lines().find(|l| l.starts_with(&format!("const {name}"))).unwrap_or_else(|| panic!("{name} in func_godot_util.gd"));
+            let inner = &line[line.find('[').unwrap() + 1..line.rfind(']').unwrap()];
+            inner.split(',').map(|s| s.trim().trim_matches('"').to_string()).filter(|s| !s.is_empty()).collect()
+        };
+        assert_eq!(list("NODRAW_FOLDERS"), NODRAW_FOLDERS);
+        assert_eq!(list("NODRAW_NAMES"), NODRAW_NAMES);
     }
 
     #[test]

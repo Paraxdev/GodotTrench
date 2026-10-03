@@ -35,26 +35,7 @@ pub fn angles_to_quake(a: DVec3) -> DVec3 {
     DVec3::new(-a.x, a.y - 180.0, -a.z)
 }
 
-fn wrap_deg(d: f64) -> f64 {
-    let r = (d + 180.0).rem_euclid(360.0) - 180.0;
-    if (r + 180.0).abs() < 1e-9 { 180.0 } else { r }
-}
-
-pub fn angles_from_quake(q: DVec3) -> DVec3 {
-    DVec3::new(wrap_deg(-q.x), wrap_deg(q.y + 180.0), wrap_deg(-q.z))
-}
-
-/// `mangle` is yaw/pitch/roll on `light*` classes and unnegated pitch on `info_intermission`,
-/// matching entity_assembler.gd's special cases; everything else reads it the same as `angles`.
-fn mangle_from_quake(classname: &str, q: DVec3) -> DVec3 {
-    if classname.starts_with("light") {
-        DVec3::new(wrap_deg(q.y), wrap_deg(q.x + 180.0), wrap_deg(-q.z))
-    } else if classname == "info_intermission" {
-        DVec3::new(wrap_deg(q.x), wrap_deg(q.y + 180.0), wrap_deg(-q.z))
-    } else {
-        angles_from_quake(q)
-    }
-}
+pub use gt_doc::entity::{angles_from_quake, mangle_from_quake};
 
 fn write_brush(out: &mut String, brush: &Brush) {
     out.push_str("{\n");

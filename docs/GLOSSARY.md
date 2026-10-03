@@ -157,7 +157,7 @@ One pixel of a texture as it lands on a surface. By default one texel covers one
 The world size that one repeat of a texture covers, set as metadata/texture_size on a Godot material. Without it one pixel covers one map unit, which stretches a high resolution photo over a huge area.
 
 ## tool textures
-Special textures that tell the build what a brush face is for instead of drawing it. Clip faces only collide, skip faces are left out of the mesh, and origin faces set where a brush entity's origin is. The map settings name them, special/clip, special/skip and special/origin by default.
+Special textures that tell the build what a brush face is for instead of drawing it. Clip faces only collide, skip faces build nothing, and origin faces set where a brush entity's origin is. Every texture in the special/, tools/ or gt/ folder draws nothing in Godot, and so do nodraw, hint, trigger and the other tool names in any folder.
 
 ## TrenchBroom
 A free level editor for Quake style games. GodotTrench works much like it and can import its .map files.

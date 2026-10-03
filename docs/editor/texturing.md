@@ -23,6 +23,21 @@ for blocking out a level before it has art. Color coding rooms with them survive
 same grids and Godot uses them when the project has no texture of that name. A texture of your own at, for example,
 `res://textures/dev/grey.png` replaces one.
 
+## Tool textures
+
+Tool textures mark what a face does instead of drawing it. The editor shows them see-through with
+stripes, and the Godot build gives them no visual mesh. Every texture in the `special/`, `tools/` or `gt/` folder counts,
+and so does any texture named after one of the tools below, such as `common/caulk`.
+
+| Texture | In Godot |
+| --- | --- |
+| `special/clip`, `playerclip`, `nodraw`, `caulk`, `trigger`, `sky` and any other tool | Collides but draws nothing. A trigger keeps its trigger shape |
+| `special/skip`, `origin`, `hint`, `hintskip`, `null`, `areaportal` | Builds nothing at all. A brush of only these faces does not collide |
+| `special/occluder` | Draws nothing and does not hide neighbors, but adds to the occluder of an entity that builds one, like `func_geo` |
+
+The map settings name the clip, skip, origin and sky textures, `special/clip` and so on by default. An origin brush only
+sets its entity's origin with the texture the map settings name.
+
 ## The Texture tool
 
 A face's alignment is where its texture sits on it: the offset, scale and rotation. **Shift+T** switches to the
