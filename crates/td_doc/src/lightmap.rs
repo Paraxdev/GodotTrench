@@ -22,11 +22,19 @@ pub struct BakeOptions {
     #[serde(default)]
     pub texel_size: f64,
     /// 0 for hard shadows to 1 for the softest.
-    #[serde(default)]
+    #[serde(default = "default_softness")]
     pub softness: f64,
     #[serde(default)]
     pub backend: String,
 }
+
+/// Shadow softness of a bake that sets none.
+pub const DEFAULT_SOFTNESS: f64 = 0.3;
+
+fn default_softness() -> f64 {
+    DEFAULT_SOFTNESS
+}
+
 pub const VERSION: u32 = 1;
 
 /// Where one surface lies in the atlas. `rows` map a position in map units to its 0..1 atlas coordinate,
@@ -407,6 +415,12 @@ pub fn fingerprint(kind: &NodeKind) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bake_options_without_softness_get_the_default() {
+        let o: BakeOptions = serde_json::from_str(r#"{ "quality": "high" }"#).unwrap();
+        assert_eq!(o.softness, DEFAULT_SOFTNESS);
+    }
 
     fn sample() -> Lightmap {
         let mut nodes = BTreeMap::new();

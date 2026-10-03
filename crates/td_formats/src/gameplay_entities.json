@@ -419,7 +419,8 @@
         { "name": "debris_scene", "type": "resource", "description": "res:// scene spawned where it broke" }
       ],
       "outputs": [{ "name": "damaged", "parameter": "hp", "type": "float" }, { "name": "broken" }],
-      "inputs": [{ "name": "smash" }, { "name": "ignite", "parameter": "activator", "type": "node" }, { "name": "push", "parameter": "direction", "type": "vector3" }, { "name": "take_damage", "parameter": "amount", "type": "float" }]
+      "inputs": [{ "name": "smash" }, { "name": "ignite", "parameter": "activator", "type": "node" }, { "name": "push", "parameter": "direction", "type": "vector3" }, { "name": "take_damage", "parameter": "amount", "type": "float" }],
+      "gizmos": [{ "type": "box", "property": "size", "half": true }]
     },
     {
       "classname": "npc_walker", "type": "point", "description": "A scripted actor that walks a chain of path_corner entities playing animations, for in game cutscenes.", "color": "#ff4d6dff", "node_class": "CharacterBody3D",

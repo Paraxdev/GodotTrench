@@ -98,7 +98,7 @@ pub const TEXEL_RANGE: std::ops::RangeInclusive<f32> = 2.0..=128.0;
 
 impl Default for Options {
     fn default() -> Self {
-        Self { quality: Quality::Medium, texel_size: DEFAULT_TEXEL, softness: 0.3, backend: Backend::Cpu }
+        Self { quality: Quality::Medium, texel_size: DEFAULT_TEXEL, softness: lightmap::DEFAULT_SOFTNESS as f32, backend: Backend::Cpu }
     }
 }
 
