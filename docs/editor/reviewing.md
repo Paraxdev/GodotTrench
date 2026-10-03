@@ -50,6 +50,6 @@ Undo that step to take the agent's work back.
 | What changed since a git commit | `changes_since` with `file` set to that version, written with `git show HEAD:maps/level.gtm > old.gtm` |
 
 > **Tip:** Ask the agent to put a multi-step job in one `run_script` with a `label`, so the whole job undoes in one
-> step under a name you recognise.
+> step under a name you recognize.
 
 {% endmcp %}

@@ -5,7 +5,7 @@ brushes, meshes, terrain and models, with their textures inside. Use it to rende
 shot, or hand a blockout to an artist who builds the final meshes over it.
 
 > **Warning:** Only geometry and materials are exported. Entity logic, I/O wiring, triggers, scripts and gameplay
-> behaviour are left out, and the file cannot be opened in GodotTrench as a map again. The `.gtm` stays the map, keep
+> behavior are left out, and the file cannot be opened in GodotTrench as a map again. The `.gtm` stays the map, keep
 > editing that.
 
 ## Steps
@@ -41,13 +41,13 @@ and names any material the project has no image for. Those come out untextured.
 | Meshes, decals | One object each. Decals get blended, double sided materials |
 | Terrain | One object. Each triangle takes the texture of its strongest painted layer, so painted blends look stepped |
 | Prefab instances | The prefab's contents moved into place, under an object named after the instance |
-| Materials | One per material with its albedo texture, plus the normal, roughness, metallic, ambient occlusion and emission maps it has. Cut out and see-through materials keep their alpha, pixel art stays sharp. Built-in dev colours come out as their grid textures |
+| Materials | One per material with its albedo texture, plus the normal, roughness, metallic, ambient occlusion and emission maps it has. Cut out and see-through materials keep their alpha, pixel art stays sharp. Built-in dev colors come out as their grid textures |
 
 The file leaves out what the Godot build does not draw: faces with tool textures (clip, skip, origin, sky, trigger,
 nodraw, hint), faces hidden against another brush, trigger and other volume entities, and layers set to *Omit From
 Export*. Lights, sounds, spawn points, the sky and fog are not exported either. Only objects that go into the file hide
 each other's faces, so a pillar exported with *Selection only* keeps the bottom that rests on the floor, and a layer set
-to *Omit From Export* leaves no holes in its neighbours.
+to *Omit From Export* leaves no holes in its neighbors.
 
 ## Units and axes
 

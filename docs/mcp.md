@@ -91,9 +91,9 @@ Without [live mode](godot/live.md) Godot first builds the map as shown in GodotT
 
 See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 
-## Behaviour worth knowing
+## Behavior worth knowing
 
-| Topic | Behaviour |
+| Topic | Behavior |
 | --- | --- |
 | Errors | A tool that could not do its job returns `isError`, including a failed `run_action` |
 | File dialogs | Actions that open one are refused, use `map_file` with a path. `run_action save` needs a map that already has a file |

@@ -4,7 +4,8 @@
 godottrench [options] [map]
 ```
 
-With no options the editor opens, with the map when one is given. `godottrench --help` prints the options and exits.
+With no options the editor opens, with the map when one is given. `godottrench --help` (or `-h`) prints the options and
+exits.
 
 | Option | Does |
 | --- | --- |
@@ -16,9 +17,9 @@ With no options the editor opens, with the map when one is given. `godottrench -
 | `--export-glb <map> <out.glb>` | Writes the map's geometry and materials as glTF binary for Blender and other 3D tools, and exits |
 | `--export-obj <map> <out.obj>` | Writes the same as OBJ, with a `.mtl` and a folder of textures next to it, and exits |
 
-An unknown option, or one missing its value, prints an error and exits with code 2 instead of opening a window. The
-conversions and exports never open a window either, so they are safe in scripts and git hooks, see
-[Map files in git](development.md#map-files-in-git).
+An unknown option, or one missing its value, prints an error and exits with code 2 instead of opening a window. A
+conversion or export that fails prints the reason and exits with code 1. The conversions and exports never open a
+window either, so they are safe in scripts and git hooks, see [Map files in git](development.md#map-files-in-git).
 
 The exports find the map's Godot project from its folder and use the default options of *File > Export*: the whole map
 without hidden objects and scatter instances. They leave entity logic, triggers and scripts out, see

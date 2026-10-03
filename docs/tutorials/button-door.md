@@ -19,7 +19,7 @@ the button fires an output named `pressed`, and a link turns that into a call of
 2. Draw a small brush on the wall next to it and make it a `func_button` the same way.
 3. Select both entities: click the button, then Ctrl+click the door, in a view or in the Outliner. Typing `func` in
    the Outliner's *Filter* box lists only these two, which helps when walls are in the way. Then choose
-   *Gameplay > Logic > Link Two Selected Entities...*. The entity that fires, the button, must be on the left, press
+   *Gameplay > Logic > Link Two Selected Entities…*. The entity that fires, the button, must be on the left, press
    ⇄ if it is not. Pick `pressed` under *When* and `open` under *call*, then **Link**.
 
 The status bar confirms the new output, `pressed > main_door.open`, which reads "when pressed, call open on

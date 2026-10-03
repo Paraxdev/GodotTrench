@@ -83,7 +83,7 @@ one of them. `roll` decides by chance instead, for example whether a chest holds
 * **Keys:** `count` 3 (1 to 8), `no_repeat` 0, `chance` 50 (percent)
 
 `pick` fires `picked` with the number of the output it chose and then that output, so `picked` can feed a
-[`logic_case`](#logic_case). With `no_repeat` it never chooses the output it chose last time, unless `count` is 1.
+[`logic_case`](#logiccase). With `no_repeat` it never chooses the output it chose last time, unless `count` is 1.
 `roll` fires `on_success` with a probability of `chance` percent and `on_fail` otherwise, so 0 never succeeds and 100
 always does.
 

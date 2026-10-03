@@ -20,7 +20,7 @@ keys (the settings in the Inspector). How outputs connect to inputs is explained
 The pack is not part of the addon itself. Press **Install Gameplay Entities** in the *Set up this project* window, or
 choose *Gameplay > Install Gameplay Entities*, and its definitions and scripts are copied into
 `res://godottrench/entities`. Until then the Entities panel only lists the core: worldspawn, the `func_` helpers,
-`light`, `light_spot` and `info_player_start`.
+`light`, `light_spot`, the light and reflection probes and `info_player_start`.
 
 The copies belong to your project. Change an entity's script in `scripts/` or its keys and defaults in `definitions/`,
 delete the entities you do not use, or add your own. An addon update offers a newer pack but never overwrites a file you

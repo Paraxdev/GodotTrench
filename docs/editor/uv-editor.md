@@ -17,7 +17,7 @@ texture position for each corner instead, which is what meshes need.
 | --- | --- |
 | Drag empty space | Move the texture, or the whole faces when they have explicit UVs |
 | Wheel, right drag | Scale, rotate |
-| Click a corner | Select it together with the corners of neighbouring faces stitched to it |
+| Click a corner | Select it together with the corners of neighboring faces stitched to it |
 | Shift+click, Ctrl+click | Add, remove |
 | Alt+click | Select only that face's corner, to split a stitch |
 | Shift or Ctrl+drag on empty space | Box select, adding or removing |

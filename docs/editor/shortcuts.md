@@ -21,7 +21,7 @@ Select clears the selection.
 | T | Scale |
 | Tab | Edit the selection where it stands: meshes in the Mesh tool, brushes in the Vertex tool. It never converts a brush, *Mesh > Edit Mesh* does that |
 | Shift+T | Texture, to align textures on faces |
-| P | Paint, to paint vertex colours onto faces |
+| P | Paint, to paint vertex colors onto faces |
 | G | Sculpt terrain and displacements |
 | Shift+G | Blend terrain layers |
 | B | Scatter |

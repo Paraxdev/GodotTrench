@@ -70,7 +70,7 @@ GodotTrench can show where an agent walks without running the game. Open the pro
 whose `FuncGodotMap` builds the map, then turn on **View > Walkable Area > Show Walkable Area**. Godot bakes the scene
 over the [live link](live-link.md) and GodotTrench draws the result in the 3D and 2D views.
 
-| Colour | Meaning |
+| Color | Meaning |
 | --- | --- |
 | Bluish green | The biggest connected area, where most agents will be |
 | Vermillion | Islands an agent on the green area cannot reach. Look for a step higher than *Max climb*, a gap narrower than twice the *Radius* or a slope steeper than *Max slope* |

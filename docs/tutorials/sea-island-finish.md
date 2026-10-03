@@ -11,7 +11,7 @@ terrain. Then draw plain brushes running out to sea from the middle of the beach
 | Posts | 16 units square, two rows every 200 units, from 320 below the water up to the deck | `showcase/beam` |
 | Railing | Two short posts at the far end, 40 high | `showcase/beam` |
 
-Add props from the demo project's `models/polyhaven` folder with *File > Import > Model Prop (.bbmodel, .glb)...*:
+Add props from the demo project's `models/polyhaven` folder with *File > Import > Model Prop (.bbmodel, .glb)…*:
 two `wooden_crate_01` and a `wine_barrel_01` on the deck, a `lifebuoy` against a post and an `ocean_buoy` in the
 water. A prop references its model by `res://` path, so the file has to be inside the open Godot project.
 

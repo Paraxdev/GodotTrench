@@ -11,9 +11,9 @@ with [layers](terrain-layers.md) and the [Blend tool](terrain-painting.md).
 | Setting | Meaning |
 | --- | --- |
 | Resolution | How many vertices run along each side, from 33 to 1025. More vertices hold more detail but cost more to draw and sculpt |
-| Cell size | The distance in map units between two neighbouring vertices |
+| Cell size | The distance in map units between two neighboring vertices |
 
-For example, 257 vertices with 64 unit cells give 16384 units, 512 m. The terrain is centred on the 3D cursor, or on
+For example, 257 vertices with 64 unit cells give 16384 units, 512 m. The terrain is centered on the 3D cursor, or on
 the **Center** you type in with **3D cursor** unticked, and that height becomes the terrain's zero.
 
 **Shape** gives you a starting point instead of a flat plane: hills, a mountain, an island, a valley or ridges.
@@ -37,7 +37,7 @@ Press **G** and drag over the terrain. It works on the selected terrains, or on 
 | Mode | What it does |
 | --- | --- |
 | Raise, Lower | Builds height up or digs it down for as long as you hold the button. A click makes a small bump |
-| Smooth | Relaxes each vertex towards its neighbours, to soften lumps and sharp ridges |
+| Smooth | Relaxes each vertex towards its neighbors, to soften lumps and sharp ridges |
 | Flatten | Pulls the ground to the height where the stroke started, for building pads, roads and plateaus |
 | Noise | Adds small random bumps, so flat ground looks less artificial |
 | Terrace | Snaps heights to steps of **step** units, for rice fields or stepped cliffs |
@@ -45,7 +45,7 @@ Press **G** and drag over the terrain. It works on the selected terrains, or on 
 
 Ctrl+wheel resizes the brush, Shift swaps raise and lower, and Ctrl smooths whatever the mode.
 
-Strength sets how fast the brush works. Raise and Lower move the centre of the brush 8 units a second per point of
+Strength sets how fast the brush works. Raise and Lower move the center of the brush 8 units a second per point of
 strength whatever the radius, so the default strength 4 builds 32 units a second. For hills and islands turn the
 strength up rather than holding for a minute. Keep the radius above the terrain's cell size, a smaller brush only
 nudges the one vertex under it.
@@ -62,7 +62,7 @@ position, handy for placing things on the ground at runtime.
 
 ## MCP
 
-The `terrain_edit` tool's `sculpt` op applies a single dab, and its strength is how far that dab moves the centre, again
+The `terrain_edit` tool's `sculpt` op applies a single dab, and its strength is how far that dab moves the center, again
 whatever the radius. Holding a stroke for one second at strength 4 matches a dab of strength 32.
 
 {% endmcp %}

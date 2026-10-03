@@ -21,11 +21,15 @@ Everything CI runs has to pass locally. The commands are in [docs/development.md
 
 ```sh
 ./tools/fmt --check
+python3 tools/gen_licenses.py --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo test -p gt_editor --test e2e -- --ignored --test-threads=1
 godot --headless --path godot --script res://tests/run_tests.gd
+godot --headless --path godot --script res://tests/build_showcase.gd
 ```
+
+`build_showcase.gd` rewrites the committed showcase scenes, so leave its changes out of a commit unless they are meant.
 
 CI uses the Rust version in `RUST_TOOLCHAIN` in [ci.yml](.github/workflows/ci.yml). Clippy on a newer toolchain
 catches things an older one misses, so match it when you can.

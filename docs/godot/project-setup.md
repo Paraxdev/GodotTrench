@@ -17,7 +17,7 @@ note you can click. *Godot > Install or Update Addon…* opens the same window a
 | The addon as a git checkout or submodule | Nothing. Update it with git, the editor never replaces it |
 
 An update downloads the whole addon, unpacks it beside the project and only then swaps the folders, so a failed or
-cancelled download leaves the old addon in place. The old one moves to `.godottrench/addon-backups/func_godot-<version>`
+canceled download leaves the old addon in place. The old one moves to `.godottrench/addon-backups/func_godot-<version>`
 in the project. Godot skips folders whose names start with a dot, so it neither imports the backup nor lists it as a
 second plugin. Delete it once the new addon works.
 
@@ -32,9 +32,10 @@ into the project folder so it becomes `addons/func_godot`, replacing the old fol
 ## Core entities and the Gameplay entities pack
 
 The addon ships a small core that every project has: worldspawn, `func_detail`, `func_illusionary`, `func_geo`,
-`light`, `light_spot` and `info_player_start`. Doors, buttons, lifts, trains, triggers, logic, spawners, teleports,
-path corners, props, effects and the rest of the [entity reference](../gameplay/entities/README.md) are the
-Gameplay entities pack, which a project installs when it wants them.
+`light`, `light_spot`, `light_probe`, `env_reflection_probe`, `env_voxel_gi` and `info_player_start`. Doors, buttons,
+lifts, trains, triggers, logic, spawners, teleports, path corners, props, effects and the rest of the
+[entity reference](../gameplay/entities/README.md) are the Gameplay entities pack, which a project installs when it
+wants them.
 
 Installing copies the pack's definitions and scripts from the addon into `res://godottrench/entities`:
 

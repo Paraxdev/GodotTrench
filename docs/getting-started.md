@@ -29,7 +29,8 @@ the file as it was. Close Godot first if it has the project open, or it writes i
 
 ### Gameplay entities
 
-The addon itself brings a small core: worldspawn, the `func_` helpers, `light`, `light_spot` and `info_player_start`.
+The addon itself brings a small core: worldspawn, the `func_` helpers, `light`, `light_spot`, the light and reflection
+probes and `info_player_start`.
 Doors, buttons, lifts, triggers, logic, spawners, props and effects come as the Gameplay entities pack. Press **Install
 Gameplay Entities** in the same window to copy them into `res://godottrench/entities`, where they belong to your
 project and you can change them freely. The tutorials use them, so install the pack unless you want to write every
