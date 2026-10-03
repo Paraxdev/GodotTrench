@@ -2040,7 +2040,8 @@ pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: Model
             1
         }
         ModelImport::Brushes => {
-            let brushes = model.to_brushes(scale, at, material, |t| t.and_then(|i| sizes.get(i).copied()).unwrap_or(DVec2::splat(16.0)));
+            let skip = state.game.tool_textures.skip.clone();
+            let brushes = model.to_brushes(scale, at, material, |t| t.and_then(|i| sizes.get(i).copied()).unwrap_or(DVec2::splat(16.0)), &skip);
             let n = brushes.len();
             state.doc.edit("Import Model", |m, s| {
                 s.clear();
