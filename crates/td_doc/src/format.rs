@@ -195,13 +195,23 @@ pub fn to_string(map: &Map) -> String {
 
 /// [`to_string`] with the bake under `lightmap`, the readable layout of a whole map file and of the live link.
 pub fn to_string_with_lightmap(map: &Map) -> String {
-    let Some(lm) = &map.lightmap else { return to_string(map) };
+    crate::json_fmt::to_string(&value_with_lightmap(map))
+}
+
+fn value_with_lightmap(map: &Map) -> Value {
     let mut value = to_value(map);
-    if let Some(obj) = value.as_object_mut() {
+    if let Some(lm) = &map.lightmap
+        && let Some(obj) = value.as_object_mut()
+    {
         obj.insert("lightmap".into(), lm.to_json(&lm.stale_nodes(map)));
     }
 
-    crate::json_fmt::to_string(&value)
+    value
+}
+
+/// A value in the readable JSON layout, written to `out` as it is made.
+pub fn write_json(out: &mut impl std::io::Write, value: &Value) -> std::io::Result<()> {
+    crate::json_fmt::write(out, value)
 }
 
 /// The map in the binary container that `.tdm` files are saved in. Refuses a map too big for the editor to read back.
@@ -421,6 +431,13 @@ fn file_value(bytes: &[u8]) -> Result<FileValue, FormatError> {
 
 /// Any map file in the readable JSON layout, for `trenchdot --dump` and `--to-json`.
 pub fn file_to_json(bytes: &[u8]) -> Result<(String, Vec<String>), FormatError> {
+    let (value, problems) = file_json_value(bytes)?;
+    Ok((crate::json_fmt::to_string(&value), problems))
+}
+
+/// The value [`file_to_json`] writes out, with what a damaged file lost. [`write_json`] writes it without holding the
+/// text, which can be several times the size of the map in memory.
+pub fn file_json_value(bytes: &[u8]) -> Result<(Value, Vec<String>), FormatError> {
     let (mut value, mut problems, _, lightmap) = file_value(bytes)?;
     if let Some(lightmap) = lightmap {
         // The chunk decodes to the JSON layout already, `save` to a .json path writes the same key.
@@ -434,7 +451,7 @@ pub fn file_to_json(bytes: &[u8]) -> Result<(String, Vec<String>), FormatError> 
         }
     }
 
-    Ok((crate::json_fmt::to_string(&value), problems))
+    Ok((value, problems))
 }
 
 /// Any map file as the binary container with exactly its content, for `trenchdot --to-tdm`. Refuses a file the
@@ -495,9 +512,14 @@ pub fn load(path: &Path) -> Result<Loaded, FormatError> {
 /// JSON layout for hand editing, anything else the binary container.
 pub fn save(map: &Map, path: &Path) -> Result<(), FormatError> {
     let tmp = path.with_extension("tdm.tmp");
-    let json = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("json"));
-    let bytes = if json { to_string_with_lightmap(map).into_bytes() } else { to_bytes(map)? };
-    std::fs::write(&tmp, bytes)?;
+    if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("json")) {
+        let mut out = std::io::BufWriter::new(std::fs::File::create(&tmp)?);
+        write_json(&mut out, &value_with_lightmap(map))?;
+        std::io::Write::flush(&mut out)?;
+    } else {
+        std::fs::write(&tmp, to_bytes(map)?)?;
+    }
+
     std::fs::rename(&tmp, path)?;
     Ok(())
 }
@@ -572,7 +594,9 @@ mod tests {
         let path = dir.join("lit.json");
         save(&m, &path).unwrap();
         assert_eq!(load(&path).unwrap().map.lightmap, m.lightmap);
-        let saved: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(text, to_string_with_lightmap(&m), "the file is written as it is made, in the same layout");
+        let saved: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(saved["lightmap"]["stale"], serde_json::json!([2]), "node 2 changed since its fingerprint was taken");
         std::fs::remove_dir_all(&dir).ok();
 

@@ -182,14 +182,15 @@ pub fn convert(c: &Convert) -> Result<(), String> {
     let report = |path: &std::path::Path, problems: &[String]| problems.iter().for_each(|p| eprintln!("{}: {p}", path.display()));
     match c {
         Convert::Dump(from) | Convert::ToJson(from, _) => {
-            let (text, problems) = td_doc::format::file_to_json(&read(from)?).map_err(|e| format!("{}: {e}", from.display()))?;
+            let (value, problems) = td_doc::format::file_json_value(&read(from)?).map_err(|e| format!("{}: {e}", from.display()))?;
             report(from, &problems);
+            let write = |out: &mut dyn std::io::Write| {
+                let mut out = std::io::BufWriter::new(out);
+                td_doc::format::write_json(&mut out, &value).and_then(|()| std::io::Write::flush(&mut out))
+            };
             match c {
-                Convert::ToJson(_, to) => std::fs::write(to, text).map_err(|e| format!("{}: {e}", to.display())),
-                _ => {
-                    use std::io::Write;
-                    std::io::stdout().write_all(text.as_bytes()).map_err(|e| e.to_string())
-                }
+                Convert::ToJson(_, to) => std::fs::File::create(to).and_then(|mut f| write(&mut f)).map_err(|e| format!("{}: {e}", to.display())),
+                _ => write(&mut std::io::stdout().lock()).map_err(|e| e.to_string()),
             }
         }
         Convert::ToTdm(from, to) => {
