@@ -3,13 +3,16 @@
 A C# class can be a placeable entity without a `.tres` definition. The addon reads your source files: signals become
 outputs, exported members become keys and marked methods become inputs.
 
+Running C# entities needs the .NET build of Godot. The editor lists them either way.
+
 ## 1. Add the helper
 
-In the **Reference** panel (*View > Panels > Reference*), press **Add C# helper to project**. It writes
-`res://addons/func_godot/csharp/TrenchDot.cs`, which holds the attributes. Without it your entity code does not
-compile.
+Open the **Reference** panel (*View > Panels > Reference*) and press **Add C# helper to project** at its top left.
 
-Running C# entities needs the .NET build of Godot. The editor lists them either way.
+![The Reference panel with Add C# helper to project hovered, its tooltip says Writes TrenchDot.cs, the bridge C# entities use](../assets/csharp/reference-csharp-helper.png)
+
+It writes `res://addons/func_godot/csharp/TrenchDot.cs`, which holds the attributes. Without it your entity code
+does not compile.
 
 ## 2. Declare an entity
 
@@ -36,6 +39,9 @@ Names are snake_case in the map and PascalCase in C#. To read keys yourself, imp
 `_func_godot_apply_properties(Dictionary props)` and use the helper's readers like
 `TrenchDot.Float(props, "walk_speed", 3.5f)`.
 
+> **Tip:** The Reference panel's *C# class* tab writes a skeleton with the signals, exports and inputs of any entity,
+> a quick start for your own. It leaves out the `[TrenchDotEntity]` line, add that yourself.
+
 ## Where the addon looks
 
 The editor and the map build each scan folders for C# entity classes, set in two places:
@@ -61,7 +67,7 @@ foreach (Node barrel in TrenchDot.FindTargets(this, "barrel"))
 TrenchDot.FireOutput(this, "alerted", player);
 ```
 
-The Reference panel generates this code for any entity.
+The Reference panel's *Use from C#* tab generates this code for any entity.
 
 {% mcp %}
 

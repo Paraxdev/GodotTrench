@@ -1,7 +1,7 @@
 # Custom entities in GDScript
 
-Any script can be an entity. Declare a **signal** for each output and a **method** for each input, and emit the signal
-when the thing happens. This alarm has one output, `tripped`, and two inputs, `trip` and `disarm`:
+Any script can be an entity. Declare a **signal** for each output and a **method** for each input, then emit the
+signal when the thing happens. This alarm has one output, `tripped`, and two inputs, `trip` and `disarm`:
 
 ```gdscript
 @tool
@@ -23,16 +23,22 @@ func disarm() -> void:
 ```
 
 Make the activator the first `Node` argument of your signals, so chains further down still know who started them.
+
 Map keys arrive in `_func_godot_apply_properties`. Read them through `TrenchDotIO.to_bool`, `to_vector3` and
-`to_color`, which accept both text and already converted values. The script needs `@tool` because maps are built in
-the Godot editor, where only tool scripts run their methods.
+`to_color`, which accept both text and already converted values.
+
+The script needs `@tool`, because maps are built in the Godot editor, where only tool scripts run their methods.
 
 ## Making it placeable
 
 The editor learns about entity classes from your project's FGD, the list of entity definitions. Add a definition for
-the new class with the script as its script class, see [Project setup](../godot/project-setup.md). The game config
-then exports it to the editor, with its signals as outputs and its methods not starting with `_` as inputs. The
-**Reference** panel's **Create in project** writes a class skeleton for any entity, a quick start for your own.
+the new class with the script as its script class, see [Project setup](../godot/project-setup.md). The game config then
+exports it to the editor, with its signals as outputs and its methods not starting with `_` as inputs.
+
+For a quick start, open the **Reference** panel, pick a class close to yours and switch to the *GDScript class* tab.
+**Create in project** writes that skeleton under `res://entities/` (*FGD .tres* does the same for the definition).
+
+![The Reference panel on the GDScript class tab, Create in project hovered with its tooltip, Writes the file under res://entities/ unless it exists](../assets/custom-entities/reference-create-in-project.png)
 
 ## Calling I/O from code
 
@@ -45,6 +51,6 @@ for door in TrenchDotIO.find_targets(self, "main_door", null):
 TrenchDotIO.fire_output(self, &"tripped", activator)
 ```
 
-Prefer `invoke` over calling the method directly, it fits the parameter to the arguments like a map connection and
-handles the built-in inputs. `fire_output` fires every connection on that output by hand, useful when the entity has
-no signal of that name.
+Prefer `invoke` over calling the method directly, it fits the parameter to the arguments like a map connection does
+and handles the built-in inputs. `fire_output` fires every connection on that output by hand, useful when the entity
+has no signal of that name.

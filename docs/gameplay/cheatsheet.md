@@ -1,12 +1,12 @@
 # I/O cheatsheet
 
 A one page summary of [How entity I/O works](io.md) and [Targets, parameters and inputs](parameters.md), for when you
-know the idea and only need the details.
+know the idea and just need the details.
 
 ## When an output fires
 
-The signal fires, counts against *Times*, waits *Delay*, then calls the input on every node the target finds. None
-found means nothing happens, and a targetname or node path that finds nothing warns once.
+The signal fires, counts against *Times*, waits *Delay*, then calls the input on every node the target finds. If it
+finds none nothing happens, and a targetname or node path that finds nothing warns once.
 
 ## Targets
 

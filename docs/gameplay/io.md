@@ -1,13 +1,14 @@
 # How entity I/O works
 
-Entity I/O is how a map makes things happen without writing code, wired the way Hammer does it for Source. Every
-entity has **outputs**, events it announces such as a button being pressed, and **inputs**, things it can be told to
-do such as a door opening. A connection says: when this output fires, call that input on a target. The wiring is saved
-in the map, so a level designer can hook a button to a door and the door opens in game.
+Entity I/O is how a map makes things happen without writing code, wired the way Hammer does it for Source.
+
+Every entity has **outputs**, events it announces like a button being pressed, and **inputs**, things you can tell it
+to do like a door opening. A connection says: when this output fires, call that input on a target. The wiring is saved
+in the map, so you hook a button to a door in the editor and the door opens in game.
 
 ## A connection
 
-Each output of an entity can hold any number of connections. One connection has these fields:
+An output can hold any number of connections. Each one has these fields:
 
 | Field | What it does |
 | --- | --- |
@@ -18,8 +19,11 @@ Each output of an entity can hold any number of connections. One connection has 
 | Delay | Seconds to wait before calling the input, 0 calls it at once. Use it to stagger events, like lights coming on one after another |
 | Times | How many times the connection may fire. -1 means every time, 1 makes a one shot event |
 
-Connections are edited in the Inspector, one entity at a time, or all at once as wires between nodes in the
-[Logic graph](logic-graph.md). Both change the same outputs.
+You edit them in the Inspector, under **Outputs** of the selected entity, or as wires in the
+[Logic graph](logic-graph.md). Both change the same outputs. (The Inspector only has a **fire once** box for *Times*,
+for any other count use the connection box in the Logic graph.)
+
+![The Outputs section of the Inspector for a button: output pressed, target front_door, input open, an empty parameter, delay 0.00 s and the fire once box](../assets/io/inspector-outputs.png)
 
 In Godot an output is a signal and an input is a method: `func_button` has `signal pressed(activator)` and `func_door`
 has `func open()`. Your own scripts take part the same way, see [Custom entities](custom-entities.md).
@@ -31,8 +35,7 @@ For a targetname or node path that is almost always a typo, so it prints a warni
 call is dropped if its entity left the tree in the meantime, for example because it was killed.
 
 Without a delay the whole chain runs inside the signal's `emit`, before the code that emitted it carries on. That
-matters when your script reads state right after emitting, since the doors and counters further down have already
-reacted.
+matters when your script reads state right after emitting, the doors and counters further down have already reacted.
 
 ## The activator
 

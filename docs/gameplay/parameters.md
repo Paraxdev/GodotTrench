@@ -1,12 +1,12 @@
 # Targets, parameters and inputs
 
-A connection names its target, its input and an optional parameter as plain text. This page explains how that text
-turns into the nodes, the method and the values used in game.
+A connection names its target, its input and an optional parameter as plain text. This page shows how that text turns
+into the nodes, the method and the values used in game.
 
 ## Targets
 
 The target of a connection, and of keys like `call_target`, decides which nodes receive the input. Most of the time
-it is a targetname you gave another entity, the other forms cover groups of things and nodes outside the map.
+it is a targetname you gave another entity. The other forms reach groups of things and nodes outside the map.
 
 | Target | Reaches | Use it for |
 | --- | --- | --- |
@@ -26,7 +26,7 @@ Groups, node paths and `!player` work across the whole tree, use them when one m
 
 ### Runtime changes
 
-Targetname lookups are cached per map for speed. After spawning or renaming named entities at runtime, call
+Targetname lookups are cached per map for speed. After you spawn or rename named entities at runtime, call
 `TrenchDotIO.invalidate(node)` with any node in that map so the next lookup sees them. Renaming means changing the
 `td_targetname` meta, the node's `name` plays no part. Killing an entity needs no call, the cache notices freed nodes.
 
@@ -34,7 +34,7 @@ Nodes made by a spawner have no targetname. Reach them through their group, for 
 
 ## Parameters
 
-The parameter is a value typed into the connection and handed to the input, like `25` for `take_damage` or a speed
+The parameter is a value you type into the connection and hand to the input, like `25` for `take_damage` or a speed
 for a door. The text becomes the first type it fits:
 
 | You type | The input receives |
@@ -58,17 +58,17 @@ A parameter can also be one of these placeholders, filled in when the input is c
 | `$position` | The receiving entity's global position |
 | `$caller_name` | The receiving entity's targetname, else its node name |
 
-Placeholders are filled in on the **receiving** entity, not the one that fired. They must be the whole parameter or a
-whole array element, they are not replaced inside longer text.
+Placeholders are filled in on the **receiving** entity, not the one that fired. They have to be the whole parameter or
+a whole array element, they are not replaced inside longer text.
 
 ## No parameter
 
-With the parameter left empty, the activator goes into the first argument typed as an object, or untyped and named
+Leave the parameter empty and the activator goes into the first argument typed as an object, or untyped and named
 `activator`, wherever it sits. That is why `take_damage(amount, source)` gets it in `source`. Other values the output
 carried fill the remaining arguments in order, so `changed(value)` wired to `set_value` passes the value on.
 
-That forwards `false` too, so `switched(false)` wired to a counter's `add` adds 0. Set an explicit parameter when you
-want a fixed value.
+That forwards `false` too, so `switched(false)` wired to a counter's `add` adds 0. Set a parameter when you want a
+fixed value.
 
 ## How an input is found
 
