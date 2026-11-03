@@ -21,7 +21,8 @@ it is a targetname you gave another entity. The other forms reach groups of thin
 Targetnames are looked up inside the nearest `FuncGodotMap`, so two maps in one scene cannot reach each other's names.
 Groups, node paths and `!player` work across the whole tree, use them when one map has to talk to another.
 
-> **Note:** In Source, `!caller` is the entity that fired the output. Here it means the same as `!activator`, use
+> [!NOTE]
+> In Source, `!caller` is the entity that fired the output. Here it means the same as `!activator`, use
 > `!self` for the entity itself.
 
 ### Runtime changes

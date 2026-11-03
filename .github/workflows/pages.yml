@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "zensical.toml"
       - ".github/workflows/pages.yml"
   pull_request:
     paths:
       - "docs/**"
+      - "zensical.toml"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -26,18 +28,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v7
         with:
-          node-version: 22
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
 
-      - name: Install the book tools
-        working-directory: docs
-        run: npm ci
+      - name: Install Zensical
+        run: pip install -r docs/requirements.txt
 
-      - name: Build the book
-        working-directory: docs
-        # honkit resolves a relative output path against the book folder, which would put the site in docs/_site.
-        run: npx honkit build . "$GITHUB_WORKSPACE/_site"
+      - name: Build the site
+        # --strict fails on links to pages or headings that do not exist. The output lands in _site.
+        run: zensical build --clean --strict
+
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'

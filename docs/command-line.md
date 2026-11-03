@@ -27,7 +27,7 @@ The exports find the map's Godot project from its folder and use the defaults of
 without hidden objects and scatter instances. Entity logic, triggers and scripts are left out, see
 [Exporting to Blender and other 3D tools](editor/exporting.md).
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
@@ -40,4 +40,4 @@ Two more options start the [MCP server](mcp.md), so scripts and AI agents can dr
 
 `--default-prefs` pairs well with either, so a scripted session starts from the same settings every time.
 
-{% endmcp %}
+</div>

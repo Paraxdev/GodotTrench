@@ -9,19 +9,19 @@ convert a whole folder, open the Godot project first, then:
 
 1. Open the converter
 
-   Go to *File > Import > Convert Textures (VTF/VMT, WAD, WAL)…*.
+    Go to *File > Import > Convert Textures (VTF/VMT, WAD, WAL)…*.
 
-   ![File menu with Import open and Convert Textures (VTF/VMT, WAD, WAL)… hovered](../assets/importing-textures/file-import-convert-textures.png)
+    ![File menu with Import open and Convert Textures (VTF/VMT, WAD, WAL)… hovered](../assets/importing-textures/file-import-convert-textures.png)
 
 2. Pick the folder
 
-   Pick the folder with the `.vmt` and `.vtf`, `.wad` or `.wal` files. If the open map lacks some of them, the editor
-   asks whether to convert only **The map's** or **All**.
+    Pick the folder with the `.vmt` and `.vtf`, `.wad` or `.wal` files. If the open map lacks some of them, the editor
+    asks whether to convert only **The map's** or **All**.
 
-   The status bar should then say how many were converted, like "Textures: 12 converted", and they show up in the
-   Materials tab under their material names.
+    The status bar should then say how many were converted, like "Textures: 12 converted", and they show up in the
+    Materials tab under their material names.
 
-   ![The Materials tab searched for castle, showing brick_wall and stone_step from an imported map, with the tooltip castle/brick_wall, 1024 x 1024 px](../assets/importing-textures/converted-in-materials.png)
+    ![The Materials tab searched for castle, showing brick_wall and stone_step from an imported map, with the tooltip castle/brick_wall, 1024 x 1024 px](../assets/importing-textures/converted-in-materials.png)
 
 ## Where they are found
 
@@ -74,11 +74,11 @@ RGB and RGBA orders, I8, IA88, A8, RGB565, BGR565, BGRA4444, BGRA5551, BGRX5551,
 bit RGBA formats. Other formats, and VTF 7.6, are refused with the format named, so you know which file to convert by
 hand.
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
 Over the [MCP server](../mcp.md), convert a folder of textures with `map_file {op: convert_textures, path}`. Add
 `only_missing` to convert only what the open map lacks, and `overwrite` to replace files already in the project.
 
-{% endmcp %}
+</div>

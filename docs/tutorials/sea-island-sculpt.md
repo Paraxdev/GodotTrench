@@ -4,32 +4,32 @@ Sculpting pushes the generated ground into the shapes you want.
 
 1. Pick the Sculpt tool
 
-   Press **Escape** first, since the sea from the last part is still selected and Sculpt does nothing then. It works on
-   the selected terrain, or on every terrain when nothing is selected. Then press **G**, or click the Sculpt button in
-   the toolbar.
+    Press **Escape** first, since the sea from the last part is still selected and Sculpt does nothing then. It works on
+    the selected terrain, or on every terrain when nothing is selected. Then press **G**, or click the Sculpt button in
+    the toolbar.
 
-   ![The toolbar with the Sculpt Tool button hovered and its tooltip: raise, lower, smooth, flatten, noise and terrace terrains and displacements, Shift inverts, Ctrl smooths, Ctrl+wheel radius](../assets/sea-island/toolbar-sculpt.png)
+    ![The toolbar with the Sculpt Tool button hovered and its tooltip: raise, lower, smooth, flatten, noise and terrace terrains and displacements, Shift inverts, Ctrl smooths, Ctrl+wheel radius](../assets/sea-island/toolbar-sculpt.png)
 
 2. Find its settings
 
-   Mode, radius and strength sit in the tool options bar right under the toolbar, at the top left. Hold **Ctrl** while
-   you drag to smooth, whatever the mode.
+    Mode, radius and strength sit in the tool options bar right under the toolbar, at the top left. Hold **Ctrl** while
+    you drag to smooth, whatever the mode.
 
-   ![The Sculpt Tool options with radius 2800 and strength 32, and the mode list open on Raise, Lower, Smooth, Flatten, Noise, Terrace and Paint Alpha](../assets/sea-island/sculpt-mode-list.png)
+    ![The Sculpt Tool options with radius 2800 and strength 32, and the mode list open on Raise, Lower, Smooth, Flatten, Noise, Terrace and Paint Alpha](../assets/sea-island/sculpt-mode-list.png)
 
 3. Keep an eye on the height
 
-   The status bar at the bottom right shows the point under the pointer, and its middle number is the height. Handy to
-   judge how far you have raised or lowered a spot.
+    The status bar at the bottom right shows the point under the pointer, and its middle number is the height. Handy to
+    judge how far you have raised or lowered a spot.
 
-   ![The status bar coordinates -2200.0, 1193.6 and -599.9, the middle one being the height](../assets/sea-island/status-bar-height.png)
+    ![The status bar coordinates -2200.0, 1193.6 and -599.9, the middle one being the height](../assets/sea-island/status-bar-height.png)
 
 ## Hills
 
 1. **Raise**, radius 2800, strength 32. Hold the mouse button down west of the middle for about four seconds, until
-   the status bar says the hill is about 1500 units high.
+    the status bar says the hill is about 1500 units high.
 
-   ![The Sculpt Tool on Raise with radius 2800 and strength 32, and a hill growing under the brush ring as the button is held](../assets/sea-island/sculpt-raise.gif)
+    ![The Sculpt Tool on Raise with radius 2800 and strength 32, and a hill growing under the brush ring as the button is held](../assets/sea-island/sculpt-raise.gif)
 
 2. Radius 1300 on the same spot for a steeper top. A smaller brush lifts a narrower area, so the top gets pointier.
 3. Radius 1900 for a lower second hill to the south east.

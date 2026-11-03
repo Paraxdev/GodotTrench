@@ -61,7 +61,8 @@ the third argument to bake without the cache.
 A room that should be reachable but sits on an island of its own usually has a doorway blocked by something low, or a
 step higher than `max_climb`. Wall tops and the floor inside thick walls show up as small islands too.
 
-> **Warning:** Godot stops a path search after 4096 polygons and returns the path so far, which looks like an
+> [!WARNING]
+> Godot stops a path search after 4096 polygons and returns the path so far, which looks like an
 > unreachable spot on a big map. `TrenchDotNav.path(node, from, to)` has no limit. For agents, set
 > `path_search_max_polygons` on the `NavigationAgent3D` to 0.
 
@@ -71,15 +72,15 @@ You can see where an agent walks right in TrenchDot, without running the game.
 
 1. Open the scene in Godot
 
-   Save the map inside the project, and open the project in the Godot editor with a scene whose `FuncGodotMap` builds
-   that map.
+    Save the map inside the project, and open the project in the Godot editor with a scene whose `FuncGodotMap` builds
+    that map.
 
 2. Turn on the walkable area
 
-   Go to *View > Walkable Area > Show Walkable Area*. The agent size sits right below it, and the bottom line tells
-   you how much is walkable and how many islands are cut off.
+    Go to *View > Walkable Area > Show Walkable Area*. The agent size sits right below it, and the bottom line tells
+    you how much is walkable and how many islands are cut off.
 
-   ![The View menu with the Walkable Area submenu open: Show Walkable Area, then Radius 0.30 m, Height 1.80 m, Max climb 0.30 m, Max slope 45.00 degrees and Not baked yet](../assets/navigation/menu-walkable-area.png)
+    ![The View menu with the Walkable Area submenu open: Show Walkable Area, then Radius 0.30 m, Height 1.80 m, Max climb 0.30 m, Max slope 45.00 degrees and Not baked yet](../assets/navigation/menu-walkable-area.png)
 
 Godot bakes the scene over the [live link](live-link.md) and TrenchDot draws the result in the 3D and 2D views. (If
 it cannot bake, the status bar says why, for example that the map has to be saved into the project first.)
@@ -94,13 +95,14 @@ The colors mean:
 The overlay bakes again a moment after each edit. Without [live mode](live.md) Godot builds the map as shown first,
 like *Build in Godot*.
 
-> **Tip:** Wall and roof tops show up as small vermillion islands. Look for vermillion floor next to green floor.
+> [!TIP]
+> Wall and roof tops show up as small vermillion islands. Look for vermillion floor next to green floor.
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
 The [MCP server](../mcp.md) lets agents and scripts drive the editor. They check a map with the `walkability` tool,
 which returns the islands with their areas and bounds in map units.
 
-{% endmcp %}
+</div>

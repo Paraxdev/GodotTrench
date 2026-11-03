@@ -10,31 +10,32 @@ and compares those. You set this up once:
 
 1. Add this line to `.gitattributes` in your project:
 
-   ```
-   *.tdm binary diff=tdm
-   ```
+    ```
+    *.tdm binary diff=tdm
+    ```
 
 2. Tell git how to print a map, once per clone:
 
-   ```sh
-   git config diff.tdm.textconv "trenchdot --dump"
-   ```
+    ```sh
+    git config diff.tdm.textconv "trenchdot --dump"
+    ```
 
 3. (Optionally) keep backups and autosaves out of the repository with these lines in `.gitignore`:
 
-   ```
-   *.tdm.bak
-   *.tdm.autosave
-   ```
+    ```
+    *.tdm.bak
+    *.tdm.autosave
+    ```
 
 `git diff` and `git log -p` should now show map changes as JSON, instead of only saying that the binary files differ.
 
-> **Warning:** `trenchdot` has to be on your `PATH`, or `git diff` fails on maps.
+> [!WARNING]
+> `trenchdot` has to be on your `PATH`, or `git diff` fails on maps.
 
 To get that JSON as a file, `trenchdot --to-json map.tdm map.json` writes it, and `trenchdot --to-gtm map.json
 map.tdm` turns it back into a binary map. See [Command line](../command-line.md).
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
@@ -54,7 +55,8 @@ Undo that step to take the agent's work back.
 | What its last call or script changed | `changes_since` with `undo_steps: 1` |
 | What changed since a git commit | `changes_since` with `file` set to that version, written with `git show HEAD:maps/level.tdm > old.tdm` |
 
-> **Tip:** Ask the agent to put a multi-step job in one `run_script` with a `label`, so the whole job undoes in one
+> [!TIP]
+> Ask the agent to put a multi-step job in one `run_script` with a `label`, so the whole job undoes in one
 > step under a name you recognize.
 
-{% endmcp %}
+</div>

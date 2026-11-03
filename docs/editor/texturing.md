@@ -112,9 +112,9 @@ Hotspots let one trim sheet texture lots of differently shaped faces. You mark i
 picks the right one for each face.
 
 1. Right click the trim sheet in the Materials panel and choose **Hotspot Editor**. *Texture > Hotspot Editor…*
-   opens it too, for the material of the selected face or else the current one.
+    opens it too, for the material of the selected face or else the current one.
 
-   ![The Texture menu with Hotspot Editor… hovered, Hotspot Fit (Alt+H) at the bottom](../assets/texturing/menu-texture.png)
+    ![The Texture menu with Hotspot Editor… hovered, Hotspot Fit (Alt+H) at the bottom](../assets/texturing/menu-texture.png)
 
 2. Drag on the texture to draw a rectangle, or set a grid and click **Split into grid**. Drag a rectangle to move it,
    its corner handle to resize it, right click deletes it.

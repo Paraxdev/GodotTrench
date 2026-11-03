@@ -13,26 +13,26 @@ Every entity here comes with the Gameplay entities pack. Install it first if you
 
 1. Cover the entrance
 
-   Draw a brush over the entrance and make it a `trigger_once` named `start_zone` (right click, *Create Brush Entity >
-   trigger_once*). It fires `triggered` the first time the player walks in, then switches itself off, so the scene
-   only plays once.
+    Draw a brush over the entrance and make it a `trigger_once` named `start_zone` (right click, *Create Brush Entity >
+    trigger_once*). It fires `triggered` the first time the player walks in, then switches itself off, so the scene
+    only plays once.
 
 2. Add the timeline
 
-   Pick `logic_sequence` from *Gameplay > Logic*, it lands at the 3D cursor. Name it `cutscene`, set `steps` to 5 and
-   `interval` to 1.5. Once started it fires `step_1`, `step_2` and so on, 1.5 seconds apart.
+    Pick `logic_sequence` from *Gameplay > Logic*, it lands at the 3D cursor. Name it `cutscene`, set `steps` to 5 and
+    `interval` to 1.5. Once started it fires `step_1`, `step_2` and so on, 1.5 seconds apart.
 
-   ![The Gameplay menu with Logic open and logic_sequence hovered under Place at the cursor](../assets/cutscene/menu-logic-sequence.png)
+    ![The Gameplay menu with Logic open and logic_sequence hovered under Place at the cursor](../assets/cutscene/menu-logic-sequence.png)
 
 3. Start it from the trigger
 
-   Link `start_zone`'s `triggered` output to `cutscene.start`, with *Gameplay > Logic > Link Two Selected Entities…*
-   like in [Button opens a door](button-door.md).
+    Link `start_zone`'s `triggered` output to `cutscene.start`, with *Gameplay > Logic > Link Two Selected Entities…*
+    like in [Button opens a door](button-door.md).
 
 4. Wire each beat
 
-   Link each step output of `cutscene` to the entity that acts in that beat, one pair at a time. Dragging from an
-   output pin to an input pin in the [Logic panel](../gameplay/logic-graph.md) works too.
+    Link each step output of `cutscene` to the entity that acts in that beat, one pair at a time. Dragging from an
+    output pin to an input pin in the [Logic panel](../gameplay/logic-graph.md) works too.
 
 | Output | Target and input | What happens |
 | --- | --- | --- |
@@ -76,11 +76,11 @@ The scene script,
 only builds the map, spawns the player at the `info_player_start` and adds a `TrenchDotDebugOverlay`. Press **F3**
 in game to watch each output fire. It is the quickest way to spot a step that is wired to the wrong name.
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
 The demo map is built by driving the editor through the [MCP server](../mcp.md). The calls are in
 [examples/mcp/scripted_scene.json](https://github.com/Paraxdev/TrenchDot/blob/main/examples/mcp/scripted_scene.json).
 
-{% endmcp %}
+</div>

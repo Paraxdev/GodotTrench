@@ -78,7 +78,8 @@ Without [live mode](godot/live.md) Godot first builds the map as shown in Trench
 `"build": false` captures the scene as Godot has it. `width` and `height` default to 1280 by 720, and `fov` to the 3D
 view's.
 
-> **Note:** Godot needs a window to render, a headless Godot returns an error instead of an image. The window can be
+> [!NOTE]
+> Godot needs a window to render, a headless Godot returns an error instead of an image. The window can be
 > in the background or minimized.
 
 ## Reading and reviewing a map

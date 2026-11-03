@@ -98,7 +98,7 @@ The addon tests do this in
 [`godot/tests/editor/live_link_tabs.gd`](https://github.com/Paraxdev/TrenchDot/blob/main/godot/tests/editor/live_link_tabs.gd),
 which opens, closes, reloads and switches scene tabs in a headless editor and checks what the link reports.
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
@@ -112,4 +112,4 @@ Godot editor and edit the map through MCP:
 trenchdot --mcp-http --project godot
 ```
 
-{% endmcp %}
+</div>

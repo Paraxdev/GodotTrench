@@ -1,0 +1,72 @@
+# The docs site, built by Zensical from docs/. Run `zensical serve` or `zensical build` from this folder, see
+# docs/development.md#documentation.
+
+[project]
+site_name = "TrenchDot"
+site_description = "A brush based level editor for Godot"
+site_url = "https://paraxdev.github.io/TrenchDot/"
+repo_url = "https://github.com/Paraxdev/TrenchDot"
+repo_name = "Paraxdev/TrenchDot"
+edit_uri = "edit/main/docs/"
+docs_dir = "docs"
+site_dir = "_site"
+# The editor's help links, the welcome screen and the addon README point at page.html URLs.
+use_directory_urls = false
+# SUMMARY.md is still read as the nav, it is only kept out of the published pages.
+exclude_docs = """
+SUMMARY.md
+requirements.txt
+overrides/
+"""
+extra_css = ["stylesheets/td.css"]
+extra_javascript = ["javascripts/td.js"]
+
+[project.theme]
+custom_dir = "docs/overrides"
+language = "en"
+logo = "assets/logo.png"
+favicon = "assets/logo.png"
+# System fonts, so pages load nothing from Google Fonts.
+font = false
+features = [
+  "content.action.edit",
+  "content.code.copy",
+  "content.tooltips",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.sections",
+  "navigation.top",
+  "search.highlight",
+  "toc.follow",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+# Setting markdown_extensions replaces Zensical's default set, so everything the pages use is listed.
+[project.markdown_extensions]
+admonition = {}
+attr_list = {}
+md_in_html = {}
+tables = {}
+toc.permalink = true
+pymdownx.highlight.pygments_lang_class = true
+pymdownx.quotes.callouts = true
+pymdownx.superfences = {}
+
+[project.plugins.literate-nav]
+nav_file = "SUMMARY.md"

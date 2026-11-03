@@ -29,7 +29,8 @@ pub enum Topic<'a> {
 use Topic::{Menu, Panel, Section, Tool};
 
 /// Every topic with its page, the path under `docs/` without `.md`, and the anchor of a heading on that page or "" for
-/// its top. Anchors are HonKit's: the heading in lower case, spaces as hyphens, punctuation and underscores dropped.
+/// its top. Anchors are the ids Zensical gives headings: the heading in lower case, spaces as hyphens, punctuation
+/// dropped and underscores kept.
 pub const PAGES: &[(Topic<'static>, &str, &str)] = &[
     (Tool(ToolKind::Select), "editor/brushes", "draw-and-move"),
     (Tool(ToolKind::Clip), "editor/brushes", "reshape"),
@@ -43,7 +44,7 @@ pub const PAGES: &[(Topic<'static>, &str, &str)] = &[
     (Tool(ToolKind::Blend), "editor/terrain-painting", "the-blend-tool"),
     (Tool(ToolKind::Scatter), "editor/scatter", "painting"),
     (Tool(ToolKind::Volume), "gameplay/entities/triggers", ""),
-    (Tool(ToolKind::Path), "gameplay/entities/actors", "pathcorner"),
+    (Tool(ToolKind::Path), "gameplay/entities/actors", "path_corner"),
     (Tool(ToolKind::Measure), "editor/brushes", "rotate-scale-and-measure"),
     (Panel("View"), "editor/interface", "camera"),
     (Panel("Outliner"), "editor/organizing", "layers"),
@@ -91,7 +92,7 @@ pub const PAGES: &[(Topic<'static>, &str, &str)] = &[
     (Menu("Logic"), "gameplay/entities/logic", ""),
     (Menu("Link Two Selected Entities…"), "gameplay/placing", "wiring"),
     (Menu("Spawning"), "gameplay/entities/actors", ""),
-    (Menu("Paths"), "gameplay/entities/actors", "pathcorner"),
+    (Menu("Paths"), "gameplay/entities/actors", "path_corner"),
     (Menu("Tools"), "editor/shortcuts", "tools"),
     (Menu("View"), "editor/interface", "views"),
     (Menu("Godot Overlays"), "godot/overlays", ""),
@@ -132,7 +133,7 @@ pub fn page(topic: Topic) -> Option<(&'static str, &'static str)> {
 
 pub fn url(topic: Topic) -> Option<String> {
     let (page, anchor) = page(topic)?;
-    // HonKit publishes every README.md as the index.html of its folder.
+    // Zensical publishes every README.md as the index.html of its folder.
     let page = page.strip_suffix("README").map_or_else(|| page.to_string(), |folder| format!("{folder}index"));
     Some(if anchor.is_empty() { format!("{SITE}{page}.html") } else { format!("{SITE}{page}.html#{anchor}") })
 }
@@ -230,12 +231,20 @@ pub fn line(ui: &mut Ui, show: bool, text: &str, details: &str) {
 mod tests {
     use super::*;
 
-    /// HonKit's heading id, from the `github-slugid` package it uses.
+    /// Zensical's heading id, the slugify of Python-Markdown's `toc`: letters, digits, underscores, spaces and hyphens are
+    /// kept, and every run of spaces and hyphens becomes one hyphen.
     fn slug(heading: &str) -> String {
-        const SYMBOLS: &str = "[]!\"'#$%&()*+,./:;<=>?@\\^_`{|}~©∑®†“”‘’∂ƒ™℠…œŒ˚ºª•∆∞♥";
-        let kept: String = heading.chars().filter(|c| !SYMBOLS.contains(*c)).collect();
-        let slug = kept.replace(' ', "-").to_lowercase();
-        slug.strip_prefix('-').map(str::to_string).unwrap_or(slug)
+        let kept: String = heading.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-') || c.is_whitespace()).collect();
+        let mut slug = String::new();
+        for c in kept.trim().chars() {
+            if c != '-' && !c.is_whitespace() {
+                slug.push(c.to_ascii_lowercase());
+            } else if !slug.ends_with('-') {
+                slug.push('-');
+            }
+        }
+
+        slug
     }
 
     /// The text of the headings in a markdown page, as the HTML shows it.
@@ -265,11 +274,12 @@ mod tests {
     }
 
     #[test]
-    fn slugs_match_honkit() {
+    fn slugs_match_zensical() {
         assert_eq!(slug("Hello World"), "hello-world");
-        assert_eq!(slug("Cool !!"), "cool-");
+        assert_eq!(slug("Cool !!"), "cool");
         assert_eq!(slug("4. Build a room"), "4-build-a-room");
-        assert_eq!(slug("path_corner"), "pathcorner");
+        assert_eq!(slug("path_corner"), "path_corner");
+        assert_eq!(slug("`light_probe`, `env_reflection_probe` and `env_voxel_gi`"), "light_probe-env_reflection_probe-and-env_voxel_gi");
         assert_eq!(slug("Rotate, scale and measure"), "rotate-scale-and-measure");
         assert_eq!(headings("# Title\n```\n# not a heading\n```\n## See [Targets](x.md#y) here"), ["Title", "See [Targets] here"]);
     }

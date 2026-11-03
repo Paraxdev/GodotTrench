@@ -8,16 +8,16 @@ node, so nothing rebuilds at runtime unless you ask for it.
 
 1. Add the node
 
-   In the Godot editor, press Ctrl+A in your scene, search for `FuncGodotMap` and add it.
+    In the Godot editor, press Ctrl+A in your scene, search for `FuncGodotMap` and add it.
 
 2. Point it at your map
 
-   With the node selected, set *Local Map File* in Godot's Inspector to the `.tdm` you saved.
+    With the node selected, set *Local Map File* in Godot's Inspector to the `.tdm` you saved.
 
 3. Build it
 
-   Click **Build Map** at the top of the Inspector. You should see the map in Godot's viewport, and the node gets
-   children for the meshes and entities. Save the scene with Ctrl+S to keep them. **Clear Map** removes them again.
+    Click **Build Map** at the top of the Inspector. You should see the map in Godot's viewport, and the node gets
+    children for the meshes and entities. Save the scene with Ctrl+S to keep them. **Clear Map** removes them again.
 
 These are the settings you see in the Inspector:
 
@@ -33,7 +33,8 @@ These are the settings you see in the Inspector:
 The addon only builds `.tdm` files. To use a Quake `.map` or Hammer `.vmf`, open it with *File > Import* in TrenchDot
 and save it as `.tdm` first.
 
-> **Warning:** A build deletes every child of the map node except [overlays](overlays.md). Keep your own nodes next to
+> [!WARNING]
+> A build deletes every child of the map node except [overlays](overlays.md). Keep your own nodes next to
 > the map node, or in an overlay.
 
 ## Three ways to build
@@ -107,7 +108,8 @@ if not report["missing_models"].is_empty():
 
 Missing models, materials and tool textures also print one warning each, however many props share the path.
 
-> **Note:** Overlays you add after `build()` are not there when the report looks for targets, so their targetnames show
+> [!NOTE]
+> Overlays you add after `build()` are not there when the report looks for targets, so their targetnames show
 > up under `unresolved_targets`.
 
 ## Damaged maps

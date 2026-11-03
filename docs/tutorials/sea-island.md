@@ -37,27 +37,27 @@ The sea is one flat brush the player can walk into.
 
 1. Draw a huge box
 
-   Press **Q** for the Select tool and **Escape** so the terrain is no longer selected, otherwise your drag sculpts or
-   moves it. Then drag in the Top view to draw a box many times larger than the terrain, or its edge shows on the
-   horizon.
+    Press **Q** for the Select tool and **Escape** so the terrain is no longer selected, otherwise your drag sculpts or
+    moves it. Then drag in the Top view to draw a box many times larger than the terrain, or its edge shows on the
+    horizon.
 
 2. Flatten it
 
-   In the Front view, make it 32 units thick with its top at height 0.
+    In the Front view, make it 32 units thick with its top at height 0.
 
 3. Make it water
 
-   With the box selected, click `showcase/water` in the Materials tab. Then Shift+click the water in the 3D view to
-   select just its top face, and set *scale* to 8 and 8 in the *Alignment* section of the Inspector. That way the
-   water texture does not repeat every few meters.
+    With the box selected, click `showcase/water` in the Materials tab. Then Shift+click the water in the 3D view to
+    select just its top face, and set *scale* to 8 and 8 in the *Alignment* section of the Inspector. That way the
+    water texture does not repeat every few meters.
 
-   ![The Inspector with 1 faces selected, material showcase/water and the Alignment scale at 8.00 and 8.00](../assets/sea-island/inspector-alignment-scale.png)
+    ![The Inspector with 1 faces selected, material showcase/water and the Alignment scale at 8.00 and 8.00](../assets/sea-island/inspector-alignment-scale.png)
 
 4. Let the player wade in
 
-   Click the water once, away from the island, so the whole box is selected again instead of just its top face. Then
-   right click it and pick *Create Brush Entity > func_illusionary*. It renders without collision, so the player can
-   walk into the water.
+    Click the water once, away from the island, so the whole box is selected again instead of just its top face. Then
+    right click it and pick *Create Brush Entity > func_illusionary*. It renders without collision, so the player can
+    walk into the water.
 
 You should now have an island in the sea, ready for sculpting:
 
@@ -65,7 +65,7 @@ You should now have an island in the sea, ready for sculpting:
 
 Next: [Sea island 2: sculpting](sea-island-sculpt.md).
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
@@ -73,4 +73,4 @@ The [MCP server](../mcp.md) lets agents and scripts drive the editor.
 [examples/mcp/sea_island.json](https://github.com/Paraxdev/TrenchDot/blob/main/examples/mcp/sea_island.json) is an
 MCP script that builds the same island, so you can replay it to check a value.
 
-{% endmcp %}
+</div>

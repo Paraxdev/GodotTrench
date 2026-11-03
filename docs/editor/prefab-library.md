@@ -13,14 +13,14 @@ for walls like a doorway. Lighter means nearer.
 
 1. Point at the spot
 
-   Hover the spot in a view where the piece should go, that sets the 3D cursor.
+    Hover the spot in a view where the piece should go, that sets the 3D cursor.
 
 2. Click the card
 
-   Type in *Search prefabs* or pick a category to find it, then click it. The piece is pasted centered on that spot
-   and snapped to the grid, like Ctrl+V.
+    Type in *Search prefabs* or pick a category to find it, then click it. The piece is pasted centered on that spot
+    and snapped to the grid, like Ctrl+V.
 
-   ![The Switchback stair pasted into a small room, its steps in the grey dev materials](../assets/prefab-library/pasted-switchback-stair.png)
+    ![The Switchback stair pasted into a small room, its steps in the grey dev materials](../assets/prefab-library/pasted-switchback-stair.png)
 
 Only the spot on the floor plan follows the cursor. The height stays as the piece was saved, so on an upper floor lift
 it up afterwards.
@@ -33,27 +33,28 @@ text.
 
 To cover a whole area with pieces picked at random, use [Random fill](random-fill.md).
 
-> **Tip:** A piece is plain map content once pasted. For something that should stay in sync everywhere it is used, like
+> [!TIP]
+> A piece is plain map content once pasted. For something that should stay in sync everywhere it is used, like
 > a window frame repeated across a building, make a [prefab instance](organizing.md#prefabs) instead.
 
 ## Your own pieces
 
 1. Select the objects
 
-   Select what should become the piece, with a Godot project open.
+    Select what should become the piece, with a Godot project open.
 
 2. Add the selection
 
-   Open **Add the selection** at the top of the Prefabs tab, give the piece a name and a category, and click **Add**.
+    Open **Add the selection** at the top of the Prefabs tab, give the piece a name and a category, and click **Add**.
 
-   ![Add the selection opened, with Grand stair as the name, Stairs as the category, Keep position unticked and the tooltip of Add: Saves the selection as a .tdm in res://prefab_library, its bottom center on the origin](../assets/prefab-library/add-the-selection.png)
+    ![Add the selection opened, with Grand stair as the name, Stairs as the category, Keep position unticked and the tooltip of Add: Saves the selection as a .tdm in res://prefab_library, its bottom center on the origin](../assets/prefab-library/add-the-selection.png)
 
 3. Find the new card
 
-   It shows up first, with a blue frame. Right click it for *Open to edit*, which opens the piece as a map, and *Show in
-   File Manager*. Built-in pieces cannot be edited.
+    It shows up first, with a blue frame. Right click it for *Open to edit*, which opens the piece as a map, and *Show in
+    File Manager*. Built-in pieces cannot be edited.
 
-   ![Right click menu on the Grand stair card with Paste, Copy, Open to edit hovered and Show in File Manager](../assets/prefab-library/card-menu.png)
+    ![Right click menu on the Grand stair card with Paste, Copy, Open to edit hovered and Show in File Manager](../assets/prefab-library/card-menu.png)
 
 The piece is saved as a `.tdm` in `res://prefab_library/<category>/`, moved so the bottom center of the selection sits
 on the origin. Tick **Keep position** to leave it where it is instead, for a piece you built around the map's origin on
@@ -69,10 +70,12 @@ prefab collection on the web, and press Ctrl+V in a map. Groups come across as g
 axes are turned the same way as when [importing a .map](importing.md). Texture names are kept, other games' tool
 textures become the project's.
 
-{% mcp %}
+<div class="td-mcp" markdown>
+
 ## MCP
 
 The `prefab_library` tool lists pieces (`op: list`), pastes one by its `category/name` (`op: paste`, with `origin` or
 `offset`), returns its clipboard text (`op: copy`), and adds objects to the project's library (`op: add`, the selection
 unless `ids` are given). `run_action` with `paste` accepts TrenchBroom clipboard text as well as TrenchDot's.
-{% endmcp %}
+
+</div>

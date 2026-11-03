@@ -24,4 +24,5 @@ they are ready when they appear. It draws nothing on screen and runs none of the
 
 On a test game with five maps, it took the first frame of play from 360 ms to 22 ms, for half a second of warm-up.
 
-> **Tip:** Also turn on **Shader Baker** in your export presets, so players skip compiling shaders on first launch.
+> [!TIP]
+> Also turn on **Shader Baker** in your export presets, so players skip compiling shaders on first launch.

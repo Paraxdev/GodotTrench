@@ -15,30 +15,30 @@ export are neither lit by the bake nor cast baked shadows.
 
 1. Open the Bake Lighting window
 
-   Choose *Godot > Bake Lighting…*.
+    Choose *Godot > Bake Lighting…*.
 
-   ![The Godot menu with Bake Lighting hovered and its tooltip showing](../assets/light-baking/menu-bake-lighting.png)
+    ![The Godot menu with Bake Lighting hovered and its tooltip showing](../assets/light-baking/menu-bake-lighting.png)
 
 2. Check what goes in
 
-   The top line sums it up, for example "Bakes the sun, 1 light, the sky and glowing materials into 102 surfaces", and
-   says which lights stay real time.
+    The top line sums it up, for example "Bakes the sun, 1 light, the sky and glowing materials into 102 surfaces", and
+    says which lights stay real time.
 
-   ![The Bake Lighting window with Quality set to Medium, Texel size 16.0 u, Shadow softness 0.30 and Runs on CPU](../assets/light-baking/bake-dialog.png)
+    ![The Bake Lighting window with Quality set to Medium, Texel size 16.0 u, Shadow softness 0.30 and Runs on CPU](../assets/light-baking/bake-dialog.png)
 
 3. Pick a quality and a texel size
 
-   See [the options](#dialog-options) below. The defaults are fine for a first look.
+    See [the options](#dialog-options) below. The defaults are fine for a first look.
 
 4. Click **Bake**
 
-   A progress window shows the stage, and you can keep editing meanwhile. Changes made during the bake are not in it.
-   **Cancel** stops it and the map keeps the lighting it had.
+    A progress window shows the stage, and you can keep editing meanwhile. Changes made during the bake are not in it.
+    **Cancel** stops it and the map keeps the lighting it had.
 
 5. Look at the result
 
-   When it is done the 3D view switches to **Baked Lighting** shading, and the status bar says how long it took and how
-   big the light map is.
+    When it is done the 3D view switches to **Baked Lighting** shading, and the status bar says how long it took and how
+    big the light map is.
 
 The bake is saved inside the `.tdm`, and baking is one undo step. **Remove Bake** in the same window drops it, Godot
 then lights the map in real time again.
@@ -138,12 +138,13 @@ the whole map. The settings are saved with the map.
 | Repeat every | Map units one repeat of the texture covers, instead of its pixel size | One scale for a texture everywhere |
 | Projection | World ignores each face's own offset, scale and rotation, so the texture runs on seamlessly | Wallpaper, tiles, concrete |
 
-> **Tip:** For a backrooms style map, set the wallpaper to World projection and a repeat size once, and every wall you
+> [!TIP]
+> For a backrooms style map, set the wallpaper to World projection and a repeat size once, and every wall you
 > draw with it lines up without touching the Texture tool.
 
 A face with both bake options off is left out of the bake entirely. Repeat size and projection also apply in Godot.
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
@@ -153,4 +154,4 @@ the light map size, the counts, the GPU used or why it was not, and `out_of_date
 reads and sets texture settings, with `material`, `bake`, `casts`, `texel_scale`, `size` (`null` clears it) and
 `projection` (`face` or `world`). See [MCP server](../mcp.md).
 
-{% endmcp %}
+</div>

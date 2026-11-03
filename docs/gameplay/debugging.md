@@ -12,7 +12,8 @@ has, and inputs the target's class does not have. A typo in a targetname is the 
 
 Click an issue to select its entity and frame it in the views, then correct the name in the Inspector.
 
-> **Warning:** **Fix** on a missing target does not guess the right name, it deletes the connection. For a typo, fix
+> [!WARNING]
+> **Fix** on a missing target does not guess the right name, it deletes the connection. For a typo, fix
 > the name by hand instead.
 
 ## 2. The Logic graph

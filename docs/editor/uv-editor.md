@@ -12,7 +12,8 @@ you have.
 
 ![The UV Editor with one wall face selected, drawn as an orange rectangle over the tiled showcase/plaster texture](../assets/uv-editor/uv-editor-face.png)
 
-> **Tip:** While the UV Editor is the visible tab in its panel, Ctrl+click on a brush or mesh selects all its faces, so
+> [!TIP]
+> While the UV Editor is the visible tab in its panel, Ctrl+click on a brush or mesh selects all its faces, so
 > every side can be textured at once. Brushes and meshes that were already selected turn into their faces as well. When
 > the selection holds anything else, such as a terrain or an entity, Ctrl+click adds and removes objects as usual.
 

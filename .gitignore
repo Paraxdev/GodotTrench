@@ -18,9 +18,6 @@ __pycache__/
 .emergent/
 plan.md
 
-# HonKit output, relative output paths resolve inside docs/
-docs/_site/
-docs/_book/
-
-# Docs build tooling
-docs/node_modules/
+# Docs site output and the Python environment that builds it. Zensical's .cache/ ignores itself.
+/_site/
+/.venv/

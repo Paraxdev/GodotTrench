@@ -10,12 +10,12 @@ with its own script, a particle effect tuned in Godot, a lamp with an AnimationP
 
 1. Add the overlay node
 
-   In Godot, add a `TrenchDotOverlay` node as a direct child of the `FuncGodotMap`.
+    In Godot, add a `TrenchDotOverlay` node as a direct child of the `FuncGodotMap`.
 
 2. Put your nodes under it
 
-   Builds, live mode and hot reload never touch it, so its nodes keep their state and signal connections and are saved
-   with your scene.
+    Builds, live mode and hot reload never touch it, so its nodes keep their state and signal connections and are saved
+    with your scene.
 
 (For a single node you can skip the overlay: a direct child of the map in the `trenchdot_keep` group survives builds
 too. An overlay somewhere else in the scene can point at its map with *Map Path* instead, and then follows the map's
@@ -81,7 +81,8 @@ func use(activator: Node = null) -> void:
 An anchor keeps the offset where you placed it and follows the entity through rebuilds, live edits and movement, so a
 warning sign goes up with its roller door.
 
-> **Warning:** Wiring survives rebuilds, state does not. Map entities come back in their starting state, so connect to
+> [!WARNING]
+> Wiring survives rebuilds, state does not. Map entities come back in their starting state, so connect to
 > the overlay's `map_rebuilt(map)` signal and push your state back, for example switch the lamps on again.
 
 ## See it in the demo

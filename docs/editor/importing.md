@@ -8,37 +8,38 @@ Save it as `.tdm` and Godot builds it like any other map.
 
 1. Open the Godot project first
 
-   Open the project the map is for with *Godot > Open Godot Project…*, since converted textures go into its texture
-   folder.
+    Open the project the map is for with *Godot > Open Godot Project…*, since converted textures go into its texture
+    folder.
 
 2. Import the map
 
-   Go to *File > Import* and pick *.vmf (Hammer)…* or *.map (TrenchBroom, Quake)…*, then the file.
+    Go to *File > Import* and pick *.vmf (Hammer)…* or *.map (TrenchBroom, Quake)…*, then the file.
 
-   ![File menu with Import open and .vmf (Hammer)… hovered, below it Convert Textures and the model imports](../assets/importing/file-import-menu.png)
+    ![File menu with Import open and .vmf (Hammer)… hovered, below it Convert Textures and the model imports](../assets/importing/file-import-menu.png)
 
 3. Convert the textures
 
-   When textures for the map sit near it, the editor asks "Convert the map's textures?" for the ones the project
-   lacks. Say yes, see [Converting textures](importing-textures.md).
+    When textures for the map sit near it, the editor asks "Convert the map's textures?" for the ones the project
+    lacks. Say yes, see [Converting textures](importing-textures.md).
 
 4. Check the Issues tab
 
-   Open the Issues tab at the top left, next to Outliner and History. Every material the project still lacks shows up
-   as a warning, and its faces draw as a checker.
+    Open the Issues tab at the top left, next to Outliner and History. Every material the project still lacks shows up
+    as a warning, and its faces draw as a checker.
 
-   ![The Issues tab with two warnings, Material 'castle/brick_wall' is not in the project (12 faces), and the 3D view with those walls and steps drawn as a grey checker](../assets/importing/issues-missing-materials.png)
+    ![The Issues tab with two warnings, Material 'castle/brick_wall' is not in the project (12 faces), and the 3D view with those walls and steps drawn as a grey checker](../assets/importing/issues-missing-materials.png)
 
-   The faces keep the material name, so adding the texture later fixes them. Once every texture is there, those
-   warnings are gone.
+    The faces keep the material name, so adding the texture later fixes them. Once every texture is there, those
+    warnings are gone.
 
-   ![The same map after converting its textures: the Issues tab says No problems found and the walls show their brick texture](../assets/importing/textures-converted.png)
+    ![The same map after converting its textures: the Issues tab says No problems found and the walls show their brick texture](../assets/importing/textures-converted.png)
 
 5. Save it
 
-   Use *File > Save As…* and save it as a `.tdm` inside the project.
+    Use *File > Save As…* and save it as a `.tdm` inside the project.
 
-> **Note:** Units are kept as they are. Source maps are built for about 40 units per meter and Quake maps for about 32,
+> [!NOTE]
+> Units are kept as they are. Source maps are built for about 40 units per meter and Quake maps for about 32,
 > so a Source map comes out a little larger than in its game unless the project uses a different scale.
 
 ## What the import keeps

@@ -4,7 +4,8 @@ You can save what your map looks like as one 3D model file: brushes, meshes, ter
 inside. Handy to render a level in Blender, set up a trailer shot, or hand a blockout to an artist who builds the final
 meshes over it.
 
-> **Warning:** Only geometry and materials are exported. Entity logic, I/O wiring, triggers, scripts and gameplay
+> [!WARNING]
+> Only geometry and materials are exported. Entity logic, I/O wiring, triggers, scripts and gameplay
 > behavior are left out, and the file cannot be opened in TrenchDot as a map again. The `.tdm` stays the map, keep
 > editing that.
 
@@ -12,29 +13,29 @@ meshes over it.
 
 1. Open the export
 
-   Go to *File > Export > glTF Binary (.glb) for Blender and other 3D tools…*, or type "glTF" in the command palette
-   (Ctrl+Shift+P or F1).
+    Go to *File > Export > glTF Binary (.glb) for Blender and other 3D tools…*, or type "glTF" in the command palette
+    (Ctrl+Shift+P or F1).
 
-   ![The File menu with Export open and glTF Binary (.glb) for Blender and other 3D tools hovered](../assets/exporting/menu-export.png)
+    ![The File menu with Export open and glTF Binary (.glb) for Blender and other 3D tools hovered](../assets/exporting/menu-export.png)
 
 2. Pick what goes in
 
-   The *Export for 3D Tools* window opens. Tick what you want, see [the options](#options) below. The numbers next to
-   *Prop models* and *Scatter instances* tell you how many objects each adds. You can switch the format to OBJ at the
-   top.
+    The *Export for 3D Tools* window opens. Tick what you want, see [the options](#options) below. The numbers next to
+    *Prop models* and *Scatter instances* tell you how many objects each adds. You can switch the format to OBJ at the
+    top.
 
-   ![The Export for 3D Tools window with glTF Binary picked, Whole map, Prop models (8) ticked and Scatter instances (797) unticked](../assets/exporting/export-dialog.png)
+    ![The Export for 3D Tools window with glTF Binary picked, Whole map, Prop models (8) ticked and Scatter instances (797) unticked](../assets/exporting/export-dialog.png)
 
 3. Save it
 
-   Click **Export…** and choose where the file goes. The export runs in the background with a progress window, so you
-   can keep editing, and **Cancel** stops it without writing anything. When it is done the status bar says how many
-   objects, materials and triangles went out.
+    Click **Export…** and choose where the file goes. The export runs in the background with a progress window, so you
+    can keep editing, and **Cancel** stops it without writing anything. When it is done the status bar says how many
+    objects, materials and triangles went out.
 
 4. Open it in Blender
 
-   Use *File > Import > glTF 2.0 (.glb/.gltf)* and pick the file. The defaults are right, the importer turns the model
-   Z up on its own.
+    Use *File > Import > glTF 2.0 (.glb/.gltf)* and pick the file. The defaults are right, the importer turns the model
+    Z up on its own.
 
 The file holds the map as it was when you clicked **Export…**. Unsaved changes are autosaved first, unless autosave is
 off in *File > Preferences*. If the status bar names a material the project has no image for, that one comes out
@@ -96,7 +97,7 @@ map gets there, and the export then says so instead of writing a broken file.
 `trenchdot --export-glb <map> <out.glb>` and `--export-obj <map> <out.obj>` export with the default options without
 opening a window. The map's Godot project is found from its folder. See [Command line](../command-line.md).
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
@@ -106,4 +107,4 @@ texture folder, from the open map as it is, saved or not. The options are flags:
 `triangles`, `bytes` and `missing_textures`. `run_action` refuses `export_glb` and `export_obj`, since the menu entries
 open a file dialog.
 
-{% endmcp %}
+</div>

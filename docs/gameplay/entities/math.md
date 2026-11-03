@@ -1,6 +1,7 @@
 # Math and values
 
-> **Note:** These entities come with the Gameplay entities pack, see
+> [!NOTE]
+> These entities come with the Gameplay entities pack, see
 > [Installing and customizing](README.md#installing-and-customizing).
 
 Invisible point entities that store, calculate and compare numbers, so a score, a count or a price can steer the map
@@ -80,7 +81,7 @@ The logic playground map builds this hall, and adds a light lottery with `logic_
 switch with `logic_flipflop`. Open `godot/demo/maps/logic_playground.tdm` in the demo project, or read how it is made in
 [`examples/mcp/logic_playground.json`](https://github.com/Paraxdev/TrenchDot/blob/main/examples/mcp/logic_playground.json).
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
@@ -95,4 +96,4 @@ The script above places the entities with `gameplay place`, one call each:
   "outputs": [ { "output": "on_greater", "target": "door_gate", "input": "set_a", "parameter": "true" } ] } }
 ```
 
-{% endmcp %}
+</div>

@@ -92,5 +92,6 @@ Only values under keys that carry node ids are rewritten: `id`, `ids`, `selectio
 `letters`, `copies`, `entity`, `group`, `parent`, `insert_parent`, `current_layer`, `open_groups`, `targets` and keys
 ending in `_id` or `_ids`. Counts such as `moved` from `hierarchy reparent` stay as they are, use its `ids` instead.
 
-> **Tip:** Spell out every brush setting in `scatter` and `blend` calls. Anything left out comes from the editor's
+> [!TIP]
+> Spell out every brush setting in `scatter` and `blend` calls. Anything left out comes from the editor's
 > current Scatter panel or Blend tool settings.

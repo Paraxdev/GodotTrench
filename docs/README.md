@@ -27,11 +27,11 @@ Alternatively, it is also available on [itch.io](https://paraxdev.itch.io/trench
 
 For building it from source, visit [Development](development.md).
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
 The editor can also be driven from scripts or AI agents. The [MCP server](mcp.md) page explains how to connect one and
 which tools it offers.
 
-{% endmcp %}
+</div>

@@ -109,10 +109,10 @@ an explosive barrel:
 The floor is a 640 by 640 unit slab 8 units thick with its top at Y 8. Its first face, `[0,1,2,3]`, is the +X side,
 wound counter-clockwise seen from +X.
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
 The tools of the [MCP server](../mcp.md) read and return nodes in this JSON form too.
 
-{% endmcp %}
+</div>

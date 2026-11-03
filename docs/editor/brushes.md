@@ -63,7 +63,8 @@ vertices.
 
 ![The Vertex tool on a clipped box, yellow corner handles and blue dots on the edges and faces](../assets/brushes/vertex-handles.png)
 
-> **Note:** A brush cannot have dents, so a vertex move that would make one is refused. For dents and overhangs,
+> [!NOTE]
+> A brush cannot have dents, so a vertex move that would make one is refused. For dents and overhangs,
 > convert the brush to a [mesh](meshes.md).
 
 ## Rotate, scale and measure

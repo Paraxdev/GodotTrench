@@ -63,31 +63,31 @@ Some bare bones entities are always included, like a simple `info_player_start` 
 
 1. Install the Addon
 
-   Click the "Install the addon" button at the top to download TrenchDot's fork of FuncGodot into your project, this
-   is crucial for TrenchDot.
-   (Note: this pulls from GitHub releases. If you don't have internet access, download
-   `func_godot-trenchdot-addon.zip` first and extract it into the project root to install it by hand.)
+    Click the "Install the addon" button at the top to download TrenchDot's fork of FuncGodot into your project, this
+    is crucial for TrenchDot.
+    (Note: this pulls from GitHub releases. If you don't have internet access, download
+    `func_godot-trenchdot-addon.zip` first and extract it into the project root to install it by hand.)
 
-   Once you did that, click "Enable the plugin" so Godot loads it.
-   (Note: close Godot first if it has the project open, otherwise Godot writes its own copy of `project.godot` back
-   and the plugin stays off.)
+    Once you did that, click "Enable the plugin" so Godot loads it.
+    (Note: close Godot first if it has the project open, otherwise Godot writes its own copy of `project.godot` back
+    and the plugin stays off.)
 
 2. (Optionally) Extra Content
 
-   TrenchDot has optional content you may preload: CC0 textures and models from Poly Haven and ambientCG, plus models
-   made for TrenchDot. The licenses and a list of where everything is from are included.
+    TrenchDot has optional content you may preload: CC0 textures and models from Poly Haven and ambientCG, plus models
+    made for TrenchDot. The licenses and a list of where everything is from are included.
 
-   If you do not want any extra content you can go with "Nothing extra", the minimal entities are still included.
+    If you do not want any extra content you can go with "Nothing extra", the minimal entities are still included.
 
 3. Open the project in Godot once
 
-   Once the plugin is enabled, open the project in Godot (the window has an "Open Project in Godot Editor" button for
-   that). The addon then creates a file called `trenchdot_game.json` in the project root. This is where TrenchDot
-   learns your textures and entities from, and TrenchDot loads it within a second.
+    Once the plugin is enabled, open the project in Godot (the window has an "Open Project in Godot Editor" button for
+    that). The addon then creates a file called `trenchdot_game.json` in the project root. This is where TrenchDot
+    learns your textures and entities from, and TrenchDot loads it within a second.
 
-   The addon writes it again whenever files change, so there is no need to edit it by hand. Until it exists the status
-   bar says there is no `trenchdot_game.json`, and the editor offers the core entities, plus the gameplay entities if
-   you installed them.
+    The addon writes it again whenever files change, so there is no need to edit it by hand. Until it exists the status
+    bar says there is no `trenchdot_game.json`, and the editor offers the core entities, plus the gameplay entities if
+    you installed them.
 
 If you want to add entities, you may use the GitHub source code as reference, or go through the addon source and view
 how the included ones are structured. For info on how to add entities that are more complex, see
@@ -109,65 +109,65 @@ or just start drawing, it goes away once the map has something in it.
 
 1. Draw your first box
 
-   With the Select tool (Q), drag on empty space in any view.
-   You should see a box being drawn. While holding your left click down, move the mouse to shape a rect.
+    With the Select tool (Q), drag on empty space in any view.
+    You should see a box being drawn. While holding your left click down, move the mouse to shape a rect.
 
-   ![All four views with the first box drawn, the Top view printing its size, 512 by 256](assets/getting-started/draw-first-box.png)
+    ![All four views with the first box drawn, the Top view printing its size, 512 by 256](assets/getting-started/draw-first-box.png)
 
 2. Add Height
 
-   In the Side view, hold your mouse over the top edge of the box until it turns yellow, hold down the left click, then
-   move your mouse up until the box is 256 units tall.
+    In the Side view, hold your mouse over the top edge of the box until it turns yellow, hold down the left click, then
+    move your mouse up until the box is 256 units tall.
 
-   ![The Side view with the top edge of the box dragged up, 256 printed above and beside it](assets/getting-started/side-view-depth.png)
+    ![The Side view with the top edge of the box dragged up, 256 printed above and beside it](assets/getting-started/side-view-depth.png)
 
 3. Making it Hollow
 
-   Press Ctrl+Shift+K, or use the Hollow button in the toolbar.
+    Press Ctrl+Shift+K, or use the Hollow button in the toolbar.
 
-   ![The toolbar with the Hollow button hovered and its tooltip](assets/getting-started/toolbar-hollow.png)
+    ![The toolbar with the Hollow button hovered and its tooltip](assets/getting-started/toolbar-hollow.png)
 
-   The box is now split into walls, a floor and a ceiling, this is optimal if you want to make a smaller room or
-   corridor. Now, using the fly controls (hold the right mouse button and use WASD), fly into the hollow box.
+    The box is now split into walls, a floor and a ceiling, this is optimal if you want to make a smaller room or
+    corridor. Now, using the fly controls (hold the right mouse button and use WASD), fly into the hollow box.
 
 4. Cutting a doorway
 
-   Using Escape you can deselect the selected brushes. Once nothing is selected, draw a smaller vertical rect within
-   the box in the Front view, shaped like a doorway.
+    Using Escape you can deselect the selected brushes. Once nothing is selected, draw a smaller vertical rect within
+    the box in the Front view, shaped like a doorway.
 
-   ![The door brush inside the hollow box, 64 wide and 96 tall in the Front view](assets/getting-started/doorway-brush.png)
+    ![The door brush inside the hollow box, 64 wide and 96 tall in the Front view](assets/getting-started/doorway-brush.png)
 
-   Then in the Side view extend one side of the door brush so it has a depth, all the way through the wall.
+    Then in the Side view extend one side of the door brush so it has a depth, all the way through the wall.
 
-   ![Dragging one side of the door brush in the Side view so it crosses the wall](assets/getting-started/doorway-extend.gif)
+    ![Dragging one side of the door brush in the Side view so it crosses the wall](assets/getting-started/doorway-extend.gif)
 
-   Now, with the brush selected, hit Ctrl+K or use the Subtract button in the toolbar.
+    Now, with the brush selected, hit Ctrl+K or use the Subtract button in the toolbar.
 
-   ![The toolbar with the CSG Subtract button hovered and its tooltip](assets/getting-started/toolbar-subtract.png)
+    ![The toolbar with the CSG Subtract button hovered and its tooltip](assets/getting-started/toolbar-subtract.png)
 
-   You should see the brush vanish, and the doorway is cut out of the wall.
+    You should see the brush vanish, and the doorway is cut out of the wall.
 
-   ![The wall in the 3D view with the doorway cut out](assets/getting-started/doorway-cut.png)
+    ![The wall in the 3D view with the doorway cut out](assets/getting-started/doorway-cut.png)
 
 5. Texture it
 
-   You should have 5 included textures for prototyping. To apply a texture to just one face (e.g. the door frame), drag
-   the texture from the Materials tab onto the face (hold Shift to cover the whole brush).
+    You should have 5 included textures for prototyping. To apply a texture to just one face (e.g. the door frame), drag
+    the texture from the Materials tab onto the face (hold Shift to cover the whole brush).
 
-   ![Dragging dev/blue from the Materials tab onto a face, with the drop preview](assets/getting-started/texture-drop.png)
+    ![Dragging dev/blue from the Materials tab onto a face, with the drop preview](assets/getting-started/texture-drop.png)
 
 6. Saving the Map
 
-   To see the changes in Godot we have to save the map. Press Ctrl+S, or use *File > Save*.
+    To see the changes in Godot we have to save the map. Press Ctrl+S, or use *File > Save*.
 
-   The save dialog opens in your Godot project folder. Save it anywhere inside the project, a `maps` folder in the
-   project root keeps things tidy, so for example `res://maps/room.tdm`.
-   (Note: the folder name is up to you, but keep the map inside the project, so Godot can load it by its `res://`
-   path.)
+    The save dialog opens in your Godot project folder. Save it anywhere inside the project, a `maps` folder in the
+    project root keeps things tidy, so for example `res://maps/room.tdm`.
+    (Note: the folder name is up to you, but keep the map inside the project, so Godot can load it by its `res://`
+    path.)
 
-   Once saved, it shows up under *File > Maps in Project*.
+    Once saved, it shows up under *File > Maps in Project*.
 
-   ![The File menu with Save and Maps in Project, which lists room under res://maps](assets/getting-started/file-menu-maps-in-project.png)
+    ![The File menu with Save and Maps in Project, which lists room under res://maps](assets/getting-started/file-menu-maps-in-project.png)
 
 ## 5. See it in Godot
 
@@ -188,7 +188,8 @@ Leave that scene open in Godot and every save in TrenchDot rebuilds it, straight
 one, or when you switch back to it. Save the scene in Godot to keep the result. If a save does not rebuild, the status
 bar says why, see [Rebuild on save](godot/live.md#rebuild-on-save).
 
-> **Warning:** A build deletes the children of the `FuncGodotMap` first. Put your own nodes next to the map node, or in
+> [!WARNING]
+> A build deletes the children of the `FuncGodotMap` first. Put your own nodes next to the map node, or in
 > an [overlay](godot/overlays.md).
 
 ## Try the demo project
@@ -214,7 +215,7 @@ shows them as they were built.
 To make the room do something, read [How entity I/O works](gameplay/io.md) and build
 [Button opens a door](tutorials/button-door.md).
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
@@ -222,4 +223,4 @@ The content question does not open by itself in an editor that an MCP client dri
 `get_state`, `screenshot` and `simulate_input` closes it, and a project opened with `open_project` is not asked about.
 `project_content` adds the same content, see [MCP](mcp.md).
 
-{% endmcp %}
+</div>

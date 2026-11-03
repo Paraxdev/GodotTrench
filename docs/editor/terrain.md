@@ -10,34 +10,34 @@ This page covers making one and shaping it with the Sculpt tool (G). Texturing i
 
 1. Open the dialog
 
-   Go to *Terrain > Create Terrain…* in the menu bar.
+    Go to *Terrain > Create Terrain…* in the menu bar.
 
-   ![The Terrain menu open with Create Terrain… hovered](../assets/terrain/menu-create-terrain.png)
+    ![The Terrain menu open with Create Terrain… hovered](../assets/terrain/menu-create-terrain.png)
 
 2. Pick a size
 
-   **Resolution** and **Cell size** decide how big it gets, and the **Size** row under them shows the result in units
-   and meters. The default of 129 x 129 vertices with 64 unit cells gives 8192 units, 256 m. See
-   [Picking the cell size](#picking-the-cell-size) below.
+    **Resolution** and **Cell size** decide how big it gets, and the **Size** row under them shows the result in units
+    and meters. The default of 129 x 129 vertices with 64 unit cells gives 8192 units, 256 m. See
+    [Picking the cell size](#picking-the-cell-size) below.
 
-   ![The Create Terrain dialog with its defaults: 129 x 129, 64 u cells, Hills, and the four layer fields](../assets/terrain/create-terrain-dialog.png)
+    ![The Create Terrain dialog with its defaults: 129 x 129, 64 u cells, Hills, and the four layer fields](../assets/terrain/create-terrain-dialog.png)
 
 3. (Optionally) Pick a starting shape
 
-   **Shape** is the ground you start from. It's Hills by default, the others are Flat, Mountain, Island, Valley and
-   Ridges. **Import PNG…** reads a grayscale heightmap instead, where brighter pixels are higher. Both only work here,
-   on creation.
+    **Shape** is the ground you start from. It's Hills by default, the others are Flat, Mountain, Island, Valley and
+    Ridges. **Import PNG…** reads a grayscale heightmap instead, where brighter pixels are higher. Both only work here,
+    on creation.
 
 4. (Optionally) Pick the layers
 
-   **Base layer**, **Slope layer**, **Peak layer** and **Low layer** are the terrain's four textures, and **Use
-   Current** puts in the material you last clicked. With **Paint layers from slope and height** ticked they get painted
-   right away, see [Auto Paint](terrain-painting.md#auto-paint).
+    **Base layer**, **Slope layer**, **Peak layer** and **Low layer** are the terrain's four textures, and **Use
+    Current** puts in the material you last clicked. With **Paint layers from slope and height** ticked they get painted
+    right away, see [Auto Paint](terrain-painting.md#auto-paint).
 
 5. Click **Create** at the bottom
 
-   The terrain is centered on the 3D cursor, or on the **Center** you type in with **3D cursor** unticked, and that
-   height becomes the terrain's zero. You should see the new terrain selected, with the Sculpt tool already active.
+    The terrain is centered on the 3D cursor, or on the **Center** you type in with **3D cursor** unticked, and that
+    height becomes the terrain's zero. You should see the new terrain selected, with the Sculpt tool already active.
 
 ## Picking the cell size
 
@@ -93,7 +93,8 @@ tells you when that happens).
 To start over, *Terrain > Sculpt > Flatten*, or **Flatten** in the Inspector, sets the whole selected terrain back to
 its zero height.
 
-> **Tip:** Shape with a large brush and smooth after every rough pass. Small brushes leave lumps.
+> [!TIP]
+> Shape with a large brush and smooth after every rough pass. Small brushes leave lumps.
 
 ## In Godot
 
@@ -101,11 +102,11 @@ Every terrain becomes a `TrenchDotTerrain` node, a `StaticBody3D` (Godot's node 
 whose collision matches what it draws. For gameplay code, `height_at(x, z)` returns the ground height at a local
 position, handy for placing things on the ground at runtime.
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
 The `terrain_edit` tool's `sculpt` op applies a single dab, and its strength is how far that dab moves the center, again
 whatever the radius. Holding a stroke for one second at strength 4 matches a dab of strength 32.
 
-{% endmcp %}
+</div>

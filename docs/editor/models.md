@@ -25,15 +25,15 @@ A model goes into the map in one of two ways. Pick by whether you want to change
 
 1. (Optionally) Set the size
 
-   Fit, in the Models toolbar, is ticked by default. It scales a model whose longest side is under a quarter meter or
-   over 256 meters to 2 meters, so tiny or huge files still come in usable. The × field next to it multiplies the size
-   on top of that. Both apply when you place, so set them before you drag.
+    Fit, in the Models toolbar, is ticked by default. It scales a model whose longest side is under a quarter meter or
+    over 256 meters to 2 meters, so tiny or huge files still come in usable. The × field next to it multiplies the size
+    on top of that. Both apply when you place, so set them before you drag.
 
 2. Drag it into a view
 
-   Drag a thumbnail from the Models tab into any view. It lands on the surface under the pointer.
+    Drag a thumbnail from the Models tab into any view. It lands on the surface under the pointer.
 
-   ![A wine barrel dragged from the Models tab into the 3D view, where it lands on the floor as an editable mesh](../assets/models/drag-model-into-view.gif)
+    ![A wine barrel dragged from the Models tab into the 3D view, where it lands on the floor as an editable mesh](../assets/models/drag-model-into-view.gif)
 
 For a file anywhere on disk, use **Import…** at the end of the Models toolbar.
 
@@ -41,15 +41,15 @@ For a file anywhere on disk, use **Import…** at the end of the Models toolbar.
 
 1. Pick the file
 
-   Go to *File > Import > Model Prop (.bbmodel, .glb)…* and pick the model.
+    Go to *File > Import > Model Prop (.bbmodel, .glb)…* and pick the model.
 
-   ![File menu with Import open and Model Prop (.bbmodel, .glb)… hovered](../assets/models/file-import-model-prop.png)
+    ![File menu with Import open and Model Prop (.bbmodel, .glb)… hovered](../assets/models/file-import-model-prop.png)
 
 2. Check the Inspector
 
-   It lands at the 3D cursor as a `prop_model` entity, and its `model` key holds the `res://` path.
+    It lands at the 3D cursor as a `prop_model` entity, and its `model` key holds the `res://` path.
 
-   ![The Inspector of a prop_model entity with the model key set to a res://models/polyhaven path](../assets/models/inspector-prop-model.png)
+    ![The Inspector of a prop_model entity with the model key set to a res://models/polyhaven path](../assets/models/inspector-prop-model.png)
 
 A prop has to point at a file Godot can load. Pick one outside the project and the editor offers to copy it into
 `res://models` first.
@@ -79,7 +79,8 @@ Textures count as the same by their pixels, so one that another program only sav
 one? Meshes placed before keep your version, and the next placement gets fresh copies in a numbered folder, with a new
 material. To give later placements your changes, apply your material to them from the Materials tab.
 
-> **Note:** FuncGodot only builds a face's material from the project's `default_material` when there is no material
+> [!NOTE]
+> FuncGodot only builds a face's material from the project's `default_material` when there is no material
 > file of the same name. Faces of a placed model that got a material file draw with that file, so a custom shader set as
 > `default_material` does not reach them. Edit the file in Godot to change them. A project whose material extension is
 > not `tres` gets no material files, and its default material applies.

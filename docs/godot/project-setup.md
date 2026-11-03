@@ -27,7 +27,8 @@ It only offers the step your project needs next:
 
 ![The Set up this project window saying the addon 0.0.9 is older than the editor, with the Update the addon to 0.1.0 button](../assets/project-setup/setup-update-addon.png)
 
-> **Warning:** Close Godot before you update. It keeps running the old addon until it restarts, so the button stays
+> [!WARNING]
+> Close Godot before you update. It keeps running the old addon until it restarts, so the button stays
 > greyed out while the live link sees Godot with the project open. Enable the plugin with Godot closed too, or Godot
 > writes its own copy of `project.godot` back. Ticking it in Godot under *Project > Project Settings > Plugins* works
 > as well.
@@ -65,33 +66,34 @@ there clashes with it, and an addon update does not undo it.
 
 1. Install the pack
 
-   Click **Install Gameplay Entities** in the *Set up this project* window, below the addon.
+    Click **Install Gameplay Entities** in the *Set up this project* window, below the addon.
 
-   ![The Set up this project window with the Gameplay entities section and its Install Gameplay Entities button](../assets/project-setup/setup-gameplay-entities.png)
+    ![The Set up this project window with the Gameplay entities section and its Install Gameplay Entities button](../assets/project-setup/setup-gameplay-entities.png)
 
-   While the project only has the core, the same button sits at the top of the Gameplay menu and in the Entities panel.
+    While the project only has the core, the same button sits at the top of the Gameplay menu and in the Entities panel.
 
-   ![The Gameplay menu with Install Gameplay Entities hovered and its tooltip](../assets/project-setup/menu-install-gameplay-entities.png)
+    ![The Gameplay menu with Install Gameplay Entities hovered and its tooltip](../assets/project-setup/menu-install-gameplay-entities.png)
 
 2. Check that it worked
 
-   The window should now say "Installed in res://trenchdot/entities" in green. The editor offers the new entities
-   right away, and Godot picks up the files and exports the game config again on its own.
+    The window should now say "Installed in res://trenchdot/entities" in green. The editor offers the new entities
+    right away, and Godot picks up the files and exports the game config again on its own.
 
-   ![The Gameplay entities section after installing, saying it added 85 files to res://trenchdot/entities](../assets/project-setup/setup-gameplay-installed.png)
+    ![The Gameplay entities section after installing, saying it added 85 files to res://trenchdot/entities](../assets/project-setup/setup-gameplay-installed.png)
 
 3. (Optionally) Update it later
 
-   When an addon update brings a newer pack, the window offers **Update Gameplay Entities**, and the Gameplay menu shows
-   it with the number of changed files. Nothing is updated until you click it. The update adds new files and replaces
-   the ones you did not touch. Files you edited stay as they are and the editor names them, and files you deleted stay
-   deleted.
+    When an addon update brings a newer pack, the window offers **Update Gameplay Entities**, and the Gameplay menu shows
+    it with the number of changed files. Nothing is updated until you click it. The update adds new files and replaces
+    the ones you did not touch. Files you edited stay as they are and the editor names them, and files you deleted stay
+    deleted.
 
 Older maps made before the entities left the addon keep working. When a project's maps use pack entities that nothing in
 the project defines, the pack installs itself, both when the editor opens the project and when Godot starts with the
 updated addon. A `.tdm` file keeps every entity either way, with or without a definition.
 
-> **Note:** The template inside the addon, `addons/func_godot/gameplay_pack`, has a `.gdignore` file so that Godot skips
+> [!NOTE]
+> The template inside the addon, `addons/func_godot/gameplay_pack`, has a `.gdignore` file so that Godot skips
 > it. Keep that file, or Godot finds every script class of the pack twice once it is installed.
 
 ### Which definition wins
@@ -128,7 +130,8 @@ make them yourself, do this in the Godot editor:
 4. In *Project > Project Settings*, point `func_godot/default_map_settings` at your map settings and
    `trenchdot/game_config` at your game config.
 
-> **Tip:** Set *Entity Name Property* in the map settings to `targetname`, like the demo does. Built nodes are then
+> [!TIP]
+> Set *Entity Name Property* in the map settings to `targetname`, like the demo does. Built nodes are then
 > named after their targetnames, which keeps the scene tree readable.
 
 ## The game config

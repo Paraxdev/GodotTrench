@@ -7,22 +7,22 @@ The build sorts the map's meshes into chunks on a grid, and only the chunks near
 
 1. Select nothing
 
-   Press Escape so nothing is selected. The Inspector on the right then shows *Map (worldspawn)*.
+    Press Escape so nothing is selected. The Inspector on the right then shows *Map (worldspawn)*.
 
 2. Add `chunk_streaming`
 
-   Type `chunk_streaming` in the *key* field at the bottom, `1` in *value*, and click **Add**. (If it is already
-   listed, just turn it on there.)
+    Type `chunk_streaming` in the *key* field at the bottom, `1` in *value*, and click **Add**. (If it is already
+    listed, just turn it on there.)
 
-   ![The worldspawn Inspector with chunk_streaming typed in the key field, 1 in the value field and the Add button hovered](../assets/streaming/worldspawn-add-key.png)
+    ![The worldspawn Inspector with chunk_streaming typed in the key field, 1 in the value field and the Add button hovered](../assets/streaming/worldspawn-add-key.png)
 
-   You should see it listed with the other worldspawn keys:
+    You should see it listed with the other worldspawn keys:
 
-   ![The worldspawn Inspector with chunk_streaming set to 1](../assets/streaming/worldspawn-chunk-streaming.png)
+    ![The worldspawn Inspector with chunk_streaming set to 1](../assets/streaming/worldspawn-chunk-streaming.png)
 
 3. Save the map
 
-   The next build adds a `TrenchDotStreamer` to the map.
+    The next build adds a `TrenchDotStreamer` to the map.
 
 (Optionally) add `chunk_size` and `load_radius` the same way:
 
@@ -54,29 +54,30 @@ same. This needs the [Gameplay entities pack](../gameplay/entities/README.md#ins
 
 1. Build a connector room
 
-   A corridor with a bend on each side, so neither end can be seen from its middle. Put an `info_landmark` in the
-   middle, and two `func_section_stream` volumes, one covering each half, meeting in the middle. Add it to the
-   [prefab library](../editor/prefab-library.md) so every copy is the same.
+    A corridor with a bend on each side, so neither end can be seen from its middle. Put an `info_landmark` in the
+    middle, and two `func_section_stream` volumes, one covering each half, meeting in the middle. Add it to the
+    [prefab library](../editor/prefab-library.md) so every copy is the same.
 
 2. Paste it where two maps meet
 
-   In each map that meets another, paste the connector where the two meet and name its landmark, for example
-   `lm_hall_cellar`. Set each half's `section` to the section on that side and `landmark` to the landmark's name.
-   Both maps get the same copy with the same names, turned the same way.
+    In each map that meets another, paste the connector where the two meet and name its landmark, for example
+    `lm_hall_cellar`. Set each half's `section` to the section on that side and `landmark` to the landmark's name.
+    Both maps get the same copy with the same names, turned the same way.
 
 3. Bake lighting in every section map
 
-   SDFGI only notices geometry a swap brings in once its cascades scroll, so a swapped in section would stay unlit.
-   Baked lighting comes with the section.
+    SDFGI only notices geometry a swap brings in once its cascades scroll, so a swapped in section would stay unlit.
+    Baked lighting comes with the section.
 
 4. Make a scene per section
 
-   One scene per section with its built map, the usual way.
+    One scene per section with its built map, the usual way.
 
 5. Add the streamer
 
-   Add a `TDSectionStreamer` node to your world scene and set its `first_section` and its player, see
-   [TDSectionStreamer](../gameplay/entities/sections.md#tdsectionstreamer).
+    Add a `TDSectionStreamer` node to your world scene and set its `first_section` and its player, see
+    [TDSectionStreamer](../gameplay/entities/sections.md#tdsectionstreamer).
 
-> **Tip:** Keep a landmark's position a multiple of 480 map units, or any size all the connector's textures repeat
+> [!TIP]
+> Keep a landmark's position a multiple of 480 map units, or any size all the connector's textures repeat
 > at, so the textures line up the same way in both copies.

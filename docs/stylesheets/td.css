@@ -1,0 +1,170 @@
+/* Okabe-Ito blues, the colorblind safe accent the editor uses. The light scheme takes the darker one for contrast on
+   white. */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: #0072b2;
+  --md-primary-fg-color--light: #3a8fc4;
+  --md-primary-fg-color--dark: #005a8c;
+  --md-primary-bg-color: #fff;
+  --md-primary-bg-color--light: #ffffffb3;
+}
+
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: #0072b2;
+  --md-accent-fg-color--transparent: #0072b21a;
+  --md-accent-bg-color: #fff;
+  --md-accent-bg-color--light: #ffffffb3;
+}
+
+[data-md-color-scheme="slate"][data-md-color-primary="custom"] {
+  --md-primary-fg-color: #56b4e9;
+  --md-primary-fg-color--light: #93d0f3;
+  --md-primary-fg-color--dark: #3a8fc4;
+  --md-typeset-a-color: #56b4e9;
+}
+
+[data-md-color-scheme="slate"][data-md-color-accent="custom"] {
+  --md-accent-fg-color: #93d0f3;
+  --md-accent-fg-color--transparent: #56b4e91a;
+}
+
+/* One Dark code colors in the dark scheme. */
+[data-md-color-scheme="slate"] {
+  --md-code-hl-comment-color: #8b929c;
+  --md-code-hl-keyword-color: #c678dd;
+  --md-code-hl-string-color: #98c379;
+  --md-code-hl-number-color: #d19a66;
+  --md-code-hl-constant-color: #56b6c2;
+  --md-code-hl-function-color: #61afef;
+  --md-code-hl-special-color: #e06c75;
+}
+
+::selection {
+  background: #56b4e959;
+}
+
+.md-typeset .highlight :is(.c, .ch, .cm, .c1, .cs) {
+  font-style: italic;
+}
+
+/* Pygments' GDScript lexer predates Godot 4 and reads the @ of @export and @tool as an error token. */
+.md-typeset .language-gdscript :is(.err, .err + .k) {
+  color: var(--md-code-hl-special-color);
+}
+
+.md-typeset h2 {
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-typeset img {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.5rem;
+}
+
+/* MCP blocks and the header switch that shows them. */
+.td-hide-mcp .td-mcp {
+  display: none !important;
+}
+
+.md-typeset div.td-mcp {
+  margin: 2em 0 0.85em;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--md-primary-fg-color);
+}
+
+.md-typeset div.td-mcp:not(:has(> h2:first-child))::before {
+  content: "MCP";
+  display: block;
+  margin-bottom: 2px;
+  font-size: 0.75em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--md-primary-fg-color);
+}
+
+.md-typeset div.td-mcp > h2:first-child {
+  margin-top: 0;
+}
+
+.td-mcp-switch {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0.8;
+}
+
+.td-mcp-switch:hover {
+  opacity: 1;
+}
+
+.td-mcp-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.td-mcp-track {
+  position: relative;
+  width: 30px;
+  height: 16px;
+  border-radius: 8px;
+  background: #8a8f98;
+  transition: background 0.15s;
+}
+
+.td-mcp-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s;
+}
+
+.td-mcp-switch input:checked + .td-mcp-track {
+  background: var(--md-primary-fg-color);
+}
+
+.td-mcp-switch input:checked + .td-mcp-track .td-mcp-knob {
+  left: 16px;
+}
+
+.td-mcp-switch input:focus-visible + .td-mcp-track {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 2px;
+}
+
+/* Glossary terms, linked on their first use on a page, and the card they show. */
+.md-typeset a.td-term {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
+.td-card {
+  position: absolute;
+  z-index: 1000;
+  max-width: 340px;
+  padding: 8px 11px;
+  border-radius: 6px;
+  background: #2b2f36;
+  color: #eceff4;
+  font-size: 13px;
+  line-height: 1.45;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
+/* The Godot head in the logo is white, so it needs an outline on the white header of the light scheme. */
+[data-md-color-scheme="default"] .md-logo img {
+  filter: drop-shadow(0 0 0.04rem rgb(0 0 0 / 0.75)) drop-shadow(0 0 0.04rem rgb(0 0 0 / 0.75));
+}

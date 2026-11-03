@@ -51,5 +51,6 @@ chain passes one along. The built-in signals behave like this:
 | `arrived(corner)`, `spawned(node)`, `reached(train)` | Replaced by the node in brackets, so further down `!activator` is that corner, spawned node or train |
 | `opened`, `timer`, `step_N`, `on_true`, `on_case_N`, `result`, `broken`, `switched`, `map_spawn` | Dropped. These carry no node, so from here on `!activator` finds nothing |
 
-> **Tip:** Need the player several steps down a chain that lost the activator? Target `!player` instead, it does not
+> [!TIP]
+> Need the player several steps down a chain that lost the activator? Target `!player` instead, it does not
 > depend on the chain.

@@ -13,7 +13,7 @@ Whoever opens the pull request vouches for every line in it, see the disclosure 
   existing clone. Addon changes are committed and pushed there first, then the submodule is bumped here.
   `godot/tests` holds the addon tests, `godot/demo` the demo project.
 * `examples/mcp` holds the showcase maps as MCP tool call scripts.
-* `docs/` is the documentation, a GitBook style book published to GitHub Pages.
+* `docs/` is the documentation, a Zensical site published to GitHub Pages.
 
 ## Before you open a pull request
 
@@ -71,17 +71,19 @@ This applies to code comments, docs, UI text, commit messages and pull request d
 
 ## Docs
 
-* `docs/` is built with HonKit and deployed by `.github/workflows/pages.yml`. Every page must be listed in
-  `docs/SUMMARY.md`, and `npx honkit build . _site` in `docs/` (after `npm ci`) must build without errors. See
+* `docs/` is built with Zensical from `zensical.toml` and deployed by `.github/workflows/pages.yml`. Every page must
+  be listed in `docs/SUMMARY.md`, `zensical build --clean --strict` in the repository root (after
+  `pip install -r docs/requirements.txt`) must build without warnings. See
   [docs/development.md](docs/development.md#documentation).
 * Keep pages short and to the point. Prefer a table, a numbered list of steps or a short paragraph over a wall of text,
   and split a page that grows long. Leave out what a reader does not need to get the job done.
-* Callouts are blockquotes with a bold label, `> **Note:**`, `> **Tip:**` or `> **Warning:**`. Tag GDScript code blocks
-  as `gdscript`, highlighted by the small local plugin in `docs/plugins/gdscript`.
+* Callouts are GitHub style alerts, `> [!NOTE]`, `> [!TIP]` or `> [!WARNING]` on their own line with the text quoted
+  below. Tag GDScript code blocks as `gdscript`. Indent the images, paragraphs and code blocks of a list item by 4
+  spaces, or they fall out of the list.
 * Images go in `docs/assets/<page>/`. Link other pages with relative `.md` paths, and files outside `docs/` with full
   GitHub URLs, since only `docs/` is published.
 * Verify facts against the code before writing them. Explain why and when, not only what.
-* Readers are people first. Wrap text only MCP users need in `{% mcp %}` blocks, see
+* Readers are people first. Wrap text only MCP users need in a `<div class="td-mcp" markdown>` block, see
   [docs/development.md](docs/development.md#mcp-in-the-docs), and write sentences a newcomer can follow rather than lists
   of nouns. Define jargon once in `docs/GLOSSARY.md`, pages then explain it on hover.
 

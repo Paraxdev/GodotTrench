@@ -4,24 +4,24 @@
 
 1. Give it its own layer
 
-   Click **Add Layer** at the top of the Outliner. The new layer becomes the current one, so the pier lands on it and
-   you can hide or lock it apart from the terrain.
+    Click **Add Layer** at the top of the Outliner. The new layer becomes the current one, so the pier lands on it and
+    you can hide or lock it apart from the terrain.
 
-   ![The Outliner with Add Layer hovered and its tooltip: new layer, it becomes the current layer new objects go into](../assets/sea-island/outliner-add-layer.png)
+    ![The Outliner with Add Layer hovered and its tooltip: new layer, it becomes the current layer new objects go into](../assets/sea-island/outliner-add-layer.png)
 
 2. Build it
 
-   Press **Q** for the Select tool, since a drag with the Scatter tool still paints models. Then draw plain brushes
-   running out to sea from the middle of the beach, sized like the table below.
+    Press **Q** for the Select tool, since a drag with the Scatter tool still paints models. Then draw plain brushes
+    running out to sea from the middle of the beach, sized like the table below.
 
 3. Add props
 
-   Go to *File > Import > Model Prop (.bbmodel, .glb)…* and pick models from the demo project's `models/polyhaven`
-   folder: two `containers/wooden_crate_01` and a `containers/wine_barrel_01` on the deck, a `nautical/lifebuoy`
-   against a post and a `nautical/ocean_buoy` in the water. Each one lands at the 3D cursor, move it into place from
-   there.
+    Go to *File > Import > Model Prop (.bbmodel, .glb)…* and pick models from the demo project's `models/polyhaven`
+    folder: two `containers/wooden_crate_01` and a `containers/wine_barrel_01` on the deck, a `nautical/lifebuoy`
+    against a post and a `nautical/ocean_buoy` in the water. Each one lands at the 3D cursor, move it into place from
+    there.
 
-   ![The File menu with Import open and Model Prop (.bbmodel, .glb)… hovered](../assets/sea-island/menu-import-model-prop.png)
+    ![The File menu with Import open and Model Prop (.bbmodel, .glb)… hovered](../assets/sea-island/menu-import-model-prop.png)
 
 | Part | Size | Material |
 | --- | --- | --- |

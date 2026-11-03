@@ -39,7 +39,7 @@ room, then right click the card and pick **Turn selected brushes into it**.
 ![The Entities tab filtered to env_, with the env_voxel_gi card right clicked and Turn selected brushes into it highlighted](../assets/baked-lighting/entities-turn-brushes-into.png)
 
 The brush only gives the box, the build removes it. The keys of all three are listed in
-[Props, lights and effects](../gameplay/entities/effects.md#lightprobe-envreflectionprobe-and-envvoxelgi).
+[Props, lights and effects](../gameplay/entities/effects.md#light_probe-env_reflection_probe-and-env_voxel_gi).
 
 An `env_voxel_gi` is baked in the Godot editor every time the map builds. On a big volume, set `bake_on_build` to 0 and
 bake it by hand with the **Bake** button of the `VoxelGI` node instead. Maps built while the game runs skip that bake.

@@ -63,7 +63,8 @@ the input under *call*, and press **Link**.
 
 ![The Link Entities window: func_button on the left, light on the right, When pressed, call turn_on, and the Swap tooltip](../assets/placing/link-dialog.png)
 
-> **Warning:** The source is not always the entity you clicked first. Check the two names at the top, and press the
+> [!WARNING]
+> The source is not always the entity you clicked first. Check the two names at the top, and press the
 > **Swap** button between them if they are the wrong way round.
 
 The [Logic graph](logic-graph.md) shows all the wiring at once and connects entities by dragging from pin to pin.

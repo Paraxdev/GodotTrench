@@ -1,6 +1,7 @@
 # Props, lights and effects
 
-> **Note:** These entities come with the Gameplay entities pack, see
+> [!NOTE]
+> These entities come with the Gameplay entities pack, see
 > [Installing and customizing](README.md#installing-and-customizing). `light`, `light_spot` and the probes
 > (`light_probe`, `env_reflection_probe` and `env_voxel_gi`) are part of the addon's core and work without it.
 

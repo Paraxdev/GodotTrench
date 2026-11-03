@@ -101,7 +101,8 @@ on a layer called *Logic*, next to the entity they are wired to, or in front of 
 targetname at once, like `relay_2`, which titles its node. Change it in the Inspector, since *Rename* only sets the
 Outliner name.
 
-> **Note:** Without the Gameplay entities pack there are no logic entities to add. The Add menu then offers to
+> [!NOTE]
+> Without the Gameplay entities pack there are no logic entities to add. The Add menu then offers to
 > install it.
 
 ### Editing a connection

@@ -1,6 +1,7 @@
 # Scripts and calls
 
-> **Note:** These entities come with the Gameplay entities pack, see
+> [!NOTE]
+> These entities come with the Gameplay entities pack, see
 > [Installing and customizing](README.md#installing-and-customizing).
 
 Point entities for what plain wiring cannot reach: game state, your own game code, animations, and finding out why a
@@ -26,7 +27,8 @@ if not p.is_empty():
 	p[0].take_damage(25, this)
 ```
 
-> **Warning:** Indent nested lines with tabs. Spaces fail to compile with a mixed indentation error.
+> [!WARNING]
+> Indent nested lines with tabs. Spaces fail to compile with a mixed indentation error.
 
 ## logic_call
 

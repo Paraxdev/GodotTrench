@@ -45,7 +45,8 @@ The e2e tests launch the real editor and drive it with simulated input. That nee
 `cargo test` skips them unless you pass `--ignored`. CI runs them on Linux with software Vulkan instead. To test the
 live link without a window, see [Live link protocol](godot/live-link.md#testing-without-a-window).
 
-> **Note:** `godot --headless --script` renders nothing (screenshots and rendered checks come out black) and doesn't
+> [!NOTE]
+> `godot --headless --script` renders nothing (screenshots and rendered checks come out black) and doesn't
 > run project autoloads, only the script itself. Write tests against data and nodes, not pixels or autoload state.
 
 To time map builds, run `godot --headless --path godot --script res://tests/bench_build.gd -- runs=5 threaded=1`.
@@ -86,24 +87,41 @@ workspace version. Bump both together, the editor warns when a project's addon d
 
 ## Documentation
 
-The docs are a HonKit book in `docs/`. `docs/SUMMARY.md` is the table of contents, a page that isn't listed there
-doesn't get built. `docs/package.json` pins HonKit and the
-[darkening theme](https://github.com/Stuyk/honkit-plugin-theme-darkening), and `docs/styles/website.css` tweaks it.
+The docs are the Markdown pages in `docs/`, and [Zensical](https://zensical.org) turns them into the site.
+`zensical.toml` in the repository root sets it up, and `docs/SUMMARY.md` is the table of contents. A page missing there
+still gets built, it just has no place in the navigation. `docs/requirements.txt` pins Zensical,
+`docs/stylesheets/td.css` holds the colors, `docs/javascripts/td.js` the MCP switch and the glossary cards, and
+`docs/overrides` replaces a few theme templates.
+
+Run these from the repository root:
 
 ```sh
-cd docs
-npm ci                        # once
-npx honkit serve              # live preview on http://localhost:4000
-npx honkit build . _site      # the build CI runs, lands in docs/_site
+python3 -m venv .venv                  # once
+. .venv/bin/activate                   # .venv\Scripts\activate on Windows
+pip install -r docs/requirements.txt   # once, and again when the pin changes
+zensical serve                         # live preview on http://localhost:8000/TrenchDot/
+zensical build --clean --strict        # the build CI runs, lands in _site
 ```
+
+`--strict` fails the build on a link to a page or heading that doesn't exist.
+
+A heading's id is its text in lower case, spaces become hyphens and other punctuation is dropped, so `## path_corner`
+is `#path_corner`. The editor's help links in
+[help.rs](https://github.com/Paraxdev/TrenchDot/blob/main/crates/td_editor/src/help.rs) point at these ids, and a test
+checks them, so rename a heading only together with its links.
+
+Callouts are GitHub style alerts: `> [!NOTE]`, `> [!TIP]` or `> [!WARNING]` on a line of their own, with the text on
+the quoted lines below. That way they render on GitHub too. Everything that belongs to a numbered step, a second
+paragraph, an image or a code block, is indented by 4 spaces, or it falls out of the list.
 
 Pictures for a page go in `docs/assets/<page>/`.
 
-If a newcomer wouldn't know a term, give it an entry in `GLOSSARY.md`. Every page then shows the definition when you
-hover the term.
+If a newcomer wouldn't know a term, give it an entry in `GLOSSARY.md`: a `## term` heading with a one paragraph
+definition. Its first use on every page then links to it and shows the definition when you hover it. Code, links and
+headings are left alone.
 
-`.github/workflows/pages.yml` builds the book for pull requests that touch `docs/`, and publishes it to GitHub Pages
-once they reach `main`.
+`.github/workflows/pages.yml` builds the site for pull requests that touch `docs/` or `zensical.toml`, and publishes it
+to GitHub Pages once they reach `main`.
 
 ## CI
 
@@ -131,7 +149,7 @@ rolling beta first. A local build tries a release named after its own version fi
 try a zip before it's published, point the editor at another server with the `TRENCHDOT_RELEASES_API` environment
 variable.
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
@@ -144,8 +162,19 @@ The e2e tests drive the editor over the [MCP server](mcp.md), and `example_mcp_s
 ### MCP in the docs
 
 The **MCP** switch in the header, off by default, hides everything about MCP so the pages stay readable for people who
-never touch it. On a page, put all MCP text in one `## MCP` section at the very end, wrapped in
-{% raw %}`{% mcp %}` and `{% endmcp %}`{% endraw %}. Pages only about MCP belong in the **MCP** part of `SUMMARY.md`,
-which the switch hides too.
+never touch it. On a page, put all MCP text in one `## MCP` section at the very end, inside a `td-mcp` block:
 
-{% endmcp %}
+```html
+<div class="td-mcp" markdown>
+
+## MCP
+
+What only MCP users need.
+
+</div>
+```
+
+Keep the blank lines around the content, GitHub only reads the Markdown inside with them. Pages only about MCP belong
+in the **MCP** part of `SUMMARY.md`, which the switch hides too.
+
+</div>

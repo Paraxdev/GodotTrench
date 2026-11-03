@@ -8,6 +8,7 @@ on:
     paths-ignore:
       - "docs/**"
       - ".gitbook.yaml"
+      - "zensical.toml"
       - "**/*.md"
   pull_request:
   workflow_dispatch:

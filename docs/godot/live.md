@@ -34,20 +34,20 @@ in the real renderer.
 
 1. Open the scene in Godot
 
-   The map has to be saved inside the project once, and the scene open in Godot needs a `FuncGodotMap` that uses it.
+    The map has to be saved inside the project once, and the scene open in Godot needs a `FuncGodotMap` that uses it.
 
 2. Turn it on
 
-   Click the link button at the right end of the toolbar, next to the Godot robot, or use *Godot > Live Mode*. The
-   button lights up, and its tooltip says what it is still waiting for, if anything.
+    Click the link button at the right end of the toolbar, next to the Godot robot, or use *Godot > Live Mode*. The
+    button lights up, and its tooltip says what it is still waiting for, if anything.
 
-   ![The toolbar with the live mode link button switched on and its tooltip saying edits reach Godot before you save](../assets/live/toolbar-live-mode-on.png)
+    ![The toolbar with the live mode link button switched on and its tooltip saying edits reach Godot before you save](../assets/live/toolbar-live-mode-on.png)
 
 3. Edit as usual
 
-   Every change shows up in Godot right away.
+    Every change shows up in Godot right away.
 
-   ![Edits in TrenchDot showing up in the Godot editor before saving](../screenshots/TrenchDot-demo-live-view.gif)
+    ![Edits in TrenchDot showing up in the Godot editor before saving](../screenshots/TrenchDot-demo-live-view.gif)
 
 Live mode needs the Godot live link, which is on by default. Both sit in *File > Preferences*, where *Godot live mode*
 is the same switch as the toolbar button.
@@ -66,21 +66,21 @@ To see your saves in a game that is already running:
 
 1. Add the autoload
 
-   In Godot, go to *Project > Project Settings > Globals > Autoload* and add this script:
+    In Godot, go to *Project > Project Settings > Globals > Autoload* and add this script:
 
-   ```
-   res://addons/func_godot/src/trenchdot/runtime/trenchdot_hot_reload.gd
-   ```
+    ```
+    res://addons/func_godot/src/trenchdot/runtime/trenchdot_hot_reload.gd
+    ```
 
 2. Run the game from the Godot editor
 
-   The autoload only listens in games started from the Godot editor, unless you set its `enabled_in_exported_builds`
-   to true.
+    The autoload only listens in games started from the Godot editor, unless you set its `enabled_in_exported_builds`
+    to true.
 
 3. Save in TrenchDot
 
-   The game rebuilds the maps that use the saved file and emits `map_reloaded(map)`. Use that signal to put the player
-   back at a spawn point or reset game state. The status bar should end with "running game reloaded 1 map(s)".
+    The game rebuilds the maps that use the saved file and emits `map_reloaded(map)`. Use that signal to put the player
+    back at a spawn point or reset game state. The status bar should end with "running game reloaded 1 map(s)".
 
 It listens on port 7843, which must match *Running game hot reload* in the editor's preferences. TrenchDot only sends
 it saves while the live link is on.

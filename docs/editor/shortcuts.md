@@ -97,7 +97,8 @@ Select it clears the selection.
 | Ctrl+Shift+N, Ctrl+Tab, Ctrl+W | New tab, next tab, close tab |
 | F5 | Run the Godot project |
 
-> **Note:** F2 used to cycle the shading. It now renames, like in Godot, Blender and most file managers, and shading
+> [!NOTE]
+> F2 used to cycle the shading. It now renames, like in Godot, Blender and most file managers, and shading
 > moved to F4. A binding you set yourself in the shortcuts window stays as it was.
 
 ## Other presets

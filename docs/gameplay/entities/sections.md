@@ -1,6 +1,7 @@
 # Streamed sections
 
-> **Note:** These entities come with the Gameplay entities pack, see
+> [!NOTE]
+> These entities come with the Gameplay entities pack, see
 > [Installing and customizing](README.md#installing-and-customizing).
 
 Entities for playing several maps as one world with no loading screen. Each map is a section, and sections meet in a

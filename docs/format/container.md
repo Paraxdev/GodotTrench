@@ -148,5 +148,6 @@ The scatter columns hold every item index first, then every x, and so on through
 value is stored as an integer count of its step: 1 for the item, 100 per unit for the position, 10 per degree for the
 angles and 1000 for the scale. Dividing gives back the exact float, for example `1234 / 100.0` is `12.34`.
 
-> **Note:** `tdm_file.gd` turns scatter columns back into instance arrays, but leaves terrain bytes as `PackedByteArray`
+> [!NOTE]
+> `tdm_file.gd` turns scatter columns back into instance arrays, but leaves terrain bytes as `PackedByteArray`
 > and long number arrays as packed arrays. GDScript that reads a map has to accept those next to plain arrays.

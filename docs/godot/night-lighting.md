@@ -46,7 +46,7 @@ The geometry then follows the light with no wiring: shown while the light is on,
 
 See [Props, lights and effects](../gameplay/entities/effects.md) for the other light keys.
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
@@ -54,4 +54,4 @@ The showcase maps are built by [MCP scripts](../mcp-scripts.md) that drive the e
 [MCP server](../mcp.md). `examples/mcp/night_district.json` and `examples/mcp/withered_city.json` are complete night
 maps built this way.
 
-{% endmcp %}
+</div>

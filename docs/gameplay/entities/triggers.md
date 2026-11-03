@@ -1,6 +1,7 @@
 # Triggers
 
-> **Note:** These entities come with the Gameplay entities pack, see
+> [!NOTE]
+> These entities come with the Gameplay entities pack, see
 > [Installing and customizing](README.md#installing-and-customizing).
 
 Invisible brush volumes that react when a body enters them. They are how a level notices the player: a doorway starts
@@ -52,7 +53,7 @@ With the default empty `filter_group` it hurts anything that has the method, not
 ## trigger_teleport
 
 Moves bodies to the entity named in `destination`, usually an
-[`info_teleport_destination`](actors.md#infoteleportdestination), and turns them to face its yaw. It stops them unless
+[`info_teleport_destination`](actors.md#info_teleport_destination), and turns them to face its yaw. It stops them unless
 `keep_velocity` is 1, for a portal the player should fall or run through without losing speed.
 
 * **Outputs:** `teleported(activator)`
@@ -70,7 +71,7 @@ stops accelerating at `push` speed.
 ## trigger_call
 
 Calls a method when triggered, on `!activator` by default, so a trigger can call straight into the player's script, for
-example to save a checkpoint. `call_target` and `arguments` work as in [`logic_call`](scripting.md#logiccall).
+example to save a checkpoint. `call_target` and `arguments` work as in [`logic_call`](scripting.md#logic_call).
 
 * **Inputs:** `trigger(activator)`
 * **Outputs:** `called(result)`
@@ -79,7 +80,7 @@ example to save a checkpoint. `call_target` and `arguments` work as in [`logic_c
 ## trigger_spawn_area
 
 Spawns scenes at random spots inside its volume, by default when the player enters, for an ambush as the player walks
-into a room. Its keys work as on [`info_spawner`](actors.md#infospawner). `start` runs a spawn timer when `interval` is
+into a room. Its keys work as on [`info_spawner`](actors.md#info_spawner). `start` runs a spawn timer when `interval` is
 above 0, and `toggle` here switches that timer rather than the trigger.
 
 * **Inputs:** `spawn`, `start`, `stop`, `toggle`, `kill_all`

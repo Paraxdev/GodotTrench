@@ -1,6 +1,7 @@
 # Logic
 
-> **Note:** These entities come with the Gameplay entities pack, see
+> [!NOTE]
+> These entities come with the Gameplay entities pack, see
 > [Installing and customizing](README.md#installing-and-customizing).
 
 Invisible point entities that decide when things happen. They sit between a trigger or button and what it affects,
@@ -83,7 +84,7 @@ one of them. `roll` decides by chance instead, for example whether a chest holds
 * **Keys:** `count` 3 (1 to 8), `no_repeat` 0, `chance` 50 (percent)
 
 `pick` fires `picked` with the number of the output it chose and then that output, so `picked` can feed a
-[`logic_case`](#logiccase). With `no_repeat` it never chooses the output it chose last time, unless `count` is 1.
+[`logic_case`](#logic_case). With `no_repeat` it never chooses the output it chose last time, unless `count` is 1.
 `roll` fires `on_success` with a probability of `chance` percent and `on_fail` otherwise, so 0 never succeeds and 100
 always does.
 

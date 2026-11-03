@@ -39,7 +39,8 @@ Names are snake_case in the map and PascalCase in C#. To read keys yourself, imp
 `_func_godot_apply_properties(Dictionary props)` and use the helper's readers like
 `TrenchDot.Float(props, "walk_speed", 3.5f)`.
 
-> **Tip:** The Reference panel's *C# class* tab writes a skeleton with the signals, exports and inputs of any entity,
+> [!TIP]
+> The Reference panel's *C# class* tab writes a skeleton with the signals, exports and inputs of any entity,
 > a quick start for your own. It leaves out the `[TrenchDotEntity]` line, add that yourself.
 
 ## Where the addon looks
@@ -53,7 +54,8 @@ The editor and the map build each scan folders for C# entity classes, set in two
 
 Both default to `res://` and skip `addons`, `bin`, `obj` and hidden folders.
 
-> **Note:** A C# class cannot replace a library entity. If the FGD already defines its classname, the FGD wins.
+> [!NOTE]
+> A C# class cannot replace a library entity. If the FGD already defines its classname, the FGD wins.
 
 ## I/O from C#
 
@@ -69,11 +71,11 @@ TrenchDot.FireOutput(this, "alerted", player);
 
 The Reference panel's *Use from C#* tab generates this code for any entity.
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
 An agent or script driving the editor over the [MCP server](../mcp.md) gets the same generated code from the
 `code_reference` tool.
 
-{% endmcp %}
+</div>

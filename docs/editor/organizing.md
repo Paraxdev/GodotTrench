@@ -71,7 +71,8 @@ selection as its own `.tdm` and puts an instance in its place. Every instance up
 
 ![The Edit menu with Prefabs open and Create from Selection hovered](../assets/organizing/menu-prefabs.png)
 
-> **Note:** Save the map once before you create a prefab. Prefab paths are stored relative to the map, so the editor
+> [!NOTE]
+> Save the map once before you create a prefab. Prefab paths are stored relative to the map, so the editor
 > refuses until the map has a file.
 
 For pieces you paste once and then shape freely, use the [prefab library](prefab-library.md) instead.
@@ -87,12 +88,12 @@ A cordon shrinks the editor down to one part of a big map.
 1. Select what you want to work on.
 2. Choose *View > Cordon > Set Cordon from Selection*, or click **Cordon** in the Inspector.
 
-   ![The View menu with Cordon open and Set Cordon from Selection hovered](../assets/organizing/menu-cordon.png)
+    ![The View menu with Cordon open and Set Cordon from Selection hovered](../assets/organizing/menu-cordon.png)
 
 3. Everything that does not touch the yellow box around your selection is now hidden and cannot be selected, and the
-   status bar says *cordon*.
+    status bar says *cordon*.
 
-   ![Before: the whole map with the house, the lawn, a garden wall, a pillar and a tall reference block. After: only the house inside a yellow box and the lawn that touches it](../assets/organizing/cordon-before-after.png)
+    ![Before: the whole map with the house, the lawn, a garden wall, a pillar and a tall reference block. After: only the house inside a yellow box and the lawn that touches it](../assets/organizing/cordon-before-after.png)
 
 *View > Cordon > Cordon Enabled* switches it off and on again, and *Clear Cordon* removes it. The cordon is saved with
 the map.
@@ -124,7 +125,7 @@ Undone edits stay dimmed above *current*, click one to redo up to it.
 
 ![The History panel with Rename and Group dimmed above the current marker and the Hollow entry hovered](../assets/organizing/history-panel.png)
 
-{% mcp %}
+<div class="td-mcp" markdown>
 
 ## MCP
 
@@ -132,4 +133,4 @@ An agent or script driving the editor over the [MCP server](../mcp.md) runs the 
 the `validate_map` tool, which names them by code, such as `coplanar_faces` and `missing_model`. The
 `run_action` action `insert_prefab` takes a `fixup`, so an agent can give an instance its fixup when it places it.
 
-{% endmcp %}
+</div>

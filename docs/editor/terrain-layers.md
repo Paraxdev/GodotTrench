@@ -34,7 +34,8 @@ without a bigger tile, but it costs extra texture reads, so leave it at 0 where 
 
 ![Tile 256 with detile 0 on the left and 0.7 on the right](../assets/terrain-painting/detile-compare.jpg)
 
-> **Note:** The material's `metadata/texture_size` does not apply to terrain, only **tile** does.
+> [!NOTE]
+> The material's `metadata/texture_size` does not apply to terrain, only **tile** does.
 
 ## How it looks in Godot
 
