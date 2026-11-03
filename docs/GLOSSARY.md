@@ -138,6 +138,9 @@ A reusable piece of a map saved as its own .tdm file and placed in other maps as
 ## res://
 Godot's way of writing a path inside the project folder, whatever the folder is called on disk. res://maps/room.tdm is room.tdm in the maps folder of your Godot project. That's why maps and models have to be saved inside the project for the addon to find them.
 
+## Restricted Mode
+How TrenchDot opens a Godot project that holds code and that you haven't trusted yet. You can view and edit its maps, but the editor doesn't start Godot on it, build in Godot or send live edits, since Godot runs a project's scripts when it opens, plays or builds it. Click Restricted Mode in the status bar to trust the project.
+
 ## scatter set
 A group of models painted together with the Scatter tool, such as a forest or a meadow of grass, with its own layer, density and target surfaces. Godot builds each set as MultiMeshes.
 

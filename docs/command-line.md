@@ -9,7 +9,7 @@ and exits.
 
 | Option | Does |
 | --- | --- |
-| `--project <dir>` | Loads the Godot project in `<dir>` or a folder above it. Without it the editor loads the last project |
+| `--project <dir>` | Loads the Godot project in `<dir>` or a folder above it and trusts it for the session, see [Project trust](godot/running-godot.md#project-trust). Without it the editor loads the last project |
 | `--default-prefs` | Starts with default preferences and never saves them. Useful for scripts and tests, and to check whether a problem comes from your own settings |
 | `--offscreen` | Opens the window outside every screen, without focus or a taskbar button. It still renders, so scripts and tests can take screenshots while you keep working |
 | `--dump <map>` | Prints a map as JSON and exits |
