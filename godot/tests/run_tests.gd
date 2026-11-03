@@ -56,6 +56,7 @@ func _initialize() -> void:
 	await test_parser()
 	await test_build()
 	await test_terrain()
+	test_displacement_power()
 	await test_meshes_terrain_props()
 	await test_decal_mesh()
 	await test_warm_up()
@@ -322,6 +323,29 @@ func test_terrain() -> void:
 		check(near(decal.position, Vector3(4, 2, 4)), "decal position, got %s" % decal.position)
 	map.queue_free()
 	await process_frame
+
+func test_displacement_power() -> void:
+	print("- displacements outside the editor's powers stay flat")
+	var settings: FuncGodotMapSettings = load(SETTINGS)
+	var displaced := func(power: int, alphas: int) -> FuncGodotData.BrushData:
+		var side := (1 << power) + 1
+		var heights := PackedFloat32Array()
+		heights.resize(side * side)
+		var shades := PackedFloat32Array()
+		shades.resize(alphas)
+		var node := box_node(1, Vector3(0, 0, 0), Vector3(64, 64, 64))
+		node["faces"][0]["disp"] = { "power": power, "heights": heights, "alphas": shades }
+		return TrenchDotParser._parse_brush(settings, Transform3D.IDENTITY, node)
+	var kept: FuncGodotData.BrushData = displaced.call(2, 0)
+	check(kept != null and kept.has_disp and kept.faces[0].disp_vertices.size() == 25, "a power 2 displacement builds its 5 by 5 grid")
+	kept = displaced.call(2, 25)
+	check(kept != null and kept.has_disp and kept.faces[0].disp_alphas.size() == 25, "with one alpha per vertex")
+	# Zero heights compress to nearly nothing, a 3 KB map could ask for 16.8 million vertices at power 12.
+	for power in [0, 5, 12]:
+		var flat: FuncGodotData.BrushData = displaced.call(power, 0)
+		check(flat != null and flat.faces.size() == 6 and not flat.has_disp and flat.faces[0].disp_vertices.is_empty(), "power %d leaves the face flat and the brush whole" % power)
+	var odd: FuncGodotData.BrushData = displaced.call(2, 3)
+	check(odd != null and not odd.has_disp, "alphas that do not fit the grid leave the face flat")
 
 func test_decal_mesh() -> void:
 	print("- decal meshes blend over their surface with a depth pull")
