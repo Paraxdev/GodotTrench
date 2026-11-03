@@ -223,6 +223,17 @@ pub enum TrustRequest {
     Switch { root: PathBuf, map: PathBuf },
 }
 
+/// Why the open project is trusted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Trust {
+    /// The person trusts it, or a folder it lies in, from the trust prompt or by saving a map into it.
+    Stored,
+    /// Until the editor closes: the project given with --project.
+    Session,
+    /// Until it closes: it held no code when it opened, see [`crate::code_scan`].
+    NoCode,
+}
+
 impl TrustRequest {
     /// The project the person is asked about.
     pub fn root(&self) -> &Path {
@@ -452,6 +463,8 @@ pub struct EditorState {
     session_trusted: Vec<PathBuf>,
     /// The open project's root while it is trusted, see [`Self::restricted`].
     trusted_root: Option<PathBuf>,
+    /// The open project's root when it held no code as it opened.
+    no_code_root: Option<PathBuf>,
     /// The Gameplay entities pack in the open project, checked when it loads and after an install.
     pub gameplay_pack: crate::entity_pack::Status,
     live_link_status: Option<std::sync::mpsc::Receiver<String>>,
@@ -606,6 +619,7 @@ impl EditorState {
             trust_request: None,
             session_trusted: Vec::new(),
             trusted_root: None,
+            no_code_root: None,
             gameplay_pack: Default::default(),
             live_link_status: None,
             unopened_links: std::sync::mpsc::channel(),
@@ -939,7 +953,7 @@ impl EditorState {
     }
 
     /// Recent files, project and status for a map just opened from `path`. A map of another project switches to it when
-    /// that one is trusted or none is open, else the open project stays and the person is asked.
+    /// that one is trusted, holds no code or none is open, else the open project stays and the person is asked.
     pub fn after_open(&mut self, path: &Path) {
         let path = &absolute(path);
         if let Some(map_path) = self.doc.path.clone() {
@@ -948,7 +962,7 @@ impl EditorState {
 
         let mut kept = None;
         if let Some(root) = self.other_project(path) {
-            if self.game.project_root.is_none() || self.is_trusted(&root) {
+            if self.game.project_root.is_none() || self.is_trusted(&root) || crate::code_scan::find(&root).is_none() {
                 self.load_project(&root);
             } else {
                 self.trust_request = Some(TrustRequest::Switch { root: root.clone(), map: path.clone() });
@@ -1159,8 +1173,29 @@ impl EditorState {
         self.refresh_trust();
     }
 
+    /// Why the open project is trusted, None in Restricted Mode and without a project.
+    pub fn trust(&self) -> Option<Trust> {
+        let root = self.game.project_root.as_ref().filter(|root| self.trusted_root.as_ref() == Some(*root))?;
+        let real = crate::trust::real_path(root);
+        Some(if self.prefs.trusted_projects.contains(&real) || self.prefs.trusted_folders.iter().any(|t| real.starts_with(t)) {
+            Trust::Stored
+        } else if self.session_trusted.contains(&real) {
+            Trust::Session
+        } else {
+            Trust::NoCode
+        })
+    }
+
+    /// A map saved from the GUI into a project trusted only for holding no code trusts the project from now on, so it
+    /// keeps opening trusted once its owner adds scripts in Godot. Saves by an agent never do.
+    pub fn trust_after_save(&mut self, path: &Path) {
+        if let Some(root) = self.game.project_root.clone().filter(|root| self.trust() == Some(Trust::NoCode) && crate::trust::within(path, root)) {
+            self.trust_project(&root, false);
+        }
+    }
+
     fn refresh_trust(&mut self) {
-        self.trusted_root = self.game.project_root.clone().filter(|root| self.is_trusted(root));
+        self.trusted_root = self.game.project_root.clone().filter(|root| self.is_trusted(root) || self.no_code_root.as_ref() == Some(root));
     }
 
     /// Loads the game config of a Godot project, falling back to built-in definitions.
@@ -1202,6 +1237,11 @@ impl EditorState {
         self.model_library.rescan(&game);
         self.prefab_library.rescan(Some(root));
         self.game = game;
+        // Checked again each time a project opens, but not while it stays open: Godot adds imported files to it then.
+        if switched || self.no_code_root.as_ref() != Some(root) {
+            self.no_code_root = (!self.is_trusted(root) && crate::code_scan::find(root).is_none()).then(|| root.clone());
+        }
+
         self.refresh_trust();
         if switched && self.restricted() {
             self.trust_request = Some(TrustRequest::Project(root.clone()));
@@ -1591,6 +1631,7 @@ mod tests {
         for root in [&mine, &pack, &other] {
             std::fs::create_dir_all(root).unwrap();
             std::fs::write(root.join("project.godot"), "config_version=5\n").unwrap();
+            std::fs::write(root.join("main.gd"), "extends Node\n").unwrap();
             format::save(&td_doc::Map::new(), &root.join("level.tdm")).unwrap();
         }
 

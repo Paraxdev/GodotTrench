@@ -175,6 +175,17 @@ pub(super) fn path_value<P: AsRef<std::path::Path>>(p: Option<P>) -> Value {
     p.map_or(Value::Null, |p| Value::String(path_text(p)))
 }
 
+/// Why the open project is trusted, as get_state and open_project report it: null in Restricted Mode.
+fn trust_name(trust: Option<crate::state::Trust>) -> Value {
+    use crate::state::Trust;
+    match trust {
+        Some(Trust::Stored) => json!("stored"),
+        Some(Trust::Session) => json!("session"),
+        Some(Trust::NoCode) => json!("no_code"),
+        None => Value::Null,
+    }
+}
+
 /// `{"old id": [new ids], ...}`, the form run_script reads to follow replaced brushes.
 pub(super) fn replaced_json(replaced: &td_doc::ops::Replaced) -> Value {
     Value::Object(replaced.iter().map(|(old, new)| (old.0.to_string(), json!(new.iter().map(|n| n.0).collect::<Vec<_>>()))).collect())
@@ -763,6 +774,7 @@ impl App {
                         ok(json!({
                             "project_root": path_text(&root), "game": self.state.game.name, "entities": self.state.game.entities.len(),
                             "materials": self.state.materials.entries.len(), "status": self.state.status, "restricted": self.state.restricted(),
+                            "trust": trust_name(self.state.trust()),
                             "addon_version": self.state.game.addon_version,
                             "addon_version_mismatch": self.state.game.addon_version.as_deref().is_some_and(|v| v != crate::VERSION),
                         }))
@@ -956,7 +968,7 @@ impl App {
                 "name": s.game.name, "project_root": path_value(s.game.project_root.as_ref()), "entity_definitions": s.game.entities.len(),
                 "materials": s.materials.entries.len(), "editor_version": crate::VERSION, "addon_version": s.game.addon_version,
                 "addon_version_mismatch": s.game.addon_version.as_deref().is_some_and(|v| v != crate::VERSION),
-                "restricted": s.restricted(),
+                "restricted": s.restricted(), "trust": trust_name(s.trust()),
             },
             "godot": {
                 "executable": s.godot.exe, "connected": s.link_state.connected, "addon_outdated": s.link_state.outdated,

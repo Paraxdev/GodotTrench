@@ -974,21 +974,23 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 state.load_project(&root);
             }
         }
+
+        // The MCP save ops call save_map themselves, so only saves from the menu, the toolbar and the keys come here.
         Action::Save => match state.doc.path.clone() {
-            Some(p) => {
-                if let Err(e) = state.save_map(&p) {
-                    state.fail_status(format!("Save failed: {e}"));
-                }
-            }
+            Some(p) => match state.save_map(&p) {
+                Ok(()) => state.trust_after_save(&p),
+                Err(e) => state.fail_status(format!("Save failed: {e}")),
+            },
             None => execute(state, Action::SaveAs, ctx),
         },
         Action::SaveAs => {
             let name = state.doc.path.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "map.tdm".into());
             let picked = file_dialog(state, |d| d.add_filter("TrenchDot map", &["tdm"]).add_filter("Map as JSON", &["json"]).set_file_name(name).save_file());
-            if let Some(path) = picked
-                && let Err(e) = state.save_map(&path)
-            {
-                state.fail_status(format!("Save failed: {e}"));
+            if let Some(path) = picked {
+                match state.save_map(&path) {
+                    Ok(()) => state.trust_after_save(&path),
+                    Err(e) => state.fail_status(format!("Save failed: {e}")),
+                }
             }
         }
         Action::Undo => {
@@ -2878,6 +2880,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+        std::fs::write(dir.join("main.gd"), "extends Node\n").unwrap();
         let root = crate::state::absolute(&dir);
         let mut state = EditorState::new(Default::default());
         state.load_project(&dir);

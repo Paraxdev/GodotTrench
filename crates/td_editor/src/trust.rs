@@ -1,6 +1,7 @@
 //! Project trust, the way VS Code has it. Godot runs a project's scripts whenever it opens, plays or builds it, so a
 //! project whose authors the person has not trusted opens in Restricted Mode: its maps can be viewed and edited, but
-//! TrenchDot does not start Godot on it or have Godot build its maps until the person trusts it.
+//! TrenchDot does not start Godot on it or have Godot build its maps until the person trusts it. A project that holds
+//! no code, such as a new one, gives Godot nothing to run and opens trusted, see [`crate::code_scan`].
 
 use std::path::{Path, PathBuf};
 
@@ -39,6 +40,11 @@ pub fn real_path(path: &Path) -> PathBuf {
             _ => return path.clone(),
         }
     }
+}
+
+/// Whether `path` lies in the folder `root`, as written or with links resolved.
+pub fn within(path: &Path, root: &Path) -> bool {
+    path.starts_with(root) || real_path(path).starts_with(real_path(root))
 }
 
 /// The folder `root` is in, None when that is a drive or filesystem root, which is too much to trust with one click.
@@ -174,10 +180,10 @@ enum Answer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::Prefs;
+    use crate::state::{Prefs, Trust};
     use egui_kittest::kittest::Queryable;
 
-    /// Two Godot projects side by side in a folder of their own.
+    /// Two Godot projects with a script each, side by side in a folder of their own.
     fn projects(name: &str) -> (PathBuf, PathBuf, PathBuf) {
         let folder = std::env::temp_dir().join(format!("td_trust_{name}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
@@ -185,6 +191,7 @@ mod tests {
         for dir in [&castle, &keep] {
             std::fs::create_dir_all(dir).unwrap();
             std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+            std::fs::write(dir.join("main.gd"), "extends Node\n").unwrap();
         }
 
         (folder, crate::state::absolute(&castle), crate::state::absolute(&keep))
@@ -258,6 +265,79 @@ mod tests {
         fresh.recent_projects.push(castle.clone());
         fresh.seed_trust(Some(&keep));
         assert!(fresh.trusted_projects.is_empty(), "new preferences have nothing to carry over");
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[test]
+    fn a_project_without_code_opens_trusted_until_it_has_some() {
+        let (folder, castle, keep) = projects("no_code");
+        std::fs::remove_file(castle.join("main.gd")).unwrap();
+        let mut state = EditorState::new(Prefs::default());
+        assert!(!state.restricted() && state.trust().is_none(), "no project, nothing to ask");
+        state.load_project(&castle);
+        assert!(!state.restricted() && state.trust_request.is_none(), "no prompt and no chip");
+        assert_eq!(state.trust(), Some(Trust::NoCode));
+        assert!(state.prefs.trusted_projects.is_empty() && state.prefs.trusted_folders.is_empty(), "nothing is stored");
+
+        // Godot adds imported files while the project is open, so it stays trusted until it closes.
+        std::fs::write(castle.join("main.gd"), "extends Node\n").unwrap();
+        state.load_project(&castle);
+        assert_eq!(state.trust(), Some(Trust::NoCode));
+        state.load_project(&keep);
+        state.trust_request = None;
+        state.load_project(&castle);
+        assert!(state.restricted(), "opened again, the project with a script is asked about");
+        assert_eq!(state.trust_request, Some(TrustRequest::Project(castle.clone())));
+
+        // A map of a project without code switches to it as to a trusted one.
+        std::fs::remove_file(castle.join("main.gd")).unwrap();
+        td_doc::format::save(&td_doc::Map::new(), &castle.join("level.tdm")).unwrap();
+        state.trust_for_session(&keep);
+        state.load_project(&keep);
+        state.trust_request = None;
+        state.open_map(&castle.join("level.tdm")).unwrap();
+        assert_eq!(state.game.project_root.as_ref(), Some(&castle));
+        assert!(state.trust_request.is_none() && !state.restricted());
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[test]
+    fn saving_a_map_from_the_gui_trusts_a_project_without_code() {
+        let (folder, castle, keep) = projects("save");
+        std::fs::remove_file(castle.join("main.gd")).unwrap();
+        let ctx = egui::Context::default();
+        let mut state = EditorState::new(Prefs::default());
+        state.load_project(&castle);
+        state.save_map(&castle.join("agent.tdm")).unwrap();
+        assert_eq!(state.trust(), Some(Trust::NoCode), "the save MCP makes stores nothing");
+        state.doc.path = Some(folder.join("loose.tdm"));
+        crate::commands::execute(&mut state, Action::Save, &ctx);
+        assert_eq!(state.trust(), Some(Trust::NoCode), "nor does a map saved outside the project");
+
+        state.doc.path = Some(castle.join("yard.tdm"));
+        crate::commands::execute(&mut state, Action::Save, &ctx);
+        assert!(castle.join("yard.tdm").is_file());
+        assert_eq!(state.trust(), Some(Trust::Stored));
+        assert_eq!(state.prefs.trusted_projects.iter().collect::<Vec<_>>(), [&real_path(&castle)]);
+        std::fs::write(castle.join("main.gd"), "extends Node\n").unwrap();
+        let mut later = EditorState::new(state.prefs.clone());
+        later.load_project(&castle);
+        assert!(!later.restricted(), "the project keeps opening trusted once it has scripts");
+
+        let mut state = EditorState::new(Prefs::default());
+        state.load_project(&keep);
+        state.doc.path = Some(keep.join("yard.tdm"));
+        crate::commands::execute(&mut state, Action::Save, &ctx);
+        assert!(keep.join("yard.tdm").is_file());
+        assert!(state.restricted() && state.prefs.trusted_projects.is_empty(), "a save in Restricted Mode trusts nothing");
+
+        let mut state = EditorState::new(Prefs::default());
+        state.trust_for_session(&keep);
+        state.load_project(&keep);
+        state.doc.path = Some(keep.join("yard.tdm"));
+        crate::commands::execute(&mut state, Action::Save, &ctx);
+        assert_eq!(state.trust(), Some(Trust::Session), "a --project start stays trusted for the session only");
+        assert!(state.prefs.trusted_projects.is_empty());
         let _ = std::fs::remove_dir_all(folder);
     }
 

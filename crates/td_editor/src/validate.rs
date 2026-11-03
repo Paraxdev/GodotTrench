@@ -218,6 +218,11 @@ pub fn map_script_issues(map: &Map, prefabs: &mut PrefabCache, map_path: Option<
     found.into_iter().map(|(id, message)| Issue { node: Some(id), severity: Severity::Warning, code: "map_script", message }).collect()
 }
 
+/// Whether `map` itself runs GDScript, or hands a logic_script code, when the scene plays.
+pub fn holds_script(map: &Map) -> bool {
+    !script_holders(map).is_empty()
+}
+
 /// The nodes of `map` itself that run GDScript, with the warning for each.
 fn script_holders(map: &Map) -> Vec<(NodeId, String)> {
     let has_code = |e: &td_doc::Entity| ["source", "expression"].iter().any(|k| e.property(k).is_some_and(|v| !v.trim().is_empty()));

@@ -6,6 +6,7 @@ pub mod blend_tool;
 pub mod brand;
 pub mod camera;
 pub mod code_refs;
+pub mod code_scan;
 pub mod commands;
 pub mod content;
 pub mod content_wizard;

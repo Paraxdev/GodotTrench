@@ -2439,8 +2439,8 @@ fn trust_chip(ed: &Editor) -> Value {
     json!({ "type": "click", "x": (r[0] + r[2]) / 2.0, "y": (r[1] + r[3]) / 2.0 })
 }
 
-/// A project nobody trusted opens in Restricted Mode. An agent opening it gets no prompt in its way, the Restricted Mode
-/// chip in the status bar brings the prompt up, and closing it leaves the project restricted.
+/// A project nobody trusted opens in Restricted Mode when it holds code. An agent opening it gets no prompt in its way,
+/// the Restricted Mode chip in the status bar brings the prompt up, and closing it leaves the project restricted.
 #[test]
 #[ignore]
 fn an_untrusted_project_opens_in_restricted_mode() {
@@ -2448,6 +2448,7 @@ fn an_untrusted_project_opens_in_restricted_mode() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("trenchdot/nature")).unwrap();
     std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+    std::fs::write(dir.join("main.gd"), "extends Node\n").unwrap();
     let ed = Editor::launch("restricted");
     let opened = ed.call("open_project", json!({ "path": dir }));
     assert_eq!(opened["restricted"], true, "{opened}");
@@ -2495,6 +2496,52 @@ fn an_untrusted_project_opens_in_restricted_mode() {
     assert_eq!(window_titles(&ed), Vec::<String>::new());
     let tab = ed.call("map_file", json!({ "op": "open_tab", "path": project.join("demo/maps/showcase/mountain_house.tdm") }));
     assert!(tab["other_project"].is_null(), "{tab}");
+}
+
+/// A project without code opens trusted with no prompt and no chip, for as long as it is open. An agent's saves store
+/// no trust, so once the project has a script it is asked about again. A save from the keyboard stores it.
+#[test]
+#[ignore]
+fn a_project_without_code_opens_trusted() {
+    let folder = artifacts().join("code_free_projects");
+    let _ = std::fs::remove_dir_all(&folder);
+    let (castle, keep, other) = (folder.join("castle"), folder.join("keep"), folder.join("other"));
+    for dir in [&castle, &keep, &other] {
+        std::fs::create_dir_all(dir.join("trenchdot/nature")).unwrap();
+        std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+    }
+
+    std::fs::write(other.join("main.gd"), "extends Node\n").unwrap();
+    let ed = Editor::launch("code_free");
+    ed.call("set_editor", json!({ "live_link_port": free_port() }));
+    let opened = ed.call("open_project", json!({ "path": castle }));
+    assert_eq!((&opened["restricted"], &opened["trust"]), (&json!(false), &json!("no_code")), "{opened}");
+    let state = ed.state();
+    assert_eq!((&state["game"]["trust"], &state["ui"]["trust_chip"]), (&json!("no_code"), &Value::Null));
+    assert!(!window_titles(&ed).contains(&td_editor::trust::QUESTION.to_string()));
+
+    ed.call("map_file", json!({ "op": "save", "path": castle.join("yard.tdm") }));
+    ed.call("run_action", json!({ "action": "save" }));
+    let ran = ed.call("run_script", json!({ "steps": [{ "tool": "map_file", "args": { "op": "save", "path": castle.join("court.tdm") } }] }));
+    assert_eq!(ran["errors"], json!([]), "{ran}");
+    assert_eq!(ed.state()["game"]["trust"], "no_code", "saves an agent makes store no trust");
+
+    std::fs::write(castle.join("main.gd"), "extends Node\n").unwrap();
+    ed.call("open_project", json!({ "path": castle }));
+    assert_eq!(ed.state()["game"]["trust"], "no_code", "it stays trusted while it is open");
+    ed.call("open_project", json!({ "path": other }));
+    assert_eq!(ed.state()["game"]["restricted"], true);
+    let opened = ed.call("open_project", json!({ "path": castle }));
+    assert_eq!((&opened["restricted"], &opened["trust"]), (&json!(true), &Value::Null), "opened again with a script: {opened}");
+
+    ed.call("open_project", json!({ "path": keep }));
+    ed.call("map_file", json!({ "op": "save", "path": keep.join("yard.tdm") }));
+    ed.input("window", json!([{ "type": "move", "x": 400, "y": 300 }, { "type": "key", "key": "S", "modifiers": ["ctrl"] }]));
+    assert_eq!(ed.state()["game"]["trust"], "stored", "Ctrl+S is the person's own save");
+    std::fs::write(keep.join("main.gd"), "extends Node\n").unwrap();
+    ed.call("open_project", json!({ "path": other }));
+    let opened = ed.call("open_project", json!({ "path": keep }));
+    assert_eq!((&opened["restricted"], &opened["trust"]), (&json!(false), &json!("stored")), "{opened}");
 }
 
 #[test]
