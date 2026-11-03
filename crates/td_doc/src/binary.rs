@@ -92,13 +92,14 @@ impl ContentId {
 
 /// Raw payloads of the HEAD and NODE chunks for a map value as `format::to_value` makes it.
 fn payloads(value: &Value) -> (Vec<u8>, Vec<Vec<u8>>, usize) {
-    let mut head = Map::new();
-    if let Some(obj) = value.as_object() {
-        head.extend(obj.iter().filter(|(k, _)| k.as_str() != "layers").map(|(k, v)| (k.clone(), v.clone())));
+    let mut w = Writer::new();
+    let head = value.as_object().into_iter().flatten().filter(|(k, _)| k.as_str() != "layers");
+    w.dict_header(head.clone().count());
+    for (k, v) in head {
+        w.key(k);
+        w.value(v);
     }
 
-    let mut w = Writer::new();
-    w.value(&Value::Object(head));
     let head = w.out;
 
     let mut flat = Vec::new();
@@ -115,7 +116,7 @@ fn payloads(value: &Value) -> (Vec<u8>, Vec<Vec<u8>>, usize) {
             return;
         }
 
-        let mut w = Writer::new();
+        let mut w = Writer { out: Vec::with_capacity(64 + 8 * parents.len() + encoded.iter().map(Vec::len).sum::<usize>()) };
         w.dict_header(2);
         w.key("parents");
         w.int64s(parents);
@@ -165,23 +166,28 @@ pub fn content_id(value: &Value) -> ContentId {
 }
 
 /// The file for a map value as `format::to_value` makes it, with the `unknown` chunks written back as they are.
-/// Refuses a map that the reader would not read in full.
-pub fn encode(value: &Value, unknown: &[RawChunk]) -> Result<Vec<u8>, ContainerError> {
-    let (head, batches, node_count) = payloads(value);
+/// Refuses a map that the reader would not read in full. The value is dropped once it is written out, and each stage
+/// is freed as the next is made, so a big map is not held several times over.
+pub fn encode(value: Value, unknown: &[RawChunk]) -> Result<Vec<u8>, ContainerError> {
+    let (head, batches, node_count) = payloads(&value);
+    let version = value.get("version").cloned().unwrap_or(Value::from(0));
+    drop(value);
     let id = id_of(&head, &batches);
     let raw: Vec<&[u8]> = std::iter::once(head.as_slice()).chain(batches.iter().map(Vec::as_slice)).collect();
-    let version = value.get("version").cloned().unwrap_or(Value::from(0));
     let end = json!({ "version": version, "nodes": node_count, "chunks": raw.len() + unknown.len(), "content": id.as_i64() });
     let mut w = Writer::new();
     w.value(&end);
     check_fits(&raw, unknown, &w.out)?;
 
+    let sizes: Vec<u32> = raw.iter().map(|r| r.len() as u32).collect();
     let compressed = compress_all(&raw);
+    drop(raw);
+    drop((head, batches));
     let mut out = Vec::with_capacity(compressed.iter().map(Vec::len).sum::<usize>() + 64);
     out.extend_from_slice(&MAGIC);
     out.extend_from_slice(&CONTAINER_VERSION.to_le_bytes());
-    for (i, data) in compressed.iter().enumerate() {
-        write_chunk(&mut out, if i == 0 { HEAD } else { NODE }, FLAG_ZSTD, raw[i].len() as u32, data);
+    for (i, data) in compressed.into_iter().enumerate() {
+        write_chunk(&mut out, if i == 0 { HEAD } else { NODE }, FLAG_ZSTD, sizes[i], &data);
     }
 
     for chunk in unknown {
@@ -601,7 +607,7 @@ mod tests {
                 let (text, problems) = format::file_to_json(&bytes).unwrap();
                 assert!(problems.is_empty(), "{}: {problems:?}", path.display());
                 let value: Value = serde_json::from_str(&text).unwrap();
-                let binary = encode(&value, &[]).unwrap();
+                let binary = encode(value.clone(), &[]).unwrap();
                 assert_eq!(decode(&binary).unwrap().value, value, "{}", path.display());
 
                 let from_json = format::from_str(&text).unwrap();
@@ -1011,7 +1017,7 @@ mod tests {
         ] });
         let loaded = std::thread::Builder::new()
             .stack_size(1 << 20)
-            .spawn(move || format::from_bytes(&encode(&value, &[]).unwrap()).map(|l| (l.map.nodes.len(), l.problems)))
+            .spawn(move || format::from_bytes(&encode(value, &[]).unwrap()).map(|l| (l.map.nodes.len(), l.problems)))
             .unwrap()
             .join()
             .unwrap()
@@ -1024,7 +1030,7 @@ mod tests {
     fn unknown_chunks_survive_a_save() {
         let m = big_map();
         let extra = RawChunk { tag: *b"XTRA", flags: 7, raw_size: 5, data: Arc::from(&b"\x01\x02\x03\x04\x05\x06"[..]) };
-        let bytes = encode(&format::to_value(&m), std::slice::from_ref(&extra)).unwrap();
+        let bytes = encode(format::to_value(&m), std::slice::from_ref(&extra)).unwrap();
         let loaded = format::from_bytes(&bytes).unwrap();
         assert!(loaded.problems.is_empty(), "{:?}", loaded.problems);
         assert_eq!(loaded.map.unknown_chunks, vec![extra.clone()]);

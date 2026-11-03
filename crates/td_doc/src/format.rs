@@ -220,9 +220,9 @@ pub fn to_bytes(map: &Map) -> Result<Vec<u8>, FormatError> {
         Some(lm) => {
             let mut chunks = map.unknown_chunks.clone();
             chunks.push(crate::binary::bulk_chunk(crate::lightmap::TAG, &lm.to_chunk(&lm.stale_nodes(map))));
-            crate::binary::encode(&to_value(map), &chunks)
+            crate::binary::encode(to_value(map), &chunks)
         }
-        None => crate::binary::encode(&to_value(map), &map.unknown_chunks),
+        None => crate::binary::encode(to_value(map), &map.unknown_chunks),
     };
     Ok(encoded?)
 }
@@ -455,11 +455,12 @@ pub fn file_json_value(bytes: &[u8]) -> Result<(Value, Vec<String>), FormatError
 }
 
 /// Any map file as the binary container with exactly its content, for `trenchdot --to-tdm`. Refuses a file the
-/// editor could not open.
+/// editor could not open, found by reading the result back rather than by building a map from a copy of the content.
 pub fn file_to_binary(bytes: &[u8]) -> Result<(Vec<u8>, Vec<String>), FormatError> {
     let (value, problems, unknown, _) = file_value(bytes)?;
-    from_value(value.clone())?;
-    Ok((crate::binary::encode(&value, &unknown)?, problems))
+    let out = crate::binary::encode(value, &unknown)?;
+    from_bytes(&out)?;
+    Ok((out, problems))
 }
 
 fn from_value(mut value: Value) -> Result<Map, FormatError> {
@@ -727,6 +728,21 @@ mod tests {
     }
 
     #[test]
+    fn converting_to_binary_keeps_the_content_and_refuses_what_cannot_open() {
+        let m = sample();
+        let (bytes, problems) = file_to_binary(to_string(&m).as_bytes()).unwrap();
+        assert!(problems.is_empty());
+        assert_eq!(bytes, to_bytes(&m).unwrap());
+        assert_eq!(file_to_binary(&bytes).unwrap().0, bytes);
+
+        let mut v = to_value(&m);
+        v["layers"][0]["children"][0]["faces"][0]["indices"][0] = serde_json::json!(99);
+        assert!(matches!(file_to_binary(v.to_string().as_bytes()), Err(FormatError::Invalid { .. })));
+        v["format"] = "something-else".into();
+        assert!(matches!(file_to_binary(v.to_string().as_bytes()), Err(FormatError::WrongFormat(_))));
+    }
+
+    #[test]
     fn hand_edited_node_keys_read_as_they_always_have() {
         let layer = |extra: Value| {
             let mut v = to_value(&sample());
@@ -784,7 +800,7 @@ mod tests {
             let mut v = to_value(&m);
             v["layers"][0]["children"][0]["cell_size"] = serde_json::json!(size);
             assert!(matches!(from_str(&v.to_string()), Err(FormatError::Invalid { .. })), "{size}");
-            assert!(matches!(from_bytes(&crate::binary::encode(&v, &[]).unwrap()), Err(FormatError::Invalid { .. })), "{size}");
+            assert!(matches!(from_bytes(&crate::binary::encode(v.clone(), &[]).unwrap()), Err(FormatError::Invalid { .. })), "{size}");
 
             let mut clip: Value = serde_json::from_str(&nodes_to_string(&m, &[t])).unwrap();
             clip["nodes"][0]["cell_size"] = serde_json::json!(size);

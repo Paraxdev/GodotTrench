@@ -160,9 +160,10 @@ impl Writer {
 
             self.key(k);
             match (kind, k.as_str(), v) {
-                (Some("terrain"), key, Value::String(s)) if BYTE_KEYS.contains(&key) && canonical_base64(s).is_some() => {
-                    self.u32(BYTES);
-                    self.padded(&canonical_base64(s).unwrap_or_default());
+                (Some("terrain"), key, Value::String(s)) if BYTE_KEYS.contains(&key) => {
+                    if !self.base64_as_bytes(s) {
+                        self.value(v);
+                    }
                 }
                 (Some("scatter"), "instances", Value::Array(items)) if let Some(columns) = instance_columns(items) => {
                     self.u32(INT32S);
@@ -172,6 +173,26 @@ impl Writer {
                 _ => self.value(v),
             }
         }
+    }
+
+    /// Writes base64 `text` as the bytes it holds, decoded straight into the output. False, with nothing written, when
+    /// it is not in canonical form, as then the bytes would not give back exactly `text`.
+    fn base64_as_bytes(&mut self, text: &str) -> bool {
+        let start = self.out.len();
+        self.out.reserve_exact(text.len() / 4 * 3 + 12);
+        self.u32(BYTES);
+        self.u32(0);
+        let data = self.out.len();
+        // The standard engine refuses padding and trailing bits that are not canonical, so what decodes is canonical.
+        if decode_base64(text, |b| self.out.extend_from_slice(b)).is_none() {
+            self.out.truncate(start);
+            return false;
+        }
+
+        let len = (self.out.len() - data) as u32;
+        self.out[data - 4..data].copy_from_slice(&len.to_le_bytes());
+        self.out.resize(self.out.len().next_multiple_of(4), 0);
+        true
     }
 
     fn number(&mut self, n: &Number) {
@@ -266,12 +287,6 @@ pub fn restore_node(node: &mut Map<String, Value>) {
     let n = columns.len() / 8;
     let at = |c: usize, i: usize| columns[c * n + i] / INSTANCE_SCALES[c];
     *flat = (0..n).map(|i| Value::Array((0..8).map(|c| float(at(c, i))).collect())).collect();
-}
-
-/// The bytes of `s` when writing them back as base64 gives exactly `s`, so storing them raw loses nothing.
-fn canonical_base64(s: &str) -> Option<Vec<u8>> {
-    let bytes = base64().decode(s).ok()?;
-    (base64().encode(&bytes) == s).then_some(bytes)
 }
 
 #[cfg(test)]
@@ -502,6 +517,24 @@ mod tests {
             "f64": long_f64, "mixed": (0..40).map(|i| if i == 3 { json!(1.5) } else { json!(i) }).collect::<Vec<_>>(),
         });
         assert_eq!(round_trip(&v), v);
+    }
+
+    #[test]
+    fn only_canonical_base64_decodes() {
+        let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+        let mut tails: Vec<Vec<u8>> = Vec::new();
+        for a in alphabet {
+            for b in alphabet {
+                tails.extend([vec![*a, *b], vec![*a, *b, b'='], vec![*a, *b, b'=', b'=']]);
+                tails.extend(alphabet.iter().map(|c| vec![*a, *b, *c, b'=']));
+            }
+        }
+
+        for tail in tails {
+            let text = format!("QUJD{}", String::from_utf8(tail).unwrap());
+            let canonical = base64().decode(&text).is_ok_and(|bytes| base64().encode(bytes) == text);
+            assert_eq!(decode_base64(&text, |_| {}).is_some(), canonical, "{text}");
+        }
     }
 
     #[test]
