@@ -752,6 +752,23 @@ mod tests {
     }
 
     #[test]
+    fn terrain_cell_sizes_out_of_range_are_an_error() {
+        let mut m = Map::new();
+        let layer = m.default_layer();
+        let t = m.insert(layer, NodeKind::Terrain(td_geom::Terrain::new(DVec3::ZERO, [3, 3], 32.0, "base/floor")));
+        for size in [1e308, 1e-300] {
+            let mut v = to_value(&m);
+            v["layers"][0]["children"][0]["cell_size"] = serde_json::json!(size);
+            assert!(matches!(from_str(&v.to_string()), Err(FormatError::Invalid { .. })), "{size}");
+            assert!(matches!(from_bytes(&crate::binary::encode(&v, &[]).unwrap()), Err(FormatError::Invalid { .. })), "{size}");
+
+            let mut clip: Value = serde_json::from_str(&nodes_to_string(&m, &[t])).unwrap();
+            clip["nodes"][0]["cell_size"] = serde_json::json!(size);
+            assert!(matches!(paste_nodes(&mut m.clone(), layer, &clip.to_string()), Err(FormatError::Invalid { .. })), "{size}");
+        }
+    }
+
+    #[test]
     fn repaired_ids_do_not_take_later_ids() {
         let mut v = to_value(&Map::new());
         let brush = |id: u64| {

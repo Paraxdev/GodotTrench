@@ -1185,24 +1185,26 @@ fn build_terrain(
         push_line(&mut lines, corners[i], corners[j], color);
     }
 
-    let size = t.size();
-    let step = t.chunk_cells.max(1) as f64 * t.cell_size;
-    let top = b.max.y - t.origin.y;
-    let mut x = 0.0;
-    while x <= size.x + 1e-6 {
-        push_line(&mut lines, t.origin + DVec3::new(x, top, 0.0), t.origin + DVec3::new(x, top, size.y), [color[0], color[1], color[2], 0.35]);
-        x += step;
-    }
-
-    let mut z = 0.0;
-    while z <= size.y + 1e-6 {
-        push_line(&mut lines, t.origin + DVec3::new(0.0, top, z), t.origin + DVec3::new(size.x, top, z), [color[0], color[1], color[2], 0.35]);
-        z += step;
-    }
-
+    chunk_lines(t, b.max.y - t.origin.y, [color[0], color[1], color[2], 0.35], &mut lines);
     out.lines_2d = renderer.upload_lines(&lines);
     out.sel_lines = if selected { renderer.upload_lines(&lines[..24]) } else { None };
     out
+}
+
+/// Lines along the chunk borders at height `top` above the terrain's origin.
+fn chunk_lines(t: &Terrain, top: f64, color: [f32; 4], lines: &mut Vec<LineVertex>) {
+    let size = t.size();
+    let [cw, cd] = t.cells();
+    let step = t.chunk_cells.max(1) as usize;
+    for i in (0..=cw).step_by(step) {
+        let x = i as f64 * t.cell_size;
+        push_line(lines, t.origin + DVec3::new(x, top, 0.0), t.origin + DVec3::new(x, top, size.y), color);
+    }
+
+    for j in (0..=cd).step_by(step) {
+        let z = j as f64 * t.cell_size;
+        push_line(lines, t.origin + DVec3::new(0.0, top, z), t.origin + DVec3::new(size.x, top, z), color);
+    }
 }
 
 /// Chunks whose heights, weights or holes differ between two versions of a terrain.
@@ -2150,6 +2152,22 @@ mod tests {
         assert_eq!(fixture_material(true, "night/neon", has), "dark:night/neon");
         assert_eq!(fixture_material(false, "night/neon", has), "night/neon", "lamps that start on keep their glow");
         assert_eq!(fixture_material(true, "dev/grey", has), "dev/grey", "materials that never glow have no dark copy");
+    }
+
+    #[test]
+    fn chunk_lines_follow_the_cells_whatever_the_cell_size() {
+        let mut t = Terrain::new(DVec3::ZERO, [65, 41], 32.0, "grass");
+        let mut lines = Vec::new();
+        chunk_lines(&t, 0.0, [1.0; 4], &mut lines);
+        assert_eq!(lines.len(), (3 + 2) * 2, "x at cells 0, 32 and 64, z at 0 and 32");
+        assert_eq!(lines[2].pos[0], 1024.0);
+
+        for size in [1e308, 1e-300] {
+            t.cell_size = size;
+            lines.clear();
+            chunk_lines(&t, 0.0, [1.0; 4], &mut lines);
+            assert_eq!(lines.len(), (3 + 2) * 2, "{size}");
+        }
     }
 
     #[test]

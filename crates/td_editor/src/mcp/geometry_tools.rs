@@ -589,7 +589,7 @@ impl App {
 
     pub(crate) fn tool_create_terrain(&mut self, args: &Value) -> ToolResult {
         let resolution = args["resolution"].as_u64().unwrap_or(65).clamp(3, 2049) as u32;
-        let cell = args["cell_size"].as_f64().unwrap_or(64.0);
+        let cell = td_geom::heightfield::clamp_cell_size(args["cell_size"].as_f64().unwrap_or(64.0));
         let half = (resolution - 1) as f64 * cell * 0.5;
         // origin is the terrain's minimum corner, center the point it is laid out around.
         let origin = match (optional_vec3(args, "origin"), optional_vec3(args, "center")) {

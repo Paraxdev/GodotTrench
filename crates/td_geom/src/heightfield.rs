@@ -4,6 +4,14 @@ use serde::{Deserialize, Serialize};
 use td_core::{Aabb, DVec2, DVec3, Ray};
 
 pub const MAX_LAYERS: usize = 4;
+/// Map units between vertices. Far outside this range the grid shrinks to a point or its size overflows.
+pub const MIN_CELL_SIZE: f64 = 1e-3;
+pub const MAX_CELL_SIZE: f64 = 1e5;
+
+/// `size` moved into the cell size range, NaN to the smallest.
+pub fn clamp_cell_size(size: f64) -> f64 {
+    if size.is_nan() { MIN_CELL_SIZE } else { size.clamp(MIN_CELL_SIZE, MAX_CELL_SIZE) }
+}
 
 fn default_tile() -> f64 {
     256.0
@@ -198,8 +206,8 @@ impl Terrain {
             return Err(format!("terrain holes have {} cells, expected {cells}", self.holes.len()));
         }
 
-        if self.cell_size.is_nan() || self.cell_size <= 0.0 {
-            return Err(format!("terrain cell size {} must be positive", self.cell_size));
+        if !(MIN_CELL_SIZE..=MAX_CELL_SIZE).contains(&self.cell_size) {
+            return Err(format!("terrain cell size {} is outside {MIN_CELL_SIZE} to {MAX_CELL_SIZE}", self.cell_size));
         }
 
         Ok(())
@@ -210,7 +218,7 @@ impl Terrain {
         Self {
             origin,
             resolution: res,
-            cell_size: cell_size.max(1e-3),
+            cell_size: clamp_cell_size(cell_size),
             heights: vec![0.0; (res[0] * res[1]) as usize],
             layers: vec![TerrainLayer::new(material, default_tile())],
             splat: Vec::new(),
@@ -893,7 +901,7 @@ impl Terrain {
         let center = self.origin + DVec3::new(size.x * 0.5, 0.0, size.y * 0.5);
         let new_center = m.transform_point3(center);
         let horizontal = ((scale.x.abs() + scale.z.abs()) * 0.5).max(1e-3);
-        t.cell_size = self.cell_size * horizontal;
+        t.cell_size = clamp_cell_size(self.cell_size * horizontal);
         if (scale.y - 1.0).abs() > 1e-9 {
             for h in &mut t.heights {
                 *h *= scale.y.abs() as f32;
@@ -1212,6 +1220,21 @@ mod tests {
         assert!((c(&moved) - c(&t)).length() < 1e-9);
         let r = t.resample([17, 17]);
         assert!((r.size() - t.size()).length() < 1e-9);
+    }
+
+    #[test]
+    fn cell_sizes_stay_in_range() {
+        for size in [1e308, 1e-300, 0.0, -1.0, f64::NAN, f64::INFINITY] {
+            let t = Terrain::new(DVec3::ZERO, [3, 3], size, "grass");
+            assert!(t.check_data().is_ok(), "{size}");
+            assert!(t.size().is_finite() && t.size().x > 0.0, "{size}");
+            assert!(Terrain { cell_size: size, ..t }.check_data().is_err(), "{size}");
+        }
+
+        let t = Terrain::new(DVec3::ZERO, [3, 3], MAX_CELL_SIZE, "grass");
+        let scaled = t.transformed(&td_core::DMat4::from_scale(DVec3::new(1e10, 1.0, 1e10)));
+        assert_eq!(scaled.cell_size, MAX_CELL_SIZE);
+        assert!(scaled.check_data().is_ok());
     }
 
     #[test]
