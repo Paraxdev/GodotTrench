@@ -143,6 +143,8 @@ impl Default for ScatterSettings {
 
 /// Editing has to pause this long before translated nodes are sent exactly.
 const LIVE_IDLE: std::time::Duration = std::time::Duration::from_millis(250);
+/// Added to the status when a map from outside the open, trusted project holds code, see [`crate::validate::map_script_issues`].
+pub const MAP_SCRIPTS: &str = "The map runs GDScript of its own when the scene plays, the Issues panel shows where";
 
 /// When the live map was last handed to the link.
 struct LiveTick {
@@ -960,8 +962,16 @@ impl EditorState {
             _ => self.set_status(format!("Opened {}", path.display())),
         }
 
+        // Maps of the open project, while it is trusted, are the person's own. Any other map may come from anyone.
+        let inside = |root: &PathBuf| path.starts_with(root) || crate::trust::real_path(path).starts_with(crate::trust::real_path(root));
+        let own = !self.restricted() && self.game.project_root.as_ref().is_some_and(inside);
         if let Some(root) = kept {
             let status = format!("{}. It belongs to {}, a project you have not trusted, so the open project stays", self.status, root.display());
+            self.set_status(status);
+        }
+
+        if !own && !crate::validate::map_script_issues(&self.doc.map, &mut self.prefabs, self.doc.path.as_deref()).is_empty() {
+            let status = format!("{}. {MAP_SCRIPTS}", self.status);
             self.set_status(status);
         }
     }
@@ -1619,6 +1629,41 @@ mod tests {
         state.open_map(&pack.join("level.tdm")).unwrap();
         assert_eq!(state.game.project_root.as_deref(), Some(pack.as_path()));
         assert!(state.restricted(), "with no project open the nested one opens restricted");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_map_with_scripts_says_so_when_it_comes_from_outside() {
+        let dir = std::env::temp_dir().join(format!("td_map_scripts_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (project, loose) = (dir.join("project"), dir.join("downloads"));
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&loose).unwrap();
+        std::fs::write(
+            project.join("project.godot"),
+            "config_version=5
+",
+        )
+        .unwrap();
+        let mut map = td_doc::Map::new();
+        let layer = map.default_layer();
+        let mut script = td_doc::Entity::new("logic_script");
+        script.properties.insert("source".into(), "print(activator)".into());
+        map.insert(layer, td_doc::NodeKind::Entity(script));
+        let (path, outside) = (project.join("level.tdm"), loose.join("level.tdm"));
+        format::save(&map, &path).unwrap();
+        format::save(&map, &outside).unwrap();
+
+        let mut state = EditorState::new(Prefs::default());
+        state.open_map(&path).unwrap();
+        assert!(state.restricted());
+        assert!(state.status.ends_with(MAP_SCRIPTS), "{}", state.status);
+        state.trust_project(&project, false);
+        state.open_map(&path).unwrap();
+        assert_eq!(state.status, format!("Opened {}", absolute(&path).display()), "a trusted project's maps open quietly");
+        state.open_map(&outside).unwrap();
+        assert_eq!(state.game.project_root.as_deref(), Some(absolute(&project).as_path()));
+        assert_eq!(state.status, format!("Opened {}. {MAP_SCRIPTS}", absolute(&outside).display()), "a loose map is not the project's own");
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -118,6 +118,11 @@ face off the plane or trim the overlap.
 A warning that a model does not exist means a prop's `model` names a file that is not there, so the prop builds with no
 mesh. When a file of the same name with another extension exists, `chair.gltf` for `chair.glb`, the warning names it.
 
+A warning that something runs GDScript from the map means the map carries code of its own, which runs as soon as the
+scene plays in Godot. You get one for each `logic_script` with a `source` or `expression`, each output or `logic_call`
+that can hand one code, such as an output that sends `source` to it, and each prefab that holds any of these. Read them
+before you play a map someone else made.
+
 ## History
 
 The History panel lists every edit, newest at the top. Click an older entry to undo back to it, that entry included.

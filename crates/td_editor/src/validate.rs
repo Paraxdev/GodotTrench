@@ -5,11 +5,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use td_core::NodeId;
-use td_doc::Map;
 use td_doc::issues::{self, Issue, Severity};
+use td_doc::{Map, NodeKind};
 use td_formats::GameConfig;
 
 use crate::materials::MaterialLibrary;
+use crate::prefabs::PrefabCache;
 use crate::state::EditorState;
 
 /// Inputs validate_map accepts per entity class: the declared ones, plus every method and property of the Godot class
@@ -40,7 +41,14 @@ pub fn class_inputs(game: &GameConfig) -> BTreeMap<String, Vec<String>> {
 }
 
 /// Every issue of `map`. `external` holds the targetnames its overlays add in Godot.
-pub fn map_issues(map: &Map, game: &GameConfig, materials: &mut MaterialLibrary, external: &BTreeSet<String>) -> Vec<Issue> {
+pub fn map_issues(
+    map: &Map,
+    game: &GameConfig,
+    materials: &mut MaterialLibrary,
+    prefabs: &mut PrefabCache,
+    map_path: Option<&Path>,
+    external: &BTreeSet<String>,
+) -> Vec<Issue> {
     let inputs = class_inputs(game);
     let mut list = issues::check_with_external(
         map,
@@ -78,6 +86,7 @@ pub fn map_issues(map: &Map, game: &GameConfig, materials: &mut MaterialLibrary,
 
     list.extend(crate::texture_convert::missing_material_issues(map, game, materials));
     list.extend(missing_model_issues(map, game));
+    list.extend(map_script_issues(map, prefabs, map_path));
     list.extend(crate::zfight::coplanar_issues(map, game, materials));
     list.sort_by_key(|i| Reverse(i.severity));
     list
@@ -90,7 +99,7 @@ pub fn open_map_issues(state: &mut EditorState) -> Vec<Issue> {
     let path = state.doc.path.clone();
     state.overlay_ghosts.refresh(path.as_deref());
     let external = state.overlay_ghosts.targetnames();
-    map_issues(&state.doc.map, &state.game, &mut state.materials, &external)
+    map_issues(&state.doc.map, &state.game, &mut state.materials, &mut state.prefabs, path.as_deref(), &external)
 }
 
 /// Issues of the map saved at `path`, which does not have to be open. A map open in a tab is checked as it is in the
@@ -109,7 +118,7 @@ pub fn file_issues(state: &mut EditorState, path: &Path) -> Result<(Map, Vec<Iss
     state.find_new_materials(unknown.iter().map(String::as_str));
     let sidecar = std::fs::read_to_string(crate::overlays::sidecar_path(path)).ok().and_then(|t| crate::overlays::parse(&t).ok());
     let external = sidecar.unwrap_or_default().into_iter().flat_map(|i| i.targetnames).collect();
-    let found = map_issues(&map, &state.game, &mut state.materials, &external);
+    let found = map_issues(&map, &state.game, &mut state.materials, &mut state.prefabs, Some(path), &external);
     Ok((map, found))
 }
 
@@ -180,10 +189,177 @@ pub fn missing_model_issues(map: &Map, game: &GameConfig) -> Vec<Issue> {
         .collect()
 }
 
+/// Inputs through which I/O can give a logic_script code or have it compile: its source and expression, the Object
+/// methods that set any property or call any method, and the methods starting with `_`, such as `_compile`.
+const CODE_INPUTS: &[&str] =
+    &["source", "expression", "set", "set_deferred", "set_indexed", "call", "call_deferred", "callv", "propagate_call", "notification"];
+
+fn reaches_code(input: &str) -> bool {
+    let input = input.trim();
+    input.starts_with('_') || CODE_INPUTS.contains(&input.to_lowercase().as_str())
+}
+
+const PLAYS: &str = "when the scene plays, read it before you play a map someone else made";
+
+/// A warning for every part of the map that runs GDScript of its own when the scene plays: a logic_script whose source
+/// or expression holds code, I/O or a logic_call that can give one code, and a prefab instance whose prefab has either.
+/// Instance paths resolve against `map_path`.
+pub fn map_script_issues(map: &Map, prefabs: &mut PrefabCache, map_path: Option<&Path>) -> Vec<Issue> {
+    let mut found = script_holders(map);
+    let root = prefabs.project_root.clone();
+    for (id, node) in map.nodes.iter() {
+        let NodeKind::Instance(inst) = &node.kind else { continue };
+        let Some(path) = crate::prefabs::resolve(&inst.path, map_path, root.as_deref()) else { continue };
+        if prefab_holds_script(prefabs, &path, 1) {
+            found.push((*id, format!("The prefab {} runs GDScript of its own {PLAYS}", inst.path)));
+        }
+    }
+
+    found.into_iter().map(|(id, message)| Issue { node: Some(id), severity: Severity::Warning, code: "map_script", message }).collect()
+}
+
+/// The nodes of `map` itself that run GDScript, with the warning for each.
+fn script_holders(map: &Map) -> Vec<(NodeId, String)> {
+    let has_code = |e: &td_doc::Entity| ["source", "expression"].iter().any(|k| e.property(k).is_some_and(|v| !v.trim().is_empty()));
+    let mut named: BTreeMap<&str, Vec<&td_doc::Entity>> = BTreeMap::new();
+    for (_, e) in map.entities() {
+        if let Some(name) = e.targetname() {
+            named.entry(name).or_default().push(e);
+        }
+    }
+
+    // A name that only entities of this map answer to, none of them a logic_script, cannot reach one. Anything else, a
+    // group, a wildcard, !activator or a name in a prefab or a Godot scene, might.
+    let may_be_script = |target: &str| named.get(target.trim()).is_none_or(|list| list.iter().any(|e| e.classname == "logic_script"));
+    let can_give = format!("which can make a logic_script run GDScript from the map {PLAYS}");
+    let mut found = Vec::new();
+    for (id, e) in map.entities() {
+        let name = map.get(id).map(|n| n.name()).unwrap_or_default();
+        if e.classname == "logic_script" && has_code(e) {
+            found.push((id, format!("{name} runs GDScript from the map {PLAYS}")));
+        }
+
+        if let Some(o) = e.outputs.iter().find(|o| reaches_code(&o.input) && may_be_script(&o.target)) {
+            found.push((id, format!("{name} sends {} to {}, {can_give}", o.input, o.target)));
+        }
+
+        let target = e.property("call_target").unwrap_or_default();
+        if e.classname == "logic_call"
+            && let Some(method) = e.property("method").filter(|m| reaches_code(m))
+            && may_be_script(target)
+        {
+            found.push((id, format!("{name} calls {method} on {target}, {can_give}")));
+        }
+    }
+
+    found
+}
+
+fn prefab_holds_script(prefabs: &mut PrefabCache, path: &Path, depth: usize) -> bool {
+    if depth > crate::prefabs::MAX_DEPTH {
+        return false;
+    }
+
+    let Some(map) = prefabs.get(path).map.clone() else { return false };
+    if !script_holders(&map).is_empty() {
+        return true;
+    }
+
+    let root = prefabs.project_root.clone();
+    map.nodes.values().any(|node| match &node.kind {
+        NodeKind::Instance(inst) => {
+            crate::prefabs::resolve(&inst.path, Some(path), root.as_deref()).is_some_and(|p| prefab_holds_script(prefabs, &p, depth + 1))
+        }
+        _ => false,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use td_doc::{Entity, NodeKind};
+    use td_doc::Entity;
+
+    #[test]
+    fn logic_scripts_with_code_are_named() {
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        let mut add = |class: &str, props: &[(&str, &str)], outputs: &[(&str, &str)]| {
+            let mut e = Entity::new(class);
+            e.properties.extend(props.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+            for (target, input) in outputs {
+                let (target, input) = (target.to_string(), input.to_string());
+                e.outputs.push(td_doc::IoConnection { output: "on_trigger".into(), target, input, parameter: "print(1)".into(), delay: 0.0, times: -1 });
+            }
+
+            map.insert(layer, NodeKind::Entity(e))
+        };
+        let heal = add("logic_script", &[("targetname", "heal"), ("source", "activator.health += 10")], &[]);
+        let half = add("logic_script", &[("targetname", "half"), ("expression", "parameter / 2")], &[]);
+        add(
+            "logic_script",
+            &[
+                ("targetname", "blank"),
+                (
+                    "source", "  
+",
+                ),
+            ],
+            &[],
+        );
+        add("logic_relay", &[("targetname", "relay"), ("source", "print(1)")], &[]);
+        add("func_door", &[("targetname", "door")], &[]);
+        let start = add("logic_auto", &[("targetname", "start")], &[("blank", "run"), ("blank", "source"), ("blank", "_compile")]);
+        add("logic_relay", &[("targetname", "opener")], &[("door", "set"), ("door", "open")]);
+        let group = add("logic_relay", &[("targetname", "caller")], &[("@scripts", "call")]);
+        let setter = add("logic_call", &[("targetname", "setter"), ("method", "set"), ("call_target", "blank")], &[]);
+        add("logic_call", &[("targetname", "door_setter"), ("method", "set"), ("call_target", "door")], &[]);
+        add("logic_call", &[("targetname", "runner"), ("method", "run"), ("call_target", "blank")], &[]);
+
+        let found = map_script_issues(&map, &mut PrefabCache::default(), None);
+        assert_eq!(found.iter().map(|i| i.node).collect::<Vec<_>>(), [Some(heal), Some(half), Some(start), Some(group), Some(setter)]);
+        assert_eq!(found[0].severity, Severity::Warning);
+        assert!(found[0].message.starts_with("logic_script (heal) runs GDScript"), "{}", found[0].message);
+        assert!(found[2].message.starts_with("logic_auto (start) sends source to blank, which can make a logic_script run GDScript"), "{}", found[2].message);
+        assert!(found[4].message.starts_with("logic_call (setter) calls set on blank"), "{}", found[4].message);
+        let game = GameConfig::with_gameplay_pack();
+        let all = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &BTreeSet::new());
+        assert_eq!(all.iter().filter(|i| i.code == "map_script").count(), 5, "validate_map and the Issues panel list them");
+    }
+
+    #[test]
+    fn a_prefab_with_scripts_is_named_where_it_is_placed() {
+        let dir = std::env::temp_dir().join(format!("td_prefab_scripts_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let save = |name: &str, kind: Option<NodeKind>| {
+            let mut map = Map::new();
+            let layer = map.default_layer();
+            if let Some(kind) = kind {
+                map.insert(layer, kind);
+            }
+
+            td_doc::format::save(&map, &dir.join(name)).unwrap();
+            map
+        };
+        let mut script = Entity::new("logic_script");
+        script.properties.insert("source".into(), "print(1)".into());
+        let instance = |path: &str| {
+            NodeKind::Instance(td_doc::map::Instance { path: path.into(), origin: Default::default(), angles: Default::default(), fixup: String::new() })
+        };
+        save("piece.tdm", Some(NodeKind::Entity(script)));
+        save("nest.tdm", Some(instance("piece.tdm")));
+        save("clean.tdm", None);
+        let mut host = save("host.tdm", Some(instance("nest.tdm")));
+        let layer = host.default_layer();
+        host.insert(layer, instance("clean.tdm"));
+        host.insert(layer, instance("missing.tdm"));
+
+        let found = map_script_issues(&host, &mut PrefabCache::default(), Some(&dir.join("host.tdm")));
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].message, format!("The prefab nest.tdm runs GDScript of its own {PLAYS}"));
+        assert!(matches!(host.get(found[0].node.unwrap()).map(|n| &n.kind), Some(NodeKind::Instance(i)) if i.path == "nest.tdm"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn missing_models_are_reported_once_per_path() {
@@ -236,7 +412,7 @@ mod tests {
         let layer = map.default_layer();
         map.insert(layer, NodeKind::Entity(Entity::new("func_door")));
         map.insert(layer, NodeKind::Entity(Entity::new("my_thing")));
-        let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &BTreeSet::new());
+        let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &BTreeSet::new());
         let mut unknown: Vec<&str> = found.iter().filter(|i| i.code == "unknown_class").map(|i| i.message.as_str()).collect();
         unknown.sort();
         assert_eq!(
@@ -257,7 +433,7 @@ mod tests {
         let mut map = Map::new();
         let layer = map.default_layer();
         map.insert(layer, NodeKind::Entity(Entity::new("func_door")));
-        let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &BTreeSet::new());
+        let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &BTreeSet::new());
         let clashes: Vec<&Issue> = found.iter().filter(|i| i.code == "entity_clash").collect();
         assert_eq!(clashes.len(), 1, "only the class the map uses: {found:?}");
         assert_eq!(clashes[0].severity, Severity::Warning);

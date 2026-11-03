@@ -30,6 +30,12 @@ if not p.is_empty():
 > [!WARNING]
 > Indent nested lines with tabs. Spaces fail to compile with a mixed indentation error.
 
+> [!WARNING]
+> The snippet is code that comes inside the map. It runs whenever the game runs, with the same rights as the project's
+> own scripts, so treat a downloaded map that holds code like any program you download: it can do anything on your
+> computer. The Issues panel warns about every `logic_script` that holds code, every output that can hand one code and
+> every prefab with either, read those before you play the map.
+
 ## logic_call
 
 Calls a method on any target with fixed arguments, to reach your game code, such as adding score on a `Game` autoload.
