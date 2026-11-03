@@ -207,7 +207,7 @@ impl RandomFillDialog {
                     ui.add(egui::DragValue::new(&mut p.weight).range(0.0..=1000.0).speed(0.1).prefix("weight "));
                     ui.horizontal(|ui| {
                         ui.checkbox(&mut p.rotate, "turn").on_hover_text("Turns the piece by a random multiple of 90 degrees");
-                        if ui.small_button("✕").on_hover_text("Remove").clicked() {
+                        if ui.small_button("×").on_hover_text("Remove").clicked() {
                             remove = Some(k);
                         }
                     });
