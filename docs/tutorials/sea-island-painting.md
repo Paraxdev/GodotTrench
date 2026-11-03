@@ -1,6 +1,11 @@
 # Sea island 3: painting
 
-Switch to the Blend tool with **Shift+G**, with the terrain or nothing selected. Its settings are in the tool options.
+Switch to the Blend tool with **Shift+G**, or the Blend button right next to Sculpt in the toolbar. Like Sculpt, it
+works on the selected terrain or on everything when nothing is selected. Its settings are in the tool options bar at
+the top left.
+
+![The toolbar with the Blend Tool button hovered and its tooltip: paint, erase, smooth, sharpen, noise, slope and height blends on terrain layers, displacement alpha and faces with a blend material](../assets/sea-island/toolbar-blend.png)
+
 The **slope** and **height** modes only paint where the ground is within a range of steepness or height. A radius of
 12000 covers the whole island, so one click in these modes paints every shore or cliff at once.
 
@@ -13,14 +18,15 @@ The **slope** and **height** modes only paint where the ground is within a range
 | Layer | 3 | 1 |
 | Radius, strength | 12000, 1 | 12000, 1 |
 
-Click once in the middle of the island for each.
+Set those, then click once in the middle of the island for each. You should see everything below 40 turn to sand, and
+every steep slope turn to rock:
 
 ![Height mode: everything below 40 units becomes sand](../assets/sea-island/sand-height.jpg)
 
 ![Slope mode: everything steeper than 32° becomes rock](../assets/sea-island/rock-slope.jpg)
 
 To widen the beach, paint layer 3 along the south shore in **paint** mode, falloff smooth, radius 700, strength 0.7.
-The smooth falloff fades the brush towards its rim, so the edge of the sand stays soft.
+The smooth falloff fades towards the rim of the brush, so the edge of the sand stays soft.
 
 ## Paths
 
@@ -36,9 +42,9 @@ Mode **paint**, falloff smooth, layer 2, radius 140, strength 0.8. Drag:
 
 ## Break up the repeat
 
-From far away a repeating texture shows as a grid. Select the terrain and set each layer's **detile** and **sharpen**
-in the Inspector. Detile turns and shifts every tile by a random amount so the repeat stops showing, and sharpen keeps
-the result crisp instead of soft.
+From far away a repeating texture shows as a grid. Select the terrain in the Outliner (a click in a view would paint
+with the Blend tool), then set **detile** and **sharpen** on each Layer row of the Inspector. Sharpen keeps the
+de-tiled texture crisp instead of soft.
 
 | Layer | Detile | Sharpen |
 | --- | --- | --- |
@@ -46,5 +52,7 @@ the result crisp instead of soft.
 | 1 cliff | 0.7 | 0.4 |
 | 2 dirt | 0.5 | 0.5 |
 | 3 sand | 0.4 | 0.5 |
+
+![The terrain Inspector with the four Layer rows, each with its material, tile, detile and sharpen](../assets/sea-island/inspector-terrain-layers.png)
 
 Next: [Sea island 4: scatter](sea-island-scatter.md).

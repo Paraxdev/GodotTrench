@@ -1,20 +1,45 @@
 # Sea island 4: scatter
 
-Scattering places many copies of trees, bushes, rocks or grass with a brush instead of one by one. Each kind of
-planting is a set: a list of models plus rules such as density and allowed slope, and the set only grows on its
-targets, the surfaces you pick for it.
+Scattering places lots of trees, bushes, rocks or grass with a brush instead of one by one. Each kind of planting
+below is its own scatter set, and a set only grows on its targets, the surfaces you pick for it.
 
-Press **B** for the Scatter tool. Start each set below from **Preset** in the Scatter panel, then click the eyedropper
-next to **Targets** and click the terrain, so the set only grows on it. Leave **Follow cursor** unticked, since it
-paints on whatever is under the brush and ignores the targets. Leave **Keep spacing to other sets** ticked, so the
-sets keep their distance from each other and nothing grows through a trunk.
+## Set up a set
+
+Every set on this page starts the same way.
+
+1. Pick the Scatter tool
+
+   Press **B**, or click the Scatter button in the toolbar. The Scatter tab opens on the right, next to the Inspector.
+   (If you close it, **Scatter Panel** in the tool options bar brings it back.)
+
+   ![The toolbar with the Scatter Tool button hovered and its tooltip: paints the enabled models of the active scatter set, Shift erases, Alt+click or the eyedropper toggles a target](../assets/sea-island/toolbar-scatter.png)
+
+2. Start it from a preset
+
+   Click **Preset** at the top of the Scatter panel and pick the preset the step names.
+
+   ![The Scatter panel with the Preset menu open and mixed woodland hovered](../assets/sea-island/scatter-preset-menu.png)
+
+3. Target the terrain
+
+   Click the eyedropper next to **Targets**, then click the terrain in the 3D view. You should see it listed under
+   Targets, as `terrain #2` or similar.
+
+   ![The Targets row of the Scatter panel with the eyedropper hovered and its tooltip](../assets/sea-island/scatter-eyedropper.png)
+
+Leave **Follow cursor** unticked, since it paints on whatever is under the brush and ignores the targets. Leave
+**Keep spacing to other sets** ticked, so the sets keep their distance from each other and nothing grows through a
+trunk.
 
 ## Woodland
 
-1. **Preset** > *mixed woodland*, **Rename** it `woodland` and target the terrain.
-2. In the Brush section set **Density** 0.16, **Slope** 0 to 30 and tick **Height**, 120 to 2000. The slope range
+1. **Preset** > *mixed woodland*, then click **Rename** at the top and call it `woodland`. Target the terrain.
+2. In the Brush section set **Density** 0.16 and **Slope** 0 to 30, and tick **Height**, 120 to 2000. The slope range
    keeps trees off the cliffs, and the height range keeps them off the beach.
-3. Click **Fill Targets** to plant the whole terrain at once.
+
+   ![The lower Scatter panel: terrain #2 as the target, Follow cursor unticked, Density 0.16, Slope 0 to 30, Height ticked from 120 to 2000, Keep spacing to other sets ticked and the Fill Targets button hovered](../assets/sea-island/scatter-woodland-settings.png)
+
+3. Click **Fill Targets** at the bottom of the panel to plant the whole terrain at once.
 
 Density counts attempts per 64 x 64 units, so 0.16 is roughly one tree every 5 m.
 
@@ -28,7 +53,7 @@ hilltop (radius about 520) and a meadow behind the beach (about 700).
 ## Hero trees, bushes and boulders
 
 Each row is a new set from the named preset, targeted at the terrain like the woodland. Hero trees are a few large,
-detailed trees placed where the player will look closely.
+detailed trees placed where the player looks closely.
 
 | Set | Preset | How to place it | Radius | Density | Slope | Height |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -44,14 +69,18 @@ detailed trees placed where the player will look closely.
 
 ## Grass
 
-1. Start a set from the *grass* preset. It is foliage, drawn without collision or shadows, so it can be dense without
-   slowing the game down.
+1. Start a set from the *grass* preset. Grass is foliage, drawn without collision or shadows, so it can be dense
+   without slowing the game down.
 2. Paint the open meadows with radius 650, density 2.5, slope 0 to 28, height 45 to 2000. Erase it off the paths with
    radius 170.
-3. For grass on the boulders, start one more *grass* set. With the eyedropper, click a boulder instead of the
-   terrain, so the boulder set becomes its target. **Fill Targets** with density 6 and slope 0 to 45.
 
-![Meadow grass behind the beach](../assets/sea-island/scatter-meadow.jpg)
+   ![Meadow grass behind the beach](../assets/sea-island/scatter-meadow.jpg)
+
+3. For grass on the boulders, start one more *grass* set. With the eyedropper, click a boulder instead of the terrain,
+   so the boulder set becomes its target. You should see it under Targets with `(set)` after its name. Then
+   **Fill Targets** with density 6 and slope 0 to 45.
+
+   ![The Targets row listing cliff boulders (set) as the target](../assets/sea-island/scatter-target-boulders.png)
 
 > **Note:** Fill places grass on the boulders as they are at that moment, so finish the boulders first.
 
