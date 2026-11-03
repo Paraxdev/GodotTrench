@@ -156,7 +156,12 @@ pub fn parse_color(value: &str) -> ([f32; 3], bool) {
 
 pub fn format_color(rgb: [f32; 3], unit: bool) -> String {
     if unit {
-        rgb.iter().map(|c| format_number((*c as f64 * 1000.0).round() / 1000.0)).collect::<Vec<_>>().join(" ")
+        // Whole parts keep a decimal point, "1 0 0" would read back on the 0 to 255 scale.
+        let part = |c: &f32| {
+            let s = format_number((*c as f64 * 1000.0).round() / 1000.0);
+            if s.contains('.') { s } else { s + ".0" }
+        };
+        rgb.iter().map(part).collect::<Vec<_>>().join(" ")
     } else {
         rgb.iter().map(|c| ((c * 255.0).round() as i32).to_string()).collect::<Vec<_>>().join(" ")
     }
@@ -219,8 +224,14 @@ mod tests {
         assert_eq!(parse_color("255 128 0"), ([1.0, 128.0 / 255.0, 0.0], false));
         let (rgb, unit) = parse_color("1 0.5 0.25");
         assert!(unit);
-        assert_eq!(format_color(rgb, unit), "1 0.5 0.25");
+        assert_eq!(format_color(rgb, unit), "1.0 0.5 0.25");
         assert_eq!(format_color([1.0, 0.5, 0.0], false), "255 128 0");
+        for rgb in [[1.0, 1.0, 1.0], [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 1.0]] {
+            let text = format_color(rgb, true);
+            assert_eq!(parse_color(&text), (rgb, true), "{text}");
+        }
+
+        assert_eq!(format_color([1.0, 0.0, 0.0], true), "1.0 0.0 0.0");
         assert_eq!(format_number(-35.0), "-35");
         assert_eq!(format_number(0.0002), "0.0002");
     }
