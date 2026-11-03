@@ -22,6 +22,7 @@ static func run(t) -> void:
 	_test_face_over_a_mesh_tunnel_stays(t)
 	_test_buried_faces_keep_their_triangles(t)
 	_test_buried_brush_faces_clip_from_the_cull_budget(t)
+	_test_smoothing_a_vertex_of_thousands_of_faces_shades_flat(t)
 	_test_terrain_splat_shader_defaults_to_first_layer(t)
 	_test_terrain_missing_layer_slots_use_first_layer(t)
 	_test_terrain_emissive_layers_glow(t)
@@ -374,6 +375,31 @@ static func _test_buried_brush_faces_clip_from_the_cull_budget(t) -> void:
 	var crosses := TrenchDotFaceCull._crosses_surface(entry, solid, budget, work)
 	var took := Time.get_ticks_msec() - started
 	t.check(not crosses and took < 400, "once the budget is spent a 16384 corner band is fanned, tested in %d ms" % took)
+
+## A cone of [param sides] sides like td_geom::mesh_shapes::cone: one tip vertex shared by every side.
+static func _cone(sides: int) -> Dictionary:
+	var vertices := []
+	for s in sides:
+		vertices.append([cos(TAU * s / sides) * 64.0, -64.0, sin(TAU * s / sides) * 64.0])
+	vertices.append([0.0, 64.0, 0.0])
+	var faces := [{ "indices": range(sides), "material": "showcase/cobble" }]
+	for s in sides:
+		faces.append({ "indices": [s, sides, (s + 1) % sides], "material": "showcase/cobble" })
+	return { "id": 1, "type": "mesh", "vertices": vertices, "faces": faces, "smooth_angle": 89.0 }
+
+## Smoothing compares every corner with each face round its vertex. Past 64 comparisons a corner and 262144 more a
+## mesh is shaded flat, so the 650 and 651 sided cones fall either side of it, as in td_geom's
+## smoothing_a_vertex_shared_by_thousands_of_faces_shades_flat.
+static func _test_smoothing_a_vertex_of_thousands_of_faces_shades_flat(t) -> void:
+	print("- smoothing a vertex of thousands of faces shades flat")
+	var flat := func(brush: FuncGodotData.BrushData) -> bool:
+		return brush.faces.all(func(f): return Array(f.disp_normals).all(func(n): return n.distance_to(f.plane.normal) < 1e-5))
+	t.check(not flat.call(TrenchDotMesh.parse(_cone(650), Transform3D.IDENTITY, 1.0, "")), "a 650 sided cone is smoothed")
+	t.check(flat.call(TrenchDotMesh.parse(_cone(651), Transform3D.IDENTITY, 1.0, "")), "a 651 sided cone compares one face too many and is shaded flat")
+	var started := Time.get_ticks_msec()
+	var brush := TrenchDotMesh.parse(_cone(8192), Transform3D.IDENTITY, 1.0, "")
+	var took := Time.get_ticks_msec() - started
+	t.check(flat.call(brush) and took < 3000, "an 8192 sided cone is not smoothed corner by corner, parsed in %d ms" % took)
 
 ## Finding 8: an all zero splat weight must render as the first layer, matching Terrain::weights and
 ## docs/format/terrain-scatter.md, not black. Not practically capturable headlessly, so this pins the fixed GLSL

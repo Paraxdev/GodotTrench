@@ -85,5 +85,9 @@ An editable polygon mesh. Unlike a brush it can be concave, open, or have faces 
 | `smooth_angle` | number | `0`, omitted | Faces meeting at less than this many degrees share normals and shade smoothly. 0 is flat shading |
 | `decal` | bool | `false`, omitted | Marks the mesh as a [decal](../editor/decals.md) |
 
+Smoothing compares every face corner with each face around its vertex. A mesh that needs more than 64 comparisons a
+corner, plus 262,144 in all, is shaded flat instead. Only a vertex shared by hundreds of faces, like the tip of a cone
+of more than about 650 sides, gets there.
+
 A mesh face's `uvs` is an array of `[u, v]`, one per index, in texture widths. When it's there it replaces `uv`, and a
 count that doesn't match `indices` makes the editor refuse the map.

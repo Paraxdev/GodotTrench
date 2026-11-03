@@ -10,6 +10,11 @@ use crate::polygon;
 use crate::uv::FaceUv;
 
 const WELD: f64 = 1e-4;
+/// Smoothing compares every corner with each face around its vertex. A mesh that takes more comparisons than this many
+/// per corner, past the first `SMOOTH_PAIRS_FREE`, is shaded flat instead, so a vertex shared by thousands of faces
+/// cannot stall a build. The Godot addon's trenchdot_mesh.gd uses the same rule.
+const SMOOTH_PAIRS_PER_CORNER: usize = 64;
+const SMOOTH_PAIRS_FREE: usize = 1 << 18;
 
 #[derive(Debug, thiserror::Error, PartialEq)]
 pub enum MeshError {
@@ -351,12 +356,19 @@ impl Mesh {
     pub fn corner_normals(&self) -> Vec<Vec<DVec3>> {
         let raw: Vec<DVec3> = (0..self.faces.len()).map(|fi| polygon::newell(&self.face_points(fi))).collect();
         let unit: Vec<DVec3> = raw.iter().map(|n| n.normalize_or(DVec3::Y)).collect();
+        let flat = || self.faces.iter().enumerate().map(|(fi, f)| vec![unit[fi]; f.indices.len()]).collect();
         if self.smooth_angle <= 0.0 {
-            return self.faces.iter().enumerate().map(|(fi, f)| vec![unit[fi]; f.indices.len()]).collect();
+            return flat();
         }
 
         let cos = (self.smooth_angle as f64).to_radians().cos() - 1e-6;
         let vertex_faces = self.vertex_faces();
+        let corners: usize = self.faces.iter().map(|f| f.indices.len()).sum();
+        let pairs: usize = self.faces.iter().flat_map(|f| &f.indices).map(|v| vertex_faces[*v as usize].len()).sum();
+        if pairs > SMOOTH_PAIRS_PER_CORNER * corners + SMOOTH_PAIRS_FREE {
+            return flat();
+        }
+
         self.faces
             .iter()
             .enumerate()
@@ -1725,6 +1737,22 @@ mod tests {
         assert!(normals.iter().flatten().all(|n| (n.abs().x - n.abs().y).abs() < 1e-9));
         m.smooth_angle = 0.0;
         assert!(m.corner_normals().iter().flatten().all(|n| n.abs().max_element() > 0.999));
+    }
+
+    #[test]
+    fn smoothing_a_vertex_shared_by_thousands_of_faces_shades_flat() {
+        let cone = |sides: usize| {
+            let mut m = crate::mesh_shapes::cone(&Aabb::new(DVec3::splat(-64.0), DVec3::splat(64.0)), sides, "m");
+            m.smooth_angle = 89.0;
+            m
+        };
+        let smooth = |m: &Mesh| m.corner_normals().iter().enumerate().any(|(fi, n)| n.iter().any(|c| c.distance(m.face_normal(fi)) > 1e-6));
+        // The tip takes sides * sides comparisons, the rim 9 a side, against 64 for each of the 4 * sides corners.
+        // godot/tests/td_editor_parity_test.gd checks the same two cones.
+        assert!(smooth(&cone(650)), "a 650 sided cone is still smoothed");
+        let m = cone(651);
+        assert!(!smooth(&m), "a 651 sided cone compares one face too many");
+        assert_eq!(m.corner_normals().iter().map(Vec::len).collect::<Vec<_>>(), m.faces.iter().map(|f| f.indices.len()).collect::<Vec<_>>());
     }
 
     #[test]
