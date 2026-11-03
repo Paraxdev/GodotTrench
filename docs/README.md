@@ -1,7 +1,7 @@
 # TrenchDot
 
-TrenchDot is a brush based level editor for Godot in the spirit of TrenchBroom and Hammer. 
-Supports IO, Custom Meshes (Hammer, Quake, BlockBench) and more!
+TrenchDot is a brush based level editor for Godot in the spirit of TrenchBroom and Hammer.
+Supports I/O, custom meshes (Hammer, Quake, Blockbench) and more!
 
 ![The TrenchDot editor](screenshots/editor.png)
 
@@ -18,13 +18,14 @@ Supports IO, Custom Meshes (Hammer, Quake, BlockBench) and more!
 
 ## Download
 
-TrenchDot has a [rolling beta on GitHub](https://github.com/Paraxdev/TrenchDot/releases/tag/beta), meaning it is 
+TrenchDot has a [rolling beta on GitHub](https://github.com/Paraxdev/TrenchDot/releases/tag/beta), meaning it is
 always the newest version you can get.
-due to being at a very early stage no LTS version is currently planned, once it emerges as useful software a full release will be made.
+Due to being at a very early stage no LTS version is currently planned. Once it emerges as useful software, a full
+release will be made.
 
-Alternatively also available on [itch.io](https://paraxdev.itch.io/trenchdot)
+Alternatively, it is also available on [itch.io](https://paraxdev.itch.io/trenchdot).
 
-For building this from the source visit [Development](development.md).
+For building it from source, visit [Development](development.md).
 
 {% mcp %}
 
