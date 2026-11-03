@@ -110,6 +110,7 @@ This applies to code comments, docs, UI text, commit messages and pull request d
   developer reading it later. Cut filler, repetition and anything that only makes sense inside the chat it came from.
 * Short plain subject in the imperative, the way a person would write it, for example
   "Add map overlays for Godot-side content". Add a few sentences of body only when the why is not obvious.
-* Group related work into one commit instead of a chain of follow-up fixes.
+* One change per commit. Split unrelated bits into their own commits, a subject that needs "and" to list what it does
+  is a sign to split it. Fold follow-up fixes into the change they fix instead of adding a chain of fix commits.
 * Describe the change, not the conversation that led to it. No "as requested", no prompt text, no AI attribution
   trailers.
