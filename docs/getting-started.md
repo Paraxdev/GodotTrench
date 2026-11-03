@@ -1,143 +1,173 @@
 # Getting started
 
-Steps 1 - 3: First Setup, if you already have a Godot project open you may skip this
+Steps 1 to 3: First setup. If you already have a Godot project set up with TrenchDot, you may skip these.
 
-Steps 4 - 5: Creating the first room in TrenchDot
+Steps 4 and 5: Creating the first room in TrenchDot and seeing it in Godot.
 
 ## What you need
 
-Godot 4.7 or newer (.NET if you want C# entities)
-Use the .NET build if you want to write entities in C#
-newest TrenchDot release
+* Godot 4.7 or newer, the .NET build if you want to write entities in C#
+* The newest [TrenchDot release](https://github.com/Paraxdev/TrenchDot/releases/tag/beta)
 
-## Ensure TrenchDot can see the Editor executable
+## Ensure TrenchDot can see the Godot executable
 
-Make sure TrenchDot can see your Godot install, to check if everything is correctly detected 
+Make sure TrenchDot can see your Godot install. To check if everything is detected correctly, go to
+*File > Preferences… > Godot executable*.
 
-go to File > Preferences > Godot Executable
+If TrenchDot found Godot by itself, the line beneath the input field already says "Using" and the path. If it says
+"Not found" instead, you need to find the executable on your disk.
 
-if TrenchDot doesn't find the executable the input field is empty, to continue you need to find the 
-executable on your disk.
+For this, click the "…" button beside the input field
 
-for this click the "..." button
+![The … button beside the Godot executable input field](assets/getting-started/godot-path-browse.png)
 
-![screenshot of the ... button besides the input field](assets/getting-started/godot-path-browse.png)
+and find the executable starting with "Godot_v".
 
-and find the executable starting with "Godot_v"
+If you picked the correct executable it should say "Using" and the path you just picked.
 
-if you have the correct executable it should say "Using: \<path you just picked>"
-
-![ui text beneath the input field, saying using: and the path to the executable](assets/getting-started/godot-path-using.png)
-
+![The line beneath the input field, saying Using and the path to the Godot executable](assets/getting-started/godot-path-using.png)
 
 ## 1. Create a Project in Godot
 
-Open Godot and Click "Create" at the top left corner
-![godot project manager ui, top left corner button saying create with a plus icon](assets/getting-started/godot-create-project.png)
+Open Godot and click "Create" at the top left corner.
 
-Pick a Project name, for this tutorial it will be TrenchDotTest
-(optionally) select a folder where the project should live
+![Godot's project manager, the Create button with a plus icon at the top left corner](assets/getting-started/godot-create-project.png)
 
-then hit "Create"
+Pick a project name, for this tutorial it will be TrenchDotTest, and (optionally) select a folder where the project
+should live.
+
+Then hit "Create".
 
 ## 2. Opening the Project within TrenchDot
 
 Choose *Godot > Open Godot Project…*
-![TrenchDot navbar item Godot with the sub element "open godot project" highlighted](assets/getting-started/menu-open-godot-project.png)
-or the **Open Godot Project…** button in the toolbar
-![button and indicator at the top right of the godot trench ui indicating the project name / status](assets/getting-started/toolbar-open-godot-project.png)
+
+![The Godot menu in TrenchDot with Open Godot Project… highlighted](assets/getting-started/menu-open-godot-project.png)
+
+or the **Open Godot Project…** button at the top right of the toolbar
+
+![The Open Godot Project… button at the top right of the TrenchDot toolbar, which shows the project name once one is open](assets/getting-started/toolbar-open-godot-project.png)
+
 and pick the project folder or any folder inside it. The editor reopens it on the next start.
 
 ## 3. The Welcome Screen
 
-Once TrenchDot detects that its a new Godot project it will show a welcome / setup screen
+Once TrenchDot detects that it's a new Godot project, it shows the *Set up this project* window.
+
 ![The Set up this project window with the addon, gameplay entities and ready made content sections](assets/getting-started/setup-window.png)
 
-Here you can download the addon which is needed for the communication between Godot and TrenchDot
-and extra content if you want, you can ofc start without anything if you want.
+Here you can download the addon, which Godot needs to turn your maps into scenes and to talk to TrenchDot, and extra
+content if you want. You can of course start without anything.
 
-some bare bones content will be included, a simple dummy info_player_start and func_light
+Some bare bones entities are always included, like a simple `info_player_start` and `light`.
 
 1. Install the Addon
-   
-   Click the "install the addon" button at the top to download TrenchDot's Fork of FuncGodot into your project, this crucial for TrenchDot.
-   (Note: This will pull from GitHub releases, if you don't have any internet access make sure to download the addon locally first, extract it into the project root to install it locally) 
 
-   Once you did that click "Enable Plugin" so Godot loads it
+   Click the "Install the addon" button at the top to download TrenchDot's fork of FuncGodot into your project, this
+   is crucial for TrenchDot.
+   (Note: this pulls from GitHub releases. If you don't have internet access, download
+   `func_godot-trenchdot-addon.zip` first and extract it into the project root to install it by hand.)
+
+   Once you did that, click "Enable the plugin" so Godot loads it.
+   (Note: close Godot first if it has the project open, otherwise Godot writes its own copy of `project.godot` back
+   and the plugin stays off.)
 
 2. (Optionally) Extra Content
 
-   TrenchDot has optional CC0 licensed content you may preload, sourced from polyheaven and other sites with retro textures.
-   licenses are included and a list from where everything is from
+   TrenchDot has optional content you may preload: CC0 textures and models from Poly Haven and ambientCG, plus models
+   made for TrenchDot. The licenses and a list of where everything is from are included.
 
-   If you do not want any extra content you can go with "Nothing extra", some minimal entities are still included.
-   
-if you want to add entities you may use the GitHub source code as reference or go through the addon source and view how the included ones are structured.
+   If you do not want any extra content you can go with "Nothing extra", the minimal entities are still included.
 
-## 3. Open the project in Godot once
+3. Open the project in Godot once
 
-the addon creates a file called `trenchdot_game.json` in the project root, this is where the shared settings live if you ever want to change anything.
-this also is where metadata like textures and entities live, for info on how to add entities that are more complex visit:
-[Project setup](godot/project-setup.md) 
+   Once the plugin is enabled, open the project in Godot (the window has an "Open Project in Godot Editor" button for
+   that). The addon then creates a file called `trenchdot_game.json` in the project root. This is where TrenchDot
+   learns your textures and entities from, and TrenchDot loads it within a second.
 
-The addon then writes `trenchdot_game.json` to the project root, which is how the editor learns your entities and
-textures, and the editor loads it within a second. From then on the addon exports again whenever files change. Until
-then the status bar says there is no `trenchdot_game.json`, and the editor offers the core entities and the pack if
-you installed it. 
+   The addon writes it again whenever files change, so there is no need to edit it by hand. Until it exists the status
+   bar says there is no `trenchdot_game.json`, and the editor offers the core entities, plus the gameplay entities if
+   you installed them.
 
+If you want to add entities, you may use the GitHub source code as reference, or go through the addon source and view
+how the included ones are structured. For info on how to add entities that are more complex, see
+[Project setup](godot/project-setup.md).
 
 ## 4. Build a room
 
-The editor has 4 main views, a 3D view you can fly around just like in Godot, and 3 wireframe views from the top, front and side view.
-Brushes and operations are dependant on the grid size, in the toolbar you can set your grid size (smaller is finer)
-![toolbar showing the grid scale setting](assets/getting-started/toolbar-grid-size.png)
+The editor has 4 main views: a 3D view you can fly around just like in Godot, and 3 wireframe views from the top,
+front and side.
 
-On a empty level you will be shown a small info text explaining how to draw, you can either hide this or just click anywhere to hide it
+Brushes and operations depend on the grid size. In the toolbar you can set your grid size (smaller is finer).
+
+![The grid size setting in the toolbar, set to 16](assets/getting-started/toolbar-grid-size.png)
+
+On an empty level you will be shown a small info text explaining how to draw. You can either hide it with "Hide tips"
+or just start drawing, it goes away once the map has something in it.
+
 ![A new map: the card in the 3D view says to drag in the Top view to draw the first box, and the Top view shows a yellow "Drag here to draw your first box" label](assets/getting-started/empty-map.png)
 
 1. Draw your first box
-   
-   With the Select tool (Q), drag on empty space in any view
-   you should see a box being drawn, while holding your left click down move the mouse to shape a rect
-   ![top view showing a rect being drawn](assets/getting-started/draw-first-box.png)
-   
-2. Add Depth
-   
-   In the side view hold your mouse at the top of the box and hold down lclick, then move your mouse up to have a depth of 256 units
-   ![side view showing 256 on the side for the depth](assets/getting-started/side-view-depth.png)
+
+   With the Select tool (Q), drag on empty space in any view.
+   You should see a box being drawn. While holding your left click down, move the mouse to shape a rect.
+
+   ![All four views with the first box drawn, the Top view printing its size, 512 by 256](assets/getting-started/draw-first-box.png)
+
+2. Add Height
+
+   In the Side view, hold your mouse over the top edge of the box until it turns yellow, hold down the left click, then
+   move your mouse up until the box is 256 units tall.
+
+   ![The Side view with the top edge of the box dragged up, 256 printed above and beside it](assets/getting-started/side-view-depth.png)
 
 3. Making it Hollow
-   
-   Press Ctrl+Shift+K, or use the Hollow operation in the toolbar
-   ![toolbar showing the hover option](assets/getting-started/toolbar-hollow.png)
-   The box now turned into a segmented box, this is optimal if you want to make a smaller room or corridor
-   now, using the fly controls fly into the created hollow box
+
+   Press Ctrl+Shift+K, or use the Hollow button in the toolbar.
+
+   ![The toolbar with the Hollow button hovered and its tooltip](assets/getting-started/toolbar-hollow.png)
+
+   The box is now split into walls, a floor and a ceiling, this is optimal if you want to make a smaller room or
+   corridor. Now, using the fly controls (hold the right mouse button and use WASD), fly into the hollow box.
 
 4. Cutting a doorway
-   
-   Using "Escape" you can deselect the selected solids, once nothing is selected draw a smaller vertical rect
-   within the box, shaped like a doorway
-   ![brush in a shape of a vertical laying rect](assets/getting-started/doorway-brush.png)
-   and in the side view extend one side of the door brush so it has a depth
-   ![extending the face of the door cutaway](assets/getting-started/doorway-extend.gif)
 
-   now with the brush selected hit Ctrl + K or use the Subtract tool in the toolbar
-   ![subtract tool in the toolbar](assets/getting-started/toolbar-subtract.png)
+   Using Escape you can deselect the selected brushes. Once nothing is selected, draw a smaller vertical rect within
+   the box in the Front view, shaped like a doorway.
 
-   and you should see the brush should vanish and the intersection of the doorway cutout is removed
-   ![cutaway removed and the outline of the door was cut away](assets/getting-started/doorway-cut.png)
+   ![The door brush inside the hollow box, 64 wide and 96 tall in the Front view](assets/getting-started/doorway-brush.png)
 
-5. Texture it 
+   Then in the Side view extend one side of the door brush so it has a depth, all the way through the wall.
 
-   You should have 5 included textures used in prototyping, to apply a texture to just one face (e.g. the door frame)
-   you drag the texture from the Materials tab to the face
-   ![dev texture drop preview](assets/getting-started/texture-drop.png)
+   ![Dragging one side of the door brush in the Side view so it crosses the wall](assets/getting-started/doorway-extend.gif)
+
+   Now, with the brush selected, hit Ctrl+K or use the Subtract button in the toolbar.
+
+   ![The toolbar with the CSG Subtract button hovered and its tooltip](assets/getting-started/toolbar-subtract.png)
+
+   You should see the brush vanish, and the doorway is cut out of the wall.
+
+   ![The wall in the 3D view with the doorway cut out](assets/getting-started/doorway-cut.png)
+
+5. Texture it
+
+   You should have 5 included textures for prototyping. To apply a texture to just one face (e.g. the door frame), drag
+   the texture from the Materials tab onto the face (hold Shift to cover the whole brush).
+
+   ![Dragging dev/blue from the Materials tab onto a face, with the drop preview](assets/getting-started/texture-drop.png)
 
 6. Saving the Map
 
-   To see the changes in Godot we have to save the map, both the Addon and TrenchDot expect maps (.tdm) files to be within res://maps (maps folder within the project root)
+   To see the changes in Godot we have to save the map. Press Ctrl+S, or use *File > Save*.
 
+   The save dialog opens in your Godot project folder. Save it anywhere inside the project, a `maps` folder in the
+   project root keeps things tidy, so for example `res://maps/room.tdm`.
+   (Note: the folder name is up to you, but keep the map inside the project, so Godot can load it by its `res://`
+   path.)
 
+   Once saved, it shows up under *File > Maps in Project*.
+
+   ![The File menu with Save and Maps in Project, which lists room under res://maps](assets/getting-started/file-menu-maps-in-project.png)
 
 ## 5. See it in Godot
 
@@ -160,9 +190,6 @@ bar says why, see [Rebuild on save](godot/live.md#rebuild-on-save).
 
 > **Warning:** A build deletes the children of the `FuncGodotMap` first. Put your own nodes next to the map node, or in
 > an [overlay](godot/overlays.md).
-
-
-
 
 ## Try the demo project
 
