@@ -98,6 +98,7 @@ See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 
 | Topic | Behavior |
 | --- | --- |
+| Browsers | The HTTP server refuses any request with an `Origin` header and any POST that is not `application/json`, so web pages cannot reach it, not even ones served from localhost |
 | Errors | A tool that could not do its job returns `isError`, including a failed `run_action` |
 | File dialogs | Actions that open one are refused, use `map_file` with a path. `run_action save` needs a map that already has a file |
 | Unsaved tabs | `run_action close_tab` refuses unsaved changes unless `args.discard` is true. `args.close_others` closes every tab but the active one instead |

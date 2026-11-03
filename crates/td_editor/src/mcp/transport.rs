@@ -58,6 +58,10 @@ impl Request {
     fn header(&self, name: &str) -> Option<&str> {
         self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
     }
+
+    fn is_json(&self) -> bool {
+        self.header("content-type").and_then(|v| v.split(';').next()).is_some_and(|t| t.trim().eq_ignore_ascii_case("application/json"))
+    }
 }
 
 fn read_request(reader: &mut BufReader<TcpStream>) -> std::io::Result<Option<Request>> {
@@ -104,27 +108,15 @@ fn respond(stream: &mut TcpStream, status: &str, extra_headers: &[(&str, String)
     stream.flush()
 }
 
-fn is_local_origin(origin: &str) -> bool {
-    let authority = origin.split("://").nth(1).unwrap_or(origin);
-    let authority = authority.split('/').next().unwrap_or_default();
-    // IPv6 hosts are bracketed and contain colons themselves, so the port can only be split off after the bracket.
-    let host = match authority.strip_prefix('[') {
-        Some(rest) => rest.split(']').next().unwrap_or_default(),
-        None => authority.split(':').next().unwrap_or_default(),
-    };
-    matches!(host.to_ascii_lowercase().as_str(), "localhost" | "127.0.0.1" | "::1")
-}
-
 fn serve_connection(stream: TcpStream, exec: &dyn ToolExecutor) -> std::io::Result<()> {
     let mut writer = stream.try_clone()?;
     let mut reader = BufReader::new(stream);
     let Some(req) = read_request(&mut reader)? else { return Ok(()) };
 
-    // Browsers send Origin, rejecting foreign ones blocks DNS rebinding attacks against the local server.
-    if let Some(origin) = req.header("origin")
-        && !is_local_origin(origin)
-    {
-        return respond(&mut writer, "403 Forbidden", &[], b"forbidden origin");
+    // Browsers send Origin with every POST and every cross-origin fetch while MCP clients never do, so refusing it keeps
+    // out web pages, even ones served from another port on this machine.
+    if req.header("origin").is_some() {
+        return respond(&mut writer, "403 Forbidden", &[], b"browser requests are refused");
     }
 
     if req.path != "/mcp" && req.path != "/" {
@@ -133,6 +125,11 @@ fn serve_connection(stream: TcpStream, exec: &dyn ToolExecutor) -> std::io::Resu
 
     match req.method.as_str() {
         "POST" => {
+            // A page can post text/plain or form data without a CORS preflight, a JSON body always needs one.
+            if !req.is_json() {
+                return respond(&mut writer, "415 Unsupported Media Type", &[], b"the body must be sent as application/json");
+            }
+
             let msg: Value = match serde_json::from_slice(&req.body) {
                 Ok(v) => v,
                 Err(e) => {
@@ -171,37 +168,53 @@ mod tests {
         }
     }
 
-    fn post(addr: SocketAddr, body: &str, origin: Option<&str>) -> String {
+    fn send(addr: SocketAddr, headers: &str, body: &str) -> String {
         let mut s = TcpStream::connect(addr).unwrap();
-        let origin = origin.map(|o| format!("Origin: {o}\r\n")).unwrap_or_default();
-        write!(s, "POST /mcp HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\n{origin}Content-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+        write!(s, "POST /mcp HTTP/1.1\r\nHost: localhost\r\n{headers}Content-Length: {}\r\n\r\n{body}", body.len()).unwrap();
         let mut out = String::new();
         s.read_to_string(&mut out).unwrap();
         out
     }
 
+    fn post(addr: SocketAddr, body: &str) -> String {
+        send(addr, "Content-Type: application/json\r\n", body)
+    }
+
+    const PING: &str = r#"{"jsonrpc":"2.0","id":3,"method":"ping"}"#;
+
     #[test]
     fn http_round_trip() {
         let addr = spawn_http(0, Arc::new(Echo)).unwrap();
-        let init = post(addr, r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#, None);
+        let init = post(addr, r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#);
         assert!(init.starts_with("HTTP/1.1 200"));
         assert!(init.contains("Mcp-Session-Id"));
-        let call = post(addr, r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_state"}}"#, Some("http://localhost:3000"));
+        let call = post(addr, r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"get_state"}}"#);
         assert!(call.contains("\"called\":\"get_state\""));
-        let note = post(addr, r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#, None);
+        let note = post(addr, r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#);
         assert!(note.starts_with("HTTP/1.1 202"));
-        let evil = post(addr, r#"{"jsonrpc":"2.0","id":3,"method":"ping"}"#, Some("https://evil.example"));
-        assert!(evil.starts_with("HTTP/1.1 403"));
     }
 
     #[test]
-    fn local_origins_include_ipv6() {
-        assert!(is_local_origin("http://[::1]:7841"));
-        assert!(is_local_origin("http://[::1]"));
-        assert!(is_local_origin("http://localhost:3000/app"));
-        assert!(is_local_origin("http://127.0.0.1"));
-        assert!(!is_local_origin("http://[::2]:7841"));
-        assert!(!is_local_origin("http://localhost.evil.example"));
-        assert!(!is_local_origin("https://evil.example"));
+    fn requests_from_browsers_are_refused() {
+        let addr = spawn_http(0, Arc::new(Echo)).unwrap();
+        for origin in ["http://localhost:3000", "http://127.0.0.1:7841", "http://[::1]", "null", "https://evil.example"] {
+            let r = send(addr, &format!("Content-Type: application/json\r\nOrigin: {origin}\r\n"), PING);
+            assert!(r.starts_with("HTTP/1.1 403"), "{origin}: {r}");
+        }
+    }
+
+    #[test]
+    fn post_bodies_must_be_json() {
+        let addr = spawn_http(0, Arc::new(Echo)).unwrap();
+        for content_type in ["text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x", "text/plain; x=application/json"] {
+            let r = send(addr, &format!("Content-Type: {content_type}\r\n"), PING);
+            assert!(r.starts_with("HTTP/1.1 415"), "{content_type}: {r}");
+        }
+
+        assert!(send(addr, "", PING).starts_with("HTTP/1.1 415"));
+        for content_type in ["application/json; charset=utf-8", "Application/JSON"] {
+            let r = send(addr, &format!("Content-Type: {content_type}\r\n"), PING);
+            assert!(r.starts_with("HTTP/1.1 200"), "{content_type}: {r}");
+        }
     }
 }
