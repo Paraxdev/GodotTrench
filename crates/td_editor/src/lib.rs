@@ -72,6 +72,8 @@ pub struct CliArgs {
     pub mcp_http: Option<u16>,
     /// Start with default preferences and never write them back (automated tests).
     pub default_prefs: bool,
+    /// Open the window outside every screen, without focus or a taskbar button (automated tests).
+    pub offscreen: bool,
     /// Convert a map file and exit instead of opening the editor.
     pub convert: Option<Convert>,
     /// Print [`USAGE`] and exit.
@@ -104,6 +106,7 @@ Options:
   --mcp                  Serve MCP over stdin and stdout
   --mcp-http[=<port>]    Serve MCP over HTTP on 127.0.0.1, port 7841 by default
   --default-prefs        Start with default preferences and never save them
+  --offscreen            Open the window outside every screen, for tests and agents
   --dump <map>           Print a map as JSON and exit
   --to-json <map> <out>  Write a map as JSON and exit
   --to-gtm <map> <out>   Write a map as a binary .tdm and exit
@@ -132,6 +135,7 @@ impl CliArgs {
                 "--project" => out.project = value("a folder"),
                 "--mcp-http" => out.mcp_http = Some(DEFAULT_MCP_PORT),
                 "--default-prefs" => out.default_prefs = true,
+                "--offscreen" => out.offscreen = true,
                 "--dump" => out.convert = value("a map file").map(Convert::Dump),
                 "--to-json" | "--to-tdm" | "--export-glb" | "--export-obj" => {
                     let what = "a map file and an output file";
@@ -187,12 +191,16 @@ pub fn convert(c: &Convert) -> Result<(), String> {
 }
 
 pub fn run(args: CliArgs) -> eframe::Result {
+    let mut viewport =
+        egui::ViewportBuilder::default().with_title("TrenchDot").with_icon(brand::icon()).with_inner_size([1600.0, 960.0]).with_min_inner_size([800.0, 500.0]);
+    if args.offscreen {
+        // Moved away rather than hidden or minimized, so it keeps painting and MCP screenshots still work. Not -32000,
+        // which Windows uses for minimized windows.
+        viewport = viewport.with_position([-20000.0, -20000.0]).with_active(false).with_taskbar(false);
+    }
+
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("TrenchDot")
-            .with_icon(brand::icon())
-            .with_inner_size([1600.0, 960.0])
-            .with_min_inner_size([800.0, 500.0]),
+        viewport,
         // eframe reads and writes the window geometry on its own, so automated runs get a separate, never written store
         // instead of loading or overwriting the user's window.
         persist_window: !args.default_prefs,
@@ -230,6 +238,8 @@ mod tests {
     #[test]
     fn help_and_bad_options_never_reach_the_editor() {
         assert!(CliArgs::parse(["--help".to_string()]).help);
+        assert!(CliArgs::parse(["--offscreen".to_string()]).offscreen);
+        assert!(!CliArgs::parse(["--default-prefs".to_string()]).offscreen);
         assert!(CliArgs::parse(["-h".to_string()]).help);
         let errors = |args: &[&str]| CliArgs::parse(args.iter().map(|a| a.to_string())).errors;
         assert_eq!(errors(&["--halp"]), ["unknown option --halp"]);
