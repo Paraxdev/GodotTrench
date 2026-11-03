@@ -2003,18 +2003,23 @@ pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: Model
     let mut files = Vec::new();
     let mut indices = Vec::new();
     let mut sizes = Vec::new();
+    let mut not_images = Vec::new();
     for (i, tex) in model.textures.iter().enumerate() {
-        let png =
-            if tex.png.is_empty() { path.parent().map(|d| d.join(&tex.path)).and_then(|p| std::fs::read(p).ok()).unwrap_or_default() } else { tex.png.clone() };
-        let size = image::load_from_memory(&png).map(|img| DVec2::new(img.width() as f64, img.height() as f64)).unwrap_or(DVec2::splat(16.0));
-        sizes.push(size);
-        if png.is_empty() {
+        let bytes = if tex.png.is_empty() { crate::models::beside_model(path, &tex.path).and_then(|p| std::fs::read(p).ok()) } else { Some(tex.png.clone()) };
+        // Only decoded pixels are written, so a file that is not an image never lands in the project.
+        let image = bytes.as_deref().and_then(|b| image::load_from_memory(b).ok());
+        sizes.push(image.as_ref().map_or(DVec2::splat(16.0), |img| DVec2::new(img.width() as f64, img.height() as f64)));
+        let Some(image) = image else {
+            if bytes.is_some() {
+                not_images.push(tex.name.clone());
+            }
+
             continue;
-        }
+        };
 
         // The preview lists the Blockbench textures in file order.
         let key = preview.as_ref().and_then(|p| p.textures.get(i)).map(|(k, ..)| k.as_str());
-        files.push((format!("{}_{i}", sanitize(&tex.name)), png, key));
+        files.push((format!("{}_{i}", sanitize(&tex.name)), encode_png(&image.to_rgba8())?, key));
         indices.push(i);
     }
 
@@ -2057,7 +2062,11 @@ pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: Model
         }
         ModelImport::Prop => unreachable!(),
     };
-    let note = untextured.map(|e| format!(". {e}")).unwrap_or_default();
+    let mut note = untextured.map(|e| format!(". {e}")).unwrap_or_default();
+    if !not_images.is_empty() {
+        note += &format!(". Left out textures that are not images: {}", not_images.join(", "));
+    }
+
     Ok((count, format!("Imported {} ({count} object(s)){note}", path.display())))
 }
 
@@ -3142,6 +3151,51 @@ mod tests {
         let (_, status) = import_model(&mut state, &nature_model("pine"), ModelImport::Brushes, DVec3::ZERO).unwrap();
         assert!(status.contains("untextured"), "{status}");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn blockbench_import_writes_only_images_from_beside_the_model() {
+        let (mut state, dir) = fresh_project("bb_texture_files");
+        let outside = dir.with_file_name(format!("td_bb_texture_files_outside_{}", std::process::id()));
+        let model_dir = outside.join("tree");
+        std::fs::create_dir_all(&model_dir).unwrap();
+        let key = b"-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n";
+        std::fs::write(outside.join("secret.bin"), key).unwrap();
+        std::fs::write(model_dir.join("id_ed25519"), key).unwrap();
+        let bark = image::RgbaImage::from_pixel(2, 2, image::Rgba([120, 80, 40, 255]));
+        let mut bmp = Vec::new();
+        bark.write_to(&mut std::io::Cursor::new(&mut bmp), image::ImageFormat::Bmp).unwrap();
+        std::fs::write(model_dir.join("bark.png"), &bmp).unwrap();
+        bark.save(model_dir.join("leaf.png")).unwrap();
+
+        let paths = ["../secret.bin", &outside.join("art/bark.png").to_string_lossy(), "id_ed25519", r"\\host\share\leaf.png"].map(String::from);
+        let faces: serde_json::Map<String, serde_json::Value> = ["north", "south", "east", "west"]
+            .iter()
+            .enumerate()
+            .map(|(i, f)| (f.to_string(), serde_json::json!({ "uv": [0, 0, 2, 2], "texture": i })))
+            .collect();
+        let textures: Vec<serde_json::Value> =
+            ["secret", "bark", "key", "leaf"].iter().zip(&paths).map(|(name, path)| serde_json::json!({ "name": name, "path": path })).collect();
+        let bb = serde_json::json!({
+            "meta": { "format_version": "4.10", "model_format": "free", "box_uv": false },
+            "resolution": { "width": 2, "height": 2 },
+            "elements": [{ "name": "trunk", "type": "cube", "uuid": "a", "from": [0, 0, 0], "to": [2, 2, 2], "origin": [0, 0, 0], "faces": faces }],
+            "textures": textures
+        });
+        std::fs::write(model_dir.join("tree.bbmodel"), bb.to_string()).unwrap();
+
+        let (_, status) = import_model(&mut state, &model_dir.join("tree.bbmodel"), ModelImport::Mesh, DVec3::ZERO).unwrap();
+        assert!(status.ends_with("Left out textures that are not images: key"), "{status}");
+        let written = dir.join("textures/models/tree");
+        let mut images: Vec<String> = std::fs::read_dir(&written).unwrap().map(|f| f.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        images.retain(|f| f.ends_with(".png"));
+        images.sort();
+        assert_eq!(images, ["bark_1.png", "leaf_3.png"], "the file outside the model's folder is not read");
+        let copy = std::fs::read(written.join("bark_1.png")).unwrap();
+        assert!(copy.starts_with(b"\x89PNG") && copy != bmp, "written as a PNG of its pixels, not the bytes it had");
+        assert_eq!(image::load_from_memory(&copy).unwrap().to_rgba8(), bark);
+        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_dir_all(outside);
     }
 
     #[test]
