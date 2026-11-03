@@ -44,6 +44,8 @@ ureq = { version = "3.4", default-features = false, features = ["rustls", "platf
 zip = { version = "9.0", default-features = false, features = ["deflate-flate2"] }
 # Already compiled in for rustls, used for the SHA-256 of downloads.
 ring = "0.17"
+# Already compiled in for gltf, decodes model URIs the way it does so they can be checked first.
+urlencoding = "2.1"
 # Downloads land in a file without a name, so no other user of a shared temporary folder can reach or swap it.
 tempfile = "3"
 

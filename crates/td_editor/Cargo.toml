@@ -30,6 +30,7 @@ base64.workspace = true
 imbl.workspace = true
 gltf.workspace = true
 tobj = { workspace = true }
+urlencoding.workspace = true
 ureq.workspace = true
 zip.workspace = true
 ring.workspace = true
