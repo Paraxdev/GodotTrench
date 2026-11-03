@@ -283,7 +283,8 @@ pub fn parse(text: &str) -> Result<BbModel, BbError> {
                     };
                     let (tl, tr, bl, br) = (corner(-1.0, 1.0), corner(1.0, 1.0), corner(-1.0, -1.0), corner(1.0, -1.0));
                     let mut arr = [[rect[0], rect[1]], [rect[2], rect[1]], [rect[0], rect[3]], [rect[2], rect[3]]];
-                    let mut rot = face.get("rotation").and_then(|v| v.as_f64()).unwrap_or(0.0) as i64;
+                    // Whole turns change nothing. Dropping them first keeps a huge rotation from looping for ages.
+                    let mut rot = face.get("rotation").and_then(|v| v.as_f64()).unwrap_or(0.0) as i64 % 360;
                     while rot > 0 {
                         let a = arr[0];
                         arr[0] = arr[2];
@@ -454,6 +455,23 @@ mod tests {
         "outliner": [{"name": "root", "origin": [0, 0, 0], "rotation": [0, 0, 0], "children": ["a", "b", "c"]}],
         "textures": [{"name": "bark.png", "id": "0", "uv_width": 16, "uv_height": 16, "source": "data:image/png;base64,iVBORw0KGgo="}]
     }"#;
+
+    #[test]
+    fn huge_face_rotations_turn_like_their_remainder() {
+        let uvs = |rotation: f64| {
+            let face = serde_json::json!({ "uv": [0, 0, 4, 8], "texture": 0, "rotation": rotation });
+            let bb = serde_json::json!({
+                "meta": { "format_version": "4.10", "model_format": "free", "box_uv": false },
+                "elements": [{ "name": "c", "type": "cube", "uuid": "a", "from": [0, 0, 0], "to": [16, 16, 16], "origin": [0, 0, 0], "faces": { "up": face } }],
+                "textures": [{ "name": "t", "source": "" }]
+            });
+            parse(&bb.to_string()).unwrap().cubes[0].faces[0].1.uvs.clone()
+        };
+        assert_ne!(uvs(90.0), uvs(0.0));
+        assert_eq!(uvs(450.0), uvs(90.0));
+        assert_eq!(uvs(9e18), uvs(0.0), "a whole number of turns");
+        assert_eq!(uvs(1e300), uvs(90.0), "saturates to i64::MAX, 7 degrees past whole turns, which takes one quarter turn");
+    }
 
     #[test]
     fn parses_cubes_meshes_and_textures() {
