@@ -13,28 +13,28 @@ A map's content is a tree of nodes. Every node has the same outer shape, with it
 | `locked` | bool | when `true` | Cannot be selected or edited in the editor |
 | `children` | array of nodes | when not empty | Child nodes, in order |
 
-`hidden` and `locked` are editor state only, so Godot still builds a hidden node. To leave content out of the build,
+`hidden` and `locked` are editor state only, so Godot still builds a hidden node. To keep something out of the build,
 put it in a layer with `omit_from_export`.
 
-`label` is the name a brush, mesh, entity, instance or terrain was given in the editor, shown in place of its default
-name such as `brush12`. Layers, groups and scatter sets never have one, their `name` holds it. Godot names a terrain's
-node `terrain_<id>_<label>` and ignores the key elsewhere, since brushes and meshes merge into their entity and an
-entity takes its node name from `targetname`. Editors older than the key read files that carry it and drop it when they
-save.
+`label` is the name you gave a brush, mesh, entity, instance or terrain in the editor, shown instead of a default name
+like `brush12`. Layers, groups and scatter sets never have one, they keep theirs in `name`.
 
-`graph` is editor state only, like `hidden` and `locked`. It holds the position of an entity's node in the Logic
-graph, in graph points, and only nodes someone moved have it. Godot ignores it, and a value that is not two
-numbers is dropped on load.
+Godot only uses `label` for terrains, it names the node `terrain_<id>_<label>`. Brushes and meshes merge into their
+entity, and an entity takes its node name from `targetname`. Editors older than the key still read files with it, but
+drop it when they save.
+
+`graph` is editor state too. It's where an entity's node sits in the Logic graph, in graph points, and only nodes
+someone moved have it. Godot ignores it, and a value that isn't two numbers is dropped on load.
 
 ## Ids
 
 Ids are positive integers that stay the same across saves, so other data can point at a node. The live link sends
-edits by id, scatter sets name the surfaces they grow on by id, and Godot stores each generated node's id in its
-`_td_id` metadata. An id of `0` or a duplicate, which only a hand edited file has, gets a fresh id on load.
+edits by id, scatter sets name their surfaces by id, and Godot stores each generated node's id in its `_td_id`
+metadata. An id of `0` or a duplicate, which only a hand edited file has, gets a fresh id on load.
 
-A prefab is a separate `.tdm` file with ids of its own, so two copies of it would clash. To prevent that, the Godot
-build adds a million times a per occurrence number to the ids of every node an [instance](#instance) brings in. Two
-copies of one prefab never share ids, however deep they are nested.
+A prefab is a separate `.tdm` file with ids of its own, so two copies of it would clash. To avoid that, the Godot build
+adds a million times a per occurrence number to the id of every node an [instance](#instance) brings in. Two copies of
+one prefab never share ids, however deep they're nested.
 
 ## Where nodes go
 
@@ -45,8 +45,8 @@ copies of one prefab never share ids, however deep they are nested.
 | Brush, mesh, terrain, scatter set, point entity, instance | Layer or group |
 | Brush or mesh of a brush entity | That entity |
 
-An entity with children is a brush entity, such as a door made of brushes. Brushes and meshes outside an entity belong
-to worldspawn, the static world geometry.
+An entity with children is a brush entity, a door made of brushes for example. Brushes and meshes outside any entity
+belong to worldspawn.
 
 ## Layer
 
@@ -60,7 +60,7 @@ A top level part of the map, shown in the editor's Outliner.
 
 ## Group
 
-Nodes gathered so they are selected and moved together.
+Nodes gathered so you select and move them together.
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -68,9 +68,9 @@ Nodes gathered so they are selected and moved together.
 | `link_id` | integer | omitted | Groups sharing a link id are linked copies, made with *Duplicate Linked* |
 | `transform` | 16 numbers | identity, omitted | This copy's placement relative to the others, a 4x4 matrix in column major order |
 
-Group contents are stored in world space, already placed. A [linked copy](../editor/organizing.md#groups) repeats an
-edit made in one copy in all the others, and `transform` is only what the editor uses to map the edit from one copy
-onto the next. The Godot build ignores both `transform` and `link_id`.
+Group contents are stored in world space, already in place. A [linked copy](../editor/organizing.md#groups) repeats an
+edit made in one copy in all the others, and `transform` is just what the editor uses to carry the edit from one copy
+to the next. The Godot build ignores both `transform` and `link_id`.
 
 ## Entity
 
@@ -82,11 +82,14 @@ onto the next. The Godot build ignores both `transform` and `link_id`.
 | `properties` | object of string to string | omitted | Entity keys, sorted by name |
 | `outputs` | array | omitted | I/O connections, see below |
 
-Property values are strings whatever their FGD type, for example `"travel": "0 168 0"`. An `angles`, `angle` or
-`mangle` property wins over the node's `angles`, read the Quake way: pitch negated and yaw turned by 180 degrees,
-`mangle` as yaw, pitch and roll on `light` classes, and `angle` -1 or -2 for straight up or down. The editor draws the
-entity facing the same way, and turning it there moves the property into the node's `angles`. The build ignores `origin` and `angles` of a brush entity, since its
-brushes already sit where they belong.
+Property values are always strings, whatever their FGD type, for example `"travel": "0 168 0"`.
+
+An `angles`, `angle` or `mangle` property wins over the node's `angles` and is read the Quake way: pitch and roll
+negated, yaw turned by 180 degrees. On classes starting with `light`, `mangle` is yaw, pitch and roll instead. An
+`angle` of -1 or -2 points straight up or down. The editor draws the entity facing the same way, and turning it there
+moves the property into the node's `angles`.
+
+The build ignores `origin` and `angles` of a brush entity, since its brushes already sit where they belong.
 
 Each output is one [I/O connection](../gameplay/io.md): when this entity fires a signal, call a method on a target.
 
@@ -102,7 +105,7 @@ Each output is one [I/O connection](../gameplay/io.md): when this entity fires a
 ## Instance
 
 A reference to another `.tdm` file, placed with a position and rotation, like Hammer's `func_instance`. This is how
-prefabs are placed: the content lives once in its own file and every instance shows it.
+prefabs get placed: the content lives once in its own file, and every instance shows it.
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -111,12 +114,11 @@ prefabs are placed: the content lives once in its own file and every instance sh
 | `angles` | `[pitch, yaw, roll]` | required | Degrees, YXZ order |
 | `fixup` | string | `""`, omitted | Name prefix for the instance's contents, see below |
 
-The build takes the children of every layer of the referenced map that is not omitted from export, and places them
-transformed by `origin` and `angles`. Texture projections move with the geometry. The referenced map's worldspawn is
-not used. Instances nest up to eight levels.
+The build takes the children of every layer in the referenced map that isn't omitted from export, and moves them by
+`origin` and `angles`. Texture projections move along with the geometry. The referenced map's worldspawn isn't used.
+Instances nest up to eight levels deep.
 
-The fixup keeps entity names unique when one prefab is placed several times. With a fixup of `p1`, `door` becomes
-`p1-door` in `targetname`, `target`, `destination`, `call_target`, every property the FGD declares as `target_source`
-or `target_destination`, and every output `target`. Values starting with `!`, `@` or `/` are left alone. Nested fixups
-add up from the outside in, so `b` inside `a` gives `a-b-door`. *Explode Instance* in the editor produces the same
-names.
+With a fixup of `p1`, `door` becomes `p1-door` in `targetname`, `target`, `destination`, `call_target`, every property
+the FGD declares as `target_source` or `target_destination`, and every output `target`. Values starting with `!`, `@`
+or `/` are left alone. Nested fixups add up from the outside in, so `b` inside `a` gives `a-b-door`, and *Explode
+Instance* in the editor gives the same names.

@@ -1,21 +1,28 @@
 # Development
 
-This page is for people who build the editor from source, change the addon or write the docs.
+This page is for you if you want to build the editor from source, change the addon or write docs.
 
 ## Building
 
-The Godot addon in `godot/addons/func_godot` is a git submodule, so clone with
-`git clone --recursive https://github.com/Paraxdev/TrenchDot.git`, or run `git submodule update --init` in an
-existing clone. The editor builds without it, but the tests and the Godot project need it.
+Clone with submodules, the Godot addon in `godot/addons/func_godot` is one:
+
+```sh
+git clone --recursive https://github.com/Paraxdev/TrenchDot.git
+```
+
+Already cloned without it? Run `git submodule update --init`. The editor builds without the addon, but the tests and
+the Godot project need it.
 
 ```sh
 cargo run -p td_editor --release            # start the editor
 cargo run -p td_editor --release -- map.tdm # open a map
 ```
 
-You need a GPU with Vulkan, DX12 or Metal, and on Linux an X11 or Wayland session. Rust 1.95 is the minimum, since
-egui 0.36 needs it. [rust-toolchain.toml](https://github.com/Paraxdev/TrenchDot/blob/main/rust-toolchain.toml) pins
-1.98.1, the version CI uses, so rustup installs it on the first build.
+You need a GPU with Vulkan, DX12 or Metal, and on Linux an X11 or Wayland session.
+
+Rust 1.95 is the minimum, egui 0.36 needs it.
+[rust-toolchain.toml](https://github.com/Paraxdev/TrenchDot/blob/main/rust-toolchain.toml) pins 1.98.1, the version
+CI uses, so rustup installs that on your first build.
 
 ## Checks
 
@@ -32,27 +39,27 @@ godot --headless --path godot --script res://tests/run_tests.gd
 godot --headless --path godot --script res://tests/build_showcase.gd
 ```
 
-CI runs all of these. The e2e tests launch the real
-editor and drive it with simulated input. That needs a GPU and a desktop session, so `cargo test` skips them unless
-you pass `--ignored`. CI runs them on Linux with software Vulkan instead of a GPU. To test the live link without a
-window, see [Live link protocol](godot/live-link.md#testing-without-a-window).
+CI runs all of these, so run them before you push.
 
-> **Note:** `godot --headless --script` renders nothing (screenshots and rendered checks come out black) and does not
+The e2e tests launch the real editor and drive it with simulated input. That needs a GPU and a desktop session, so
+`cargo test` skips them unless you pass `--ignored`. CI runs them on Linux with software Vulkan instead. To test the
+live link without a window, see [Live link protocol](godot/live-link.md#testing-without-a-window).
+
+> **Note:** `godot --headless --script` renders nothing (screenshots and rendered checks come out black) and doesn't
 > run project autoloads, only the script itself. Write tests against data and nodes, not pixels or autoload state.
 
 To time map builds, run `godot --headless --path godot --script res://tests/bench_build.gd -- runs=5 threaded=1`.
-Do not time them with `build_showcase.gd`, it overwrites the committed showcase scenes.
+Don't use `build_showcase.gd` for that, it overwrites the committed showcase scenes.
 
 ## Map files in git
 
 `.tdm` maps are binary, see [the .tdm map format](format/README.md). The repository's `.gitattributes` already marks
-them, so for readable diffs run the `git config` line from [Reviewing changes](editor/reviewing.md#maps-in-git) once
-per clone.
+them. For readable diffs, all you need is the `git config` line from
+[Reviewing changes](editor/reviewing.md#maps-in-git), once per clone.
 
 ## Generated content
 
-Some files in the repository are produced by a script rather than edited by hand. Run the matching command again after
-changing what it reads.
+Some files are made by a script, not by hand. When you change what a script reads, run it again.
 
 | Command | Regenerates |
 | --- | --- |
@@ -66,23 +73,22 @@ changing what it reads.
 ## The Godot addon
 
 The addon has its own repository, [trenchdot_func](https://github.com/Paraxdev/trenchdot_func), checked out at
-`godot/addons/func_godot`. Its tests stay here in `godot/tests`, since they need the demo project. To change the addon:
+`godot/addons/func_godot`. Its tests live here in `godot/tests`, since they need the demo project. To change the addon:
 
 1. Commit the change inside `godot/addons/func_godot` and push it to trenchdot_func.
 2. Stage the new submodule commit here with `git add godot/addons/func_godot` and commit it with the TrenchDot
    changes that need it.
 
-Push the addon first. A TrenchDot commit that points at an addon commit GitHub does not have fails to check out in
-CI.
+Push the addon first. A TrenchDot commit pointing at an addon commit GitHub doesn't have fails to check out in CI.
 
 `plugin.cfg`'s `version` matches [Cargo.toml](https://github.com/Paraxdev/TrenchDot/blob/main/Cargo.toml)'s
-workspace version. Bump both together, the editor warns when a project's addon does not match it.
+workspace version. Bump both together, the editor warns when a project's addon doesn't match it.
 
 ## Documentation
 
-The docs are a HonKit book in `docs/`. `docs/SUMMARY.md` is the table of contents, a page not listed there is not
-built. `docs/package.json` pins HonKit and the
-[darkening theme](https://github.com/Stuyk/honkit-plugin-theme-darkening), and `docs/styles/website.css` adjusts it.
+The docs are a HonKit book in `docs/`. `docs/SUMMARY.md` is the table of contents, a page that isn't listed there
+doesn't get built. `docs/package.json` pins HonKit and the
+[darkening theme](https://github.com/Stuyk/honkit-plugin-theme-darkening), and `docs/styles/website.css` tweaks it.
 
 ```sh
 cd docs
@@ -91,30 +97,39 @@ npx honkit serve              # live preview on http://localhost:4000
 npx honkit build . _site      # the build CI runs, lands in docs/_site
 ```
 
-A term a newcomer would not know gets an entry in `GLOSSARY.md`. Every page then shows its definition when you hover
-the term.
+Pictures for a page go in `docs/assets/<page>/`.
+
+If a newcomer wouldn't know a term, give it an entry in `GLOSSARY.md`. Every page then shows the definition when you
+hover the term.
 
 `.github/workflows/pages.yml` builds the book for pull requests that touch `docs/`, and publishes it to GitHub Pages
-when they reach `main`.
+once they reach `main`.
 
 ## CI
 
-CI skips pushes that only change docs or Markdown. Every green push to `main` replaces the
-[rolling beta](https://github.com/Paraxdev/TrenchDot/releases/tag/beta) with fresh editor, addon and demo downloads.
+CI skips pushes to `main` that only change docs or Markdown. Every other green push to `main` replaces the
+[rolling beta](https://github.com/Paraxdev/TrenchDot/releases/tag/beta) with fresh editor, addon, demo and content
+downloads.
 
-The GitHub releases are where the editor downloads the addon and content from. itch.io is a storefront that gets the
-same files on its own channels, `addon`, `nature-pack`, `demo-content` and so on, with a `-beta` twin for the rolling
-beta. The editor never downloads from it.
+The editor downloads the addon and content from the GitHub releases only. itch.io is a storefront that gets the same
+files on its own channels, `addon`, `nature-pack`, `demo-content` and so on. The rolling beta is the only build, so it
+fills those plain channels.
 
-The releases also carry `trenchdot-nature-pack.zip` and `trenchdot-demo-content.zip`, which *Godot > Add Content to
-Project…* downloads into a project, next to `func_godot-trenchdot-addon.zip`, which *Godot > Install or Update
-Addon…* installs. The folders they hold are listed in
+| Zip in the release | Installed by |
+| --- | --- |
+| `func_godot-trenchdot-addon.zip` | *Godot > Install or Update Addon…* |
+| `trenchdot-nature-pack.zip` | *Godot > Add Content to Project…* |
+| `trenchdot-demo-content.zip` | *Godot > Add Content to Project…* |
+
+The folders each zip holds are listed in
 [content.rs](https://github.com/Paraxdev/TrenchDot/blob/main/crates/td_editor/src/content.rs) and
 [addon_install.rs](https://github.com/Paraxdev/TrenchDot/blob/main/crates/td_editor/src/addon_install.rs), and tests
-check the zip commands in `ci.yml` against them. The editor looks the zips up through the GitHub API. CI builds it
-with `TRENCHDOT_CHANNEL=beta`, so it looks in the rolling beta first. A local build tries a release named after its own
-version first and then falls back to the beta. The `TRENCHDOT_RELEASES_API` environment variable
-points the editor at another server, for trying a zip before it is published.
+check the zip commands in `ci.yml` against them.
+
+The editor finds the zips through the GitHub API. CI builds it with `TRENCHDOT_CHANNEL=beta`, so it looks in the
+rolling beta first. A local build tries a release named after its own version first, then falls back to the beta. To
+try a zip before it's published, point the editor at another server with the `TRENCHDOT_RELEASES_API` environment
+variable.
 
 {% mcp %}
 

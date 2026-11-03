@@ -1,7 +1,7 @@
 # Glossary
 
 ## 3D cursor
-The point in the world under the mouse pointer, in whichever view you hovered last. Commands that place something at the cursor, such as the Place button in the Entities panel or a new terrain, put it there.
+The point in the world under your mouse, in whichever view you hovered last. Anything placed at the cursor lands there, like an entity from the Place button in the Entities panel or a new terrain.
 
 ## activator
 The player or body that started a chain of entity I/O, usually whoever pressed the button or walked into the trigger. Later steps in the chain can target !activator to act on exactly that one.
@@ -16,7 +16,7 @@ A Godot transparency mode that cuts a texture off hard at an alpha threshold, so
 A script or scene that Godot loads once at startup and keeps alive for the whole game, set up under Project Settings > Globals > Autoload. Game wide code, such as a score keeper or the hot reload listener, lives in one.
 
 ## baked lighting
-Light that is traced once ahead of time and stored, instead of worked out every frame. TrenchDot bakes the light of the sun, sky, lamps and glowing materials into a light map with Godot > Bake Lighting, and Godot draws it through a LightmapGI.
+Light that's traced once ahead of time and stored, instead of worked out every frame. Godot > Bake Lighting bakes the sun, sky, lamps and glowing materials into a light map, and Godot draws it through a LightmapGI.
 
 ## bloom
 The soft glow that bright lamps and glowing materials spread into the pixels around them. It is switched on with the worldspawn key glow_intensity.
@@ -67,10 +67,10 @@ A FuncGodot brush entity that is visible but has no collision, so players pass t
 The Godot plugin for building levels from Quake style map files. The TrenchDot addon is a fork of it, which is why its node is called FuncGodotMap and its resources start with FuncGodot.
 
 ## game config
-The file trenchdot_game.json in the Godot project root, written by the addon. It tells the editor which entities, texture folders and unit scale the project uses, and the editor reloads it whenever the addon exports it again.
+The file trenchdot_game.json in the Godot project root, written by the addon. It tells the editor which entities, texture folders and unit scale your project uses, and the editor reloads it whenever the addon writes it again.
 
 ## Gameplay entities pack
-The doors, buttons, lifts, triggers, logic, spawners, props and effects of the entity reference. They are not part of the addon itself: installing the pack copies their definitions and scripts into res://trenchdot/entities, where the project owns them and can change them.
+The doors, buttons, lifts, triggers, logic, spawners, props and effects of the entity reference. They aren't part of the addon itself. Installing the pack copies their definitions and scripts into res://trenchdot/entities, where they belong to your project and you can change them freely.
 
 ## glTF
 An open file format for 3D models and scenes that Blender, Godot and most 3D tools read. A .glb file is its binary form, which holds the geometry and the textures in one file.
@@ -82,7 +82,7 @@ A named tag on nodes in Godot, set under Node > Groups or from code, that lets c
 Valve's level editor for Source engine games such as Half-Life 2. TrenchDot borrows its model of entity inputs and outputs and can import its .vmf maps.
 
 ## hot reload
-Rebuilding the maps of a game that is already running each time you save in TrenchDot, so you do not have to restart it to see a change. It needs the trenchdot_hot_reload.gd autoload in the game.
+Rebuilding the maps of a game that's already running each time you save in TrenchDot, so you don't have to restart it to see a change. It needs the trenchdot_hot_reload.gd autoload in the game.
 
 ## hotspot
 A rectangle marked on a trim sheet and stored in the texture's .hotspots.json file. Hotspot Fit snaps the selected faces to the rectangle that matches them best, so a trim sheet can texture a room quickly.
@@ -97,7 +97,7 @@ A point in open space that stores the light arriving from every direction. Movin
 The Godot node that draws a light map and its light probes. A map built from a baked .tdm gets one named baked_lighting.
 
 ## Lit Preview
-A shading mode of the editor's 3D view, toggled with F3, that shows the map's lights, sun shadows, sky and fog. It lets you judge lighting before building in Godot, but it draws only the 64 strongest point and spot lights.
+A shading mode of the editor's 3D view, toggled with F3, that shows the map's lights, sun shadows, sky and fog. Good for judging lighting before you build in Godot, but it only draws the 64 strongest point and spot lights.
 
 ## live link
 The connection between TrenchDot and the Godot editor, a local server the addon runs on port 7842. Rebuilding on save, live mode and the Godot status in the toolbar all go through it.
@@ -112,7 +112,7 @@ A rule that turns two true or false inputs into one answer, like and (both are t
 A FuncGodotMapSettings resource that says where textures, materials and entity definitions come from and how many map units make a meter. A FuncGodotMap can have its own, otherwise the project default is used.
 
 ## MCP
-Model Context Protocol, a standard way for AI agents and scripts to call a program's tools. The editor can run an MCP server so an agent can inspect and edit maps. You do not need it to build levels, and these docs hide the MCP parts until you turn on the MCP switch in the header.
+Model Context Protocol, a standard way for AI agents and scripts to call a program's tools. The editor can run an MCP server so an agent can inspect and edit maps. You don't need it to build levels, and these docs hide the MCP parts until you turn on the MCP switch in the header.
 
 ## MultiMeshes
 Godot's way of drawing many copies of one mesh in a single pass. Scattered trees, rocks and grass are built as MultiMeshes, which keeps thousands of them cheap to render.
@@ -136,7 +136,7 @@ An entity that sits at a single spot instead of taking its shape from brushes, s
 A reusable piece of a map saved as its own .tdm file and placed in other maps as instances. Editing the prefab file updates every instance of it.
 
 ## res://
-Godot's way of writing a path inside the project folder, whatever the folder is called on disk. res://maps/room.tdm is the file room.tdm in the maps folder of your Godot project, which is why maps and models have to be saved inside the project for the addon to find them.
+Godot's way of writing a path inside the project folder, whatever the folder is called on disk. res://maps/room.tdm is room.tdm in the maps folder of your Godot project. That's why maps and models have to be saved inside the project for the addon to find them.
 
 ## scatter set
 A group of models painted together with the Scatter tool, such as a forest or a meadow of grass, with its own layer, density and target surfaces. Godot builds each set as MultiMeshes.
@@ -172,7 +172,7 @@ A texture that packs strips of detail, such as edges, pipes and panels, into one
 A way of projecting a texture onto a surface from three directions, from above and from two sides, blended by the angle of the surface. Terrain layers use it so cliffs show rock instead of a stretched smear.
 
 ## UV lock
-A setting, toggled with Ctrl+Shift+U and on by default, that keeps textures attached to a brush while you move it. With it off, the texture stays put in the world and slides across the moved faces.
+A setting, on by default and toggled with Ctrl+Shift+U, that keeps textures stuck to a brush while you move it. With it off, the texture stays put in the world and slides across the moved faces.
 
 ## UV
 The coordinates that say which part of a texture lands on each point of a face, U across the texture and V down it. Brush faces usually get them from a projection, while meshes and some faces store their own for each corner.

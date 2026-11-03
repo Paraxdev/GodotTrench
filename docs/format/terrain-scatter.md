@@ -2,8 +2,8 @@
 
 ## Terrain
 
-A heightmap on a regular grid: one height per grid vertex, painted with up to four texture layers. The bulk data is
-base64 text in JSON, and raw bytes in the [binary container](container.md#value-encoding).
+A heightmap on a regular grid, one height per grid vertex, painted with up to four texture layers. The bulk data is
+base64 text in JSON and raw bytes in the [binary container](container.md#value-encoding).
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -36,9 +36,8 @@ rotates the grid itself.
 
 ## Scatter
 
-A scatter set is many copies of a few models, such as trees, rocks or grass, painted onto surfaces and stored as one
-node. See [Scatter](../editor/scatter.md) for the editor side. Every key except `targets` and `material` is always
-written.
+A scatter set keeps many copies of a few models, like trees, rocks or grass painted onto surfaces, in one node. See
+[Scatter](../editor/scatter.md) for the editor side. Every key except `targets` and `material` is always written.
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -54,7 +53,7 @@ written.
 | `material` | string | omitted | Material override for the whole set |
 | `instances` | array | empty | The placed instances, see below |
 
-Copying a set together with a surface it targets makes the copy target the copied surface.
+Copy a set together with a surface it targets, and the copy targets the copied surface.
 
 Each item is one model the set can place:
 

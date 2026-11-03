@@ -1,13 +1,14 @@
 # The .tdm map format
 
-These pages are for people writing a tool that reads or writes `.tdm` files, such as an importer, a converter or a CI
-check. You do not need them to build levels.
+These pages are for you if you're writing a tool that reads or writes `.tdm` files, like an importer, a converter or a
+CI check. You don't need any of this to build levels.
 
-A `.tdm` file holds three things: the map's worldspawn properties (map-wide settings such as the sun and sky), some
-editor state, and a tree of nodes that holds the actual content. The editor saves it as a binary container of zstd
-compressed chunks, which keeps files small and lets a damaged file still open. Maps from older editors are one UTF-8
-JSON document instead, and every reader loads both. Both forms hold the same tree, so these pages describe it as the
-JSON that `trenchdot --dump` prints.
+A `.tdm` file holds three things: the worldspawn properties, a bit of editor state, and a tree of nodes with the actual
+content.
+
+The editor saves it as a binary container of zstd compressed chunks, so files stay small and a damaged file still
+opens. Older editors saved one UTF-8 JSON document instead, and every reader loads both. Both forms hold the same tree,
+so these pages show it as the JSON that `trenchdot --dump` prints.
 
 | Page | Read it when you |
 | --- | --- |
@@ -18,12 +19,12 @@ JSON that `trenchdot --dump` prints.
 | [Terrain and scatter](terrain-scatter.md) | Handle heightmap terrains and sets of scattered models |
 | [JSON layout](json.md) | Work with the readable form, convert between the two forms, or read what the editor puts on the clipboard |
 
-The reference implementation is
+Want to see working code? The reference implementation is
 [`format.rs`](https://github.com/Paraxdev/TrenchDot/blob/main/crates/td_doc/src/format.rs), with the container in
 [`binary.rs`](https://github.com/Paraxdev/TrenchDot/blob/main/crates/td_doc/src/binary.rs) and
-[`variant.rs`](https://github.com/Paraxdev/TrenchDot/blob/main/crates/td_doc/src/variant.rs). The Godot addon reads
-files with [`tdm_file.gd`](https://github.com/Paraxdev/trenchdot_func/blob/main/src/trenchdot/tdm_file.gd) and
-builds them with [`tdm_parser.gd`](https://github.com/Paraxdev/trenchdot_func/blob/main/src/trenchdot/tdm_parser.gd).
+[`variant.rs`](https://github.com/Paraxdev/TrenchDot/blob/main/crates/td_doc/src/variant.rs). On the Godot side,
+[`tdm_file.gd`](https://github.com/Paraxdev/trenchdot_func/blob/main/src/trenchdot/tdm_file.gd) reads the file and
+[`tdm_parser.gd`](https://github.com/Paraxdev/trenchdot_func/blob/main/src/trenchdot/tdm_parser.gd) builds it.
 
 ## Top level
 
@@ -37,10 +38,10 @@ builds them with [`tdm_parser.gd`](https://github.com/Paraxdev/trenchdot_func/bl
 | `layers` | array of nodes | always | The map's [layer nodes](nodes.md#layer), in order. Everything else hangs below them |
 | `lightmap` | object | JSON maps with a bake | The baked lighting, which a binary map keeps in its [LMAP chunk](container.md#lmap) |
 
-Only `layer` nodes are read from `layers`. A map with no layers gets a `Default` layer when it loads.
+Only `layer` nodes are read from `layers`, and a map without any gets a `Default` layer when it loads.
 
-Worldspawn values are strings, like in a `.map` file. When Godot builds the map, `TrenchDotEnvironment` reads these
-keys and turns them into a sky, fog and a sun:
+Worldspawn values are always strings, like in a `.map` file. When Godot builds the map, `TrenchDotEnvironment` turns
+these keys into a sky, fog and a sun:
 
 | Keys | What they control |
 | --- | --- |
@@ -51,11 +52,11 @@ keys and turns them into a sky, fog and a sun:
 | `fog_color`, `fog_density` | Distance fog |
 | `glow_intensity`, `ssr` | Bloom on bright surfaces, and screen space reflections when `ssr` is `1` |
 
-Setting `environment` to `sun_only` builds only the sun, for a game that brings its own `WorldEnvironment`, and `0` or
-`none` builds nothing, see [environment and sun](../godot/building.md#environment-and-sun). `sky_source` records
+If your game brings its own `WorldEnvironment`, set `environment` to `sun_only` and only the sun gets built. `0` or
+`none` builds nothing, see [environment and sun](../godot/building.md#environment-and-sun). `sky_source` remembers
 which texture the sky faces of an imported map had.
 
-The `editor` object holds view state that only matters inside the editor:
+The `editor` object is view state that only matters inside the editor:
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -67,8 +68,10 @@ The `editor` object holds view state that only matters inside the editor:
 
 ## Versions and compatibility
 
-`format` and `version` describe the data. The container version in the file header is separate and only changes when
-the chunk layout does. This table shows how each reader handles a file it does not fully understand:
+`format` and `version` describe the data. The container version in the file header is separate, it only changes when
+the chunk layout does.
+
+Here is what each reader does with a file it doesn't fully understand:
 
 | Situation | Editor | Godot addon |
 | --- | --- | --- |
@@ -80,14 +83,14 @@ the chunk layout does. This table shows how each reader handles a file it does n
 | Face index out of range | Refuses the map, naming the node | Skips that brush |
 | Displacement `heights` of the wrong size | Refuses the map, naming the node | Builds the face flat |
 
-Because the editor drops unknown keys when it saves, new data that an older editor must not lose needs one of two
-things: a map version bump, which older editors refuse to open, or a chunk of its own, which they keep untouched. See
+The editor drops unknown keys when it saves. So if you add data that an older editor must not lose, you need either a
+map version bump, which older editors refuse to open, or a chunk of its own, which they keep untouched. See
 [Other chunks](container.md#other-chunks).
 
 ## Coordinates and units
 
 Positions use Godot's axes: Y up, X right, Z towards the viewer. The build divides by the map settings'
-`inverse_scale_factor`, 32 by default, so 32 map units are one meter.
+`inverse_scale_factor`, 32 by default, so 32 map units make one meter.
 
 | Quantity | Unit |
 | --- | --- |

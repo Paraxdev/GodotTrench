@@ -1,20 +1,20 @@
 # MCP server
 
-MCP, the [Model Context Protocol](https://modelcontextprotocol.io), is a standard way for AI agents and scripts to call
-into an application. The editor has an MCP server built in, so an agent such as Claude Code, or a Python script, can
-inspect and edit maps, take screenshots and play input into the UI. You would use it to let an AI assistant build or
-review a level, to script repetitive edits, or to test the editor automatically. The server is off unless you start
-it, and it only listens on your own machine.
+The editor has an [MCP](https://modelcontextprotocol.io) server built in. An agent like Claude Code, or a plain Python
+script, can use it to inspect and edit maps, take screenshots and play input into the UI.
+
+Use it to let an AI assistant build or review a level, to script repetitive edits, or to test the editor
+automatically. The server is off until you start it, and it only listens on your own machine.
 
 ## Starting it
 
 | Transport | How to start it |
 | --- | --- |
-| HTTP | Launch the editor with `--mcp-http` for port 7841, or `--mcp-http=PORT` for another port. To have it start every time, tick *enable on startup* next to *MCP server* in *File > Preferences* and restart |
+| HTTP | Launch the editor with `--mcp-http` for port 7841, or `--mcp-http=PORT` for another port. To have it start every time, go to *File > Preferences*, tick *enable on startup* next to *MCP server (HTTP, localhost)*, set the port beside it and restart |
 | stdio | Launch with `--mcp`. The client starts the editor itself for each session and talks to it over standard input and output |
 
-HTTP suits an editor you keep open and work in yourself while an agent helps. stdio suits a client that should own
-its own editor. To connect Claude Code to either:
+Pick HTTP when you keep the editor open and work in it yourself while an agent helps. Pick stdio when the client
+should own its editor. To connect Claude Code to either:
 
 ```sh
 claude mcp add --transport http trenchdot http://127.0.0.1:7841/mcp   # HTTP
@@ -23,9 +23,9 @@ claude mcp add trenchdot -- /path/to/trenchdot --mcp                 # stdio
 
 The repository's `.mcp.json` already points Claude Code at the HTTP server.
 
-`TRENCHDOT_MCP_URL` overrides the URL that [tools/mcp_client.py](https://github.com/Paraxdev/TrenchDot/blob/main/tools/mcp_client.py)
-and [tools/mcp_script.py](https://github.com/Paraxdev/TrenchDot/blob/main/tools/mcp_script.py) connect to, for an
-editor started on a different port than `.mcp.json` expects.
+Started the editor on another port? Set `TRENCHDOT_MCP_URL` and
+[tools/mcp_client.py](https://github.com/Paraxdev/TrenchDot/blob/main/tools/mcp_client.py) and
+[tools/mcp_script.py](https://github.com/Paraxdev/TrenchDot/blob/main/tools/mcp_script.py) connect there instead.
 
 ## Tools
 
@@ -39,9 +39,9 @@ editor started on a different port than `.mcp.json` expects.
 | Project | Add the Gameplay entities pack, the nature models or the demo to the open Godot project | `project_content` |
 | Scripts | Replay a saved list of tool calls, see [MCP scripts](mcp-scripts.md) | `run_script` |
 
-Each tool's description lists its operations and arguments, so an agent learns them from the server itself.
-[tools/mcp_client.py](https://github.com/Paraxdev/TrenchDot/blob/main/tools/mcp_client.py) prints them with
-`list`, and calls a tool from the shell:
+Each tool's description lists its operations and arguments, so an agent learns them straight from the server.
+[tools/mcp_client.py](https://github.com/Paraxdev/TrenchDot/blob/main/tools/mcp_client.py) prints them with `list`
+and calls a tool from the shell:
 
 ```sh
 python tools/mcp_client.py call screenshot '{"target":"3d","width":1280,"height":720}' --out shot.png
@@ -49,11 +49,13 @@ python tools/mcp_client.py call screenshot '{"target":"3d","width":1280,"height"
 
 ## Screenshots
 
-`screenshot` returns a PNG of an editor view. Its arguments decide what the image shows:
+`screenshot` returns a PNG of the whole editor window, or of one view when `target` is `3d`, `top`, `front` or `side`.
+For a view, the other arguments decide what you get:
 
 | Arguments | Result |
 | --- | --- |
-| `target` only | The docked view as it is, overlays included |
+| None | The whole editor window |
+| `target` only | That docked view as it is, overlays included |
 | `width` and `height` | Rendered offscreen up to 4096 pixels, without grid, entity boxes, gizmos or selection |
 | `width`, `height` and `"overlays": true` | Offscreen, with the editor overlays |
 | `"overlays": false` | A clean shot at the docked size |
@@ -61,8 +63,8 @@ python tools/mcp_client.py call screenshot '{"target":"3d","width":1280,"height"
 ### What Godot renders
 
 `"source": "godot"` asks the Godot editor to render the map with its real lights, environment, fog and post
-processing, and returns that PNG with any errors or warnings Godot logged while building it. Use it to judge lighting
-and materials without launching the game.
+processing. You get that PNG back, plus any errors or warnings Godot logged while building it. Handy for judging
+lighting and materials without launching the game.
 
 ```sh
 python tools/mcp_client.py call screenshot '{"source":"godot","position":[0,256,512],"look_at":[0,64,0]}' --out godot.png
@@ -72,11 +74,11 @@ python tools/mcp_client.py call screenshot '{"source":"godot","position":[0,256,
 2. Open that project in the Godot editor, with a scene whose `FuncGodotMap` builds the map.
 3. Call `screenshot` with `"source": "godot"`. Without `position` and `look_at` it uses the 3D view's camera.
 
-Without [live mode](godot/live.md) Godot first builds the map as shown in TrenchDot, like *Build in Godot*, and
-`"build": false` captures the scene as Godot has it. `width` and `height` default to 1280 by 720, and `fov` to the
-3D view's.
+Without [live mode](godot/live.md) Godot first builds the map as shown in TrenchDot, like *Build in Godot*.
+`"build": false` captures the scene as Godot has it. `width` and `height` default to 1280 by 720, and `fov` to the 3D
+view's.
 
-> **Note:** Godot needs a window to render, a headless Godot returns an error instead of an image. The window may be
+> **Note:** Godot needs a window to render, a headless Godot returns an error instead of an image. The window can be
 > in the background or minimized.
 
 ## Reading and reviewing a map

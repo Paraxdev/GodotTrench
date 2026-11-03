@@ -1,12 +1,14 @@
 # Damaged files
 
-A damaged binary map loses only its damaged chunks, and everything else still opens. This page is what a reader has to
-do to match that behavior.
+A damaged binary map only loses its damaged chunks, everything else still opens. If you write a reader, this page is
+what it has to do to match that.
 
 A reader walks the [chunks](container.md#chunks) from byte 12. A valid chunk header has the sync marker, a matching
-header check, a raw size of at most 1 GiB and a printable tag. Where the reader finds no valid header, it searches
-forward for the next sync marker and carries on from there. A `HEAD`, `NODE` or `END` chunk is dropped when its payload
-does not decompress, fails its checksum, has the wrong size or does not decode.
+header check, a raw size of at most 1 GiB and a printable tag. Where there's no valid header, the reader searches
+forward for the next sync marker and carries on from there.
+
+A `HEAD`, `NODE` or `END` chunk is dropped when its payload doesn't decompress, fails its checksum, has the wrong size
+or doesn't decode.
 
 | Damage | Result |
 | --- | --- |
@@ -27,5 +29,5 @@ Each reader reports every loss:
 | `trenchdot --dump` | Prints what it could read and writes the losses to stderr |
 
 Before every save the editor copies the old file to `<map>.tdm.bak`, so saving a recovered map still keeps the damaged
-original next to it. The new file is written to `<map>.tdm.tmp` first and then renamed over the map, so a crash during
-a save never leaves a half written map behind.
+original next to it. The new file goes to `<map>.tdm.tmp` first and is then renamed over the map, so a crash halfway
+through a save never leaves a half written map behind.

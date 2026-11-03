@@ -1,10 +1,11 @@
 # MCP scripts
 
-An MCP script is a JSON file with a list of [MCP](mcp.md) tool calls that the editor replays in order with
-`run_script`. It records how a map was built as readable steps, so the map can be rebuilt from scratch, reviewed as
-text in a pull request and replayed by the tests. The showcase maps in
-[examples/mcp](https://github.com/Paraxdev/TrenchDot/tree/main/examples/mcp) are built this way and double as
-examples for every tool. The runner below talks to the editor's HTTP MCP server, see [Starting it](mcp.md#starting-it).
+An MCP script is a JSON file with a list of [MCP](mcp.md) tool calls, and `run_script` replays them in order. It
+keeps how a map was built as readable steps, so you can rebuild the map from scratch and review it as text in a pull
+request, and the tests can replay it too.
+
+The showcase maps in [examples/mcp](https://github.com/Paraxdev/TrenchDot/tree/main/examples/mcp) are built this
+way, and they double as examples for every tool.
 
 | Script | Builds |
 | --- | --- |
@@ -19,8 +20,9 @@ examples for every tool. The runner below talks to the editor's HTTP MCP server,
 
 ## Running them
 
-Start the editor with the demo project, then replay a script with `tools/mcp_script.py`. Its `shot` command saves a
-screenshot from a given camera position, with `--shade` picking the view's shading:
+Start the editor with the demo project and its HTTP server, see [Starting it](mcp.md#starting-it), then replay a
+script with `tools/mcp_script.py`. Its `shot` command saves a screenshot from the camera position you give it, and
+`--shade` picks the shading:
 
 ```sh
 trenchdot --mcp-http --project godot                        # the editor with the demo project
@@ -28,10 +30,11 @@ python tools/mcp_script.py run examples/mcp/sea_island.json   # replay a script
 python tools/mcp_script.py shot view.png --pos 4300,900,3300 --look 2200,700,1200 --shade lit
 ```
 
-The scripts save into `godot/demo/maps/showcase`, `scripted_scene.json` and `logic_playground.json` into
-`godot/demo/maps`. A run stops at the
-first failed step unless you pass `--continue-on-error`, and `--url` points the runner at an editor on another port.
-Each run is one undo step, named after the script's `label` or its file.
+The scripts save into `godot/demo/maps/showcase`, except `scripted_scene.json` and `logic_playground.json`, which save
+into `godot/demo/maps`.
+
+A run stops at the first failed step unless you pass `--continue-on-error`, and `--url` points the runner at an editor
+on another port. Each run is one undo step, named after the script's `label` or its file.
 
 ## Script format
 
@@ -51,13 +54,15 @@ Each run is one undo step, named after the script's `label` or its file.
 }
 ```
 
-`vars` sets default values for variables of your own. A `vars` object passed to `run_script` overrides them, so one
-script can save to different places.
+`vars` sets defaults for your own variables. A `vars` object passed to `run_script` overrides them, so one script can
+save to different places.
 
 A step without `tool` is a comment. A step with `save` stores its result under that name, so later steps can use the
-ids it created. `screenshot`, `simulate_input`, `walkability` and `run_script` cannot run inside a script, and neither
-can `project_content` installs other than `gameplay`. The summary a run returns counts tool calls as `steps` and
-comments as `notes`.
+ids it created.
+
+`screenshot`, `simulate_input`, `walkability` and `run_script` can't run inside a script, and neither can
+`project_content` installs other than `gameplay`. The summary a run returns counts tool calls as `steps` and comments
+as `notes`.
 
 Strings in `args` can refer to saved results and a few built-in variables:
 
@@ -71,15 +76,19 @@ Strings in `args` can refer to saved results and a few built-in variables:
 | `$script_dir` | The script file's folder |
 | `$$` | A literal `$`, so a node path is `"$$Player"` |
 
-An unknown name is an error. A `$` that cannot start a name, like `"$5"`, stays as it is. Ids given as text, such as
-`"42"`, work wherever a node id is expected. `$name/rest` without braces does not expand, so an unbraced
-`$project/maps` is an error rather than a path nobody meant to write. Use `"${project}/maps"`.
+An unknown name is an error. A `$` that can't start a name, like `"$5"`, stays as it is. Ids given as text, such as
+`"42"`, work wherever a node id is expected.
+
+`$name/rest` without braces doesn't expand, so an unbraced `$project/maps` is an error rather than a path nobody meant
+to write. Use `"${project}/maps"`.
 
 ## Ids after CSG
 
 CSG and clip steps replace the brushes they cut with new ones that have new ids. The runner rewrites ids saved by
-earlier steps to match, so `"$wall.ids"` still means the whole wall after a window is cut into it, and a removed brush
-drops out. Only values under keys that carry node ids are rewritten: `id`, `ids`, `selection`, `selected`, `nodes`,
+earlier steps to match, so `"$wall.ids"` still means the whole wall after you cut a window into it, and a removed brush
+drops out.
+
+Only values under keys that carry node ids are rewritten: `id`, `ids`, `selection`, `selected`, `nodes`,
 `letters`, `copies`, `entity`, `group`, `parent`, `insert_parent`, `current_layer`, `open_groups`, `targets` and keys
 ending in `_id` or `_ids`. Counts such as `moved` from `hierarchy reparent` stay as they are, use its `ids` instead.
 

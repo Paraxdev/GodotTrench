@@ -1,21 +1,22 @@
 # Container layout
 
-A binary `.tdm` is a 12 byte file header followed by chunks, back to back until the end of the file. All numbers are
-little endian and fixed width.
+A binary `.tdm` is a 12 byte file header, then chunks back to back until the end of the file. Every number is little
+endian and fixed width.
 
 | Offset | Size | Meaning |
 | --- | --- | --- |
 | 0 | 8 | Magic `89 47 54 4D 0D 0A 1A 0A`, that is `\x89GTM\r\n\x1a\n` |
 | 8 | 4 | Container version, u32, currently 1 |
 
-A reader refuses a container version newer than its own. The `\r\n` in the magic is there to catch a file that went
-through a line ending conversion, for example in git, and a reader reports such a file as mangled instead of reading
-it.
+A reader refuses a container version newer than its own.
+
+The `\r\n` in the magic catches a file that went through a line ending conversion, in git for example. A reader
+reports that file as mangled instead of reading it.
 
 ## Chunks
 
-Each chunk is a 24 byte header followed by its payload. The sync marker and the header check let a reader tell a real
-chunk header from random bytes, which is how it finds the next good chunk in a [damaged file](recovery.md).
+Each chunk is a 24 byte header and then its payload. The sync marker and the header check tell a real chunk header
+apart from random bytes, that's how a reader finds the next good chunk in a [damaged file](recovery.md).
 
 | Offset | Size | Meaning |
 | --- | --- | --- |
@@ -26,9 +27,15 @@ chunk header from random bytes, which is how it finds the next good chunk in a [
 | 16 | 4 | Stored size, u32, the number of payload bytes that follow the header |
 | 20 | 4 | Header check, u32: the tag read as a u32, XOR flags, XOR raw size, XOR stored size, XOR `0x47544D43` |
 
-A compressed payload is one zstd frame with a content checksum. A raw size above 1 GiB marks a damaged header. The
-editor writes the chunks in this order: one `HEAD` chunk, then the `NODE` chunks, then any unknown chunks it kept from
-the file it loaded, an `LMAP` chunk when the map has baked lighting, and an `END` chunk last.
+A compressed payload is one zstd frame with a content checksum. A raw size above 1 GiB means the header is damaged.
+
+The editor writes the chunks in this order:
+
+1. One `HEAD` chunk.
+2. The `NODE` chunks.
+3. Any unknown chunks it kept from the file it loaded.
+4. An `LMAP` chunk, when the map has baked lighting.
+5. The `END` chunk, always last.
 
 ### HEAD
 
@@ -43,10 +50,11 @@ A batch of whole nodes:
 | `parents` | int64 array | The parent id of each node, 0 for a layer |
 | `nodes` | array of node objects | The nodes, each without `children` |
 
-Nodes are written in tree order, so a parent always comes before its children, in the same chunk or an earlier one. The
-editor starts a new chunk once a batch passes 64 KiB before compression, and never splits a node across chunks, so a
-damaged chunk only takes its own nodes with it. A reader rebuilds the tree by appending each node to the `children` of
-the node its parent id names.
+Nodes come in tree order, so a parent always comes before its children, in the same chunk or an earlier one. The editor
+starts a new chunk once a batch passes 64 KiB before compression, and never splits a node across two chunks. That way a
+damaged chunk only takes its own nodes with it.
+
+To rebuild the tree, append each node to the `children` of the node its parent id names.
 
 ### END
 
@@ -61,13 +69,13 @@ The `END` chunk lets a reader check that nothing is missing:
 
 The content id is a 64 bit FNV-1a hash of the raw `HEAD` and `NODE` payloads in file order, cut to its low 52 bits so
 it survives as a JSON number. Godot keeps it with the built scene, so a [live session](../godot/live-link.md) can tell
-that a map has not changed and skip rebuilding it.
+a map hasn't changed and skip the rebuild.
 
 ### LMAP
 
-The [baked lighting](../editor/light-baking.md), written only when the map has a bake. It is one dictionary with 18
-keys, stored as its own chunk so the rest of the map loads fast and an older editor keeps it untouched. The editor
-compresses it with a faster zstd level than the other chunks, since it is large. Positions and distances are in map units.
+The [baked lighting](../editor/light-baking.md), only there when the map has a bake. It's one dictionary with 18 keys
+in a chunk of its own, so the rest of the map loads fast and an older editor keeps it untouched. Since it's big, the
+editor compresses it with a faster zstd level than the other chunks. Positions and distances are in map units.
 
 | Key | Type | Meaning |
 | --- | --- | --- |
@@ -89,16 +97,19 @@ compresses it with a faster zstd level than the other chunks, since it is large.
 | `probe_bsp_planes` | float32 array | A plane per BSP node, normal and distance |
 | `probe_bsp_children` | int32 array | The child over and under each plane: another node when positive, tetrahedron `t` as `-t - 1`, nothing as the smallest int32 |
 
-The probe keys follow the layout of Godot's `LightmapGIData`, and a reader leaves the probes out when their sizes do
-not add up. A chunk that fails to load is dropped with a warning to bake again. In a JSON map the same dictionary sits
-under a top level `lightmap` key, with `light`, `shadow` and `ao` as base64 text.
+The probe keys follow the layout of Godot's `LightmapGIData`, and a reader leaves the probes out when their sizes don't
+add up. A chunk that fails to load is dropped with a warning to bake again.
+
+In a JSON map the same dictionary sits under a top level `lightmap` key, with `light`, `shadow` and `ao` as base64 text.
 
 ### Other chunks
 
-Readers skip a chunk whose tag they do not know. The editor keeps such a chunk exactly as stored and writes it back
-after its `NODE` chunks on save. This is the way to add data that older editors must carry along without
-understanding it. Because an older editor may have deleted nodes the chunk refers to, a new chunk type must stay valid
-when those nodes are gone.
+Readers skip a chunk with a tag they don't know. The editor keeps it byte for byte and writes it back after its `NODE`
+chunks on save.
+
+That makes a new chunk the way to add data that older editors carry along without understanding it. Keep in mind an
+older editor may have deleted nodes your chunk refers to, so a new chunk type has to stay valid when those nodes are
+gone.
 
 ## Value encoding
 
@@ -124,8 +135,8 @@ float.
 Readers ignore bit 31 of a container or array count, which Godot sets for shared containers. JSON integers are written
 as integers and JSON floats as floats, so converting to binary and back gives the same JSON.
 
-To keep files small, three kinds of value are stored in a more compact form. A reader has to accept both the compact
-and the plain form:
+To keep files small, three kinds of value get a more compact form. A reader has to accept both the compact and the
+plain one:
 
 | JSON value | Stored as | When |
 | --- | --- | --- |
