@@ -1064,6 +1064,20 @@ fn shared_scripts_only_edit_the_map() {
     left.sort();
     assert_eq!(left, [away.join("files/secret.png"), away.join("files/secret.tdm")], "nothing was written through the links");
     assert!(!pack.join("out.obj").exists() && !pack.join("out.mtl").exists());
+
+    // Converted textures named by where they lie keep their folders, also one that links out of the texture folder.
+    std::fs::create_dir_all(away.join("sub")).unwrap();
+    assert!(link_dir(&links.join("textures/sub"), &away.join("sub")));
+    std::fs::create_dir_all(pack.join("src/textures/sub")).unwrap();
+    png(4, [9, 9, 9, 255], &pack.join("src/textures/sub/x.png"));
+    let script = json!({ "steps": [
+        { "tool": "map_file", "args": { "op": "convert_textures", "path": "${script_dir}/src", "overwrite": true }, "save": "converted" }
+    ] });
+    std::fs::write(pack.join("convert.json"), script.to_string()).unwrap();
+    let summary = ed.call("run_script", json!({ "path": pack.join("convert.json"), "continue_on_error": true }));
+    let failed = summary["vars"]["converted"]["textures"]["failed"].to_string();
+    assert!(failed.contains("sub/x") && failed.contains("scripts cannot write"), "{failed}");
+    assert!(files_below(&away.join("sub")).is_empty(), "the texture stays out of the linked folder");
     let _ = std::fs::remove_dir_all(&links);
 }
 

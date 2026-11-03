@@ -88,14 +88,14 @@ fn inside_project(game: &td_formats::GameConfig, name: &str) -> bool {
 /// The map's sky colors come from its sky texture, unless the map has them already.
 pub fn convert(state: &mut EditorState, lib: &Library, only: Option<&BTreeSet<String>>, overwrite: bool) -> Result<Report, String> {
     let target = target(state)?;
-    let mut report = lib.convert(only, &target, overwrite);
+    let mut report = lib.convert(only, &target, overwrite, &|p| state.may_write(p));
     if !report.converted.is_empty() {
         state.material_reload = true;
         match_file_case(state, &report.converted);
     }
 
     if overwrite || !state.doc.map.properties.contains_key("sky_top_color") {
-        report.sky = lib.sky_keys(&state.doc.map.properties, &target)?;
+        report.sky = lib.sky_keys(&state.doc.map.properties, &target, &|p| state.may_write(p))?;
     }
 
     if !report.sky.is_empty() {

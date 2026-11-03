@@ -3,11 +3,11 @@
 //! faces of imported `.vmf` and `.map` files find them, and a `.tres` carries what a plain image cannot say, such as
 //! alpha testing or a normal map.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
-use crate::game::{is_network_path, to_res_path};
+use crate::game::{is_network_path, safe_file_name, to_res_path};
 use crate::quake_texture::{self, Paletted, SURF_TRANS33, SURF_TRANS66};
 use crate::vmt::{self, Vmt};
 use crate::vtf::{self, Image};
@@ -29,9 +29,25 @@ enum Source {
         vmt: PathBuf,
         root: usize,
     },
+    /// A Quake 2 `.wal`, named by its path below the `textures` folder.
     Paletted(Paletted),
+    /// A texture of a `.wad`, named by the WAD itself rather than by where a file lies.
+    Packed(Paletted),
     /// A loose image Godot can load already, as FuncGodot and Qodot projects ship them. It is copied as it is.
     Image(PathBuf),
+}
+
+impl Source {
+    /// The file `name` is written to, relative to the texture folder and without extension. A WAD names its textures
+    /// in its own bytes, so such a name becomes a single file name, while the other names are paths below the folders
+    /// the files were found in and keep those folders.
+    fn stem(&self, name: &str) -> String {
+        let name = file_stem(name);
+        match self {
+            Source::Packed(_) => safe_file_name(&name),
+            _ => name.split('/').map(safe_file_name).collect::<Vec<_>>().join("/"),
+        }
+    }
 }
 
 const IMAGE_EXTS: [&str; 6] = ["png", "jpg", "jpeg", "tga", "bmp", "webp"];
@@ -71,8 +87,8 @@ impl Report {
     }
 }
 
-/// The file name a face material is written under. `*` marks Quake liquids and cannot be in a file name, FuncGodot
-/// drops it when it looks for the material file.
+/// The name FuncGodot looks the files of a face material up by. `*` marks Quake liquids and cannot be in a file name,
+/// FuncGodot drops it when it looks for the material file. Converted files take this name made safe to write.
 pub fn file_stem(material: &str) -> String {
     material.to_ascii_lowercase().replace('*', "")
 }
@@ -144,7 +160,7 @@ pub fn scan_within(paths: &[PathBuf], may_read: &dyn Fn(&Path) -> bool) -> Libra
                 "wad" => match std::fs::read(&f).map_err(|e| e.to_string()).and_then(|b| quake_texture::read_wad(&b).map_err(|e| e.to_string())) {
                     Ok(textures) => {
                         for t in textures {
-                            lib.sources.entry(t.name.to_ascii_lowercase()).or_insert(Source::Paletted(t));
+                            lib.sources.entry(t.name.to_ascii_lowercase()).or_insert(Source::Packed(t));
                         }
                     }
                     Err(e) => lib.errors.push((f.clone(), e)),
@@ -312,6 +328,17 @@ impl MaterialOut {
     }
 }
 
+/// `dir` joined with `file`, a path made of plain names, refused when it would lead out of `dir` all the same or
+/// `may_write` refuses it, which can also see where links lead.
+fn out_path(dir: &Path, file: &str, may_write: &dyn Fn(&Path) -> Result<(), String>) -> Result<PathBuf, String> {
+    let path = dir.join(file);
+    let plain = |c: Component| matches!(c, Component::Normal(n) if !n.to_string_lossy().contains(':'));
+    match path.strip_prefix(dir) {
+        Ok(rel) if rel.components().next().is_some() && rel.components().all(plain) => may_write(&path).map(|()| path),
+        _ => Err(format!("{file} would be written outside {}", dir.display())),
+    }
+}
+
 fn save_png(img: &Image, path: &Path) -> Result<(), String> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -356,21 +383,53 @@ impl Library {
         vtf::decode(&bytes).map_err(|e| format!("{name}.vtf: {e}"))
     }
 
+    /// The file each texture is written to, see [`Source::stem`]. A name that had to change on the way never takes the
+    /// file of one that did not, and names that end up alike get numbered files.
+    fn stems(&self) -> BTreeMap<&str, String> {
+        let (kept, changed): (Vec<_>, Vec<_>) =
+            self.sources.iter().map(|(name, s)| (name.as_str(), s.stem(name))).partition(|(name, stem)| *stem == file_stem(name));
+        let mut taken = HashSet::new();
+        let mut out = BTreeMap::new();
+        for (name, stem) in kept.into_iter().chain(changed) {
+            let mut file = stem.clone();
+            for n in 2.. {
+                if taken.insert(file.to_lowercase()) {
+                    break;
+                }
+
+                file = format!("{stem}_{n}");
+            }
+
+            out.insert(name, file);
+        }
+
+        out
+    }
+
     /// Converts `only` (face material names), or everything when None. Existing outputs are kept unless `overwrite`.
-    pub fn convert(&self, only: Option<&BTreeSet<String>>, target: &Target, overwrite: bool) -> Report {
+    /// A texture with an output `may_write` refuses fails.
+    pub fn convert(&self, only: Option<&BTreeSet<String>>, target: &Target, overwrite: bool, may_write: &dyn Fn(&Path) -> Result<(), String>) -> Report {
         let mut report = Report::default();
+        let stems = self.stems();
         for (name, source) in &self.sources {
             if only.is_some_and(|o| !o.contains(name)) {
                 continue;
             }
 
-            let stem = file_stem(name);
+            let stem = &stems[name.as_str()];
             let image_ext = match source {
                 Source::Image(p) => ext(p),
                 _ => "png".into(),
             };
-            let png = target.texture_dir.join(format!("{stem}.{image_ext}"));
-            let tres = target.material_dir.join(format!("{stem}.{}", target.material_ext));
+            let files = out_path(&target.texture_dir, &format!("{stem}.{image_ext}"), may_write)
+                .and_then(|png| Ok((png, out_path(&target.material_dir, &format!("{stem}.{}", target.material_ext), may_write)?)));
+            let (png, tres) = match files {
+                Ok(files) => files,
+                Err(e) => {
+                    report.failed.push((name.clone(), e));
+                    continue;
+                }
+            };
             let in_place = matches!(source, Source::Image(p) if p.canonicalize().ok().is_some_and(|p| png.canonicalize().ok() == Some(p)));
             if in_place || !overwrite && (png.is_file() || tres.is_file()) {
                 report.existing.push(name.clone());
@@ -378,8 +437,8 @@ impl Library {
             }
 
             let result = match source {
-                Source::Valve { vmt, root } => self.convert_valve(name, vmt, *root, target, &png),
-                Source::Paletted(t) => convert_paletted(t, target, &png),
+                Source::Valve { vmt, root } => self.convert_valve(stem, vmt, *root, target, &png, may_write),
+                Source::Paletted(t) | Source::Packed(t) => convert_paletted(t, target, &png),
                 Source::Image(p) => png
                     .parent()
                     .map_or(Ok(()), std::fs::create_dir_all)
@@ -425,7 +484,7 @@ impl Library {
                 let base = self.vmt(vmt, *root)?.base_texture().ok_or("no $basetexture")?;
                 self.vtf(*root, &base)
             }
-            Source::Paletted(t) => Ok(if t.is_sky() { t.sky_image() } else { t.to_rgba() }),
+            Source::Paletted(t) | Source::Packed(t) => Ok(if t.is_sky() { t.sky_image() } else { t.to_rgba() }),
             Source::Image(p) => {
                 let img = image::open(p).map_err(|e| e.to_string())?.to_rgba8();
                 Ok(Image { width: img.width(), height: img.height(), rgba: img.into_raw() })
@@ -454,14 +513,19 @@ impl Library {
     }
 
     /// Worldspawn keys for the sky of a map with these worldspawn `properties`. A Source skybox is also saved as a
-    /// panorama in the texture folder, for Godot.
-    pub fn sky_keys(&self, properties: &BTreeMap<String, String>, target: &Target) -> Result<Vec<(String, String)>, String> {
+    /// panorama in the texture folder, for Godot, where `may_write` allows.
+    pub fn sky_keys(
+        &self,
+        properties: &BTreeMap<String, String>,
+        target: &Target,
+        may_write: &dyn Fn(&Path) -> Result<(), String>,
+    ) -> Result<Vec<(String, String)>, String> {
         let skyname = properties.get("skyname").map(|s| s.to_ascii_lowercase());
         let Some(sky) = self.sky(skyname.as_deref(), properties.get("sky_source").map(String::as_str)) else { return Ok(Vec::new()) };
         let color = |c: [u8; 3]| format!("{} {} {}", c[0], c[1], c[2]);
         let mut keys = vec![("sky_top_color".to_string(), color(sky.top)), ("sky_horizon_color".to_string(), color(sky.horizon))];
         if let (Some(img), Some(name)) = (&sky.panorama, &skyname) {
-            let path = target.texture_dir.join(format!("skybox/{}_panorama.png", file_stem(name)));
+            let path = out_path(&target.texture_dir, &format!("skybox/{}_panorama.png", safe_file_name(&file_stem(name))), may_write)?;
             save_png(img, &path)?;
             keys.extend(to_res_path(&target.project_root, &path).map(|p| ("sky_panorama".to_string(), p)));
         }
@@ -469,10 +533,17 @@ impl Library {
         Ok(keys)
     }
 
-    fn convert_valve(&self, name: &str, vmt_path: &Path, root: usize, target: &Target, png: &Path) -> Result<MaterialOut, String> {
+    fn convert_valve(
+        &self,
+        stem: &str,
+        vmt_path: &Path,
+        root: usize,
+        target: &Target,
+        png: &Path,
+        may_write: &dyn Fn(&Path) -> Result<(), String>,
+    ) -> Result<MaterialOut, String> {
         let vmt = self.vmt(vmt_path, root)?;
         let res = |p: &Path| to_res_path(&target.project_root, p);
-        let stem = file_stem(name);
         let mut out =
             MaterialOut { surface_prop: vmt.surface_prop().map(str::to_string), double_sided: vmt.no_cull(), unshaded: vmt.unlit(), ..Default::default() };
 
@@ -512,7 +583,7 @@ impl Library {
                     ]
                 })
                 .collect();
-            let path = target.texture_dir.join(format!("{stem}_emission.png"));
+            let path = out_path(&target.texture_dir, &format!("{stem}_emission.png"), may_write)?;
             save_png(&Image { width: base.width, height: base.height, rgba }, &path)?;
             out.emission = res(&path);
         }
@@ -539,7 +610,7 @@ impl Library {
                 p[3] = 255;
             }
 
-            let path = target.texture_dir.join(format!("{stem}_normal.png"));
+            let path = out_path(&target.texture_dir, &format!("{stem}_normal.png"), may_write)?;
             save_png(&n, &path)?;
             out.normal = res(&path);
         }
@@ -700,7 +771,7 @@ mod tests {
         let names: Vec<&String> = lib.names().collect();
         assert_eq!(names, ["brick/broken", "brick/fence", "brick/sign", "brick/sign_patch", "brick/wall"]);
         let project = dir.join("project");
-        let report = lib.convert(None, &target(&project), false);
+        let report = lib.convert(None, &target(&project), false, &|_| Ok(()));
         assert_eq!(report.converted.len(), 4, "{report:?}");
         assert_eq!(report.failed, vec![("brick/broken".to_string(), "brick/nothing.vtf not found".to_string())]);
 
@@ -726,7 +797,7 @@ mod tests {
         let patched = godot_material::parse(&std::fs::read_to_string(tex.join("brick/sign_patch.tres")).unwrap()).unwrap();
         assert!(patched.is_transparent() && patched.unshaded, "patch keeps the included shader and adds $translucent");
 
-        let again = lib.convert(Some(&BTreeSet::from(["brick/wall".to_string()])), &target(&project), false);
+        let again = lib.convert(Some(&BTreeSet::from(["brick/wall".to_string()])), &target(&project), false, &|_| Ok(()));
         assert_eq!((again.converted.len(), again.existing.len()), (0, 1));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -752,7 +823,7 @@ mod tests {
         let lib = scan(&[dir.join("src"), dir.join("baseq2")]);
         let project = dir.join("project");
         let only: BTreeSet<String> = ["wall1", "{fence", "*water1", "sky1", "e1u1/glass", "base/grid"].map(String::from).into();
-        let report = lib.convert(Some(&only), &target(&project), false);
+        let report = lib.convert(Some(&only), &target(&project), false, &|_| Ok(()));
         assert_eq!(report.converted.len(), 6, "{report:?}");
         let tex = project.join("textures");
         assert!(tex.join("base/grid.jpg").is_file(), "a loose image is copied with its format");
@@ -764,6 +835,68 @@ mod tests {
         assert_eq!(image::image_dimensions(tex.join("sky1.png")).unwrap(), (8, 8), "the back half of the sky");
         let glass = godot_material::parse(&std::fs::read_to_string(tex.join("e1u1/glass.tres")).unwrap()).unwrap();
         assert!(glass.is_transparent() && (glass.albedo_color[3] - 0.33).abs() < 1e-6);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn wad_names_stay_inside_the_texture_folder() {
+        let dir = temp("hostile");
+        let names = ["*../../wadout", r"..\..\x", "c:x", "/abs", "con", "wall1", "wall:1", "wall_1", "..", ""];
+        let lumps: Vec<(&str, u32, u32, u8)> = names.iter().zip(1..).map(|(n, fill)| (*n, 8, 8, fill)).collect();
+        write(&dir.join("src/evil.wad"), quake_texture::tests::wad(b"WAD2", &lumps));
+        let planted = dir.join("wadout.png");
+        write(&planted, "keep");
+        let lib = scan(&[dir.join("src")]);
+        let project = dir.join("project");
+        let report = lib.convert(None, &target(&project), true, &|_| Ok(()));
+        assert_eq!((report.converted.len(), report.failed.len()), (names.len(), 0), "{report:?}");
+
+        fn files(dir: &Path) -> Vec<PathBuf> {
+            std::fs::read_dir(dir).unwrap().flatten().map(|e| e.path()).flat_map(|p| if p.is_dir() { files(&p) } else { vec![p] }).collect()
+        }
+
+        let tex = project.join("textures");
+        let files = files(&dir);
+        let outside: Vec<&PathBuf> = files.iter().filter(|f| !f.starts_with(&tex) && **f != planted && !f.starts_with(dir.join("src"))).collect();
+        assert!(outside.is_empty(), "{outside:?}");
+        assert_eq!(std::fs::read_to_string(&planted).unwrap(), "keep", "overwrite never reaches a file out of the folder");
+        for file in [".._.._wadout.tres", ".._.._x.png", "c_x.png", "_abs.png", "_con.png", "unnamed.png", "unnamed_2.png"] {
+            assert!(tex.join(file).is_file(), "{file}");
+        }
+
+        let fill = |file: &str| image::open(tex.join(file)).unwrap().to_rgb8().get_pixel(1, 0).0;
+        let color = |i: usize| [quake_texture::QUAKE_PALETTE[i * 3], quake_texture::QUAKE_PALETTE[i * 3 + 1], quake_texture::QUAKE_PALETTE[i * 3 + 2]];
+        assert_eq!((fill("wall_1.png"), fill("wall_1_2.png")), (color(8), color(7)), "wall_1 keeps its name, wall:1 gets a file of its own");
+
+        let sky: Vec<String> = ["rt", "lf", "bk", "ft", "up"].iter().map(|side| format!("skybox/../../x{side}")).collect();
+        write(&dir.join("sky/sky.wad"), quake_texture::tests::wad(b"WAD2", &sky.iter().map(|n| (n.as_str(), 8, 8, 4)).collect::<Vec<_>>()));
+        let props = BTreeMap::from([("skyname".to_string(), "../../x".to_string())]);
+        let keys: BTreeMap<String, String> = scan(&[dir.join("sky")]).sky_keys(&props, &target(&project), &|_| Ok(())).unwrap().into_iter().collect();
+        assert_eq!(keys["sky_panorama"], "res://textures/skybox/.._.._x_panorama.png");
+        assert!(!project.join("x_panorama.png").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn outputs_go_only_where_the_caller_allows() {
+        let dir = temp("may_write");
+        let project = dir.join("project");
+        std::fs::create_dir_all(dir.join("src/textures/sub")).unwrap();
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([9, 9, 9, 255])).save(dir.join("src/textures/sub/x.png")).unwrap();
+        write(&dir.join("src/q.wad"), quake_texture::tests::wad(b"WAD2", &[("wall", 8, 8, 1)]));
+        let held = project.join("textures/sub");
+        let may_write = |p: &Path| if p.starts_with(&held) { Err(format!("{} is held", p.display())) } else { Ok(()) };
+        let report = scan(&[dir.join("src")]).convert(None, &target(&project), true, &may_write);
+        assert_eq!(report.converted, ["wall"]);
+        assert!(report.failed.iter().any(|(name, e)| name == "sub/x" && e.contains("is held")), "{:?}", report.failed);
+        assert!(!held.exists(), "not even its folder is made");
+
+        let sky: Vec<String> = ["rt", "lf", "bk", "ft", "up"].iter().map(|side| format!("skybox/day{side}")).collect();
+        write(&dir.join("sky/sky.wad"), quake_texture::tests::wad(b"WAD2", &sky.iter().map(|n| (n.as_str(), 8, 8, 4)).collect::<Vec<_>>()));
+        let props = BTreeMap::from([("skyname".to_string(), "day".to_string())]);
+        let refused = |p: &Path| if p.starts_with(project.join("textures/skybox")) { Err("held".to_string()) } else { Ok(()) };
+        assert_eq!(scan(&[dir.join("sky")]).sky_keys(&props, &target(&project), &refused), Err("held".to_string()));
+        assert!(!project.join("textures/skybox").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -794,7 +927,7 @@ mod tests {
         let project = dir.join("project");
         let props: BTreeMap<String, String> =
             [("skyname", "Lake"), ("sky_source", "sky_clouds")].into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
-        let keys: BTreeMap<String, String> = lib.sky_keys(&props, &target(&project)).unwrap().into_iter().collect();
+        let keys: BTreeMap<String, String> = lib.sky_keys(&props, &target(&project), &|_| Ok(())).unwrap().into_iter().collect();
         assert_eq!(keys["sky_top_color"], "20 40 200", "the skybox wins over the sky faces");
         assert_eq!(keys["sky_horizon_color"], "240 120 20");
         assert_eq!(keys["sky_panorama"], "res://textures/skybox/lake_panorama.png");

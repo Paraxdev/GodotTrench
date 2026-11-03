@@ -1921,8 +1921,10 @@ pub fn import_vmf(
     Ok(report)
 }
 
+/// A model or texture name as a file name of lowercase letters, digits, `_` and `-`, see [`td_formats::game::safe_file_name`].
 fn sanitize(name: &str) -> String {
-    name.chars().map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c.to_ascii_lowercase() } else { '_' }).collect()
+    let plain: String = name.chars().map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c.to_ascii_lowercase() } else { '_' }).collect();
+    td_formats::game::safe_file_name(&plain)
 }
 
 /// Folder under `models/` in the texture folder that a placed model's textures go to: its name in the Models panel,
@@ -3223,6 +3225,35 @@ mod tests {
         assert_eq!(placed_materials(&state), ["dev/grey"]);
         let (_, status) = import_model(&mut state, &nature_model("pine"), ModelImport::Brushes, DVec3::ZERO).unwrap();
         assert!(status.contains("untextured"), "{status}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn blockbench_texture_names_become_safe_file_names() {
+        let (mut state, dir) = fresh_project("bb_texture_names");
+        let model_dir = dir.join("art/crate");
+        std::fs::create_dir_all(&model_dir).unwrap();
+        let mut png = Vec::new();
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([120, 80, 40, 255])).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+        let source = format!("data:image/png;base64,{}", base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &png));
+        let names = ["../../../evil", r"C:\evil", "con", ""];
+        let faces: serde_json::Map<String, serde_json::Value> =
+            ["north", "south", "east", "west"].iter().zip(0..).map(|(f, i)| (f.to_string(), serde_json::json!({ "uv": [0, 0, 2, 2], "texture": i }))).collect();
+        let bb = serde_json::json!({
+            "meta": { "format_version": "4.10", "model_format": "free", "box_uv": false },
+            "resolution": { "width": 2, "height": 2 },
+            "elements": [{ "name": "box", "type": "cube", "uuid": "a", "from": [0, 0, 0], "to": [2, 2, 2], "origin": [0, 0, 0], "faces": faces }],
+            "textures": names.map(|name| serde_json::json!({ "name": name, "source": source }))
+        });
+        std::fs::write(model_dir.join("crate.bbmodel"), bb.to_string()).unwrap();
+
+        import_model(&mut state, &model_dir.join("crate.bbmodel"), ModelImport::Mesh, DVec3::ZERO).unwrap();
+        let mut images: Vec<String> =
+            std::fs::read_dir(dir.join("textures/models/crate")).unwrap().map(|f| f.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        images.retain(|f| f.ends_with(".png"));
+        images.sort();
+        assert_eq!(images, ["_________evil_0.png", "_con_2.png", "c__evil_1.png", "unnamed_3.png"]);
+        assert!(!dir.join("evil_0.png").exists() && !dir.with_file_name("evil_0.png").exists());
         let _ = std::fs::remove_dir_all(dir);
     }
 

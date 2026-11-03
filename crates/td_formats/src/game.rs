@@ -628,6 +628,27 @@ pub fn file_below(root: &Path, dir: &Path, rel: &str) -> Option<PathBuf> {
     Some(parts.into_iter().fold(root.to_path_buf(), |path, part| path.join(part)))
 }
 
+/// `name`, read from inside a file, as one file name that stays in the folder it is written to on any system. Path
+/// separators, drive and stream colons, the other characters Windows refuses and control characters turn into `_`,
+/// trailing dots and spaces go, a Windows device name such as `con` or `lpt1` gets a leading `_`, a long name is cut
+/// and an empty one becomes `unnamed`.
+pub fn safe_file_name(name: &str) -> String {
+    let refused = |c: char| c.is_control() || matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|');
+    let name: String = name.chars().take(120).map(|c| if refused(c) { '_' } else { c }).collect();
+    let name = name.trim_end_matches(['.', ' ']);
+    if name.is_empty() {
+        return "unnamed".into();
+    }
+
+    // Windows reads these as devices whatever the extension, and with trailing spaces before it.
+    let base = name.split('.').next().unwrap_or_default().trim_end().to_ascii_lowercase();
+    let numbered = ["com", "lpt"].iter().filter_map(|p| base.strip_prefix(p)).any(|n| {
+        let mut digits = n.chars();
+        digits.next().is_some_and(|d| d.is_ascii_digit() || matches!(d, '¹' | '²' | '³')) && digits.next().is_none()
+    });
+    if numbered || matches!(base.as_str(), "con" | "prn" | "aux" | "nul" | "conin$" | "conout$") { format!("_{name}") } else { name.to_string() }
+}
+
 /// Whether `path` is a network share or a Windows device or verbatim path: `\\host\share`, `//host/share`, `\\?\`,
 /// `\\.\` or `\??\`. Paths from shared files may lead to local drives, never to these.
 pub fn is_network_path(path: &str) -> bool {
@@ -706,6 +727,40 @@ mod tests {
         for local in ["C:/quake/id1/gfx.wad", r"C:\quake\gfx.wad", "/home/me/gfx.wad", "../gfx.wad", "gfx.wad"] {
             assert!(!is_network_path(local), "{local}");
         }
+    }
+
+    #[test]
+    fn names_from_files_become_one_safe_file_name() {
+        for (name, file) in [
+            ("wall1", "wall1"),
+            ("{fence", "{fence"),
+            ("+0button", "+0button"),
+            (".hidden", ".hidden"),
+            ("../../wadout", ".._.._wadout"),
+            (r"..\..\x", r".._.._x"),
+            ("c:x", "c_x"),
+            ("/x", "_x"),
+            (r"\\host\share\x", "__host_share_x"),
+            ("a:stream", "a_stream"),
+            ("a\0b\nc", "a_b_c"),
+            ("<>|?\"*", "______"),
+            ("..", "unnamed"),
+            (". .", "unnamed"),
+            ("", "unnamed"),
+            ("wall. ", "wall"),
+            ("con", "_con"),
+            ("NUL.png", "_NUL.png"),
+            ("aux .x", "_aux .x"),
+            ("lpt1", "_lpt1"),
+            ("com²", "_com²"),
+            ("com10", "com10"),
+            ("console", "console"),
+        ] {
+            assert_eq!(safe_file_name(name), file, "{name:?}");
+        }
+
+        assert_eq!(safe_file_name(&"x".repeat(500)).len(), 120);
+        assert_eq!(safe_file_name("é".repeat(200).as_str()).chars().count(), 120, "cut by characters, not bytes");
     }
 
     #[test]
