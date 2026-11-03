@@ -1,16 +1,20 @@
 # Shortcuts
 
-These are the defaults of the TrenchBroom preset. *Help > Keyboard Shortcuts…* lists every binding and rebinds any of
-them, and *File > Preferences > Keymap preset* switches to Hammer or Blender, whose differences are listed
-under [Other presets](#other-presets).
+These are the default keys, the TrenchBroom preset.
+
+Want other keys? *Help > Keyboard Shortcuts…* lists every binding. Type in the filter to find one, press **Set** and
+then the new shortcut. **Preset** at the top of that window, or *File > Preferences > Keymap preset*, switches to
+Hammer or Blender, see [Other presets](#other-presets).
+
+![The Keyboard Shortcuts window filtered for csg, with the Preset dropdown, Reset overrides and a Set and Clear button on every row](../assets/shortcuts/keyboard-shortcuts-window.png)
 
 Shortcuts wait while you type in a field or a menu is open. While the pointer is over a floating window, such as the
-Shape Generator, only save, undo and redo work, so a key meant for the window never deletes or changes the map.
+Shape Generator, only save, undo and redo work, so a key meant for the window never deletes or changes your map.
 
 ## Tools
 
-Pressing a tool's key again goes back to Select. Esc cancels a drag or stroke, otherwise returns to Select, and in
-Select clears the selection.
+Press a tool's key again to go back to Select. Esc cancels a drag or stroke, otherwise it returns to Select, and in
+Select it clears the selection.
 
 | Key | Tool |
 | --- | --- |
@@ -93,13 +97,13 @@ Select clears the selection.
 | Ctrl+Shift+N, Ctrl+Tab, Ctrl+W | New tab, next tab, close tab |
 | F5 | Run the Godot project |
 
-> **Note:** F2 used to cycle the shading. It now renames, as in Godot, Blender and most file managers, and shading
+> **Note:** F2 used to cycle the shading. It now renames, like in Godot, Blender and most file managers, and shading
 > moved to F4. A binding you set yourself in the shortcuts window stays as it was.
 
 ## Other presets
 
-A preset only changes the keys below. Your own bindings sit on top of any preset, *Reset overrides* in the shortcuts
-window clears them.
+A preset only changes the keys below, everything else stays as above. Your own bindings sit on top of any preset,
+**Reset overrides** in the shortcuts window clears them.
 
 | Key | Hammer preset |
 | --- | --- |
