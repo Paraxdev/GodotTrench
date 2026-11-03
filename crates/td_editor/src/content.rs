@@ -492,7 +492,8 @@ pub fn extract(archive: std::fs::File, name: &str, root: &Path, folders: &[&str]
             continue;
         }
 
-        let rel = entry_path(entry.name(), folders).filter(|_| !entry.is_symlink()).ok_or_else(|| Error::Unsafe(entry.name().to_string()))?;
+        let entry_name = entry.name().map_err(|e| Error::Damaged(e.to_string()))?;
+        let rel = entry_path(&entry_name, folders).filter(|_| !entry.is_symlink()).ok_or_else(|| Error::Unsafe(entry_name.to_string()))?;
         total = total.saturating_add(entry.size());
         files.push((i, rel));
     }

@@ -41,7 +41,7 @@ base64 = "0.22"
 zstd = { version = "0.13", default-features = false }
 # Content downloads: HTTPS with the operating system's certificates, so proxies that re-sign TLS keep working.
 ureq = { version = "3.4", default-features = false, features = ["rustls", "platform-verifier"] }
-zip = { version = "8.6", default-features = false, features = ["deflate-flate2"] }
+zip = { version = "9.0", default-features = false, features = ["deflate-flate2"] }
 # Already compiled in for rustls, used for the SHA-256 of downloads.
 ring = "0.17"
 # Downloads land in a file without a name, so no other user of a shared temporary folder can reach or swap it.
