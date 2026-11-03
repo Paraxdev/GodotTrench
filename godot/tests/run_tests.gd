@@ -102,6 +102,7 @@ func _initialize() -> void:
 	test_interior_face_culling()
 	test_dense_mesh_interior_face_cull()
 	test_mesh_faces_keep_their_corner_order()
+	test_nested_instances_are_bounded()
 	test_chunk_streamer()
 	test_csharp_entities()
 	await test_live_session()
@@ -1797,6 +1798,33 @@ func test_mesh_faces_keep_their_corner_order() -> void:
 		else:
 			check(face.vertices == face.exact_vertices and face.indices.is_empty(), "a mesh face draws from its own triangles and is left unwound")
 	DirAccess.remove_absolute(path)
+
+func test_nested_instances_are_bounded() -> void:
+	print("- nested prefab instances share one total")
+	# Eight instances of eight instances of ... a mesh of 2000 corners, 4096 meshes of 32 kB of JSON in all.
+	var dir := OS.get_temp_dir()
+	var vertices := []
+	for i in 2000:
+		vertices.append([float(i), 0.0, float(i * i % 7)])
+	var leaf := { "type": "mesh", "id": 2, "vertices": vertices, "faces": [{ "indices": [0, 1, 2], "material": "showcase/cobble" }] }
+	var files := []
+	var children := [leaf]
+	for level in 5:
+		var path := dir.path_join("td_nested_%d.tdm" % level)
+		FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify({ "format": "trenchdot-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": children }] }))
+		files.append(path)
+		children = []
+		for k in 8:
+			children.append({ "id": 10 + k, "type": "instance", "path": path.get_file(), "origin": [0.0, 64.0 * k, 0.0], "angles": [0.0, 0.0, 0.0] })
+	var started := Time.get_ticks_msec()
+	var data := FuncGodotParser.new().parse_map_data(files[4], load(SETTINGS))
+	var took := Time.get_ticks_msec() - started
+	var meshes: int = data.entities[0].brushes.size()
+	var leaf_size := TrenchDotParser._size(JSON.parse_string(FileAccess.get_file_as_string(files[0])))
+	check(meshes > 0 and meshes <= TrenchDotParser.MAX_INSTANCED / leaf_size, "instances stop at the total, %d of 4096 meshes kept" % meshes)
+	check(took < 3000, "without reading and placing all of them, parsed in %d ms" % took)
+	for path in files:
+		DirAccess.remove_absolute(path)
 
 func test_chunk_streamer() -> void:
 	print("- chunk streaming and render culling")

@@ -118,6 +118,11 @@ The build takes the children of every layer in the referenced map that isn't omi
 `origin` and `angles`. Texture projections move along with the geometry. The referenced map's worldspawn isn't used.
 Instances nest up to eight levels deep.
 
+A Godot build reads each referenced map once, and all the instances of a map together may add 2,097,152 values, a
+value being an array item or dictionary entry of the referenced map, with every 8 characters of text counting as one
+more. Past that the build leaves the remaining instances out and reports an error. Ordinary maps stay far below it,
+only instances of instances multiplied many times over reach it.
+
 With a fixup of `p1`, `door` becomes `p1-door` in `targetname`, `target`, `destination`, `call_target`, every property
 the FGD declares as `target_source` or `target_destination`, and every output `target`. Values starting with `!`, `@`
 or `/` are left alone. Nested fixups add up from the outside in, so `b` inside `a` gives `a-b-door`, and *Explode
