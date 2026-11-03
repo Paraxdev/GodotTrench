@@ -1,24 +1,9 @@
 # TrenchDot
 
-TrenchDot is a brush based level editor for Godot in the spirit of TrenchBroom and Hammer. You block out a level from
-brushes, add meshes, terrain and props, and wire gameplay together with Hammer style inputs and outputs, so a button can
-open a door without a line of script. The editor is a standalone app, and the TrenchDot addon inside your Godot
-project turns the saved map into a scene.
+TrenchDot is a brush based level editor for Godot in the spirit of TrenchBroom and Hammer. 
+Supports IO, Custom Meshes (Hammer, Quake, BlockBench) and more!
 
 ![The TrenchDot editor](screenshots/editor.png)
-
-## How the pieces fit
-
-Three parts work together, and they talk to each other through files in your Godot project.
-
-| Part | What it does |
-| --- | --- |
-| The editor | The app you build levels in. It saves each level as a `.tdm` map file |
-| The addon | A Godot plugin that reads a `.tdm` file and builds meshes, collision and working entities from it |
-| The game config | `trenchdot_game.json`, written by the addon. It tells the editor which entities and textures your project has |
-
-When something looks wrong on one side, one of these three is usually out of date. A new entity script, for example,
-only shows up in the editor once the addon has written the game config again.
 
 ## Where to go
 
@@ -33,10 +18,13 @@ only shows up in the editor once the addon has written the game config again.
 
 ## Download
 
-TrenchDot ships as a [rolling beta](https://github.com/Paraxdev/TrenchDot/releases/tag/beta), rebuilt from `main`
-whenever every test passes. It has the editor for Linux, Windows and macOS, the addon zip and a demo project, and
-[itch.io](https://paraxdev.itch.io/trenchdot) has the same files. The editor installs the addon into a project itself.
-To build from source, see [Development](development.md).
+TrenchDot has a [rolling beta on GitHub](https://github.com/Paraxdev/TrenchDot/releases/tag/beta), meaning it is 
+always the newest version you can get.
+due to being at a very early stage no LTS version is currently planned, once it emerges as useful software a full release will be made.
+
+Alternatively also available on [itch.io](https://paraxdev.itch.io/trenchdot)
+
+For building this from the source visit [Development](development.md).
 
 {% mcp %}
 
