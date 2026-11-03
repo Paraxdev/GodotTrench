@@ -224,6 +224,10 @@ pub struct Prefs {
     pub invert_y: bool,
     pub mcp_http: bool,
     pub mcp_port: u16,
+    /// MCP HTTP clients have to send the token kept next to the settings. Saved in a file of its own, see
+    /// [`crate::mcp::Saved`].
+    #[serde(skip)]
+    pub mcp_require_token: bool,
     /// Notify the Godot editor after saving so it rebuilds the map.
     pub live_link: bool,
     pub live_link_port: u16,
@@ -316,6 +320,7 @@ impl Default for Prefs {
             invert_y: false,
             mcp_http: false,
             mcp_port: crate::DEFAULT_MCP_PORT,
+            mcp_require_token: false,
             live_link: true,
             live_link_port: crate::live_link::DEFAULT_PORT,
             live_mode: false,

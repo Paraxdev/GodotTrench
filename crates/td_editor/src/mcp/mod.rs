@@ -6,6 +6,7 @@ pub mod geometry_tools;
 pub mod protocol;
 pub mod review_tools;
 pub mod script;
+pub mod token;
 pub mod tools;
 pub mod transport;
 
@@ -93,6 +94,36 @@ impl McpHost {
     }
 }
 
+/// MCP settings kept in files of their own next to the preferences, each there while its setting is on and changed the
+/// moment the setting is. An editor writes back all the preferences it loaded when it closes, which would undo a change
+/// made in another editor since. On is the careful side of every setting kept here, so a file that cannot be looked at
+/// counts as on.
+pub struct Saved(Option<std::path::PathBuf>);
+
+impl Saved {
+    /// Without a folder the settings last for this run only.
+    pub fn new(dir: Option<std::path::PathBuf>) -> Self {
+        Self(dir)
+    }
+
+    pub fn get(&self, name: &str) -> bool {
+        self.0.as_ref().is_some_and(|dir| !matches!(dir.join(name).try_exists(), Ok(false)))
+    }
+
+    pub fn set(&self, name: &str, on: bool) -> std::io::Result<()> {
+        let Some(dir) = &self.0 else { return Ok(()) };
+        if on {
+            std::fs::create_dir_all(dir)?;
+            return std::fs::write(dir.join(name), b"");
+        }
+
+        match std::fs::remove_file(dir.join(name)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
+            _ => Ok(()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,5 +139,32 @@ mod tests {
         let ToolResult::Error(e) = wait_for_reply(&rx, Some(Duration::from_millis(10))) else { panic!() };
         assert!(e.contains("timed out"));
         assert_eq!(reply_timeout("run_script"), None);
+    }
+
+    #[test]
+    fn saved_settings_reach_every_editor_at_once() {
+        let dir = std::env::temp_dir().join(format!("td_mcp_saved_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (one, other) = (Saved::new(Some(dir.join("data"))), Saved::new(Some(dir.join("data"))));
+        assert!(!one.get(token::REQUIRE_FILE));
+        one.set(token::REQUIRE_FILE, true).unwrap();
+        assert!(other.get(token::REQUIRE_FILE), "another editor sees it without a restart of the first");
+        other.set(token::REQUIRE_FILE, false).unwrap();
+        other.set(token::REQUIRE_FILE, false).unwrap();
+        assert!(!one.get(token::REQUIRE_FILE));
+
+        let run_only = Saved::new(None);
+        run_only.set(token::REQUIRE_FILE, true).unwrap();
+        assert!(!run_only.get(token::REQUIRE_FILE));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_preferences_carry_no_saved_setting() {
+        let prefs = crate::state::Prefs { mcp_require_token: true, ..Default::default() };
+        let written = serde_json::to_value(&prefs).unwrap();
+        assert!(written.get("mcp_require_token").is_none(), "an editor closing later would write back its own");
+        let read: crate::state::Prefs = serde_json::from_value(serde_json::json!({ "mcp_require_token": true })).unwrap();
+        assert!(!read.mcp_require_token);
     }
 }

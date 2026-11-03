@@ -14,18 +14,36 @@ automatically. The server is off until you start it, and it only listens on your
 | stdio | Launch with `--mcp`. The client starts the editor itself for each session and talks to it over standard input and output |
 
 Pick HTTP when you keep the editor open and work in it yourself while an agent helps. Pick stdio when the client
-should own its editor. To connect Claude Code to either:
+should own its editor, or when other people use the same computer. To connect Claude Code to either:
 
 ```sh
 claude mcp add --transport http trenchdot http://127.0.0.1:7841/mcp   # HTTP
 claude mcp add trenchdot -- /path/to/trenchdot --mcp                 # stdio
 ```
 
-The repository's `.mcp.json` already points Claude Code at the HTTP server.
+The repository's `.mcp.json` already points Claude Code at the HTTP server. *File > Preferences* shows the command
+for the server that runs, and *Copy command* puts it on the clipboard.
 
 Started the editor on another port? Set `TRENCHDOT_MCP_URL` and
 [tools/mcp_client.py](https://github.com/Paraxdev/TrenchDot/blob/main/tools/mcp_client.py) and
 [tools/mcp_script.py](https://github.com/Paraxdev/TrenchDot/blob/main/tools/mcp_script.py) connect there instead.
+
+### The HTTP token
+
+Any program on your computer can reach the HTTP server, and so can other people signed in to it. To keep them out,
+tick *Require a token* in the MCP part of *File > Preferences*. From the next request on, the server only answers
+requests that send its token as `Authorization: Bearer <token>`. The command in Preferences then includes the token,
+use it instead of `.mcp.json`. stdio needs no token, only the client that started the editor can talk to it.
+
+The editor makes a random token the first time you ask for one and keeps it in `mcp-token`, a file only you can read,
+next to its settings: `%APPDATA%\TrenchDot\data` on Windows, `~/.local/share/trenchdot` on Linux and
+`~/Library/Application Support/TrenchDot` on macOS. A `--default-prefs` run keeps its own in
+`trenchdot-default-prefs.mcp-token` in the temp folder.
+
+To pick the token yourself for one run, set `TRENCHDOT_MCP_TOKEN` or launch with `--mcp-token=<token>`, which wins
+over the variable. Either one turns the token on whatever Preferences says, and *Require a token* shows it ticked and
+greyed out. `tools/mcp_client.py` and `tools/mcp_script.py` send a token only when you give them one, with `--token` or
+`TRENCHDOT_MCP_TOKEN`.
 
 ## Tools
 

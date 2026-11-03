@@ -161,6 +161,15 @@ and the checks a pull request has to pass.
 The e2e tests drive the editor over the [MCP server](mcp.md), and `example_mcp_scripts_replay` replays every script in
 `examples/mcp`.
 
+To drive an editor of your own from the shell:
+
+```sh
+trenchdot --mcp-http=7850 --default-prefs &
+TRENCHDOT_MCP_URL=http://127.0.0.1:7850/mcp python3 tools/mcp_client.py call get_state
+```
+
+Set `TRENCHDOT_MCP_TOKEN` to the same value for both to try it with a [token](mcp.md#the-http-token).
+
 ### MCP in the docs
 
 The **MCP** switch in the header, off by default, hides everything about MCP so the pages stay readable for people who

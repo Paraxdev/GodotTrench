@@ -9,7 +9,7 @@ use crate::dialogs::{CommandPalette, KeymapWindow, LinkDialog, ShapeDialog, Terr
 use crate::help::{self, Topic};
 use crate::icons;
 use crate::mcp::tools::{Deferred, InputScript};
-use crate::mcp::{McpHost, ToolExecutor, transport};
+use crate::mcp::{McpHost, ToolExecutor, token, transport};
 use crate::mesh_tool::MeshOp;
 use crate::panels::{self, PanelState};
 use crate::scene::SceneCache;
@@ -127,7 +127,10 @@ pub struct App {
     show_prefs: bool,
     title: String,
     pub(crate) mcp: Option<McpHost>,
-    mcp_http_addr: Option<std::net::SocketAddr>,
+    mcp_http: Option<transport::HttpServer>,
+    mcp_tokens: token::Tokens,
+    /// Where the MCP settings in Preferences are, reported by get_state like `open_windows`.
+    pub(crate) mcp_pref_rects: Vec<(&'static str, egui::Rect)>,
     pub(crate) input_script: Option<InputScript>,
     pub(crate) deferred: Vec<Deferred>,
     palette: CommandPalette,
@@ -141,6 +144,7 @@ pub struct App {
     export_dialog: crate::export3d::dialog::ExportDialog,
     pub(crate) bake_dialog: crate::bake::dialog::BakeDialog,
     keep_prefs: bool,
+    mcp_saved: crate::mcp::Saved,
     window_fitted: bool,
     toolbar_fit: ToolbarFit,
     /// Height of the tool options bar contents last frame.
@@ -694,11 +698,29 @@ fn default_dock() -> DockState<Tab> {
     dock
 }
 
+fn start_mcp_http(port: u16, tokens: &mut token::Tokens, require: bool, exec: std::sync::Arc<dyn ToolExecutor>) -> Result<transport::HttpServer, String> {
+    let started = tokens
+        .wanted(require)
+        .map_err(|e| format!("MCP HTTP server failed: {e}"))
+        .and_then(|token| transport::spawn_http(port, token, exec).map_err(|e| format!("MCP HTTP server failed on port {port}: {e}")));
+    match &started {
+        Ok(server) => {
+            let needs = if server.token().is_some() { ", File > Preferences shows the token it needs" } else { "" };
+            eprintln!("TrenchDot MCP server listening on http://{}/mcp{needs}", server.addr());
+        }
+        Err(e) => eprintln!("TrenchDot: {e}"),
+    }
+
+    started
+}
+
 impl App {
     pub fn new(cc: &eframe::CreationContext, args: CliArgs) -> Self {
         let render_state = cc.wgpu_render_state.as_ref().expect("TrenchDot requires the wgpu renderer");
-        let prefs: Prefs = if args.default_prefs { Prefs::default() } else { cc.storage.and_then(|s| eframe::get_value(s, "prefs")).unwrap_or_default() };
+        let mut prefs: Prefs = if args.default_prefs { Prefs::default() } else { cc.storage.and_then(|s| eframe::get_value(s, "prefs")).unwrap_or_default() };
         let keep_prefs = !args.default_prefs;
+        let mcp_saved = crate::mcp::Saved::new(crate::mcp_saved_dir(args.default_prefs));
+        prefs.mcp_require_token = mcp_saved.get(token::REQUIRE_FILE);
         let mut state = EditorState::new(prefs);
         state.stdio_mcp = args.mcp_stdio;
         let project = args.project.clone().or_else(|| state.prefs.recent_projects.first().cloned());
@@ -710,7 +732,8 @@ impl App {
         state.watch_game_config(cc.egui_ctx.clone());
         let http_port = args.mcp_http.or(state.prefs.mcp_http.then_some(state.prefs.mcp_port));
         let mut mcp = None;
-        let mut mcp_http_addr = None;
+        let mut mcp_http = None;
+        let mut mcp_tokens = token::Tokens::new(args.mcp_token.clone(), std::env::var(token::ENV).ok(), crate::mcp_token_file(args.default_prefs));
         if args.mcp_stdio || http_port.is_some() {
             let host = McpHost::new(cc.egui_ctx.clone());
             let exec: std::sync::Arc<dyn ToolExecutor> = std::sync::Arc::new(host.bridge.clone());
@@ -719,12 +742,9 @@ impl App {
             }
 
             if let Some(port) = http_port {
-                match transport::spawn_http(port, exec) {
-                    Ok(addr) => {
-                        mcp_http_addr = Some(addr);
-                        eprintln!("TrenchDot MCP server listening on http://{addr}/mcp");
-                    }
-                    Err(e) => state.set_status(format!("MCP HTTP server failed on port {port}: {e}")),
+                match start_mcp_http(port, &mut mcp_tokens, state.prefs.mcp_require_token, exec) {
+                    Ok(server) => mcp_http = Some(server),
+                    Err(e) => state.set_status(e),
                 }
             }
 
@@ -792,7 +812,9 @@ impl App {
             show_prefs: false,
             title: String::new(),
             mcp,
-            mcp_http_addr,
+            mcp_http,
+            mcp_tokens,
+            mcp_pref_rects: Vec::new(),
             input_script: None,
             deferred: Vec::new(),
             palette: CommandPalette::default(),
@@ -806,6 +828,7 @@ impl App {
             export_dialog: Default::default(),
             bake_dialog: Default::default(),
             keep_prefs,
+            mcp_saved,
             window_fitted: false,
             toolbar_fit: ToolbarFit::default(),
             tool_options_height: 0.0,
@@ -2154,6 +2177,7 @@ impl App {
     }
 
     fn prefs_window(&mut self, ctx: &egui::Context) {
+        self.mcp_pref_rects.clear();
         let mut open = self.show_prefs;
         egui::Window::new("Preferences").open(&mut open).resizable(false).show(ctx, |ui| {
             egui::Grid::new("prefs_ui").num_columns(2).min_col_width(PREFS_LABEL_WIDTH).show(ui, |ui| self.ui_scale_prefs(ui));
@@ -2239,24 +2263,87 @@ impl App {
                     }
                 });
                 ui.end_row();
-                ui.label("MCP server (HTTP, localhost)");
-                ui.horizontal(|ui| {
-                    ui.checkbox(&mut p.mcp_http, "enable on startup");
-                    ui.add(egui::DragValue::new(&mut p.mcp_port).range(1024..=65535));
-                });
-                ui.end_row();
             });
-            match self.mcp_http_addr {
-                Some(addr) => {
-                    ui.label(format!("MCP running at http://{addr}/mcp"));
-                    ui.code(format!("claude mcp add --transport http trenchdot http://{addr}/mcp"));
-                }
-                None => {
-                    ui.label("MCP HTTP server is not running. Enable it and restart, or launch with --mcp-http.");
-                }
-            }
+            ui.separator();
+            self.mcp_prefs(ui);
         });
         self.show_prefs = open;
+    }
+
+    fn mcp_prefs(&mut self, ui: &mut Ui) {
+        let p = &mut self.state.prefs;
+        let mut token_changed = false;
+        egui::Grid::new("prefs_mcp").num_columns(2).min_col_width(PREFS_LABEL_WIDTH).show(ui, |ui| {
+            ui.label("MCP server (HTTP, localhost)");
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut p.mcp_http, "enable on startup");
+                ui.add(egui::DragValue::new(&mut p.mcp_port).range(1024..=65535));
+            });
+            ui.end_row();
+            ui.label("Require a token");
+            let response = match self.mcp_tokens.given() {
+                Some(given) => {
+                    let mut on = true;
+                    ui.add_enabled(false, egui::Checkbox::without_text(&mut on)).on_disabled_hover_text(format!("Set for this run by {}", given.name()))
+                }
+                None => {
+                    let response = ui
+                        .checkbox(&mut p.mcp_require_token, "")
+                        .on_hover_text("MCP HTTP clients have to send the token shown below. Without it, any program on this computer can connect");
+                    token_changed = response.changed();
+                    response
+                }
+            };
+            self.mcp_pref_rects.push(("require_token", response.rect));
+            ui.end_row();
+        });
+        if token_changed {
+            self.apply_mcp_token();
+        }
+
+        match &self.mcp_http {
+            Some(server) => {
+                let addr = server.addr();
+                let url = format!("http://{addr}/mcp");
+                let (note, command) = match server.token() {
+                    Some(token) => {
+                        (", clients must send its token", format!("claude mcp add --transport http trenchdot {url} --header \"Authorization: Bearer {token}\""))
+                    }
+                    None => ("", format!("claude mcp add --transport http trenchdot {url}")),
+                };
+                ui.horizontal(|ui| {
+                    ui.label(format!("MCP running at {url}{note}"));
+                    if ui.button("Copy command").on_hover_text("Copies the command that connects Claude Code").clicked() {
+                        ui.ctx().copy_text(command.clone());
+                        self.state.set_status("Copied to the clipboard");
+                    }
+                });
+                ui.code(command);
+            }
+            None => {
+                ui.label("MCP HTTP server is not running. Enable it and restart, or launch with --mcp-http.");
+            }
+        }
+    }
+
+    /// Has the running HTTP server ask for the token the preferences now want, from its next request on.
+    fn apply_mcp_token(&mut self) {
+        self.save_mcp_setting(token::REQUIRE_FILE, self.state.prefs.mcp_require_token);
+        let Some(server) = &self.mcp_http else { return };
+        match self.mcp_tokens.wanted(self.state.prefs.mcp_require_token) {
+            Ok(token) => server.set_token(token),
+            Err(e) => {
+                self.state.prefs.mcp_require_token = false;
+                let _ = self.mcp_saved.set(token::REQUIRE_FILE, false);
+                self.state.fail_status(format!("Could not make an MCP token: {e}"));
+            }
+        }
+    }
+
+    fn save_mcp_setting(&mut self, name: &str, on: bool) {
+        if let Err(e) = self.mcp_saved.set(name, on) {
+            self.state.fail_status(format!("Could not save the MCP setting in {name}: {e}"));
+        }
     }
 
     fn close_dialog(&mut self, ctx: &egui::Context) {

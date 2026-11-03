@@ -21,8 +21,9 @@ way, and they double as examples for every tool.
 ## Running them
 
 Start the editor with the demo project and its HTTP server, see [Starting it](mcp.md#starting-it), then replay a
-script with `tools/mcp_script.py`. Its `shot` command saves a screenshot from the camera position you give it, and
-`--shade` picks the shading:
+script with `tools/mcp_script.py`. If the editor asks for a [token](mcp.md#the-http-token), pass it with `--token` or
+`TRENCHDOT_MCP_TOKEN`. Its `shot` command saves a screenshot from the camera position you give it, and `--shade`
+picks the shading:
 
 ```sh
 trenchdot --mcp-http --project godot                        # the editor with the demo project

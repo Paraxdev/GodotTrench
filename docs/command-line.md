@@ -32,12 +32,13 @@ without hidden objects and scatter instances. Entity logic, triggers and scripts
 
 ## MCP
 
-Two more options start the [MCP server](mcp.md), so scripts and AI agents can drive the editor.
+These options set up the [MCP server](mcp.md), so scripts and AI agents can drive the editor.
 
 | Option | Does |
 | --- | --- |
 | `--mcp` | Serves MCP over stdin and stdout |
 | `--mcp-http[=<port>]` | Serves MCP over HTTP on 127.0.0.1, port 7841 by default |
+| `--mcp-token=<token>` | Makes HTTP clients send this token, whatever Preferences says. It wins over `TRENCHDOT_MCP_TOKEN`, see [The HTTP token](mcp.md#the-http-token) |
 
 `--default-prefs` pairs well with either, so a scripted session starts from the same settings every time.
 

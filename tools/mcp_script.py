@@ -6,24 +6,30 @@
   python tools/mcp_script.py call get_state
   python tools/mcp_script.py call scatter --json args.json
 
-Scripts run inside the editor through the run_script tool, so every step is an ordinary MCP tool call.
+Scripts run inside the editor through the run_script tool, so every step is an ordinary MCP tool call. When the
+editor asks for a token, pass it with --token or TRENCHDOT_MCP_TOKEN, File > Preferences shows it.
 """
 import argparse
 import base64
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 
 
 TIMEOUT = 3600
 # TRENCHDOT_MCP_URL overrides this, useful when the editor was started with --mcp-http on another port.
 DEFAULT_URL = os.environ.get("TRENCHDOT_MCP_URL", "http://127.0.0.1:7841/mcp")
+TOKEN = os.environ.get("TRENCHDOT_MCP_TOKEN", "")
 
 
 def rpc(url, method, params=None):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}).encode()
-    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
+    headers = {"Content-Type": "application/json"}
+    if TOKEN:
+        headers["Authorization"] = f"Bearer {TOKEN}"
+    req = urllib.request.Request(url, data=body, headers=headers)
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         return json.loads(r.read())
 
@@ -55,7 +61,7 @@ def vec(text):
 
 
 def main():
-    global TIMEOUT
+    global TIMEOUT, TOKEN
     p = argparse.ArgumentParser()
     p.add_argument("cmd", choices=["run", "shot", "call"])
     p.add_argument("target", nargs="?")
@@ -67,9 +73,16 @@ def main():
     p.add_argument("--json", help="file with tool arguments")
     p.add_argument("--continue-on-error", action="store_true")
     p.add_argument("--timeout", type=float, default=TIMEOUT, help="seconds to wait for one call")
+    p.add_argument("--token", default=TOKEN, help="the editor's MCP token when it asks for one, defaults to TRENCHDOT_MCP_TOKEN")
     a = p.parse_args()
     TIMEOUT = a.timeout
-    rpc(a.url, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "mcp_script", "version": "1"}})
+    TOKEN = a.token
+    try:
+        rpc(a.url, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "mcp_script", "version": "1"}})
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            sys.exit("the editor asks for its MCP token, pass the one File > Preferences shows with --token <token> or TRENCHDOT_MCP_TOKEN")
+        raise
     if a.cmd == "run":
         result = call(a.url, "run_script", {"path": os.path.abspath(a.target), "continue_on_error": a.continue_on_error})
         summary = parse_summary(result)

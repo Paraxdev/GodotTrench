@@ -15,6 +15,8 @@ use serde_json::{Value, json};
 struct Editor {
     child: Child,
     port: u16,
+    /// What the editor wants as a bearer token, when it wants one.
+    token: Option<String>,
     name: &'static str,
 }
 
@@ -46,6 +48,11 @@ impl Editor {
 
     fn launch_env(name: &'static str, args: &[&str], env: &[(&str, &str)]) -> Editor {
         let port = free_port();
+        let token = args
+            .iter()
+            .find_map(|a| a.strip_prefix("--mcp-token="))
+            .or_else(|| env.iter().find(|(k, _)| *k == "TRENCHDOT_MCP_TOKEN").map(|(_, v)| v.trim()).filter(|v| !v.is_empty()))
+            .map(String::from);
         let mut command = Command::new(env!("CARGO_BIN_EXE_trenchdot"));
         command.arg(format!("--mcp-http={port}")).arg("--default-prefs");
         // TRENCHDOT_E2E_VISIBLE=1 shows the windows, to watch a test drive the editor. CI runs under Xvfb, which shows
@@ -54,8 +61,9 @@ impl Editor {
             command.arg("--offscreen");
         }
 
-        let child = command.args(args).envs(env.iter().copied()).spawn().expect("launch editor");
-        let editor = Editor { child, port, name };
+        // A token from the shell that runs the tests would lock the harness out.
+        let child = command.args(args).env_remove("TRENCHDOT_MCP_TOKEN").envs(env.iter().copied()).spawn().expect("launch editor");
+        let editor = Editor { child, port, token, name };
         let deadline = Instant::now() + Duration::from_secs(60);
         loop {
             if editor
@@ -74,13 +82,20 @@ impl Editor {
         editor
     }
 
-    fn try_rpc(&self, method: &str, params: Value) -> Option<Value> {
+    /// Posts a JSON body with extra header lines and returns the whole response.
+    fn post(&self, headers: &str, body: &str) -> Option<String> {
         let mut s = TcpStream::connect(("127.0.0.1", self.port)).ok()?;
         s.set_read_timeout(Some(Duration::from_secs(180))).ok()?;
-        let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
-        write!(s, "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len()).ok()?;
+        write!(s, "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n{headers}Content-Length: {}\r\n\r\n{body}", body.len()).ok()?;
         let mut out = String::new();
         s.read_to_string(&mut out).ok()?;
+        Some(out)
+    }
+
+    fn try_rpc(&self, method: &str, params: Value) -> Option<Value> {
+        let body = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
+        let auth = self.token.as_ref().map(|t| format!("Authorization: Bearer {t}\r\n")).unwrap_or_default();
+        let out = self.post(&auth, &body)?;
         let (_, body) = out.split_once("\r\n\r\n")?;
         serde_json::from_str(body).ok()
     }
@@ -2137,6 +2152,102 @@ fn malformed_arguments_are_errors_not_defaults() {
     for v in views {
         ed.call("set_camera", json!({ "view": v }));
     }
+}
+
+#[test]
+#[ignore]
+fn the_mcp_http_server_wants_its_token() {
+    let ed = Editor::launch_env("mcp_token", &["--mcp-token=e2e-from-the-flag"], &[("TRENCHDOT_MCP_TOKEN", "e2e-from-the-env")]);
+    assert_eq!(ed.token.as_deref(), Some("e2e-from-the-flag"), "the flag wins over the environment");
+    let ping = r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#;
+    let status = |headers: &str| ed.post(headers, ping).unwrap().lines().next().unwrap_or_default().to_string();
+    assert_eq!(status(""), "HTTP/1.1 401 Unauthorized");
+    assert_eq!(status("Authorization: Bearer e2e-from-the-env\r\n"), "HTTP/1.1 401 Unauthorized");
+    assert_eq!(status("Authorization: Bearer e2e-from-the-flag\r\n"), "HTTP/1.1 200 OK");
+    assert_eq!(status("Authorization: Bearer e2e-from-the-flag\r\nOrigin: http://localhost:8000\r\n"), "HTTP/1.1 403 Forbidden");
+
+    open_preferences(&ed);
+    ed.screenshot("window", "preferences");
+}
+
+#[test]
+#[ignore]
+fn the_mcp_http_server_needs_no_token_by_default() {
+    let ed = Editor::launch("mcp_no_token");
+    assert_eq!(ed.token, None);
+    let ping = r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#;
+    let status = |headers: &str| ed.post(headers, ping).unwrap().lines().next().unwrap_or_default().to_string();
+    assert_eq!(status(""), "HTTP/1.1 200 OK");
+    assert_eq!(status("Authorization: Bearer anything\r\n"), "HTTP/1.1 200 OK");
+    assert_eq!(status("Origin: http://localhost:8000\r\n"), "HTTP/1.1 403 Forbidden");
+}
+
+/// A TRENCHDOT_MCP_TOKEN that no header can carry starts no server, and stderr says why.
+#[test]
+#[ignore]
+fn an_unusable_token_starts_no_server_and_says_why() {
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+
+    let port = free_port();
+    let child = Command::new(env!("CARGO_BIN_EXE_trenchdot"))
+        .args([format!("--mcp-http={port}").as_str(), "--default-prefs", "--offscreen"])
+        .env("TRENCHDOT_MCP_TOKEN", "two words")
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("launch editor");
+    let mut ed = Editor { child, port, token: None, name: "mcp_bad_token" };
+    let stderr = ed.child.stderr.take().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            let _ = tx.send(line);
+        }
+    });
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let line = rx.recv_timeout(deadline.saturating_duration_since(Instant::now())).expect("stderr says why no server runs");
+        if line.contains("TRENCHDOT_MCP_TOKEN must be printable ASCII") {
+            break;
+        }
+    }
+
+    assert!(TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(250)).is_err(), "no server listens");
+    assert!(ed.child.try_wait().unwrap().is_none(), "the editor still runs");
+}
+
+/// Ticking Require a token in Preferences locks out the next request without it, unticking lets it in again, all
+/// while the server keeps running.
+#[test]
+#[ignore]
+fn the_token_checkbox_takes_effect_at_once() {
+    let mut ed = Editor::launch("mcp_token_checkbox");
+    let ping = r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#;
+    let status = |ed: &Editor, headers: &str| ed.post(headers, ping).unwrap().lines().next().unwrap_or_default().to_string();
+    open_preferences(&ed);
+    ed.input("window", json!([mcp_pref(&ed, "require_token")]));
+    assert_eq!(status(&ed, ""), "HTTP/1.1 401 Unauthorized");
+    let token = std::fs::read_to_string(std::env::temp_dir().join("trenchdot-default-prefs.mcp-token")).expect("the token is kept");
+    let token = token.trim().to_string();
+    assert_eq!(status(&ed, &format!("Authorization: Bearer {token}\r\n")), "HTTP/1.1 200 OK");
+    ed.token = Some(token);
+    ed.screenshot("window", "token_required");
+
+    ed.input("window", json!([mcp_pref(&ed, "require_token")]));
+    assert_eq!(status(&ed, ""), "HTTP/1.1 200 OK");
+}
+
+fn open_preferences(ed: &Editor) {
+    ed.input("window", json!([{ "type": "key", "key": "F1" }, { "type": "text", "text": "preferences" }, { "type": "key", "key": "Enter" }]));
+    assert!(window_titles(ed).contains(&"Preferences".to_string()), "{:?}", window_titles(ed));
+    std::thread::sleep(Duration::from_millis(300));
+}
+
+/// A click on the middle of an MCP setting in Preferences, which has to be open.
+fn mcp_pref(ed: &Editor, name: &str) -> Value {
+    let rect = ed.state()["ui"]["mcp_prefs"][name].clone();
+    let r: Vec<f64> = rect.as_array().unwrap_or_else(|| panic!("no {name} in Preferences: {rect}")).iter().map(|v| v.as_f64().unwrap()).collect();
+    json!({ "type": "click", "x": (r[0] + r[2]) / 2.0, "y": (r[1] + r[3]) / 2.0 })
 }
 
 #[test]

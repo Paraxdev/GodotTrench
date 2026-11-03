@@ -1,6 +1,6 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
@@ -32,19 +32,50 @@ pub fn spawn_stdio(exec: Arc<dyn ToolExecutor>) {
         .expect("spawn mcp stdio thread");
 }
 
-/// Streamable HTTP transport (single JSON responses) on 127.0.0.1.
-pub fn spawn_http(port: u16, exec: Arc<dyn ToolExecutor>) -> std::io::Result<SocketAddr> {
+type Token = Mutex<Option<Arc<str>>>;
+
+/// A running MCP HTTP server.
+pub struct HttpServer {
+    addr: SocketAddr,
+    token: Arc<Token>,
+}
+
+impl HttpServer {
+    pub fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+
+    /// The bearer token every request has to send, `None` when requests need none.
+    pub fn token(&self) -> Option<Arc<str>> {
+        current(&self.token)
+    }
+
+    /// Takes effect from the next request on.
+    pub fn set_token(&self, token: Option<String>) {
+        *self.token.lock().unwrap_or_else(|e| e.into_inner()) = token.map(Into::into);
+    }
+}
+
+fn current(token: &Token) -> Option<Arc<str>> {
+    token.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// Streamable HTTP transport (single JSON responses) on 127.0.0.1. With a token, clients have to send it as a bearer
+/// token.
+pub fn spawn_http(port: u16, token: Option<String>, exec: Arc<dyn ToolExecutor>) -> std::io::Result<HttpServer> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
-    let addr = listener.local_addr()?;
+    let server = HttpServer { addr: listener.local_addr()?, token: Arc::new(Mutex::new(token.map(Into::into))) };
+    let token = server.token.clone();
     std::thread::Builder::new().name("mcp-http".into()).spawn(move || {
         for stream in listener.incoming().flatten() {
             let exec = exec.clone();
+            let token = token.clone();
             std::thread::spawn(move || {
-                let _ = serve_connection(stream, exec.as_ref());
+                let _ = serve_connection(stream, &token, exec.as_ref());
             });
         }
     })?;
-    Ok(addr)
+    Ok(server)
 }
 
 struct Request {
@@ -62,6 +93,16 @@ impl Request {
     fn is_json(&self) -> bool {
         self.header("content-type").and_then(|v| v.split(';').next()).is_some_and(|t| t.trim().eq_ignore_ascii_case("application/json"))
     }
+
+    fn has_token(&self, token: &str) -> bool {
+        let Some((scheme, sent)) = self.header("authorization").and_then(|v| v.split_once(' ')) else { return false };
+        scheme.eq_ignore_ascii_case("bearer") && same_secret(sent.trim().as_bytes(), token.as_bytes())
+    }
+}
+
+/// Looks at every byte whatever the first difference, so response times do not give the token away byte by byte.
+fn same_secret(a: &[u8], b: &[u8]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).fold(0, |diff, (x, y)| diff | (x ^ y)) == 0
 }
 
 fn read_request(reader: &mut BufReader<TcpStream>) -> std::io::Result<Option<Request>> {
@@ -108,7 +149,7 @@ fn respond(stream: &mut TcpStream, status: &str, extra_headers: &[(&str, String)
     stream.flush()
 }
 
-fn serve_connection(stream: TcpStream, exec: &dyn ToolExecutor) -> std::io::Result<()> {
+fn serve_connection(stream: TcpStream, token: &Token, exec: &dyn ToolExecutor) -> std::io::Result<()> {
     let mut writer = stream.try_clone()?;
     let mut reader = BufReader::new(stream);
     let Some(req) = read_request(&mut reader)? else { return Ok(()) };
@@ -117,6 +158,13 @@ fn serve_connection(stream: TcpStream, exec: &dyn ToolExecutor) -> std::io::Resu
     // out web pages, even ones served from another port on this machine.
     if req.header("origin").is_some() {
         return respond(&mut writer, "403 Forbidden", &[], b"browser requests are refused");
+    }
+
+    if let Some(token) = current(token)
+        && !req.has_token(&token)
+    {
+        let body = b"send the token from the editor's File > Preferences as Authorization: Bearer <token>";
+        return respond(&mut writer, "401 Unauthorized", &[("WWW-Authenticate", "Bearer".into())], body);
     }
 
     if req.path != "/mcp" && req.path != "/" {
@@ -168,23 +216,41 @@ mod tests {
         }
     }
 
-    fn send(addr: SocketAddr, headers: &str, body: &str) -> String {
+    const TOKEN: &str = "test-token";
+
+    fn raw(addr: SocketAddr, request: &str) -> String {
         let mut s = TcpStream::connect(addr).unwrap();
-        write!(s, "POST /mcp HTTP/1.1\r\nHost: localhost\r\n{headers}Content-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+        s.write_all(request.as_bytes()).unwrap();
         let mut out = String::new();
         s.read_to_string(&mut out).unwrap();
         out
+    }
+
+    fn send(addr: SocketAddr, headers: &str, body: &str) -> String {
+        raw(addr, &format!("POST /mcp HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {TOKEN}\r\n{headers}Content-Length: {}\r\n\r\n{body}", body.len()))
     }
 
     fn post(addr: SocketAddr, body: &str) -> String {
         send(addr, "Content-Type: application/json\r\n", body)
     }
 
+    fn serve(token: Option<&str>) -> HttpServer {
+        spawn_http(0, token.map(String::from), Arc::new(Echo)).unwrap()
+    }
+
     const PING: &str = r#"{"jsonrpc":"2.0","id":3,"method":"ping"}"#;
+
+    /// The status line a ping gets with this Authorization header, or with none.
+    fn ping(addr: SocketAddr, auth: Option<&str>) -> String {
+        let auth = auth.map(|a| format!("Authorization: {a}\r\n")).unwrap_or_default();
+        let r = raw(addr, &format!("POST /mcp HTTP/1.1\r\nContent-Type: application/json\r\n{auth}Content-Length: {}\r\n\r\n{PING}", PING.len()));
+        r.lines().next().unwrap_or_default().to_string()
+    }
 
     #[test]
     fn http_round_trip() {
-        let addr = spawn_http(0, Arc::new(Echo)).unwrap();
+        let server = serve(Some(TOKEN));
+        let addr = server.addr();
         let init = post(addr, r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}"#);
         assert!(init.starts_with("HTTP/1.1 200"));
         assert!(init.contains("Mcp-Session-Id"));
@@ -195,26 +261,66 @@ mod tests {
     }
 
     #[test]
+    fn with_a_token_every_request_needs_it() {
+        let server = serve(Some(TOKEN));
+        let addr = server.addr();
+        assert_eq!(ping(addr, None), "HTTP/1.1 401 Unauthorized");
+        for auth in ["Bearer", "Bearer wrong", "Bearer test-toke", "Bearer test-tokenx", "Basic dGVzdC10b2tlbg==", "test-token"] {
+            assert_eq!(ping(addr, Some(auth)), "HTTP/1.1 401 Unauthorized", "{auth}");
+        }
+
+        assert_eq!(ping(addr, Some("bearer test-token")), "HTTP/1.1 200 OK");
+        let refused = raw(addr, "DELETE /mcp HTTP/1.1\r\n\r\n");
+        assert!(refused.starts_with("HTTP/1.1 401") && refused.contains("WWW-Authenticate: Bearer"), "{refused}");
+        assert!(raw(addr, "GET /elsewhere HTTP/1.1\r\n\r\n").starts_with("HTTP/1.1 401"));
+        assert!(raw(addr, &format!("GET /elsewhere HTTP/1.1\r\nAuthorization: Bearer {TOKEN}\r\n\r\n")).starts_with("HTTP/1.1 404"));
+    }
+
+    #[test]
+    fn the_token_can_change_while_the_server_runs() {
+        let server = serve(None);
+        let addr = server.addr();
+        assert_eq!(ping(addr, None), "HTTP/1.1 200 OK");
+        server.set_token(Some(TOKEN.into()));
+        assert_eq!(server.token().as_deref(), Some(TOKEN));
+        assert_eq!(ping(addr, None), "HTTP/1.1 401 Unauthorized");
+        assert_eq!(ping(addr, Some("Bearer test-token")), "HTTP/1.1 200 OK");
+        server.set_token(None);
+        assert_eq!(ping(addr, None), "HTTP/1.1 200 OK");
+    }
+
+    #[test]
+    fn secrets_compare_whole() {
+        assert!(same_secret(b"abc", b"abc"));
+        assert!(!same_secret(b"abc", b"abd"));
+        assert!(!same_secret(b"abc", b"ab"));
+        assert!(!same_secret(b"", b"a"));
+    }
+
+    #[test]
     fn requests_from_browsers_are_refused() {
-        let addr = spawn_http(0, Arc::new(Echo)).unwrap();
-        for origin in ["http://localhost:3000", "http://127.0.0.1:7841", "http://[::1]", "null", "https://evil.example"] {
-            let r = send(addr, &format!("Content-Type: application/json\r\nOrigin: {origin}\r\n"), PING);
-            assert!(r.starts_with("HTTP/1.1 403"), "{origin}: {r}");
+        for server in [serve(Some(TOKEN)), serve(None)] {
+            for origin in ["http://localhost:3000", "http://127.0.0.1:7841", "http://[::1]", "null", "https://evil.example"] {
+                let r = send(server.addr(), &format!("Content-Type: application/json\r\nOrigin: {origin}\r\n"), PING);
+                assert!(r.starts_with("HTTP/1.1 403"), "{origin}: {r}");
+            }
         }
     }
 
     #[test]
     fn post_bodies_must_be_json() {
-        let addr = spawn_http(0, Arc::new(Echo)).unwrap();
-        for content_type in ["text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x", "text/plain; x=application/json"] {
-            let r = send(addr, &format!("Content-Type: {content_type}\r\n"), PING);
-            assert!(r.starts_with("HTTP/1.1 415"), "{content_type}: {r}");
-        }
+        for server in [serve(Some(TOKEN)), serve(None)] {
+            let addr = server.addr();
+            for content_type in ["text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x", "text/plain; x=application/json"] {
+                let r = send(addr, &format!("Content-Type: {content_type}\r\n"), PING);
+                assert!(r.starts_with("HTTP/1.1 415"), "{content_type}: {r}");
+            }
 
-        assert!(send(addr, "", PING).starts_with("HTTP/1.1 415"));
-        for content_type in ["application/json; charset=utf-8", "Application/JSON"] {
-            let r = send(addr, &format!("Content-Type: {content_type}\r\n"), PING);
-            assert!(r.starts_with("HTTP/1.1 200"), "{content_type}: {r}");
+            assert!(send(addr, "", PING).starts_with("HTTP/1.1 415"));
+            for content_type in ["application/json; charset=utf-8", "Application/JSON"] {
+                let r = send(addr, &format!("Content-Type: {content_type}\r\n"), PING);
+                assert!(r.starts_with("HTTP/1.1 200"), "{content_type}: {r}");
+            }
         }
     }
 }

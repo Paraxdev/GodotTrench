@@ -70,6 +70,8 @@ pub struct CliArgs {
     pub mcp_stdio: bool,
     /// Serve MCP over streamable HTTP on 127.0.0.1.
     pub mcp_http: Option<u16>,
+    /// A token MCP HTTP clients must send, whatever the preferences say.
+    pub mcp_token: Option<String>,
     /// Start with default preferences and never write them back (automated tests).
     pub default_prefs: bool,
     /// Open the window outside every screen, without focus or a taskbar button (automated tests).
@@ -96,6 +98,8 @@ pub enum Convert {
 
 pub const DEFAULT_MCP_PORT: u16 = 7841;
 
+const APP_ID: &str = "TrenchDot";
+
 pub const USAGE: &str = "\
 Usage: trenchdot [options] [map]
 
@@ -105,6 +109,9 @@ Options:
   --project <dir>        Load the Godot project in <dir> or a folder above it
   --mcp                  Serve MCP over stdin and stdout
   --mcp-http[=<port>]    Serve MCP over HTTP on 127.0.0.1, port 7841 by default
+  --mcp-token=<token>    Require <token> from MCP HTTP clients, TRENCHDOT_MCP_TOKEN
+                         sets it too. Without either, clients need a token only when
+                         Preferences asks for one
   --default-prefs        Start with default preferences and never save them
   --offscreen            Open the window outside every screen, for tests and agents
   --dump <map>           Print a map as JSON and exit
@@ -151,6 +158,12 @@ impl CliArgs {
                 a if a.starts_with("--mcp-http=") => match a["--mcp-http=".len()..].parse() {
                     Ok(port) => out.mcp_http = Some(port),
                     Err(_) => out.errors.push(format!("{a}: the port must be a number")),
+                },
+                "--mcp-token" => out.errors.push("--mcp-token needs a token, as in --mcp-token=<token>".into()),
+                // The error leaves the value out, it is meant to be a secret.
+                a if a.starts_with("--mcp-token=") => match &a["--mcp-token=".len()..] {
+                    t if mcp::token::valid(t) => out.mcp_token = Some(t.to_string()),
+                    _ => out.errors.push("--mcp-token: the token must be printable ASCII without spaces".into()),
                 },
                 a if a.starts_with('-') => out.errors.push(format!("unknown option {a}")),
                 a => out.map = Some(PathBuf::from(a)),
@@ -204,10 +217,25 @@ pub fn run(args: CliArgs) -> eframe::Result {
         // eframe reads and writes the window geometry on its own, so automated runs get a separate, never written store
         // instead of loading or overwriting the user's window.
         persist_window: !args.default_prefs,
-        persistence_path: args.default_prefs.then(|| std::env::temp_dir().join("trenchdot-default-prefs")),
+        persistence_path: args.default_prefs.then(default_prefs_store),
         ..Default::default()
     };
-    eframe::run_native("TrenchDot", options, Box::new(move |cc| Ok(Box::new(app::App::new(cc, args)))))
+    eframe::run_native(APP_ID, options, Box::new(move |cc| Ok(Box::new(app::App::new(cc, args)))))
+}
+
+/// What a `--default-prefs` run keeps instead of the user's own settings.
+fn default_prefs_store() -> PathBuf {
+    std::env::temp_dir().join("trenchdot-default-prefs")
+}
+
+/// The file the MCP HTTP token is kept in, next to the settings the run uses.
+pub fn mcp_token_file(default_prefs: bool) -> Option<PathBuf> {
+    if default_prefs { Some(default_prefs_store().with_extension("mcp-token")) } else { eframe::storage_dir(APP_ID).map(|dir| dir.join("mcp-token")) }
+}
+
+/// The folder of the [`mcp::Saved`] settings. A `--default-prefs` run keeps them for the run only.
+pub fn mcp_saved_dir(default_prefs: bool) -> Option<PathBuf> {
+    if default_prefs { None } else { eframe::storage_dir(APP_ID) }
 }
 
 #[cfg(test)]
@@ -216,10 +244,11 @@ mod tests {
 
     #[test]
     fn parses_cli() {
-        let a = CliArgs::parse(["level.tdm", "--mcp", "--mcp-http=9000", "--project", "C:/game"].map(String::from));
+        let a = CliArgs::parse(["level.tdm", "--mcp", "--mcp-http=9000", "--mcp-token=s3cret", "--project", "C:/game"].map(String::from));
         assert_eq!(a.map, Some(PathBuf::from("level.tdm")));
         assert!(a.mcp_stdio);
         assert_eq!(a.mcp_http, Some(9000));
+        assert_eq!(a.mcp_token.as_deref(), Some("s3cret"));
         assert_eq!(a.project, Some(PathBuf::from("C:/game")));
         assert_eq!(CliArgs::parse(["--mcp-http".to_string()]).mcp_http, Some(DEFAULT_MCP_PORT));
         assert_eq!(CliArgs::parse(["--dump", "a.tdm"].map(String::from)).convert, Some(Convert::Dump("a.tdm".into())));
@@ -249,6 +278,9 @@ mod tests {
         assert_eq!(errors(&["--to-json", "a.tdm"]), ["--to-json needs a map file and an output file"]);
         assert_eq!(errors(&["--export-glb", "a.tdm"]), ["--export-glb needs a map file and an output file"]);
         assert_eq!(errors(&["--mcp-http=abc"]), ["--mcp-http=abc: the port must be a number"]);
+        assert_eq!(errors(&["--mcp-token"]), ["--mcp-token needs a token, as in --mcp-token=<token>"]);
+        assert_eq!(errors(&["--mcp-token="]), ["--mcp-token: the token must be printable ASCII without spaces"]);
+        assert_eq!(errors(&["--mcp-token=two words"]), ["--mcp-token: the token must be printable ASCII without spaces"]);
     }
 
     #[test]
