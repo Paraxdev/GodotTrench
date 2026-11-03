@@ -2684,8 +2684,13 @@ impl eframe::App for App {
             .filter(|t| ctx.memory(|m| m.areas().is_visible(&egui::LayerId::new(egui::Order::Middle, window_id(t)))))
             .filter_map(|t| Some((t, ctx.memory(|m| m.area_rect(window_id(t)))?)))
             .collect();
+        let project_before = self.state.game.project_root.clone();
         if let Some(rect) = self.trust.show(&ctx, &mut self.state, &mut self.actions) {
             self.open_windows.push((crate::trust::QUESTION, rect));
+        }
+
+        if self.state.game.project_root != project_before {
+            self.project_generation += 1;
         }
 
         // The setup wizard waits for the trust prompt, which a project that is not trusted brings up first.

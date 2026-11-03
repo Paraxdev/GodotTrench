@@ -216,6 +216,18 @@ pub enum TrustRequest {
     Project(PathBuf),
     /// An action that has Godot run the project at this path waits for the person to trust it.
     Run(PathBuf, crate::commands::Action),
+    /// A map of the project at `root`, which is not trusted, opened while another project is open. That one stays open
+    /// until the person answers.
+    Switch { root: PathBuf, map: PathBuf },
+}
+
+impl TrustRequest {
+    /// The project the person is asked about.
+    pub fn root(&self) -> &Path {
+        match self {
+            TrustRequest::Project(root) | TrustRequest::Run(root, _) | TrustRequest::Switch { root, .. } => root,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -886,17 +898,30 @@ impl EditorState {
         Ok(())
     }
 
-    /// Recent files, project and status for a map just opened from `path`.
+    /// The project the map at `path` belongs to when that is not the open one. A project nested inside the open one does
+    /// not count, Godot ignores those too.
+    pub fn other_project(&self, path: &Path) -> Option<PathBuf> {
+        let root = td_formats::game::find_project_root(&absolute(path))?;
+        let inside = |open: &PathBuf| root.starts_with(open) || crate::trust::real_path(&root).starts_with(crate::trust::real_path(open));
+        (!self.game.project_root.as_ref().is_some_and(inside)).then_some(root)
+    }
+
+    /// Recent files, project and status for a map just opened from `path`. A map of another project switches to it when
+    /// that one is trusted or none is open, else the open project stays and the person is asked.
     pub fn after_open(&mut self, path: &Path) {
         let path = &absolute(path);
         if let Some(map_path) = self.doc.path.clone() {
             self.add_recent(&map_path);
         }
 
-        if let Some(root) = td_formats::game::find_project_root(path)
-            && self.game.project_root.as_deref() != Some(root.as_path())
-        {
-            self.load_project(&root);
+        let mut kept = None;
+        if let Some(root) = self.other_project(path) {
+            if self.game.project_root.is_none() || self.is_trusted(&root) {
+                self.load_project(&root);
+            } else {
+                self.trust_request = Some(TrustRequest::Switch { root: root.clone(), map: path.clone() });
+                kept = Some(root);
+            }
         }
 
         match (&self.doc.recovered_from, &self.doc.path) {
@@ -908,6 +933,11 @@ impl EditorState {
             (Some(_), Some(map_path)) => self.set_status(format!("Recovered {} from its autosave, save to keep the changes", map_path.display())),
             (Some(_), None) => self.set_status("Recovered an untitled map from its autosave, save it to keep the changes"),
             _ => self.set_status(format!("Opened {}", path.display())),
+        }
+
+        if let Some(root) = kept {
+            let status = format!("{}. It belongs to {}, a project you have not trusted, so the open project stays", self.status, root.display());
+            self.set_status(status);
         }
     }
 
@@ -1510,6 +1540,60 @@ mod tests {
         let demo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../godot");
         state.load_project(&demo);
         assert_eq!(state.content_request, None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_map_of_another_project_switches_only_to_a_trusted_one() {
+        let dir = std::env::temp_dir().join(format!("td_map_project_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (mine, pack, other) = (dir.join("mine"), dir.join("mine/maps/pack"), dir.join("other"));
+        for root in [&mine, &pack, &other] {
+            std::fs::create_dir_all(root).unwrap();
+            std::fs::write(root.join("project.godot"), "config_version=5\n").unwrap();
+            format::save(&td_doc::Map::new(), &root.join("level.tdm")).unwrap();
+        }
+
+        let mut state = EditorState::new(Prefs::default());
+        state.trust_for_session(&mine);
+        state.load_project(&mine);
+        state.open_map(&pack.join("level.tdm")).unwrap();
+        assert_eq!(state.game.project_root.as_deref(), Some(mine.as_path()), "a project nested in the open one is ignored, as Godot does");
+        assert_eq!(state.other_project(&pack.join("level.tdm")), None);
+
+        state.open_map(&other.join("level.tdm")).unwrap();
+        assert_eq!(state.game.project_root.as_deref(), Some(mine.as_path()), "an untrusted project is not switched to");
+        assert_eq!(state.trust_request, Some(TrustRequest::Switch { root: other.clone(), map: other.join("level.tdm") }));
+        assert!(state.status.contains("a project you have not trusted"), "{}", state.status);
+        assert_eq!(state.doc.path.as_deref(), Some(other.join("level.tdm").as_path()), "the map still opens");
+
+        state.trust_project(&other, false);
+        state.trust_request = None;
+        state.open_map(&other.join("level.tdm")).unwrap();
+        assert_eq!(state.game.project_root.as_deref(), Some(other.as_path()), "a trusted one is switched to");
+        assert_eq!(state.trust_request, None);
+
+        let mut state = EditorState::new(Prefs::default());
+        state.open_map(&pack.join("level.tdm")).unwrap();
+        assert_eq!(state.game.project_root.as_deref(), Some(pack.as_path()), "with no project open the map's own loads");
+        assert!(state.restricted() && state.trust_request == Some(TrustRequest::Project(pack.clone())));
+
+        // A project unpacked inside a trusted one is not trusted with it.
+        for trust in [EditorState::trust_for_session as fn(&mut EditorState, &Path), |s, root| s.trust_project(root, false)] {
+            let mut state = EditorState::new(Prefs::default());
+            trust(&mut state, &mine);
+            trust(&mut state, &other);
+            state.load_project(&other);
+            state.open_map(&pack.join("level.tdm")).unwrap();
+            assert_eq!(state.game.project_root.as_deref(), Some(other.as_path()), "the nested project is asked about");
+            assert_eq!(state.trust_request, Some(TrustRequest::Switch { root: pack.clone(), map: pack.join("level.tdm") }));
+        }
+
+        let mut state = EditorState::new(Prefs::default());
+        state.trust_project(&mine, false);
+        state.open_map(&pack.join("level.tdm")).unwrap();
+        assert_eq!(state.game.project_root.as_deref(), Some(pack.as_path()));
+        assert!(state.restricted(), "with no project open the nested one opens restricted");
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -1549,8 +1549,10 @@ impl App {
                 Ok(json!({ "new_tab": modified }))
             }
             "open" => need(path).and_then(|p| {
-                if modified { crate::commands::open_map_in_tab(&mut self.state, &p) } else { self.state.open_map(&p) }
-                    .map(|()| json!({ "new_tab": modified, "problems": self.state.doc.load_problems }))
+                if modified { crate::commands::open_map_in_tab(&mut self.state, &p) } else { self.state.open_map(&p) }.map(|()| {
+                    let other = self.state.other_project(&p);
+                    json!({ "new_tab": modified, "problems": self.state.doc.load_problems, "other_project": path_value(other.as_ref()) })
+                })
             }),
             "save" => match path.or_else(|| self.state.doc.path.clone()) {
                 Some(p) => self.state.save_map(&p).map(|()| json!({})),
@@ -1576,7 +1578,9 @@ impl App {
                 self.state.set_status(format!("Textures: {}", report.summary()));
                 Ok(json!({ "found": lib.len(), "textures": crate::texture_convert::report_json(&report) }))
             }),
-            "open_tab" => need(path).and_then(|p| crate::commands::open_map_in_tab(&mut self.state, &p)).map(|()| json!({})),
+            "open_tab" => need(path).and_then(|p| {
+                crate::commands::open_map_in_tab(&mut self.state, &p).map(|()| json!({ "other_project": path_value(self.state.other_project(&p).as_ref()) }))
+            }),
             "export_map" => need(path).and_then(|p| {
                 std::fs::write(&p, td_formats::quake_map::export(&self.state.doc.map))
                     .map(|()| json!({ "path": path_text(&p), "exported": path_text(&p), "map_path": path_value(self.state.doc.path.as_ref()) }))

@@ -13,6 +13,7 @@ pub const QUESTION: &str = "Do you trust the authors of the files in this projec
 pub const CHIP: &str = "Restricted Mode";
 pub const TRUST: &str = "Trust Project";
 pub const RESTRICT: &str = "Open in Restricted Mode";
+pub const KEEP: &str = "Keep Current Project";
 const BLOCKS: &str = "Godot runs a project's scripts when it opens, plays or builds it. In Restricted Mode you can view and edit the maps here, but TrenchDot does not start Godot on the project, build in Godot or send live edits until you trust it.";
 pub const CHIP_TIP: &str = "TrenchDot does not run this project in Godot until you trust it. Click to choose";
 /// Why an action that has Godot run the project did nothing. MCP returns it as the error.
@@ -66,14 +67,17 @@ impl TrustPrompt {
         }
 
         let request = self.request.clone()?;
-        let (TrustRequest::Project(root) | TrustRequest::Run(root, _)) = &request;
-        if state.game.project_root.as_ref() != Some(root) || !state.restricted() {
+        let stale = match &request {
+            TrustRequest::Project(root) | TrustRequest::Run(root, _) => state.game.project_root.as_ref() != Some(root) || !state.restricted(),
+            TrustRequest::Switch { root, .. } => state.game.project_root.as_ref() == Some(root),
+        };
+        if stale {
             self.request = None;
             return None;
         }
 
-        let root = root.clone();
-        let mut trust = None;
+        let root = request.root().to_path_buf();
+        let mut answer = None;
         let modal = egui::Modal::new(egui::Id::new("trust_prompt")).show(ctx, |ui| {
             ui.set_width(540.0);
             ui.heading(QUESTION);
@@ -88,6 +92,10 @@ impl TrustPrompt {
                     ui.label(format!("{} has Godot run this project.", action.label()));
                     ui.label(RichText::new("Running it runs its scripts. Trust it and continue?").strong());
                 }
+                TrustRequest::Switch { map, .. } => {
+                    let name = map.file_name().unwrap_or_default().to_string_lossy();
+                    ui.label(format!("{name} belongs to this project, not to the one that is open. {BLOCKS}"));
+                }
             }
 
             if let Some(name) = parent_folder(&root).and_then(Path::file_name) {
@@ -98,41 +106,69 @@ impl TrustPrompt {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 if ui.button(RichText::new(TRUST).strong()).clicked() {
-                    trust = Some(true);
+                    answer = Some(Answer::Trust);
                 }
 
-                let stay = if matches!(request, TrustRequest::Run(..)) { "Cancel" } else { RESTRICT };
-                if ui.button(stay).clicked() {
-                    trust = Some(false);
+                match request {
+                    TrustRequest::Run(..) => {
+                        if ui.button("Cancel").clicked() {
+                            answer = Some(Answer::Keep);
+                        }
+                    }
+                    _ => {
+                        if ui.button(RESTRICT).clicked() {
+                            answer = Some(Answer::Restrict);
+                        }
+                    }
+                }
+
+                if matches!(request, TrustRequest::Switch { .. }) && ui.button(KEEP).clicked() {
+                    answer = Some(Answer::Keep);
                 }
             });
         });
-        if modal.should_close() && trust.is_none() {
-            trust = Some(false);
+        if modal.should_close() && answer.is_none() {
+            answer = Some(if matches!(request, TrustRequest::Project(_)) { Answer::Restrict } else { Answer::Keep });
         }
 
-        match (trust, request) {
-            (Some(true), request) => {
+        let Some(answer) = answer else { return Some(modal.response.rect) };
+        let restricted = format!("{} is open in Restricted Mode, click Restricted Mode in the status bar to trust it", root.display());
+        match (answer, request) {
+            (Answer::Trust, request) => {
                 state.trust_project(&root, self.parent);
+                match &request {
+                    TrustRequest::Switch { .. } => state.load_project(&root),
+                    TrustRequest::Run(_, action) => actions.push(action.clone()),
+                    TrustRequest::Project(_) => {}
+                }
+
                 match parent_folder(&root).filter(|_| self.parent) {
                     Some(parent) => state.set_status(format!("Trusted every project in {}", parent.display())),
                     None => state.set_status(format!("Trusted {}", root.display())),
                 }
-
-                if let TrustRequest::Run(_, action) = request {
-                    actions.push(action);
-                }
             }
-            (Some(false), TrustRequest::Run(_, action)) => {
+            (Answer::Restrict, TrustRequest::Switch { .. }) => {
+                state.load_project(&root);
+                state.trust_request = None;
+                state.set_status(restricted);
+            }
+            (Answer::Restrict, _) => state.set_status(restricted),
+            (Answer::Keep, TrustRequest::Run(_, action)) => {
                 state.set_status(format!("Cancelled {}, {} stays in Restricted Mode", action.label(), root.display()));
             }
-            (Some(false), _) => state.set_status(format!("{} is open in Restricted Mode, click Restricted Mode in the status bar to trust it", root.display())),
-            (None, _) => return Some(modal.response.rect),
+            (Answer::Keep, _) => state.set_status(format!("Kept the open project, {} stays closed", root.display())),
         }
 
         self.request = None;
         Some(modal.response.rect)
     }
+}
+
+enum Answer {
+    Trust,
+    Restrict,
+    /// Cancel the action, or keep the project that is open.
+    Keep,
 }
 
 #[cfg(test)]
@@ -258,6 +294,44 @@ mod tests {
         assert_eq!(f.actions, [Action::RunGodotProject], "the action goes on once trusted");
         assert!(f.state.is_trusted(&keep), "the parent folder is trusted");
         assert!(f.state.status.starts_with("Trusted every project in"), "{}", f.state.status);
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[test]
+    fn a_map_of_another_project_asks_whether_to_switch() {
+        let (folder, castle, keep) = projects("switch");
+        let map = keep.join("level.tdm");
+        td_doc::format::save(&td_doc::Map::new(), &map).unwrap();
+        let mut state = EditorState::new(Prefs::default());
+        state.trust_for_session(&castle);
+        state.load_project(&castle);
+        state.open_map(&map).unwrap();
+        let mut harness = harness(state);
+        harness.run();
+        assert!(harness.query_by_label(&keep.display().to_string()).is_some());
+        assert!(harness.query_by_label_contains("level.tdm belongs to this project").is_some());
+        harness.get_by_label(KEEP).click();
+        harness.run();
+        assert_eq!(harness.state().state.game.project_root.as_ref(), Some(&castle));
+
+        let request = TrustRequest::Switch { root: keep.clone(), map: map.clone() };
+        harness.state_mut().state.trust_request = Some(request.clone());
+        harness.run();
+        harness.get_by_label(RESTRICT).click();
+        harness.run();
+        let f = harness.state();
+        assert_eq!(f.state.game.project_root.as_ref(), Some(&keep));
+        assert!(f.state.restricted() && !f.prompt.is_open(), "switched without asking a second time");
+
+        let f = harness.state_mut();
+        f.state.load_project(&castle);
+        f.state.trust_request = Some(request);
+        harness.run();
+        harness.get_by_label(TRUST).click();
+        harness.run();
+        let state = &harness.state().state;
+        assert_eq!(state.game.project_root.as_ref(), Some(&keep));
+        assert!(!state.restricted() && state.is_trusted(&keep));
         let _ = std::fs::remove_dir_all(folder);
     }
 }

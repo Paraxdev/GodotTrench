@@ -2170,6 +2170,18 @@ fn an_untrusted_project_opens_in_restricted_mode() {
     let ed = Editor::launch_with("trusted_by_argument", &["--project", project.to_str().unwrap()]);
     let state = ed.state();
     assert_eq!((state["game"]["restricted"].as_bool(), state["ui"]["trust_chip"].is_null()), (Some(false), true), "--project is trusted for the session");
+
+    // A map of the untrusted project leaves the trusted one open and says which project it belongs to.
+    let opened = ed.call("map_file", json!({ "op": "open", "path": dir.join("yard.tdm") }));
+    let other = opened["other_project"].as_str().unwrap_or_else(|| panic!("{opened}"));
+    assert_eq!(std::path::Path::new(other).canonicalize().unwrap(), dir.canonicalize().unwrap());
+    let state = ed.state();
+    assert_eq!(std::path::Path::new(state["game"]["project_root"].as_str().unwrap()).canonicalize().unwrap(), project);
+    assert_eq!(state["game"]["restricted"], false);
+    assert!(state["status"].as_str().unwrap().contains("a project you have not trusted"), "{}", state["status"]);
+    assert_eq!(window_titles(&ed), Vec::<String>::new());
+    let tab = ed.call("map_file", json!({ "op": "open_tab", "path": project.join("demo/maps/showcase/mountain_house.tdm") }));
+    assert!(tab["other_project"].is_null(), "{tab}");
 }
 
 #[test]
