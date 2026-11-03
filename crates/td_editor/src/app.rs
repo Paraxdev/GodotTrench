@@ -173,6 +173,9 @@ pub struct App {
     /// The manual page of what the pointer was over at the end of the last frame, for F1.
     manual_under_pointer: Option<String>,
     pub(crate) content_wizard: crate::content_wizard::ContentWizard,
+    pub(crate) trust: crate::trust::TrustPrompt,
+    /// Where the Restricted Mode chip is in the status bar, reported by get_state like `open_windows`.
+    pub(crate) trust_chip: Option<egui::Rect>,
     /// project_content calls waiting for the running install.
     pub(crate) content_replies: Vec<std::sync::mpsc::Sender<crate::mcp::ToolResult>>,
     /// Where the tool options bar is, reported by get_state like `open_windows`.
@@ -724,7 +727,14 @@ impl App {
         let mut state = EditorState::new(prefs);
         state.stdio_mcp = args.mcp_stdio;
         let project = args.project.clone().or_else(|| state.prefs.recent_projects.first().cloned());
-        if let Some(root) = project.as_deref().and_then(td_formats::game::find_project_root) {
+        let root = project.as_deref().and_then(td_formats::game::find_project_root);
+        state.prefs.seed_trust(root.as_deref());
+        // A project named on the command line was chosen there, and tests and agents start the editor that way.
+        if let Some(given) = args.project.as_deref().and_then(td_formats::game::find_project_root) {
+            state.trust_for_session(&given);
+        }
+
+        if let Some(root) = root {
             state.load_project(&root);
         }
 
@@ -845,6 +855,8 @@ impl App {
             tool_buttons: Vec::new(),
             manual_under_pointer: None,
             content_wizard: Default::default(),
+            trust: Default::default(),
+            trust_chip: None,
             content_replies: Vec::new(),
             tool_options_rect: egui::Rect::NOTHING,
         }
@@ -1807,6 +1819,7 @@ impl App {
         } else {
             (false, commands::GODOT_NOT_FOUND.to_string(), None)
         };
+        let tip = if enabled && s.restricted() { format!("{tip}\nThe project is in Restricted Mode, so this asks you to trust it first") } else { tip };
         let mut image = icons::GODOT.image(size).alt_text("Open Project in Godot Editor");
         if open {
             image = image.tint(crate::theme::CYAN);
@@ -2074,6 +2087,8 @@ impl App {
     }
 
     fn status_bar(&mut self, ui: &mut Ui) {
+        let mut ask_trust = false;
+        self.trust_chip = None;
         ui.horizontal(|ui| {
             let s = &self.state;
             let stats = self.scene.stats;
@@ -2110,6 +2125,14 @@ impl App {
                     }
                 }
 
+                if s.restricted() {
+                    ui.separator();
+                    let chip = egui::Button::new(RichText::new(crate::trust::CHIP).color(crate::theme::YELLOW)).frame(false);
+                    let resp = ui.add(chip).on_hover_text(crate::trust::CHIP_TIP);
+                    self.trust_chip = Some(resp.rect);
+                    ask_trust = resp.clicked();
+                }
+
                 // The message gets the width the counts leave, so a long one is cut short instead of running under them.
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     let alpha = if s.status_age() > 6.0 { 120 } else { 230 };
@@ -2117,6 +2140,9 @@ impl App {
                 });
             });
         });
+        if ask_trust && let Some(root) = self.state.game.project_root.clone() {
+            self.state.trust_request = Some(crate::state::TrustRequest::Project(root));
+        }
     }
 
     fn apply_ui_scale(&self, ctx: &egui::Context) {
@@ -2658,7 +2684,15 @@ impl eframe::App for App {
             .filter(|t| ctx.memory(|m| m.areas().is_visible(&egui::LayerId::new(egui::Order::Middle, window_id(t)))))
             .filter_map(|t| Some((t, ctx.memory(|m| m.area_rect(window_id(t)))?)))
             .collect();
-        self.content_wizard.take_request(&mut self.state);
+        if let Some(rect) = self.trust.show(&ctx, &mut self.state, &mut self.actions) {
+            self.open_windows.push((crate::trust::QUESTION, rect));
+        }
+
+        // The setup wizard waits for the trust prompt, which a project that is not trusted brings up first.
+        if !self.trust.is_open() {
+            self.content_wizard.take_request(&mut self.state);
+        }
+
         let (wizard, finished) = self.content_wizard.show(&ctx, &mut self.state);
         if let Some(rect) = wizard {
             self.open_windows.push((crate::content_wizard::TITLE, rect));
@@ -2678,6 +2712,10 @@ impl eframe::App for App {
             if self.state.game.project_root != project_before {
                 self.project_generation += 1;
             }
+        }
+
+        if self.state.trust_request.is_some() {
+            ctx.request_repaint();
         }
 
         self.sync_active_scatter();

@@ -427,8 +427,15 @@ impl App {
         let Some(host) = &self.mcp else { return };
         let calls: Vec<_> = host.rx.try_iter().collect();
         for call in calls {
+            // A prompt would only stand in an agent's way. It learns about Restricted Mode from the results instead, and
+            // the person from the status bar.
+            let asked = self.state.trust_request.is_some();
             if let Reply::Now(result) = self.call_tool(&call.name, call.args, ctx, &call.reply) {
                 let _ = call.reply.send(result);
+            }
+
+            if !asked {
+                self.state.trust_request = None;
             }
         }
 
@@ -548,6 +555,10 @@ impl App {
         let Some(path) = s.doc.path.clone() else { return Err("save the map into the Godot project first, Godot builds maps from their file path".into()) };
         if s.game.project_root.is_none() {
             return Err("open the Godot project first with open_project".into());
+        }
+
+        if s.restricted() {
+            return Err(crate::trust::BLOCKED.into());
         }
 
         let Some(link) = s.link.as_ref().filter(|_| s.prefs.live_link) else { return Err("the Godot live link is off, turn it on in Preferences".into()) };
@@ -686,7 +697,7 @@ impl App {
                         self.project_generation += 1;
                         ok(json!({
                             "project_root": path_text(&root), "game": self.state.game.name, "entities": self.state.game.entities.len(),
-                            "materials": self.state.materials.entries.len(), "status": self.state.status,
+                            "materials": self.state.materials.entries.len(), "status": self.state.status, "restricted": self.state.restricted(),
                             "addon_version": self.state.game.addon_version,
                             "addon_version_mismatch": self.state.game.addon_version.as_deref().is_some_and(|v| v != crate::VERSION),
                         }))
@@ -873,11 +884,13 @@ impl App {
                 "tool_buttons": self.tool_buttons.iter().map(|(t, r)| json!({ "tool": t.label(), "rect": [r.min.x, r.min.y, r.max.x, r.max.y] })).collect::<Vec<_>>(),
                 "mcp_prefs": self.mcp_pref_rects.iter().map(|(name, r)| (name.to_string(), json!([r.min.x, r.min.y, r.max.x, r.max.y]))).collect::<serde_json::Map<_, _>>(),
                 "tool_options": [self.tool_options_rect.min.x, self.tool_options_rect.min.y, self.tool_options_rect.max.x, self.tool_options_rect.max.y],
+                "trust_chip": self.trust_chip.map(|r| [r.min.x, r.min.y, r.max.x, r.max.y]),
             },
             "game": {
                 "name": s.game.name, "project_root": path_value(s.game.project_root.as_ref()), "entity_definitions": s.game.entities.len(),
                 "materials": s.materials.entries.len(), "editor_version": crate::VERSION, "addon_version": s.game.addon_version,
                 "addon_version_mismatch": s.game.addon_version.as_deref().is_some_and(|v| v != crate::VERSION),
+                "restricted": s.restricted(),
             },
             "godot": {
                 "executable": s.godot.exe, "connected": s.link_state.connected, "addon_outdated": s.link_state.outdated,
@@ -1652,6 +1665,9 @@ impl App {
             },
             None => None,
         };
+        if args["live_mode"].as_bool() == Some(true) && self.state.restricted() {
+            return err(crate::trust::BLOCKED);
+        }
 
         if let Some(g) = grid {
             self.state.grid = g;

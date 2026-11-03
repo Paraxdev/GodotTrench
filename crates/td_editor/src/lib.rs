@@ -48,6 +48,7 @@ pub mod tools;
 pub mod toolset;
 pub mod transform_gizmo;
 pub mod trim;
+pub mod trust;
 pub mod uv_editor;
 pub mod validate;
 pub mod viewport;
@@ -106,7 +107,8 @@ Usage: trenchdot [options] [map]
 Opens the editor, with the map when one is given.
 
 Options:
-  --project <dir>        Load the Godot project in <dir> or a folder above it
+  --project <dir>        Load the Godot project in <dir> or a folder above it, and
+                         trust it for the session
   --mcp                  Serve MCP over stdin and stdout
   --mcp-http[=<port>]    Serve MCP over HTTP on 127.0.0.1, port 7841 by default
   --mcp-token=<token>    Require <token> from MCP HTTP clients, TRENCHDOT_MCP_TOKEN

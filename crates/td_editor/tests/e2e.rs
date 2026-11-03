@@ -1909,7 +1909,7 @@ fn godot_captures_come_over_the_live_link() {
     let map = dir.join("maps/yard.tdm");
     let (godot, captures) = fake_godot_editor(&dir, &map);
 
-    let ed = Editor::launch("godot_capture");
+    let ed = Editor::launch_with("godot_capture", &["--project", dir.to_str().unwrap()]);
     ed.call("set_editor", json!({ "live_link_port": godot }));
     ed.call("create_brush", json!({ "min": [0, 0, 0], "max": [256, 16, 256] }));
     assert!(ed.call_err("screenshot", json!({ "source": "godot" })).contains("save the map"));
@@ -1959,7 +1959,7 @@ fn the_walkable_area_comes_from_godot() {
     let map = dir.join("maps/yard.tdm");
     let (godot, sent) = fake_godot_editor(&dir, &map);
 
-    let ed = Editor::launch("walkable");
+    let ed = Editor::launch_with("walkable", &["--project", dir.to_str().unwrap()]);
     ed.call("set_editor", json!({ "live_link_port": godot }));
     ed.call("create_brush", json!({ "min": [0, 0, 0], "max": [256, 16, 256] }));
     assert!(ed.call_err("walkability", json!({})).contains("save the map"));
@@ -2108,6 +2108,68 @@ fn a_new_project_asks_about_content_but_not_an_agent_at_work() {
     assert_eq!(window_titles(&ed), Vec::<String>::new(), "an agent's first edit closes it");
     assert_eq!(std::fs::read_to_string(old.join("addons/func_godot/plugin.cfg")).unwrap(), "[plugin]\nversion=\"0.0.1\"\n");
     assert!(!old.join(".trenchdot").exists(), "nothing changes without a click");
+}
+
+/// Waits for the trust prompt to show or go away.
+fn wait_for_trust_prompt(ed: &Editor, shown: bool) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while window_titles(ed).contains(&td_editor::trust::QUESTION.to_string()) != shown {
+        assert!(Instant::now() < deadline, "the trust prompt should be {}: {:?}", if shown { "shown" } else { "gone" }, window_titles(ed));
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// The middle of the Restricted Mode chip in the status bar.
+fn trust_chip(ed: &Editor) -> Value {
+    let chip = ed.state()["ui"]["trust_chip"].clone();
+    let r: Vec<f64> = chip.as_array().unwrap_or_else(|| panic!("no Restricted Mode chip: {chip}")).iter().map(|v| v.as_f64().unwrap()).collect();
+    json!({ "type": "click", "x": (r[0] + r[2]) / 2.0, "y": (r[1] + r[3]) / 2.0 })
+}
+
+/// A project nobody trusted opens in Restricted Mode. An agent opening it gets no prompt in its way, the Restricted Mode
+/// chip in the status bar brings the prompt up, and closing it leaves the project restricted.
+#[test]
+#[ignore]
+fn an_untrusted_project_opens_in_restricted_mode() {
+    let dir = artifacts().join("restricted_project");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("trenchdot/nature")).unwrap();
+    std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+    let ed = Editor::launch("restricted");
+    let opened = ed.call("open_project", json!({ "path": dir }));
+    assert_eq!(opened["restricted"], true, "{opened}");
+    assert_eq!(ed.state()["game"]["restricted"], true);
+    assert_eq!(window_titles(&ed), Vec::<String>::new(), "no prompt stands in an agent's way");
+
+    // Nothing has Godot run or build the project, and an agent is told why.
+    ed.call("map_file", json!({ "op": "save", "path": dir.join("yard.tdm") }));
+    for (tool, args) in [
+        ("run_action", json!({ "action": "run_godot_project" })),
+        ("run_action", json!({ "action": "open_godot_editor" })),
+        ("run_action", json!({ "action": "build_in_godot" })),
+        ("run_action", json!({ "action": "toggle_live_mode" })),
+        ("set_editor", json!({ "live_mode": true })),
+        ("screenshot", json!({ "source": "godot" })),
+        ("walkability", json!({})),
+    ] {
+        let e = ed.call_err(tool, args.clone());
+        assert!(e.contains("Restricted Mode"), "{tool} {args}: {e}");
+    }
+
+    assert_eq!(ed.state()["godot"]["live_mode"], false);
+    assert_eq!(window_titles(&ed), Vec::<String>::new());
+    ed.input("window", json!([trust_chip(&ed)]));
+    wait_for_trust_prompt(&ed, true);
+    ed.screenshot("window", "trust_prompt");
+    ed.input("window", json!([{ "type": "key", "key": "Escape" }]));
+    wait_for_trust_prompt(&ed, false);
+    assert_eq!(ed.state()["game"]["restricted"], true, "closing the prompt keeps Restricted Mode");
+    assert!(ed.state()["status"].as_str().unwrap().contains("Restricted Mode"));
+
+    let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../godot").canonicalize().unwrap();
+    let ed = Editor::launch_with("trusted_by_argument", &["--project", project.to_str().unwrap()]);
+    let state = ed.state();
+    assert_eq!((state["game"]["restricted"].as_bool(), state["ui"]["trust_chip"].is_null()), (Some(false), true), "--project is trusted for the session");
 }
 
 #[test]

@@ -270,6 +270,8 @@ pub fn unavailable(state: &EditorState) -> Option<String> {
         Some("open the Godot project first".into())
     } else if state.link.is_none() || !state.prefs.live_link {
         Some("the Godot live link is off, turn it on in Preferences".into())
+    } else if state.restricted() {
+        Some(crate::trust::RESTRICTED.into())
     } else {
         None
     }

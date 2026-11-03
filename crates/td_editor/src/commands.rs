@@ -895,7 +895,24 @@ fn paste(state: &mut EditorState, text: &str, beside: bool) {
     }
 }
 
+/// Actions that have Godot run the open project's code, by starting Godot on it or handing Godot a map to build.
+fn runs_project(state: &EditorState, action: &Action) -> bool {
+    match action {
+        Action::RunGodotProject | Action::OpenGodotEditor | Action::FocusGodot | Action::BuildInGodot => true,
+        Action::ToggleLiveMode => !state.prefs.live_mode,
+        Action::ToggleWalkable => !state.walkable.on,
+        _ => false,
+    }
+}
+
 fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
+    if state.restricted() && runs_project(state, &action) {
+        let root = state.game.project_root.clone().unwrap_or_default();
+        state.trust_request = Some(crate::state::TrustRequest::Run(root, action));
+        state.fail_status(crate::trust::BLOCKED);
+        return;
+    }
+
     if matches!(action, Action::Rotate { .. } | Action::Flip { .. } | Action::Nudge(_) | Action::Duplicate) {
         state.last_repeatable = Some(action.clone());
     }
@@ -2579,6 +2596,7 @@ mod tests {
         let mut state = EditorState::new(Default::default());
         let root = std::path::PathBuf::from("/games/court");
         state.game.project_root = Some(root.clone());
+        state.trust_for_session(&root);
         state.link_state = crate::live_link::LinkState {
             connected: true,
             project: Some(crate::live_link::path_key(&crate::live_link::godot_path(&root))),
@@ -2838,6 +2856,49 @@ mod tests {
         assert!(state.doc.map.editor.cameras.contains_key(&3));
         execute(&mut state, Action::Redo, &ctx);
         assert!(state.doc.map.editor.cameras.contains_key(&3));
+    }
+
+    #[test]
+    fn restricted_mode_asks_before_godot_runs_the_project() {
+        let dir = std::env::temp_dir().join(format!("td_restricted_run_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+        let root = crate::state::absolute(&dir);
+        let mut state = EditorState::new(Default::default());
+        state.load_project(&dir);
+        state.link = Some(crate::live_link::LiveLink::idle());
+        state.link_state = crate::live_link::LinkState {
+            connected: true,
+            project: Some(crate::live_link::path_key(&crate::live_link::godot_path(&root))),
+            maps: [(crate::live_link::path_key(&crate::live_link::godot_path(&root.join("level.tdm"))), 1)].into(),
+            ..Default::default()
+        };
+        state.doc.path = Some(root.join("level.tdm"));
+        let ctx = egui::Context::default();
+        for action in
+            [Action::RunGodotProject, Action::OpenGodotEditor, Action::FocusGodot, Action::BuildInGodot, Action::ToggleLiveMode, Action::ToggleWalkable]
+        {
+            state.trust_request = None;
+            execute(&mut state, action.clone(), &ctx);
+            assert_eq!(state.status, crate::trust::BLOCKED, "{action:?}");
+            assert!(state.status_failed());
+            assert_eq!(state.trust_request, Some(crate::state::TrustRequest::Run(root.clone(), action.clone())), "the person is asked");
+        }
+
+        assert!(state.link.as_ref().unwrap().take_requests().is_empty(), "Godot was not asked to build or show anything");
+        assert!(!state.prefs.live_mode && !state.walkable.on);
+        state.prefs.live_mode = true;
+        assert!(!state.live_active(), "live edits stay home while the project is restricted");
+        execute(&mut state, Action::ToggleLiveMode, &ctx);
+        assert!(!state.prefs.live_mode, "turning live mode off needs no trust");
+
+        state.trust_project(&root, false);
+        state.prefs.live_mode = true;
+        assert!(state.live_active());
+        execute(&mut state, Action::FocusGodot, &ctx);
+        assert!(matches!(state.link.as_ref().unwrap().take_requests()[..], [crate::live_link::Request::Focus]));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

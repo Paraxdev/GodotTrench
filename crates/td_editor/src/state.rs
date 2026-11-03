@@ -209,6 +209,15 @@ pub enum ContentRequest {
     Addon(PathBuf),
 }
 
+/// Why the trust prompt should open, see [`crate::trust`].
+#[derive(Clone, Debug, PartialEq)]
+pub enum TrustRequest {
+    /// The project at this path opened in Restricted Mode.
+    Project(PathBuf),
+    /// An action that has Godot run the project at this path waits for the person to trust it.
+    Run(PathBuf, crate::commands::Action),
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Prefs {
@@ -278,6 +287,14 @@ pub struct Prefs {
     /// Projects whose missing or mismatched addon a person let be, with the editor version and the addon they had then
     /// ([`crate::addon_install::Status::dismiss_key`]). The addon part of the wizard opens again once either changes.
     pub addon_dismissed: std::collections::BTreeMap<PathBuf, String>,
+    /// Roots of the Godot projects the person trusts, as canonical paths. A project unpacked inside one of them has its
+    /// own project.godot and is asked about, Godot treats it as a project of its own.
+    pub trusted_projects: std::collections::BTreeSet<PathBuf>,
+    /// Folders trusted with the parent folder checkbox, as canonical paths. Every project inside them counts as trusted.
+    pub trusted_folders: std::collections::BTreeSet<PathBuf>,
+    /// The trusted projects were seeded from the recent ones. Preferences saved before project trust existed lack it.
+    #[serde(default)]
+    pub trust_seeded: bool,
 }
 
 pub const UI_SCALE_MIN: f32 = 0.5;
@@ -303,6 +320,18 @@ impl Prefs {
         let scale = if follow { self.ui_scale / native } else { self.ui_scale * native };
         self.ui_scale = ((scale * 100.0).round() / 100.0).clamp(UI_SCALE_MIN, UI_SCALE_MAX);
         self.follow_display_scaling = follow;
+    }
+
+    /// Trusts the recent projects and `current` once, when preferences from before project trust load, so the projects
+    /// someone already worked in keep opening the way they did.
+    pub fn seed_trust(&mut self, current: Option<&Path>) {
+        if std::mem::replace(&mut self.trust_seeded, true) {
+            return;
+        }
+
+        for root in self.recent_projects.iter().map(PathBuf::as_path).chain(current) {
+            self.trusted_projects.insert(crate::trust::real_path(root));
+        }
     }
 }
 
@@ -348,6 +377,9 @@ impl Default for Prefs {
             start_hints: true,
             content_asked: Default::default(),
             addon_dismissed: Default::default(),
+            trusted_projects: Default::default(),
+            trusted_folders: Default::default(),
+            trust_seeded: true,
         }
     }
 }
@@ -395,6 +427,12 @@ pub struct EditorState {
     pub stdio_mcp: bool,
     /// Asks the app to open the content wizard.
     pub content_request: Option<ContentRequest>,
+    /// Asks the app to show the trust prompt.
+    pub trust_request: Option<TrustRequest>,
+    /// Projects trusted until the editor closes, canonical: the one given with --project.
+    session_trusted: Vec<PathBuf>,
+    /// The open project's root while it is trusted, see [`Self::restricted`].
+    trusted_root: Option<PathBuf>,
     /// The Gameplay entities pack in the open project, checked when it loads and after an install.
     pub gameplay_pack: crate::entity_pack::Status,
     live_link_status: Option<std::sync::mpsc::Receiver<String>>,
@@ -543,6 +581,9 @@ impl EditorState {
             autosave: Autosave::default(),
             stdio_mcp: false,
             content_request: None,
+            trust_request: None,
+            session_trusted: Vec::new(),
+            trusted_root: None,
             gameplay_pack: Default::default(),
             live_link_status: None,
             unopened_links: std::sync::mpsc::channel(),
@@ -934,7 +975,11 @@ impl EditorState {
 
     /// Edits of the current map are being sent to Godot.
     pub fn live_active(&self) -> bool {
-        self.prefs.live_link && self.prefs.live_mode && self.godot_has_project() && self.doc.path.as_deref().is_some_and(|p| self.link_state.has_map(p))
+        self.prefs.live_link
+            && self.prefs.live_mode
+            && !self.restricted()
+            && self.godot_has_project()
+            && self.doc.path.as_deref().is_some_and(|p| self.link_state.has_map(p))
     }
 
     /// Per frame: executable detection, link settings, link status messages and live edits.
@@ -1010,9 +1055,48 @@ impl EditorState {
         self.prefs.recent_files.truncate(12);
     }
 
+    /// The person trusts the authors of the project at `root`, or of a folder it lies in.
+    pub fn is_trusted(&self, root: &Path) -> bool {
+        let real = crate::trust::real_path(root);
+        self.prefs.trusted_projects.iter().chain(&self.session_trusted).any(|t| *t == real) || self.prefs.trusted_folders.iter().any(|t| real.starts_with(t))
+    }
+
+    /// The open project is not trusted, so TrenchDot does not start Godot on it or have Godot build its maps.
+    pub fn restricted(&self) -> bool {
+        self.game.project_root.as_ref().is_some_and(|root| self.trusted_root.as_ref() != Some(root))
+    }
+
+    /// Trusts the project at `root` from now on, or with `parent` every project in the folder it is in.
+    pub fn trust_project(&mut self, root: &Path, parent: bool) {
+        let real = crate::trust::real_path(root);
+        match crate::trust::parent_folder(&real).filter(|_| parent).map(Path::to_path_buf) {
+            Some(folder) => {
+                self.prefs.trusted_projects.retain(|t| !t.starts_with(&folder));
+                self.prefs.trusted_folders.retain(|t| !t.starts_with(&folder));
+                self.prefs.trusted_folders.insert(folder);
+            }
+            None => {
+                self.prefs.trusted_projects.insert(real);
+            }
+        }
+
+        self.refresh_trust();
+    }
+
+    /// Trusts the project at `root` until the editor closes.
+    pub fn trust_for_session(&mut self, root: &Path) {
+        self.session_trusted.push(crate::trust::real_path(root));
+        self.refresh_trust();
+    }
+
+    fn refresh_trust(&mut self) {
+        self.trusted_root = self.game.project_root.clone().filter(|root| self.is_trusted(root));
+    }
+
     /// Loads the game config of a Godot project, falling back to built-in definitions.
     pub fn load_project(&mut self, root: &Path) {
         let root = &absolute(root);
+        let switched = self.game.project_root.as_ref() != Some(root);
         // Taken before reading, so a file still being written when it was read counts as changed afterwards.
         self.game_file = game_file_stamp(root);
         let mut game = match GameConfig::discover(root) {
@@ -1048,6 +1132,11 @@ impl EditorState {
         self.model_library.rescan(&game);
         self.prefab_library.rescan(Some(root));
         self.game = game;
+        self.refresh_trust();
+        if switched && self.restricted() {
+            self.trust_request = Some(TrustRequest::Project(root.clone()));
+        }
+
         self.restart_game_watch();
         let p = root.to_path_buf();
         let known = self.prefs.recent_projects.contains(&p) || self.prefs.content_asked.contains(&p);
