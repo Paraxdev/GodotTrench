@@ -46,13 +46,15 @@ impl Editor {
 
     fn launch_env(name: &'static str, args: &[&str], env: &[(&str, &str)]) -> Editor {
         let port = free_port();
-        let child = Command::new(env!("CARGO_BIN_EXE_trenchdot"))
-            .arg(format!("--mcp-http={port}"))
-            .arg("--default-prefs")
-            .args(args)
-            .envs(env.iter().copied())
-            .spawn()
-            .expect("launch editor");
+        let mut command = Command::new(env!("CARGO_BIN_EXE_trenchdot"));
+        command.arg(format!("--mcp-http={port}")).arg("--default-prefs");
+        // TRENCHDOT_E2E_VISIBLE=1 shows the windows, to watch a test drive the editor. CI runs under Xvfb, which shows
+        // nothing anyway.
+        if cfg!(windows) && std::env::var_os("TRENCHDOT_E2E_VISIBLE").is_none() {
+            command.arg("--offscreen");
+        }
+
+        let child = command.args(args).envs(env.iter().copied()).spawn().expect("launch editor");
         let editor = Editor { child, port, name };
         let deadline = Instant::now() + Duration::from_secs(60);
         loop {
