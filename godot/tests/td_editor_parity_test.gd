@@ -1,9 +1,9 @@
 extends RefCounted
 ## Regression tests for the Godot-vs-editor parity audit: unique instance ids, mesh blend option passthrough,
-## quad triangulation matching td_geom::polygon::triangulate, terrain collision holes and the alternating
-## diagonal, rotated prefab terrain placement, concave mesh containment, tool/transparent containers not
-## burying faces, terrain layers keeping their material's maps, terrain height_at following the triangles, and out
-## of range brush indices being skipped.
+## quad and long face triangulation matching td_geom::polygon::triangulate, terrain collision holes and the
+## alternating diagonal, rotated prefab terrain placement, concave mesh containment, tool/transparent
+## containers not burying faces, terrain layers keeping their material's maps, terrain height_at following the
+## triangles, and out of range brush indices being skipped.
 ##
 ## res://tests/run_tests.gd calls [method run] from its own [method SceneTree._initialize]. [param t] is that
 ## script's own instance, used for its [code]check[/code]/[code]near[/code]/[code]find_named[/code] helpers.
@@ -14,10 +14,14 @@ static func run(t) -> void:
 	_test_instance_id_namespacing(t)
 	_test_mesh_blend_options(t)
 	_test_quad_triangulation_matches_editor(t)
+	_test_long_face_triangulation_matches_editor(t)
 	_test_terrain_collision_holes_and_diagonal(t)
 	_test_rotated_instance_terrain_position(t)
 	_test_concave_mesh_containment(t)
 	_test_tool_and_transparent_containers_do_not_bury(t)
+	_test_face_over_a_mesh_tunnel_stays(t)
+	_test_buried_faces_keep_their_triangles(t)
+	_test_buried_brush_faces_clip_from_the_cull_budget(t)
 	_test_terrain_splat_shader_defaults_to_first_layer(t)
 	_test_terrain_missing_layer_slots_use_first_layer(t)
 	_test_terrain_emissive_layers_glow(t)
@@ -130,6 +134,56 @@ static func _test_quad_triangulation_matches_editor(t) -> void:
 	var tris_b := TrenchDotMesh.triangulate(b, TrenchDotMesh._newell(b))
 	t.check(tris_b == PackedInt32Array([0, 1, 3, 1, 2, 3]), "splits along the shorter 1-3 diagonal, got %s" % [tris_b])
 
+static func _circle(n: int, radius: float) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for i in n:
+		var a := float(i) / n * TAU
+		out.append(Vector3(cos(a) * radius, 0.0, -sin(a) * radius))
+	return out
+
+static func _gear(n: int) -> PackedVector3Array:
+	var out := _circle(n, 1.0)
+	for i in n:
+		out[i] *= 512.0 if i % 2 == 0 else 480.0
+	return out
+
+## An outer and an inner arc so close that every outer corner's ear holds an inner corner.
+static func _thin_band(n: int) -> PackedVector3Array:
+	var r := 4096.0
+	var step := 1.0 / n
+	var w := r * (1.0 - cos(step)) * 0.25
+	var out := PackedVector3Array()
+	for i in n / 2:
+		out.append(Vector3(cos(i * step) * r, 0.0, -sin(i * step) * r))
+	for i in range(n / 2 - 1, -1, -1):
+		out.append(Vector3(cos(i * step) * (r - w), 0.0, -sin(i * step) * (r - w)))
+	return out
+
+## Ear clipping tests only reflex corners and fans the rest of a face once its work budget is spent, like
+## td_geom::polygon::triangulate, so big faces clip the editor's triangles and faces made to block their ears cannot
+## stall the import.
+static func _test_long_face_triangulation_matches_editor(t) -> void:
+	print("- long face triangulation matches the editor")
+	var gear := _gear(1024)
+	var tris := TrenchDotMesh.triangulate(gear, TrenchDotMesh._newell(gear))
+	var picks := []
+	for k in [0, 1, 600, 1020, 1021]:
+		picks.append(Array(tris.slice(k * 3, k * 3 + 3)))
+	t.check(tris.size() == 1022 * 3 and picks == [[1023, 0, 1], [1, 2, 3], [1023, 599, 601], [1023, 1019, 1021], [1021, 1022, 1023]], "a 1024 corner gear clips the editor's triangles, got %s" % [picks])
+	var repeated := PackedVector3Array()
+	var octagon := _circle(8, 64.0)
+	for i in 200000:
+		repeated.append(octagon[i % 8])
+	for points: PackedVector3Array in [_thin_band(2048), repeated]:
+		var started := Time.get_ticks_msec()
+		tris = TrenchDotMesh.triangulate(points, TrenchDotMesh._newell(points))
+		var took := Time.get_ticks_msec() - started
+		t.check(tris.size() == (points.size() - 2) * 3 and took < 5000, "a %d corner face made to block its ears triangulates in %d ms" % [points.size(), took])
+	var spent := TrenchDotMesh.ClipBudget.new()
+	spent.take(TrenchDotMesh.BUILD_CLIP_WORK)
+	tris = TrenchDotMesh.triangulate(gear, TrenchDotMesh._newell(gear), spent)
+	t.check(tris.slice(0, 6) == PackedInt32Array([0, 1, 2, 0, 2, 3]), "a face is fanned once its build's budget is spent, got %s" % [tris.slice(0, 6)])
+
 ## Finding 4: terrain collision must respect per-cell holes exactly and use the same alternating diagonal as
 ## the visuals, which a HeightMapShape3D (per-vertex NaN, one fixed diagonal) cannot do.
 static func _test_terrain_collision_holes_and_diagonal(t) -> void:
@@ -228,6 +282,96 @@ static func _test_tool_and_transparent_containers_do_not_bury(t) -> void:
 			t.check(inner.faces.all(func(f): return f.render_hidden), "an opaque non-tool container (%s) still buries what is inside it" % outer_material)
 		else:
 			t.check(inner.faces.all(func(f): return not f.render_hidden), "a %s container must not bury what is inside it" % outer_material)
+
+## A closed mesh box with a square tunnel through it along z, off centre so a plate around the tunnel has its
+## centre in solid material.
+static func _tunnel_mesh(id: int) -> Dictionary:
+	var vertices := []
+	for z in [0.0, 64.0]:
+		for c in [[0.0, 0.0], [96.0, 0.0], [96.0, 96.0], [0.0, 96.0], [16.0, 16.0], [32.0, 16.0], [32.0, 32.0], [16.0, 32.0]]:
+			vertices.append([c[0], c[1], z])
+	var faces := []
+	for k in 4:
+		var n := (k + 1) % 4
+		for indices in [[n, k, 4 + k, 4 + n], [8 + k, 8 + n, 12 + n, 12 + k], [k, n, 8 + n, 8 + k], [4 + n, 4 + k, 12 + k, 12 + n]]:
+			faces.append({ "indices": indices, "material": "showcase/cobble" })
+	return { "id": id, "type": "mesh", "vertices": vertices, "faces": faces }
+
+## A plate around the tunnel has every corner and its centre in the mesh, only the tunnel's edges passing through
+## its middle show it is not buried, and they are found on the plate's own triangles. Brush and mesh plates take
+## different paths there.
+static func _test_face_over_a_mesh_tunnel_stays(t) -> void:
+	print("- a face over a tunnel through a closed mesh stays")
+	var settings: FuncGodotMapSettings = load(SETTINGS)
+	for type in ["brush", "mesh"]:
+		var plate := _box(2, Vector3(8, 8, 24), Vector3(88, 88, 40), "showcase/cobble")
+		var buried := _box(3, Vector3(48, 48, 8), Vector3(80, 80, 16), "showcase/cobble")
+		plate["type"] = type
+		buried["type"] = type
+		var map_json := { "format": "trenchdot-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": [_tunnel_mesh(1), plate, buried] }] }
+		var data := FuncGodotParser.new().parse_map_data(_write("td_tunnel_cull_test.tdm", map_json), settings)
+		FuncGodotGeometryGenerator.new(settings).build(0, data.entities)
+		var brushes: Array[FuncGodotData.BrushData] = data.entities[0].brushes
+		var shown := brushes[1].faces.filter(func(f): return not f.render_hidden).map(func(f): return f.plane.normal.round())
+		# Planes are in id space, map z is id x.
+		t.check(shown == [Vector3(1, 0, 0), Vector3(-1, 0, 0)] or shown == [Vector3(-1, 0, 0), Vector3(1, 0, 0)], "a %s plate keeps only its faces over the tunnel, got %s" % [type, shown])
+		t.check(brushes[2].faces.all(func(f): return f.render_hidden), "a %s box wholly inside the mesh is dropped" % type)
+		t.check(brushes[0].faces.all(func(f): return not f.render_hidden), "the tunnel mesh keeps its faces")
+
+## A closed mesh buried in another keeps the triangles it was built with, so a face made to block its ears is not
+## clipped once more by the face cull, and again for every prefab instance of it.
+static func _test_buried_faces_keep_their_triangles(t) -> void:
+	print("- buried faces keep the triangles they were built with")
+	var settings: FuncGodotMapSettings = load(SETTINGS)
+	var container := _box(1, Vector3(-8192, -8192, -8192), Vector3(8192, 8192, 8192), "showcase/cobble")
+	container["type"] = "mesh"
+	var vertices := []
+	for p in _thin_band(16384):
+		vertices.append([p.x, p.y, p.z])
+	var front := range(vertices.size())
+	var back := front.duplicate()
+	back.reverse()
+	var sheet := { "id": 2, "type": "mesh", "vertices": vertices, "faces": [{ "indices": front, "material": "showcase/cobble" }, { "indices": back, "material": "showcase/cobble" }] }
+	# With the build's budget spent the sheet is fanned right away, the face cull is all that could clip it.
+	var spent := TrenchDotMesh.ClipBudget.new()
+	spent.take(TrenchDotMesh.BUILD_CLIP_WORK)
+	var entity := FuncGodotData.EntityData.new()
+	entity.properties["classname"] = "worldspawn"
+	entity.brushes.append(TrenchDotMesh.parse(container, Transform3D.IDENTITY, settings.scale_factor, ""))
+	for k in 4:
+		entity.brushes.append(TrenchDotMesh.parse(sheet, Transform3D(Basis.IDENTITY, Vector3(0, 64 * k, 0)), settings.scale_factor, "", spent))
+	t.check(entity.brushes.all(func(b): return b.closed), "the container and the two sided sheets are closed meshes")
+	var entities: Array[FuncGodotData.EntityData] = [entity]
+	var started := Time.get_ticks_msec()
+	var hidden := TrenchDotFaceCull.apply(entities, settings, { "showcase/cobble": StandardMaterial3D.new() })
+	var took := Time.get_ticks_msec() - started
+	var sheets := entity.brushes.slice(1)
+	t.check(hidden == 8 and sheets.all(func(b): return b.faces.all(func(f): return f.render_hidden)), "every face of the four buried sheets is hidden, %d faces in all" % hidden)
+	t.check(took < 2000, "without clipping their 16384 corners again, culling took %d ms" % took)
+
+## A brush face has no triangles of its own, the face cull clips it against a budget that the whole cull shares, so
+## brush faces made to block their ears and buried in a closed mesh cannot stall it either.
+static func _test_buried_brush_faces_clip_from_the_cull_budget(t) -> void:
+	print("- buried brush faces clip from the face cull's budget")
+	var settings: FuncGodotMapSettings = load(SETTINGS)
+	var container := _box(1, Vector3(-8192, -8192, -8192), Vector3(8192, 8192, 8192), "showcase/cobble")
+	container["type"] = "mesh"
+	var solid := TrenchDotFaceCull._solid(TrenchDotMesh.parse(container, Transform3D.IDENTITY, settings.scale_factor, ""), 1.0 / settings.scale_factor)
+	var entry := TrenchDotFaceCull.Entry.new()
+	entry.points = _thin_band(16384)
+	entry.normal = TrenchDotMesh._newell(entry.points).normalized()
+	entry.bounds = AABB(entry.points[0], Vector3.ZERO)
+	for p in entry.points:
+		entry.bounds = entry.bounds.expand(p)
+	entry.brush = FuncGodotData.BrushData.new()
+	entry.face = FuncGodotData.FaceData.new()
+	var budget := TrenchDotMesh.ClipBudget.new()
+	budget.take(TrenchDotMesh.BUILD_CLIP_WORK - 1000)
+	t.check(not TrenchDotFaceCull._crosses_surface(entry, solid, budget) and budget.spent(), "clipping a brush face takes from the cull's budget")
+	var started := Time.get_ticks_msec()
+	var crosses := TrenchDotFaceCull._crosses_surface(entry, solid, budget)
+	var took := Time.get_ticks_msec() - started
+	t.check(not crosses and took < 400, "once the budget is spent a 16384 corner band is fanned, tested in %d ms" % took)
 
 ## Finding 8: an all zero splat weight must render as the first layer, matching Terrain::weights and
 ## docs/format/terrain-scatter.md, not black. Not practically capturable headlessly, so this pins the fixed GLSL
