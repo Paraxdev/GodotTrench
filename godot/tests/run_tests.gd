@@ -778,6 +778,9 @@ func test_build_report() -> void:
 		entity.call(6, "prop_physics", { "model": "res://tests/missing_chair.glb" }),
 		entity.call(7, "td_tests_unknown", {}),
 		entity.call(8, "logic_relay", { "targetname": "relay" }, [wire.call("nobody"), wire.call("relay"), wire.call("@players"), wire.call("rel*")]),
+		entity.call(9, "logic_script", { "targetname": "with_source", "source": "return 1" }),
+		entity.call(10, "logic_script", { "targetname": "with_expression", "expression": "1 + 1" }),
+		entity.call(11, "logic_script", { "targetname": "without_code", "source": "  ", "expression": "" }),
 	]
 	var path := OS.get_temp_dir().path_join("td_build_report_test.tdm")
 	var map_json := { "format": "trenchdot-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": children }] }
@@ -796,6 +799,9 @@ func test_build_report() -> void:
 	check(report["unresolved_targets"].size() == 1 and report["unresolved_targets"][0]["target"] == "nobody", "only the target that matches nothing, got %s" % [report["unresolved_targets"]])
 	check(report["entities"].get("prop_model", 0) == 2 and report["vertices"] > 0 and report["steps"].size() > 5, "entity counts, vertices and steps")
 	check(report["steps"].all(func(s): return s["step"] != "" and s["ms"] >= 0.0), "every step is named and timed")
+	var scripts := Array(report["map_scripts"])
+	scripts.sort()
+	check(scripts == ["entity_with_expression", "entity_with_source"], "logic_script entities with code are listed by name, got %s" % [report["map_scripts"]])
 	var relay := find_targetname(map, "relay")
 	var out: TrenchDotOutput = relay.get_children().filter(func(c): return c is TrenchDotOutput and c.target == "nobody")[0] if relay else null
 	if out:
