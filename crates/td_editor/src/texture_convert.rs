@@ -58,16 +58,30 @@ pub fn missing_materials_in(
     out
 }
 
+/// A `missing_material` warning per material the project lacks, or `material_outside_project` for a name that is a
+/// path out of the project, which no texture added to it can satisfy.
 pub fn missing_material_issues(map: &td_doc::Map, game: &td_formats::GameConfig, materials: &crate::materials::MaterialLibrary) -> Vec<td_doc::issues::Issue> {
     missing_materials_in(map, game, materials)
         .into_iter()
-        .map(|(name, (faces, node))| td_doc::issues::Issue {
-            node: Some(node),
-            severity: td_doc::issues::Severity::Warning,
-            code: "missing_material",
-            message: format!("Material '{name}' is not in the project ({faces} faces), convert or add its texture"),
+        .map(|(name, (faces, node))| {
+            let (code, message) = if inside_project(game, &name) {
+                ("missing_material", format!("Material '{name}' is not in the project ({faces} faces), convert or add its texture"))
+            } else {
+                ("material_outside_project", format!("Material '{name}' is a path out of the project ({faces} faces), neither the editor nor Godot loads it"))
+            };
+            td_doc::issues::Issue { node: Some(node), severity: td_doc::issues::Severity::Warning, code, message }
         })
         .collect()
+}
+
+/// Whether the face material `name` stays inside the project: a res:// path read from the project root, any other name
+/// from the texture folder.
+fn inside_project(game: &td_formats::GameConfig, name: &str) -> bool {
+    let root = game.project_root.clone().unwrap_or_default();
+    match name.strip_prefix("res://") {
+        Some(rel) => td_formats::game::file_below(&root, &root, rel).is_some(),
+        None => td_formats::game::file_below(&root, &game.texture_root().unwrap_or_else(|| root.clone()), name).is_some(),
+    }
 }
 
 /// Converts `only` (face material names) or every texture the sources hold, then reloads the material browser.
@@ -233,5 +247,24 @@ mod tests {
         assert_eq!(missing["brick/wall"].0, 12, "two brushes of six faces, names compared without case");
         let issues = missing_material_issues(&state.doc.map, &state.game, &state.materials);
         assert!(issues.iter().all(|i| i.code == "missing_material") && issues.len() == 2);
+    }
+
+    #[test]
+    fn materials_named_by_a_path_out_of_the_project_get_their_own_issue() {
+        let mut state = EditorState::new(Default::default());
+        state.game.project_root = Some(std::env::temp_dir().join("td_no_such_project"));
+        let layer = state.doc.map.default_layer();
+        let aabb = td_core::Aabb::new(td_core::DVec3::ZERO, td_core::DVec3::splat(64.0));
+        for m in ["brick/wall", "../brick", "res://../secret.png", "C:/Users/me/brick", "//host/share/brick", r"\\?\C:\brick", "../../brick"] {
+            state.doc.map.insert(layer, NodeKind::Brush(Brush::from_aabb(&aabb, m).unwrap()));
+        }
+
+        let issues = missing_material_issues(&state.doc.map, &state.game, &state.materials);
+        let code = |name: &str| issues.iter().find(|i| i.message.contains(&format!("'{name}'"))).map(|i| i.code);
+        assert_eq!(code("brick/wall"), Some("missing_material"));
+        assert_eq!(code("../brick"), Some("missing_material"), "res://brick, next to the texture folder, is still in the project");
+        for outside in ["res://../secret.png", "c:/users/me/brick", "//host/share/brick", r"\\?\c:\brick", "../../brick"] {
+            assert_eq!(code(outside), Some("material_outside_project"), "{outside}");
+        }
     }
 }
