@@ -262,8 +262,9 @@ static func _test_concave_mesh_containment(t) -> void:
 		if solid:
 			# TrenchDotMesh stores vertices rotated into FuncGodot's id space (id = (z, x, y)), so probe points
 			# go through the same TrenchDotParser.to_id conversion as the mesh's own vertices did.
-			t.check(solid.contains(TrenchDotParser.to_id(Vector3(2.0, 1.0, 1.0))), "a point genuinely inside the dart is inside")
-			t.check(not solid.contains(TrenchDotParser.to_id(Vector3(1.8333, 1.0, 1.5))), "a point in the notch, which only a fan triangulation would wrongly cover, is outside")
+			var work := TrenchDotFaceCull.Work.new(TrenchDotFaceCull.INTERIOR_WORK)
+			t.check(solid.contains(TrenchDotParser.to_id(Vector3(2.0, 1.0, 1.0)), work), "a point genuinely inside the dart is inside")
+			t.check(not solid.contains(TrenchDotParser.to_id(Vector3(1.8333, 1.0, 1.5)), work), "a point in the notch, which only a fan triangulation would wrongly cover, is outside")
 
 ## Finding 7: only opaque, non-tool containers may bury the faces of what they enclose.
 static func _test_tool_and_transparent_containers_do_not_bury(t) -> void:
@@ -367,9 +368,10 @@ static func _test_buried_brush_faces_clip_from_the_cull_budget(t) -> void:
 	entry.face = FuncGodotData.FaceData.new()
 	var budget := TrenchDotMesh.ClipBudget.new()
 	budget.take(TrenchDotMesh.BUILD_CLIP_WORK - 1000)
-	t.check(not TrenchDotFaceCull._crosses_surface(entry, solid, budget) and budget.spent(), "clipping a brush face takes from the cull's budget")
+	var work := TrenchDotFaceCull.Work.new(TrenchDotFaceCull.INTERIOR_WORK)
+	t.check(not TrenchDotFaceCull._crosses_surface(entry, solid, budget, work) and budget.spent(), "clipping a brush face takes from the cull's budget")
 	var started := Time.get_ticks_msec()
-	var crosses := TrenchDotFaceCull._crosses_surface(entry, solid, budget)
+	var crosses := TrenchDotFaceCull._crosses_surface(entry, solid, budget, work)
 	var took := Time.get_ticks_msec() - started
 	t.check(not crosses and took < 400, "once the budget is spent a 16384 corner band is fanned, tested in %d ms" % took)
 

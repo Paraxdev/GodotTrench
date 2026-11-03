@@ -100,6 +100,7 @@ func _initialize() -> void:
 	test_face_cull()
 	test_large_plane_face_cull()
 	test_interior_face_culling()
+	test_dense_mesh_interior_face_cull()
 	test_chunk_streamer()
 	test_csharp_entities()
 	await test_live_session()
@@ -1695,6 +1696,84 @@ func test_interior_face_culling() -> void:
 	var overlapping := cull_brushes([box_node(2, Vector3(0, 0, 0), Vector3(64, 64, 64)), box_node(3, Vector3(32, 32, 32), Vector3(96, 96, 96))])
 	for b: FuncGodotData.BrushData in overlapping:
 		check(b.faces.all(func(f): return not f.render_hidden), "half overlapping solids keep their faces")
+
+## A closed mesh box of [param cells] by [param cells] quads a side, from -[param half] to [param half].
+func _lattice_box(id: int, cells: int, half: float) -> Dictionary:
+	var index := {}
+	var vertices := []
+	var faces := []
+	for axis in 3:
+		for side in [0, cells]:
+			for j in cells:
+				for i in cells:
+					var quad := []
+					for c in [Vector2i(i, j), Vector2i(i + 1, j), Vector2i(i + 1, j + 1), Vector2i(i, j + 1)]:
+						var cell := Vector3i.ZERO
+						cell[axis] = side
+						cell[(axis + 1) % 3] = c.x
+						cell[(axis + 2) % 3] = c.y
+						if not index.has(cell):
+							index[cell] = vertices.size()
+							vertices.append([cell.x * 2.0 * half / cells - half, cell.y * 2.0 * half / cells - half, cell.z * 2.0 * half / cells - half])
+						quad.append(index[cell])
+					if side == 0:
+						quad.reverse()
+					faces.append({ "indices": quad, "material": "showcase/cobble" })
+	return { "id": id, "type": "mesh", "vertices": vertices, "faces": faces }
+
+func test_dense_mesh_interior_face_cull() -> void:
+	print("- interior face culling inside a closed mesh of thousands of triangles")
+	var settings: FuncGodotMapSettings = load(SETTINGS)
+	var spent := TrenchDotMesh.ClipBudget.new()
+	spent.take(TrenchDotMesh.BUILD_CLIP_WORK)
+	var box := TrenchDotMesh.parse(_lattice_box(1, 32, 1024.0), Transform3D.IDENTITY, settings.scale_factor, "")
+	var vertices := []
+	for i in 4096:
+		vertices.append([cos(TAU * i / 4096) * 800.0, 3.0, sin(TAU * i / 4096) * 800.0])
+	var front := range(4096)
+	var back := front.duplicate()
+	back.reverse()
+	var disc := TrenchDotMesh.parse({ "id": 2, "type": "mesh", "vertices": vertices, "faces": [{ "indices": front, "material": "showcase/cobble" }, { "indices": back, "material": "showcase/cobble" }] }, Transform3D.IDENTITY, settings.scale_factor, "", spent)
+	check(box.closed and disc.closed, "the box and the two sided disc are closed meshes")
+
+	# Rays only meet the triangles their grid cell holds, so they must find every crossing a test of all triangles does.
+	var inv_scale := 1.0 / settings.scale_factor
+	var solid := TrenchDotFaceCull._solid(box, inv_scale)
+	var work := TrenchDotFaceCull.Work.new(TrenchDotFaceCull.INTERIOR_WORK)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var dir := Vector3(0.5773, 0.5574, 0.5964).normalized()
+	var agree := 0
+	for k in 300:
+		var p := solid.bounds.position + Vector3(rng.randf(), rng.randf(), rng.randf()) * solid.bounds.size
+		if k % 2 == 0:
+			var axis := rng.randi_range(0, 2)
+			p[axis] = solid.bounds.position[axis] + rng.randfn() * 0.5
+		var hits := PackedFloat32Array()
+		for i in range(0, solid.tris.size(), 3):
+			var at = Geometry3D.ray_intersects_triangle(p, dir, solid.tris[i], solid.tris[i + 1], solid.tris[i + 2])
+			if at != null:
+				hits.append(p.distance_to(at))
+		hits.sort()
+		var crossings := 0
+		for h in hits.size():
+			if h == 0 or absf(hits[h] - hits[h - 1]) > 1e-5:
+				crossings += 1
+		agree += int(solid.contains(p, work) == (crossings % 2 == 1 and solid.bounds.grow(TrenchDotFaceCull.COPLANAR_DIST).has_point(p)))
+	check(agree == 300, "the ray grid agrees with testing every triangle, %d of 300 points" % agree)
+	var disc_entry := TrenchDotFaceCull._entry(disc.faces[0], disc, 0, inv_scale)
+	check(not TrenchDotFaceCull._buried_in(solid, disc_entry, null, TrenchDotFaceCull.Work.new(10)), "once the pass has used up its work a face is kept")
+
+	var entity := FuncGodotData.EntityData.new()
+	entity.properties["classname"] = "worldspawn"
+	entity.brushes.append(box)
+	entity.brushes.append(disc)
+	var entities: Array[FuncGodotData.EntityData] = [entity]
+	var started := Time.get_ticks_msec()
+	var hidden := TrenchDotFaceCull.apply(entities, settings, { "showcase/cobble": StandardMaterial3D.new() })
+	var took := Time.get_ticks_msec() - started
+	check(hidden == 2 and disc.faces.all(func(f): return f.render_hidden), "both sides of the disc are buried, %d faces hidden" % hidden)
+	check(took < 2000, "without testing 4097 points against all 12288 triangles, culling took %d ms" % took)
 
 func test_chunk_streamer() -> void:
 	print("- chunk streaming and render culling")
