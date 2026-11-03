@@ -1,16 +1,32 @@
 # Converting textures
 
-Godot cannot load `.vtf`, `.wad` or `.wal` files, so the editor converts them into PNGs, plus a `.tres` where a plain
+Godot cannot load `.vtf`, `.wad` or `.wal` files, so the editor turns them into PNGs, plus a `.tres` where a plain
 image cannot carry the settings. Each one lands in the project's texture folder under the face's material name, so the
-imported faces find it.
+imported faces find it straight away.
 
-The import offers this for the textures a map uses. For a whole folder, use *File > Import > Convert Textures (VTF/VMT,
-WAD, WAL)*.
+Importing a map offers this for the textures it uses, see [Importing Hammer and TrenchBroom maps](importing.md). To
+convert a whole folder, open the Godot project first, then:
+
+1. Open the converter
+
+   Go to *File > Import > Convert Textures (VTF/VMT, WAD, WAL)…*.
+
+   ![File menu with Import open and Convert Textures (VTF/VMT, WAD, WAL)… hovered](../assets/importing-textures/file-import-convert-textures.png)
+
+2. Pick the folder
+
+   Pick the folder with the `.vmt` and `.vtf`, `.wad` or `.wal` files. If the open map lacks some of them, the editor
+   asks whether to convert only **The map's** or **All**.
+
+   The status bar should then say how many were converted, like "Textures: 12 converted", and they show up in the
+   Materials tab under their material names.
+
+   ![The Materials tab searched for castle, showing brick_wall and stone_step from an imported map, with the tooltip castle/brick_wall, 1024 x 1024 px](../assets/importing-textures/converted-in-materials.png)
 
 ## Where they are found
 
 The editor searches the usual places each game keeps its textures, so a map copied along with its game folders finds
-them without setup.
+them without any setup.
 
 | Source | Looked for | Named after |
 | --- | --- | --- |
@@ -21,8 +37,8 @@ them without setup.
 
 ## Valve materials
 
-A Valve `.vmt` file describes a material as a list of parameters. The converter carries these over to the Godot
-material and leaves the rest out:
+A Valve `.vmt` file describes a material as a list of parameters. These carry over to the Godot material, the rest is
+left out:
 
 | Valve material | Godot material |
 | --- | --- |
@@ -48,8 +64,8 @@ when the map already has `sky_top_color`.
 
 A Source map with its `skyname` skybox in `materials/skybox` gets a panorama, `skybox/<skyname>_panorama.png` in the
 texture folder, set as `sky_panorama`. Other maps get `sky_top_color` and `sky_horizon_color` from the texture in
-`sky_source`. `TrenchDotEnvironment` builds a WorldEnvironment, the Godot node that holds a scene's sky, fog and
-ambient light, from these keys when the scene has none of its own.
+`sky_source`. When the scene has no WorldEnvironment of its own (the Godot node that holds a scene's sky, fog and
+ambient light), `TrenchDotEnvironment` builds one from these keys.
 
 ## VTF formats
 
