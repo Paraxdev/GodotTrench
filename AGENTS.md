@@ -77,6 +77,11 @@ This applies to code comments, docs, UI text, commit messages and pull request d
   pass. See [docs/development.md](docs/development.md#documentation).
 * Keep pages short and to the point. Prefer a table, a numbered list of steps or a short paragraph over a wall of text,
   and split a page that grows long. Leave out what a reader does not need to get the job done.
+* Write task pages the way [getting-started.md](docs/getting-started.md) reads: talk to the reader as "you", name the
+  exact label to click and where it sits on screen, say what they should see afterwards, and put a screenshot next to
+  each step that needs finding something. Crop it tight to the control in its live state (menu open, tooltip showing)
+  and draw no arrows or boxes on it. Capture with the editor's MCP `screenshot` tool, and keep personal paths out of
+  the shot.
 * Callouts are GitHub style alerts, `> [!NOTE]`, `> [!TIP]` or `> [!WARNING]` on their own line with the text quoted
   below. Tag GDScript code blocks as `gdscript`. Indent the images, paragraphs and code blocks of a list item by 4
   spaces, or they fall out of the list.
