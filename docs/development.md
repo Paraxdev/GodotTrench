@@ -101,9 +101,11 @@ python3 -m venv .venv                  # once
 pip install -r docs/requirements.txt   # once, and again when the pin changes
 zensical serve                         # live preview on http://localhost:8000/TrenchDot/
 zensical build --clean --strict        # the build CI runs, lands in _site
+python3 tools/check_site.py            # the link check CI runs on _site
 ```
 
-`--strict` fails the build on a link to a page or heading that doesn't exist.
+`--strict` fails the build on a link to a page or heading that doesn't exist. A mistyped `SUMMARY.md` entry, a missing
+image or a page left out of the navigation get through it, `tools/check_site.py` catches those.
 
 A heading's id is its text in lower case, spaces become hyphens and other punctuation is dropped, so `## path_corner`
 is `#path_corner`. The editor's help links in

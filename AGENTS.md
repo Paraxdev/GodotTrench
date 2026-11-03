@@ -73,8 +73,8 @@ This applies to code comments, docs, UI text, commit messages and pull request d
 
 * `docs/` is built with Zensical from `zensical.toml` and deployed by `.github/workflows/pages.yml`. Every page must
   be listed in `docs/SUMMARY.md`, `zensical build --clean --strict` in the repository root (after
-  `pip install -r docs/requirements.txt`) must build without warnings. See
-  [docs/development.md](docs/development.md#documentation).
+  `pip install -r docs/requirements.txt`) must build without warnings, and `python3 tools/check_site.py` must then
+  pass. See [docs/development.md](docs/development.md#documentation).
 * Keep pages short and to the point. Prefer a table, a numbered list of steps or a short paragraph over a wall of text,
   and split a page that grows long. Leave out what a reader does not need to get the job done.
 * Callouts are GitHub style alerts, `> [!NOTE]`, `> [!TIP]` or `> [!WARNING]` on their own line with the text quoted

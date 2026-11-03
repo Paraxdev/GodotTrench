@@ -6,11 +6,13 @@ on:
     paths:
       - "docs/**"
       - "zensical.toml"
+      - "tools/check_site.py"
       - ".github/workflows/pages.yml"
   pull_request:
     paths:
       - "docs/**"
       - "zensical.toml"
+      - "tools/check_site.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -41,6 +43,9 @@ jobs:
         # --strict fails on links to pages or headings that do not exist. The output lands in _site.
         run: zensical build --clean --strict
 
+      - name: Check links in the site
+        # What --strict lets through: a mistyped page in SUMMARY.md, a missing image, a page left out of the nav.
+        run: python tools/check_site.py
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
