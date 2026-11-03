@@ -431,8 +431,11 @@ impl MaterialLibrary {
     }
 
     fn resolve_res(&self, res: &str) -> Option<PathBuf> {
-        let rel = res.strip_prefix("res://")?;
-        Some(self.project_root.as_ref()?.join(rel)).filter(|p| p.is_file())
+        if !res.starts_with("res://") {
+            return None;
+        }
+
+        td_formats::game::project_file(self.project_root.as_ref()?, res).filter(|p| p.is_file())
     }
 
     pub fn folders(&self) -> Vec<String> {
@@ -456,8 +459,8 @@ impl MaterialLibrary {
     }
 
     pub fn load_image(&self, name: &str) -> Option<image::RgbaImage> {
-        if let Some(rel) = name.strip_prefix("res://") {
-            return image::open(self.project_root.as_ref()?.join(rel)).ok().map(|img| img.to_rgba8());
+        if name.starts_with("res://") {
+            return image::open(self.resolve_res(name)?).ok().map(|img| img.to_rgba8());
         }
 
         if let Some(path) = self.find(name).and_then(|e| e.path.as_ref()) {
@@ -489,7 +492,8 @@ impl MaterialLibrary {
             Some(f) => f,
             None => {
                 let root = self.material_root.as_ref()?;
-                [self.material_ext.as_str(), "material"].iter().map(|ext| root.join(format!("{name}.{ext}"))).find(|p| p.is_file())?
+                let file = |ext: &&str| td_formats::game::file_below(root, root, &format!("{name}.{ext}"));
+                [self.material_ext.as_str(), "material"].iter().filter_map(file).find(|p| p.is_file())?
             }
         };
         self.parse_material(&std::fs::read_to_string(file).ok()?)
@@ -582,8 +586,8 @@ impl MaterialLibrary {
 
     /// The albedo image file of a material name, None for built-in placeholders and color only materials.
     fn image_path(&self, name: &str) -> Option<PathBuf> {
-        if let Some(rel) = name.strip_prefix("res://") {
-            return Some(self.project_root.as_ref()?.join(rel)).filter(|p| p.is_file());
+        if name.starts_with("res://") {
+            return self.resolve_res(name);
         }
 
         self.find(name).and_then(|e| e.path.clone())
@@ -841,6 +845,25 @@ mod tests {
         assert_eq!(barks[0].path.as_ref().unwrap().extension().unwrap(), "png", "the first extension in the list wins, as in FuncGodot");
         assert!(barks[0].is_pbr && barks[0].has_normal);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn face_materials_never_load_files_outside_the_project() {
+        let (dir, game) = empty_project("td_material_outside");
+        let outside = dir.with_file_name(format!("td_material_outside_secret_{}", std::process::id()));
+        std::fs::create_dir_all(&outside).unwrap();
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 0, 0, 255])).save(outside.join("secret.png")).unwrap();
+        std::fs::write(outside.join("secret.tres"), "[gd_resource type=\"StandardMaterial3D\" format=3]\n[resource]\nmetallic = 1.0\n").unwrap();
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([0, 255, 0, 255])).save(dir.join("textures/inside.png")).unwrap();
+        let mut lib = MaterialLibrary::new(&game);
+        let secret = outside.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(lib.load_image("res://textures/inside.png").is_some());
+        assert!(lib.load_image(&format!("res://../{secret}/secret.png")).is_none());
+        assert!(lib.load_image(&format!("res://{}", outside.join("secret.png").to_string_lossy())).is_none(), "nor an absolute path");
+        assert!(lib.info(&format!("../../{secret}/secret")).is_none(), "material files are looked for in the material folder only");
+        assert!(lib.material_files(&format!("res://../{secret}/secret.png")).albedo.is_none(), "the exports leave it out too");
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&outside);
     }
 
     fn empty_project(name: &str) -> (PathBuf, GameConfig) {

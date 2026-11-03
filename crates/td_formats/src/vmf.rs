@@ -444,6 +444,10 @@ fn instance_transform(origin: DVec3, angles: DVec3) -> DMat4 {
 /// to the game's map source folder rather than to the map.
 fn resolve_instance(file: &str, dir: Option<&Path>) -> Option<PathBuf> {
     let file = file.replace('\\', "/");
+    if crate::game::is_network_path(&file) {
+        return None;
+    }
+
     let rel = Path::new(&file);
     if rel.is_absolute() {
         return rel.is_file().then(|| rel.to_path_buf());
@@ -986,6 +990,19 @@ entity {{ \"classname\" \"light\" \"origin\" \"0 0 0\" editor {{ \"visgroupid\" 
         std::fs::write(&path, bytes).unwrap();
         let (map, _) = import_file(&path, &ImportOptions::default()).unwrap();
         assert_eq!(map.entities().next().unwrap().1.targetname(), Some("caf\u{e9}"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn instances_on_a_network_share_are_not_looked_up() {
+        let dir = std::env::temp_dir().join(format!("td_vmf_share_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("lamp.vmf"), "").unwrap();
+        assert_eq!(resolve_instance("lamp.vmf", Some(&dir)), Some(dir.join("lamp.vmf")));
+        for remote in [r"\\host\share\lamp.vmf", "//host/share/lamp.vmf", r"\\?\UNC\host\share\lamp.vmf"] {
+            assert_eq!(resolve_instance(remote, Some(&dir)), None, "{remote}");
+        }
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

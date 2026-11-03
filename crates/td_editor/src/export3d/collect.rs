@@ -176,8 +176,7 @@ struct Collector<'a> {
 
 /// The model a scatter item shows, loaded through the cache.
 pub fn scatter_model(game: &GameConfig, models: &mut ModelCache, source: &str) -> Option<(PathBuf, Arc<Model>)> {
-    let path = if source.starts_with("res://") { game.resolve_res(source) } else { Some(PathBuf::from(source)) };
-    let path = path.filter(|p| crate::models::is_model_path(&p.to_string_lossy()))?;
+    let path = crate::picking::item_model_path(game, source)?;
     let model = models.get(&path, game.units_per_meter)?;
     Some((path, model))
 }

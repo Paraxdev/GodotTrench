@@ -1278,11 +1278,14 @@ fn emissive_model_materials_glow_in_the_lit_preview() {
         "bufferViews": [{ "buffer": 0, "byteLength": bin.len() }],
         "accessors": [{ "bufferView": 0, "componentType": 5126, "count": 6, "type": "VEC3", "min": [-1.0, 0.0, 0.0], "max": [1.0, 2.0, 0.0] }]
     });
-    let path = artifacts().join("emissive_panel.gltf");
-    std::fs::write(&path, gltf.to_string()).unwrap();
+    let dir = artifacts().join("emissive_project");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+    std::fs::write(dir.join("emissive_panel.gltf"), gltf.to_string()).unwrap();
 
-    let ed = Editor::launch("emissive_model");
-    ed.call("create_entity", json!({ "classname": "prop_model", "origin": [0, 0, 0], "properties": { "model": path.to_string_lossy() } }));
+    let ed = Editor::launch_with("emissive_model", &["--project", dir.to_str().unwrap()]);
+    ed.call("create_entity", json!({ "classname": "prop_model", "origin": [0, 0, 0], "properties": { "model": "res://emissive_panel.gltf" } }));
     ed.call("run_action", json!({ "action": "select_none" }));
     ed.call("set_camera", json!({ "view": "3d", "position": [0, 32, 96], "look_at": [0, 32, 0] }));
     ed.call("set_editor", json!({ "shade": "lit" }));

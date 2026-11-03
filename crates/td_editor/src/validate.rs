@@ -141,19 +141,6 @@ pub fn project_maps(root: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// The file a `model` property names. Godot reads a relative path from the project root, like a `res://` one.
-fn model_file(game: &GameConfig, model: &str) -> Option<PathBuf> {
-    if Path::new(model).is_absolute() {
-        return Some(PathBuf::from(model));
-    }
-
-    if model.contains("://") && !model.starts_with("res://") {
-        return None;
-    }
-
-    Some(game.project_root.as_ref()?.join(model.trim_start_matches("res://")))
-}
-
 /// One `missing_model` warning per model path that no file answers to, on the first entity using it. A file of the
 /// same name with another model extension, the usual `.glb` against `.gltf` mix-up, is named in the message.
 pub fn missing_model_issues(map: &Map, game: &GameConfig) -> Vec<Issue> {
@@ -165,7 +152,8 @@ pub fn missing_model_issues(map: &Map, game: &GameConfig) -> Vec<Issue> {
             continue;
         }
 
-        let Some(file) = model_file(game, model) else { continue };
+        // Godot reads a relative path from the project root, like a res:// one.
+        let Some(file) = game.resolve_res(model) else { continue };
         if !file.is_file() {
             missing.entry(model).or_insert_with(|| (file, Vec::new())).1.push(id);
         }
@@ -221,6 +209,9 @@ mod tests {
         add("prop_physics", "res://props/chair.glb", "");
         add("prop_model", "props/desk.glb", "");
         add("func_door", "*1", "");
+        // Paths out of the project are never looked up, Godot cannot load them either.
+        add("prop_model", "//host/share/chair.glb", "");
+        add("prop_model", "res://../chair.glb", "");
         let lamp = add("prop_physics", "res://props/lamp.tscn", "");
 
         let found = missing_model_issues(&map, &game);

@@ -116,10 +116,9 @@ struct InstanceSurface {
     scale: f64,
 }
 
-/// Where the file of a scatter entry lives, None for classnames and unresolved res:// paths.
+/// Where the file of a scatter entry lives in the project, None for classnames and paths that do not resolve there.
 pub fn item_model_path(game: &td_formats::GameConfig, source: &str) -> Option<std::path::PathBuf> {
-    let path = if source.starts_with("res://") { game.resolve_res(source) } else { Some(std::path::PathBuf::from(source)) };
-    path.filter(|p| crate::models::is_model_path(&p.to_string_lossy()))
+    game.resolve_res(source).filter(|p| crate::models::is_model_path(&p.to_string_lossy()))
 }
 
 fn instance_surfaces(state: &EditorState, set: &td_doc::Scatter, region: &Aabb) -> Vec<InstanceSurface> {

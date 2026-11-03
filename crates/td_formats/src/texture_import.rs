@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use crate::game::to_res_path;
+use crate::game::{is_network_path, to_res_path};
 use crate::quake_texture::{self, Paletted, SURF_TRANS33, SURF_TRANS66};
 use crate::vmt::{self, Vmt};
 use crate::vtf::{self, Image};
@@ -189,7 +189,7 @@ pub fn sources_near(map: &Path, wad_key: Option<&str>) -> Vec<PathBuf> {
         let wad = wad.replace('\\', "/");
         let direct = Path::new(&wad);
         let direct = if direct.is_absolute() { direct.to_path_buf() } else { dirs.first().map(|d| d.join(direct)).unwrap_or_default() };
-        let found = direct.is_file().then_some(direct).or_else(|| {
+        let found = (!is_network_path(&wad) && direct.is_file()).then_some(direct).or_else(|| {
             let name = Path::new(&wad).file_name()?.to_owned();
             dirs.iter().find_map(|d| {
                 let here = d.join(&name);
@@ -815,6 +815,8 @@ mod tests {
         assert!(found.contains(&dir.join("mod/materials")));
         assert!(found.contains(&dir.join("mod/texture-wads/tech.wad")), "found by name one folder over: {found:?}");
         assert!(found.iter().any(|p| p.ends_with("local.wad")));
+        let shared = sources_near(&map, Some(r"\\host\share\local.wad"));
+        assert!(shared.contains(&dir.join("mod/maps/src/local.wad")), "a WAD on a share is only looked for by name: {shared:?}");
         assert_eq!(wad_key("{\n\"classname\" \"worldspawn\"\n\"wad\" \"a.wad;b.wad\"\n").as_deref(), Some("a.wad;b.wad"));
         let _ = std::fs::remove_dir_all(&dir);
     }

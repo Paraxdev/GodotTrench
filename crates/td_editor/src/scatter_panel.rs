@@ -175,7 +175,8 @@ fn models_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>, 
                 crate::commands::file_dialog(state, |d| d.add_filter("Models and scenes", &["bbmodel", "glb", "gltf", "tscn", "scn"]).pick_files())
         {
             let (_, added) = tool::add_model_files(state, &paths);
-            state.set_status(format!("Added {added} models to the scatter set"));
+            let note = tool::outside_project_note(state, &paths);
+            state.set_status(format!("Added {added} models to the scatter set{note}"));
         }
 
         if ui.small_button("Add selected props").on_hover_text("The models (or classnames) of the selected entities").clicked() {
@@ -204,7 +205,8 @@ pub fn drop_payload(state: &mut EditorState, payload: &DndPayload) {
             let (id, added) = tool::add_model_files(state, std::slice::from_ref(path));
             let name = state.doc.map.scatter(id).map(|s| s.name.clone()).unwrap_or_default();
             let file = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-            state.set_status(if added > 0 { format!("{file} added to scatter set '{name}'") } else { format!("{file} is painted by '{name}' again") });
+            let status = if added > 0 { format!("{file} added to scatter set '{name}'") } else { format!("{file} is painted by '{name}' again") };
+            state.set_status(status + &tool::outside_project_note(state, std::slice::from_ref(path)));
         }
         DndPayload::Entities(classnames) => {
             let id = tool::active_set(state).unwrap_or_else(|| tool::new_empty_set(state));

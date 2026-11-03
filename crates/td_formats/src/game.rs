@@ -465,11 +465,9 @@ impl GameConfig {
         self.entities.iter().filter(|e| e.kind == EntityKind::Solid && e.classname != "worldspawn")
     }
 
-    /// Resolves a res:// path to a file system path inside the project.
+    /// Resolves a res:// path to a file system path inside the project, see [`project_file`].
     pub fn resolve_res(&self, res_path: &str) -> Option<PathBuf> {
-        let root = self.project_root.as_ref()?;
-        let rel = res_path.strip_prefix("res://").unwrap_or(res_path);
-        Some(root.join(rel))
+        project_file(self.project_root.as_ref()?, res_path)
     }
 
     pub fn texture_root(&self) -> Option<PathBuf> {
@@ -590,6 +588,53 @@ pub fn to_res_path(project_root: &Path, path: &Path) -> Option<String> {
     Some(format!("res://{}", &full[full.len() - rest.len()..]))
 }
 
+/// The file `reference` names in the Godot project at `project_root`: a res:// path, or a relative one, which Godot
+/// reads from the project root too. None when it would lead out of the project, see [`file_below`].
+pub fn project_file(project_root: &Path, reference: &str) -> Option<PathBuf> {
+    file_below(project_root, project_root, reference.strip_prefix("res://").unwrap_or(reference))
+}
+
+/// The file `rel` names relative to `dir`, a folder inside `root`, as long as it stays inside `root`. Only plain names,
+/// `.` and `..` that do not climb above `root` are taken, so absolute, drive and UNC paths, URIs and NTFS streams are
+/// refused. The check reads the text alone: on Windows even looking up a `\\host\share` path connects to that host.
+pub fn file_below(root: &Path, dir: &Path, rel: &str) -> Option<PathBuf> {
+    if rel.starts_with(['/', '\\']) {
+        return None;
+    }
+
+    let mut parts = Vec::new();
+    for c in dir.strip_prefix(root).ok()?.components() {
+        match c {
+            std::path::Component::Normal(name) => parts.push(name),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                parts.pop()?;
+            }
+            _ => return None,
+        }
+    }
+
+    for part in rel.split(['/', '\\']) {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            name if name.contains(':') => return None,
+            name => parts.push(std::ffi::OsStr::new(name)),
+        }
+    }
+
+    Some(parts.into_iter().fold(root.to_path_buf(), |path, part| path.join(part)))
+}
+
+/// Whether `path` is a network share or a Windows device or verbatim path: `\\host\share`, `//host/share`, `\\?\`,
+/// `\\.\` or `\??\`. Paths from shared files may lead to local drives, never to these.
+pub fn is_network_path(path: &str) -> bool {
+    let path = path.replace('/', "\\");
+    path.starts_with(r"\\") || path.starts_with(r"\??\")
+}
+
 pub type PropertyValues = BTreeMap<String, String>;
 
 #[cfg(test)]
@@ -612,6 +657,55 @@ mod tests {
         assert_eq!(res("/game/godot", "/game/godot/x.glb").as_deref(), Some("res://x.glb"));
         assert_eq!(res("D:/game/godot", "D:/game/godot2/x.glb"), None, "a sibling folder is outside");
         assert_eq!(res("D:/game/godot", "D:/elsewhere/x.glb"), None);
+    }
+
+    #[test]
+    fn project_files_stay_inside_the_project() {
+        let root = Path::new("/game/godot");
+        let file = |r: &str| project_file(root, r);
+        assert_eq!(file("res://textures/brick.png"), Some(root.join("textures").join("brick.png")));
+        assert_eq!(file("models/crate.glb"), Some(root.join("models").join("crate.glb")), "Godot reads a relative path from the root");
+        assert_eq!(file("res://models/../textures/./a.png"), Some(root.join("textures").join("a.png")));
+        assert_eq!(file("res://"), Some(root.to_path_buf()));
+        assert_eq!(file(""), Some(root.to_path_buf()));
+        assert_eq!(file("res://%2F%2Fhost/x.png"), Some(root.join("%2F%2Fhost").join("x.png")), "Godot does not decode res:// paths");
+        for outside in [
+            "res://../secret.png",
+            "res://models/../../secret.png",
+            r"res://..\secret.png",
+            "res://C:/Users/me/secret.png",
+            "C:/Users/me/secret.png",
+            r"C:secret.png",
+            "res:////host/share/x.png",
+            "//host/share/x.png",
+            r"\\host\share\x.png",
+            r"\\?\C:\secret.png",
+            r"\\?\UNC\host\share\x.png",
+            r"\\.\pipe\x",
+            "/etc/passwd",
+            "file:///C:/secret.png",
+            "file://host/share/x.png",
+            "uid://b2x4kfh6",
+            "textures/brick.png:hidden",
+        ] {
+            assert_eq!(file(outside), None, "{outside}");
+        }
+
+        let models = root.join("models");
+        assert_eq!(file_below(root, &models, "../textures/bark.png"), Some(root.join("textures").join("bark.png")));
+        assert_eq!(file_below(root, &models, "../../bark.png"), None, "never above the root");
+        assert_eq!(file_below(root, Path::new("/elsewhere"), "bark.png"), None, "the folder has to be inside the root");
+    }
+
+    #[test]
+    fn network_paths_are_told_apart_from_local_ones() {
+        for remote in [r"\\host\share\x.wad", "//host/share/x.wad", r"\/host/x", r"\\?\C:\x.wad", r"\\.\pipe\x", r"\??\UNC\host\share", "/??/C:/x"] {
+            assert!(is_network_path(remote), "{remote}");
+        }
+
+        for local in ["C:/quake/id1/gfx.wad", r"C:\quake\gfx.wad", "/home/me/gfx.wad", "../gfx.wad", "gfx.wad"] {
+            assert!(!is_network_path(local), "{local}");
+        }
     }
 
     #[test]

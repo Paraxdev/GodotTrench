@@ -557,16 +557,17 @@ fn gltf_material_key(
     key
 }
 
-/// Model path of a point entity: its "model" property, or the definition's model.
+/// Model path of a point entity: its "model" property, or the definition's model, ending in `#node` when it has a
+/// "model_node". None when that node would change the file, see [`split_model_node`].
 pub fn entity_model_path(game: &td_formats::GameConfig, e: &td_doc::Entity) -> Option<PathBuf> {
     let from_prop = e.property("model").filter(|m| is_model_path(m));
     let from_def = game.entity(&e.classname).map(|d| d.model.as_str()).filter(|m| is_model_path(m));
     let path = from_prop.or(from_def)?;
-    let file = if path.starts_with("res://") { game.resolve_res(path) } else { Some(PathBuf::from(path)) }?;
-    match e.property("model_node").map(str::trim).filter(|n| !n.is_empty()) {
-        Some(node) => Some(PathBuf::from(format!("{}#{node}", file.to_string_lossy()))),
-        None => Some(file),
-    }
+    let file = game.resolve_res(path)?;
+    let Some(node) = e.property("model_node").map(str::trim).filter(|n| !n.is_empty()) else { return Some(file) };
+    // The key is split at its last '#', so a node like "/../../x.obj#n" would name a file other than the checked one.
+    let key = PathBuf::from(format!("{}#{node}", file.to_string_lossy()));
+    (split_model_node(&key).0 == file).then_some(key)
 }
 
 /// Splits `model.glb#node` into the file and the node name. Paths without a node, or whose part before `#` is not a
@@ -1255,10 +1256,18 @@ mod tests {
         assert!(cache.get(&with_node("missing"), 1.0).is_none());
 
         let mut prop = td_doc::Entity::new("prop_model");
-        prop.properties.insert("model".into(), file.to_string_lossy().into_owned());
+        prop.properties.insert("model".into(), "res://hydrants.gltf".into());
         prop.properties.insert("model_node".into(), "hydrant_a".into());
-        let game = td_formats::GameConfig::builtin();
+        let game = td_formats::GameConfig { project_root: Some(dir.clone()), ..td_formats::GameConfig::builtin() };
         assert_eq!(entity_model_path(&game, &prop), Some(with_node("hydrant_a")));
+        for node in ["/../../secret.obj#n", r"\..\..\secret.glb#n", "a#"] {
+            prop.properties.insert("model_node".into(), node.into());
+            assert_eq!(entity_model_path(&game, &prop), None, "{node} cannot lead to another file");
+        }
+
+        prop.properties.insert("model_node".into(), "hydrant_a".into());
+        prop.properties.insert("model".into(), file.to_string_lossy().into_owned());
+        assert_eq!(entity_model_path(&game, &prop), None, "a model is named by its res:// path, never an absolute one");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

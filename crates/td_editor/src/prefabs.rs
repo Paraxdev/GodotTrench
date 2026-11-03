@@ -44,10 +44,15 @@ pub fn instance_transform(i: &Instance) -> DMat4 {
     i.transform()
 }
 
-/// Resolves an instance path relative to the referencing map, or through res:// in the Godot project.
+/// Resolves an instance path relative to the referencing map, or through res:// in the Godot project. An absolute path
+/// may name any local file, but never a network share.
 pub fn resolve(path: &str, map_path: Option<&Path>, project_root: Option<&Path>) -> Option<PathBuf> {
-    if let Some(rel) = path.strip_prefix("res://") {
-        return project_root.map(|r| r.join(rel));
+    if path.starts_with("res://") {
+        return td_formats::game::project_file(project_root?, path);
+    }
+
+    if td_formats::game::is_network_path(path) {
+        return None;
     }
 
     let p = Path::new(path);
@@ -254,6 +259,19 @@ mod tests {
         cache.refresh_extents(&mut map, Some(&main));
         assert_eq!(map.bounds(other).size(), DVec3::splat(8.0), "a newly instanced prefab gets its extents");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn instance_paths_never_lead_to_a_network_share() {
+        let (map, root) = (Path::new("/game/maps/main.tdm"), Path::new("/game"));
+        let resolve = |path: &str| resolve(path, Some(map), Some(root));
+        assert_eq!(resolve("door.tdm"), Some(Path::new("/game/maps").join("door.tdm")));
+        assert_eq!(resolve("res://prefabs/door.tdm"), Some(root.join("prefabs").join("door.tdm")));
+        assert!(resolve("../shared/door.tdm").is_some(), "a prefab may sit next to the map's folder");
+        assert!(resolve("/elsewhere/door.tdm").is_some(), "or anywhere on a local drive");
+        for remote in ["//host/share/door.tdm", r"\\host\share\door.tdm", r"\\?\UNC\host\share\door.tdm", "res:////host/share/door.tdm", "res://../door.tdm"] {
+            assert_eq!(resolve(remote), None, "{remote}");
+        }
     }
 
     #[test]

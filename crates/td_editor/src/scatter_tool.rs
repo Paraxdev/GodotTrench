@@ -625,6 +625,17 @@ pub fn source_for_path(state: &EditorState, path: &std::path::Path) -> String {
     state.game.project_root.as_ref().and_then(|root| td_formats::game::to_res_path(root, path)).unwrap_or_else(|| path.to_string_lossy().replace('\\', "/"))
 }
 
+/// A status note naming the model files that are outside the project, which a set keeps but cannot show. Empty when
+/// there are none.
+pub fn outside_project_note(state: &EditorState, paths: &[std::path::PathBuf]) -> String {
+    let outside: Vec<String> = paths
+        .iter()
+        .filter(|p| !source_for_path(state, p).starts_with("res://"))
+        .map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
+        .collect();
+    if outside.is_empty() { String::new() } else { format!(". Models outside the project do not show: {}", outside.join(", ")) }
+}
+
 /// Set entries for model files picked or dropped at once.
 pub fn items_from_paths(state: &EditorState, paths: &[std::path::PathBuf]) -> Vec<ScatterItem> {
     paths.iter().map(|p| ScatterItem::new(source_for_path(state, p))).collect()
@@ -946,9 +957,9 @@ mod tests {
         std::fs::write(&path, obj).unwrap();
 
         let mut state = EditorState::new(Default::default());
+        state.game.project_root = Some(dir.clone());
         let floor = ground(&mut state, [-512.0, -16.0, -512.0], [512.0, 0.0, 512.0]);
-        let source = path.to_string_lossy().replace('\\', "/");
-        let blocks = create_set(&mut state, "blocks", ScatterKind::Props, vec![ScatterItem::new(source.clone())]);
+        let blocks = create_set(&mut state, "blocks", ScatterKind::Props, vec![ScatterItem::new("res://block.obj")]);
         state.doc.edit("place", |m, _| {
             let s = m.scatter_mut(blocks).unwrap();
             s.targets = vec![floor];
@@ -1033,6 +1044,10 @@ mod tests {
         assert_eq!((again, added), (id, 0), "dropping a model the set has switches it back on");
         assert!(state.doc.map.scatter(id).unwrap().items[0].enabled);
         assert_eq!(state.doc.map.scatter(id).unwrap().items.len(), 2);
+
+        assert_eq!(outside_project_note(&state, &paths), ". Models outside the project do not show: fir.glb, stone.bbmodel");
+        state.game.project_root = Some("C:/models".into());
+        assert_eq!(outside_project_note(&state, &paths), "");
     }
 
     #[test]

@@ -415,13 +415,7 @@ fn instance_hash(set: &td_doc::Scatter, instances: &[&td_doc::scatter::ScatterIn
 }
 
 fn scatter_item_models(game: &GameConfig, models: &mut crate::models::ModelCache, set: &td_doc::Scatter) -> Vec<Option<std::sync::Arc<crate::models::Model>>> {
-    set.items
-        .iter()
-        .map(|item| {
-            let path = if item.source.starts_with("res://") { game.resolve_res(&item.source) } else { Some(std::path::PathBuf::from(&item.source)) };
-            path.filter(|p| crate::models::is_model_path(&p.to_string_lossy())).and_then(|p| models.get(&p, game.units_per_meter))
-        })
-        .collect()
+    set.items.iter().map(|item| crate::picking::item_model_path(game, &item.source).and_then(|p| models.get(&p, game.units_per_meter))).collect()
 }
 
 fn build_scatter(
