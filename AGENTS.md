@@ -35,7 +35,8 @@ CI uses the Rust version in `RUST_TOOLCHAIN` in [ci.yml](.github/workflows/ci.ym
 catches things an older one misses, so match it when you can.
 
 Add or extend tests for what you change. UI changes are checked by running the editor with `--mcp-http=PORT
---default-prefs` and driving it with `tools/mcp_client.py`, or by an e2e test in `crates/td_editor/tests/e2e.rs`.
+--default-prefs --offscreen` and driving it with `tools/mcp_client.py`, or by an e2e test in
+`crates/td_editor/tests/e2e.rs`. `--offscreen` keeps the window off the screen of whoever is at the machine.
 
 Run `./tools/fmt --install` once per clone. It enables a pre-commit hook that formats staged Rust with rustfmt and
 `tools/space_blocks.py`. Do not hand format around it.
