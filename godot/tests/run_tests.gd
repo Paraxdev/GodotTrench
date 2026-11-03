@@ -101,6 +101,7 @@ func _initialize() -> void:
 	test_large_plane_face_cull()
 	test_interior_face_culling()
 	test_dense_mesh_interior_face_cull()
+	test_mesh_faces_keep_their_corner_order()
 	test_chunk_streamer()
 	test_csharp_entities()
 	await test_live_session()
@@ -1774,6 +1775,28 @@ func test_dense_mesh_interior_face_cull() -> void:
 	var took := Time.get_ticks_msec() - started
 	check(hidden == 2 and disc.faces.all(func(f): return f.render_hidden), "both sides of the disc are buried, %d faces hidden" % hidden)
 	check(took < 2000, "without testing 4097 points against all 12288 triangles, culling took %d ms" % took)
+
+func test_mesh_faces_keep_their_corner_order() -> void:
+	print("- mesh faces keep their corner order")
+	# Sorting the corners of an L by their angle around its centre makes another polygon.
+	var corners := [[0, 0, 0], [64, 0, 0], [64, 0, 16], [16, 0, 16], [16, 0, 64], [0, 0, 64]]
+	var sheet := { "type": "mesh", "id": 3, "vertices": corners, "faces": [{ "indices": [0, 1, 2, 3, 4, 5], "material": "showcase/cobble" }] }
+	var settings: FuncGodotMapSettings = load(SETTINGS)
+	var path := OS.get_temp_dir().path_join("td_mesh_winding_test.tdm")
+	for cull_interior in [false, true]:
+		var properties := { "_cull_interior_faces": "1" } if cull_interior else {}
+		var map_json := { "format": "trenchdot-map", "properties": properties, "layers": [{ "type": "layer", "id": 1, "children": [box_node(2, Vector3(-64, -64, -64), Vector3(-32, -32, -32)), sheet] }] }
+		FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify(map_json))
+		var data := FuncGodotParser.new().parse_map_data(path, settings)
+		FuncGodotGeometryGenerator.new(settings).build(0, data.entities)
+		var brushes: Array[FuncGodotData.BrushData] = data.entities[0].brushes
+		var face := brushes[1].faces[0]
+		check(brushes[0].faces.all(func(f): return f.indices.size() == 6), "brush faces are wound and fanned")
+		if cull_interior:
+			check(face.indices.size() == 12, "interior face culling still winds mesh faces, got %d indices" % face.indices.size())
+		else:
+			check(face.vertices == face.exact_vertices and face.indices.is_empty(), "a mesh face draws from its own triangles and is left unwound")
+	DirAccess.remove_absolute(path)
 
 func test_chunk_streamer() -> void:
 	print("- chunk streaming and render culling")
