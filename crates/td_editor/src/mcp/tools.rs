@@ -787,7 +787,8 @@ impl App {
                     let Some(root) = self.state.game.project_root.clone() else { return err("no project is open, use open_project") };
                     let mut count = 0;
                     let mut maps = Vec::new();
-                    for path in crate::validate::project_maps(&root) {
+                    let readable: Vec<std::path::PathBuf> = crate::validate::project_maps(&root).into_iter().filter(|p| self.state.may_read(p)).collect();
+                    for path in readable {
                         maps.push(match crate::validate::file_issues(&mut self.state, &path) {
                             Ok((map, found)) => {
                                 count += found.len();
@@ -1502,14 +1503,23 @@ impl App {
         }))
     }
 
+    /// What the step running now may read: anything, or inside run_script what its fence allows.
+    pub(super) fn read_filter(&self) -> Box<dyn Fn(&std::path::Path) -> bool> {
+        match self.state.script_fence.clone() {
+            Some(fence) => Box::new(move |p| fence.may_read(p)),
+            None => Box::new(|_| true),
+        }
+    }
+
     /// After an import: `textures: "auto"` converts the missing textures found near the map, a path converts them
     /// from there, and without it the reply only says what could be converted, the way the editor offers it.
     fn import_textures(&mut self, map_file: &std::path::Path, args: &Value) -> Result<Value, String> {
+        let may_read = self.read_filter();
         let sources = match args["textures"].as_str() {
-            Some("auto") | None => crate::texture_convert::sources_for_map(&self.state, map_file),
+            Some("auto") | None => crate::texture_convert::sources_for_map(&self.state, map_file, &*may_read),
             Some(p) => vec![project_path(&self.state.game, p)],
         };
-        let lib = td_formats::texture_import::scan(&sources);
+        let lib = td_formats::texture_import::scan_within(&sources, &*may_read);
         let wanted = crate::texture_convert::convertible(&self.state, &lib);
         let mut v = json!({
             "texture_sources": sources.iter().map(path_text).collect::<Vec<_>>(),
@@ -1565,14 +1575,15 @@ impl App {
                 Ok(v)
             }),
             "import_vmf" => need(path).and_then(|p| {
-                let report = crate::commands::import_vmf(&mut self.state, &p)?;
+                let may_read = self.read_filter();
+                let report = crate::commands::import_vmf(&mut self.state, &p, may_read)?;
                 let mut v = self.import_textures(&p, args)?;
                 v["instances"] = json!(report.instances);
                 v["missing_instances"] = json!(report.missing_instances);
                 Ok(v)
             }),
             "convert_textures" => need(path).and_then(|p| {
-                let lib = td_formats::texture_import::scan(std::slice::from_ref(&p));
+                let lib = td_formats::texture_import::scan_within(std::slice::from_ref(&p), &*self.read_filter());
                 let only = args["only_missing"].as_bool().unwrap_or(false).then(|| crate::texture_convert::convertible(&self.state, &lib));
                 let report = crate::texture_convert::convert(&mut self.state, &lib, only.as_ref(), args["overwrite"].as_bool().unwrap_or(false))?;
                 self.state.set_status(format!("Textures: {}", report.summary()));

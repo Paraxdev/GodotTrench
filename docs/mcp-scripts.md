@@ -35,7 +35,7 @@ The scripts save into `godot/demo/maps/showcase`, except `scripted_scene.json` a
 into `godot/demo/maps`.
 
 A run stops at the first failed step unless you pass `--continue-on-error`, and `--url` points the runner at an editor
-on another port. Each run is one undo step, named after the script's `label` or its file.
+on another port. Each run is one undo step in every map it changes, named after the script's `label` or its file.
 
 ## Script format
 
@@ -56,13 +56,25 @@ on another port. Each run is one undo step, named after the script's `label` or 
 ```
 
 `vars` sets defaults for your own variables. A `vars` object passed to `run_script` overrides them, so one script can
-save to different places.
+save to different places, and the folders you pass this way are ones the script may read from and write into.
 
 A step without `tool` is a comment. A step with `save` stores its result under that name, so later steps can use the
 ids it created.
 
-`screenshot`, `simulate_input`, `walkability` and `run_script` can't run inside a script, and neither can
-`project_content` installs other than `gameplay`. The summary a run returns counts tool calls as `steps` and comments
+Scripts get shared like maps, so their steps only edit and save the map. A step can't open another project or one of its
+maps, start Godot, build in it, turn on live mode, copy or cut to the clipboard, throw away unsaved changes or close
+other tabs. Undo and redo only reach what the script did itself, so the work you haven't saved stays in every tab.
+`screenshot`, `simulate_input`, `walkability` and `run_script` can't run inside a script either, and neither can
+`project_content` installs other than `gameplay`.
+
+Every file a step reads or writes has to be in the open project, the script's own folder or a folder you pass in `vars`,
+also when a link inside them points somewhere else. That covers the maps it opens, checks, compares, saves and exports,
+the maps, models, prefabs and textures it imports with the files they name, and everything that conversions, imports,
+exports and the prefab library write. Prefabs, model files, textures and Hammer instances that a map or model names
+elsewhere are left out, network paths are refused before the editor looks at them, and a save without a path writes back
+only to the map that was open when the script started.
+
+A refused step shows up in the summary's `errors` with the reason. The summary counts tool calls as `steps` and comments
 as `notes`.
 
 Strings in `args` can refer to saved results and a few built-in variables:

@@ -113,6 +113,8 @@ pub struct Sources<'a> {
     pub models: &'a mut ModelCache,
     pub prefabs: &'a mut PrefabCache,
     pub selection: &'a BTreeSet<NodeId>,
+    /// Where a running run_script may write the files of the export, None outside scripts.
+    pub fence: Option<&'a crate::mcp::script::Fence>,
 }
 
 impl<'a> Sources<'a> {
@@ -125,6 +127,7 @@ impl<'a> Sources<'a> {
             models: &mut state.models,
             prefabs: &mut state.prefabs,
             selection: &state.doc.selection.nodes,
+            fence: state.script_fence.as_ref(),
         }
     }
 }
@@ -187,6 +190,11 @@ pub fn export(src: Sources, path: &Path, format: Format, options: &Options) -> R
 /// [`export`] reporting how far it got to `progress`. A cancelled export fails with [`CANCELLED`] and writes nothing.
 pub fn export_with(src: Sources, path: &Path, format: Format, options: &Options, progress: &Progress) -> Result<Report, String> {
     let name = src.map_path.and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "map".into());
+    let fence = src.fence.cloned();
+    let may_write = |p: &Path| match &fence {
+        Some(fence) if !fence.may_write(p) => Err(crate::mcp::script::write_refused(p)),
+        _ => Ok(()),
+    };
     let scene = collect::collect(src, options, name, progress);
     progress.check()?;
     if scene.roots.is_empty() {
@@ -206,8 +214,8 @@ pub fn export_with(src: Sources, path: &Path, format: Format, options: &Options,
     }
 
     let bytes = match format {
-        Format::Glb => glb::write(&scene, path, progress)?,
-        Format::Obj => obj::write(&scene, path, progress)?,
+        Format::Glb => may_write(path).and_then(|()| glb::write(&scene, path, progress))?,
+        Format::Obj => obj::write(&scene, path, progress, &may_write)?,
     };
     Ok(Report {
         objects: scene.nodes.len(),
@@ -245,6 +253,7 @@ pub fn export_file(map_path: &Path, out: &Path, format: Format) -> Result<Report
         models: &mut models,
         prefabs: &mut prefabs,
         selection: &selection,
+        fence: None,
     };
     export(src, out, format, &Options::default())
 }
@@ -293,6 +302,7 @@ impl Job {
                     models: &mut snapshot.models,
                     prefabs: &mut snapshot.prefabs,
                     selection: &snapshot.selection,
+                    fence: None,
                 };
                 export_with(src, &out, format, &options, &shared)
             })

@@ -290,6 +290,11 @@ impl App {
             };
             let (name, category) = (args["name"].as_str().unwrap_or(""), args["category"].as_str().unwrap_or(""));
             let keep = args["keep_position"].as_bool().unwrap_or(false);
+            let file = crate::prefab_library::entry_path(&root, category, name).ok();
+            if let Some(e) = file.iter().flat_map(|f| super::script::save_files(f)).find_map(|f| self.state.may_write(&f).err()) {
+                return err(e);
+            }
+
             return match self.state.prefab_library.add(&self.state.doc.map, &ids, category, name, &root, keep) {
                 Ok(path) => ok(json!({ "ok": true, "path": path.display().to_string() })),
                 Err(e) => err(e),
@@ -298,6 +303,10 @@ impl App {
 
         let Some(key) = args["name"].as_str() else { return err(format!("{op} needs name, category/name from op list")) };
         let Some(entry) = self.state.prefab_library.find(key).cloned() else { return err(format!("no prefab {key}, op list shows what there is")) };
+        if let Some(path) = entry.path.as_deref().filter(|p| !self.state.may_read(p)) {
+            return err(format!("{} is outside the folders the running script may read", super::tools::path_text(path)));
+        }
+
         let text = match self.state.prefab_library.text(&entry) {
             Ok(t) => t,
             Err(e) => return err(e),
@@ -1534,21 +1543,30 @@ impl App {
             }
         }
 
+        // A shared script reads and writes in the project, its own folder and the folders the caller passes in vars,
+        // never where only the script names.
+        let mut folders: Vec<std::path::PathBuf> = self.state.game.project_root.iter().cloned().collect();
+        folders.push(std::path::PathBuf::from(&dir));
+        let given = args["vars"].as_object().into_iter().flatten().filter_map(|(_, v)| v.as_str());
+        folders.extend(given.map(|v| super::tools::project_path(&self.state.game, v)).filter(|p| p.is_absolute()));
+        folders.retain(|p| !super::script::is_root(p));
+        let started_on = self.state.doc.path.clone();
         let label = args["label"]
             .as_str()
             .or(doc["label"].as_str())
             .map(str::to_string)
             .or_else(|| args["path"].as_str().and_then(|p| std::path::Path::new(p).file_name()).map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_else(|| "script".into());
-        let mut mark = self.state.doc.mark();
+        let mut rewinds = super::script::Rewinds::default();
         let continue_on_error = args["continue_on_error"].as_bool().unwrap_or(false);
         // Only results of steps follow replaced brushes, variables passed in stay as written.
         let mut saved_results: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         let mut errors = Vec::new();
         let mut ran = 0;
+        self.state.fence_script(Some(super::script::Fence::new(folders.clone())));
         for (i, step) in steps.iter().enumerate() {
-            if matches!(step.tool.as_str(), "run_script" | "screenshot" | "simulate_input") {
-                errors.push(json!({ "step": i, "tool": step.tool, "error": "not allowed inside scripts" }));
+            if !super::script::tool_allowed(&step.tool) {
+                errors.push(json!({ "step": i, "tool": step.tool, "error": format!("{} cannot run inside scripts", step.tool) }));
                 if !continue_on_error {
                     break;
                 }
@@ -1556,7 +1574,13 @@ impl App {
                 continue;
             }
 
-            let resolved = match super::script::resolve(&step.args, &vars) {
+            rewinds.note(&self.state.doc);
+            let resolved =
+                super::script::resolve(&step.args, &vars).and_then(|a| match self.script_refusal(&step.tool, &a, &folders, started_on.as_deref(), &rewinds) {
+                    Some(why) => Err(why),
+                    None => Ok(a),
+                });
+            let resolved = match resolved {
                 Ok(a) => a,
                 Err(e) => {
                     errors.push(json!({ "step": i, "tool": step.tool, "error": e }));
@@ -1569,10 +1593,7 @@ impl App {
             };
             ran += 1;
             let result = self.run_tool(&step.tool, resolved, ctx);
-            // A step that opens or starts another map begins the undo step there.
-            if !self.state.doc.owns(&mark) {
-                mark = self.state.doc.mark();
-            }
+            rewinds.note(&self.state.doc);
 
             match result {
                 ToolResult::Json(v) => {
@@ -1600,17 +1621,127 @@ impl App {
             }
         }
 
+        self.state.fence_script(None);
         if let Some(bounds) = self.state.focus_request.take() {
             for v in &mut self.viewports {
                 v.focus(&bounds);
             }
         }
 
-        let undo = self.state.doc.squash_since(mark, |_| format!("MCP: {label}, {ran} steps"));
+        // Each map the steps changed gets one undo step for the run.
+        let name = |_: &[&str]| format!("MCP: {label}, {ran} steps");
+        for tab in &mut self.state.tabs {
+            if let Some(mark) = rewinds.mark(&tab.doc) {
+                tab.doc.squash_since(mark, name);
+            }
+        }
+
+        let undo = rewinds.mark(&self.state.doc).and_then(|mark| self.state.doc.squash_since(mark, name));
         let saved: serde_json::Map<String, Value> = vars.into_iter().filter(|(k, _)| k != "last").collect();
         let summary =
             json!({ "steps": steps.len(), "notes": notes, "ran": ran, "errors": errors, "undo": undo, "vars": saved, "state": self.state_summary()["map"] });
         if errors.is_empty() || continue_on_error { ok(summary) } else { ToolResult::Error(serde_json::to_string_pretty(&summary).unwrap_or_default()) }
+    }
+
+    /// Why a script step may not run with `args`, None when it may. Files it reads and writes and the texture folders
+    /// it converts into have to be in `folders`, except that a save may write back to `started_on`, the map that was
+    /// open when the script started.
+    fn script_refusal(
+        &self,
+        tool: &str,
+        args: &Value,
+        folders: &[std::path::PathBuf],
+        started_on: Option<&std::path::Path>,
+        rewinds: &super::script::Rewinds,
+    ) -> Option<String> {
+        use super::script::Access;
+        if let Some(why) = super::script::args_refusal(tool, args) {
+            return Some(why);
+        }
+
+        let undo = match args["action"].as_str().filter(|_| tool == "run_action") {
+            Some("undo") => Some(true),
+            Some("redo") => Some(false),
+            _ => None,
+        };
+        if let Some(undo) = undo
+            && let Some(why) = rewinds.refusal(&self.state.doc, undo, super::tools::uint(&args["args"]["steps"]).unwrap_or(1) as usize)
+        {
+            return Some(why);
+        }
+
+        let op = match tool {
+            "map_file" => args["op"].as_str().unwrap_or_default(),
+            "run_action" => args["action"].as_str().unwrap_or_default(),
+            _ => "",
+        };
+        let what = if op.is_empty() { tool.to_string() } else { format!("{tool} {op}") };
+        let mut files: Vec<(Access, std::path::PathBuf)> = super::script::file_args(tool, args)
+            .into_iter()
+            .map(|(access, p)| {
+                // insert_prefab takes its path as it is, a relative one from the working directory.
+                let path = if tool == "run_action" { crate::state::absolute(std::path::Path::new(p)) } else { super::tools::project_path(&self.state.game, p) };
+                (access, path)
+            })
+            .collect();
+        // A save without a path writes back to the file the map came from.
+        if op == "save" && (tool == "run_action" || args["path"].as_str().is_none()) {
+            files.extend(self.state.doc.path.clone().map(|p| (Access::Write, p)));
+        }
+
+        let folders_text = "only the project, the script's folder or a folder passed in vars";
+        for (access, path) in &files {
+            let shown = super::tools::path_text(path);
+            if super::script::network(path) {
+                return Some(format!("{what} cannot use {shown} inside a script, it is a network path"));
+            }
+
+            let back = op == "save" && Some(path.as_path()) == started_on;
+            // A map save also writes the files next to the map it goes through, a link among them would lead out.
+            let written = if op == "save" { super::script::save_files(path).to_vec() } else { vec![path.clone()] };
+            match access {
+                Access::Read if !super::script::inside(path, folders) => return Some(format!("{what} cannot read {shown} inside a script, {folders_text}")),
+                Access::Write if !back => {
+                    if let Some(file) = written.iter().find(|f| !super::script::file_inside(f, folders)) {
+                        let or_back = if op == "save" { ", or back to the map open when the script started" } else { "" };
+                        return Some(format!("{what} cannot write {} inside a script, {folders_text}{or_back}", super::tools::path_text(file)));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if tool == "run_action"
+            && op == "paste"
+            && let Some(file) = args["args"]["text"].as_str().and_then(|text| self.pasted_prefab(text, folders))
+        {
+            return Some(format!("run_action paste cannot paste an instance of {} inside a script, {folders_text}", super::tools::path_text(file)));
+        }
+
+        if super::script::writes_textures(tool, args)
+            && let Ok(target) = crate::texture_convert::target(&self.state)
+            && let Some(dir) = [&target.texture_dir, &target.material_dir].into_iter().find(|d| super::script::network(d) || !super::script::inside(d, folders))
+        {
+            return Some(format!("{what} cannot write textures into {} inside a script, {folders_text}", super::tools::path_text(dir)));
+        }
+
+        // Only looked up once the path is known to be inside the folders.
+        let opened = files.first().filter(|_| tool == "map_file" && matches!(op, "open" | "open_tab"))?;
+        let root = self.state.other_project(&opened.1)?;
+        Some(format!("map_file {op} would open a map of another project, {}, which scripts cannot switch to", super::tools::path_text(&root)))
+    }
+
+    /// The first prefab file an instance in the clipboard `text` names that a script may not read from `folders`.
+    fn pasted_prefab(&self, text: &str, folders: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
+        let text = crate::commands::clipboard_text(&self.state.game, text);
+        let mut pasted = td_doc::Map::new();
+        let layer = pasted.default_layer();
+        td_doc::format::paste_nodes(&mut pasted, layer, &text).ok()?;
+        let (map_path, root) = (self.state.doc.path.as_deref(), self.state.game.project_root.as_deref());
+        pasted.nodes.values().find_map(|node| match &node.kind {
+            td_doc::NodeKind::Instance(i) => crate::prefabs::resolve(&i.path, map_path, root).filter(|file| !super::script::may_read(file, folders)),
+            _ => None,
+        })
     }
 }
 

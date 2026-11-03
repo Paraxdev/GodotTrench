@@ -127,20 +127,27 @@ impl PrefabLibrary {
             return Err("nothing selected to add".into());
         }
 
-        let (category, name) = (file_name(category), file_name(name));
-        if name.is_empty() {
-            return Err("give the entry a name".into());
+        let path = entry_path(project_root, category, name)?;
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
 
-        let dir = project_root.join(FOLDER).join(if category.is_empty() { "misc" } else { &category });
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        let path = dir.join(format!("{name}.tdm"));
         let bounds = map.bounds_of(roots.iter().copied());
         let pivot = if keep_position { DVec3::ZERO } else { DVec3::new(bounds.center().x, bounds.min.y, bounds.center().z) };
         format::save(&extract(map, roots, pivot), &path).map_err(|e| e.to_string())?;
         self.rescan(Some(project_root));
         Ok(path)
     }
+}
+
+/// The file [`PrefabLibrary::add`] saves an entry named `name` in `category` to.
+pub fn entry_path(project_root: &Path, category: &str, name: &str) -> Result<PathBuf, String> {
+    let (category, name) = (file_name(category), file_name(name));
+    if name.is_empty() {
+        return Err("give the entry a name".into());
+    }
+
+    Ok(project_root.join(FOLDER).join(if category.is_empty() { "misc" } else { &category }).join(format!("{name}.tdm")))
 }
 
 /// Clipboard text holding every object in the map's exported layers.

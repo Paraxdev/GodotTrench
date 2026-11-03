@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::io::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use td_core::{DMat3, DMat4, DVec3};
 
@@ -18,22 +18,18 @@ fn word(name: &str) -> String {
     if w.is_empty() { "unnamed".into() } else { w }
 }
 
-/// Writes `path`, `<stem>.mtl` and `<stem>_textures/` next to it. Returns the bytes written.
-pub fn write(scene: &Scene, path: &Path, progress: &Progress) -> Result<u64, String> {
+/// Writes `path`, `<stem>.mtl` and `<stem>_textures/` next to it, once `may_write` allows each of those files. Returns
+/// the bytes written.
+pub fn write(scene: &Scene, path: &Path, progress: &Progress, may_write: &dyn Fn(&Path) -> Result<(), String>) -> Result<u64, String> {
     let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new("."));
     let stem = word(&path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "map".into()));
     let mtl_name = format!("{stem}.mtl");
     let tex_dir = format!("{stem}_textures");
     let fail = |p: &Path, e: std::io::Error| format!("cannot write {}: {e}", p.display());
 
-    // The geometry goes first, the bulk of the work. Streamed through a temporary file, a cancel or a full disk leaves
-    // neither a half written OBJ nor materials without one.
-    progress.begin(true, scene.triangles());
-    let mut written = td_formats::write_atomic_with(path, |out| geometry(scene, &mtl_name, out, progress))
-        .map_err(|e| if progress.is_cancelled() { CANCELLED.to_string() } else { fail(path, e) })?;
-
     // Texture files, named after their source and made unique.
     let mut files: HashMap<usize, String> = HashMap::new();
+    let mut textures: Vec<(usize, PathBuf)> = Vec::new();
     let mut taken: HashSet<String> = HashSet::new();
     for m in &scene.materials.list {
         for image in [m.albedo, m.normal, m.roughness_map, m.emissive_texture].into_iter().flatten() {
@@ -50,12 +46,26 @@ pub fn write(scene: &Scene, path: &Path, progress: &Progress) -> Result<u64, Str
                 n += 1;
             }
 
-            let target = dir.join(&tex_dir).join(&file);
-            std::fs::create_dir_all(dir.join(&tex_dir)).map_err(|e| fail(&target, e))?;
-            std::fs::write(&target, &img.bytes).map_err(|e| fail(&target, e))?;
-            written += img.bytes.len() as u64;
+            textures.push((image, dir.join(&tex_dir).join(&file)));
             files.insert(image, format!("{tex_dir}/{file}"));
         }
+    }
+
+    let mtl_path = dir.join(&mtl_name);
+    for file in [path, &mtl_path].into_iter().chain(textures.iter().map(|(_, p)| p.as_path())) {
+        may_write(file)?;
+    }
+
+    // The geometry goes first, the bulk of the work. Streamed through a temporary file, a cancel or a full disk leaves
+    // neither a half written OBJ nor materials without one.
+    progress.begin(true, scene.triangles());
+    let mut written = td_formats::write_atomic_with(path, |out| geometry(scene, &mtl_name, out, progress))
+        .map_err(|e| if progress.is_cancelled() { CANCELLED.to_string() } else { fail(path, e) })?;
+    for (image, target) in &textures {
+        let img = &scene.materials.images[*image];
+        std::fs::create_dir_all(dir.join(&tex_dir)).map_err(|e| fail(target, e))?;
+        std::fs::write(target, &img.bytes).map_err(|e| fail(target, e))?;
+        written += img.bytes.len() as u64;
     }
 
     let mut mtl = format!("# TrenchDot {} materials\n", crate::VERSION);
@@ -101,7 +111,6 @@ pub fn write(scene: &Scene, path: &Path, progress: &Progress) -> Result<u64, Str
         }
     }
 
-    let mtl_path = dir.join(&mtl_name);
     std::fs::write(&mtl_path, &mtl).map_err(|e| fail(&mtl_path, e))?;
     Ok(written + mtl.len() as u64)
 }

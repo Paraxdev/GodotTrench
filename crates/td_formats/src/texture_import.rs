@@ -77,12 +77,11 @@ pub fn file_stem(material: &str) -> String {
     material.to_ascii_lowercase().replace('*', "")
 }
 
-fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+fn walk(dir: &Path, out: &mut Vec<PathBuf>, may_read: &dyn Fn(&Path) -> bool) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
-    for e in entries.flatten() {
-        let p = e.path();
+    for p in entries.flatten().map(|e| e.path()).filter(|p| may_read(p)) {
         if p.is_dir() {
-            walk(&p, out);
+            walk(&p, out, may_read);
         } else {
             out.push(p);
         }
@@ -107,12 +106,17 @@ fn rel_name(path: &Path, root: &Path) -> Option<String> {
 /// `materials` folder and a `.wal` by its path below the nearest `textures` folder, the way the games name them,
 /// falling back to the scanned folder. The first source of a name wins.
 pub fn scan(paths: &[PathBuf]) -> Library {
+    scan_within(paths, &|_| true)
+}
+
+/// [`scan`] of only the folders and files `may_read` allows, asked before each one is looked at.
+pub fn scan_within(paths: &[PathBuf], may_read: &dyn Fn(&Path) -> bool) -> Library {
     let mut lib = Library::default();
     let mut root_ids: HashMap<PathBuf, usize> = HashMap::new();
-    for base in paths {
+    for base in paths.iter().filter(|p| may_read(p)) {
         let mut files = Vec::new();
         if base.is_dir() {
-            walk(base, &mut files);
+            walk(base, &mut files, may_read);
         } else if base.is_file() {
             files.push(base.clone());
         }
@@ -174,12 +178,18 @@ pub fn scan(paths: &[PathBuf]) -> Library {
 /// folders up, and the WADs its worldspawn `wad` key lists. A WAD that is not where the key says is looked for by
 /// name in the same places and in their subfolders.
 pub fn sources_near(map: &Path, wad_key: Option<&str>) -> Vec<PathBuf> {
+    sources_near_within(map, wad_key, &|_| true)
+}
+
+/// [`sources_near`] looking only where `may_read` allows, asked before each folder or file is looked at.
+pub fn sources_near_within(map: &Path, wad_key: Option<&str>, may_read: &dyn Fn(&Path) -> bool) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
     let dirs: Vec<&Path> = map.ancestors().skip(1).take(5).collect();
+    let file = |p: &Path| may_read(p) && p.is_file();
     for d in &dirs {
         for sub in ["materials", "textures"] {
             let p = d.join(sub);
-            if p.is_dir() && !out.contains(&p) {
+            if may_read(&p) && p.is_dir() && !out.contains(&p) {
                 out.push(p);
             }
         }
@@ -189,15 +199,15 @@ pub fn sources_near(map: &Path, wad_key: Option<&str>) -> Vec<PathBuf> {
         let wad = wad.replace('\\', "/");
         let direct = Path::new(&wad);
         let direct = if direct.is_absolute() { direct.to_path_buf() } else { dirs.first().map(|d| d.join(direct)).unwrap_or_default() };
-        let found = (!is_network_path(&wad) && direct.is_file()).then_some(direct).or_else(|| {
+        let found = (!is_network_path(&wad) && file(&direct)).then_some(direct).or_else(|| {
             let name = Path::new(&wad).file_name()?.to_owned();
             dirs.iter().find_map(|d| {
                 let here = d.join(&name);
-                if here.is_file() {
+                if file(&here) {
                     return Some(here);
                 }
 
-                std::fs::read_dir(d).ok()?.flatten().map(|e| e.path().join(&name)).find(|p| p.is_file())
+                may_read(d).then(|| std::fs::read_dir(d).ok()).flatten()?.flatten().map(|e| e.path().join(&name)).find(|p| file(p))
             })
         });
         if let Some(p) = found
@@ -817,6 +827,14 @@ mod tests {
         assert!(found.iter().any(|p| p.ends_with("local.wad")));
         let shared = sources_near(&map, Some(r"\\host\share\local.wad"));
         assert!(shared.contains(&dir.join("mod/maps/src/local.wad")), "a WAD on a share is only looked for by name: {shared:?}");
+        let maps = dir.join("mod/maps");
+        let fenced = sources_near_within(&map, Some("../../../../texture-wads/tech.wad; ../local.wad"), &|p| p.starts_with(&maps));
+        assert_eq!(fenced, [dir.join("mod/maps/src/e1/../local.wad")], "only what the filter allows is looked at");
+
+        write(&dir.join("mod/maps/src/inside.wad"), quake_texture::tests::wad(b"WAD2", &[("inside", 8, 8, 1)]));
+        write(&dir.join("mod/maps/src/far/outside.wad"), quake_texture::tests::wad(b"WAD2", &[("outside", 8, 8, 1)]));
+        let lib = scan_within(&[dir.join("mod/maps/src")], &|p| !p.ends_with("far"));
+        assert_eq!(lib.names().collect::<Vec<_>>(), ["inside"], "a folder the filter refuses is not walked");
         assert_eq!(wad_key("{\n\"classname\" \"worldspawn\"\n\"wad\" \"a.wad;b.wad\"\n").as_deref(), Some("a.wad;b.wad"));
         let _ = std::fs::remove_dir_all(&dir);
     }

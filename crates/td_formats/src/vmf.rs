@@ -173,11 +173,13 @@ pub struct ImportOptions {
     pub tools: ToolTextures,
     /// The material brush entities use for trigger volumes.
     pub trigger: String,
+    /// Whether an instance map may be read from a path, asked before the file is looked up.
+    pub may_read: Box<dyn Fn(&Path) -> bool>,
 }
 
 impl Default for ImportOptions {
     fn default() -> Self {
-        Self { tools: ToolTextures::default(), trigger: "special/trigger".into() }
+        Self { tools: ToolTextures::default(), trigger: "special/trigger".into(), may_read: Box::new(|_| true) }
     }
 }
 
@@ -441,8 +443,8 @@ fn instance_transform(origin: DVec3, angles: DVec3) -> DMat4 {
 }
 
 /// Where Hammer looks for an instance: next to the map, then up the folders, since instance paths are often relative
-/// to the game's map source folder rather than to the map.
-fn resolve_instance(file: &str, dir: Option<&Path>) -> Option<PathBuf> {
+/// to the game's map source folder rather than to the map. Only paths `may_read` allows are looked at.
+fn resolve_instance(file: &str, dir: Option<&Path>, may_read: &dyn Fn(&Path) -> bool) -> Option<PathBuf> {
     let file = file.replace('\\', "/");
     if crate::game::is_network_path(&file) {
         return None;
@@ -450,7 +452,7 @@ fn resolve_instance(file: &str, dir: Option<&Path>) -> Option<PathBuf> {
 
     let rel = Path::new(&file);
     if rel.is_absolute() {
-        return rel.is_file().then(|| rel.to_path_buf());
+        return (may_read(rel) && rel.is_file()).then(|| rel.to_path_buf());
     }
 
     let mut candidates = vec![rel.to_path_buf()];
@@ -462,7 +464,7 @@ fn resolve_instance(file: &str, dir: Option<&Path>) -> Option<PathBuf> {
     loop {
         for c in &candidates {
             let p = dir.join(c);
-            if p.is_file() {
+            if may_read(&p) && p.is_file() {
                 return Some(p);
             }
         }
@@ -527,11 +529,12 @@ fn apply_replacements(block: &mut Block, vars: &[(String, String)]) {
     }
 }
 
-struct Importer {
+struct Importer<'a> {
     report: ImportReport,
     /// Files being inlined, to stop an instance that includes itself.
     stack: Vec<PathBuf>,
     auto_names: usize,
+    may_read: &'a dyn Fn(&Path) -> bool,
 }
 
 /// Imports a `.vmf`. Units are kept as they are (1 Hammer unit = 1 map unit). Instances are only resolved by
@@ -547,7 +550,8 @@ pub fn import_file(path: &Path, options: &ImportOptions) -> Result<(Map, ImportR
 
 pub fn import_with(src: &str, path: Option<&Path>, options: &ImportOptions) -> Result<(Map, ImportReport), VmfError> {
     let blocks = parse_keyvalues(src)?;
-    let mut importer = Importer { report: ImportReport::default(), stack: path.map(|p| vec![p.to_path_buf()]).unwrap_or_default(), auto_names: 0 };
+    let stack = path.map(|p| vec![p.to_path_buf()]).unwrap_or_default();
+    let mut importer = Importer { report: ImportReport::default(), stack, auto_names: 0, may_read: &*options.may_read };
     let mut map = importer.import_blocks(&blocks, path.and_then(Path::parent))?;
     rename_tool_faces(&mut map, &options.tools.sky, |f| {
         let tool = options.material(&f.material);
@@ -556,7 +560,7 @@ pub fn import_with(src: &str, path: Option<&Path>, options: &ImportOptions) -> R
     Ok((map, importer.report))
 }
 
-impl Importer {
+impl Importer<'_> {
     fn import_blocks(&mut self, blocks: &[Block], dir: Option<&Path>) -> Result<Map, VmfError> {
         let mut map = Map::new();
         let default_layer = map.default_layer();
@@ -654,7 +658,7 @@ impl Importer {
     /// the entity is then imported as it is.
     fn inline_instance(&mut self, map: &mut Map, parent: NodeId, instance: &Block, dir: Option<&Path>) -> Result<Option<(NodeId, Fixup)>, VmfError> {
         let Some(file) = instance.get("file").filter(|f| !f.is_empty()) else { return Ok(None) };
-        let path = resolve_instance(file, dir).filter(|p| !self.stack.contains(p) && self.stack.len() < 16);
+        let path = resolve_instance(file, dir, self.may_read).filter(|p| !self.stack.contains(p) && self.stack.len() < 16);
         let blocks = path.as_deref().and_then(|p| read_text(p).ok()).and_then(|text| parse_keyvalues(&text).ok());
         let (Some(path), Some(mut blocks)) = (path, blocks) else {
             self.report.missing_instances.push(file.to_string());
@@ -994,14 +998,17 @@ entity {{ \"classname\" \"light\" \"origin\" \"0 0 0\" editor {{ \"visgroupid\" 
     }
 
     #[test]
-    fn instances_on_a_network_share_are_not_looked_up() {
+    fn instances_are_not_looked_up_on_shares_or_refused_paths() {
         let dir = std::env::temp_dir().join(format!("td_vmf_share_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("lamp.vmf"), "").unwrap();
-        assert_eq!(resolve_instance("lamp.vmf", Some(&dir)), Some(dir.join("lamp.vmf")));
+        assert_eq!(resolve_instance("lamp.vmf", Some(&dir), &|_| true), Some(dir.join("lamp.vmf")));
         for remote in [r"\\host\share\lamp.vmf", "//host/share/lamp.vmf", r"\\?\UNC\host\share\lamp.vmf"] {
-            assert_eq!(resolve_instance(remote, Some(&dir)), None, "{remote}");
+            assert_eq!(resolve_instance(remote, Some(&dir), &|_| true), None, "{remote}");
         }
+
+        assert_eq!(resolve_instance("lamp.vmf", Some(&dir), &|_| false), None, "a path the filter refuses is not used");
+        assert_eq!(resolve_instance(&dir.join("lamp.vmf").to_string_lossy(), None, &|_| false), None);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

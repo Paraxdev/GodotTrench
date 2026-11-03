@@ -141,13 +141,17 @@ impl Model {
     }
 }
 
+type Loaded = HashMap<PathBuf, (Option<SystemTime>, Option<Arc<Model>>)>;
+
 #[derive(Clone, Default)]
 pub struct ModelCache {
-    entries: HashMap<PathBuf, (Option<SystemTime>, Option<Arc<Model>>)>,
+    entries: Loaded,
     /// Bumped whenever a model is (re)loaded, so the scene rebuilds.
     pub generation: u64,
     /// Bumped only when an already loaded model is dropped or replaced, so its uploaded textures go stale.
     pub reloads: u64,
+    /// While a run_script runs, the fence its models are read within and the models read so, see [`Self::set_fence`].
+    fenced: Option<(crate::mcp::script::Fence, Loaded)>,
 }
 
 pub fn is_model_path(path: &str) -> bool {
@@ -163,18 +167,28 @@ impl ModelCache {
     /// `path` may end in `#node` (see [`entity_model_path`]) to load only that node of a glTF.
     pub fn get(&mut self, path: &Path, units_per_meter: f64) -> Option<Arc<Model>> {
         let (file, node) = split_model_node(path);
+        let fence = self.fenced.as_ref().map(|(fence, _)| fence.clone());
+        if fence.as_ref().is_some_and(|f| !f.may_read(&file)) {
+            return None;
+        }
+
         let mtime = std::fs::metadata(&file).and_then(|m| m.modified()).ok();
-        match self.entries.get(path) {
+        let entries = match &mut self.fenced {
+            Some((_, fenced)) => fenced,
+            None => &mut self.entries,
+        };
+        match entries.get(path) {
             Some((cached_time, model)) if *cached_time == mtime => return model.clone(),
             Some(_) => self.reloads += 1,
             None => {}
         }
 
+        let may_read = |p: &Path| fence.as_ref().is_none_or(|f| f.may_read(p));
         let model = match node {
             Some(node) if matches!(file.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).as_deref(), Some("glb" | "gltf")) => {
-                load_gltf_node(&file, units_per_meter, Some(&node))
+                load_gltf_node(&file, units_per_meter, Some(&node), &may_read)
             }
-            _ => load(&file, units_per_meter),
+            _ => load(&file, units_per_meter, &may_read),
         }
         .map(Arc::new);
         if let Err(e) = &model {
@@ -182,15 +196,25 @@ impl ModelCache {
         }
 
         let model = model.ok();
-        self.entries.insert(path.to_path_buf(), (mtime, model.clone()));
+        entries.insert(path.to_path_buf(), (mtime, model.clone()));
         self.generation += 1;
         model
     }
 
     pub fn clear(&mut self) {
         self.entries.clear();
+        if let Some((_, fenced)) = &mut self.fenced {
+            fenced.clear();
+        }
+
         self.generation += 1;
         self.reloads += 1;
+    }
+
+    /// Reads models and the files they refer to only within `fence` while a run_script runs, None reads anywhere again.
+    /// Models loaded outside the fence are not handed out inside it, nor the other way round.
+    pub fn set_fence(&mut self, fence: Option<crate::mcp::script::Fence>) {
+        self.fenced = fence.map(|f| (f, Loaded::new()));
     }
 
     /// The source file's mtime as of the last load, for callers that key their own cache on it (the
@@ -205,22 +229,23 @@ impl ModelCache {
     }
 }
 
-fn load(path: &Path, units_per_meter: f64) -> Result<Model, String> {
+/// Loads a model, reading the files it refers to only where `may_read` allows.
+fn load(path: &Path, units_per_meter: f64, may_read: &dyn Fn(&Path) -> bool) -> Result<Model, String> {
     let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     match ext.as_str() {
-        "bbmodel" => load_bbmodel(path, units_per_meter),
-        "glb" | "gltf" => load_gltf(path, units_per_meter),
-        "obj" => load_obj(path, units_per_meter),
+        "bbmodel" => load_bbmodel(path, units_per_meter, may_read),
+        "glb" | "gltf" => load_gltf_node(path, units_per_meter, None, may_read),
+        "obj" => load_obj(path, units_per_meter, may_read),
         "stl" => load_stl(path, units_per_meter),
         "md2" => {
             let data = std::fs::read(path).map_err(|e| e.to_string())?;
             let mesh = td_formats::idmodel::parse_md2(&data).map_err(|e| e.to_string())?;
-            Ok(id_model_to_model(path, mesh))
+            Ok(id_model_to_model(path, mesh, may_read))
         }
         "md3" => {
             let data = std::fs::read(path).map_err(|e| e.to_string())?;
             let mesh = td_formats::idmodel::parse_md3(&data).map_err(|e| e.to_string())?;
-            Ok(id_model_to_model(path, mesh))
+            Ok(id_model_to_model(path, mesh, may_read))
         }
         _ => Err(format!("unsupported model format {ext}")),
     }
@@ -291,7 +316,7 @@ fn parse_stl(data: &[u8]) -> Result<Vec<[[f32; 3]; 3]>, String> {
 /// Converts a parsed id Software model (md2/md3) into a placeable model, saving the skin as a texture
 /// when the file names one that sits next to it. id models are Z-up in Quake units, read as map units the way
 /// `.map` import reads brushes.
-fn id_model_to_model(path: &Path, mesh: td_formats::idmodel::IdModel) -> Model {
+fn id_model_to_model(path: &Path, mesh: td_formats::idmodel::IdModel, may_read: &dyn Fn(&Path) -> bool) -> Model {
     let base = format!("model:{}", path.display());
     let y_up = |v: [f32; 3]| td_formats::quake_map::from_id(Vec3::from(v).as_dvec3()).as_vec3();
     let mut textures = Vec::new();
@@ -301,7 +326,7 @@ fn id_model_to_model(path: &Path, mesh: td_formats::idmodel::IdModel) -> Model {
         let material = surf
             .skin
             .as_deref()
-            .and_then(|skin| skin_image(path, skin))
+            .and_then(|skin| skin_image(path, skin, may_read))
             .map(|img| {
                 let key = format!("{base}#skin{si}");
                 textures.push((key.clone(), img, false));
@@ -324,24 +349,25 @@ fn id_model_to_model(path: &Path, mesh: td_formats::idmodel::IdModel) -> Model {
 }
 
 /// Loads an md2/md3 skin the model names, see [`beside_model`], or a copy of it converted to another image format.
-fn skin_image(model: &Path, skin: &str) -> Option<image::RgbaImage> {
+fn skin_image(model: &Path, skin: &str, may_read: &dyn Fn(&Path) -> bool) -> Option<image::RgbaImage> {
     let skin = skin.trim_matches(char::from(0));
     if skin.is_empty() {
         return None;
     }
 
     let converted = ["png", "tga", "jpg", "jpeg", "bmp"].map(|e| Path::new(skin).with_extension(e).to_string_lossy().into_owned());
-    std::iter::once(skin.to_string()).chain(converted).filter_map(|name| beside_model(model, &name)).find_map(|p| image::open(p).ok()).map(|i| i.to_rgba8())
+    let names = std::iter::once(skin.to_string()).chain(converted);
+    names.filter_map(|name| beside_model(model, &name, may_read)).find_map(|p| image::open(p).ok()).map(|i| i.to_rgba8())
 }
 
 /// The file a model refers to by `name`, such as a texture or a material library. It is looked for relative to the
 /// model's folder, staying inside the Godot project the model is in, or inside that folder for a model in no project.
 /// Then under its bare file name next to the model, which also finds a texture named by an absolute path on the
-/// machine the model was made on. None when neither is there.
-pub fn beside_model(model: &Path, name: &str) -> Option<PathBuf> {
+/// machine the model was made on. None when neither is there, or `may_read` refuses it.
+pub fn beside_model(model: &Path, name: &str, may_read: &dyn Fn(&Path) -> bool) -> Option<PathBuf> {
     let dir = model.parent()?;
     let bare = name.rsplit(['/', '\\']).next()?;
-    [file_below(&model_root(model), dir, name), file_below(dir, dir, bare)].into_iter().flatten().find(|p| p.is_file())
+    [file_below(&model_root(model), dir, name), file_below(dir, dir, bare)].into_iter().flatten().find(|p| may_read(p) && p.is_file())
 }
 
 /// The folder the files a model refers to have to be in: the Godot project holding it, else the model's own folder.
@@ -352,7 +378,7 @@ fn model_root(model: &Path) -> PathBuf {
 /// Blockbench uses 16 units per block, which the Godot importer maps to one meter.
 pub const BB_UNITS_PER_METER: f64 = 16.0;
 
-fn load_bbmodel(path: &Path, units_per_meter: f64) -> Result<Model, String> {
+fn load_bbmodel(path: &Path, units_per_meter: f64, may_read: &dyn Fn(&Path) -> bool) -> Result<Model, String> {
     let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let bb = td_formats::bbmodel::parse(&text).map_err(|e| e.to_string())?;
     let scale = (units_per_meter / BB_UNITS_PER_METER) as f32;
@@ -363,7 +389,7 @@ fn load_bbmodel(path: &Path, units_per_meter: f64) -> Result<Model, String> {
         let img = if !t.png.is_empty() {
             image::load_from_memory(&t.png).ok().map(|i| i.to_rgba8())
         } else {
-            beside_model(path, &t.path).and_then(|p| image::open(p).ok()).map(|i| i.to_rgba8())
+            beside_model(path, &t.path, may_read).and_then(|p| image::open(p).ok()).map(|i| i.to_rgba8())
         };
         let img = img.unwrap_or_else(|| image::RgbaImage::from_pixel(2, 2, image::Rgba([200, 60, 200, 255])));
         // Like the Godot importer: the texture itself is the emission, added to a black color.
@@ -398,18 +424,14 @@ fn load_bbmodel(path: &Path, units_per_meter: f64) -> Result<Model, String> {
     Ok(Model { parts: parts.into_values().collect(), textures, emission, surfaces: HashMap::new(), bounds })
 }
 
-fn load_gltf(path: &Path, units_per_meter: f64) -> Result<Model, String> {
-    load_gltf_node(path, units_per_meter, None)
-}
-
 /// A glTF, or only the subtree of the node named `node` placed with that node at the origin, for files that hold
 /// several variants side by side.
-fn load_gltf_node(path: &Path, units_per_meter: f64, node: Option<&str>) -> Result<Model, String> {
+fn load_gltf_node(path: &Path, units_per_meter: f64, node: Option<&str>, may_read: &dyn Fn(&Path) -> bool) -> Result<Model, String> {
     let gltf::Gltf { document: doc, blob } = gltf::Gltf::open(path).map_err(|e| e.to_string())?;
     let (dir, root) = (path.parent().unwrap_or(Path::new("./")), model_root(path));
     for buffer in doc.buffers() {
         if let gltf::buffer::Source::Uri(uri) = buffer.source()
-            && !gltf_uri_below(&root, dir, uri)
+            && !gltf_uri_below(&root, dir, uri, may_read)
         {
             return Err(format!("{uri} is outside {}", root.display()));
         }
@@ -420,7 +442,7 @@ fn load_gltf_node(path: &Path, units_per_meter: f64, node: Option<&str>) -> Resu
     let images = doc
         .images()
         .map(|image| match image.source() {
-            gltf::image::Source::Uri { uri, .. } if !gltf_uri_below(&root, dir, uri) => Ok(None),
+            gltf::image::Source::Uri { uri, .. } if !gltf_uri_below(&root, dir, uri, may_read) => Ok(None),
             source => gltf::image::Data::from_source(source, Some(dir), &buffers).map(Some),
         })
         .collect::<Result<Vec<_>, _>>()
@@ -539,10 +561,11 @@ fn load_gltf_node(path: &Path, units_per_meter: f64, node: Option<&str>) -> Resu
     Ok(Model { parts, textures, emission, surfaces, bounds })
 }
 
-/// Whether a buffer or image `uri` of a glTF in `dir` is embedded data or a file inside `root`, see [`model_root`]. It
-/// is percent decoded the way the gltf crate opens it.
-fn gltf_uri_below(root: &Path, dir: &Path, uri: &str) -> bool {
-    uri.starts_with("data:") || (!uri.contains(':') && urlencoding::decode(uri).is_ok_and(|rel| file_below(root, dir, &rel).is_some()))
+/// Whether a buffer or image `uri` of a glTF in `dir` is embedded data or a file inside `root`, see [`model_root`], that
+/// `may_read` allows. It is percent decoded the way the gltf crate opens it.
+fn gltf_uri_below(root: &Path, dir: &Path, uri: &str, may_read: &dyn Fn(&Path) -> bool) -> bool {
+    let file = |rel: &str| file_below(root, dir, rel).is_some_and(|p| may_read(&p));
+    uri.starts_with("data:") || (!uri.contains(':') && urlencoding::decode(uri).is_ok_and(|rel| file(&rel)))
 }
 
 /// Transparency of a glTF material, None for opaque ones. Like Godot's importer this reads alphaMode only, a material
@@ -636,10 +659,10 @@ fn find_gltf_node<'a>(nodes: impl Iterator<Item = gltf::Node<'a>>, parent: Mat4,
     None
 }
 
-fn load_obj(path: &Path, units_per_meter: f64) -> Result<Model, String> {
+fn load_obj(path: &Path, units_per_meter: f64, may_read: &dyn Fn(&Path) -> bool) -> Result<Model, String> {
     let opts = tobj::LoadOptions { triangulate: true, single_index: true, ..Default::default() };
     let mut obj = std::io::BufReader::new(std::fs::File::open(path).map_err(|e| e.to_string())?);
-    let mtl = |name: &Path| beside_model(path, &name.to_string_lossy()).map_or(Err(tobj::LoadError::OpenFileFailed), tobj::load_mtl);
+    let mtl = |name: &Path| beside_model(path, &name.to_string_lossy(), may_read).map_or(Err(tobj::LoadError::OpenFileFailed), tobj::load_mtl);
     let (models, mats_res) = tobj::load_obj_buf(&mut obj, &opts, mtl).map_err(|e| e.to_string())?;
     let mats = mats_res.unwrap_or_default();
     let base = format!("model:{}", path.display());
@@ -652,7 +675,7 @@ fn load_obj(path: &Path, units_per_meter: f64) -> Result<Model, String> {
             .diffuse_texture
             .as_ref()
             .filter(|t| !t.is_empty())
-            .and_then(|t| beside_model(path, t))
+            .and_then(|t| beside_model(path, t, may_read))
             .and_then(|p| image::open(p).ok())
             .map(|img| img.to_rgba8());
         let img = from_file.unwrap_or_else(|| {
@@ -948,7 +971,7 @@ mod tests {
         // seen from the front, as id models wind them.
         let v = |pos: [f32; 3]| IdVertex { pos, normal: [0.0, -1.0, 0.0], uv: [0.0, 0.0] };
         let surface = IdSurface { skin: None, vertices: vec![v([0.0, 0.0, 0.0]), v([0.0, 0.0, 56.0]), v([16.0, 0.0, 0.0])], indices: vec![0, 1, 2] };
-        let model = id_model_to_model(Path::new("x.md2"), IdModel { surfaces: vec![surface] });
+        let model = id_model_to_model(Path::new("x.md2"), IdModel { surfaces: vec![surface] }, &|_| true);
         assert!((model.bounds.size() - DVec3::new(0.0, 56.0, 16.0)).length() < 1e-6, "{:?}", model.bounds);
         let part = &model.parts[0];
         let p: Vec<Vec3> = part.indices.iter().map(|i| part.vertices[*i as usize].pos).collect();
@@ -973,7 +996,7 @@ mod tests {
                 }
 
                 let rel = path.display().to_string();
-                let model = load(&path, 16.0).unwrap_or_else(|e| panic!("{rel}: {e}"));
+                let model = load(&path, 16.0, &|_| true).unwrap_or_else(|e| panic!("{rel}: {e}"));
                 assert!(model.parts.iter().any(|p| !p.indices.is_empty()), "{rel} has no geometry");
                 // The textures live in the shared nature/textures folder, referenced by relative URI.
                 let textured = |p: &ModelPart| model.textures.iter().any(|(k, img, _)| *k == p.material && img.width() > 4);
@@ -1095,7 +1118,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("td_models_glow_tres_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let model = load(&emissive_gltf(&dir), 32.0).unwrap();
+        let model = load(&emissive_gltf(&dir), 32.0, &|_| true).unwrap();
         let tres = |part: &ModelPart| {
             let (key, img, pixelated) = model.textures.iter().find(|(k, ..)| *k == part.material).unwrap();
             let emission = model.emission_map(key, img).map(|_| "res://glow_emission.png");
@@ -1120,7 +1143,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("td_models_glow_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let model = load(&emissive_gltf(&dir), 32.0).unwrap();
+        let model = load(&emissive_gltf(&dir), 32.0, &|_| true).unwrap();
         assert_eq!(model.parts.len(), 3);
         let desc_of = |part: &ModelPart| {
             let (key, img, pixelated) = model.textures.iter().find(|(k, ..)| *k == part.material).expect("every part has a texture");
@@ -1182,7 +1205,7 @@ mod tests {
         });
         let path = dir.join("glass.gltf");
         std::fs::write(&path, gltf.to_string()).unwrap();
-        let model = load(&path, 32.0).unwrap();
+        let model = load(&path, 32.0, &|_| true).unwrap();
         let desc_of = |part: &ModelPart| {
             let (key, img, pixelated) = model.textures.iter().find(|(k, ..)| *k == part.material).expect("every part has a texture");
             model.material_desc(key, img, *pixelated)
@@ -1222,7 +1245,7 @@ mod tests {
         });
         let path = dir.join("tv.bbmodel");
         std::fs::write(&path, bb.to_string()).unwrap();
-        let model = load(&path, 32.0).unwrap();
+        let model = load(&path, 32.0, &|_| true).unwrap();
         let (key, img, pixelated) = &model.textures[0];
         let screen = model.material_desc(key, img, *pixelated);
         assert_eq!(screen.emission_texture.map(|t| t.get_pixel(0, 0).0), Some([40, 200, 255, 255]), "the emissive texture glows with itself");
@@ -1264,17 +1287,17 @@ mod tests {
         red.save(base.join("project/textures/lamp.png")).unwrap();
         red.save(base.join("secret.png")).unwrap();
 
-        let lamp = load(&textured_gltf(&models, "../textures/lamp.png"), 32.0).unwrap();
+        let lamp = load(&textured_gltf(&models, "../textures/lamp.png"), 32.0, &|_| true).unwrap();
         assert!(lamp.textures.iter().any(|(_, img, _)| img.width() == 8), "a texture elsewhere in the project is read");
         let secret = base.join("secret.png").to_string_lossy().replace('\\', "/");
         let outside = ["../../secret.png", "..%2F..%2Fsecret.png", "%2F%2Fhost%2Fshare%2Flamp.png", "C%3A/secret.png", "%FF.png"];
         let uris: Vec<String> = outside.map(String::from).into_iter().chain([format!("file:///{secret}"), format!("file:{secret}")]).collect();
         for uri in &uris {
-            let model = load(&textured_gltf(&models, uri), 32.0).unwrap_or_else(|e| panic!("{uri}: {e}"));
+            let model = load(&textured_gltf(&models, uri), 32.0, &|_| true).unwrap_or_else(|e| panic!("{uri}: {e}"));
             assert!(!model.textures.iter().any(|(_, img, _)| img.width() == 8), "{uri} is left out, the model still loads");
         }
 
-        let loose = load(&textured_gltf(&loose, "../secret.png"), 32.0).unwrap();
+        let loose = load(&textured_gltf(&loose, "../secret.png"), 32.0, &|_| true).unwrap();
         assert!(!loose.textures.iter().any(|(_, img, _)| img.width() == 8), "a model in no project keeps to its own folder");
         std::fs::write(base.join("secret.bin"), [0u8; 36]).unwrap();
         for uri in uris.iter().map(|u| u.replace("secret.png", "secret.bin")) {
@@ -1282,7 +1305,7 @@ mod tests {
             let mut gltf: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
             gltf["buffers"][0]["uri"] = uri.clone().into();
             std::fs::write(&path, gltf.to_string()).unwrap();
-            let err = load(&path, 32.0).err();
+            let err = load(&path, 32.0, &|_| true).err();
             assert!(err.as_deref().is_some_and(|e| e.contains("is outside")), "a buffer {uri} is refused: {err:?}");
         }
 
@@ -1301,7 +1324,7 @@ mod tests {
         let texel = |mtllib: &str, map_kd: &str| {
             std::fs::write(dir.join("crate.mtl"), format!("newmtl wood\nKd 0 0 1\nmap_Kd {map_kd}\n")).unwrap();
             std::fs::write(dir.join("crate.obj"), format!("mtllib {mtllib}\nv 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl wood\nf 1 2 3\n")).unwrap();
-            load(&dir.join("crate.obj"), 32.0).unwrap().textures.first().map(|(_, img, _)| img.get_pixel(0, 0).0)
+            load(&dir.join("crate.obj"), 32.0, &|_| true).unwrap().textures.first().map(|(_, img, _)| img.get_pixel(0, 0).0)
         };
 
         let elsewhere = base.join("art/wood.png").to_string_lossy().into_owned();
@@ -1330,7 +1353,7 @@ mod tests {
                 "textures": [{ "name": "skin", "path": path }]
             });
             std::fs::write(dir.join("box.bbmodel"), bb.to_string()).unwrap();
-            load(&dir.join("box.bbmodel"), 32.0).unwrap().textures[0].1.get_pixel(0, 0).0
+            load(&dir.join("box.bbmodel"), 32.0, &|_| true).unwrap().textures[0].1.get_pixel(0, 0).0
         };
 
         let elsewhere = base.join("art/skin.png").to_string_lossy().into_owned();
@@ -1341,11 +1364,51 @@ mod tests {
         let skin = |name: &str| {
             let v = |pos: [f32; 3]| IdVertex { pos, normal: [0.0, 0.0, 1.0], uv: [0.0, 0.0] };
             let surface = IdSurface { skin: Some(name.into()), vertices: vec![v([0.0; 3]), v([1.0, 0.0, 0.0]), v([0.0, 1.0, 0.0])], indices: vec![0, 1, 2] };
-            let model = id_model_to_model(&dir.join("box.md2"), IdModel { surfaces: vec![surface] });
+            let model = id_model_to_model(&dir.join("box.md2"), IdModel { surfaces: vec![surface] }, &|_| true);
             model.textures.first().map(|(_, img, _)| img.get_pixel(0, 0).0)
         };
         assert_eq!(skin("models/props/skin.pcx"), Some(blue), "converted to PNG next to the model");
         assert_eq!(skin("../secret.png"), None);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn files_a_model_refers_to_are_read_only_where_allowed() {
+        let base = std::env::temp_dir().join(format!("td_models_may_read_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (dir, held) = (base.join("crate"), base.join("crate/held"));
+        std::fs::create_dir_all(&held).unwrap();
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 0, 0, 255])).save(held.join("secret.png")).unwrap();
+        std::fs::write(held.join("secret.mtl"), "newmtl wood\nmap_Kd secret.png\n").unwrap();
+        std::fs::write(dir.join("crate.mtl"), "newmtl wood\nKd 0 0 1\nmap_Kd held/secret.png\n").unwrap();
+        let held_out = |p: &Path| !p.starts_with(&held);
+        let texel = |obj: &str, may_read: &dyn Fn(&Path) -> bool| {
+            std::fs::write(dir.join("crate.obj"), format!("mtllib {obj}\nv 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl wood\nf 1 2 3\n")).unwrap();
+            load(&dir.join("crate.obj"), 32.0, may_read).unwrap().textures.first().map(|(_, img, _)| img.get_pixel(0, 0).0)
+        };
+        assert_eq!(texel("crate.mtl", &|_| true), Some([255, 0, 0, 255]));
+        assert_eq!(texel("crate.mtl", &held_out), Some([0, 0, 255, 255]), "a texture the filter refuses is not read");
+        assert_eq!(texel("held/secret.mtl", &held_out), None, "nor is a material library");
+
+        let lamp = textured_gltf(&dir, "held/secret.png");
+        assert!(load(&lamp, 32.0, &|_| true).unwrap().textures.iter().any(|(_, img, _)| img.width() == 2));
+        assert!(!load(&lamp, 32.0, &held_out).unwrap().textures.iter().any(|(_, img, _)| img.width() == 2));
+
+        let project = base.join("project");
+        std::fs::create_dir_all(project.join("models")).unwrap();
+        std::fs::create_dir_all(project.join("art")).unwrap();
+        std::fs::write(project.join("project.godot"), "").unwrap();
+        std::fs::copy(held.join("secret.png"), project.join("art/secret.png")).unwrap();
+        let lamp = textured_gltf(&project.join("models"), "../art/secret.png");
+        let textured = |m: Option<Arc<Model>>| m.unwrap().textures.iter().any(|(_, img, _)| img.width() == 2);
+        let mut cache = ModelCache::default();
+        assert!(textured(cache.get(&lamp, 32.0)));
+        cache.set_fence(Some(crate::mcp::script::Fence::new(vec![project.join("models")])));
+        assert!(!textured(cache.get(&lamp, 32.0)), "inside a fence a texture outside it is left out, also when the model was loaded before");
+        cache.set_fence(Some(crate::mcp::script::Fence::new(vec![project.join("art")])));
+        assert!(cache.get(&lamp, 32.0).is_none(), "a model outside the fence does not load");
+        cache.set_fence(None);
+        assert!(textured(cache.get(&lamp, 32.0)));
         let _ = std::fs::remove_dir_all(&base);
     }
 

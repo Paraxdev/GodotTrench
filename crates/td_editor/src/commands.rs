@@ -1421,7 +1421,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         }
         Action::ImportVmf => {
             if let Some(path) = file_dialog(state, |d| d.add_filter("Hammer map", &["vmf"]).pick_file()) {
-                match import_vmf(state, &path) {
+                match import_vmf(state, &path, Box::new(|_| true)) {
                     Ok(_) => crate::texture_convert::offer_for_map(state, &path),
                     Err(e) => state.fail_status(format!("Import failed: {e}")),
                 }
@@ -1896,9 +1896,14 @@ pub fn import_quake_map(state: &mut EditorState, path: &std::path::Path) -> Resu
 }
 
 /// Opens a Hammer `.vmf` with its instances inlined and Valve tool materials renamed to the project's. Like a `.map`
-/// import it replaces a document without unsaved changes and opens a new tab otherwise.
-pub fn import_vmf(state: &mut EditorState, path: &std::path::Path) -> Result<td_formats::vmf::ImportReport, String> {
-    let options = td_formats::vmf::ImportOptions { tools: state.game.tool_textures.clone(), ..Default::default() };
+/// import it replaces a document without unsaved changes and opens a new tab otherwise. Instance maps are read from
+/// where `may_read` allows.
+pub fn import_vmf(
+    state: &mut EditorState,
+    path: &std::path::Path,
+    may_read: Box<dyn Fn(&std::path::Path) -> bool>,
+) -> Result<td_formats::vmf::ImportReport, String> {
+    let options = td_formats::vmf::ImportOptions { tools: state.game.tool_textures.clone(), may_read, ..Default::default() };
     let (map, report) = td_formats::vmf::import_file(path, &options).map_err(|e| e.to_string())?;
     let mut doc = Document::from_map(map, None);
     doc.revision += 1;
@@ -2022,7 +2027,8 @@ pub fn import_model(state: &mut EditorState, path: &std::path::Path, mode: Model
     let mut sizes = Vec::new();
     let mut not_images = Vec::new();
     for (i, tex) in model.textures.iter().enumerate() {
-        let bytes = if tex.png.is_empty() { crate::models::beside_model(path, &tex.path).and_then(|p| std::fs::read(p).ok()) } else { Some(tex.png.clone()) };
+        let beside = || crate::models::beside_model(path, &tex.path, &|p| state.may_read(p)).and_then(|p| std::fs::read(p).ok());
+        let bytes = if tex.png.is_empty() { beside() } else { Some(tex.png.clone()) };
         // Only decoded pixels are written, so a file that is not an image never lands in the project.
         let image = bytes.as_deref().and_then(|b| image::load_from_memory(b).ok());
         sizes.push(image.as_ref().map_or(DVec2::splat(16.0), |img| DVec2::new(img.width() as f64, img.height() as f64)));
@@ -2151,6 +2157,10 @@ fn write_model_textures(
 
     let failed = |e: String| format!("Its textures could not be written, so it is untextured: {e}");
     let dir = target.texture_dir.join("models").join(&folder);
+    for (file, _) in &images {
+        state.may_write(&dir.join(file)).map_err(failed)?;
+    }
+
     std::fs::create_dir_all(&dir).map_err(|e| failed(format!("{}: {e}", dir.display())))?;
     for (file, png) in &images {
         write_new(&dir.join(file), png).map_err(failed)?;
@@ -2171,6 +2181,7 @@ fn write_model_textures(
                 m.material_tres(k, img, nearest, &albedo, emission.as_deref())
             })
         {
+            state.may_write(&material).map_err(failed)?;
             material.parent().map_or(Ok(()), std::fs::create_dir_all).map_err(|e| failed(format!("{}: {e}", material.display())))?;
             write_new(&material, text.as_bytes()).map_err(failed)?;
         }
@@ -2282,6 +2293,7 @@ pub fn hotspot_path(state: &EditorState, material: &str) -> Option<std::path::Pa
 
 pub fn write_hotspots(state: &EditorState, material: &str, rects: &[[f64; 4]]) -> Result<std::path::PathBuf, String> {
     let path = hotspot_path(state, material).ok_or_else(|| format!("{material} has no texture file to store hotspots next to"))?;
+    state.may_write(&path)?;
     let text = serde_json::to_string_pretty(&serde_json::json!({ "rects": rects })).map_err(|e| e.to_string())?;
     std::fs::write(&path, text).map_err(|e| e.to_string())?;
     Ok(path)

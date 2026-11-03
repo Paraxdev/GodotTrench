@@ -143,9 +143,9 @@ pub fn report_json(report: &Report) -> Value {
 }
 
 /// Texture sources near an imported map file: `materials` and `textures` folders, and for a `.map` the WADs its
-/// worldspawn lists.
-pub fn sources_for_map(state: &EditorState, map_file: &Path) -> Vec<PathBuf> {
-    texture_import::sources_near(map_file, state.doc.map.properties.get("wad").map(String::as_str))
+/// worldspawn lists, of those `may_read` allows.
+pub fn sources_for_map(state: &EditorState, map_file: &Path, may_read: &dyn Fn(&Path) -> bool) -> Vec<PathBuf> {
+    texture_import::sources_near_within(map_file, state.doc.map.properties.get("wad").map(String::as_str), may_read)
 }
 
 /// The missing materials of the open map that `lib` can provide.
@@ -155,7 +155,7 @@ pub fn convertible(state: &EditorState, lib: &Library) -> BTreeSet<String> {
 
 /// After importing `map_file`, offers to convert the textures the map uses that were found next to it.
 pub fn offer_for_map(state: &mut EditorState, map_file: &Path) {
-    let sources = sources_for_map(state, map_file);
+    let sources = sources_for_map(state, map_file, &|_| true);
     if sources.is_empty() || state.game.project_root.is_none() {
         return;
     }

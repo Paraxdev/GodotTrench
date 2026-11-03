@@ -597,6 +597,10 @@ pub fn bake_to_entities(state: &mut EditorState, id: NodeId) -> usize {
 /// files written.
 pub fn install_nature(state: &mut EditorState, overwrite: bool) -> Result<Vec<std::path::PathBuf>, String> {
     let dir = state.game.resolve_res(td_doc::scatter::NATURE_DIR).ok_or("Open a Godot project first, models are installed into it")?;
+    for name in td_formats::nature::names() {
+        state.may_write(&dir.join(format!("{name}.bbmodel")))?;
+    }
+
     let written = td_formats::nature::install(&dir, &[], overwrite).map_err(|e| e.to_string())?;
     if !written.is_empty() {
         refresh_models(state);

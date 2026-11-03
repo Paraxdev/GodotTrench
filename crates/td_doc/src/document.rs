@@ -375,6 +375,17 @@ impl Document {
         HistoryMark { doc: self.uid, top: self.evicted + self.history.undo.len() as u64, rewinds: self.rewinds }
     }
 
+    /// How many undo steps lie above `mark`, which undo can take back without going past it. 0 for another document's
+    /// mark.
+    pub fn steps_since(&self, mark: &HistoryMark) -> usize {
+        if !self.owns(mark) {
+            return 0;
+        }
+
+        let above = (self.evicted + self.history.undo.len() as u64).saturating_sub(mark.top) as usize;
+        above.min(self.history.undo.len())
+    }
+
     /// Merges the undo steps added since `mark` into one, named by `label` from their labels, oldest first. A merged
     /// step that changed nothing is dropped. Returns the step's label, or None when no step was added, the mark is from
     /// another document, or an undo or redo ran since, which leaves the history as it is.
@@ -580,6 +591,27 @@ mod tests {
         add(&mut doc);
         assert_eq!(doc.squash_since(outer, |s| s.join(", ")), Some("inner 3, add".into()));
         assert_eq!(doc.history.undo_labels().count(), 1);
+    }
+
+    #[test]
+    fn steps_since_a_mark_count_what_undo_can_take_back_above_it() {
+        let mut doc = Document::new();
+        doc.history.limit = 3;
+        let layer = doc.map.default_layer();
+        let add = |doc: &mut Document| doc.edit("add", |m, _| m.insert(layer, NodeKind::Entity(Entity::new("light"))));
+        add(&mut doc);
+        let mark = doc.mark();
+        assert_eq!(doc.steps_since(&mark), 0);
+        add(&mut doc);
+        add(&mut doc);
+        assert_eq!(doc.steps_since(&mark), 2);
+        doc.undo();
+        assert_eq!(doc.steps_since(&mark), 1);
+        doc.redo();
+        add(&mut doc);
+        add(&mut doc);
+        assert_eq!(doc.steps_since(&mark), 3, "no more than the history still holds once older steps fall off");
+        assert_eq!(doc.steps_since(&Document::new().mark()), 0);
     }
 
     #[test]

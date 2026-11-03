@@ -182,7 +182,7 @@ pub fn scatter_model(game: &GameConfig, models: &mut ModelCache, source: &str) -
 }
 
 pub fn collect(src: Sources, options: &Options, name: String, progress: &Progress) -> Scene {
-    let Sources { map, map_path, game, materials: lib, models, prefabs, selection } = src;
+    let Sources { map, map_path, game, materials: lib, models, prefabs, selection, fence } = src;
     progress.begin(false, map.nodes.len());
     // Hidden faces are left out like the Godot build does, which also keeps overlapping faces from z-fighting.
     let brush_faces = map.brushes().flat_map(|(_, b)| b.faces.iter().map(|f| f.data.material.as_str()));
@@ -211,7 +211,7 @@ pub fn collect(src: Sources, options: &Options, name: String, progress: &Progres
         pieces: std::mem::take(&mut cull.pieces),
         nodes: Vec::new(),
         meshes: Vec::new(),
-        materials: Materials::default(),
+        materials: Materials::within(fence.cloned()),
         model_meshes: HashMap::new(),
     };
     let roots = map.layers.iter().filter_map(|l| c.walk(map, map_path, *l, false)).collect();

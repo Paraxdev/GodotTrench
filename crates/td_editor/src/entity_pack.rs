@@ -213,8 +213,18 @@ impl Report {
 /// Installs the pack, or updates it: adds missing files, replaces the ones nobody edited, and leaves edited and deleted
 /// files as they are. Never writes outside the pack folder.
 pub fn install(root: &Path) -> Result<Report, String> {
+    install_where(root, &|_| Ok(()))
+}
+
+/// [`install`] once `may_write` allows every file it would write.
+fn install_where(root: &Path, may_write: &dyn Fn(&Path) -> Result<(), String>) -> Result<Report, String> {
     let plan = plan(root)?;
     let dir = install_dir(root);
+    let written = plan.files.iter().filter(|(.., step)| matches!(step, Step::Add | Step::Update)).map(|(rel, ..)| dir.join(rel));
+    for path in written.chain([dir.join(MANIFEST)]) {
+        may_write(&path)?;
+    }
+
     let mut report = Report::default();
     for (rel, bytes, step) in &plan.files {
         let list = match step {
@@ -246,7 +256,7 @@ pub fn install(root: &Path) -> Result<Report, String> {
 /// Installs or updates the pack in the open project, and lets the editor know its entities right away.
 pub fn install_in_project(state: &mut crate::state::EditorState) -> Result<Report, String> {
     let root = state.game.project_root.clone().ok_or("Open a Godot project first, the Gameplay entities pack goes into it.")?;
-    let report = install(&root);
+    let report = install_where(&root, &|p| state.may_write(p));
     state.gameplay_pack = Status::check(&root);
     let report = report?;
     add_unexported(&mut state.game, &root);

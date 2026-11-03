@@ -103,6 +103,7 @@ impl Caches {
             models: &mut self.models,
             prefabs: &mut self.prefabs,
             selection: &self.selection,
+            fence: None,
         }
     }
 }
@@ -425,9 +426,36 @@ fn a_cancelled_export_writes_nothing() {
 
     // Stopped while writing the geometry, OBJ leaves neither a partial file nor its materials.
     let scene = collect::collect(caches.sources(&map), &Options::default(), "room".into(), &Progress::default());
-    assert!(obj::write(&scene, &root.join("room.obj"), &cancelled).is_err());
+    assert!(obj::write(&scene, &root.join("room.obj"), &cancelled, &|_| Ok(())).is_err());
     let left: Vec<String> = std::fs::read_dir(&root).unwrap().map(|f| f.unwrap().file_name().to_string_lossy().into_owned()).collect();
     assert!(left.iter().all(|f| !f.starts_with("room")), "{left:?}");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn obj_writes_nothing_when_one_of_its_files_may_not_go_where_it_would() {
+    let root = project("may_write");
+    let map = map();
+    let mut caches = Caches::new(&root);
+    let scene = collect::collect(caches.sources(&map), &Options::default(), "room".into(), &Progress::default());
+    let refused = root.join("room_textures");
+    let result = obj::write(&scene, &root.join("room.obj"), &Progress::default(), &|p| if p.starts_with(&refused) { Err("refused".into()) } else { Ok(()) });
+    assert_eq!(result.unwrap_err(), "refused");
+    let left: Vec<String> = std::fs::read_dir(&root).unwrap().map(|f| f.unwrap().file_name().to_string_lossy().into_owned()).collect();
+    assert!(left.iter().all(|f| !f.starts_with("room")), "{left:?}");
+
+    let fence = crate::mcp::script::Fence::new(vec![root.join("maps")]);
+    let mut sources = caches.sources(&map);
+    sources.fence = Some(&fence);
+    assert!(export_with(sources, &root.join("room.glb"), Format::Glb, &Options::default(), &Progress::default()).unwrap_err().contains("scripts cannot write"));
+    assert!(!root.join("room.glb").exists());
+
+    // Nor are the project's textures read from outside the fence into an export inside it.
+    std::fs::create_dir_all(root.join("maps")).unwrap();
+    let mut sources = caches.sources(&map);
+    sources.fence = Some(&fence);
+    let report = export_with(sources, &root.join("maps/room.glb"), Format::Glb, &Options::default(), &Progress::default()).unwrap();
+    assert!(report.missing.contains(&"brick".to_string()), "{:?}", report.missing);
     let _ = std::fs::remove_dir_all(&root);
 }
 

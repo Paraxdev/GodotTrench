@@ -501,6 +501,9 @@ pub struct EditorState {
     /// Live move in progress: the dragged nodes and their offset from the drag start. The scene renders
     /// these from their pre-drag geometry translated on the GPU, skipping the per-frame rebuild.
     pub drag_preview: Option<DragPreview>,
+    /// Where the steps of the running run_script may read and write, None outside scripts. Set with
+    /// [`Self::fence_script`].
+    pub script_fence: Option<crate::mcp::script::Fence>,
 }
 
 /// A file with its modification time and size.
@@ -630,6 +633,7 @@ impl EditorState {
             scatter_erase: false,
             blend: Default::default(),
             drag_preview: None,
+            script_fence: None,
         }
     }
 
@@ -695,6 +699,27 @@ impl EditorState {
     pub fn refresh_instance_extents(&mut self) {
         self.prefabs.project_root = self.game.project_root.clone();
         self.prefabs.refresh_extents(&mut self.doc.map, self.doc.path.as_deref());
+    }
+
+    /// Keeps the files the editor reads and writes inside `fence` while a run_script runs, prefabs and model files
+    /// included. None lifts it.
+    pub fn fence_script(&mut self, fence: Option<crate::mcp::script::Fence>) {
+        self.prefabs.set_fence(fence.clone());
+        self.models.set_fence(fence.clone());
+        self.script_fence = fence;
+    }
+
+    /// Whether the file at `path` may be read, always outside scripts.
+    pub fn may_read(&self, path: &Path) -> bool {
+        self.script_fence.as_ref().is_none_or(|f| f.may_read(path))
+    }
+
+    /// Fails with the reason when a running script may not write the file at `path`.
+    pub fn may_write(&self, path: &Path) -> Result<(), String> {
+        match &self.script_fence {
+            Some(fence) if !fence.may_write(path) => Err(crate::mcp::script::write_refused(path)),
+            _ => Ok(()),
+        }
     }
 
     /// Drops open groups and a current layer that no longer exist. Undo restores `next_id`, so a removed layer's id can

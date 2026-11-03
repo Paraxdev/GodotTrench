@@ -29,6 +29,10 @@ pub struct PrefabCache {
     /// What loading damaged prefab files lost, until the editor shows it.
     pub problems: Vec<String>,
     extents_seen: Option<ExtentsSeen>,
+    /// Prefabs a running run_script may load, see [`Self::set_fence`].
+    fence: Option<crate::mcp::script::Fence>,
+    /// What [`Self::get`] hands out for a prefab outside the fence.
+    refused: Option<PrefabEntry>,
 }
 
 /// What [`PrefabCache::refresh_extents`] last filled in, so it only walks the map again when that could change.
@@ -80,8 +84,14 @@ fn transformed_bounds(b: &Aabb, m: &DMat4) -> Aabb {
 }
 
 impl PrefabCache {
-    /// Refreshes the entry for `path` if the file changed, returns it.
+    /// Refreshes the entry for `path` if the file changed, returns it. A prefab outside the fence is not loaded, nor
+    /// handed out when it was loaded before.
     pub fn get(&mut self, path: &Path) -> &PrefabEntry {
+        if self.fence.as_ref().is_some_and(|f| !f.may_read(path)) {
+            let error = format!("{} is outside the folders the running script may read", path.display());
+            return self.refused.insert(PrefabEntry { map: None, error: Some(error), bounds: Aabb::EMPTY, modified: None });
+        }
+
         let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok();
         let stale = self.entries.get(path).is_none_or(|e| e.modified != modified);
         if stale {
@@ -196,6 +206,14 @@ impl PrefabCache {
     pub fn loaded(&self, path: &Path) -> Option<&PrefabEntry> {
         self.entries.get(path)
     }
+
+    /// Only hands out prefabs `fence` allows while a run_script runs, None allows all again. Prefabs loaded so far are
+    /// read again, since their bounds take in nested prefabs that only one of the two allows.
+    pub fn set_fence(&mut self, fence: Option<crate::mcp::script::Fence>) {
+        self.fence = fence;
+        self.entries.clear();
+        self.generation += 1;
+    }
 }
 
 #[cfg(test)]
@@ -258,6 +276,31 @@ mod tests {
         let other = map.insert(layer, NodeKind::Instance(Instance { path: "q.tdm".into(), ..inst }));
         cache.refresh_extents(&mut map, Some(&main));
         assert_eq!(map.bounds(other).size(), DVec3::splat(8.0), "a newly instanced prefab gets its extents");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_fence_keeps_prefabs_outside_it_unread() {
+        let dir = std::env::temp_dir().join(format!("td_prefab_fence_{}", std::process::id()));
+        let (inside, outside) = (dir.join("pack"), dir.join("elsewhere"));
+        std::fs::create_dir_all(&inside).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let mut prefab = Map::new();
+        let layer = prefab.default_layer();
+        prefab.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "m").unwrap()));
+        format::save(&prefab, &inside.join("door.tdm")).unwrap();
+        format::save(&prefab, &outside.join("secret.tdm")).unwrap();
+
+        let mut cache = PrefabCache::default();
+        assert!(cache.get(&outside.join("secret.tdm")).map.is_some());
+        cache.set_fence(Some(crate::mcp::script::Fence::new(vec![inside.clone()])));
+        assert!(cache.get(&inside.join("door.tdm")).map.is_some());
+        let refused = cache.get(&outside.join("secret.tdm"));
+        assert!(refused.map.is_none() && refused.error.as_deref().is_some_and(|e| e.contains("outside")), "also once it was loaded before");
+        let inst = Instance { path: outside.join("secret.tdm").to_string_lossy().into_owned(), origin: DVec3::ZERO, angles: DVec3::ZERO, fixup: String::new() };
+        assert_eq!(cache.instance_bounds(&inst, Some(&inside.join("main.tdm")), None).size(), DVec3::splat(16.0), "only the placeholder box");
+        cache.set_fence(None);
+        assert!(cache.get(&outside.join("secret.tdm")).map.is_some());
         let _ = std::fs::remove_dir_all(dir);
     }
 

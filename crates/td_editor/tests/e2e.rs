@@ -37,6 +37,28 @@ fn artifacts() -> PathBuf {
     dir
 }
 
+/// Makes `link` a link to the folder `target`, a junction on Windows, which needs no rights to make.
+fn link_dir(link: &std::path::Path, target: &std::path::Path) -> bool {
+    #[cfg(windows)]
+    let made = Command::new("cmd")
+        .arg("/C")
+        .arg("mklink")
+        .arg("/J")
+        .arg(std::path::absolute(link).unwrap())
+        .arg(std::path::absolute(target).unwrap())
+        .output()
+        .is_ok_and(|o| o.status.success());
+    #[cfg(unix)]
+    let made = std::os::unix::fs::symlink(target, link).is_ok();
+    made
+}
+
+/// Every file below `dir`, following no links.
+fn files_below(dir: &std::path::Path) -> Vec<PathBuf> {
+    let entries = std::fs::read_dir(dir).into_iter().flatten().flatten();
+    entries.flat_map(|e| if e.file_type().is_ok_and(|t| t.is_dir()) { files_below(&e.path()) } else { vec![e.path()] }).collect()
+}
+
 impl Editor {
     fn launch(name: &'static str) -> Editor {
         Self::launch_with(name, &[])
@@ -781,6 +803,268 @@ fn logic_playground_script_replays() {
     let out = artifacts().join("logic_playground");
     std::fs::create_dir_all(&out).unwrap();
     replay_logic_playground(&ed, &root, &out);
+}
+
+/// A script shared next to a project of its own edits and saves the map, and nothing else: it does not switch to that
+/// project, start Godot, touch the clipboard, close tabs or undo the person's work in them, or read and write outside
+/// the open project, its own folder and the folders the caller passes in, also through links.
+#[test]
+#[ignore]
+fn shared_scripts_only_edit_the_map() {
+    let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../godot").canonicalize().unwrap();
+    let shared = artifacts().join("shared_script");
+    let out = artifacts().join("shared_script_out");
+    for dir in [&shared, &out] {
+        let _ = std::fs::remove_dir_all(dir);
+        std::fs::create_dir_all(dir).unwrap();
+    }
+
+    std::fs::write(shared.join("project.godot"), "config_version=5\n").unwrap();
+    td_doc::format::save(&td_doc::Map::new(), &shared.join("pack.tdm")).unwrap();
+    let escaped = artifacts().join("shared_script_escaped.tdm");
+    let _ = std::fs::remove_file(&escaped);
+    let script = json!({ "format": "trenchdot-mcp-script", "steps": [
+        { "tool": "create_brush", "args": { "min": [0, 0, 0], "max": [64, 64, 64] } },
+        { "tool": "open_project", "args": { "path": "${script_dir}" } },
+        { "tool": "map_file", "args": { "op": "open", "path": "${script_dir}/pack.tdm" } },
+        { "tool": "run_action", "args": { "action": "run_godot_project" } },
+        { "tool": "run_action", "args": { "action": "build_in_godot" } },
+        { "tool": "run_action", "args": { "action": "reload_game_config" } },
+        { "tool": "set_editor", "args": { "live_mode": true } },
+        { "tool": "map_file", "args": { "op": "save", "path": "${script_dir}/../shared_script_escaped.tdm" } },
+        { "tool": "map_file", "args": { "op": "export_map", "path": escaped.with_extension("map") } },
+        { "tool": "map_file", "args": { "op": "save", "path": "${script_dir}/castle.tdm" } },
+        { "tool": "map_file", "args": { "op": "export_map", "path": "${out}/castle.map" } }
+    ] });
+    std::fs::write(shared.join("castle.json"), script.to_string()).unwrap();
+
+    let ed = Editor::launch_with("shared_script", &["--project", project.to_str().unwrap()]);
+    let summary = ed.call("run_script", json!({ "path": shared.join("castle.json"), "vars": { "out": out }, "continue_on_error": true }));
+    let refused: Vec<u64> = summary["errors"].as_array().unwrap().iter().map(|e| e["step"].as_u64().unwrap()).collect();
+    assert_eq!(refused, [1, 2, 3, 4, 5, 6, 7, 8], "{}", summary["errors"]);
+    assert_eq!(summary["ran"], 3);
+    let error = |step: u64| summary["errors"].as_array().unwrap().iter().find(|e| e["step"] == step).unwrap()["error"].as_str().unwrap().to_string();
+    assert!(error(2).contains("another project"), "{}", error(2));
+    assert!(error(3).contains("run_godot_project cannot run inside scripts"), "{}", error(3));
+    assert!(error(7).contains("cannot write"), "{}", error(7));
+    assert!(shared.join("castle.tdm").is_file() && out.join("castle.map").is_file(), "the script's folder and a folder passed in vars take writes");
+    assert!(!escaped.exists() && !escaped.with_extension("map").exists(), "nothing lands outside them");
+    let state = ed.state();
+    assert_eq!(std::path::Path::new(state["game"]["project_root"].as_str().unwrap()).canonicalize().unwrap(), project, "the project stays");
+    assert_eq!(state["godot"]["live_mode"], false);
+
+    // A save without a path goes back to the map the script started on, never to another map that is open.
+    let (mine, theirs) = (artifacts().join("shared_script_mine.tdm"), artifacts().join("shared_script_theirs.tdm"));
+    for path in [&mine, &theirs] {
+        td_doc::format::save(&td_doc::Map::new(), path).unwrap();
+        let _ = std::fs::remove_file(path.with_extension("tdm.bak"));
+    }
+
+    ed.call("map_file", json!({ "op": "open", "path": theirs }));
+    ed.call("map_file", json!({ "op": "open_tab", "path": mine }));
+    let brush = json!({ "tool": "create_brush", "args": { "min": [0, 0, 0], "max": [64, 64, 64] } });
+    let script = json!({ "steps": [
+        brush,
+        { "tool": "map_file", "args": { "op": "save" } },
+        { "tool": "run_action", "args": { "action": "next_tab" } },
+        brush,
+        { "tool": "map_file", "args": { "op": "save" } },
+        { "tool": "run_action", "args": { "action": "save" } },
+        { "tool": "map_file", "args": { "op": "open", "path": theirs } },
+        { "tool": "run_action", "args": { "action": "next_tab" } },
+        { "tool": "map_file", "args": { "op": "export_map", "path": mine } }
+    ] });
+    std::fs::write(shared.join("tabs.json"), script.to_string()).unwrap();
+    let summary = ed.call("run_script", json!({ "path": shared.join("tabs.json"), "continue_on_error": true }));
+    let refused: Vec<u64> = summary["errors"].as_array().unwrap().iter().map(|e| e["step"].as_u64().unwrap()).collect();
+    assert_eq!(refused, [4, 5, 6, 8], "{}", summary["errors"]);
+    let brushes = |path: &PathBuf| td_doc::format::load(path).unwrap().map.nodes.values().filter(|n| matches!(n.kind, td_doc::NodeKind::Brush(_))).count();
+    assert_eq!((brushes(&mine), brushes(&theirs)), (1, 0));
+    assert!(!theirs.with_extension("tdm.bak").exists());
+
+    // Reads stay in the same folders. What an imported map points to elsewhere is left out, and the clipboard and the
+    // other tabs are left alone.
+    let outside = artifacts().join("shared_script_outside");
+    let _ = std::fs::remove_dir_all(&outside);
+    std::fs::create_dir_all(&outside).unwrap();
+    td_doc::format::save(&td_doc::Map::new(), &outside.join("secret.tdm")).unwrap();
+    std::fs::write(outside.join("far.wad"), "WAD2").unwrap();
+    std::fs::write(outside.join("box.obj"), "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n").unwrap();
+    std::fs::write(outside.join("inst.vmf"), "world { \"id\" \"1\" \"classname\" \"worldspawn\" }\nentity { \"id\" \"2\" \"classname\" \"info_target\" }\n")
+        .unwrap();
+    let instance = "entity { \"id\" \"2\" \"classname\" \"func_instance\" \"file\" \"../shared_script_outside/inst.vmf\" \"origin\" \"0 0 0\" }";
+    std::fs::write(shared.join("level.vmf"), format!("world {{ \"id\" \"1\" \"classname\" \"worldspawn\" }}\n{instance}\n")).unwrap();
+    std::fs::write(shared.join("wads.map"), "{\n\"classname\" \"worldspawn\"\n\"wad\" \"../shared_script_outside/far.wad\"\n}\n").unwrap();
+    let away = "${script_dir}/../shared_script_outside";
+    let tabs = ed.state()["tabs"]["titles"].as_array().unwrap().len();
+    let script = json!({ "steps": [
+        { "tool": "map_file", "args": { "op": "import_map", "path": format!("{away}/x.map") } },
+        { "tool": "map_file", "args": { "op": "import_map", "path": "${script_dir}/wads.map", "textures": format!("{away}/far.wad") } },
+        { "tool": "map_file", "args": { "op": "convert_textures", "path": format!("{away}/far.wad") } },
+        { "tool": "import_model", "args": { "path": format!("{away}/box.obj") } },
+        { "tool": "validate_map", "args": { "path": format!("{away}/secret.tdm") } },
+        { "tool": "changes_since", "args": { "file": format!("{away}/secret.tdm") } },
+        { "tool": "run_action", "args": { "action": "insert_prefab", "args": { "path": outside.join("secret.tdm") } } },
+        { "tool": "map_file", "args": { "op": "open", "path": "//td-no-such-host/share/x.tdm" } },
+        { "tool": "run_action", "args": { "action": "copy" } },
+        { "tool": "run_action", "args": { "action": "close_tab", "args": { "discard": true } } },
+        { "tool": "run_action", "args": { "action": "close_tab", "args": { "close_others": true } } },
+        { "tool": "map_file", "args": { "op": "import_vmf", "path": "${script_dir}/level.vmf" }, "save": "vmf" },
+        { "tool": "map_file", "args": { "op": "import_map", "path": "${script_dir}/wads.map" }, "save": "wads" },
+        { "tool": "map_file", "args": { "op": "import_vmf", "path": format!("{away}/inst.vmf") } }
+    ] });
+    std::fs::write(shared.join("reads.json"), script.to_string()).unwrap();
+    let summary = ed.call("run_script", json!({ "path": shared.join("reads.json"), "continue_on_error": true }));
+    let refused: Vec<u64> = summary["errors"].as_array().unwrap().iter().map(|e| e["step"].as_u64().unwrap()).collect();
+    assert_eq!(refused, (0..=10).chain([13]).collect::<Vec<_>>(), "{}", summary["errors"]);
+    let error = |step: u64| summary["errors"].as_array().unwrap().iter().find(|e| e["step"] == step).unwrap()["error"].as_str().unwrap().to_string();
+    for step in (0..=6).chain([13]) {
+        assert!(error(step).contains("cannot read"), "{}", error(step));
+    }
+
+    assert!(error(7).contains("network path"), "{}", error(7));
+    assert!(error(8).contains("clipboard") && error(9).contains("discard") && error(10).contains("other tabs"), "{}", summary["errors"]);
+    assert_eq!(summary["vars"]["vmf"]["missing_instances"], json!(["../shared_script_outside/inst.vmf"]), "an instance elsewhere is left out");
+    let sources = summary["vars"]["wads"]["texture_sources"].to_string();
+    assert!(!sources.contains("far.wad"), "a WAD elsewhere is not read: {sources}");
+    assert!(ed.state()["tabs"]["titles"].as_array().unwrap().len() >= tabs, "no tab was closed");
+
+    // A texture folder that links out of the project takes no textures from a script.
+    let linked = artifacts().join("shared_script_linked");
+    let elsewhere = artifacts().join("shared_script_linked_textures");
+    for dir in [&linked, &elsewhere] {
+        let _ = std::fs::remove_dir_all(dir);
+        std::fs::create_dir_all(dir).unwrap();
+    }
+
+    std::fs::write(linked.join("project.godot"), "config_version=5\n").unwrap();
+    assert!(link_dir(&linked.join("textures"), &elsewhere), "link the texture folder out of the project");
+    std::fs::copy(outside.join("far.wad"), linked.join("evil.wad")).unwrap();
+    ed.call("open_project", json!({ "path": linked }));
+    let script = json!({ "steps": [
+        { "tool": "map_file", "args": { "op": "convert_textures", "path": "${script_dir}/evil.wad", "overwrite": true } },
+        { "tool": "map_file", "args": { "op": "import_map", "path": "${script_dir}/wads.map", "textures": "auto" } },
+        { "tool": "map_file", "args": { "op": "import_vmf", "path": "${script_dir}/level.vmf", "textures": "auto" } }
+    ] });
+    std::fs::write(linked.join("textures.json"), script.to_string()).unwrap();
+    std::fs::copy(shared.join("wads.map"), linked.join("wads.map")).unwrap();
+    std::fs::copy(shared.join("level.vmf"), linked.join("level.vmf")).unwrap();
+    let summary = ed.call("run_script", json!({ "path": linked.join("textures.json"), "continue_on_error": true }));
+    let errors = summary["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 3, "{}", summary["errors"]);
+    assert!(errors.iter().all(|e| e["error"].as_str().unwrap().contains("cannot write textures into")), "{}", summary["errors"]);
+    assert_eq!(std::fs::read_dir(&elsewhere).unwrap().count(), 0);
+    let _ = std::fs::remove_dir_all(&linked);
+
+    // Links inside the folders do not lead out of them either: not to a prefab, not to a file a model names, and not
+    // for the files an import or export writes. Prefabs that the script's maps and pasted text name are left unread.
+    let links = artifacts().join("shared_script_links");
+    let away = artifacts().join("shared_script_links_away");
+    for dir in [&links, &away] {
+        let _ = std::fs::remove_dir_all(dir);
+        std::fs::create_dir_all(dir).unwrap();
+    }
+
+    let pack = links.join("pack");
+    for dir in ["models", "prefabs", "obj", "files"].map(|d| away.join(d)).iter().chain([&pack, &links.join("maps"), &links.join("textures/models")]) {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+
+    std::fs::write(links.join("project.godot"), "config_version=5\n").unwrap();
+    assert!(link_dir(&pack.join("junc"), &away.join("files")));
+    let png = |size: u32, rgba: [u8; 4], path: &std::path::Path| image::RgbaImage::from_pixel(size, size, image::Rgba(rgba)).save(path).unwrap();
+    png(8, [1, 2, 3, 255], &away.join("files/secret.png"));
+    png(4, [200, 80, 40, 255], &links.join("textures/brick.png"));
+    std::fs::write(pack.join("lnk.mtl"), "newmtl m\nKd 1 1 1\nmap_Kd junc/secret.png\n").unwrap();
+    std::fs::write(pack.join("lnk.obj"), "mtllib lnk.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nvt 0 0\nvt 1 0\nvt 0 1\nusemtl m\nf 1/1 2/2 3/3\n").unwrap();
+    let mut secret = td_doc::Map::new();
+    let layer = secret.default_layer();
+    let cube = td_geom::Brush::from_aabb(&td_core::Aabb::new(td_core::DVec3::ZERO, td_core::DVec3::splat(64.0)), "brick").unwrap();
+    secret.insert(layer, td_doc::NodeKind::Brush(cube));
+    td_doc::format::save(&secret, &away.join("files/secret.tdm")).unwrap();
+    let outside_prefab = away.join("files/secret.tdm").to_string_lossy().replace('\\', "/");
+    let mut refers = td_doc::Map::new();
+    let layer = refers.default_layer();
+    let instance = td_doc::map::Instance { path: outside_prefab.clone(), origin: td_core::DVec3::ZERO, angles: td_core::DVec3::ZERO, fixup: String::new() };
+    refers.insert(layer, td_doc::NodeKind::Instance(instance));
+    td_doc::format::save(&refers, &pack.join("refers.tdm")).unwrap();
+    let pasted = json!({ "format": "trenchdot-clipboard", "version": 1, "nodes": [
+        { "id": 2, "type": "instance", "path": outside_prefab, "origin": [0, 0, 0], "angles": [0, 0, 0] }
+    ] });
+    ed.call("open_project", json!({ "path": links }));
+    let script = json!({ "steps": [
+        { "tool": "run_action", "args": { "action": "paste", "args": { "text": pasted.to_string() } } },
+        { "tool": "map_file", "args": { "op": "open", "path": "${script_dir}/refers.tdm" } },
+        { "tool": "run_action", "args": { "action": "select_all" } },
+        { "tool": "run_action", "args": { "action": "explode_instances" } },
+        { "tool": "map_file", "args": { "op": "save", "path": "${script_dir}/loot.tdm" } },
+        { "tool": "import_model", "args": { "path": "${script_dir}/lnk.obj", "mode": "mesh" } }
+    ] });
+    std::fs::write(pack.join("reads.json"), script.to_string()).unwrap();
+    let summary = ed.call("run_script", json!({ "path": pack.join("reads.json"), "continue_on_error": true }));
+    let refused: Vec<u64> = summary["errors"].as_array().unwrap().iter().map(|e| e["step"].as_u64().unwrap()).collect();
+    assert_eq!(refused, [0, 3], "{}", summary["errors"]);
+    let error = |step: u64| summary["errors"].as_array().unwrap().iter().find(|e| e["step"] == step).unwrap()["error"].as_str().unwrap().to_string();
+    assert!(error(0).contains("cannot paste an instance"), "{}", error(0));
+    assert!(error(3).contains("Cannot load prefab"), "{}", error(3));
+    let loot = td_doc::format::load(&pack.join("loot.tdm")).unwrap().map;
+    assert!(!loot.nodes.values().any(|n| matches!(n.kind, td_doc::NodeKind::Brush(_))), "nothing of the prefab outside got into the map");
+    let texture = image::open(links.join("textures/models/lnk/tex0.png")).unwrap();
+    assert_eq!(texture.width(), 4, "the model's color, not the image its material names through the link");
+
+    // The person's unsaved work in another tab stays, undo and redo only reach what the script did there.
+    ed.call("run_action", json!({ "action": "close_tab", "args": { "close_others": true, "discard": true } }));
+    ed.call("run_action", json!({ "action": "close_tab", "args": { "discard": true } }));
+    let start = links.join("maps/start.tdm");
+    td_doc::format::save(&td_doc::Map::new(), &start).unwrap();
+    ed.call("map_file", json!({ "op": "open", "path": start }));
+    for x in [0, 128] {
+        ed.call("create_brush", json!({ "min": [x, 0, 0], "max": [x + 64, 64, 64] }));
+    }
+
+    ed.call("map_file", json!({ "op": "new" }));
+    let script = json!({ "steps": [
+        { "tool": "run_action", "args": { "action": "next_tab" } },
+        { "tool": "run_action", "args": { "action": "undo", "args": { "steps": 50 } } },
+        { "tool": "run_action", "args": { "action": "undo" } },
+        { "tool": "create_brush", "args": { "min": [256, 0, 0], "max": [320, 64, 64] } },
+        { "tool": "run_action", "args": { "action": "undo" } },
+        { "tool": "run_action", "args": { "action": "redo" } },
+        { "tool": "run_action", "args": { "action": "redo" } },
+        { "tool": "run_action", "args": { "action": "undo", "args": { "steps": "2" } } }
+    ] });
+    std::fs::write(pack.join("undo.json"), script.to_string()).unwrap();
+    let summary = ed.call("run_script", json!({ "path": pack.join("undo.json"), "continue_on_error": true }));
+    let refused: Vec<u64> = summary["errors"].as_array().unwrap().iter().map(|e| e["step"].as_u64().unwrap()).collect();
+    assert_eq!(refused, [1, 2, 6, 7], "{}", summary["errors"]);
+    assert_eq!(ed.brushes(), 3);
+    ed.call("run_action", json!({ "action": "undo" }));
+    assert_eq!(ed.brushes(), 2, "the person's two brushes are still there");
+
+    // Writes through links: the model's textures, a prefab library entry and the files an OBJ export puts next to it.
+    std::fs::remove_dir_all(links.join("textures/models")).unwrap();
+    for (link, target) in [("textures/models", "models"), ("prefab_library", "prefabs"), ("pack/out_textures", "obj")] {
+        assert!(link_dir(&links.join(link), &away.join(target)), "{link}");
+    }
+
+    ed.call("run_action", json!({ "action": "reload_materials" }));
+    let script = json!({ "steps": [
+        { "tool": "import_model", "args": { "path": "${script_dir}/lnk.obj", "mode": "mesh" } },
+        { "tool": "create_brush", "args": { "min": [0, 0, 0], "max": [64, 64, 64], "material": "brick" } },
+        { "tool": "run_action", "args": { "action": "select_all" } },
+        { "tool": "prefab_library", "args": { "op": "add", "name": "loot", "category": "x" } },
+        { "tool": "map_file", "args": { "op": "export_obj", "path": "${script_dir}/out.obj" } }
+    ] });
+    std::fs::write(pack.join("writes.json"), script.to_string()).unwrap();
+    let summary = ed.call("run_script", json!({ "path": pack.join("writes.json"), "continue_on_error": true }));
+    let refused: Vec<u64> = summary["errors"].as_array().unwrap().iter().map(|e| e["step"].as_u64().unwrap()).collect();
+    assert_eq!(refused, [3, 4], "{}", summary["errors"]);
+    assert!(summary["errors"].as_array().unwrap().iter().all(|e| e["error"].as_str().unwrap().contains("scripts cannot write")), "{}", summary["errors"]);
+    let mut left = files_below(&away);
+    left.sort();
+    assert_eq!(left, [away.join("files/secret.png"), away.join("files/secret.tdm")], "nothing was written through the links");
+    assert!(!pack.join("out.obj").exists() && !pack.join("out.mtl").exists());
+    let _ = std::fs::remove_dir_all(&links);
 }
 
 /// Replays the showcase maps in examples/mcp against the demo project, the same way a user or an LLM would build them.

@@ -102,6 +102,8 @@ pub struct Materials {
     by_key: HashMap<Key, (usize, DVec2)>,
     by_file: HashMap<PathBuf, Option<usize>>,
     by_pixels: HashMap<u64, usize>,
+    /// Where a running run_script may read images from, None outside scripts.
+    fence: Option<crate::mcp::script::Fence>,
 }
 
 fn linear(c: f32) -> f32 {
@@ -122,6 +124,11 @@ fn channel(p: &image::Rgba<u8>, which: u8) -> u8 {
 }
 
 impl Materials {
+    /// Materials whose images are read only where `fence` allows, anywhere for None.
+    pub fn within(fence: Option<crate::mcp::script::Fence>) -> Self {
+        Self { fence, ..Default::default() }
+    }
+
     pub fn plain(&mut self, name: &str) -> usize {
         let key = Key::Plain(name.to_string());
         if let Some((i, _)) = self.by_key.get(&key) {
@@ -131,6 +138,10 @@ impl Materials {
         let mut m = Material::plain(name.to_string());
         m.base_color = [0.6, 0.6, 0.6, 1.0];
         self.add(key, m, DVec2::ONE)
+    }
+
+    fn may_read(&self, path: &Path) -> bool {
+        self.fence.as_ref().is_none_or(|f| f.may_read(path))
     }
 
     fn add(&mut self, key: Key, material: Material, size: DVec2) -> usize {
@@ -145,6 +156,10 @@ impl Materials {
     fn file(&mut self, path: &Path) -> Option<usize> {
         if let Some(i) = self.by_file.get(path) {
             return *i;
+        }
+
+        if !self.may_read(path) {
+            return None;
         }
 
         let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "texture".into());
@@ -180,7 +195,7 @@ impl Materials {
 
     /// glTF's metallic roughness map from Godot's separate roughness and metallic images.
     fn bake_metal_rough(&mut self, name: &str, rough: Option<(&Path, u8)>, metal: Option<(&Path, u8)>) -> Option<usize> {
-        let open = |p: &Path| image::open(p).ok().map(|i| i.to_rgba8());
+        let open = |p: &Path| self.may_read(p).then(|| image::open(p).ok()).flatten().map(|i| i.to_rgba8());
         let rough = rough.and_then(|(p, c)| Some((open(p)?, c)));
         let metal = metal.and_then(|(p, c)| Some((open(p)?, c)));
         let (w, h) = rough.as_ref().or(metal.as_ref())?.0.dimensions();
@@ -213,8 +228,9 @@ impl Materials {
         let mut pixels = None;
         if let Some(path) = &files.albedo {
             m.albedo = self.file(path);
-            pixels = image::image_dimensions(path).ok();
+            pixels = self.may_read(path).then(|| image::image_dimensions(path).ok()).flatten();
         } else if !lib.is_color_only(name)
+            && lib.image_path(name).is_none_or(|p| self.may_read(&p))
             && let Some(img) = lib.load_image(name)
         {
             pixels = Some(img.dimensions());

@@ -585,7 +585,8 @@ impl MaterialLibrary {
     }
 
     /// The albedo image file of a material name, None for built-in placeholders and color only materials.
-    fn image_path(&self, name: &str) -> Option<PathBuf> {
+    /// The image file [`Self::load_image`] reads for a material that is not a plain color.
+    pub fn image_path(&self, name: &str) -> Option<PathBuf> {
         if name.starts_with("res://") {
             return self.resolve_res(name);
         }
