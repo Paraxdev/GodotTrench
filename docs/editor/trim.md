@@ -1,18 +1,44 @@
 # Trim
 
-*Brush > Add Trim…* lays strips of brush along the edges of faces, standing out from them. Along the bottom edges of
-walls they are baseboards, along the top edges crown molding, around the edges of a floor face a border, around a pool
-its coping.
+*Brush > Add Trim…* lays strips of brush along the edges of faces, standing out from them. Along the bottom of walls
+they are baseboards, along the top crown molding, around a floor a border, around a pool its coping. Here is a plain
+room before and after one click:
 
-1. Select the walls (every upright face of the selected brushes gets trim), or pick single faces with the face tool.
-2. Choose which **Edges**: bottom, top, sides or all.
-3. Set **Height** (how far the strip runs over the face), **Depth** (how far it stands out) and **Inset** (a gap
-   between the edge and the strip). **Use Current** takes the material selected in the Materials panel.
-4. Click **Add Trim**. The strips land in one group, or in a `func_detail_illusionary` when **Collision** is off, so
-   players do not snag on them.
+![A plastered room with a doorway and its walls selected, no trim yet](../assets/trim/room-before.png)
+
+![The same room with dark baseboards along the bottom of the walls, running up to the doorway](../assets/trim/room-after.png)
+
+1. (Optionally) Pick the trim material
+
+   Press Escape so nothing is selected, then click the material in the Materials panel. It becomes the current
+   material without changing the map.
+
+2. Select the walls
+
+   Every upright face of the selected brushes gets trim. For single faces, Shift+click them instead,
+   Ctrl+Shift+click adds or removes more.
+
+3. Open the dialog
+
+   Choose *Brush > Add Trim…*. It starts with the current material, **Use Current** switches to it again later. At
+   the bottom it says how many faces it found.
+
+4. Set the strip
+
+   Pick which **Edges** get it: bottom, top, sides or all. **Height** is how far the strip runs over the face,
+   **Depth** how far it stands out, and **Inset** leaves a gap between the edge and the strip.
+
+   ![The Add Trim dialog with Edges set to bottom, Height 6 u, Depth 2 u, Inset 0 u, showcase/planks_dark as the material, Only where a floor lies under the edge ticked, Collision off and 24 faces selected](../assets/trim/add-trim-dialog.png)
+
+5. Click **Add Trim**
+
+   The status bar says how many strips it made.
+
+The strips land in a `func_detail_illusionary` while **Collision** is off, the default, so players do not snag on them.
+Tick it, or use a game without that entity, and they land in a plain group instead.
 
 Where two trimmed faces meet, one strip runs into the corner and the other stops at it, so corners close without two
-strips overlapping. Around the end of a free-standing wall or a doorway the strip wraps around. A strip that would end
+strips overlapping. Around the end of a free standing wall or a doorway the strip wraps around. A strip that would end
 up inside another brush, like on the ends of a lintel between two wall pieces, is left out.
 
 **Only where a floor lies under the edge** keeps bottom trim to edges that stand on something, so the underside of a
