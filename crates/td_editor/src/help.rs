@@ -94,7 +94,7 @@ pub const PAGES: &[(Topic<'static>, &str, &str)] = &[
     (Menu("Paths"), "gameplay/entities/actors", "pathcorner"),
     (Menu("Tools"), "editor/shortcuts", "tools"),
     (Menu("View"), "editor/interface", "views"),
-    (Menu("Godot Overlays"), "godot/overlays", "what-the-level-designer-sees"),
+    (Menu("Godot Overlays"), "godot/overlays", ""),
     (Menu("Walkable Area"), "godot/navigation", ""),
     (Menu("Views"), "editor/interface", "views"),
     (Menu("Shading"), "editor/interface", "shading"),

@@ -35,17 +35,6 @@ Opened by itself, the overlay scene shows a warning on its root because it is no
 dashed boxes in TrenchDot catch up the next time the scene with the map is built or saved, since only there does the
 overlay know its map.
 
-## What the level designer sees
-
-The level designer works in TrenchDot and never sees the Godot scene, so the editor shows each direct child of an
-overlay as a dashed blue box with its name. That way nobody builds a wall through the breaker box. The overlay's
-targetnames also count as real targets: the output editor's target list offers them, marked *Godot overlay*, and
-the Issues panel does not flag outputs aimed at them. *View > Godot Overlays* hides the boxes, and turning off *Share With Editor* on the overlay
-leaves it out.
-
-The boxes come from `night_district.overlay.json` next to `night_district.tdm`, written when the map is built in the
-Godot editor and when the scene is saved. Commit it with the map.
-
 ## Wiring overlays
 
 Overlay nodes and map entities can trigger each other through the same outputs and inputs that map entities use among
