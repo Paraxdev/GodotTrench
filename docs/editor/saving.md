@@ -1,27 +1,38 @@
 # Saving and recovery
 
-File dialogs start in the current map's folder, or in the Godot project for a map that was never saved, since the
-addon loads maps by their `res://` path. *File > Maps in Project* lists every map in the project for quick opening.
+Press Ctrl+S to save, or Ctrl+Shift+S for *Save As…*. File dialogs start in the folder of the current map, or in the
+Godot project for a map you never saved, since the addon loads maps by their `res://` path. *File > Maps in Project*
+lists every map in the project if you just want to open one quickly.
 
 ## Backups and autosave
+
+The editor keeps two kinds of spare copies next to your map:
 
 | File | Written |
 | --- | --- |
 | `<map>.tdm.bak` | On every save, a copy of the previous version. Rename it to `.tdm` to go back one save |
 | `<map>.tdm.autosave` | Every three minutes, for every tab with unsaved changes |
 
-Change the autosave interval in *File > Preferences*, 0 turns it off. Autosaves use an extension Godot does not
-import, so a half finished map never shows up in your game, and saving the map deletes its autosave.
+To change how often it autosaves, go to *File > Preferences* and set *Autosave (minutes, 0 = off)*.
+
+![The Autosave (minutes, 0 = off) field in Preferences set to 3](../assets/saving/prefs-autosave.png)
+
+Autosaves use an extension Godot does not import, so a half finished map never shows up in your game. Saving the map
+deletes its autosave.
 
 ## Recovering a map
 
 If the editor closed before you saved, open the autosave:
 
-1. *File > Open Map…*
-2. Pick the **Autosave (recover a map)** filter and open the `.tdm.autosave` file.
-3. Save. This writes the real `.tdm`.
+1. Choose *File > Open Map…*.
+2. Pick the **Autosave (recover a map)** file type and open the `.tdm.autosave` file. The status bar should say it
+   recovered the map from its autosave.
+3. Save. This writes the real `.tdm` again.
 
-Untitled maps autosave to a temporary file. Find those under *File > Open Recent*, below *Autosaved untitled maps*.
+Maps you never saved autosave to a temporary file instead. You find those under *File > Open Recent*, below
+*Autosaved untitled maps*.
+
+![File > Open Recent with No recent maps at the top and a list of autosaved untitled maps below it](../assets/saving/open-recent-autosaves.png)
 
 ## Damaged files
 

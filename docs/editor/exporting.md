@@ -1,8 +1,8 @@
 # Exporting to Blender and other 3D tools
 
-*File > Export > glTF Binary (.glb) for Blender and other 3D tools* saves what the map looks like as one 3D model file:
-brushes, meshes, terrain and models, with their textures inside. Use it to render a level in Blender, set up a trailer
-shot, or hand a blockout to an artist who builds the final meshes over it.
+You can save what your map looks like as one 3D model file: brushes, meshes, terrain and models, with their textures
+inside. Handy to render a level in Blender, set up a trailer shot, or hand a blockout to an artist who builds the final
+meshes over it.
 
 > **Warning:** Only geometry and materials are exported. Entity logic, I/O wiring, triggers, scripts and gameplay
 > behavior are left out, and the file cannot be opened in TrenchDot as a map again. The `.tdm` stays the map, keep
@@ -10,24 +10,44 @@ shot, or hand a blockout to an artist who builds the final meshes over it.
 
 ## Steps
 
-1. *File > Export > glTF Binary (.glb) for Blender and other 3D tools*, or type "glTF" in the command palette
-   (Ctrl+Shift+P or F1).
-2. Pick what goes into the file, see the options below, then click **Export…** and choose where to save. The dialog
-   can switch to OBJ too.
-3. In Blender, *File > Import > glTF 2.0 (.glb/.gltf)* and pick the file. The defaults are right, the importer turns
-   the model Z up on its own.
+1. Open the export
 
-The export runs in the background with a progress window, so you can keep editing, and **Cancel** stops it without
-writing anything. It exports the map as it was when you clicked **Export…**. Unsaved changes are autosaved first, unless
-autosave is off in *File > Preferences*. The status bar then says how many objects, materials and triangles went out,
-and names any material the project has no image for. Those come out untextured.
+   Go to *File > Export > glTF Binary (.glb) for Blender and other 3D tools…*, or type "glTF" in the command palette
+   (Ctrl+Shift+P or F1).
+
+   ![The File menu with Export open and glTF Binary (.glb) for Blender and other 3D tools hovered](../assets/exporting/menu-export.png)
+
+2. Pick what goes in
+
+   The *Export for 3D Tools* window opens. Tick what you want, see [the options](#options) below. The numbers next to
+   *Prop models* and *Scatter instances* tell you how many objects each adds. You can switch the format to OBJ at the
+   top.
+
+   ![The Export for 3D Tools window with glTF Binary picked, Whole map, Prop models (8) ticked and Scatter instances (797) unticked](../assets/exporting/export-dialog.png)
+
+3. Save it
+
+   Click **Export…** and choose where the file goes. The export runs in the background with a progress window, so you
+   can keep editing, and **Cancel** stops it without writing anything. When it is done the status bar says how many
+   objects, materials and triangles went out.
+
+4. Open it in Blender
+
+   Use *File > Import > glTF 2.0 (.glb/.gltf)* and pick the file. The defaults are right, the importer turns the model
+   Z up on its own.
+
+The file holds the map as it was when you clicked **Export…**. Unsaved changes are autosaved first, unless autosave is
+off in *File > Preferences*. If the status bar names a material the project has no image for, that one comes out
+untextured.
+
+## Options
 
 | Option | Does |
 | --- | --- |
 | Whole map, Selection only | Everything, or only the selected objects, still inside their layers and groups |
 | Hidden layers and objects | Also exports what is hidden in the views. Off, you get what you see |
 | Prop models | The models that props and other point entities show, at their place, rotation and scale |
-| Scatter instances | Every tree, rock and tuft of the [scatter sets](scatter.md) as its own object. Off by default, the number next to it says how many objects it adds, and thousands of them make a big file that is slow to open |
+| Scatter instances | Every tree, rock and tuft of the [scatter sets](scatter.md) as its own object. Off by default, since thousands of them make a big file that is slow to open |
 | Point entities as empty markers | An empty object named like the entity where each point entity without a model stands, handy for placing lights or cameras in Blender |
 | Merge unnamed brushes | Brushes you have not renamed join into one object per layer, group or entity, which keeps Blender's outliner short. Named brushes stay separate |
 
@@ -45,30 +65,31 @@ and names any material the project has no image for. Those come out untextured.
 
 The file leaves out what the Godot build does not draw: faces with tool textures (clip, skip, origin, sky, trigger,
 nodraw, hint), faces hidden against another brush, trigger and other volume entities, and layers set to *Omit From
-Export*. Lights, sounds, spawn points, the sky and fog are not exported either. Only objects that go into the file hide
-each other's faces, so a pillar exported with *Selection only* keeps the bottom that rests on the floor, and a layer set
-to *Omit From Export* leaves no holes in its neighbors.
+Export*. Lights, sounds, spawn points, the sky and fog are not exported either.
+
+Only objects that go into the file hide each other's faces. So a pillar exported with *Selection only* keeps the bottom
+that rests on the floor, and a layer set to *Omit From Export* leaves no holes in its neighbors.
 
 ## Units and axes
 
-Map units are divided by the project's units per meter, 32 unless the map settings say otherwise, so one meter in
-Godot is one meter in Blender. The file is Y up like Godot, which is what glTF expects. Each brush, mesh and terrain has
-its origin at the center of its bounds, and models keep the origin of the model file.
+One meter in Godot is one meter in Blender. Map units are divided by the project's units per meter, 32 unless the map
+settings say otherwise. The file is Y up like Godot, which is what glTF expects. Each brush, mesh and terrain has its
+origin at the center of its bounds, and models keep the origin of the model file.
 
 ## When to use OBJ
 
-*File > Export > Wavefront OBJ (.obj)* is for tools that cannot read glTF. It writes three things side by side, for
+*File > Export > Wavefront OBJ (.obj)…* is for tools that cannot read glTF. It writes three things side by side, for
 example `level.obj`, `level.mtl` with the materials, and a `level_textures` folder with copies of the textures. Keep
-them together when you move them. In Blender, *File > Import > Wavefront (.obj)*.
+them together when you move them. In Blender, use *File > Import > Wavefront (.obj)*.
 
 OBJ has no parent objects and no way to share one mesh between copies, so every object is written flat in world space
-and each scatter instance is a full copy. With scatter instances ticked, the dialog warns once they add up to a million
+and each scatter instance is a full copy. With scatter instances ticked, the window warns once they add up to a million
 triangles and says how big the file gets. An OBJ export refuses more than 10 million triangles, a file of more than a
 gigabyte. Materials keep the albedo, normal, roughness and emission textures. Prefer glTF whenever the other tool reads
 it.
 
-A `.glb` file holds at most 4 GB. glTF writes each model once however many scatter instances show it, so only a huge map
-gets there, and the export then says so instead of writing a broken file.
+A `.glb` file holds at most 4 GB. glTF writes each model once however many scatter instances show it, so only a huge
+map gets there, and the export then says so instead of writing a broken file.
 
 ## Command line
 

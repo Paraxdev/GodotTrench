@@ -1,9 +1,11 @@
 # Baking lighting
 
-Baking traces the light of the sun, the sky, your lamps and glowing materials once, bounces included, and stores the
-result in the map as a light map. Godot then draws that light instead of working it out every frame, so a map gets
-soft bounce light, colored spill from lamps and ambient occlusion in its corners at almost no cost at runtime. Lights
-you want to switch or move stay real time next to the bake.
+Baking works out the light of the sun, the sky, your lamps and glowing materials once, bounces included, and stores it
+in the map as a light map. Godot then draws that light instead of computing it every frame. You get soft bounce light,
+colored spill from lamps and darker corners at almost no cost at runtime. Lights you want to switch or move stay real
+time next to the bake.
+
+![Left: a room in Lit Preview, flat grey with hard edged patches of sun under the windows. Right: the same room after baking, warm lamp light, darker corners and soft patches of sun](../assets/light-baking/lit-preview-and-baked.png)
 
 The bake covers static geometry: world brushes, meshes, terrains, displacements and brush entities that do not move.
 Moving brush entities such as doors and platforms, trigger volumes, decals, tool textures and layers left out of the
@@ -11,15 +13,34 @@ export are neither lit by the bake nor cast baked shadows.
 
 ## Baking a map
 
-1. Open *Godot > Bake Lighting…*. The dialog sums up what goes in, for example "Bakes the sun, 3 lights, the sky and
-   glowing materials into 412 surfaces", and which lights stay real time.
-2. Pick a quality and a texel size, see below. The defaults suit a first look.
-3. Click **Bake**. A progress window shows the stage, and you can keep editing meanwhile. Changes made during the bake
-   are not in it. **Cancel** stops it and the map keeps the lighting it had.
-4. When it is done the 3D view switches to **Baked Lighting** shading, and the status bar says how long it took and
-   how big the light map is.
+1. Open the Bake Lighting window
 
-The bake is saved inside the `.tdm`, and baking is one undo step. **Remove Bake** in the same dialog drops it, Godot
+   Choose *Godot > Bake Lighting…*.
+
+   ![The Godot menu with Bake Lighting hovered and its tooltip showing](../assets/light-baking/menu-bake-lighting.png)
+
+2. Check what goes in
+
+   The top line sums it up, for example "Bakes the sun, 1 light, the sky and glowing materials into 102 surfaces", and
+   says which lights stay real time.
+
+   ![The Bake Lighting window with Quality set to Medium, Texel size 16.0 u, Shadow softness 0.30 and Runs on CPU](../assets/light-baking/bake-dialog.png)
+
+3. Pick a quality and a texel size
+
+   See [the options](#dialog-options) below. The defaults are fine for a first look.
+
+4. Click **Bake**
+
+   A progress window shows the stage, and you can keep editing meanwhile. Changes made during the bake are not in it.
+   **Cancel** stops it and the map keeps the lighting it had.
+
+5. Look at the result
+
+   When it is done the 3D view switches to **Baked Lighting** shading, and the status bar says how long it took and how
+   big the light map is.
+
+The bake is saved inside the `.tdm`, and baking is one undo step. **Remove Bake** in the same window drops it, Godot
 then lights the map in real time again.
 
 ## Dialog options
@@ -54,8 +75,10 @@ its buffers, the CPU bakes the map and the status bar says why. A GPU that fails
 
 ## Looking at the bake
 
-*View > Shading > Baked Lighting* shows the bake, and F4 includes it in its cycle once the map has one. *View >
-Shading > Baked View* picks what it shows:
+*View > Shading > Baked Lighting* shows the bake, and once the map has one, F4 includes it when it cycles the shading.
+*View > Shading > Baked View* picks what it shows.
+
+![View > Shading > Baked View open, with Textures with Baked Light ticked and Light Map Only hovered](../assets/light-baking/menu-baked-view.png)
 
 | Baked View | Shows |
 | --- | --- |
@@ -63,6 +86,8 @@ Shading > Baked View* picks what it shows:
 | Light Map Only | The light alone, without textures, to judge bounce and noise |
 | Sun Shadow Mask | How much of the sun reaches each spot, white in full sun |
 | Ambient Occlusion | Darkening in corners and under objects, for checking only, Godot does not use it |
+
+![The same room in the four baked views: textures with baked light at the top left, the light map alone at the top right, the sun shadow mask at the bottom left and ambient occlusion at the bottom right](../assets/light-baking/baked-views.png)
 
 ## Light keys
 
@@ -75,28 +100,35 @@ Every `light` and `light_spot` has a `bake_mode` key, and worldspawn has `sun_ba
 | `bounce` | Only the bounced light | Dynamic, Godot draws the direct light and its shadows in real time |
 | `realtime` | Left out | Disabled, fully real time |
 
-`bounce` suits a lamp whose shadows must follow moving objects while its bounce still fills the room. Godot's own
+Use `bounce` for a lamp whose shadows must follow moving objects while its bounce still fills the room. Godot's own
 names `static`, `dynamic` and `disabled` work too. A real time light also lights moving objects through the
 [light probes](../godot/baked-lighting.md#light-probes).
 
-`light_size` is the radius of the lamp in meters. A bigger lamp casts softer shadows, and 0 uses the dialog's shadow
+`light_size` is the radius of the lamp in meters. A bigger lamp casts softer shadows, and 0 uses the window's shadow
 softness instead. `light_indirect_energy` scales the bounced light, and `omni_attenuation`, `spot_attenuation` and
 `spot_angle_attenuation` shape the falloff. The Godot light gets all of them as its properties of the same name, so
 the real time light matches the bake.
 
 ## When a bake goes out of date
 
-The bake records the geometry and lights it was made from. Moving, reshaping, adding or deleting static geometry, or
-changing a light, a light probe, the worldspawn sun and sky keys, the textures in use or their settings, makes it out of
-date, and the dialog warns that the map changed since the last bake.
+The bake remembers the geometry and lights it was made from. Moving, reshaping, adding or deleting static geometry, or
+changing a light, a light probe, the worldspawn sun and sky keys, the textures in use or their settings, makes it out
+of date. The Bake Lighting window then warns that the map changed since the last bake.
 
-Until you bake again, faces that changed show the Lit Preview in the editor and the average light of the map in
-Godot, while the rest keeps its baked light. Bake again before you ship.
+![The Bake Lighting window with the yellow line "The map changed since the last bake. Bake again to update the lighting." and the Bake and Remove Bake buttons](../assets/light-baking/bake-dialog-out-of-date.png)
+
+Until you bake again, faces that changed show the Lit Preview in the editor and the average light of the map in Godot,
+while the rest keeps its baked light. Here the pillar was moved after the bake: it shows the Lit Preview, and its old
+shadow is still on the floor. Bake again before you ship.
+
+![The baked room after moving the pillar, the pillar is lit evenly and its old baked shadow stays where it stood](../assets/light-baking/bake-out-of-date.png)
 
 ## Texture settings
 
 Select a face and open **Texture Settings** in the Inspector to set how every face with that texture is treated, across
 the whole map. The settings are saved with the map.
+
+![The Inspector with one face selected and Texture Settings open: Bake light onto it, Casts baked shadows, Light map detail, Repeat every and Projection](../assets/light-baking/texture-settings.png)
 
 | Setting | What it does | Use it for |
 | --- | --- | --- |
@@ -115,7 +147,7 @@ A face with both bake options off is left out of the bake entirely. Repeat size 
 
 ## MCP
 
-The `bake_lighting` tool bakes with the same options as the dialog, `quality`, `texel_size`, `softness` and
+The `bake_lighting` tool bakes with the same options as the window, `quality`, `texel_size`, `softness` and
 `backend` (`cpu`, `gpu` or `hybrid`), and `view` switches the Baked View. It waits for the bake to finish and returns
 the light map size, the counts, the GPU used or why it was not, and `out_of_date`. The `texture` tool's `settings` op
 reads and sets texture settings, with `material`, `bake`, `casts`, `texel_scale`, `size` (`null` clears it) and
