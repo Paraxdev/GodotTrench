@@ -594,6 +594,16 @@ func test_bbmodel() -> void:
 	for p in v5["polygons"][0]["positions"]:
 		up_z += p.z / 4.0
 	check(near(up_z, -5.0, 0.001), "Blockbench 5 group rotation read from the groups list, got z %s" % up_z)
+	var face_uvs := func(rotation: String) -> PackedVector2Array:
+		var cube := '{ "type": "cube", "uuid": "c", "from": [0, 0, 0], "to": [2, 2, 2], "faces": { "up": { "uv": [0, 0, 2, 2], "texture": 0, "rotation": %s } } }' % rotation
+		var turned := TrenchDotBBModel.parse('{ "meta": { "format_version": "4.5" }, "elements": [%s], "outliner": ["c"] }' % cube)
+		return turned["polygons"][0]["uvs"] if turned.get("polygons", []).size() == 1 else PackedVector2Array()
+	var unturned: PackedVector2Array = face_uvs.call("0")
+	check(unturned.size() == 4 and face_uvs.call("90") != unturned and face_uvs.call("450") == face_uvs.call("90"), "face rotation turns the UVs in steps of 90 degrees and wraps at 360")
+	for huge in ["9e18", "1e300"]:
+		var start := Time.get_ticks_msec()
+		var uvs: PackedVector2Array = face_uvs.call(huge)
+		check(uvs == unturned and Time.get_ticks_msec() - start < 1000, "face rotation %s reads like 0 at once, got %s" % [huge, uvs])
 	for file in ["pine", "bush_berries", "boulder_mossy", "fern", "log"]:
 		var nature := TrenchDotBBModel.parse(FileAccess.get_file_as_string("res://trenchdot/nature/%s.bbmodel" % file))
 		check(nature.has("polygons") and nature["polygons"].size() > 8 and not (nature["textures"][0]["image"] as Image).is_empty(), "nature %s parses with its texture" % file)
