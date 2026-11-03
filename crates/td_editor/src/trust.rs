@@ -52,6 +52,58 @@ pub fn parent_folder(root: &Path) -> Option<&Path> {
     root.parent().filter(|p| p.parent().is_some())
 }
 
+pub const TRUSTED_TITLE: &str = "Trusted projects";
+const TRUSTED_NOTE: &str =
+    "Godot runs the scripts of these projects when TrenchDot starts it on them or has it build their maps, other projects with code open in Restricted Mode.";
+pub const REMOVE: &str = "Remove";
+/// Follows a folder in the list.
+const FOLDER: &str = "and every project in it";
+
+/// A stored path the way a person writes it, without the `\\?\` that canonical paths have on Windows.
+pub fn shown(path: &Path) -> String {
+    let text = path.display().to_string();
+    match text.strip_prefix(r"\\?\") {
+        Some(unc) if unc.starts_with("UNC\\") => format!(r"\\{}", &unc[4..]),
+        Some(local) => local.to_string(),
+        None => text,
+    }
+}
+
+/// The Trusted projects part of Preferences: every trusted project and folder, each with a button that takes the
+/// trust back.
+pub fn trusted_list(ui: &mut egui::Ui, state: &mut EditorState) {
+    ui.label(RichText::new(TRUSTED_TITLE).strong());
+    ui.label(TRUSTED_NOTE);
+    let entries: Vec<(PathBuf, bool)> =
+        state.prefs.trusted_projects.iter().map(|p| (p.clone(), false)).chain(state.prefs.trusted_folders.iter().map(|p| (p.clone(), true))).collect();
+    if entries.is_empty() {
+        ui.label(RichText::new("None yet. Trust Project in the trust prompt adds one, and so does saving a map into a project without code.").weak());
+        return;
+    }
+
+    let mut remove = None;
+    egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
+        egui::Grid::new("trusted_projects").num_columns(2).striped(true).show(ui, |ui| {
+            for (path, folder) in &entries {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(shown(path)).monospace());
+                    if *folder {
+                        ui.label(FOLDER);
+                    }
+                });
+                if ui.button(REMOVE).on_hover_text("TrenchDot asks again before Godot runs the scripts here").clicked() {
+                    remove = Some((path.clone(), *folder));
+                }
+
+                ui.end_row();
+            }
+        });
+    });
+    if let Some((path, folder)) = remove {
+        state.untrust(&path, folder);
+    }
+}
+
 #[derive(Default)]
 pub struct TrustPrompt {
     request: Option<TrustRequest>,
@@ -338,6 +390,64 @@ mod tests {
         crate::commands::execute(&mut state, Action::Save, &ctx);
         assert_eq!(state.trust(), Some(Trust::Session), "a --project start stays trusted for the session only");
         assert!(state.prefs.trusted_projects.is_empty());
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[test]
+    fn removing_the_trust_of_the_open_project_restricts_it_unless_it_holds_no_code() {
+        let (folder, castle, keep) = projects("untrust");
+        let elsewhere = real_path(&folder.join("elsewhere"));
+        let mut state = EditorState::new(Prefs::default());
+        state.prefs.trusted_projects.insert(real_path(&castle));
+        state.prefs.trusted_folders.insert(elsewhere.clone());
+        state.load_project(&castle);
+        assert_eq!(state.trust(), Some(Trust::Stored));
+        state.untrust(&elsewhere, true);
+        assert!(state.prefs.trusted_folders.is_empty() && !state.restricted(), "another entry leaves the open project alone");
+        state.untrust(&real_path(&castle), false);
+        assert!(state.prefs.trusted_projects.is_empty());
+        assert!(state.restricted(), "the open project is in Restricted Mode at once");
+        assert!(state.status.ends_with("is in Restricted Mode now"), "{}", state.status);
+
+        state.trust_project(&castle, true);
+        assert_eq!(state.prefs.trusted_folders.iter().collect::<Vec<_>>(), [&real_path(&folder)]);
+        state.untrust(&real_path(&folder), true);
+        assert!(state.restricted(), "so does taking back the trust of its folder");
+
+        std::fs::remove_file(keep.join("main.gd")).unwrap();
+        state.prefs.trusted_projects.insert(real_path(&keep));
+        state.load_project(&keep);
+        assert_eq!(state.trust(), Some(Trust::Stored));
+        state.untrust(&real_path(&keep), false);
+        assert_eq!(state.trust(), Some(Trust::NoCode), "a project without code stays trusted");
+        assert_eq!(state.status, format!("{} is no longer trusted", shown(&real_path(&keep))));
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[test]
+    fn preferences_list_the_trusted_projects_with_a_remove_button_each() {
+        let (folder, castle, keep) = projects("list");
+        let mut state = EditorState::new(Prefs::default());
+        state.load_project(&castle);
+        state.trust_project(&castle, false);
+        state.trust_project(&keep, true);
+        state.prefs.trusted_projects.insert(real_path(&keep.join("nested")));
+        let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(900.0, 400.0)).build_ui_state(trusted_list, state);
+        harness.run();
+        assert!(harness.query_by_label(TRUSTED_TITLE).is_some());
+        assert!(harness.query_by_label(&shown(&real_path(&keep.join("nested")))).is_some());
+        assert!(
+            harness.query_by_label(&shown(&real_path(&folder))).is_some() && harness.query_by_label(FOLDER).is_some(),
+            "the parent folder is listed as one"
+        );
+        assert!(harness.query_by_label(&shown(&real_path(&castle))).is_none(), "the folder covers the project trusted before");
+        assert_eq!(harness.get_all_by_label(REMOVE).count(), 2);
+
+        harness.get_all_by_label(REMOVE).last().unwrap().click();
+        harness.run();
+        let state = harness.state();
+        assert!(state.prefs.trusted_folders.is_empty() && state.restricted(), "the open project lay in the removed folder");
+        assert_eq!(state.prefs.trusted_projects.len(), 1);
         let _ = std::fs::remove_dir_all(folder);
     }
 

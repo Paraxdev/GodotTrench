@@ -1167,6 +1167,27 @@ impl EditorState {
         self.refresh_trust();
     }
 
+    /// Takes back the stored trust of a project, or with `folder` of a folder and the projects in it. The open project
+    /// goes into Restricted Mode at once when nothing else trusts it, unless it holds no code.
+    pub fn untrust(&mut self, path: &Path, folder: bool) {
+        let was_trusted = !self.restricted();
+        let stored = if folder { &mut self.prefs.trusted_folders } else { &mut self.prefs.trusted_projects };
+        if !stored.remove(path) {
+            return;
+        }
+
+        if let Some(root) = self.game.project_root.clone().filter(|root| !self.is_trusted(root) && self.no_code_root.as_ref() != Some(root)) {
+            self.no_code_root = crate::code_scan::find(&root).is_none().then_some(root);
+        }
+
+        self.refresh_trust();
+        let shown = crate::trust::shown(path);
+        match self.game.project_root.clone().filter(|_| was_trusted && self.restricted()) {
+            Some(root) => self.set_status(format!("{shown} is no longer trusted, so {} is in Restricted Mode now", root.display())),
+            None => self.set_status(format!("{shown} is no longer trusted")),
+        }
+    }
+
     /// Trusts the project at `root` until the editor closes.
     pub fn trust_for_session(&mut self, root: &Path) {
         self.session_trusted.push(crate::trust::real_path(root));

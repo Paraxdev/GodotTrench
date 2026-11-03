@@ -2316,6 +2316,9 @@ impl App {
             });
             ui.separator();
             self.mcp_prefs(ui);
+
+            ui.separator();
+            crate::trust::trusted_list(ui, &mut self.state);
         });
         self.show_prefs = open;
     }
