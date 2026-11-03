@@ -11,6 +11,7 @@ const BAKED := "res://tests/maps/baked.tdm"
 static func run(t) -> void:
 	print("- baked lighting")
 	await _test_synthetic(t)
+	_test_probe_tree(t)
 	await _test_live(t)
 	await _test_editor_bake(t)
 
@@ -142,6 +143,24 @@ static func _test_synthetic(t) -> void:
 	map.queue_free()
 	DirAccess.remove_absolute(path)
 	await t.process_frame
+
+## Godot walks the probe tree without bounds checks, so a tree that loops or points past its nodes or tetrahedra is
+## left out, while the empty leaf and children further down the tree are kept.
+static func _test_probe_tree(t) -> void:
+	var lightmap: Dictionary = _map_json()["lightmap"]
+	var probes := func(nodes: int, children: Array) -> Dictionary:
+		var raw := lightmap.duplicate()
+		var planes := []
+		for k in nodes:
+			planes.append_array([0, 1, 0, 16])
+		raw["probe_bsp_planes"] = planes
+		raw["probe_bsp_children"] = children
+		return TrenchDotLightmap.decode(raw)["probes"]
+	for bad in [[0, -1], [1, -1], [2147483000, -1], [-2, -1], [4294967296, -1], [-2147483647, -1]]:
+		t.check(probes.call(1, bad).is_empty(), "a probe tree with children %s is left out" % [bad])
+	t.check(probes.call(2, [1, -1, 0, -1]).is_empty(), "a probe tree pointing back at an earlier node is left out")
+	t.check(not probes.call(1, [-1, -2147483648]).is_empty(), "an empty leaf is kept")
+	t.check(not probes.call(3, [1, 2, -1, -2147483648, -1, -1]).is_empty(), "children further down the tree are kept")
 
 ## The live link sends the bake along with the map text, so a live build keeps it. A node moved since leaves its
 ## charts out of a later full build.
