@@ -261,8 +261,13 @@ jobs:
         if: env.HAS_BUTLER_KEY == 'true'
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          # broth.itch.zone lists no checksums, so this is the sha256 of the archive it serves for this version.
+          # Its files match butler-linux-amd64.zip of the itchio/butler release on GitHub. Bump both together.
+          BUTLER_VERSION: 15.32.0
+          BUTLER_SHA256: 2335971394ef6596f95ded0833e85ee28755e13761716ef4c91d6b11f69162f5
         run: |
-          curl -sL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          curl -fsSL --proto '=https' -o butler.zip "https://broth.itch.zone/butler/linux-amd64/${BUTLER_VERSION}/archive/default"
+          echo "${BUTLER_SHA256}  butler.zip" | sha256sum -c -
           unzip -q butler.zip -d butler-bin && chmod +x butler-bin/butler
           butler=butler-bin/butler
           "$butler" -V
