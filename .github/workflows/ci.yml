@@ -167,8 +167,6 @@ jobs:
     concurrency:
       group: release
       cancel-in-progress: false
-    env:
-      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -187,6 +185,16 @@ jobs:
           # ones crates/td_editor/src/content.rs accepts, its tests read these two lines.
           (cd godot && zip -qr "../dist/trenchdot-nature-pack.zip" trenchdot/nature -x "*.import")
           (cd godot && zip -qr "../dist/trenchdot-demo-content.zip" demo models)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: godot-zips
+          compression-level: 0
+          overwrite: true
+          path: |
+            dist/func_godot-trenchdot-addon.zip
+            dist/trenchdot-demo-project.zip
+            dist/trenchdot-nature-pack.zip
+            dist/trenchdot-demo-content.zip
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -224,9 +232,35 @@ jobs:
           gh release list --json tagName --jq '.[].tagName' | grep -vx beta | xargs -r -I{} gh release delete {} --yes --cleanup-tag
           gh release delete beta --yes --cleanup-tag || true
           gh release create beta dist/* --prerelease --target "$GITHUB_SHA" --title "TrenchDot rolling beta" --notes "$notes"
+
+  itch:
+    name: Push to itch.io
+    needs: [publish]
+    runs-on: ubuntu-latest
+    # butler runs in a job of its own, away from the checkout and the release token.
+    permissions: {}
+    concurrency:
+      group: itch
+      cancel-in-progress: false
+    env:
+      # Skips cleanly on forks and until the BUTLER_API_KEY secret is added.
+      HAS_BUTLER_KEY: ${{ secrets.BUTLER_API_KEY != '' }}
+    steps:
+      - uses: actions/download-artifact@v4
+        if: env.HAS_BUTLER_KEY == 'true'
+        with:
+          path: dist
+          pattern: editor-*
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        if: env.HAS_BUTLER_KEY == 'true'
+        with:
+          name: godot-zips
+          path: dist
       - name: Push to itch.io
-        # Skips cleanly on forks and until the BUTLER_API_KEY secret is added.
-        if: ${{ env.BUTLER_API_KEY != '' }}
+        if: env.HAS_BUTLER_KEY == 'true'
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
         run: |
           curl -sL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
           unzip -q butler.zip -d butler-bin && chmod +x butler-bin/butler
