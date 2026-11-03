@@ -69,6 +69,7 @@ func _initialize() -> void:
 	await test_game_config()
 	test_game_config_lint()
 	test_game_config_io_types()
+	test_fgd_property_resources()
 	await test_io_targets()
 	await test_gameplay_entities()
 	await test_spawner()
@@ -163,6 +164,8 @@ func test_parser() -> void:
 	check(not "parent" in TrenchDotParser._fixup_keys(fix_ctx, "td_tests_plain_parent"), "unless declared a plain string")
 	var exported := TrenchDotGameConfig._property_def("killtarget", "", null)
 	check(exported["type"] == "target_destination", "the game config exports killtarget as a target")
+	exported = TrenchDotGameConfig._property_def("animation", &"idle", null)
+	check(exported["type"] == "string" and exported["default"] == "idle", "a StringName default exports as a string, got %s" % [exported])
 
 	# Face planes must point out of their brush.
 	var floor_brush: FuncGodotData.BrushData = world.brushes[0]
@@ -883,6 +886,91 @@ func test_game_config_io_types() -> void:
 				for i in want.size():
 					check(i < have.size() and (have[i] == want[i] or have[i] == "variant"), "%s.%s argument %d is %s in pack.json but the script declares %s" % [def["classname"], io["name"], i, want[i], have])
 	check(typed > 50, "pack.json types its parameters, %d found" % typed)
+
+func test_fgd_property_resources() -> void:
+	print("- typed FGD property resources and properties in metadata")
+	var mode := FuncGodotFGDPropertyChoices.new()
+	mode.choices = { 0: "Off", 2: "Fast" }
+	var style := FuncGodotFGDPropertyChoices.new()
+	style.choices = { &"round": "Round", &"square": "Square" }
+	style.default_value = &"square"
+	var parent := FuncGodotFGDPropertyChoices.new()
+	parent.choices = { "base": "Base", "tower": "Tower" }
+	var flags := FuncGodotFGDPropertyFlags.new()
+	for f in [[0, "Start open", true], [3, "", true], [1, "Silent", false]]:
+		var flag := FuncGodotFGDPropertyFlagDescriptor.new()
+		flag.index = f[0]
+		flag.name = f[1]
+		flag.enabled = f[2]
+		flags.flags.append(flag)
+	var tint := FuncGodotFGDPropertyColor.new()
+	tint.default_value = Color8(255, 128, 0)
+	var glow := FuncGodotFGDPropertyColor.new()
+	glow.fgd_color_type = FuncGodotFGDPropertyColor.FGDColorType.COLOR1
+	glow.default_value = Color.WHITE
+	var follow := FuncGodotFGDPropertyTarget.new()
+	follow.fgd_target_type = FuncGodotFGDPropertyTarget.FGDTargetType.TARGET_DESTINATION
+	follow.description = "Entity to follow"
+	var def := FuncGodotFGDPointClass.new()
+	def.classname = "td_tests_typed"
+	def.node_class = "Node3D"
+	def.class_properties = { "mode": mode, "style": style, "parent": parent, "spawnflags": flags, "tint": tint, "glow": glow, "follow": follow }
+	def.class_property_descriptions = { "mode": "Speed mode", "follow": "Overridden" }
+
+	var exported := {}
+	for key in def.class_properties:
+		exported[key] = TrenchDotGameConfig._property_def(key, def.class_properties[key], def.class_property_descriptions.get(key, null))
+	check(exported["mode"]["type"] == "choices" and exported["mode"]["options"] == [["Off", "0"], ["Fast", "2"]] and exported["mode"]["default"] == "0", "choices export as label and value pairs defaulting to the first, got %s" % [exported["mode"]])
+	check(exported["mode"]["description"] == "Speed mode" and exported["follow"]["description"] == "Entity to follow", "the resource's description wins over the class one")
+	check(exported["style"]["default"] == "square", "a choices default_value is exported, got %s" % [exported["style"]])
+	check(exported["parent"]["type"] == "choices", "a resource keeps its type on a name that is otherwise a target, got %s" % [exported["parent"]])
+	var bits: Dictionary = exported["spawnflags"]
+	check(bits["type"] == "flags" and bits["options"] == [["Start open", "1"], ["Flag 3", "8"], ["Silent", "2"]] and bits["default_flags"] == [1, 8] and bits["default"] == "9", "flags export their bits, got %s" % [bits])
+	check(exported["tint"]["type"] == "color" and exported["tint"]["default"] == "255 128 0", "a color255 default is written in 0..255, got %s" % [exported["tint"]])
+	check(exported["glow"]["default"] == "1.000 1.000 1.000" and TrenchDotIO.to_color(exported["glow"]["default"]) == Color.WHITE, "a color1 default keeps a decimal point so it reads back as white, got %s" % [exported["glow"]])
+	check(exported["follow"]["type"] == "target_destination", "a target resource sets its target type, got %s" % [exported["follow"]])
+
+	var fix_ctx := TrenchDotParser.Context.new()
+	fix_ctx.entity_defs = { "td_tests_typed": def }
+	var keys := TrenchDotParser._fixup_keys(fix_ctx, "td_tests_typed")
+	check("follow" in keys and not "parent" in keys, "target resources get the instance fixup and other resources skip name inference, got %s" % [keys])
+
+	var settings: FuncGodotMapSettings = load(SETTINGS).duplicate()
+	var fgd := FuncGodotFGDFile.new()
+	fgd.base_fgd_files = [settings.entity_fgd]
+	fgd.entity_definitions = [def]
+	settings.entity_fgd = fgd
+	var props := { "mode": "2", "style": "round", "tint": "1.0 0.5 0.25", "follow": "door" }
+	var ent := { "id": 2, "type": "entity", "classname": "td_tests_typed", "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "properties": props }
+	var map_json := { "format": "trenchdot-map", "version": 1, "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": [ent] }] }
+	var parsed := FuncGodotParser.new().parse_tdm(map_json, settings, "res://tests/td_tests_typed.tdm")
+	var found := parsed.entities.filter(func(e): return e.properties.get("classname") == "td_tests_typed")
+	check(found.size() == 1, "the typed entity is parsed")
+	if found.size() != 1:
+		return
+	var entity: FuncGodotData.EntityData = found[0]
+	var p := entity.properties
+	check(typeof(p["mode"]) == TYPE_INT and p["mode"] == 2, "a choices value takes its option's type, got %s" % [p["mode"]])
+	check(typeof(p["style"]) == TYPE_STRING_NAME and p["style"] == &"round", "StringName choices stay names, got %s" % [p["style"]])
+	check(p["tint"].is_equal_approx(Color(1.0, 0.5, 0.25)), "colors use the editor's scale rule, got %s" % [p["tint"]])
+	check(p["follow"] == "door", "a target stays a string")
+	check(p["spawnflags"] == 9 and p["glow"] == Color.WHITE and p["parent"] == "base", "missing keys get the resource defaults, got %s %s %s" % [p["spawnflags"], p["glow"], p["parent"]])
+
+	var assembler := FuncGodotEntityAssembler.new(settings)
+	var holder := Node3D.new()
+	var node := assembler.attach_entity(assembler.generate_entity_node(entity, 1), entity, holder, holder)
+	check(node != null and not node.has_meta("func_godot_properties"), "properties are not copied to metadata by default")
+	entity.definition.add_properties_to_metadata = true
+	node = assembler.attach_entity(assembler.generate_entity_node(entity, 2), entity, holder, holder)
+	var meta: Variant = node.get_meta("func_godot_properties", null) if node else null
+	check(meta is Dictionary and meta.get("mode") == 2 and meta.get("tint") is Color, "add_properties_to_metadata stores the typed properties, got %s" % [meta])
+	var packed := PackedScene.new()
+	packed.pack(holder)
+	var copy := packed.instantiate()
+	var kept: Variant = copy.get_child(1).get_meta("func_godot_properties", null)
+	check(kept is Dictionary and kept.get("style") == &"round" and kept.get("glow") == Color.WHITE, "the metadata survives a packed scene, got %s" % [kept])
+	copy.free()
+	holder.free()
 
 func test_game_config_lint() -> void:
 	print("- game config export lint")
