@@ -761,6 +761,7 @@ impl App {
         state.link = Some(crate::live_link::LiveLink::start(Some(cc.egui_ctx.clone())));
         let dock: Option<DockState<Tab>> = if keep_prefs { cc.storage.and_then(|s| eframe::get_value(s, DOCK_KEY)).filter(valid_dock) } else { None };
         cc.egui_ctx.set_visuals(crate::theme::visuals());
+        cc.egui_ctx.set_fonts(crate::theme::fonts());
         // UI scale shortcuts go through the keymap so they are rebindable and saved in the preferences.
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
         icons::install(&cc.egui_ctx);

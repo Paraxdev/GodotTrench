@@ -1,6 +1,9 @@
-//! Editor color scheme. Grays 0 to 7 run from the darkest surface to the brightest text, the rest are accents.
+//! Editor color scheme and fonts. Grays 0 to 7 run from the darkest surface to the brightest text, the rest are
+//! accents.
 
-use egui::{Color32, CornerRadius, Stroke, Visuals};
+use std::sync::Arc;
+
+use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontTweak, Stroke, Visuals};
 
 pub const BG: Color32 = Color32::from_rgb(0x05, 0x06, 0x08);
 pub const FG: Color32 = Color32::from_rgb(0xd6, 0xda, 0xe2);
@@ -146,9 +149,43 @@ pub fn visuals() -> Visuals {
     v
 }
 
+const UI_FONT: &str = "IBM Plex Sans";
+const MONO_FONT: &str = "IBM Plex Mono";
+
+/// IBM Plex in front of egui's default fonts, which stay behind it as fallbacks: egui's own widgets draw their
+/// submenu arrows and warning signs from the emoji fonts.
+pub fn fonts() -> FontDefinitions {
+    // Plex caps sit a little below the row centre. This lifts them by a pixel from 150% scale, below that epaint
+    // rounds glyphs to whole pixels and it has no effect.
+    let tweak = FontTweak { y_offset_factor: -0.026, ..Default::default() };
+    let mut fonts = FontDefinitions::default();
+    for (name, data) in
+        [(UI_FONT, &include_bytes!("../assets/fonts/IBMPlexSans-Regular.ttf")[..]), (MONO_FONT, &include_bytes!("../assets/fonts/IBMPlexMono-Regular.ttf")[..])]
+    {
+        fonts.font_data.insert(name.to_owned(), Arc::new(FontData::from_static(data).tweak(tweak.clone())));
+    }
+
+    let proportional = fonts.families.entry(FontFamily::Proportional).or_default();
+    proportional.insert(0, UI_FONT.to_owned());
+    // Hack is the only bundled font with ⇄ and ▾. Last, so the box drawn for a missing glyph still comes from Noto Emoji.
+    proportional.push("Hack".to_owned());
+    fonts.families.entry(FontFamily::Monospace).or_default().insert(0, MONO_FONT.to_owned());
+    fonts
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plex_leads_and_ui_glyphs_have_a_font() {
+        let defs = fonts();
+        assert_eq!(defs.families[&FontFamily::Proportional][0], UI_FONT);
+        assert_eq!(defs.families[&FontFamily::Monospace][0], MONO_FONT);
+        let mut fonts = egui::epaint::text::Fonts::new(Default::default(), defs);
+        assert!(fonts.has_glyphs(&egui::FontId::proportional(13.0), "Inspector 1482 ⇄ ▾ × ⏵"));
+        assert!(fonts.has_glyphs(&egui::FontId::monospace(13.0), "x = -202.5"));
+    }
 
     #[test]
     fn linear_matches_srgb_endpoints() {
