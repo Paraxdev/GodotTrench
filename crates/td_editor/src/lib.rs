@@ -124,6 +124,8 @@ Options:
   --export-obj <map> <out.obj>
                          Write a map's geometry and materials as OBJ and exit
   -h, --help             Print this help and exit
+
+TRENCHDOT_DISABLE_MCP=1 turns MCP off, so --mcp and --mcp-http serve nothing.
 ";
 
 impl CliArgs {

@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 use std::io::Cursor;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use egui::{Event, Key, Modifiers, PointerButton, Pos2, Vec2};
@@ -34,6 +35,27 @@ pub struct InputScript {
 pub enum Deferred {
     /// Answered by the screenshot event that carries the same token, so pipelined requests each get their own frame.
     WindowScreenshot { token: u64, reply: Sender<ToolResult> },
+}
+
+/// The reply to a call that Godot answers later. The editor keeps a copy so that turning MCP off answers it at once, and
+/// only the first answer goes out.
+#[derive(Clone)]
+pub struct GodotReply(Arc<Mutex<Option<Sender<ToolResult>>>>);
+
+impl GodotReply {
+    fn new(reply: Sender<ToolResult>) -> Self {
+        Self(Arc::new(Mutex::new(Some(reply))))
+    }
+
+    pub(crate) fn send(&self, result: ToolResult) {
+        if let Some(reply) = self.0.lock().unwrap_or_else(|e| e.into_inner()).take() {
+            let _ = reply.send(result);
+        }
+    }
+
+    fn sent(&self) -> bool {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).is_none()
+    }
 }
 
 /// Screenshot user data, a private type so screenshots requested elsewhere in the app are never mistaken for ours.
@@ -425,8 +447,15 @@ impl App {
     /// Executes queued MCP calls. Must run at the start of the frame, before UI and input handling.
     pub(crate) fn process_mcp(&mut self, ctx: &egui::Context) {
         let Some(host) = &self.mcp else { return };
+        let gate = host.gate().clone();
         let calls: Vec<_> = host.rx.try_iter().collect();
         for call in calls {
+            // Calls that were queued when MCP went off, or that came after the call turning it off in this batch.
+            if let Some(by) = gate.off() {
+                let _ = call.reply.send(err(by.refusal()));
+                continue;
+            }
+
             // A prompt would only stand in an agent's way. It learns about Restricted Mode from the results instead, and
             // the person from the status bar.
             let asked = self.state.trust_request.is_some();
@@ -450,6 +479,37 @@ impl App {
                 None => ToolResult::Error("screenshot conversion failed".into()),
             };
             let _ = reply.send(result);
+        }
+    }
+
+    /// Answers every MCP call still waiting for the editor with `message`, and stops the input script that plays and an
+    /// install an agent started.
+    pub(crate) fn refuse_mcp_calls(&mut self, message: &str) {
+        if let Some(host) = &self.mcp {
+            for call in host.rx.try_iter() {
+                let _ = call.reply.send(err(message));
+            }
+        }
+
+        if let Some(script) = self.input_script.take() {
+            let _ = script.reply.send(err(message));
+        }
+
+        for Deferred::WindowScreenshot { reply, .. } in self.deferred.drain(..) {
+            let _ = reply.send(err(message));
+        }
+
+        for reply in self.godot_replies.drain(..) {
+            reply.send(err(message));
+        }
+
+        // An install a person started has no call waiting for it.
+        if !self.content_replies.is_empty() {
+            self.content_wizard.cancel();
+        }
+
+        for reply in self.content_replies.drain(..) {
+            let _ = reply.send(err(message));
         }
     }
 
@@ -488,14 +548,8 @@ impl App {
         }
 
         match name {
-            "screenshot" if args["source"].as_str() == Some("godot") => match self.godot_capture(&args, reply.clone()) {
-                Ok(()) => Reply::Deferred,
-                Err(e) => Reply::Now(err(e)),
-            },
-            "walkability" => match self.walkability(&args, reply.clone(), ctx) {
-                Ok(()) => Reply::Deferred,
-                Err(e) => Reply::Now(err(e)),
-            },
+            "screenshot" if args["source"].as_str() == Some("godot") => self.ask_godot(reply, |app, reply| app.godot_capture(&args, reply)),
+            "walkability" => self.ask_godot(reply, |app, reply| app.walkability(&args, reply, ctx)),
             "screenshot" if args["target"].as_str().unwrap_or("window") == "window" => {
                 let token = NEXT_SHOT.fetch_add(1, Ordering::Relaxed);
                 ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::new(ShotToken(token))));
@@ -529,6 +583,19 @@ impl App {
         }
     }
 
+    /// Starts a request that Godot answers later, keeping its reply in `godot_replies` until then.
+    fn ask_godot(&mut self, reply: &Sender<ToolResult>, ask: impl FnOnce(&mut Self, GodotReply) -> Result<(), String>) -> Reply {
+        let reply = GodotReply::new(reply.clone());
+        match ask(self, reply.clone()) {
+            Ok(()) => {
+                self.godot_replies.retain(|r| !r.sent());
+                self.godot_replies.push(reply);
+                Reply::Deferred
+            }
+            Err(e) => Reply::Now(err(e)),
+        }
+    }
+
     /// Runs a tool as one undo step labelled "MCP: ...", so a person can take back an agent's call in one go. A script
     /// labels its own step.
     fn run_tool_as_one_step(&mut self, name: &str, args: Value, ctx: &egui::Context) -> ToolResult {
@@ -550,7 +617,7 @@ impl App {
     }
 
     /// Asks the Godot editor for a capture of the current map over the live link, answering `reply` when it arrives.
-    fn godot_capture(&self, args: &Value, reply: Sender<ToolResult>) -> Result<(), String> {
+    fn godot_capture(&self, args: &Value, reply: GodotReply) -> Result<(), String> {
         let s = &self.state;
         let Some(path) = s.doc.path.clone() else { return Err("save the map into the Godot project first, Godot builds maps from their file path".into()) };
         if s.game.project_root.is_none() {
@@ -584,15 +651,13 @@ impl App {
             size,
             build,
             live,
-            done: Box::new(move |result| {
-                let _ = reply.send(godot_capture_result(result, &file, source));
-            }),
+            done: Box::new(move |result| reply.send(godot_capture_result(result, &file, source))),
         });
         Ok(())
     }
 
     /// Bakes the walkable area in Godot for the agent in `args` and answers `reply` with its summary when it arrives.
-    fn walkability(&mut self, args: &Value, reply: Sender<ToolResult>, ctx: &egui::Context) -> Result<(), String> {
+    fn walkability(&mut self, args: &Value, reply: GodotReply, ctx: &egui::Context) -> Result<(), String> {
         let agent = &mut self.state.prefs.walk_agent;
         for (key, value, range) in [
             ("radius", &mut agent.radius, 0.05..=10.0),
@@ -610,10 +675,10 @@ impl App {
             &mut self.state,
             Some(ctx.clone()),
             Some(Box::new(move |result| {
-                let _ = reply.send(match result {
+                reply.send(match result {
                     Ok(w) => ok(w.summary()),
                     Err(e) => err(e.clone()),
-                });
+                })
             })),
         )?;
         if show != self.state.walkable.on {
@@ -1751,9 +1816,23 @@ impl App {
             self.state.prefs.live_link_port = port.clamp(1024, 65535) as u16;
         }
 
+        // Only a person can turn MCP back on, so this answer is the last one. The servers stop a moment later, once it
+        // is out, and every call until then is refused.
+        if args["mcp"].as_bool() == Some(false) {
+            self.state.prefs.mcp_enabled = false;
+            self.save_mcp_setting(super::switch::OFF_FILE, true);
+            if let Some(host) = &self.mcp {
+                host.gate().set(Some(super::switch::OffBy::Prefs));
+            }
+
+            self.mcp_off_at = Some(std::time::Instant::now() + std::time::Duration::from_millis(300));
+            ctx.request_repaint();
+        }
+
         let mut summary = self.state_summary();
         let mut editor = summary["editor"].take();
         editor["godot_live_mode"] = json!(self.state.prefs.live_mode);
+        editor["mcp"] = json!(self.state.prefs.mcp_enabled);
         ok(editor)
     }
 
@@ -2345,6 +2424,19 @@ mod tests {
         let ToolResult::Error(e) = godot_capture_result(Ok(json!({ "ok": true })), "yard.tdm", "") else { panic!("an error") };
         assert!(e.contains("no image"));
         assert!(matches!(godot_capture_result(Err("no scene".into()), "yard.tdm", ""), ToolResult::Error(e) if e == "no scene"));
+    }
+
+    #[test]
+    fn a_godot_reply_goes_out_once() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let reply = GodotReply::new(tx);
+        let kept = reply.clone();
+        assert!(!kept.sent());
+        kept.send(err("MCP is off"));
+        reply.send(ok(json!({ "late": true })));
+        assert!(kept.sent());
+        assert!(matches!(rx.try_recv(), Ok(ToolResult::Error(e)) if e == "MCP is off"));
+        assert!(rx.try_recv().is_err(), "Godot's late answer is dropped");
     }
 
     #[test]

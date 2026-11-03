@@ -9,7 +9,7 @@ use crate::dialogs::{CommandPalette, KeymapWindow, LinkDialog, ShapeDialog, Terr
 use crate::help::{self, Topic};
 use crate::icons;
 use crate::mcp::tools::{Deferred, InputScript};
-use crate::mcp::{McpHost, ToolExecutor, token, transport};
+use crate::mcp::{McpHost, ToolExecutor, switch, token, transport};
 use crate::mesh_tool::MeshOp;
 use crate::panels::{self, PanelState};
 use crate::scene::SceneCache;
@@ -128,7 +128,13 @@ pub struct App {
     title: String,
     pub(crate) mcp: Option<McpHost>,
     mcp_http: Option<transport::HttpServer>,
+    /// The port the HTTP server listens on, or would while MCP is off.
+    mcp_http_port: Option<u16>,
     mcp_tokens: token::Tokens,
+    /// TRENCHDOT_DISABLE_MCP turned MCP off for this run.
+    mcp_env_off: bool,
+    /// An MCP call turned MCP off, the servers stop at this time so its answer still goes out first.
+    pub(crate) mcp_off_at: Option<std::time::Instant>,
     /// Where the MCP settings in Preferences are, reported by get_state like `open_windows`.
     pub(crate) mcp_pref_rects: Vec<(&'static str, egui::Rect)>,
     pub(crate) input_script: Option<InputScript>,
@@ -178,6 +184,8 @@ pub struct App {
     pub(crate) trust_chip: Option<egui::Rect>,
     /// project_content calls waiting for the running install.
     pub(crate) content_replies: Vec<std::sync::mpsc::Sender<crate::mcp::ToolResult>>,
+    /// Godot screenshots and walkability bakes that MCP calls wait for.
+    pub(crate) godot_replies: Vec<crate::mcp::tools::GodotReply>,
     /// Where the tool options bar is, reported by get_state like `open_windows`.
     pub(crate) tool_options_rect: egui::Rect,
 }
@@ -701,11 +709,12 @@ fn default_dock() -> DockState<Tab> {
     dock
 }
 
-fn start_mcp_http(port: u16, tokens: &mut token::Tokens, require: bool, exec: std::sync::Arc<dyn ToolExecutor>) -> Result<transport::HttpServer, String> {
+fn start_mcp_http(port: u16, tokens: &mut token::Tokens, require: bool, host: &McpHost) -> Result<transport::HttpServer, String> {
+    let exec: std::sync::Arc<dyn ToolExecutor> = std::sync::Arc::new(host.bridge.clone());
     let started = tokens
         .wanted(require)
         .map_err(|e| format!("MCP HTTP server failed: {e}"))
-        .and_then(|token| transport::spawn_http(port, token, exec).map_err(|e| format!("MCP HTTP server failed on port {port}: {e}")));
+        .and_then(|token| transport::spawn_http(port, token, exec, host.gate().clone()).map_err(|e| format!("MCP HTTP server failed on port {port}: {e}")));
     match &started {
         Ok(server) => {
             let needs = if server.token().is_some() { ", File > Preferences shows the token it needs" } else { "" };
@@ -724,6 +733,7 @@ impl App {
         let keep_prefs = !args.default_prefs;
         let mcp_saved = crate::mcp::Saved::new(crate::mcp_saved_dir(args.default_prefs));
         prefs.mcp_require_token = mcp_saved.get(token::REQUIRE_FILE);
+        prefs.mcp_enabled = !mcp_saved.get(switch::OFF_FILE);
         let mut state = EditorState::new(prefs);
         state.stdio_mcp = args.mcp_stdio;
         let project = args.project.clone().or_else(|| state.prefs.recent_projects.first().cloned());
@@ -740,25 +750,29 @@ impl App {
 
         state.materials.watch(cc.egui_ctx.clone());
         state.watch_game_config(cc.egui_ctx.clone());
-        let http_port = args.mcp_http.or(state.prefs.mcp_http.then_some(state.prefs.mcp_port));
+        let startup = switch::startup(args.mcp_stdio, args.mcp_http, &state.prefs, std::env::var_os(switch::DISABLE_ENV).as_deref());
         let mut mcp = None;
         let mut mcp_http = None;
         let mut mcp_tokens = token::Tokens::new(args.mcp_token.clone(), std::env::var(token::ENV).ok(), crate::mcp_token_file(args.default_prefs));
-        if args.mcp_stdio || http_port.is_some() {
-            let host = McpHost::new(cc.egui_ctx.clone());
-            let exec: std::sync::Arc<dyn ToolExecutor> = std::sync::Arc::new(host.bridge.clone());
-            if args.mcp_stdio {
-                transport::spawn_stdio(exec.clone());
+        if startup.stdio || startup.http.is_some() {
+            let host = McpHost::new(cc.egui_ctx.clone(), startup.off);
+            if startup.stdio {
+                transport::spawn_stdio(std::sync::Arc::new(host.bridge.clone()), host.gate().clone());
             }
 
-            if let Some(port) = http_port {
-                match start_mcp_http(port, &mut mcp_tokens, state.prefs.mcp_require_token, exec) {
+            if let Some(port) = startup.serve_http() {
+                match start_mcp_http(port, &mut mcp_tokens, state.prefs.mcp_require_token, &host) {
                     Ok(server) => mcp_http = Some(server),
                     Err(e) => state.set_status(e),
                 }
             }
 
             mcp = Some(host);
+        }
+
+        let mcp_off_note = startup.note();
+        if let Some(note) = &mcp_off_note {
+            eprintln!("TrenchDot: {note}");
         }
 
         let mut map_failed = false;
@@ -786,6 +800,12 @@ impl App {
             if autosaves > 0 {
                 state.set_status(format!("Found {autosaves} autosaved untitled map(s), File > Open Recent lists them for recovery"));
             }
+        }
+
+        if let Some(note) = mcp_off_note
+            && !map_failed
+        {
+            state.set_status(note);
         }
 
         state.link = Some(crate::live_link::LiveLink::start(Some(cc.egui_ctx.clone())));
@@ -822,8 +842,11 @@ impl App {
             show_prefs: false,
             title: String::new(),
             mcp,
+            mcp_http_port: mcp_http.as_ref().map(|s| s.addr().port()).or(startup.http),
             mcp_http,
             mcp_tokens,
+            mcp_env_off: startup.off == Some(switch::OffBy::Env),
+            mcp_off_at: None,
             mcp_pref_rects: Vec::new(),
             input_script: None,
             deferred: Vec::new(),
@@ -858,6 +881,7 @@ impl App {
             trust: Default::default(),
             trust_chip: None,
             content_replies: Vec::new(),
+            godot_replies: Vec::new(),
             tool_options_rect: egui::Rect::NOTHING,
         }
     }
@@ -2298,8 +2322,27 @@ impl App {
 
     fn mcp_prefs(&mut self, ui: &mut Ui) {
         let p = &mut self.state.prefs;
+        let mut switched = false;
         let mut token_changed = false;
         egui::Grid::new("prefs_mcp").num_columns(2).min_col_width(PREFS_LABEL_WIDTH).show(ui, |ui| {
+            ui.label("MCP");
+            let text = "let agents and scripts drive the editor";
+            let response = if self.mcp_env_off {
+                let mut on = false;
+                ui.add_enabled(false, egui::Checkbox::new(&mut on, text)).on_disabled_hover_text(format!("Turned off for this run by {}", switch::DISABLE_ENV))
+            } else {
+                let response = ui
+                    .checkbox(&mut p.mcp_enabled, text)
+                    .on_hover_text("Off closes the MCP servers at once, and agents and scripts get an error until you turn it back on");
+                switched = response.changed();
+                response
+            };
+            self.mcp_pref_rects.push(("mcp", response.rect));
+            ui.end_row();
+            if self.mcp_env_off || !p.mcp_enabled {
+                ui.disable();
+            }
+
             ui.label("MCP server (HTTP, localhost)");
             ui.horizontal(|ui| {
                 ui.checkbox(&mut p.mcp_http, "enable on startup");
@@ -2323,8 +2366,17 @@ impl App {
             self.mcp_pref_rects.push(("require_token", response.rect));
             ui.end_row();
         });
+        if switched {
+            self.switch_mcp();
+        }
+
         if token_changed {
             self.apply_mcp_token();
+        }
+
+        if self.mcp_env_off || !self.state.prefs.mcp_enabled {
+            ui.add_enabled(false, egui::Label::new("MCP is off, agents and scripts cannot reach the editor."));
+            return;
         }
 
         match &self.mcp_http {
@@ -2352,6 +2404,41 @@ impl App {
         }
     }
 
+    /// Follows the MCP switch in the preferences. Off closes the HTTP server and answers every waiting call with an
+    /// error, on starts the server again where it was.
+    pub(crate) fn switch_mcp(&mut self) {
+        self.mcp_off_at = None;
+        self.follow_mcp_switch();
+        // Last, so that a failure to save it shows over the status the switch set.
+        self.save_mcp_setting(switch::OFF_FILE, !self.state.prefs.mcp_enabled);
+    }
+
+    fn follow_mcp_switch(&mut self) {
+        let off = switch::off_by(self.state.prefs.mcp_enabled, self.mcp_env_off);
+        let Some(host) = &self.mcp else { return };
+        host.gate().set(off);
+        match off {
+            Some(by) => {
+                if let Some(server) = self.mcp_http.take() {
+                    server.stop();
+                }
+
+                self.refuse_mcp_calls(&by.refusal());
+                self.state.set_status("MCP is off, agents and scripts cannot reach the editor");
+            }
+            None => match self.mcp_http_port.filter(|_| self.mcp_http.is_none()) {
+                Some(port) => match start_mcp_http(port, &mut self.mcp_tokens, self.state.prefs.mcp_require_token, host) {
+                    Ok(server) => {
+                        self.state.set_status(format!("MCP is on, the server listens on http://{}/mcp", server.addr()));
+                        self.mcp_http = Some(server);
+                    }
+                    Err(e) => self.state.fail_status(e),
+                },
+                None => self.state.set_status("MCP is on"),
+            },
+        }
+    }
+
     /// Has the running HTTP server ask for the token the preferences now want, from its next request on.
     fn apply_mcp_token(&mut self) {
         self.save_mcp_setting(token::REQUIRE_FILE, self.state.prefs.mcp_require_token);
@@ -2366,7 +2453,7 @@ impl App {
         }
     }
 
-    fn save_mcp_setting(&mut self, name: &str, on: bool) {
+    pub(crate) fn save_mcp_setting(&mut self, name: &str, on: bool) {
         if let Err(e) = self.mcp_saved.set(name, on) {
             self.state.fail_status(format!("Could not save the MCP setting in {name}: {e}"));
         }
@@ -2569,6 +2656,13 @@ impl eframe::App for App {
         }
 
         self.process_mcp(&ctx);
+        if let Some(at) = self.mcp_off_at {
+            match at.checked_duration_since(std::time::Instant::now()) {
+                Some(wait) if !wait.is_zero() => ctx.request_repaint_after(wait),
+                _ => self.switch_mcp(),
+            }
+        }
+
         self.state.refresh_instance_extents();
         self.state.validate_insert_context();
         self.tools.sync(&self.state);

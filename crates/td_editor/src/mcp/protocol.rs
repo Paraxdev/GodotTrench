@@ -60,6 +60,18 @@ pub fn handle(msg: Value, exec: &dyn ToolExecutor) -> Option<Value> {
     })
 }
 
+/// Answers every request in one message or batch with the same error, `initialize` included.
+pub fn refuse(msg: &Value, message: &str) -> Option<Value> {
+    if let Value::Array(items) = msg {
+        let out: Vec<Value> = items.iter().filter_map(|m| refuse(m, message)).collect();
+        return (!out.is_empty()).then_some(Value::Array(out));
+    }
+
+    let id = msg.get("id")?;
+    msg.get("method").and_then(|m| m.as_str())?;
+    Some(error(id, -32000, message))
+}
+
 pub fn tool_result_json(r: ToolResult) -> Value {
     match r {
         ToolResult::Json(v) => {
@@ -342,7 +354,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "set_editor",
-            "description": "Editor settings: grid size, snapping, uv lock, active tool (select, clip, vertex, rotate, scale, mesh, sculpt, blend, paint, scatter, volume, path, measure, texture), current material, shading, mesh component mode, scatter palette items, brush radius, sculpt mode and interface scale.",
+            "description": "Editor settings: grid size, snapping, uv lock, active tool (select, clip, vertex, rotate, scale, mesh, sculpt, blend, paint, scatter, volume, path, measure, texture), current material, shading, mesh component mode, scatter palette items, brush radius, sculpt mode and interface scale. mcp: false turns MCP off until a person turns it back on in Preferences.",
             "inputSchema": { "type": "object", "properties": {
                 "grid": { "type": "number", "exclusiveMinimum": 0, "description": "positive, clamped to 0.125..1024" }, "snap": { "type": "boolean" }, "uv_lock": { "type": "boolean" },
                 "tool": { "type": "string" }, "material": { "type": "string" },
@@ -355,7 +367,8 @@ pub fn tool_definitions() -> Vec<Value> {
                 "ui_scale": { "type": "number", "description": "Interface scale, 1 is 100%" },
                 "follow_display_scaling": { "type": "boolean" },
                 "live_mode": { "type": "boolean", "description": "Send edits to a Godot editor that has the map open before saving" },
-                "live_link_port": { "type": "integer", "description": "Port of the Godot live link, 7842 unless the Godot project changed trenchdot/live_link_port" }
+                "live_link_port": { "type": "integer", "description": "Port of the Godot live link, 7842 unless the Godot project changed trenchdot/live_link_port" },
+                "mcp": { "type": "boolean", "description": "false turns MCP off like the switch in Preferences: this answer is the last, the servers close right after it and only a person can turn MCP back on" }
             } }
         }),
         json!({
@@ -587,6 +600,17 @@ mod tests {
         for t in tools {
             assert!(t["name"].is_string() && t["inputSchema"]["type"] == "object");
         }
+    }
+
+    #[test]
+    fn refusals_answer_every_request_and_no_notification() {
+        let init = refuse(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}), "off").unwrap();
+        assert_eq!((&init["id"], &init["error"]["message"], init.get("result")), (&json!(1), &json!("off"), None));
+        assert!(refuse(&json!({"jsonrpc":"2.0","method":"notifications/initialized"}), "off").is_none());
+        assert!(refuse(&json!({"jsonrpc":"2.0","id":2,"result":{}}), "off").is_none(), "a response from the client");
+        let batch = refuse(&json!([{"jsonrpc":"2.0","id":3,"method":"tools/list"}, {"jsonrpc":"2.0","method":"notifications/x"}]), "off").unwrap();
+        assert_eq!(batch.as_array().map(Vec::len), Some(1));
+        assert!(refuse(&json!([{"jsonrpc":"2.0","method":"notifications/x"}]), "off").is_none());
     }
 
     #[test]

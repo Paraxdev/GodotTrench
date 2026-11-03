@@ -40,6 +40,7 @@ These options set up the [MCP server](mcp.md), so scripts and AI agents can driv
 | `--mcp-http[=<port>]` | Serves MCP over HTTP on 127.0.0.1, port 7841 by default |
 | `--mcp-token=<token>` | Makes HTTP clients send this token, whatever Preferences says. It wins over `TRENCHDOT_MCP_TOKEN`, see [The HTTP token](mcp.md#the-http-token) |
 
-`--default-prefs` pairs well with either, so a scripted session starts from the same settings every time.
+`--default-prefs` pairs well with either, so a scripted session starts from the same settings every time. With
+`TRENCHDOT_DISABLE_MCP=1` set, neither option starts a server, see [Turning MCP off](mcp.md#turning-mcp-off).
 
 </div>

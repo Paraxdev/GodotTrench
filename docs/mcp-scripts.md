@@ -62,10 +62,10 @@ A step without `tool` is a comment. A step with `save` stores its result under t
 ids it created.
 
 Scripts get shared like maps, so their steps only edit and save the map. A step can't open another project or one of its
-maps, start Godot, build in it, turn on live mode, copy or cut to the clipboard, throw away unsaved changes or close
-other tabs. Undo and redo only reach what the script did itself, so the work you haven't saved stays in every tab.
-`screenshot`, `simulate_input`, `walkability` and `run_script` can't run inside a script either, and neither can
-`project_content` installs other than `gameplay`.
+maps, start Godot, build in it, turn on live mode, turn MCP off, copy or cut to the clipboard, throw away unsaved
+changes or close other tabs. Undo and redo only reach what the script did itself, so the work you haven't saved stays in
+every tab. `screenshot`, `simulate_input`, `walkability` and `run_script` can't run inside a script either, and neither
+can `project_content` installs other than `gameplay`.
 
 Every file a step reads or writes has to be in the open project, the script's own folder or a folder you pass in `vars`,
 also when a link inside them points somewhere else. That covers the maps it opens, checks, compares, saves and exports,

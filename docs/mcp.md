@@ -45,6 +45,21 @@ over the variable. Either one turns the token on whatever Preferences says, and 
 greyed out. `tools/mcp_client.py` and `tools/mcp_script.py` send a token only when you give them one, with `--token` or
 `TRENCHDOT_MCP_TOKEN`.
 
+## Turning MCP off
+
+To keep agents and scripts out of the editor altogether, untick *MCP* at the top of the MCP part of
+*File > Preferences*. The HTTP server closes at once and drops its open connections, a client on stdio gets an error
+for every request, and the other MCP settings grey out. The setting is saved at once, so every editor you start
+without `--default-prefs` keeps MCP off until you tick it again, which brings the HTTP server back on its port.
+
+![The MCP part of Preferences: MCP ticked, the HTTP server row with its port, and Require a token](assets/mcp/prefs-mcp.png)
+
+To turn MCP off for one run whatever Preferences says, set `TRENCHDOT_DISABLE_MCP` to anything but empty or `0`.
+*MCP* then shows unticked and greyed out. While MCP is off, `--mcp` and `--mcp-http` start no server. The editor still
+opens and its status line says MCP is off, and a client on stdio gets an error saying so instead of waiting.
+
+An agent can turn MCP off as well, with `set_editor` and `"mcp": false`. Only you can turn it back on.
+
 ## Tools
 
 | Area | What it is for | Tools |

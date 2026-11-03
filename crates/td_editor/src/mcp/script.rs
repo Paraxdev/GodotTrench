@@ -147,7 +147,7 @@ pub fn args_refusal(tool: &str, args: &Value) -> Option<String> {
             }
         }
         "set_editor" => {
-            ["live_mode", "live_link_port"].into_iter().find(|k| !args[*k].is_null()).map(|k| format!("set_editor {k} cannot be set inside scripts"))
+            ["live_mode", "live_link_port", "mcp"].into_iter().find(|k| !args[*k].is_null()).map(|k| format!("set_editor {k} cannot be set inside scripts"))
         }
         _ => None,
     }
@@ -586,6 +586,7 @@ mod tests {
 
         assert_eq!(args_refusal("run_action", &json!({ "action": "csg_subtract" })), None);
         assert!(args_refusal("set_editor", &json!({ "grid": 8, "live_mode": true })).unwrap().contains("live_mode"));
+        assert!(args_refusal("set_editor", &json!({ "mcp": false })).unwrap().contains("mcp"));
         assert_eq!(args_refusal("set_editor", &json!({ "grid": 8 })), None);
         for action in ["copy", "cut"] {
             assert!(args_refusal("run_action", &json!({ "action": action })).unwrap().contains("clipboard"), "{action}");

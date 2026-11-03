@@ -6,6 +6,7 @@ pub mod geometry_tools;
 pub mod protocol;
 pub mod review_tools;
 pub mod script;
+pub mod switch;
 pub mod token;
 pub mod tools;
 pub mod transport;
@@ -65,10 +66,15 @@ fn wait_for_reply(rx: &Receiver<ToolResult>, timeout: Option<Duration>) -> ToolR
 pub struct Bridge {
     tx: Sender<ToolCall>,
     ctx: Arc<Mutex<Option<egui::Context>>>,
+    gate: switch::Gate,
 }
 
 impl ToolExecutor for Bridge {
     fn call(&self, name: &str, args: Value) -> ToolResult {
+        if let Some(by) = self.gate.off() {
+            return ToolResult::Error(by.refusal());
+        }
+
         let (reply, rx) = mpsc::channel();
         if self.tx.send(ToolCall { name: name.to_string(), args, reply }).is_err() {
             return ToolResult::Error("editor is shutting down".into());
@@ -88,9 +94,13 @@ pub struct McpHost {
 }
 
 impl McpHost {
-    pub fn new(ctx: egui::Context) -> Self {
+    pub fn new(ctx: egui::Context, off: Option<switch::OffBy>) -> Self {
         let (tx, rx) = mpsc::channel();
-        Self { rx, bridge: Bridge { tx, ctx: Arc::new(Mutex::new(Some(ctx))) } }
+        Self { rx, bridge: Bridge { tx, ctx: Arc::new(Mutex::new(Some(ctx))), gate: switch::Gate::new(off) } }
+    }
+
+    pub fn gate(&self) -> &switch::Gate {
+        &self.bridge.gate
     }
 }
 
@@ -161,10 +171,13 @@ mod tests {
 
     #[test]
     fn the_preferences_carry_no_saved_setting() {
-        let prefs = crate::state::Prefs { mcp_require_token: true, ..Default::default() };
+        let prefs = crate::state::Prefs { mcp_require_token: true, mcp_enabled: false, ..Default::default() };
         let written = serde_json::to_value(&prefs).unwrap();
-        assert!(written.get("mcp_require_token").is_none(), "an editor closing later would write back its own");
-        let read: crate::state::Prefs = serde_json::from_value(serde_json::json!({ "mcp_require_token": true })).unwrap();
-        assert!(!read.mcp_require_token);
+        for key in ["mcp_require_token", "mcp_enabled"] {
+            assert!(written.get(key).is_none(), "an editor closing later would write back its own {key}");
+        }
+
+        let read: crate::state::Prefs = serde_json::from_value(serde_json::json!({ "mcp_require_token": true, "mcp_enabled": false })).unwrap();
+        assert!(!read.mcp_require_token && read.mcp_enabled);
     }
 }

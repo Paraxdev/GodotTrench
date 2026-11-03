@@ -38,7 +38,8 @@ Add or extend tests for what you change. UI changes are checked by running the e
 --default-prefs --offscreen` and driving it with `tools/mcp_client.py`, or by an e2e test in
 `crates/td_editor/tests/e2e.rs`. `--offscreen` keeps the window off the screen of whoever is at the machine.
 The HTTP server asks for no token unless it is given one, as `--mcp-token=<token>` or `TRENCHDOT_MCP_TOKEN`. The
-client sends it with `--token <token>` or the same variable.
+client sends it with `--token <token>` or the same variable. With `TRENCHDOT_DISABLE_MCP` set to anything but empty or
+`0` the editor serves no MCP at all, so unset it for these runs.
 
 Run `./tools/fmt --install` once per clone. It enables a pre-commit hook that formats staged Rust with rustfmt and
 `tools/space_blocks.py`. Do not hand format around it.

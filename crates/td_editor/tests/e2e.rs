@@ -27,6 +27,21 @@ impl Drop for Editor {
     }
 }
 
+/// The editor with its MCP HTTP server on `port` and the settings every test starts from.
+fn editor_command(port: u16) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_trenchdot"));
+    command.arg(format!("--mcp-http={port}")).arg("--default-prefs");
+    // TRENCHDOT_E2E_VISIBLE=1 shows the windows, to watch a test drive the editor. CI runs under Xvfb, which shows
+    // nothing anyway.
+    if cfg!(windows) && std::env::var_os("TRENCHDOT_E2E_VISIBLE").is_none() {
+        command.arg("--offscreen");
+    }
+
+    // A token or switch from the shell that runs the tests would lock the harness out.
+    command.env_remove("TRENCHDOT_MCP_TOKEN").env_remove("TRENCHDOT_DISABLE_MCP");
+    command
+}
+
 fn free_port() -> u16 {
     std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
 }
@@ -75,16 +90,7 @@ impl Editor {
             .find_map(|a| a.strip_prefix("--mcp-token="))
             .or_else(|| env.iter().find(|(k, _)| *k == "TRENCHDOT_MCP_TOKEN").map(|(_, v)| v.trim()).filter(|v| !v.is_empty()))
             .map(String::from);
-        let mut command = Command::new(env!("CARGO_BIN_EXE_trenchdot"));
-        command.arg(format!("--mcp-http={port}")).arg("--default-prefs");
-        // TRENCHDOT_E2E_VISIBLE=1 shows the windows, to watch a test drive the editor. CI runs under Xvfb, which shows
-        // nothing anyway.
-        if cfg!(windows) && std::env::var_os("TRENCHDOT_E2E_VISIBLE").is_none() {
-            command.arg("--offscreen");
-        }
-
-        // A token from the shell that runs the tests would lock the harness out.
-        let child = command.args(args).env_remove("TRENCHDOT_MCP_TOKEN").envs(env.iter().copied()).spawn().expect("launch editor");
+        let child = editor_command(port).args(args).envs(env.iter().copied()).spawn().expect("launch editor");
         let editor = Editor { child, port, token, name };
         let deadline = Instant::now() + Duration::from_secs(60);
         loop {
@@ -2150,6 +2156,11 @@ fn imports_convert_valve_and_quake_textures() {
 /// Answers the live link like a Godot editor with `map` open: status lists it, a capture returns a small red PNG and a
 /// walkable request a floor with a small island up on a wall. Every capture and walkable message is kept.
 fn fake_godot_editor(project: &std::path::Path, map: &std::path::Path) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<Value>>>) {
+    fake_godot(project, map, true)
+}
+
+/// A fake Godot editor that never answers captures when `captures` is false.
+fn fake_godot(project: &std::path::Path, map: &std::path::Path, captures: bool) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<Value>>>) {
     use std::io::BufRead;
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -2172,6 +2183,10 @@ fn fake_godot_editor(project: &std::path::Path, map: &std::path::Path) -> (u16, 
                     Some("status") => json!({ "ok": true, "project": project, "godot": "4.7", "pid": 1, "maps": [{ "path": map, "epoch": 1 }] }),
                     Some("capture") => {
                         log.lock().unwrap().push(msg.clone());
+                        if !captures {
+                            continue;
+                        }
+
                         json!({ "ok": true, "png": png, "width": 8, "height": 4, "warnings": ["warning: prop model res://gone.glb not found"] })
                     }
                     Some("walkable") => {
@@ -2562,12 +2577,7 @@ fn an_unusable_token_starts_no_server_and_says_why() {
     use std::process::Stdio;
 
     let port = free_port();
-    let child = Command::new(env!("CARGO_BIN_EXE_trenchdot"))
-        .args([format!("--mcp-http={port}").as_str(), "--default-prefs", "--offscreen"])
-        .env("TRENCHDOT_MCP_TOKEN", "two words")
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("launch editor");
+    let child = editor_command(port).env("TRENCHDOT_MCP_TOKEN", "two words").stderr(Stdio::piped()).spawn().expect("launch editor");
     let mut ed = Editor { child, port, token: None, name: "mcp_bad_token" };
     let stderr = ed.child.stderr.take().unwrap();
     let (tx, rx) = std::sync::mpsc::channel();
@@ -2620,6 +2630,156 @@ fn mcp_pref(ed: &Editor, name: &str) -> Value {
     let rect = ed.state()["ui"]["mcp_prefs"][name].clone();
     let r: Vec<f64> = rect.as_array().unwrap_or_else(|| panic!("no {name} in Preferences: {rect}")).iter().map(|v| v.as_f64().unwrap()).collect();
     json!({ "type": "click", "x": (r[0] + r[2]) / 2.0, "y": (r[1] + r[3]) / 2.0 })
+}
+
+fn answers(port: u16) -> bool {
+    TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(250)).is_ok()
+}
+
+/// Waits a few seconds for the MCP HTTP port to close.
+fn wait_until_closed(port: u16) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while answers(port) {
+        assert!(Instant::now() < deadline, "the MCP port stays open");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// With TRENCHDOT_DISABLE_MCP set, --mcp-http opens no port and --mcp answers initialize with an error, while the
+/// editor itself runs on and says why on stderr.
+#[test]
+#[ignore]
+fn mcp_turned_off_by_the_variable_serves_nothing() {
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+
+    let port = free_port();
+    let child = editor_command(port)
+        .arg("--mcp")
+        .env("TRENCHDOT_DISABLE_MCP", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("launch editor");
+    let mut ed = Editor { child, port, token: None, name: "mcp_off_env" };
+    let mut stdin = ed.child.stdin.take().unwrap();
+    let stdout = ed.child.stdout.take().unwrap();
+    let init = json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "e2e", "version": "1" } } });
+    writeln!(stdin, "{init}").unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut line = String::new();
+        let _ = BufReader::new(stdout).read_line(&mut line);
+        let _ = tx.send(line);
+    });
+    let line = rx.recv_timeout(Duration::from_secs(60)).expect("an answer on stdout");
+    let answer: Value = serde_json::from_str(&line).unwrap_or_else(|e| panic!("{e}: {line}"));
+    assert_eq!(answer["id"], 1);
+    assert!(answer["error"]["message"].as_str().unwrap_or_default().contains("turned off in TrenchDot by TRENCHDOT_DISABLE_MCP"), "{answer}");
+
+    let deadline = Instant::now() + Duration::from_secs(4);
+    while Instant::now() < deadline {
+        assert!(!answers(port), "the MCP HTTP port answered");
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
+    assert!(ed.child.try_wait().unwrap().is_none(), "the editor still runs");
+    let mut stderr = ed.child.stderr.take().unwrap();
+    let _ = ed.child.kill();
+    let _ = ed.child.wait();
+    let mut said = String::new();
+    let _ = stderr.read_to_string(&mut said);
+    assert!(said.contains("MCP is turned off by TRENCHDOT_DISABLE_MCP"), "{said}");
+}
+
+/// set_editor mcp false answers, then the port closes and the connections still open are dropped.
+#[test]
+#[ignore]
+fn mcp_can_be_turned_off_over_mcp() {
+    let mut ed = Editor::launch("mcp_off_call");
+    let mut idle = TcpStream::connect(("127.0.0.1", ed.port)).unwrap();
+    idle.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+    assert_eq!(ed.call("set_editor", json!({ "mcp": false }))["mcp"], false);
+    // Until the port closes, nothing but that last answer gets through.
+    for (method, params) in
+        [("tools/call", json!({ "name": "get_state", "arguments": {} })), ("initialize", json!({})), ("tools/list", json!({})), ("ping", json!({}))]
+    {
+        if let Some(r) = ed.try_rpc(method, params) {
+            assert!(r["result"].is_null() && r["error"]["message"].as_str().unwrap_or_default().contains("turned off in TrenchDot"), "{method}: {r}");
+        }
+    }
+
+    wait_until_closed(ed.port);
+    let mut buf = [0u8; 1];
+    assert!(matches!(idle.read(&mut buf), Ok(0) | Err(_)), "the idle connection is dropped");
+    assert!(ed.child.try_wait().unwrap().is_none(), "the editor still runs");
+}
+
+/// A call that waits for Godot gets the error as soon as MCP goes off, instead of whenever Godot answers.
+#[test]
+#[ignore]
+fn turning_mcp_off_answers_calls_that_wait_for_godot() {
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+
+    let dir = artifacts().join("mcp_off_godot");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("maps")).unwrap();
+    std::fs::write(
+        dir.join("project.godot"),
+        "config_version=5
+",
+    )
+    .unwrap();
+    let map = dir.join("maps/yard.tdm");
+    let (godot, asked) = fake_godot(&dir, &map, false);
+    let port = free_port();
+    let child = editor_command(port).args(["--mcp", "--project", dir.to_str().unwrap()]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+    let mut ed = Editor { child, port, token: None, name: "mcp_off_godot" };
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while ed.try_rpc("ping", json!({})).is_none() {
+        assert!(Instant::now() < deadline, "editor did not start");
+        std::thread::sleep(Duration::from_millis(250));
+    }
+
+    ed.call("set_editor", json!({ "live_link_port": godot }));
+    ed.call("create_brush", json!({ "min": [0, 0, 0], "max": [256, 16, 256] }));
+    ed.call("map_file", json!({ "op": "save", "path": map }));
+    let mut stdin = ed.child.stdin.take().unwrap();
+    let stdout = ed.child.stdout.take().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            let _ = tx.send(line);
+        }
+    });
+    let call = json!({ "jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": { "name": "screenshot", "arguments": { "source": "godot" } } });
+    writeln!(stdin, "{call}").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while asked.lock().unwrap().is_empty() {
+        assert!(Instant::now() < deadline, "the capture never reached Godot");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    assert!(rx.recv_timeout(Duration::from_millis(500)).is_err(), "Godot has not answered");
+    ed.call("set_editor", json!({ "mcp": false }));
+    let line = rx.recv_timeout(Duration::from_secs(10)).expect("the waiting call is answered");
+    let answer: Value = serde_json::from_str(&line).unwrap_or_else(|e| panic!("{e}: {line}"));
+    assert_eq!((answer["id"].as_u64(), answer["result"]["isError"].as_bool()), (Some(7), Some(true)), "{answer}");
+    assert!(answer["result"]["content"][0]["text"].as_str().unwrap_or_default().contains("turned off in TrenchDot"), "{answer}");
+}
+
+/// Unticking MCP in Preferences closes the port in the same frame, so not even the input call that clicked gets an answer.
+#[test]
+#[ignore]
+fn mcp_can_be_turned_off_in_preferences() {
+    let mut ed = Editor::launch("mcp_off_prefs");
+    open_preferences(&ed);
+    let click = mcp_pref(&ed, "mcp");
+    assert_eq!(ed.try_rpc("tools/call", json!({ "name": "simulate_input", "arguments": { "target": "window", "events": [click] } })), None);
+    wait_until_closed(ed.port);
+    assert!(ed.child.try_wait().unwrap().is_none(), "the editor still runs");
 }
 
 #[test]

@@ -127,6 +127,13 @@ impl ContentWizard {
         self.job.as_ref().map(Job::progress)
     }
 
+    /// Stops a running install the way its Cancel button does.
+    pub fn cancel(&self) {
+        if let Some(job) = &self.job {
+            job.cancel();
+        }
+    }
+
     /// Starts installing into the open project.
     pub fn start(&mut self, state: &EditorState, choice: Choice, repaint: Option<egui::Context>) -> Result<(), String> {
         if self.job.is_some() {
@@ -530,6 +537,25 @@ mod tests {
         assert!(f.wizard.open && f.wizard.choice == Choice::Nature);
         f.wizard.mcp_call("create_brush");
         assert!(f.wizard.open, "a wizard a person opened stays");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn cancel_stops_a_running_install() {
+        let server = Server::start();
+        let (mut f, root) = fresh("cancel");
+        f.wizard.api = Some(server.url.clone());
+        f.wizard.cancel();
+        f.wizard.start(&f.state, Choice::Nature, None).unwrap();
+        f.wizard.cancel();
+        assert!(f.wizard.job.as_ref().is_some_and(Job::cancelling));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while f.wizard.poll(&mut f.state).is_none() {
+            assert!(std::time::Instant::now() < deadline, "the install ends");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        assert!(!f.wizard.running());
         std::fs::remove_dir_all(&root).unwrap();
     }
 

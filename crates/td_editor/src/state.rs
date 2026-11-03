@@ -245,6 +245,10 @@ pub struct Prefs {
     /// Which baked map the Baked shading shows.
     pub bake_view: crate::bake::View,
     pub invert_y: bool,
+    /// Agents and scripts may drive the editor over MCP. Off, no MCP server runs. Saved as
+    /// [`crate::mcp::switch::OFF_FILE`].
+    #[serde(skip)]
+    pub mcp_enabled: bool,
     pub mcp_http: bool,
     pub mcp_port: u16,
     /// MCP HTTP clients have to send the token kept next to the settings. Saved in a file of its own, see
@@ -361,6 +365,7 @@ impl Default for Prefs {
             shade: Shade::Textured,
             bake_view: crate::bake::View::Lit,
             invert_y: false,
+            mcp_enabled: true,
             mcp_http: false,
             mcp_port: crate::DEFAULT_MCP_PORT,
             mcp_require_token: false,
