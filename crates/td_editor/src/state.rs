@@ -1118,11 +1118,16 @@ impl EditorState {
 
         self.last_autosave = Instant::now();
         let tabs = self.tabs.iter_mut().map(|t| (&t.doc, &mut t.autosave));
-        let saved: Vec<PathBuf> =
-            std::iter::once((&self.doc, &mut self.autosave)).chain(tabs).filter_map(|(doc, autosave)| autosave_doc(doc, autosave)).collect();
+        let (saved, failed): (Vec<_>, Vec<_>) =
+            std::iter::once((&self.doc, &mut self.autosave)).chain(tabs).filter_map(|(doc, autosave)| autosave_doc(doc, autosave)).partition(Result::is_ok);
+        if let Some(Err(e)) = failed.into_iter().next() {
+            self.fail_status(e);
+            return;
+        }
+
         match saved.as_slice() {
             [] => {}
-            [one] => self.set_status(format!("Autosaved to {}", one.display())),
+            [Ok(one)] => self.set_status(format!("Autosaved to {}", one.display())),
             many => self.set_status(format!("Autosaved {} maps", many.len())),
         }
     }
@@ -1138,7 +1143,8 @@ impl EditorState {
     }
 }
 
-fn autosave_doc(doc: &Document, autosave: &mut Autosave) -> Option<PathBuf> {
+/// The autosave file written, or why it could not be. A map that fails is not tried again until it changes.
+fn autosave_doc(doc: &Document, autosave: &mut Autosave) -> Option<Result<PathBuf, String>> {
     if !doc.is_modified() || doc.in_transaction() || autosave.revision == doc.revision {
         return None;
     }
@@ -1147,9 +1153,8 @@ fn autosave_doc(doc: &Document, autosave: &mut Autosave) -> Option<PathBuf> {
         Some(p) => autosave_path(p),
         None => autosave.untitled.get_or_insert_with(new_untitled_autosave).clone(),
     };
-    format::save(&doc.map, &path).ok()?;
     autosave.revision = doc.revision;
-    Some(path)
+    Some(format::save(&doc.map, &path).map(|()| path.clone()).map_err(|e| format!("Autosave to {} failed: {e}", path.display())))
 }
 
 const UNTITLED_PREFIX: &str = "trenchdot_untitled";
@@ -1296,6 +1301,28 @@ mod tests {
         for f in files {
             let _ = std::fs::remove_file(f);
         }
+    }
+
+    #[test]
+    fn an_autosave_that_fails_says_so_once() {
+        let mut state = EditorState::new(Prefs::default());
+        state.prefs.autosave_minutes = 1e-9;
+        let probes = td_doc::lightmap::Probes { sh: vec![0.0; 16 << 20], ..Default::default() };
+        let lightmap = td_doc::lightmap::Lightmap { width: 1, height: 1, light: vec![0; 3], shadow: vec![0], ao: vec![0], probes, ..Default::default() };
+        state.doc.edit("bake", |m, _| m.lightmap = Some(std::sync::Arc::new(lightmap)));
+        state.autosave_now();
+        assert!(state.status_failed(), "{}", state.status);
+        assert!(state.status.starts_with("Autosave to ") && state.status.contains("the map is too big to save"), "{}", state.status);
+        let file = state.autosave.untitled.clone().unwrap();
+        assert!(!file.exists());
+
+        state.set_status("later");
+        state.autosave_now();
+        assert_eq!(state.status, "later", "the same map is not tried again");
+        let layer = state.doc.map.default_layer();
+        state.doc.edit("add", |m, _| td_doc::ops::create_point_entity(m, layer, "light", DVec3::ZERO));
+        state.autosave_now();
+        assert!(state.status.starts_with("Autosave to "), "a change tries again, {}", state.status);
     }
 
     #[test]

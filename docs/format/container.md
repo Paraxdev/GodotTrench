@@ -27,7 +27,8 @@ apart from random bytes, that's how a reader finds the next good chunk in a [dam
 | 16 | 4 | Stored size, u32, the number of payload bytes that follow the header |
 | 20 | 4 | Header check, u32: the tag read as a u32, XOR flags, XOR raw size, XOR stored size, XOR `0x47544D43` |
 
-A compressed payload is one zstd frame with a content checksum. A raw size above 1 GiB means the header is damaged.
+A compressed payload is one zstd frame with a content checksum. A raw size above 1 GiB means the header is damaged,
+and a whole file has [limits](#limits) as well.
 
 The editor writes the chunks in this order:
 
@@ -115,7 +116,8 @@ gone.
 
 Each payload is one value in Godot's binary Variant serialization, the format of `var_to_bytes`, using only the types
 below. Every value starts with a u32 header whose low byte is the type. Bit 16 of the header marks a 64 bit integer or
-float.
+float. Bit 16 on any other type, or any other bit, makes the chunk unreadable. So does a value inside more than 128
+nested arrays and dictionaries.
 
 | Type | Header | Body |
 | --- | --- | --- |
@@ -132,8 +134,9 @@ float.
 | float32 array | 32 | u32 count, then an f32 each |
 | float64 array | 33 | u32 count, then an f64 each |
 
-Readers ignore bit 31 of a container or array count, which Godot sets for shared containers. JSON integers are written
-as integers and JSON floats as floats, so converting to binary and back gives the same JSON.
+Readers ignore bit 31 of a dictionary or array count, which Godot sets for shared containers, but not of a packed
+array count. JSON integers are written as integers and JSON floats as floats, so converting to binary and back gives the
+same JSON.
 
 To keep files small, three kinds of value get a more compact form. A reader has to accept both the compact and the
 plain one:
@@ -151,3 +154,27 @@ angles and 1000 for the scale. Dividing gives back the exact float, for example 
 > [!NOTE]
 > `tdm_file.gd` turns scatter columns back into instance arrays, but leaves terrain bytes as `PackedByteArray`
 > and long number arrays as packed arrays. GDScript that reads a map has to accept those next to plain arrays.
+
+## Limits
+
+A few kilobytes of zstd can unpack to gigabytes, so a reader budgets each file. It takes the `HEAD`, `NODE`, `END` and
+`LMAP` chunks in file order and doesn't read one that doesn't fit in what is left:
+
+1. Before unpacking, the chunk's raw size comes off a budget of 1 GiB.
+2. The unpacked chunk stays in memory while its values are built, so its raw size and the memory of its values have to
+   fit together in what is left of a budget of 1200 MiB. Only the memory of the values comes off it. A chunk that
+   doesn't fit takes nothing, so the chunks after it can still be read.
+
+Chunks with other tags are never unpacked and take nothing. The memory of a value is counted like this, without
+building it:
+
+| Value | Memory |
+| --- | --- |
+| Every value, dictionary keys and the items of packed arrays included | 80 bytes |
+| A string, on top | 6 bytes per byte, as JSON may write a byte as `\u0000` |
+| Bytes, on top | `4 * ceil(n / 3) + n` for `n` bytes, their size as base64 and the copy a terrain or bake decodes them into |
+
+The biggest showcase map takes 76 MiB, a scatter instance 640 to 720 bytes, and the light, shadow and occlusion of a
+bake at the largest atlas size 299 MiB. Reading a file that fits into a map, or dumping it as JSON, takes at most about
+1.3 GiB on top of what the editor already uses. The editor refuses to save a map past either limit, so every file it
+writes reads in full.

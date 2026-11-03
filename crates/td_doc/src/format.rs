@@ -50,6 +50,8 @@ struct FileMap {
     editor: EditorData,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     textures: BTreeMap<String, crate::textures::TextureSettings>,
+    /// Read by [`node_list`].
+    #[serde(skip_deserializing)]
     layers: Vec<FileNode>,
 }
 
@@ -57,21 +59,80 @@ fn is_default_editor(e: &EditorData) -> bool {
     *e == EditorData::default()
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 struct FileNode {
     id: u64,
     #[serde(flatten)]
     kind: FileKind,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     label: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "graph_pos")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     graph: Option<[f32; 2]>,
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "is_false")]
     hidden: bool,
-    #[serde(default, skip_serializing_if = "is_false")]
+    #[serde(skip_serializing_if = "is_false")]
     locked: bool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     children: Vec<FileNode>,
+}
+
+/// The keys of a node beside `children` and those of its kind.
+#[derive(Deserialize)]
+struct NodeFields {
+    id: u64,
+    #[serde(default)]
+    label: Option<String>,
+    #[serde(default, deserialize_with = "graph_pos")]
+    graph: Option<[f32; 2]>,
+    #[serde(default)]
+    hidden: bool,
+    #[serde(default)]
+    locked: bool,
+}
+
+const NODE_FIELDS: [&str; 5] = ["id", "label", "graph", "hidden", "locked"];
+
+/// Reads a node and its subtree by hand. Serde's `flatten` buffers the content of a node twice on the way to its kind,
+/// strings included, so one big terrain took several times its size in memory.
+fn file_node(value: Value) -> Result<FileNode, serde_json::Error> {
+    let Value::Object(mut obj) = value else { return Err(invalid_type(&value, "struct FileNode")) };
+    let children = obj.remove("children").map(node_list).transpose()?.unwrap_or_default();
+    let fields: serde_json::Map<String, Value> = NODE_FIELDS.iter().filter_map(|k| obj.remove_entry(*k)).collect();
+    let NodeFields { id, label, graph, hidden, locked } = NodeFields::deserialize(Value::Object(fields))?;
+    let kind = FileKind::deserialize(Value::Object(obj))?;
+    Ok(FileNode { id, kind, label, graph, hidden, locked, children })
+}
+
+fn node_list(value: Value) -> Result<Vec<FileNode>, serde_json::Error> {
+    match value {
+        Value::Array(items) => items.into_iter().map(file_node).collect(),
+        other => Err(invalid_type(&other, "a sequence")),
+    }
+}
+
+fn invalid_type(value: &Value, expected: &str) -> serde_json::Error {
+    use serde::de::Unexpected;
+    let unexpected = match value {
+        Value::Null => Unexpected::Unit,
+        Value::Bool(b) => Unexpected::Bool(*b),
+        Value::Number(n) => match (n.as_u64(), n.as_i64()) {
+            (Some(u), _) => Unexpected::Unsigned(u),
+            (_, Some(i)) => Unexpected::Signed(i),
+            _ => Unexpected::Float(n.as_f64().unwrap_or_default()),
+        },
+        Value::String(s) => Unexpected::Str(s),
+        Value::Array(_) => Unexpected::Seq,
+        Value::Object(_) => Unexpected::Map,
+    };
+    serde::de::Error::invalid_type(unexpected, &expected)
+}
+
+/// The map's top level with its layers.
+fn file_map(mut value: Value) -> Result<FileMap, serde_json::Error> {
+    let layers = value.as_object_mut().and_then(|o| o.remove("layers"));
+    let mut file = FileMap::deserialize(value)?;
+    file.layers = node_list(layers.ok_or_else(|| serde::de::Error::missing_field("layers"))?)?;
+    Ok(file)
 }
 
 fn is_false(b: &bool) -> bool {
@@ -143,16 +204,17 @@ pub fn to_string_with_lightmap(map: &Map) -> String {
     crate::json_fmt::to_string(&value)
 }
 
-/// The map in the binary container that `.tdm` files are saved in.
-pub fn to_bytes(map: &Map) -> Vec<u8> {
-    match &map.lightmap {
+/// The map in the binary container that `.tdm` files are saved in. Refuses a map too big for the editor to read back.
+pub fn to_bytes(map: &Map) -> Result<Vec<u8>, FormatError> {
+    let encoded = match &map.lightmap {
         Some(lm) => {
             let mut chunks = map.unknown_chunks.clone();
             chunks.push(crate::binary::bulk_chunk(crate::lightmap::TAG, &lm.to_chunk(&lm.stale_nodes(map))));
             crate::binary::encode(&to_value(map), &chunks)
         }
         None => crate::binary::encode(&to_value(map), &map.unknown_chunks),
-    }
+    };
+    Ok(encoded?)
 }
 
 /// Identifies the map content the way the END chunk of `to_bytes` records it.
@@ -179,12 +241,13 @@ pub fn paste_nodes(map: &mut Map, parent: NodeId, text: &str) -> Result<Vec<Node
         format: String,
         #[serde(default)]
         version: u32,
-        nodes: Vec<FileNode>,
     }
 
     let mut value: Value = serde_json::from_str(text)?;
     fill_defaults(&mut value);
+    let nodes = value.as_object_mut().and_then(|o| o.remove("nodes"));
     let clip: Clip = serde_json::from_value(value)?;
+    let nodes = node_list(nodes.ok_or_else(|| <serde_json::Error as serde::de::Error>::missing_field("nodes"))?)?;
     if clip.format != "trenchdot-clipboard" {
         return Err(FormatError::WrongFormat(clip.format));
     }
@@ -193,14 +256,14 @@ pub fn paste_nodes(map: &mut Map, parent: NodeId, text: &str) -> Result<Vec<Node
         return Err(FormatError::TooNew(clip.version));
     }
 
-    clip.nodes.iter().try_for_each(validate)?;
+    nodes.iter().try_for_each(validate)?;
     if !map.contains(parent) {
         return Err(FormatError::MissingParent(parent.0));
     }
 
     let mut out = Vec::new();
     let mut copies = BTreeMap::new();
-    for node in clip.nodes {
+    for node in nodes {
         if matches!(node.kind, FileKind::Layer(_)) {
             for child in node.children {
                 out.push(insert_fresh(map, parent, child, &mut copies));
@@ -327,46 +390,47 @@ pub fn from_str(text: &str) -> Result<Map, FormatError> {
 
 /// Reads a map file of either kind, told apart by its first bytes.
 pub fn from_bytes(bytes: &[u8]) -> Result<Loaded, FormatError> {
-    let (value, mut problems, mut unknown) = file_value(bytes)?;
+    let (value, mut problems, unknown, lightmap) = file_value(bytes)?;
     let mut map = from_value(value)?;
-    if let Some(at) = unknown.iter().position(|c| c.tag == crate::lightmap::TAG) {
-        let chunk = unknown.remove(at);
-        map.lightmap = crate::binary::chunk_payload(&chunk).and_then(|raw| crate::lightmap::Lightmap::from_chunk(&raw)).map(std::sync::Arc::new);
+    if let Some(lightmap) = lightmap {
+        map.lightmap = crate::lightmap::Lightmap::from_json(&lightmap).map(std::sync::Arc::new);
         if map.lightmap.is_none() {
-            problems.push("the baked lighting is damaged or from a newer editor and was dropped, bake the lighting again".into());
+            problems.push(LIGHTMAP_DROPPED.into());
         }
     }
 
-    map.unknown_chunks = unknown;
+    map.unknown_chunks = unknown.into_iter().filter(|c| c.tag != crate::lightmap::TAG).collect();
     Ok(Loaded { map, problems })
 }
 
-type FileValue = (Value, Vec<String>, Vec<crate::binary::RawChunk>);
+const LIGHTMAP_DROPPED: &str = "the baked lighting is damaged or from a newer editor and was dropped, bake the lighting again";
+
+/// The value tree, the problems, the chunks kept as they are stored and the value of the LMAP chunk.
+type FileValue = (Value, Vec<String>, Vec<crate::binary::RawChunk>, Option<Value>);
 
 /// The file's content as the JSON value tree, without building a map.
 fn file_value(bytes: &[u8]) -> Result<FileValue, FormatError> {
     if crate::binary::is_binary(bytes) {
         let decoded = crate::binary::decode(bytes)?;
-        return Ok((decoded.value, decoded.problems, decoded.unknown));
+        return Ok((decoded.value, decoded.problems, decoded.unknown, decoded.lightmap));
     }
 
     let text = std::str::from_utf8(bytes).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    Ok((serde_json::from_str(text.trim_start_matches('\u{feff}'))?, Vec::new(), Vec::new()))
+    Ok((serde_json::from_str(text.trim_start_matches('\u{feff}'))?, Vec::new(), Vec::new(), None))
 }
 
 /// Any map file in the readable JSON layout, for `trenchdot --dump` and `--to-json`.
 pub fn file_to_json(bytes: &[u8]) -> Result<(String, Vec<String>), FormatError> {
-    let (mut value, mut problems, unknown) = file_value(bytes)?;
-    if let Some(chunk) = unknown.iter().find(|c| c.tag == crate::lightmap::TAG) {
+    let (mut value, mut problems, _, lightmap) = file_value(bytes)?;
+    if let Some(lightmap) = lightmap {
         // The chunk decodes to the JSON layout already, `save` to a .json path writes the same key.
-        let decoded = crate::binary::chunk_payload(chunk).and_then(|raw| crate::variant::decode(&raw).ok());
-        match decoded.filter(|v| crate::lightmap::Lightmap::from_json(v).is_some()) {
-            Some(lightmap) => {
+        match crate::lightmap::Lightmap::from_json(&lightmap) {
+            Some(_) => {
                 if let Some(obj) = value.as_object_mut() {
                     obj.insert("lightmap".into(), lightmap);
                 }
             }
-            None => problems.push("the baked lighting is damaged or from a newer editor and was dropped, bake the lighting again".into()),
+            None => problems.push(LIGHTMAP_DROPPED.into()),
         }
     }
 
@@ -376,9 +440,9 @@ pub fn file_to_json(bytes: &[u8]) -> Result<(String, Vec<String>), FormatError> 
 /// Any map file as the binary container with exactly its content, for `trenchdot --to-tdm`. Refuses a file the
 /// editor could not open.
 pub fn file_to_binary(bytes: &[u8]) -> Result<(Vec<u8>, Vec<String>), FormatError> {
-    let (value, problems, unknown) = file_value(bytes)?;
+    let (value, problems, unknown, _) = file_value(bytes)?;
     from_value(value.clone())?;
-    Ok((crate::binary::encode(&value, &unknown), problems))
+    Ok((crate::binary::encode(&value, &unknown)?, problems))
 }
 
 fn from_value(mut value: Value) -> Result<Map, FormatError> {
@@ -395,7 +459,7 @@ fn from_value(mut value: Value) -> Result<Map, FormatError> {
     migrate(&mut value, version);
     fill_defaults(&mut value);
     let lightmap = value.get("lightmap").and_then(crate::lightmap::Lightmap::from_json).map(std::sync::Arc::new);
-    let file: FileMap = serde_json::from_value(value)?;
+    let file = file_map(value)?;
     file.layers.iter().try_for_each(validate)?;
 
     let next_id = file.layers.iter().map(max_file_id).max().unwrap_or(0) + 1;
@@ -432,7 +496,7 @@ pub fn load(path: &Path) -> Result<Loaded, FormatError> {
 pub fn save(map: &Map, path: &Path) -> Result<(), FormatError> {
     let tmp = path.with_extension("tdm.tmp");
     let json = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("json"));
-    let bytes = if json { to_string_with_lightmap(map).into_bytes() } else { to_bytes(map) };
+    let bytes = if json { to_string_with_lightmap(map).into_bytes() } else { to_bytes(map)? };
     std::fs::write(&tmp, bytes)?;
     std::fs::rename(&tmp, path)?;
     Ok(())
@@ -476,7 +540,7 @@ mod tests {
         m.set_texture("glass", crate::textures::TextureSettings { bake: false, casts: false, ..Default::default() });
         m.set_texture("plain", crate::textures::TextureSettings::default());
         assert_eq!(m.textures.len(), 2, "default settings are not stored");
-        let back = from_bytes(&to_bytes(&m)).unwrap().map;
+        let back = from_bytes(&to_bytes(&m).unwrap()).unwrap().map;
         assert_eq!(back.textures, m.textures);
         let json = from_bytes(to_string(&m).as_bytes()).unwrap().map;
         assert_eq!(json.texture("backrooms/wallpaper"), wallpaper);
@@ -493,11 +557,11 @@ mod tests {
         lm.charts.push(crate::lightmap::Chart { node: 2, face: 4, rows: [[0.25, 0.0, 0.0, 0.5], [0.0, 0.0, 0.5, 0.125]] });
         lm.nodes.insert(2, 77);
         m.lightmap = Some(std::sync::Arc::new(lm));
-        let back = from_bytes(&to_bytes(&m)).unwrap();
+        let back = from_bytes(&to_bytes(&m).unwrap()).unwrap();
         assert!(back.problems.is_empty(), "{:?}", back.problems);
         assert_eq!(back.map.lightmap, m.lightmap);
         assert!(back.map.unknown_chunks.is_empty(), "the chunk is read, not kept as unknown");
-        let (dumped, problems) = file_to_json(&to_bytes(&m)).unwrap();
+        let (dumped, problems) = file_to_json(&to_bytes(&m).unwrap()).unwrap();
         assert!(problems.is_empty(), "{problems:?}");
         let dumped: Value = serde_json::from_str(&dumped).unwrap();
         assert_eq!(dumped["lightmap"]["stale"], serde_json::json!([2]));
@@ -552,7 +616,7 @@ mod tests {
         assert!(value["layers"][0].get("label").is_none(), "no key without a label");
 
         let from_text = from_str(&to_string(&m)).unwrap();
-        let from_binary = from_bytes(&to_bytes(&m)).unwrap().map;
+        let from_binary = from_bytes(&to_bytes(&m).unwrap()).unwrap().map;
         for back in [from_text, from_binary] {
             assert_eq!(back.get(brush).unwrap().label.as_deref(), Some("north wall"));
             assert_eq!(back.get(layer).unwrap().label, None);
@@ -574,7 +638,7 @@ mod tests {
         assert!(value["layers"][0].get("graph").is_none(), "no key without a position");
 
         let from_text = from_str(&to_string(&m)).unwrap();
-        let from_binary = from_bytes(&to_bytes(&m)).unwrap().map;
+        let from_binary = from_bytes(&to_bytes(&m).unwrap()).unwrap().map;
         for back in [from_text, from_binary] {
             assert_eq!(back.get(brush).unwrap().graph, Some([120.0, -37.0]));
             assert_eq!(back.get(layer).unwrap().graph, None);
@@ -614,7 +678,7 @@ mod tests {
         m.editor.graph_frames.push(frame.clone());
         let value = to_value(&m);
         assert_eq!(value["editor"]["graph_frames"][0]["title"], "Door logic");
-        for back in [from_str(&to_string(&m)).unwrap(), from_bytes(&to_bytes(&m)).unwrap().map] {
+        for back in [from_str(&to_string(&m)).unwrap(), from_bytes(&to_bytes(&m).unwrap()).unwrap().map] {
             assert_eq!(back.editor.graph_frames, vec![frame.clone()]);
         }
 
@@ -636,6 +700,39 @@ mod tests {
         let back = from_str(&value.to_string()).unwrap();
         assert_eq!((back.get(layer).unwrap().label.as_deref(), back.get(brush).unwrap().label.as_deref()), (None, None));
         assert_eq!(back.get(brush).unwrap().name(), format!("brush{}", brush.0));
+    }
+
+    #[test]
+    fn hand_edited_node_keys_read_as_they_always_have() {
+        let layer = |extra: Value| {
+            let mut v = to_value(&sample());
+            v["layers"][0]["children"][0].as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            v
+        };
+        let read = |v: &Value| from_str(&v.to_string());
+        let back = read(&layer(serde_json::json!({ "label": null, "hidden": true, "graph": "left", "unknown": [1, 2] }))).unwrap();
+        let brush = back.get(back.default_layer()).unwrap().children[0];
+        let node = back.get(brush).unwrap();
+        assert!(node.hidden && node.label.is_none() && node.graph.is_none());
+        assert!(matches!(back.get(brush).unwrap().kind, NodeKind::Brush(_)));
+
+        for (extra, error) in [
+            (serde_json::json!({ "children": 3 }), "invalid type: integer `3`, expected a sequence"),
+            (serde_json::json!({ "hidden": "yes" }), "invalid type: string \"yes\", expected a boolean"),
+            (serde_json::json!({ "children": ["x"] }), "invalid type: string \"x\", expected struct FileNode"),
+            (serde_json::json!({ "type": "box" }), "unknown variant `box`"),
+        ] {
+            let err = read(&layer(extra)).unwrap_err().to_string();
+            assert!(err.contains(error), "{err}");
+        }
+
+        let mut v = to_value(&sample());
+        v["layers"][0]["children"][0].as_object_mut().unwrap().remove("id");
+        assert!(read(&v).unwrap_err().to_string().contains("missing field `id`"));
+        v.as_object_mut().unwrap().remove("layers");
+        assert!(read(&v).unwrap_err().to_string().contains("missing field `layers`"));
+        let clip = serde_json::json!({ "format": "trenchdot-clipboard", "version": 1 });
+        assert!(paste_nodes(&mut sample(), sample().default_layer(), &clip.to_string()).unwrap_err().to_string().contains("missing field `nodes`"));
     }
 
     #[test]

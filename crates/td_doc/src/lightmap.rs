@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use base64::Engine;
 use serde_json::{Value, json};
 
-use crate::variant::{self, Writer};
+use crate::variant::Writer;
 use crate::{Map, NodeKind};
 
 pub const TAG: [u8; 4] = *b"LMAP";
@@ -210,10 +210,6 @@ impl Lightmap {
         w.out
     }
 
-    pub fn from_chunk(raw: &[u8]) -> Option<Lightmap> {
-        Self::from_json(&variant::decode(raw).ok()?)
-    }
-
     /// The `lightmap` key of a JSON map, the byte fields as base64.
     pub fn to_json(&self, stale: &[i64]) -> Value {
         let (keys, rows) = self.chart_columns();
@@ -254,11 +250,15 @@ impl Lightmap {
         let floats = |k: &str| v.get(k).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_f64).map(|f| f as f32).collect::<Vec<_>>());
         let int32s = |k: &str| ints(k).unwrap_or_default().into_iter().filter_map(|i| i32::try_from(i).ok()).collect();
         let rows = floats("chart_rows")?;
+        let text = v.get("light")?.as_str()?;
+        let mut light = Vec::with_capacity(text.len() / 4 * 3 / 2);
+        // Blocks hold a whole number of half floats, so none is split between two.
+        crate::variant::decode_base64(text, |b| light.extend(b.as_chunks::<2>().0.iter().map(|h| u16::from_le_bytes(*h))))?;
         let mut map = Lightmap {
             width: int("width")? as u32,
             height: int("height")? as u32,
             texel_size: v.get("texel_size")?.as_f64()? as f32,
-            light: bytes("light")?.as_chunks::<2>().0.iter().map(|b| u16::from_le_bytes(*b)).collect(),
+            light,
             shadow: bytes("shadow")?,
             ao: bytes("ao")?,
             scene: int("scene").unwrap_or(0) as u64,
@@ -422,6 +422,10 @@ mod tests {
         assert_eq!(o.softness, DEFAULT_SOFTNESS);
     }
 
+    fn read(raw: &[u8]) -> Option<Lightmap> {
+        Lightmap::from_json(&crate::variant::decode(raw).ok()?)
+    }
+
     fn sample() -> Lightmap {
         let mut nodes = BTreeMap::new();
         nodes.insert(7, 0xdead_beef_u64);
@@ -463,7 +467,7 @@ mod tests {
     #[test]
     fn chunk_and_json_round_trip() {
         let map = sample();
-        assert_eq!(Lightmap::from_chunk(&map.to_chunk(&[])), Some(map.clone()));
+        assert_eq!(read(&map.to_chunk(&[])), Some(map.clone()));
         let text = serde_json::to_string(&map.to_json(&[])).unwrap();
         assert_eq!(Lightmap::from_json(&serde_json::from_str(&text).unwrap()), Some(map));
     }
@@ -480,11 +484,11 @@ mod tests {
     fn a_truncated_payload_is_refused() {
         let mut map = sample();
         map.ao.pop();
-        assert_eq!(Lightmap::from_chunk(&map.to_chunk(&[])), None);
+        assert_eq!(read(&map.to_chunk(&[])), None);
 
         let mut map = sample();
         map.probes.sh.pop();
-        let back = Lightmap::from_chunk(&map.to_chunk(&[])).unwrap();
+        let back = read(&map.to_chunk(&[])).unwrap();
         assert!(back.probes.is_empty() && back.charts == map.charts, "broken probes are dropped, the light map stays");
     }
 }

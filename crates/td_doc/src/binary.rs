@@ -16,6 +16,8 @@ pub const FLAG_ZSTD: u32 = 1;
 const BATCH_BYTES: usize = 64 * 1024;
 /// A chunk header that claims more is treated as damaged rather than allocated.
 const MAX_RAW: u32 = 1 << 30;
+/// What the HEAD, NODE, END and LMAP chunks of a file may unpack to together. Other chunks are never unpacked.
+const MAX_FILE_RAW: usize = 1 << 30;
 /// Past 15 zstd gets several times slower for a few percent, and autosave writes big maps every few minutes.
 const LEVEL: i32 = 15;
 /// Baked light maps run to tens of megabytes, where the higher levels take seconds.
@@ -24,6 +26,7 @@ const BULK_LEVEL: i32 = 3;
 pub const HEAD: [u8; 4] = *b"HEAD";
 pub const NODE: [u8; 4] = *b"NODE";
 pub const END: [u8; 4] = *b"END ";
+const LMAP: [u8; 4] = crate::lightmap::TAG;
 
 pub const RECOVERED_LAYER: &str = "Recovered";
 /// About as deep as JSON maps can nest before serde_json's recursion limit refuses them.
@@ -40,9 +43,12 @@ pub struct RawChunk {
 
 pub struct Decoded {
     pub value: Value,
+    /// The chunks other than HEAD, NODE and END as they are stored, LMAP included, to write them back unchanged.
     pub unknown: Vec<RawChunk>,
     /// What was lost or moved, empty for an intact file.
     pub problems: Vec<String>,
+    /// The value of the first LMAP chunk that could be read.
+    pub lightmap: Option<Value>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -53,6 +59,10 @@ pub enum ContainerError {
     TooNew(u32),
     #[error("the map header is damaged and the file has no intact end chunk to take the map version from")]
     NoHeader,
+    #[error("the map is too big to save, its file would unpack to {0} MiB and a map file may unpack to {max} MiB", max = MAX_FILE_RAW >> 20)]
+    TooLarge(usize),
+    #[error("the map is too big to save, reading it back would take {0} MiB of memory and a map file may take {max} MiB", max = variant::MAX_MEMORY >> 20)]
+    TooMuchMemory(usize),
 }
 
 pub fn is_binary(bytes: &[u8]) -> bool {
@@ -154,11 +164,18 @@ pub fn content_id(value: &Value) -> ContentId {
     id_of(&head, &batches)
 }
 
-pub fn encode(value: &Value, unknown: &[RawChunk]) -> Vec<u8> {
+/// The file for a map value as `format::to_value` makes it, with the `unknown` chunks written back as they are.
+/// Refuses a map that the reader would not read in full.
+pub fn encode(value: &Value, unknown: &[RawChunk]) -> Result<Vec<u8>, ContainerError> {
     let (head, batches, node_count) = payloads(value);
     let id = id_of(&head, &batches);
-
     let raw: Vec<&[u8]> = std::iter::once(head.as_slice()).chain(batches.iter().map(Vec::as_slice)).collect();
+    let version = value.get("version").cloned().unwrap_or(Value::from(0));
+    let end = json!({ "version": version, "nodes": node_count, "chunks": raw.len() + unknown.len(), "content": id.as_i64() });
+    let mut w = Writer::new();
+    w.value(&end);
+    check_fits(&raw, unknown, &w.out)?;
+
     let compressed = compress_all(&raw);
     let mut out = Vec::with_capacity(compressed.iter().map(Vec::len).sum::<usize>() + 64);
     out.extend_from_slice(&MAGIC);
@@ -171,12 +188,39 @@ pub fn encode(value: &Value, unknown: &[RawChunk]) -> Vec<u8> {
         write_chunk(&mut out, chunk.tag, chunk.flags, chunk.raw_size, &chunk.data);
     }
 
-    let version = value.get("version").cloned().unwrap_or(Value::from(0));
-    let end = json!({ "version": version, "nodes": node_count, "chunks": raw.len() + unknown.len(), "content": id.as_i64() });
-    let mut w = Writer::new();
-    w.value(&end);
     write_chunk(&mut out, END, FLAG_ZSTD, w.out.len() as u32, &compress(&w.out));
-    out
+    Ok(out)
+}
+
+/// Refuses a file holding the HEAD and NODE `payloads`, then the `unknown` chunks, then the END payload `end`, when
+/// `decode` would not read all of it.
+fn check_fits(payloads: &[&[u8]], unknown: &[RawChunk], end: &[u8]) -> Result<(), ContainerError> {
+    let (mut raw, mut taken, mut peak) = (0usize, 0usize, 0usize);
+    let mut read = |len: usize, payload: Option<&[u8]>| {
+        raw = raw.saturating_add(len);
+        if let Some(payload) = payload {
+            let cost = variant::cost(payload).unwrap_or(usize::MAX);
+            peak = peak.max(taken.saturating_add(len).saturating_add(cost));
+            taken = taken.saturating_add(cost);
+        }
+    };
+    payloads.iter().for_each(|p| read(p.len(), Some(p)));
+    // A light map that does not unpack is dropped by the reader whether or not it is saved again.
+    for chunk in unknown.iter().filter(|c| c.tag == LMAP) {
+        read(chunk.raw_size as usize, chunk_payload(chunk).as_deref());
+    }
+
+    read(end.len(), Some(end));
+    let mib = |n: usize| n.div_ceil(1 << 20);
+    if raw > MAX_FILE_RAW {
+        return Err(ContainerError::TooLarge(mib(raw)));
+    }
+
+    if peak > variant::MAX_MEMORY {
+        return Err(ContainerError::TooMuchMemory(mib(peak)));
+    }
+
+    Ok(())
 }
 
 /// A chunk holding `raw`, compressed at a level that keeps saving quick for payloads of many megabytes.
@@ -266,6 +310,13 @@ fn tag_name(tag: [u8; 4]) -> String {
 }
 
 pub fn decode(bytes: &[u8]) -> Result<Decoded, ContainerError> {
+    decode_with(bytes, MAX_FILE_RAW, variant::MAX_MEMORY)
+}
+
+/// Reads the HEAD, NODE, END and LMAP chunks in file order. A chunk is unpacked when its raw size fits in what is left
+/// of `raw_left` and of `memory_left`, and read when its raw size and its values fit in what is left of `memory_left`.
+/// Only the values are taken from `memory_left`, a chunk that is not read takes nothing from it.
+fn decode_with(bytes: &[u8], mut raw_left: usize, mut memory_left: usize) -> Result<Decoded, ContainerError> {
     if bytes.starts_with(b"\x89GTM\n") || bytes.starts_with(b"\x89GTM\r\r\n") {
         return Err(ContainerError::Mangled);
     }
@@ -282,6 +333,7 @@ pub fn decode(bytes: &[u8]) -> Result<Decoded, ContainerError> {
     let mut tree = Tree::default();
     let mut chunks = 0;
     let mut damaged = 0;
+    let mut lightmap = None;
     let mut pos = MAGIC.len() + 4;
     while pos < bytes.len() {
         let Some(h) = header_at(bytes, pos) else {
@@ -298,27 +350,50 @@ pub fn decode(bytes: &[u8]) -> Result<Decoded, ContainerError> {
             pos = next_sync(bytes, start).unwrap_or(bytes.len());
             continue;
         };
+        let at = pos;
         pos = start + h.stored;
         chunks += 1;
-        if !matches!(h.tag, HEAD | NODE | END) {
+        if !matches!(h.tag, HEAD | NODE | END | LMAP) {
             unknown.push(RawChunk { tag: h.tag, flags: h.flags, raw_size: h.raw, data: data.into() });
             continue;
         }
 
-        let Some(value) = payload(&h, data).and_then(|raw| variant::decode(&raw).ok()) else {
-            let lost = match h.tag {
-                NODE => ", the nodes stored in it are lost",
-                HEAD => ", the worldspawn properties and editor state are lost",
-                _ => "",
-            };
-            problems.push(format!("the {} chunk at byte {} is damaged{lost}", tag_name(h.tag), start - HEADER_LEN));
+        let lost = match h.tag {
+            NODE => ", the nodes stored in it are lost",
+            HEAD => ", the worldspawn properties and editor state are lost",
+            LMAP => ", the baked lighting is lost, bake it again",
+            _ => "",
+        };
+        let tag = tag_name(h.tag);
+        let Some(left) = raw_left.checked_sub(h.raw as usize) else {
+            problems.push(format!("the {tag} chunk at byte {at} would unpack past the {} MiB a map may hold and was not read{lost}", MAX_FILE_RAW >> 20));
             damaged += 1;
             continue;
         };
+        raw_left = left;
+        if h.tag == LMAP {
+            unknown.push(RawChunk { tag: h.tag, flags: h.flags, raw_size: h.raw, data: data.into() });
+        }
+
+        let read = if h.raw as usize > memory_left {
+            Err(variant::Refused::TooBig)
+        } else {
+            payload(&h, data).ok_or(variant::Refused::Damaged("payload does not unpack"))
+        };
+        let value = match read.and_then(|raw| variant::decode_within(&raw, &mut memory_left)) {
+            Ok(value) => value,
+            Err(refused) => {
+                let why = if refused == variant::Refused::TooBig { "takes more memory than a map may and was not read" } else { "is damaged" };
+                problems.push(format!("the {tag} chunk at byte {at} {why}{lost}"));
+                damaged += 1;
+                continue;
+            }
+        };
         match h.tag {
-            HEAD => head = value.as_object().cloned(),
+            HEAD => head = if let Value::Object(map) = value { Some(map) } else { None },
             NODE => tree.add_batch(value),
-            _ => end = Some(value),
+            END => end = Some(value),
+            _ => lightmap = lightmap.or(Some(value)),
         }
     }
 
@@ -355,7 +430,7 @@ pub fn decode(bytes: &[u8]) -> Result<Decoded, ContainerError> {
     }
 
     head.insert("layers".into(), Value::Array(layers));
-    Ok(Decoded { value: Value::Object(head), unknown, problems })
+    Ok(Decoded { value: Value::Object(head), unknown, problems, lightmap })
 }
 
 #[derive(Default)]
@@ -431,6 +506,7 @@ fn assemble(i: usize, slots: &mut [Option<Map<String, Value>>], children: &[Vec<
 mod tests {
     use super::*;
     use crate::format;
+    use crate::lightmap::{Chart, Lightmap, Probes};
     use crate::map::{Group, Map as DocMap, NodeKind};
     use std::collections::BTreeSet;
     use td_core::{Aabb, DVec3};
@@ -491,7 +567,7 @@ mod tests {
     fn intact_file_round_trips_and_is_small() {
         let m = big_map();
         let value = format::to_value(&m);
-        let bytes = format::to_bytes(&m);
+        let bytes = format::to_bytes(&m).unwrap();
         assert!(bytes.starts_with(&MAGIC));
         let tags: Vec<[u8; 4]> = chunks(&bytes).iter().map(|(_, h)| h.tag).collect();
         assert_eq!(tags.first(), Some(&HEAD));
@@ -502,7 +578,7 @@ mod tests {
         assert!(back.problems.is_empty(), "{:?}", back.problems);
         assert_eq!(back.value, value);
         assert!(bytes.len() * 10 < format::to_string(&m).len(), "{} bytes", bytes.len());
-        assert_eq!(format::to_bytes(&format::from_bytes(&bytes).unwrap().map), bytes, "saving is deterministic");
+        assert_eq!(format::to_bytes(&format::from_bytes(&bytes).unwrap().map).unwrap(), bytes, "saving is deterministic");
 
         let (at, end) = chunks(&bytes).pop().unwrap();
         let end = variant::decode(&payload(&end, &bytes[at + HEADER_LEN..]).unwrap()).unwrap();
@@ -525,7 +601,7 @@ mod tests {
                 let (text, problems) = format::file_to_json(&bytes).unwrap();
                 assert!(problems.is_empty(), "{}: {problems:?}", path.display());
                 let value: Value = serde_json::from_str(&text).unwrap();
-                let binary = encode(&value, &[]);
+                let binary = encode(&value, &[]).unwrap();
                 assert_eq!(decode(&binary).unwrap().value, value, "{}", path.display());
 
                 let from_json = format::from_str(&text).unwrap();
@@ -542,7 +618,7 @@ mod tests {
     #[test]
     fn a_damaged_node_chunk_loses_only_its_nodes() {
         let m = big_map();
-        let bytes = format::to_bytes(&m);
+        let bytes = format::to_bytes(&m).unwrap();
         let list = chunks(&bytes);
         let group_b = m.nodes.values().find(|n| matches!(&n.kind, NodeKind::Group(g) if g.name == "b")).unwrap().id.0 as i64;
         let (k, (at, h)) = list.iter().enumerate().find(|(_, (at, h))| h.tag == NODE && chunk_ids(&bytes, *at, h).contains(&group_b)).unwrap();
@@ -580,7 +656,7 @@ mod tests {
     #[test]
     fn a_damaged_header_skips_to_the_next_chunk() {
         let m = big_map();
-        let bytes = format::to_bytes(&m);
+        let bytes = format::to_bytes(&m).unwrap();
         let list = chunks(&bytes);
         let (at, h) = &list[2];
         let lost = chunk_ids(&bytes, *at, h).len();
@@ -594,7 +670,7 @@ mod tests {
     #[test]
     fn a_damaged_head_keeps_the_nodes() {
         let m = big_map();
-        let mut bytes = format::to_bytes(&m);
+        let mut bytes = format::to_bytes(&m).unwrap();
         bytes[MAGIC.len() + 4 + HEADER_LEN + 3] ^= 0xff;
         let loaded = format::from_bytes(&bytes).unwrap();
         assert_eq!(loaded.map.nodes.len(), m.nodes.len());
@@ -605,7 +681,7 @@ mod tests {
     #[test]
     fn a_truncated_file_keeps_what_came_before_the_cut() {
         let m = big_map();
-        let bytes = format::to_bytes(&m);
+        let bytes = format::to_bytes(&m).unwrap();
         let list = chunks(&bytes);
         let (at, h) = &list[3];
         let cut = at + HEADER_LEN + h.stored / 2;
@@ -622,13 +698,305 @@ mod tests {
 
     #[test]
     fn random_damage_never_panics() {
-        let bytes = format::to_bytes(&big_map());
+        let bytes = format::to_bytes(&big_map()).unwrap();
         for i in (0..bytes.len()).step_by(97) {
             let mut broken = bytes.clone();
             broken[i] = broken[i].wrapping_add(1 + (i % 250) as u8);
             let _ = format::from_bytes(&broken);
             let _ = format::from_bytes(&bytes[..i]);
         }
+    }
+
+    /// A list of `n` nils, which zstd packs into a few kilobytes however long it is.
+    fn nils(n: usize) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.array_header(n);
+        let mut raw = w.out;
+        raw.resize(raw.len() + n * 4, 0);
+        raw
+    }
+
+    /// A list of nils taking just more than the whole memory budget. Its count alone passes the budget, so it is
+    /// refused before any of it is built.
+    fn too_many_nils() -> Vec<u8> {
+        nils(variant::MAX_MEMORY / 80)
+    }
+
+    /// `bytes` with `extra` chunks before its END chunk.
+    fn insert(bytes: &[u8], extra: &[([u8; 4], Vec<u8>)]) -> Vec<u8> {
+        let (end_at, _) = *chunks(bytes).last().unwrap();
+        let mut out = bytes[..end_at].to_vec();
+        for (tag, raw) in extra {
+            write_chunk(&mut out, *tag, FLAG_ZSTD, raw.len() as u32, &compress_at(raw, 1));
+        }
+
+        out.extend_from_slice(&bytes[end_at..]);
+        out
+    }
+
+    /// The smallest memory budget an intact file reads in full with: what its chunks take, plus the bytes of the chunk
+    /// being read where that is the most.
+    fn need_of(bytes: &[u8]) -> usize {
+        let (mut taken, mut peak) = (0, 0);
+        for (at, h) in chunks(bytes) {
+            let raw = payload(&h, &bytes[at + HEADER_LEN..at + HEADER_LEN + h.stored]).unwrap();
+            let cost = variant::cost(&raw).unwrap();
+            peak = usize::max(peak, taken + raw.len() + cost);
+            taken += cost;
+        }
+
+        peak
+    }
+
+    /// A NODE batch holding one layer.
+    fn layer_batch(id: i64, extra: Option<&dyn Fn(&mut Writer)>) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.dict_header(2);
+        w.key("parents");
+        w.int64s(&[0]);
+        w.key("nodes");
+        w.array_header(1);
+        w.dict_header(if extra.is_some() { 3 } else { 2 });
+        w.key("id");
+        w.value(&json!(id));
+        w.key("type");
+        w.value(&json!("layer"));
+        if let Some(extra) = extra {
+            w.key("x");
+            extra(&mut w);
+        }
+
+        w.out
+    }
+
+    fn refused(problems: &[String]) -> usize {
+        problems.iter().filter(|p| p.contains("takes more memory than a map may and was not read")).count()
+    }
+
+    #[test]
+    fn a_few_kilobytes_cannot_take_a_gigabyte() {
+        let m = big_map();
+        let bytes = format::to_bytes(&m).unwrap();
+        let (end_at, _) = *chunks(&bytes).last().unwrap();
+        let mut crafted = bytes[..end_at].to_vec();
+        // Neither padding nor an unknown chunk claiming the whole unpacked size lends the file more budget.
+        let padding: Vec<u8> = (0..250_000u32).map(|i| (i.wrapping_mul(2_654_435_761) >> 24) as u8).collect();
+        write_chunk(&mut crafted, *b"PADX", 0, padding.len() as u32, &padding);
+        write_chunk(&mut crafted, *b"XTRA", FLAG_ZSTD, MAX_RAW, &[1, 2, 3, 4]);
+        let bomb = too_many_nils();
+        write_chunk(&mut crafted, NODE, FLAG_ZSTD, bomb.len() as u32, &compress_at(&bomb, 1));
+        crafted.extend_from_slice(&bytes[end_at..]);
+        assert!(crafted.len() < 300 << 10, "{} bytes", crafted.len());
+
+        let started = std::time::Instant::now();
+        let back = decode(&crafted).unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
+        assert_eq!(refused(&back.problems), 1, "{:?}", back.problems);
+        assert_eq!(back.problems.len(), 1, "the END chunk after it is still read, {:?}", back.problems);
+        assert_eq!(back.unknown.len(), 2);
+        assert_eq!(all_ids(&back.value), all_ids(&format::to_value(&m)), "the map itself still loads");
+    }
+
+    #[test]
+    fn chunks_share_the_budgets_in_file_order() {
+        let m = big_map();
+        let bytes = format::to_bytes(&m).unwrap();
+        // Big enough that these chunks need more than any of the map's own.
+        let fill = |w: &mut Writer| w.value(&json!("f".repeat(1 << 20)));
+        let batch = |id| (NODE, layer_batch(id, Some(&fill)));
+        let crafted = insert(&bytes, &[batch(901), batch(902), (NODE, layer_batch(903, None))]);
+        let ids = |back: &Decoded| all_ids(&back.value).into_iter().filter(|id| *id > 900).collect::<Vec<_>>();
+
+        let back = decode_with(&crafted, MAX_FILE_RAW, need_of(&crafted)).unwrap();
+        assert!(back.problems.is_empty(), "{:?}", back.problems);
+        assert_eq!(ids(&back), [901, 902, 903]);
+        let back = decode_with(&crafted, MAX_FILE_RAW, need_of(&crafted) - 1).unwrap();
+        assert_eq!(refused(&back.problems), 1, "{:?}", back.problems);
+        let without = insert(&bytes, &[batch(901), (NODE, layer_batch(903, None))]);
+        let back = decode_with(&crafted, MAX_FILE_RAW, need_of(&without)).unwrap();
+        assert_eq!(ids(&back), [901, 903], "the chunk that does not fit takes nothing from the next");
+        assert_eq!(refused(&back.problems), 1, "{:?}", back.problems);
+
+        let raw = |b: &[u8]| chunks(b).iter().map(|(_, h)| h.raw as usize).sum::<usize>();
+        let back = decode_with(&crafted, raw(&crafted) - 1, variant::MAX_MEMORY).unwrap();
+        assert!(back.problems.iter().any(|p| p.contains("END chunk at byte") && p.contains("would unpack past the 1024 MiB")), "{:?}", back.problems);
+    }
+
+    #[test]
+    fn strings_and_bytes_take_what_they_grow_to() {
+        let m = big_map();
+        let bytes = format::to_bytes(&m).unwrap();
+        let n = 1 << 20;
+        let one = |extra: &dyn Fn(&mut Writer)| (NODE, layer_batch(901, Some(extra)));
+        // A gigabyte of bytes or NULs packs into a few kilobytes. Bytes turn into base64 and then into a copy of their
+        // own, a NUL takes six bytes as JSON text.
+        for (chunk, grows_to) in [(one(&|w| w.bytes(&vec![0; n])), n / 3 * 4 + n), (one(&|w| w.value(&Value::String("\0".repeat(n)))), 6 * n)] {
+            assert!(variant::cost(&chunk.1).unwrap() > grows_to);
+            let crafted = insert(&bytes, &[chunk]);
+            assert!(crafted.len() < bytes.len() + 4096, "{} bytes", crafted.len());
+            let back = decode_with(&crafted, MAX_FILE_RAW, need_of(&crafted)).unwrap();
+            assert!(back.problems.is_empty() && all_ids(&back.value).contains(&901), "{:?}", back.problems);
+            let back = decode_with(&crafted, MAX_FILE_RAW, need_of(&crafted) - 1).unwrap();
+            assert_eq!(refused(&back.problems), 1, "{:?}", back.problems);
+            assert!(!all_ids(&back.value).contains(&901) && back.problems.iter().all(|p| !p.contains("END")), "{:?}", back.problems);
+        }
+    }
+
+    #[test]
+    fn a_chunk_is_read_only_when_its_bytes_fit_beside_its_values() {
+        let m = big_map();
+        let bytes = format::to_bytes(&m).unwrap();
+        // A nil with 64 MiB of padding after it takes almost nothing once read, but all of it is held while it is.
+        let padded = vec![0; 64 << 20];
+        assert_eq!(variant::cost(&padded), Ok(80));
+        assert!(need_of(&bytes) < 16 << 20);
+        let crafted = insert(&bytes, &[(NODE, padded)]);
+        let back = decode_with(&crafted, MAX_FILE_RAW, need_of(&crafted) - 1).unwrap();
+        assert_eq!(refused(&back.problems), 1, "{:?}", back.problems);
+        assert!(back.problems[0].contains("NODE"), "{:?}", back.problems);
+        assert_eq!(all_ids(&back.value), all_ids(&format::to_value(&m)));
+        let back = decode_with(&crafted, MAX_FILE_RAW, need_of(&crafted)).unwrap();
+        assert!(back.problems.is_empty(), "{:?}", back.problems);
+    }
+
+    #[test]
+    fn a_light_map_past_the_budget_is_dropped() {
+        let m = big_map();
+        let bytes = format::to_bytes(&m).unwrap();
+        let mut w = Writer::new();
+        w.dict_header(1);
+        w.key("chart_rows");
+        w.float32s(&vec![0.0; variant::MAX_MEMORY / 80]);
+        let crafted = insert(&bytes, &[(LMAP, w.out)]);
+
+        let loaded = format::from_bytes(&crafted).unwrap();
+        assert!(loaded.map.lightmap.is_none());
+        assert_eq!(loaded.map.nodes.len(), m.nodes.len());
+        assert!(loaded.map.unknown_chunks.is_empty(), "a refused bake is not saved again");
+        assert_eq!(refused(&loaded.problems), 1, "{:?}", loaded.problems);
+        assert!(loaded.problems.iter().all(|p| p.contains("baked lighting")), "{:?}", loaded.problems);
+        let (_, problems) = format::file_to_json(&crafted).unwrap();
+        assert_eq!(problems, loaded.problems);
+    }
+
+    #[test]
+    fn the_light_map_is_charged_where_it_sits() {
+        let mut m = big_map();
+        let mut lm = Lightmap { width: 4, height: 2, texel_size: 16.0, ..Default::default() };
+        lm.light = vec![0; 24];
+        lm.shadow = vec![255; 8];
+        lm.ao = vec![255; 8];
+        lm.charts = (0..2_000).map(|face| Chart { node: 2, face, rows: [[0.5; 4]; 2] }).collect();
+        m.lightmap = Some(Arc::new(lm));
+        let bytes = format::to_bytes(&m).unwrap();
+        let base = need_of(&bytes);
+        let filler = (NODE, layer_batch(901, Some(&|w: &mut Writer| w.value(&json!("f".repeat(100_000))))));
+        let after = insert(&bytes, std::slice::from_ref(&filler));
+        let (lmap_at, _) = *chunks(&bytes).iter().find(|(_, h)| h.tag == LMAP).unwrap();
+        let mut before = bytes[..lmap_at].to_vec();
+        write_chunk(&mut before, filler.0, FLAG_ZSTD, filler.1.len() as u32, &compress_at(&filler.1, 1));
+        before.extend_from_slice(&bytes[lmap_at..]);
+
+        let back = decode_with(&after, MAX_FILE_RAW, base).unwrap();
+        assert!(back.lightmap.is_some() && !all_ids(&back.value).contains(&901), "{:?}", back.problems);
+        let back = decode_with(&before, MAX_FILE_RAW, base).unwrap();
+        assert!(back.lightmap.is_none() && all_ids(&back.value).contains(&901), "{:?}", back.problems);
+        assert!(back.problems.iter().any(|p| p.contains("LMAP") && p.contains("baked lighting")), "{:?}", back.problems);
+    }
+
+    #[test]
+    fn a_file_that_unpacks_past_its_total_is_refused_quickly() {
+        let m = big_map();
+        let bytes = format::to_bytes(&m).unwrap();
+        let list = chunks(&bytes);
+        let (end_at, _) = list.last().unwrap();
+        let intact: usize = list.iter().map(|(_, h)| h.raw as usize).sum();
+
+        let zeros = vec![0u8; 64 << 20];
+        let bombs = 64;
+        let mut crafted = bytes[..*end_at].to_vec();
+        let packed = compress_at(&zeros, 1);
+        for _ in 0..bombs {
+            write_chunk(&mut crafted, NODE, FLAG_ZSTD, zeros.len() as u32, &packed);
+        }
+
+        crafted.extend_from_slice(&bytes[*end_at..]);
+        assert!(crafted.len() < 1 << 20, "{} bytes", crafted.len());
+
+        let started = std::time::Instant::now();
+        let back = decode(&crafted).unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "{:?}", started.elapsed());
+        // Each chunk of zeros decodes to a single nil, so only its unpacked size counts.
+        let fit = (MAX_FILE_RAW - intact) / zeros.len();
+        let past = back.problems.iter().filter(|p| p.contains("would unpack past")).count();
+        assert_eq!(past, bombs - fit, "{:?}", back.problems);
+        assert_eq!(all_ids(&back.value), all_ids(&format::to_value(&m)), "the map itself still loads");
+    }
+
+    #[test]
+    fn saving_refuses_a_map_the_reader_would_refuse() {
+        let nil = nils(0);
+        assert!(check_fits(&[], &[], &nil).is_ok());
+        // Nils just inside the budget fit on their own, but not beside the bytes they are read from.
+        let at = nils((variant::MAX_MEMORY - 80) / 80);
+        let need = |p: &[u8]| (p.len() + variant::cost(p).unwrap()).div_ceil(1 << 20);
+        assert!(variant::cost(&at).unwrap() <= variant::MAX_MEMORY);
+        assert!(matches!(check_fits(&[&at], &[], &nil), Err(ContainerError::TooMuchMemory(n)) if n == need(&at)));
+        let fits = nils((variant::MAX_MEMORY - 80) / 84 - 2);
+        assert!(check_fits(&[&fits], &[], &nil).is_ok());
+        assert!(matches!(check_fits(&[&fits, &fits], &[], &nil), Err(ContainerError::TooMuchMemory(_))), "the chunks share the budget");
+        let claims_it_all = RawChunk { tag: LMAP, flags: FLAG_ZSTD, raw_size: MAX_RAW, data: Arc::from(&[1u8, 2, 3][..]) };
+        assert!(matches!(check_fits(&[], std::slice::from_ref(&claims_it_all), &nil), Err(ContainerError::TooLarge(1025))));
+        let kept = RawChunk { tag: *b"XTRA", ..claims_it_all };
+        assert!(check_fits(&[], &[kept], &nil).is_ok(), "chunks the reader keeps as stored are never unpacked");
+
+        let dir = std::env::temp_dir().join(format!("td_too_big_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("big.tdm");
+        let mut m = big_map();
+        let probes = |n: usize| Probes { sh: vec![0.0; n], ..Default::default() };
+        let lm = |n| Lightmap { width: 1, height: 1, light: vec![0; 3], shadow: vec![0], ao: vec![0], probes: probes(n), ..Default::default() };
+        m.lightmap = Some(Arc::new(lm(variant::MAX_MEMORY / 80)));
+        let error = format::save(&m, &path).unwrap_err().to_string();
+        assert!(error.starts_with("the map is too big to save, reading it back would take") && error.ends_with("a map file may take 1200 MiB"), "{error}");
+        assert!(!path.exists() && !path.with_extension("tdm.tmp").exists());
+
+        m.lightmap = Some(Arc::new(lm(1 << 20)));
+        format::save(&m, &path).unwrap();
+        assert!(format::load(&path).unwrap().problems.is_empty());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn committed_maps_cost_what_the_reader_takes() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut dirs = vec![root.join("godot/demo/maps"), root.join("godot/demo/maps/showcase"), root.join("godot/tests/maps")];
+        dirs.extend(std::fs::read_dir(root.join("crates/td_editor/assets/prefab_library")).unwrap().flatten().map(|e| e.path()).filter(|p| p.is_dir()));
+        let mut seen = 0;
+        for path in dirs.iter().flat_map(|d| std::fs::read_dir(d).unwrap().flatten().map(|e| e.path())) {
+            if path.extension().is_none_or(|e| e != "tdm") {
+                continue;
+            }
+
+            let bytes = std::fs::read(&path).unwrap();
+            if !is_binary(&bytes) {
+                continue;
+            }
+
+            let mut total = 0;
+            for (at, h) in chunks(&bytes) {
+                let raw = payload(&h, &bytes[at + HEADER_LEN..at + HEADER_LEN + h.stored]).unwrap();
+                let mut left = usize::MAX;
+                variant::decode_within(&raw, &mut left).unwrap();
+                assert_eq!(variant::cost(&raw), Ok(usize::MAX - left), "{}", path.display());
+                total += usize::MAX - left;
+            }
+
+            assert!(total < variant::MAX_MEMORY / 8, "{} takes {total}", path.display());
+            seen += 1;
+        }
+
+        assert!(seen >= 30, "{seen} maps");
     }
 
     #[test]
@@ -643,7 +1011,7 @@ mod tests {
         ] });
         let loaded = std::thread::Builder::new()
             .stack_size(1 << 20)
-            .spawn(move || format::from_bytes(&encode(&value, &[])).map(|l| (l.map.nodes.len(), l.problems)))
+            .spawn(move || format::from_bytes(&encode(&value, &[]).unwrap()).map(|l| (l.map.nodes.len(), l.problems)))
             .unwrap()
             .join()
             .unwrap()
@@ -656,13 +1024,13 @@ mod tests {
     fn unknown_chunks_survive_a_save() {
         let m = big_map();
         let extra = RawChunk { tag: *b"XTRA", flags: 7, raw_size: 5, data: Arc::from(&b"\x01\x02\x03\x04\x05\x06"[..]) };
-        let bytes = encode(&format::to_value(&m), std::slice::from_ref(&extra));
+        let bytes = encode(&format::to_value(&m), std::slice::from_ref(&extra)).unwrap();
         let loaded = format::from_bytes(&bytes).unwrap();
         assert!(loaded.problems.is_empty(), "{:?}", loaded.problems);
         assert_eq!(loaded.map.unknown_chunks, vec![extra.clone()]);
         let mut edited = loaded.map.clone();
         edited.properties.insert("message".into(), "edited".into());
-        let again = format::from_bytes(&format::to_bytes(&edited)).unwrap();
+        let again = format::from_bytes(&format::to_bytes(&edited).unwrap()).unwrap();
         assert_eq!(again.map.unknown_chunks, vec![extra]);
         assert_eq!(again.map.properties["message"], "edited");
     }
@@ -675,11 +1043,11 @@ mod tests {
         assert_eq!(format::to_value(&loaded.map), format::to_value(&m));
         assert!(format::from_bytes(format!("\u{feff}{json}").as_bytes()).is_ok());
 
-        let mut mangled = format::to_bytes(&m);
+        let mut mangled = format::to_bytes(&m).unwrap();
         mangled.remove(4);
         assert!(matches!(format::from_bytes(&mangled), Err(format::FormatError::Container(ContainerError::Mangled))));
 
-        let mut newer = format::to_bytes(&m);
+        let mut newer = format::to_bytes(&m).unwrap();
         newer[8] = 2;
         assert!(matches!(format::from_bytes(&newer), Err(format::FormatError::Container(ContainerError::TooNew(2)))));
         assert!(matches!(decode(&MAGIC), Err(ContainerError::NoHeader)));
