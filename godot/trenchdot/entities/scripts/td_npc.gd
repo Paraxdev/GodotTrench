@@ -40,8 +40,9 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
-	if model != "" and ResourceLoader.exists(model):
-		var packed := load(model) as PackedScene
+	var path := TrenchDotBuild.map_resource_path(model, TrenchDotBuild.MODEL_FILES)
+	if path != "" and ResourceLoader.exists(path):
+		var packed := load(path) as PackedScene
 		if packed:
 			add_child(packed.instantiate())
 	_player = TDAnimate._find_animation_player(self)

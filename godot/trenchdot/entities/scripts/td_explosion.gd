@@ -48,9 +48,10 @@ func _blast_root() -> Node:
 	return tree.root
 
 func _spawn_effect(root: Node, origin: Vector3) -> void:
-	if effect_scene == "" or not ResourceLoader.exists(effect_scene):
+	var path := TrenchDotBuild.map_resource_path(effect_scene, TrenchDotBuild.MODEL_FILES)
+	if path == "" or not ResourceLoader.exists(path):
 		return
-	var packed := load(effect_scene) as PackedScene
+	var packed := load(path) as PackedScene
 	if not packed:
 		return
 	var fx := packed.instantiate()

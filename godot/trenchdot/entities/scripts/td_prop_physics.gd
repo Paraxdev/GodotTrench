@@ -58,12 +58,13 @@ func _build_body() -> void:
 	box.size = full
 	shape.shape = box
 	add_child(shape)
-	if model != "" and ResourceLoader.exists(model):
-		var packed := load(model) as PackedScene
+	var path := TrenchDotBuild.map_resource_path(model, TrenchDotBuild.MODEL_FILES)
+	if path != "" and ResourceLoader.exists(path):
+		var packed := load(path) as PackedScene
 		if packed:
 			add_child(packed.instantiate())
 			return
-	elif model != "" and not TrenchDotProp.quiet_missing and not _warned_models.has(model):
+	elif path != "" and not TrenchDotProp.quiet_missing and not _warned_models.has(model):
 		_warned_models[model] = true
 		push_warning("[TrenchDot] prop_physics model %s not found, %s and any other prop using it draw a box" % [model, name])
 	var mesh := MeshInstance3D.new()
@@ -111,8 +112,9 @@ func smash() -> void:
 		boom.global_position = global_position
 		boom.explode(self)
 		boom.queue_free()
-	if debris_scene != "" and ResourceLoader.exists(debris_scene) and parent:
-		var packed := load(debris_scene) as PackedScene
+	var debris_path := TrenchDotBuild.map_resource_path(debris_scene, TrenchDotBuild.MODEL_FILES)
+	if debris_path != "" and ResourceLoader.exists(debris_path) and parent:
+		var packed := load(debris_path) as PackedScene
 		if packed:
 			var debris := packed.instantiate()
 			parent.add_child(debris)

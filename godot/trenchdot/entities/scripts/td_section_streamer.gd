@@ -73,15 +73,15 @@ func _ready() -> void:
 	_drop_extra_players(current)
 	_prefetch()
 
-## The scene path of [param section].
+## The scene path of [param section], empty when it names no scene inside the project.
 func section_path(section: String) -> String:
 	if section.begins_with("res://") or section.begins_with("uid://") or sections_dir == "":
-		return section
-	for ext in ["tscn", "scn"]:
-		var path := sections_dir.path_join("%s.%s" % [section, ext])
-		if ResourceLoader.exists(path):
+		return TrenchDotBuild.map_resource_path(section, TrenchDotBuild.SCENE_FILES)
+	for ext in TrenchDotBuild.SCENE_FILES:
+		var path := TrenchDotBuild.map_resource_path(sections_dir.path_join("%s.%s" % [section, ext]), TrenchDotBuild.SCENE_FILES, section)
+		if path != "" and ResourceLoader.exists(path):
 			return path
-	return sections_dir.path_join(section + ".tscn")
+	return TrenchDotBuild.map_resource_path(sections_dir.path_join(section + ".tscn"), TrenchDotBuild.SCENE_FILES, section)
 
 func _physics_process(_delta: float) -> void:
 	_poll()
@@ -165,9 +165,10 @@ func _take(section: String) -> Node3D:
 func _instance_now(section: String) -> Node3D:
 	var packed: PackedScene = _packed.get(section)
 	if packed == null:
-		packed = load(section_path(section)) as PackedScene
+		var path := section_path(section)
+		packed = load(path) as PackedScene if path != "" else null
 		if packed == null:
-			push_warning("TDSectionStreamer: no section scene %s" % section_path(section))
+			push_warning("TDSectionStreamer: no section scene %s" % section)
 			return null
 		_packed[section] = packed
 	return packed.instantiate() as Node3D
@@ -176,8 +177,8 @@ func _request(section: String) -> void:
 	if _packed.has(section) or _loading.has(section):
 		return
 	var path := section_path(section)
-	if not ResourceLoader.exists(path):
-		push_warning("TDSectionStreamer: no section scene %s" % path)
+	if path == "" or not ResourceLoader.exists(path):
+		push_warning("TDSectionStreamer: no section scene %s" % section)
 		return
 	if not _threaded:
 		_packed[section] = load(path)

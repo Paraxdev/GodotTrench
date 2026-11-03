@@ -32,8 +32,9 @@ static func settings_of(from: Node) -> Dictionary:
 func configure(from: Node3D, props: Dictionary) -> void:
 	host = from
 	var path := str(props.get("scene", ""))
-	scene = load(path) as PackedScene if path != "" and ResourceLoader.exists(path) else null
-	if path != "" and not scene:
+	var file := TrenchDotBuild.map_resource_path(path, TrenchDotBuild.MODEL_FILES)
+	scene = load(file) as PackedScene if file != "" and ResourceLoader.exists(file) else null
+	if file != "" and not scene:
 		push_warning("[TD] %s: scene %s not found" % [from.name, path])
 	count = int(props.get("count", count))
 	max_alive = int(props.get("max_alive", max_alive))

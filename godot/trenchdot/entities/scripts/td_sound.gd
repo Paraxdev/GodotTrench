@@ -17,8 +17,9 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
-	if sound != "" and ResourceLoader.exists(sound):
-		stream = load(sound)
+	var path := TrenchDotBuild.map_resource_path(sound, TrenchDotBuild.SOUND_FILES)
+	if path != "" and ResourceLoader.exists(path):
+		stream = load(path)
 	if loop_sound and not finished.is_connected(_replay):
 		finished.connect(_replay)
 	if autoplay_on:
