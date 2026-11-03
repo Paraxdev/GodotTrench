@@ -3,12 +3,26 @@
 The **Blend** tool (Shift+G) paints a terrain's [layers](terrain-layers.md), for example sand along a beach or rock on
 a cliff. Like Sculpt, it works on the selected terrains, or on all of them when nothing is selected.
 
-![The Blend tool's options in slope mode](../assets/terrain-painting/blend-toolbar.png)
-
 ## The Blend tool
 
-Pick a mode, a falloff, the **layer** (0 to 3), the radius and a strength in the tool options bar. Several light passes
-give softer edges than one strong pass.
+1. Pick the tool
+
+   Press Shift+G, or use *Terrain > Blend > Blend Tool*. Its options show up in the tool options bar at the top left.
+
+   ![The Blend tool's options in slope mode: mode, falloff, layer, radius, strength and the slope range](../assets/terrain-painting/blend-toolbar.png)
+
+2. Pick a mode
+
+   The first menu in the bar decides what the brush paints, the modes are listed below.
+
+   ![The Blend tool's mode menu open with slope hovered](../assets/terrain-painting/blend-modes.png)
+
+3. Pick the layer and paint
+
+   Set **layer** (0 to 3) to the layer you want, then drag over the terrain. Several light passes give softer edges
+   than one strong pass.
+
+   ![Painting a dirt path up the island with layer 2 in paint mode](../assets/terrain-painting/blend-paint-path.gif)
 
 | Mode | What it paints |
 | --- | --- |
@@ -22,7 +36,7 @@ give softer edges than one strong pass.
 
 Slope and height make huge brushes safe, a hill sized brush in slope mode only turns the cliffs to rock.
 
-The falloff decides how the strength fades from the center of the brush to its rim.
+The second menu in the bar is the falloff, how the strength fades from the center of the brush to its rim.
 
 | Falloff | Shape |
 | --- | --- |
@@ -33,10 +47,22 @@ The falloff decides how the strength fades from the center of the brush to its r
 
 Shift turns paint, noise, slope and height into erase, and Ctrl smooths. Ctrl+wheel resizes the brush.
 
+(Note: **Set Blend Material**, **repeat**, **detile**, **sharpen** and **Apply Tiling** further right in the bar are
+for blending brush faces, a terrain takes those settings from its layers.)
+
 ## Auto Paint
 
-*Terrain > Blend > Auto Paint Layers* repaints the selected terrains from their shape, a quick first pass before you
-paint by hand:
+Auto Paint repaints a terrain from its shape, a quick first pass before you paint by hand.
+
+1. Select the terrain
+
+   Auto Paint only touches the selected terrains.
+
+2. Run it
+
+   Go to *Terrain > Blend > Auto Paint Layers*, or click **Auto Paint** in the Inspector.
+
+   ![The Terrain > Blend menu with Auto Paint Layers hovered and Bands from sea level ticked at y 0](../assets/terrain-painting/menu-auto-paint.png)
 
 | Layer | Goes on |
 | --- | --- |
@@ -46,8 +72,12 @@ paint by hand:
 
 Layer 0 covers everything else. A terrain with fewer layers gets the missing bands in its last layer.
 
-The range starts at the lowest point, which on an island is the sea floor. Tick **Bands from sea level** to measure from
-a height you give instead.
+The range starts at the lowest point, which on an island is the sea floor. Tick **Bands from sea level** to measure
+from a height you give instead, like the waterline at y 0 above.
+
+![The sea island before Auto Paint, all grass](../assets/terrain-painting/auto-paint-before.jpg)
+
+![The same island after Auto Paint: rock on the cliffs, dirt on the peak and sand along the beaches](../assets/terrain-painting/auto-paint-after.jpg)
 
 > **Warning:** Auto Paint replaces all paint, so sculpt first, auto paint, and paint by hand last.
 
