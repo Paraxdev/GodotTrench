@@ -98,6 +98,7 @@ func _initialize() -> void:
 	await test_environment_modes()
 	await test_trigger_collision_mask()
 	test_face_cull()
+	test_large_plane_face_cull()
 	test_interior_face_culling()
 	test_chunk_streamer()
 	test_csharp_entities()
@@ -1524,6 +1525,101 @@ func test_face_cull() -> void:
 	check(hidden.size() == 1 and hidden[0].plane.normal.is_equal_approx(Vector3(0, 0, 1)), "the brush top under a blend sheet is hidden, got %s" % [hidden.map(func(f): return f.plane.normal)])
 	check(sheet.faces.all(func(f): return not f.render_hidden), "the blend sheet draws")
 	check(data.entities[0].pending_convex_points.is_empty() and data.entities[0].shapes.size() >= 1, "collision is still built")
+
+func test_large_plane_face_cull() -> void:
+	print("- coplanar face culling on planes of thousands of faces")
+	# The grid pairs up the same faces as testing every face against every other, big faces among small ones too.
+	var solids := [FuncGodotData.BrushData.new(), FuncGodotData.BrushData.new(), FuncGodotData.BrushData.new()]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var members := []
+	for k in 400:
+		var entry := TrenchDotFaceCull.Entry.new()
+		var size := Vector3(rng.randf_range(0.5, 8.0), 0.0, rng.randf_range(0.5, 8.0)) * (24.0 if k % 41 == 0 else 1.0)
+		entry.bounds = AABB(Vector3(rng.randf_range(0.0, 96.0), 0.0, rng.randf_range(0.0, 96.0)), size)
+		entry.brush = solids[k % 3]
+		members.append(entry)
+	var expected: Array[PackedInt32Array] = []
+	for a: TrenchDotFaceCull.Entry in members:
+		var touching := PackedInt32Array()
+		for j in members.size():
+			var b: TrenchDotFaceCull.Entry = members[j]
+			if b.brush != a.brush and b.bounds.grow(TrenchDotFaceCull.COPLANAR_DIST).intersects(a.bounds.grow(TrenchDotFaceCull.COPLANAR_DIST)):
+				touching.append(j)
+		expected.append(touching)
+	check(TrenchDotFaceCull._touching(members, TrenchDotFaceCull.Work.new()) == expected, "the grid finds every face touching another solid's")
+
+	var square := PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
+	var cover: Array[PackedVector2Array] = [square]
+	var work := TrenchDotFaceCull.Work.new()
+	check(TrenchDotFaceCull.fully_covered(square, cover, work), "a face under a cover is hidden")
+	work.left = 4
+	check(not TrenchDotFaceCull.fully_covered(square, cover, work), "once the pass has used up its work the face is kept")
+
+	# Two combs crossing each other clip into hundreds of thousands of pieces, which a third cover is then clipped
+	# against, and a face lying off thousands of covers erased them one by one.
+	var combs: Array[PackedVector2Array] = [_comb(512, false), _circle_polygon(4096, Vector2(1024, 1024), 2048.0)]
+	var cases := [[_comb(512, true), combs], [PackedVector2Array([Vector2(0, 0), Vector2(1000, 0), Vector2(0, 1000)]), _off_squares(60000)]]
+	for c in cases:
+		work = TrenchDotFaceCull.Work.new()
+		var started := Time.get_ticks_msec()
+		var covered := TrenchDotFaceCull.fully_covered(c[0], c[1], work)
+		var took := Time.get_ticks_msec() - started
+		check(not covered and took < 1500, "a face under %d covers is tested within the pass's work, in %d ms" % [c[1].size(), took])
+
+	# A floor under a blend sheet of 64 by 64 faces puts 4097 faces in one plane.
+	var vertices := []
+	for j in 65:
+		for i in 65:
+			vertices.append([i * 8.0, -2.0, j * 8.0])
+	var faces := []
+	for j in 64:
+		for i in 64:
+			var a := j * 65 + i
+			faces.append({ "indices": [a, a + 65, a + 66, a + 1], "material": "showcase/cobble", "props": { "blend_material": "showcase/grass" } })
+	var settings: FuncGodotMapSettings = load(SETTINGS)
+	var path := OS.get_temp_dir().path_join("td_large_plane_cull_test.tdm")
+	var map_json := { "format": "trenchdot-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": [
+		box_node(2, Vector3(0, -24, 0), Vector3(512, -2, 512)),
+		{ "type": "mesh", "id": 3, "vertices": vertices, "faces": faces },
+	] }] }
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify(map_json))
+	var data := FuncGodotParser.new().parse_map_data(path, settings)
+	DirAccess.remove_absolute(path)
+	var started := Time.get_ticks_msec()
+	FuncGodotGeometryGenerator.new(settings).build(0, data.entities)
+	var took := Time.get_ticks_msec() - started
+	var brushes: Array[FuncGodotData.BrushData] = data.entities[0].brushes
+	var hidden := brushes[0].faces.filter(func(f): return f.render_hidden)
+	check(hidden.size() == 1 and hidden[0].plane.normal.is_equal_approx(Vector3(0, 0, 1)), "the floor top under the big sheet is hidden, got %s" % [hidden.map(func(f): return f.plane.normal)])
+	check(brushes[1].faces.all(func(f): return not f.render_hidden), "every sheet face draws")
+	check(took < 2500, "without testing the faces pair by pair, built in %d ms" % took)
+
+## A comb of [param teeth] teeth 2 wide with gaps of 2, the teeth along y or, with [param across], along x.
+func _comb(teeth: int, across: bool) -> PackedVector2Array:
+	var l := 4.0 * teeth
+	var out := PackedVector2Array([Vector2(-4, -4), Vector2(l, -4)])
+	for i in range(teeth - 1, -1, -1):
+		out.append_array([Vector2(4.0 * i + 2.0 if i < teeth - 1 else l, 0), Vector2(4.0 * i + 2.0, l), Vector2(4.0 * i, l), Vector2(4.0 * i, 0)])
+	out.append(Vector2(-4, 0))
+	if across:
+		for k in out.size():
+			out[k] = Vector2(out[k].y + 1.0, out[k].x + 1.0)
+	return out
+
+func _circle_polygon(n: int, center: Vector2, radius: float) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for i in n:
+		out.append(center + Vector2.from_angle(TAU * i / n) * radius)
+	return out
+
+## [param count] unit squares in a row beside the triangle (0, 0), (1000, 0), (0, 1000), touching none of it.
+func _off_squares(count: int) -> Array[PackedVector2Array]:
+	var out: Array[PackedVector2Array] = []
+	for i in count:
+		var p := Vector2(1001.0 + (i % 200) * 2.0, (i / 200) * 2.0)
+		out.append(PackedVector2Array([p, p + Vector2(1, 0), p + Vector2(1, 1), p + Vector2(0, 1)]))
+	return out
 
 func test_texture_settings() -> void:
 	print("- per texture settings")
