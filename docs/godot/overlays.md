@@ -1,28 +1,37 @@
 # Overlays
 
-A build replaces everything the map generated, so anything you add by hand under the map node would be lost on the next
-save. An overlay is the place for Godot content that has to live on the map anyway and survive every rebuild: a vending
-machine with its own script, a particle effect tuned in Godot, a lamp with an AnimationPlayer.
+Every build replaces what the map generated, so anything you add by hand under the map node is gone on the next save.
+An overlay is where Godot content goes that belongs on the map and has to survive every rebuild: a vending machine
+with its own script, a particle effect tuned in Godot, a lamp with an AnimationPlayer.
 
 ![The night district courtyard: string lights, fireflies and a sign from the overlay, lamps from the map](../assets/overlays/night-district-courtyard.jpg)
 
 ## Adding one
 
-Add a `TrenchDotOverlay` node as a direct child of the `FuncGodotMap` and put your nodes under it. Builds, live mode
-and hot reload never touch it, so its nodes keep their state and signal connections and are saved with your scene.
+1. Add the overlay node
 
-For a single node, a direct child of the map in the `trenchdot_keep` group survives builds too. An overlay elsewhere
-in the scene can point at its map with *Map Path* instead, and then follows the map's transform.
+   In Godot, add a `TrenchDotOverlay` node as a direct child of the `FuncGodotMap`.
+
+2. Put your nodes under it
+
+   Builds, live mode and hot reload never touch it, so its nodes keep their state and signal connections and are saved
+   with your scene.
+
+(For a single node you can skip the overlay: a direct child of the map in the `trenchdot_keep` group survives builds
+too. An overlay somewhere else in the scene can point at its map with *Map Path* instead, and then follows the map's
+transform.)
 
 Overlay content uses the map's local space in meters. At 32 units per meter, a child at `(2, 0, -3)` sits where
 TrenchDot shows `(64, 0, -96)`.
 
 ## An overlay in its own scene
 
-An overlay can also be a scene of its own. Make a scene whose root is a `TrenchDotOverlay`, then instance it as a
-direct child of the `FuncGodotMap` by dragging the `.tscn` onto the map node. This pays off when several scenes use
-the same map and should share the overlay, when one person works on the level scene and another on the overlay, or
-when a script generates the level scene, as in the demo.
+An overlay can also be a scene of its own. That pays off when several scenes use the same map and should share the
+overlay, when one person works on the level scene and another on the overlay, or when a script generates the level
+scene, as in the demo.
+
+1. Make a scene whose root is a `TrenchDotOverlay`.
+2. Drag the `.tscn` onto the `FuncGodotMap` node, so it is instanced as a direct child of the map.
 
 Godot shows an instanced scene as a single node with no arrow to expand it. To get at its content:
 
@@ -31,7 +40,7 @@ Godot shows an instanced scene as a single node with no arrow to expand it. To g
 | Edit the overlay everywhere it is used | Click the *Open in Editor* icon next to the node in the Scene dock, or double click the `.tscn` in the FileSystem dock |
 | See or change its nodes in this scene only | Right click the node and turn on *Editable Children* |
 
-Opened by itself, the overlay scene shows a warning on its root because it is not under a map. That is expected. The
+Opened on its own, the overlay scene shows a warning on its root because it is not under a map. That is expected. The
 dashed boxes in TrenchDot catch up the next time the scene with the map is built or saved, since only there does the
 overlay know its map.
 
@@ -47,7 +56,7 @@ themselves.
 | Content to ride on a moving entity | Put it under a `TrenchDotAnchor` with *Target* set to the entity's targetname |
 
 An input sent to a `TrenchDotOverlayIO` calls the node's method of that name, sets its property of that name, or
-runs `show`, `hide` or `toggle`, so nodes without a script work too: input `emitting` with parameter `true` starts a
+runs `show`, `hide` or `toggle`. So nodes without a script work too: input `emitting` with parameter `true` starts a
 `GPUParticles3D`. Every input also emits `input_received(input, parameter, activator)`.
 
 A `TrenchDotOutput` listens to any signal of its parent, so an `Area3D` fires on `body_entered` without code. For
@@ -75,7 +84,9 @@ warning sign goes up with its roller door.
 > **Warning:** Wiring survives rebuilds, state does not. Map entities come back in their starting state, so connect to
 > the overlay's `map_rebuilt(map)` signal and push your state back, for example switch the lamps on again.
 
+## See it in the demo
+
 The demo project's night district has all of this. Its scene `res://demo/showcase/night_district.scn` instances the
 overlay scene `res://demo/overlays/night_district_overlay.tscn` under its map, because a script rebuilds the showcase
-scenes. Open the overlay scene to find a breaker box that switches the courtyard lamps, string lights that a map
-trigger turns on, and a sign riding the garage roller door.
+scenes. Open the overlay scene and you will find a breaker box that switches the courtyard lamps, string lights that a
+map trigger turns on, and a sign riding the garage roller door.

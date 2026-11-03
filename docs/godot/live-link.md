@@ -4,14 +4,18 @@ The live link is how TrenchDot and the Godot editor talk. The addon runs a small
 TrenchDot connects to it to trigger rebuilds when you save, stream [live mode](live.md) edits and show whether Godot
 is running.
 
-Level designers and most Godot developers never need this page, the link just works once the addon is enabled. It is
-a reference for writing your own tool that drives Godot the same way, or for finding out why the connection fails.
+You will rarely need this page, the link just works once the addon is enabled. It is here for when you write your own
+tool that drives Godot the same way, or want to find out why the connection fails. If a save does not rebuild, start
+with [Rebuild on save](live.md#rebuild-on-save) instead, the status bar usually says why.
 
 ## Transport
 
-Newline delimited JSON over TCP on `127.0.0.1:7842` (`trenchdot/live_link_port`). Each message has an `event` and an
-optional `seq`, and gets exactly one reply line that echoes the `seq` and has `ok`. Failures reply `ok: false` with an
-`error`. The editor keeps one connection open and sends a `status` heartbeat every second.
+Newline delimited JSON over TCP on `127.0.0.1:7842`. Each message has an `event` and an optional `seq`, and gets exactly
+one reply line that echoes the `seq` and has `ok`. Failures reply `ok: false` with an `error`. The editor keeps one
+connection open and sends a `status` heartbeat every second.
+
+To use another port, change it on both sides: `trenchdot/live_link_port` in Godot's project settings and *Godot live
+link* in *File > Preferences* in TrenchDot.
 
 The [hot reload](live.md#hot-reload-in-a-running-game) autoload in a running game listens on `127.0.0.1:7843` and only
 answers `map_saved`.
@@ -46,14 +50,18 @@ meanwhile.
 `max_climb`, `max_slope` in meters and degrees) and returns it in the map's units and axes. With `text` Godot builds
 that map first unless it was last built from the same text.
 
-Paths are absolute with forward slashes, and only `FuncGodotMap` nodes in the edited scene, the scene tab Godot shows,
-with *Auto Rebuild On Save* on take part. `scene` is its `res://` path, or empty with no scene open. `waiting` lists the
-other open scene tabs that use the map. After a `map_saved` they build the file when their tab is shown, after a
-`build` they do not. `text` is the whole map as JSON, with the baked lighting under `lightmap` when the map has a bake,
-so a live build keeps it. That adds about 11 bytes per atlas texel, around 11 MB for a 1024 by 1024 atlas, so the
-editor sends the whole map again only when a session starts, after a new bake or after a big change. `content` is the
-content id in the END chunk of the saved file, so a scene built from an unchanged file is not built again when a session
-starts.
+Paths are absolute with forward slashes. Only `FuncGodotMap` nodes in the edited scene, the scene tab Godot shows, with
+*Auto Rebuild On Save* on take part. `scene` is its `res://` path, or empty with no scene open.
+
+`waiting` lists the other open scene tabs that use the map. After a `map_saved` they build the file when their tab is
+shown, after a `build` they do not.
+
+`text` is the whole map as JSON, with the baked lighting under `lightmap` when the map has a bake, so a live build keeps
+it. That adds about 11 bytes per atlas texel, around 11 MB for a 1024 by 1024 atlas, so the editor sends the whole map
+again only when a session starts, after a new bake or after a big change.
+
+`content` is the content id in the END chunk of the saved file, so a scene built from an unchanged file is not built
+again when a session starts.
 
 When the port is taken, usually by a second Godot editor with the same project, the addon warns once in the Output
 panel and tries the port again every three seconds, so it takes over when the other editor closes.
@@ -80,6 +88,9 @@ it, then send `inspect` to port 7842 to see what Godot built:
 ```sh
 godot --headless --editor --path godot res://path/scene.tscn
 ```
+
+(Note: on a fresh checkout, run `godot --headless --path godot --import` twice first. One pass only registers the
+addon's classes.)
 
 A headless Godot draws nothing, so `capture` answers with an error there. Test captures with a windowed editor.
 

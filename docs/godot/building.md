@@ -1,12 +1,25 @@
 # Building maps
 
-The editor saves a `.tdm` file and never writes Godot scenes itself. In Godot, the addon's `FuncGodotMap` node reads
-that file and generates meshes, collision and entity nodes from it. The result is saved with your scene like any
-hand-made node, so nothing rebuilds at runtime unless you ask for it.
+TrenchDot saves a `.tdm` file and never writes Godot scenes itself. In Godot, the addon's `FuncGodotMap` node reads
+that file and generates the meshes, collision and entity nodes. The result is saved with your scene like any hand made
+node, so nothing rebuilds at runtime unless you ask for it.
 
 ## The FuncGodotMap node
 
-Add a `FuncGodotMap` to a scene and set it up in the Inspector:
+1. Add the node
+
+   In the Godot editor, press Ctrl+A in your scene, search for `FuncGodotMap` and add it.
+
+2. Point it at your map
+
+   With the node selected, set *Local Map File* in Godot's Inspector to the `.tdm` you saved.
+
+3. Build it
+
+   Click **Build Map** at the top of the Inspector. You should see the map in Godot's viewport, and the node gets
+   children for the meshes and entities. Save the scene with Ctrl+S to keep them. **Clear Map** removes them again.
+
+These are the settings you see in the Inspector:
 
 | Property | What it does |
 | --- | --- |
@@ -17,9 +30,7 @@ Add a `FuncGodotMap` to a scene and set it up in the Inspector:
 | Use Baked Lighting | Lights the map with the lighting [baked in the editor](baked-lighting.md). On by default, untick it to use another lightmapper. |
 | Warm Up Shaders | Compiles the map's shaders while it loads, so the first seconds of play do not stutter. See [Shader warm-up](warm-up.md). |
 
-**Build Map** in the Inspector generates everything and emits `build_complete`, **Clear Map** removes it again.
-
-The addon only builds `.tdm` files. To use a Quake `.map` or Hammer `.vmf`, open it with *File > Import* in the editor
+The addon only builds `.tdm` files. To use a Quake `.map` or Hammer `.vmf`, open it with *File > Import* in TrenchDot
 and save it as `.tdm` first.
 
 > **Warning:** A build deletes every child of the map node except [overlays](overlays.md). Keep your own nodes next to
@@ -30,15 +41,20 @@ and save it as `.tdm` first.
 | Trigger | What gets built | When to use it |
 | --- | --- | --- |
 | Save in TrenchDot | Every `FuncGodotMap` using that file in the scene open in the Godot editor | The everyday loop, save and look at the result in Godot |
-| *Godot > Build in Godot* | The map as it currently is in the editor, saved or not, without writing the file | To try an unsaved change in Godot without committing to it |
+| *Godot > Build in Godot* | The map as it is in TrenchDot right now, saved or not, without writing the file | To try an unsaved change in Godot without committing to it |
 | **Build Map** in Godot | The saved file | When TrenchDot is closed, or to rebuild a scene you just opened |
 
-The first two need a Godot editor running with the addon and this project open, and they only touch the scene open
-there. A rebuild marks that scene as modified, so save it in Godot to keep the result.
+The first two need a Godot editor with this project open, and they only touch the scene open there. A rebuild marks
+that scene as modified, so save it in Godot to keep the result.
+
+Until Godot has the project open, *Build in Godot* stays greyed out. It also needs the map saved into the project once,
+so Godot knows which `FuncGodotMap` uses it.
+
+![The Godot menu with Build in Godot hovered](../assets/building/menu-build-in-godot.png)
 
 ## Building from code
 
-Maps can also be built while the game runs, for example to load a level picked from a menu:
+You can also build a map while the game runs, for example to load a level picked from a menu:
 
 ```gdscript
 var map := FuncGodotMap.new()
@@ -48,16 +64,20 @@ add_child(map)
 map.build()
 ```
 
+The node emits `build_complete` when it is done, or `build_failed` when the map file is missing or not a `.tdm`.
+
 ## Environment and sun
 
 The sky, fog and sun keys on worldspawn build a `WorldEnvironment` and a light named `sun` into the map, so a map looks
-lit without any setup in Godot. The worldspawn key `environment` picks what gets built:
+lit without any setup in Godot. Press Escape so nothing is selected, the Inspector then shows *Map (worldspawn)*. Its
+`environment` key picks what gets built. If the list does not show that key, type `environment` and the value into the
+two fields at the bottom and click **Add**.
 
 | `environment` | Builds |
 | --- | --- |
 | `1` | The environment and the sun. This is the default. |
 | `sun_only` | Only the sun, for a game that brings its own `WorldEnvironment` |
-| `0` | Nothing |
+| `0` or `none` | Nothing |
 
 If the scene already has a `WorldEnvironment` or `DirectionalLight3D` of its own, the map keeps it and adds none, so a
 game with its own look always wins. When several maps share one scene, the first one built lights it.
@@ -65,8 +85,8 @@ game with its own look always wins. When several maps share one scene, the first
 ## Build report
 
 `build()` returns a Dictionary, also kept in `build_report`. It tells you how long each step took, how many entities of
-each class were built and how many vertices the map has. More usefully, it lists what the build could not find, which
-is usually a typo or a file that was renamed or never committed:
+each class were built and how many vertices the map has. Most useful is the list of what the build could not find,
+which is usually a typo or a file that was renamed or never committed:
 
 | Key | What it lists | What you see in the game |
 | --- | --- | --- |
@@ -76,8 +96,8 @@ is usually a typo or a file that was renamed or never committed:
 | `unknown_tool_textures` | Tool textures like `special/clip` that the map settings name differently | The faces still draw nothing, but an origin brush does not set its entity origin |
 | `unresolved_targets` | Outputs and target keys whose target matches no targetname in the map or its overlays | The output fires at nothing |
 
-Tick *Print Build Report* in *Build Flags*, or add `FuncGodotMap.BuildFlags.PRINT_REPORT` to `build_flags` in code, to
-print it after every build. A test or CI check can read the Dictionary instead:
+To print it after every build, tick *Print Build Report* under *Build Flags* on the node, or add
+`FuncGodotMap.BuildFlags.PRINT_REPORT` to `build_flags` in code. A test or CI check can read the Dictionary instead:
 
 ```gdscript
 var report := map.build()
@@ -87,8 +107,8 @@ if not report["missing_models"].is_empty():
 
 Missing models, materials and tool textures also print one warning each, however many props share the path.
 
-> **Note:** Overlays you add after `build()` are not there when the report looks for targets, so their targetnames show up
-> under `unresolved_targets`.
+> **Note:** Overlays you add after `build()` are not there when the report looks for targets, so their targetnames show
+> up under `unresolved_targets`.
 
 ## Damaged maps
 
