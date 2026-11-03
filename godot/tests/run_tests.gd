@@ -65,6 +65,8 @@ func _initialize() -> void:
 	test_entity_pack()
 	test_clashes()
 	test_build_report()
+	test_map_resource_paths()
+	test_map_material_names()
 	test_nodraw_tool_textures()
 	await test_game_config()
 	test_game_config_lint()
@@ -810,6 +812,91 @@ func test_build_report() -> void:
 	map.free()
 	DirAccess.remove_absolute(path)
 
+func test_map_material_names() -> void:
+	print("- texture and material names in a map stay inside the project")
+	var settings: FuncGodotMapSettings = load(SETTINGS)
+	# A material beside the project whose script would mark that it ran, reached by a name that climbs out of the
+	# material folder.
+	var outside := ProjectSettings.globalize_path("res://").path_join("../td_outside_material.tres").simplify_path()
+	FileAccess.open(outside, FileAccess.WRITE).store_string("[gd_resource type=\"StandardMaterial3D\" load_steps=2 format=3]\n\n[sub_resource type=\"GDScript\" id=\"1\"]\nscript/source = \"@tool\nextends StandardMaterial3D\nfunc _init():\n\tEngine.set_meta(&\\\"td_outside_material_ran\\\", true)\n\"\n\n[resource]\nscript = SubResource(\"1\")\n")
+	var dir := settings.base_material_dir if settings.base_material_dir != "" else settings.base_texture_dir
+	var climb := "../".repeat(dir.trim_prefix("res://").split("/", false).size() + 1) + "td_outside_material"
+	check(ResourceLoader.exists(dir.path_join(climb + "." + settings.material_file_extension)), "the climbing name reaches the material beside the project")
+	var heights := Marshalls.raw_to_base64(PackedFloat32Array([0.0, 0.0, 0.0, 0.0]).to_byte_array())
+	var children := [
+		box_node(2, Vector3(-64, -16, -64), Vector3(64, 0, 64), climb),
+		box_node(3, Vector3(128, -16, -64), Vector3(256, 0, 64), "showcase/cobble" + TrenchDotBlend.SEPARATOR + climb),
+		{ "id": 4, "type": "terrain", "origin": [0.0, 0.0, 512.0], "resolution": [2, 2], "cell_size": 64.0, "heights": heights, "layers": [{ "material": climb }] },
+		{ "id": 5, "type": "scatter", "name": "outside", "material": climb, "items": [{ "source": "res://demo/models/pine.bbmodel" }], "instances": [[0, 0, 0, -512, 0, 0, 0, 1.0]] },
+	]
+	var path := OS.get_temp_dir().path_join("td_material_names_test.tdm")
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify({ "format": "trenchdot-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": children }] }))
+	var map := FuncGodotMap.new()
+	map.map_settings = settings
+	map.global_map_file = path
+	root.add_child(map)
+	var report := map.build()
+	check(report["error"] == "" and world_vertex_count(map) > 0, "the map still builds, with the placeholder texture")
+	check(not Engine.has_meta(&"td_outside_material_ran"), "a material outside the project is never loaded")
+	check(Array(report["refused_paths"]) == [climb], "the report lists the climbing name once, got %s" % [report["refused_paths"]])
+	check(FileAccess.get_file_as_string(outside).contains("td_outside_material_ran"), "no generated material is saved over the file beside the project")
+	check(collect(map, func(n): return n is TrenchDotTerrain).size() == 1 and collect(map, func(n): return n is MultiMeshInstance3D).size() == 1, "the terrain and the scatter set build without it")
+	map.free()
+	if Engine.has_meta(&"td_outside_material_ran"):
+		Engine.remove_meta(&"td_outside_material_ran")
+	for file in [outside, path]:
+		DirAccess.remove_absolute(file)
+
+func test_map_resource_paths() -> void:
+	print("- maps only load resources of the right kind inside the project")
+	var models := TrenchDotBuild.MODEL_FILES
+	check(TrenchDotBuild.map_resource_path("res://demo/models/pine.bbmodel", models) == "res://demo/models/pine.bbmodel", "a model in the project is kept")
+	check(TrenchDotBuild.map_resource_path("res://demo/../demo/models/pine.bbmodel", models) == "res://demo/models/pine.bbmodel", "a path that stays inside is simplified")
+	var uid := ResourceUID.id_to_text(ResourceLoader.get_resource_uid("res://demo/models/pine.bbmodel"))
+	check(TrenchDotBuild.map_resource_path(uid, models) == "res://demo/models/pine.bbmodel", "a uid:// path counts as its file, %s" % uid)
+	for refused in ["res://../outside.glb", "res://demo/..\\..\\outside.glb", "C:/outside.glb", "//host/share/outside.glb", "user://outside.glb", "res://demo/demo_map_settings.tres", "res://demo/models/pine"]:
+		check(TrenchDotBuild.map_resource_path(refused, models) == "", "%s is refused as a model" % refused)
+
+	# A scene outside the project whose script would mark that it ran, named by a prop and by a prefab instance.
+	var dir := OS.get_temp_dir()
+	var outside := dir.path_join("td_outside_prop.tscn").replace("\\", "/")
+	FileAccess.open(outside, FileAccess.WRITE).store_string("[gd_scene load_steps=2 format=3]\n\n[sub_resource type=\"GDScript\" id=\"1\"]\nscript/source = \"@tool\nextends Node3D\nfunc _init():\n\tEngine.set_meta(&\\\"td_outside_prop_ran\\\", true)\n\"\n\n[node name=\"Outside\" type=\"Node3D\"]\nscript = SubResource(\"1\")\n")
+	var prefab := dir.path_join("td_paths_prefab.tdm").replace("\\", "/")
+	var light := { "id": 2, "type": "entity", "classname": "light", "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "properties": { "targetname": "prefab_light" } }
+	FileAccess.open(prefab, FileAccess.WRITE).store_string(JSON.stringify({ "format": "trenchdot-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": [light] }] }))
+	var instance := func(id: int, at: String, fixup: String) -> Dictionary:
+		return { "id": id, "type": "instance", "path": at, "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "fixup": fixup }
+	var climb := "../%s/td_paths_prefab.tdm" % dir.get_file()
+	var children := [
+		{ "id": 2, "type": "entity", "classname": "prop_model", "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "properties": { "model": outside, "targetname": "outside_prop" } },
+		{ "id": 3, "type": "entity", "classname": "infodecal", "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "properties": { "texture": "C:/outside.png", "targetname": "outside_decal" } },
+		instance.call(4, "td_paths_prefab.tdm", "beside"),
+		instance.call(5, prefab, "absolute"),
+		instance.call(6, climb, "climbing"),
+		instance.call(7, "res://../td_paths_prefab.tdm", "escaping"),
+	]
+	var path := dir.path_join("td_paths_test.tdm")
+	FileAccess.open(path, FileAccess.WRITE).store_string(JSON.stringify({ "format": "trenchdot-map", "properties": { "sky_panorama": "user://outside_sky.hdr" }, "layers": [{ "type": "layer", "id": 1, "children": children }] }))
+	var map := FuncGodotMap.new()
+	map.map_settings = load(SETTINGS)
+	map.global_map_file = path
+	root.add_child(map)
+	var report := map.build()
+	check(not Engine.has_meta(&"td_outside_prop_ran"), "a scene outside the project is never loaded")
+	var prop := find_targetname(map, "outside_prop")
+	check(prop != null and prop.get_children().all(func(c): return not c.has_meta(&"td_prop_generated")), "the prop builds without its model")
+	var refused := Array(report["refused_paths"])
+	for expected in [outside, "C:/outside.png", "user://outside_sky.hdr", prefab, climb, "res://../td_paths_prefab.tdm"]:
+		check(expected in refused, "the report lists %s as not loaded, got %s" % [expected, refused])
+	check(find_targetname(map, "beside-prefab_light") != null, "a prefab beside a map outside the project still builds")
+	for fixup in ["absolute", "climbing", "escaping"]:
+		check(find_targetname(map, fixup + "-prefab_light") == null, "the %s prefab path is not followed" % fixup)
+	map.free()
+	if Engine.has_meta(&"td_outside_prop_ran"):
+		Engine.remove_meta(&"td_outside_prop_ran")
+	for file in [outside, prefab, path]:
+		DirAccess.remove_absolute(file)
+
 func test_game_config() -> void:
 	print("- game config export")
 	var config: TrenchDotGameConfig = load("res://demo/demo_game_config.tres")
@@ -1159,9 +1246,11 @@ func test_spawner() -> void:
 	var packed := PackedScene.new()
 	packed.pack(enemy)
 	enemy.free()
-	ResourceSaver.save(packed, "user://td_test_enemy.tscn")
+	# Maps only load scenes inside the project.
+	var enemy_file := "res://tests/td_test_enemy.tscn"
+	ResourceSaver.save(packed, enemy_file)
 	var spawner := TDSpawner.new()
-	spawner._func_godot_apply_properties({ "scene": "user://td_test_enemy.tscn", "count": 3, "max_alive": 4, "total": 5, "radius": 64.0, "snap_to_ground": false, "spawn_group": "enemies" })
+	spawner._func_godot_apply_properties({ "scene": enemy_file, "count": 3, "max_alive": 4, "total": 5, "radius": 64.0, "snap_to_ground": false, "spawn_group": "enemies" })
 	map.add_child(spawner)
 	await process_frame
 	var spawned := []
@@ -1181,6 +1270,7 @@ func test_spawner() -> void:
 	spawner.spawn()
 	check(spawned.size() == 5 and exhausted.size() >= 1, "total stops spawning and fires exhausted")
 	map.queue_free()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(enemy_file))
 	await process_frame
 
 func test_scatter_and_blend() -> void:
@@ -1327,7 +1417,8 @@ func test_texture_size_override() -> void:
 	check(settings.texture_file_extensions == ["png", "jpg", "jpeg", "webp", "tga", "bmp"], "images are looked up in the editor's order")
 
 	# A material without an albedo texture or an image of its name falls back to the editor's 64 pixels.
-	var material_dir := OS.get_temp_dir().path_join("td_no_albedo_%d" % OS.get_process_id())
+	# Inside the project, maps only load materials from there.
+	var material_dir := "res://tests/td_no_albedo_%d" % OS.get_process_id()
 	DirAccess.make_dir_recursive_absolute(material_dir)
 	ResourceSaver.save(StandardMaterial3D.new(), material_dir.path_join("plain.tres"))
 	var bare := settings.duplicate() as FuncGodotMapSettings

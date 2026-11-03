@@ -2,8 +2,9 @@ extends RefCounted
 ## Section streaming tests, run from run_tests.gd: await load("res://tests/section_tests.gd").new().run(self)
 
 const SETTINGS := "res://demo/demo_map_settings.tres"
-const A := "user://td_section_test_a.scn"
-const B := "user://td_section_test_b.scn"
+## Sections only load from inside the project, so the test sections are saved there and removed after.
+const A := "res://tests/td_section_test_a.scn"
+const B := "res://tests/td_section_test_b.scn"
 
 ## The run_tests.gd runner, untyped so its check() is reachable.
 var t
@@ -56,9 +57,24 @@ func run(runner: SceneTree) -> void:
 	check(streamer.current_name == A and streamer.swaps == 2, "turning back swaps to the first section again")
 	check(streamer._landmark(streamer.current, "lm").global_position.distance_to(Vector3.ZERO) < 0.001, "lined up the other way round too")
 
-	streamer.sections_dir = "user://"
+	streamer.sections_dir = "res://tests"
 	check(streamer.section_path("td_section_test_b") == B, "a short name is found in sections_dir, got %s" % streamer.section_path("td_section_test_b"))
+
+	# A scene beside the project whose script would mark that it ran, named the ways a func_section_stream could.
+	var outside := ProjectSettings.globalize_path("res://").path_join("../td_outside_section.tscn").simplify_path()
+	FileAccess.open(outside, FileAccess.WRITE).store_string("[gd_scene load_steps=2 format=3]\n\n[sub_resource type=\"GDScript\" id=\"1\"]\nscript/source = \"@tool\nextends Node3D\nfunc _init():\n\tEngine.set_meta(&\\\"td_outside_section_ran\\\", true)\n\"\n\n[node name=\"Outside\" type=\"Node3D\"]\nscript = SubResource(\"1\")\n")
+	check(ResourceLoader.exists("res://../td_outside_section.tscn"), "the scene beside the project is reachable by path")
+	for dir_and_name in [["res://tests", "../../td_outside_section"], ["", "res://../td_outside_section.tscn"], ["", outside], ["", "user://td_section_test_b.scn"]]:
+		streamer.sections_dir = dir_and_name[0]
+		var name: String = dir_and_name[1]
+		check(streamer.section_path(name) == "", "%s names no section" % name)
+		streamer._request(name)
+		check(streamer._instance_now(name) == null, "%s is not instanced" % name)
+	check(not Engine.has_meta(&"td_outside_section_ran"), "a section scene outside the project is never loaded")
 	streamer.free()
+	if Engine.has_meta(&"td_outside_section_ran"):
+		Engine.remove_meta(&"td_outside_section_ran")
+	DirAccess.remove_absolute(outside)
 	for path in [A, B]:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 

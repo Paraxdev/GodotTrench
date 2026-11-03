@@ -2,6 +2,9 @@ extends RefCounted
 ## Entity, I/O and streaming tests, run from run_tests.gd: await load("res://tests/entity_tests.gd").new().run(self)
 
 const PROBE := "res://tests/helpers/io_probe.gd"
+## Maps only load scenes inside the project, so the test scenes are saved there and removed after.
+const ENEMY := "res://tests/td_entity_test_enemy.tscn"
+const VARIANTS := "res://tests/td_entity_test_variants.tscn"
 
 ## The run_tests.gd runner, untyped so its check() is reachable.
 var t
@@ -28,6 +31,8 @@ func run(runner: SceneTree) -> void:
 	test_definitions()
 	await test_light_fixture()
 	await test_prop_model_node()
+	for file in [ENEMY, VARIANTS]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(file))
 
 func _map() -> Node3D:
 	var map := Node3D.new()
@@ -40,8 +45,8 @@ func _save_enemy() -> String:
 	var packed := PackedScene.new()
 	packed.pack(enemy)
 	enemy.free()
-	ResourceSaver.save(packed, "user://td_entity_test_enemy.tscn")
-	return "user://td_entity_test_enemy.tscn"
+	ResourceSaver.save(packed, ENEMY)
+	return ENEMY
 
 ## Entities built, packed into a scene and loaded again, the way a built map is saved and played.
 func test_saved_scene_state() -> void:
@@ -579,11 +584,11 @@ func test_prop_model_node() -> void:
 	var packed := PackedScene.new()
 	packed.pack(variants)
 	variants.free()
-	ResourceSaver.save(packed, "user://td_entity_test_variants.tscn")
+	ResourceSaver.save(packed, VARIANTS)
 	var map := _map()
 	var prop := TrenchDotProp.new()
 	map.add_child(prop)
-	prop._func_godot_apply_properties({ "model": "user://td_entity_test_variants.tscn", "model_node": "hydrant_1", "collision": "none" })
+	prop._func_godot_apply_properties({ "model": VARIANTS, "model_node": "hydrant_1", "collision": "none" })
 	var picked := prop.get_child(0) as Node3D
 	check(prop.get_child_count() == 1 and picked.name == &"hydrant_1", "only the named node is kept, got %s" % [prop.get_children()])
 	check(picked.position == Vector3.ZERO and picked.scale.is_equal_approx(Vector3.ONE * 2.0), "it sits at the prop origin and keeps its scale, %s" % picked.transform)
