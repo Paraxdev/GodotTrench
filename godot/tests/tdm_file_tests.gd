@@ -15,6 +15,7 @@ static func run(t) -> void:
 	_test_damaged_chunk(t)
 	_test_truncated(t)
 	_test_refused(t)
+	_test_budgets(t)
 	_test_scatter_instances(t)
 
 static func _build(t, path: String) -> FuncGodotMap:
@@ -127,6 +128,61 @@ static func _test_refused(t) -> void:
 	newer.encode_u32(8, TrenchDotTdmFile.CONTAINER_VERSION + 1)
 	file = TrenchDotTdmFile.decode(newer)
 	t.check(file["map"] == null and str(file["error"]).contains("newer"), "a newer container is refused")
+
+## A container of [param chunks], each [code][tag, payload, flags, raw size][/code], with headers that check out.
+static func _container(chunks: Array) -> PackedByteArray:
+	var out := PackedByteArray(TrenchDotTdmFile.MAGIC)
+	out.resize(12)
+	out.encode_u32(8, TrenchDotTdmFile.CONTAINER_VERSION)
+	for c in chunks:
+		var tag := (c[0] as String).to_ascii_buffer().decode_u32(0)
+		var payload: PackedByteArray = c[1]
+		var header := PackedByteArray()
+		header.resize(24)
+		header.encode_u32(0, TrenchDotTdmFile._SYNC)
+		header.encode_u32(4, tag)
+		header.encode_u32(8, c[2])
+		header.encode_u32(12, c[3])
+		header.encode_u32(16, payload.size())
+		header.encode_u32(20, tag ^ c[2] ^ c[3] ^ payload.size() ^ TrenchDotTdmFile._CHECK_SEED)
+		out.append_array(header)
+		out.append_array(payload)
+	return out
+
+## A crafted container unpacks a few kilobytes into gigabytes. A chunk past the file's budget of values or of
+## unpacked bytes is refused before it is decoded.
+static func _test_budgets(t) -> void:
+	var head := var_to_bytes({ "format": "trenchdot-map", "version": 1 })
+	var node := var_to_bytes({ "nodes": [{ "id": 2, "type": "layer", "name": "Kept" }], "parents": PackedInt64Array([0]) })
+	# A dictionary whose nodes array holds as many nils as the whole file may hold values, 64 MiB that zstd packs small.
+	var count: int = TrenchDotTdmFile._MAX_VALUES
+	var bomb := PackedByteArray()
+	bomb.resize(32 + count * 4)
+	bomb.encode_u32(0, TYPE_DICTIONARY)
+	bomb.encode_u32(4, 1)
+	bomb.encode_u32(8, TYPE_STRING)
+	bomb.encode_u32(12, 5)
+	for i in 5:
+		bomb[16 + i] = "nodes".unicode_at(i)
+	bomb.encode_u32(24, TYPE_ARRAY)
+	bomb.encode_u32(28, count)
+	var packed := bomb.compress(FileAccess.COMPRESSION_ZSTD)
+	var file := _container([["HEAD", head, 0, head.size()], ["NODE", packed, 1, bomb.size()], ["NODE", node, 0, node.size()]])
+	var start := Time.get_ticks_msec()
+	var read := TrenchDotTdmFile.decode(file)
+	var ms := Time.get_ticks_msec() - start
+	var problems := "; ".join(read["problems"])
+	t.check(file.size() < 100000 and problems.contains("holds more values than a map may"), "a %d byte file unpacking into %d values is refused, got %s" % [file.size(), count, problems])
+	t.check(ms < 2000, "and quickly, in %d ms" % ms)
+	t.check(read["map"] != null and read["map"]["layers"].is_empty(), "nothing after the refused chunk is read either")
+
+	# Chunks that claim a gigabyte between them: the first uses the budget up, the next is not unpacked at all.
+	file = _container([["HEAD", head, 0, head.size()], ["NODE", PackedByteArray([1, 2, 3, 4]), 0, (1 << 30) - head.size()], ["NODE", node, 0, node.size()]])
+	read = TrenchDotTdmFile.decode(file)
+	problems = "; ".join(read["problems"])
+	t.check(problems.contains("would unpack past the 1024 MiB a map may hold") and read["map"]["layers"].is_empty(), "a chunk past the unpacked size budget is not read, got %s" % problems)
+	file = _container([["HEAD", head, 0, head.size()], ["NODE", node, 0, node.size()]])
+	t.check(TrenchDotTdmFile.decode(file)["map"]["layers"].size() == 1, "the same chunk inside both budgets reads")
 
 static func _test_scatter_instances(t) -> void:
 	var node := { "type": "scatter", "instances": PackedInt32Array([0, 2, 1234, -1, -500, 0, 102450, 300, 0, 450, 3599, 0, -1, 0, 1250, 800]) }
