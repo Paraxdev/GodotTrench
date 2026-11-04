@@ -24,6 +24,7 @@ func run(runner: SceneTree) -> void:
 	test_new_resources_use_the_gameplay_fgd()
 	await test_added_nodes_are_saved()
 	test_map_node_follows_the_project_setting()
+	test_unknown_node_class()
 
 ## The demo's map settings with [param fgd] as their Entity Fgd.
 func _settings(fgd: FuncGodotFGDFile) -> FuncGodotMapSettings:
@@ -215,3 +216,40 @@ func test_map_node_follows_the_project_setting() -> void:
 	check(not Array(map.build_report["warnings"]).any(func(w: String) -> bool: return w.contains("default map settings")), "not when the project uses them too")
 	_free(map)
 	ProjectSettings.set_setting(FuncGodotMap.SETTING_DEFAULT_MAP_SETTINGS, before)
+
+func _solid(classname: String, node_class := "", script: Script = null) -> FuncGodotFGDSolidClass:
+	var def := FuncGodotFGDSolidClass.new()
+	def.classname = classname
+	def.node_class = node_class
+	def.script_class = script
+	return def
+
+func _point(classname: String, node_class := "", script: Script = null) -> FuncGodotFGDPointClass:
+	var def := FuncGodotFGDPointClass.new()
+	def.classname = classname
+	def.node_class = node_class
+	def.script_class = script
+	return def
+
+## The definition problems of [param map]'s last build for [param classname].
+func _problems(map: FuncGodotMap, classname: String) -> Array:
+	return map.build_report["definition_problems"].filter(func(p: Dictionary) -> bool: return p["classname"] == classname)
+
+func test_unknown_node_class() -> void:
+	print("- a Node Class that does not resolve builds a Node3D and says so")
+	var csharp := _point("td_tests_cs_point", "GtTestsNoSuchCSharpClass")
+	csharp.meta_properties = { "csharp": true }
+	var settings := _settings(_fgd([_solid("td_tests_bad_solid", "NoSuchBody"), _point("td_tests_bad_point", "NoSuchNode"), csharp]))
+	var map := _build(settings, [_entity(2, "td_tests_bad_solid", [_box(3)]), _entity(4, "td_tests_bad_point"), _entity(5, "td_tests_cs_point")])
+	var solid := _child_named(map, "td_tests_bad_solid")
+	check(solid != null and solid.get_class() == "Node3D" and t.collect(solid, func(n): return n is MeshInstance3D).size() == 1, "the brush entity keeps its mesh, got %s" % solid)
+	var problems := _problems(map, "td_tests_bad_solid")
+	check(problems.size() == 1 and problems[0]["error"] and problems[0]["problem"] == "td_tests_bad_solid: Node Class NoSuchBody not found, building it as a Node3D", "the report names the class it could not find, got %s" % [problems])
+	var point := _child_named(map, "td_tests_bad_point")
+	check(point != null and point.get_class() == "Node3D", "the point entity is a Node3D, got %s" % point)
+	problems = _problems(map, "td_tests_bad_point")
+	check(problems.size() == 1 and not problems[0]["error"] and problems[0]["problem"].contains("NoSuchNode not found"), "and is reported as a warning, got %s" % [problems])
+	problems = _problems(map, "td_tests_cs_point")
+	check(problems.size() == 1 and problems[0]["problem"].contains("C# entities need the .NET build of Godot, a built C# project and [GlobalClass]"), "a C# class names what it needs, got %s" % [problems])
+	check(Array(map.build_report["warnings"]).any(func(w: String) -> bool: return w.contains("NoSuchBody not found")), "the warnings the editor gets list them")
+	_free(map)
