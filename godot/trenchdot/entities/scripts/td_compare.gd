@@ -10,31 +10,33 @@ signal on_equal
 signal on_not_equal
 signal on_greater
 
+const _Math := preload("td_math.gd")
+
 @export var compare_value := 0.0
 
 var value: Variant = 0
 var _compare: Variant = 0
 
 func _func_godot_apply_properties(props: Dictionary) -> void:
-	compare_value = float(TDMath.to_number(props.get("compare_value", compare_value), compare_value))
-	_compare = TDMath.normalize(compare_value)
+	compare_value = float(_Math.to_number(props.get("compare_value", compare_value), compare_value))
+	_compare = _Math.normalize(compare_value)
 
 func _ready() -> void:
 	value = 0
-	_compare = TDMath.normalize(compare_value)
+	_compare = _Math.normalize(compare_value)
 
 func set_value(new_value: Variant = null) -> void:
-	var v: Variant = TDMath.normalize(new_value)
+	var v: Variant = _Math.normalize(new_value)
 	if v != null:
 		value = v
 
 func set_compare_value(new_value: Variant = null) -> void:
-	var v: Variant = TDMath.normalize(new_value)
+	var v: Variant = _Math.normalize(new_value)
 	if v != null:
 		_compare = v
 
 func compare() -> void:
-	var order := TDMath.compare(value, _compare)
+	var order := _Math.compare(value, _compare)
 	if order < 0:
 		on_less.emit()
 	elif order > 0:

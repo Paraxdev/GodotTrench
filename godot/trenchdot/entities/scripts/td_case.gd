@@ -14,6 +14,7 @@ signal on_case_7
 signal on_case_8
 signal on_default
 
+const _Math := preload("td_math.gd")
 const MAX_CASES := 8
 
 @export var case_1 := ""
@@ -30,11 +31,11 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 		set("case_%d" % i, str(props.get("case_%d" % i, get("case_%d" % i))))
 
 func in_value(value: Variant = null) -> void:
-	var v: Variant = TDMath.normalize(value)
+	var v: Variant = _Math.normalize(value)
 	if v != null:
 		for i in range(1, MAX_CASES + 1):
 			var wanted := str(get("case_%d" % i)).strip_edges()
-			if wanted != "" and TDMath.compare(v, TDMath.normalize(wanted)) == 0:
+			if wanted != "" and _Math.compare(v, _Math.normalize(wanted)) == 0:
 				emit_signal("on_case_%d" % i)
 				return
 	on_default.emit()

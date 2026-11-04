@@ -16,6 +16,7 @@ signal picked(index: int)
 signal on_success
 signal on_fail
 
+const _Math := preload("td_math.gd")
 const MAX_OUTPUTS := 8
 
 ## How many outputs pick chooses from, 1 to 8.
@@ -29,9 +30,9 @@ var _rng := RandomNumberGenerator.new()
 var _last := 0
 
 func _func_godot_apply_properties(props: Dictionary) -> void:
-	count = clampi(int(TDMath.to_number(props.get("count", count), count)), 1, MAX_OUTPUTS)
+	count = clampi(int(_Math.to_number(props.get("count", count), count)), 1, MAX_OUTPUTS)
 	no_repeat = TrenchDotIO.to_bool(props.get("no_repeat", no_repeat))
-	chance = float(TDMath.to_number(props.get("chance", chance), chance))
+	chance = float(_Math.to_number(props.get("chance", chance), chance))
 
 func pick() -> void:
 	var n := clampi(count, 1, MAX_OUTPUTS)

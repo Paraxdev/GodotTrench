@@ -1,5 +1,5 @@
 @tool
-class_name TDTeleport extends TDTrigger
+class_name TDTeleport extends "td_trigger.gd"
 ## trigger_teleport: moves entering bodies to the [member destination] entity and turns them to its facing.
 ## Output: teleported(activator).
 

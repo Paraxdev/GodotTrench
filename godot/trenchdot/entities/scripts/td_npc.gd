@@ -8,6 +8,8 @@ signal arrived(corner: Node)
 signal reached_goal
 signal finished
 
+const _Animate := preload("td_animate.gd")
+
 ## res:// scene giving the actor its mesh and AnimationPlayer.
 @export var model := ""
 ## First path_corner to walk to.
@@ -45,7 +47,7 @@ func _ready() -> void:
 		var packed := load(path) as PackedScene
 		if packed:
 			add_child(packed.instantiate())
-	_player = TDAnimate._find_animation_player(self)
+	_player = _Animate._find_animation_player(self)
 	_play(idle_anim)
 	if start_active:
 		start.call_deferred()

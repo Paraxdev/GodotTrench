@@ -5,6 +5,8 @@ class_name TDCalc extends Node3D
 
 signal result(value: Variant)
 
+const _Math := preload("td_math.gd")
+
 ## add, subtract, multiply, divide, modulo, power, min, max, abs, negate, round, floor or ceil.
 @export var operation := "add"
 ## The second number. abs, negate, round, floor and ceil ignore it.
@@ -14,11 +16,11 @@ var _warned := false
 
 func _func_godot_apply_properties(props: Dictionary) -> void:
 	operation = str(props.get("operation", operation)).strip_edges().to_lower()
-	operand = float(TDMath.to_number(props.get("operand", operand), operand))
+	operand = float(_Math.to_number(props.get("operand", operand), operand))
 
 ## Nothing fires when there is no answer, like a division by zero, and a warning says why once.
 func calculate(value: Variant = null) -> void:
-	var a := float(TDMath.to_number(value, 0))
+	var a := float(_Math.to_number(value, 0))
 	var b := operand
 	var answer: Variant = null
 	match operation:
@@ -53,7 +55,7 @@ func calculate(value: Variant = null) -> void:
 		_:
 			_warn("has no operation '%s'" % operation)
 			return
-	var number: Variant = TDMath.tidy(answer) if answer != null else null
+	var number: Variant = _Math.tidy(answer) if answer != null else null
 	if number == null:
 		_warn("has no answer for %s %s %s" % [a, operation, b])
 		return

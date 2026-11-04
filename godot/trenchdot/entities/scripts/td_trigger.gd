@@ -19,6 +19,7 @@ signal exited(activator: Node)
 var enabled := true
 ## Seconds each body last fired it at, by instance id.
 var _last_fired: Dictionary = {}
+var _warned_group := false
 
 func _func_godot_apply_properties(props: Dictionary) -> void:
 	filter_group = str(props.get("filter_group", filter_group))
@@ -40,7 +41,10 @@ func accepts(body: Node) -> bool:
 	return filter_group == "" or body.is_in_group(StringName(filter_group))
 
 func _body_entered(body: Node) -> void:
-	if not enabled or not accepts(body):
+	if not enabled:
+		return
+	if not accepts(body):
+		_warn_empty_group(body)
 		return
 	entered.emit(body)
 	var now := Time.get_ticks_msec() / 1000.0
@@ -53,6 +57,13 @@ func _body_entered(body: Node) -> void:
 				_last_fired.erase(key)
 	_last_fired[id] = now
 	fire(body)
+
+## Says once that the trigger ignores bodies because no node is in its filter group.
+func _warn_empty_group(body: Node) -> void:
+	if _warned_group or not is_inside_tree() or get_tree().get_first_node_in_group(StringName(filter_group)):
+		return
+	_warned_group = true
+	push_warning("[TrenchDot] %s ignored %s: its filter_group is '%s' and no node is in that group. Add your player to it, or clear filter_group to accept every body." % [name, body.name, filter_group])
 
 func _body_exited(body: Node) -> void:
 	if accepts(body):

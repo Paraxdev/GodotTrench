@@ -7,6 +7,8 @@ class_name TDValue extends Node3D
 signal value(value: Variant)
 signal changed(value: Variant)
 
+const _Math := preload("td_math.gd")
+
 ## Number or text, whatever it starts as and reset returns to.
 @export var start_value := "0"
 
@@ -20,19 +22,19 @@ func _ready() -> void:
 	current = _start()
 
 func _start() -> Variant:
-	return TDMath.to_number(start_value, start_value)
+	return _Math.to_number(start_value, start_value)
 
 func set_value(new_value: Variant = null) -> void:
-	_store(TDMath.normalize(new_value))
+	_store(_Math.normalize(new_value))
 
 func add(amount: Variant = 1) -> void:
-	var b: Variant = TDMath.normalize(amount)
+	var b: Variant = _Math.normalize(amount)
 	if b == null:
 		b = 1
 	if current is String or b is String:
-		_store(TDMath.normalize(str(current) + str(b)))
+		_store(_Math.normalize(str(current) + str(b)))
 	else:
-		_store(TDMath.tidy(float(current) + float(b)))
+		_store(_Math.tidy(float(current) + float(b)))
 
 func get_value() -> void:
 	value.emit(current)

@@ -7,6 +7,8 @@ signal spawned(node: Node)
 signal all_dead
 signal exhausted
 
+const _SpawnLogic := preload("td_spawn_logic.gd")
+
 ## Map units of random spread around the spawner.
 @export var radius := 64.0
 ## Seconds between spawns while active, 0 spawns only on input.
@@ -22,7 +24,7 @@ signal exhausted
 @export var spawn_group := "enemies"
 @export var snap_to_ground := true
 
-var logic := TDSpawnLogic.new()
+var logic := _SpawnLogic.new()
 var active := false
 var _timer: Timer
 
@@ -39,12 +41,12 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	spawn_on_ready = TrenchDotIO.to_bool(props.get("spawn_on_ready", spawn_on_ready))
 	# A map built inside the running tree applies properties after _ready.
 	if is_node_ready() and not Engine.is_editor_hint():
-		logic.configure(self, TDSpawnLogic.settings_of(self))
+		logic.configure(self, _SpawnLogic.settings_of(self))
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
-	logic.configure(self, TDSpawnLogic.settings_of(self))
+	logic.configure(self, _SpawnLogic.settings_of(self))
 	logic.spawned.connect(func(n): spawned.emit(n))
 	logic.all_dead.connect(func(): all_dead.emit())
 	logic.exhausted.connect(func(): exhausted.emit())

@@ -1,5 +1,5 @@
 @tool
-class_name TDSpawnArea extends TDTrigger
+class_name TDSpawnArea extends "td_trigger.gd"
 ## trigger_spawn_area: spawns [member scene] at random spots inside its volume when a body of
 ## [member TDTrigger.filter_group] enters, on input, or on a timer.
 ## Inputs: spawn, start, stop, toggle, kill_all. Outputs: spawned(node), all_dead, exhausted.
@@ -7,6 +7,8 @@ class_name TDSpawnArea extends TDTrigger
 signal spawned(node: Node)
 signal all_dead
 signal exhausted
+
+const _SpawnLogic := preload("td_spawn_logic.gd")
 
 @export var interval := 0.0
 @export var spawn_on_enter := true
@@ -19,7 +21,7 @@ signal exhausted
 @export var spawn_group := "enemies"
 @export var snap_to_ground := true
 
-var logic := TDSpawnLogic.new()
+var logic := _SpawnLogic.new()
 var active := false
 var _timer: Timer
 
@@ -34,13 +36,13 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	interval = float(props.get("interval", interval))
 	spawn_on_enter = TrenchDotIO.to_bool(props.get("spawn_on_enter", spawn_on_enter))
 	if is_node_ready() and not Engine.is_editor_hint():
-		logic.configure(self, TDSpawnLogic.settings_of(self))
+		logic.configure(self, _SpawnLogic.settings_of(self))
 
 func _ready() -> void:
 	super()
 	if Engine.is_editor_hint():
 		return
-	logic.configure(self, TDSpawnLogic.settings_of(self))
+	logic.configure(self, _SpawnLogic.settings_of(self))
 	logic.spawned.connect(func(n): spawned.emit(n))
 	logic.all_dead.connect(func(): all_dead.emit())
 	logic.exhausted.connect(func(): exhausted.emit())

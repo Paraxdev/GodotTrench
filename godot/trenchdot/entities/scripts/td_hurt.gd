@@ -1,5 +1,5 @@
 @tool
-class_name TDHurt extends TDTrigger
+class_name TDHurt extends "td_trigger.gd"
 ## trigger_hurt: calls [member damage_method](amount, source) on bodies inside every [member interval] seconds.
 ## Output: hurt(activator), for bodies that took damage: they have the damage method, or filter_group picked them.
 

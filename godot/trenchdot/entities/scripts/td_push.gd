@@ -1,5 +1,5 @@
 @tool
-class_name TDPush extends TDTrigger
+class_name TDPush extends "td_trigger.gd"
 ## trigger_push: jump pads, wind and conveyors. [member push] is a velocity in map units per second.
 ## With once, entering bodies get the velocity once, otherwise bodies inside keep accelerating towards it.
 ## Output: pushed(activator), when a body gets its impulse or starts being pushed.

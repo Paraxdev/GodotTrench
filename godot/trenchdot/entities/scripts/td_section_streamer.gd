@@ -16,6 +16,9 @@ class_name TDSectionStreamer extends Node3D
 ## A section replaced another.
 signal section_changed(from: String, to: String)
 
+const _Landmark := preload("td_landmark.gd")
+const _SectionStream := preload("td_section_stream.gd")
+
 ## Seconds ambient sound takes to cross fade on a swap, so a section's hum does not cut out.
 const AUDIO_FADE := 1.5
 const SILENT_DB := -60.0
@@ -94,7 +97,7 @@ func _physics_process(_delta: float) -> void:
 	query.collide_with_areas = true
 	query.collide_with_bodies = false
 	for hit in get_world_3d().direct_space_state.intersect_point(query, 8):
-		var stream := hit["collider"] as TDSectionStream
+		var stream := hit["collider"] as _SectionStream
 		if stream == null or stream.section == "" or stream.section == current_name or not current.is_ancestor_of(stream):
 			continue
 		var next := _take(stream.section)
@@ -106,7 +109,7 @@ func _physics_process(_delta: float) -> void:
 ## Swaps to [param section] through the connector at [param landmark] at once, wherever the player is.
 func force_swap(section: String, landmark: String) -> bool:
 	for node in get_tree().get_nodes_in_group(&"td_section_streams"):
-		var stream := node as TDSectionStream
+		var stream := node as _SectionStream
 		if stream and stream.section == section and stream.landmark == landmark and current.is_ancestor_of(stream):
 			var next := _take(section)
 			if next == null:
@@ -114,7 +117,7 @@ func force_swap(section: String, landmark: String) -> bool:
 			return next != null and _swap(stream, next)
 	return false
 
-func _swap(stream: TDSectionStream, next: Node3D) -> bool:
+func _swap(stream: _SectionStream, next: Node3D) -> bool:
 	var here := _landmark(current, stream.landmark)
 	var there := _landmark(next, stream.landmark)
 	if here == null or there == null:
@@ -241,7 +244,7 @@ func _prefetch() -> void:
 func _neighbours() -> Array[String]:
 	var out: Array[String] = []
 	for node in get_tree().get_nodes_in_group(&"td_section_streams"):
-		var stream := node as TDSectionStream
+		var stream := node as _SectionStream
 		if stream and current.is_ancestor_of(stream) and stream.section != current_name and stream.section != "" and not stream.section in out:
 			out.append(stream.section)
 	return out
@@ -268,7 +271,7 @@ func _drop_extra_players(section: Node) -> void:
 			node.queue_free()
 
 func _landmark(section: Node, landmark: String) -> Node3D:
-	return _find(section, func(n: Node) -> bool: return n is TDLandmark and (n as TDLandmark).targetname == landmark) as Node3D
+	return _find(section, func(n: Node) -> bool: return n is _Landmark and (n as _Landmark).targetname == landmark) as Node3D
 
 ## Transform of [param node] relative to [param root], which need not be in the tree.
 static func _relative(node: Node3D, root: Node3D) -> Transform3D:
