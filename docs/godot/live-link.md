@@ -29,13 +29,15 @@ does.
 | --- | --- | --- |
 | `hello` | | `project` and `godot` (version), a quick check that the link answers |
 | `status` | | `project`, `godot` (version), `pid`, `scene` (the scene tab Godot shows) and `maps: [{path, epoch}]` for it |
-| `map_saved` | `path` | `rebuilt`, the number of map nodes rebuilt from the file, `scene` and `waiting` |
+| `map_saved` | `path` | `rebuilt`, the number of map nodes rebuilt from the file, `scene`, `waiting`, and the build's `missing_classes`, `settings` and `warnings` |
 | `build` | `path`, `text` | Like `map_saved`, built from `text` instead of the file |
 | `focus` | | Brings the Godot window to the front |
 | `export_game_config` | | Writes `trenchdot_game.json` |
-| `live_begin` | `path`, `text`, `content` | `epoch` |
-| `live_resync` | `path`, `text` | `epoch` |
-| `live_delta` | `path`, `ops` | `epoch`, or `ok: false, resync: true` when the ops do not fit |
+| `scan` | | Starts a scan of the project files. Once it is done, every live session checks its entity definitions |
+| `play` | | Saves the open scenes and plays the main scene, or `ok: false` with an `error` when the project has none |
+| `live_begin` | `path`, `text`, `content` | `epoch` and `unresolved` |
+| `live_resync` | `path`, `text` | `epoch` and `unresolved` |
+| `live_delta` | `path`, `ops` | `epoch` and `unresolved`, or `ok: false, resync: true` when the ops do not fit |
 | `live_end` | `path`, `revert` | With `revert`, rebuilds from the saved file |
 | `inspect` | `path`, `ids` | `nodes` with name, class, child count and position per map node id, plus `live` and `pending` |
 | `capture` | `path`, `camera`, `width`, `height`, `text` | `png` (base64), `width`, `height` and `warnings`, the errors and warnings logged while building |
@@ -54,7 +56,17 @@ Paths are absolute with forward slashes. Only `FuncGodotMap` nodes in the edited
 *Auto Rebuild On Save* on take part. `scene` is its `res://` path, or empty with no scene open.
 
 `waiting` lists the other open scene tabs that use the map. After a `map_saved` they build the file when their tab is
-shown, after a `build` they do not.
+shown, after a `build` they do not. A `map_saved` for a prefab also rebuilds the maps of the edited scene that instance
+it, directly or through other prefabs, and counts them in `rebuilt`.
+
+What the builds of a `map_saved` or `build` reported comes in three lists, each only when it is not empty:
+`missing_classes` holds the sorted classnames that no definition described, `settings` the paths of the map settings
+the builds used, and `warnings` up to 20 one line warnings of the build report. `unresolved` in a live reply lists the
+sorted classnames that step built without a definition, also only when there are any.
+
+`scan` suits files written outside Godot, like an installed entity pack. A live session whose scene was built with
+other entity definitions than its map settings hold after the scan builds its map again. An addon without `scan` or
+`play` answers them as an unknown event.
 
 `text` is the whole map as JSON, with the baked lighting under `lightmap` when the map has a bake, so a live build keeps
 it. That adds about 11 bytes per atlas texel, around 11 MB for a 1024 by 1024 atlas, so the editor sends the whole map
