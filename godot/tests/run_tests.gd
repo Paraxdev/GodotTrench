@@ -732,6 +732,11 @@ func test_entity_pack() -> void:
 	core.pack_fgd_path = ""
 	check(TrenchDotEntityPack.missing(core.get_entity_definitions(), maps) == PackedStringArray(["func_door"]), "a map with a door needs the pack in a core only project")
 	check(TrenchDotEntityPack.missing((load("res://demo/demo_fgd.tres") as FuncGodotFGDFile).get_entity_definitions(), maps).is_empty(), "a project that defines func_door needs nothing")
+	DirAccess.remove_absolute(maps.path_join("old.tdm"))
+	DirAccess.copy_absolute(ProjectSettings.globalize_path(MAP), maps.path_join("saved.tdm"))
+	var used := TrenchDotEntityPack.missing(core.get_entity_definitions(), maps)
+	check(TrenchDotTdmFile.is_binary(FileAccess.get_file_as_bytes(maps.path_join("saved.tdm"))), "the editor saves maps in the binary container")
+	check(used.has("func_door") and used.has("func_button") and used.has("trigger_area") and not used.has("light"), "a binary map with a door needs the pack too, got %s" % used)
 	for dir in ["pack/scripts", "pack/definitions", "pack", "maps"]:
 		for f in DirAccess.get_files_at(to.path_join(dir)):
 			DirAccess.remove_absolute(to.path_join(dir).path_join(f))
