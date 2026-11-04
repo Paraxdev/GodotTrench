@@ -1,8 +1,8 @@
 @tool
 extends Node
 ## Checks in a headless Godot editor that the live link follows scene tabs as they are opened, closed, reloaded and
-## switched, that live sessions follow entity definitions that change or appear on disk, and that an editor
-## build names entity scripts without @tool. res://tests/live_link_tests.gd starts it with
+## switched, that live sessions follow entity definitions that change or appear on disk and prefabs that are saved, and
+## that an editor build names entity scripts without @tool. res://tests/live_link_tests.gd starts it with
 ## godot --headless --editor --path godot res://tests/editor/live_link_tabs.tscn -- --td-live-link-tabs
 ## and it does nothing when the scene is opened any other way.
 
@@ -120,6 +120,7 @@ class Runner extends Node:
 		check(builds[0] == 1, "a missed save is built once, %d builds" % builds[0])
 		await _check_definition_hooks()
 		await _check_scan()
+		await _check_prefab_save()
 		_check_tool_scripts()
 
 		print("%d failures" % failures)
@@ -247,3 +248,19 @@ class Runner extends Node:
 		ProjectSettings.set_setting(TrenchDotEditorIntegration.SETTING_AUTO_EXPORT, auto_export)
 		# Changed settings start the link again.
 		link.stop_live_link()
+
+	func _check_prefab_save() -> void:
+		var save_prefab := { "event": "map_saved", "path": ProjectSettings.globalize_path("res://tests/maps/prefab.tdm") }
+		var map: FuncGodotMap = link.maps_for(MAP_FILE)[0]
+		map.build()
+		var plight := map.find_child("entity_p1-plight", true, false)
+		var reply := await link.handle_message(JSON.stringify(save_prefab))
+		var rebuilt := map.find_child("entity_p1-plight", true, false)
+		check(reply.get("rebuilt") == 1 and plight != null and rebuilt != null and rebuilt != plight, "saving a prefab rebuilds the map that instances it, got %s" % reply)
+
+		await live("live_begin", { "text": FileAccess.get_file_as_string(MAP_JSON) })
+		var session: TrenchDotLiveSession = link._sessions.get(TrenchDotEditorIntegration.path_key(ProjectSettings.globalize_path(MAP_FILE)))
+		await until(func() -> bool: return session and not session.pending())
+		reply = await link.handle_message(JSON.stringify(save_prefab))
+		check(reply.get("ok") == true and reply.get("rebuilt") == 0 and session != null and session.pending(), "and queues a full build of a live map that instances it, got %s" % reply)
+		await live("live_end")

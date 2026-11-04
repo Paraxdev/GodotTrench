@@ -8,6 +8,8 @@ const MAP_JSON := "res://tests/maps/basic_json.tdm"
 ## The TrenchDotFGDFile the demo's FGD has as a base, which brings the installed Gameplay entities pack.
 const CORE_FGD := "res://addons/func_godot/fgd/trenchdot/trenchdot_fgd.tres"
 const CSHARP_DIR := "user://td_tests_live_csharp"
+const PREFAB := "res://tests/maps/prefab.tdm"
+const NESTED_DIR := "user://td_tests_live_prefabs"
 const DOOR := 9
 const BUTTON := 11
 
@@ -26,6 +28,7 @@ func run(runner: SceneTree) -> void:
 	await test_definitions_change_during_session()
 	await test_live_rebuild_finishes()
 	await test_unresolved_classes()
+	await test_saved_prefabs()
 
 ## A map node in the tree, built from the test map's JSON.
 func _map() -> FuncGodotMap:
@@ -248,5 +251,46 @@ func test_unresolved_classes() -> void:
 	var prefab := { "id": 70, "type": "instance", "path": "prefab.tdm", "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0] }
 	session.apply([{ "op": "set", "id": 70, "parent": 1, "index": 0, "node": prefab }])
 	check(session.take_unresolved() == ["td_tests_live_unknown"], "an edit that queues a full build names the classes of every entity of the map")
+	map.queue_free()
+	await t.process_frame
+
+func _write_map(file_path: String, children: Array) -> void:
+	var file := FileAccess.open(file_path, FileAccess.WRITE)
+	file.store_string(JSON.stringify({ "format": "trenchdot-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": children }] }))
+	file.close()
+
+func test_saved_prefabs() -> void:
+	print("- a saved prefab rebuilds the live sessions whose map instances it")
+	var map := _map()
+	var session := _session(map)
+	session.begin(FileAccess.get_file_as_string(MAP_JSON))
+	check(session.prefabs() == PackedStringArray([PREFAB]), "the session knows the prefab its map instances, got %s" % [session.prefabs()])
+	var link := TrenchDotEditorIntegration.new()
+	link._sessions["map"] = session
+	link.queue_prefab_users(ProjectSettings.globalize_path(MAP))
+	check(not session.pending(), "a saved file the map does not instance queues nothing")
+	var plight: Node = t.find_named(map, "entity_p1-plight")
+	link.queue_prefab_users(ProjectSettings.globalize_path(PREFAB))
+	check(session.pending(), "saving the prefab queues a full build")
+	_settle(session)
+	var rebuilt: Node = t.find_named(map, "entity_p1-plight")
+	check(rebuilt != null and rebuilt != plight, "which builds the prefab's entities again, got %s" % rebuilt)
+
+	DirAccess.make_dir_recursive_absolute(NESTED_DIR)
+	var instance := func(id: int, file: String) -> Dictionary: return { "id": id, "type": "instance", "path": file, "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0] }
+	_write_map(NESTED_DIR.path_join("middle.tdm"), [{ "id": 2, "type": "group", "children": [instance.call(3, "inner.tdm")] }])
+	_write_map(NESTED_DIR.path_join("inner.tdm"), [])
+	# A map outside the project goes by its absolute path.
+	var outside := ProjectSettings.globalize_path(NESTED_DIR)
+	var nested := TrenchDotLiveSession.new(outside.path_join("outer.tdm"), [] as Array[FuncGodotMap])
+	nested.begin(JSON.stringify({ "format": "trenchdot-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": [instance.call(2, "middle.tdm")] }, { "type": "layer", "id": 4, "omit_from_export": true, "children": [instance.call(5, "omitted.tdm")] }] }))
+	check(nested.prefabs() == PackedStringArray([outside.path_join("middle.tdm"), outside.path_join("inner.tdm")]), "prefabs inside prefabs count, ones in omitted layers do not, got %s" % [nested.prefabs()])
+	link._sessions["nested"] = nested
+	link.queue_prefab_users(outside.path_join("inner.tdm"))
+	check(nested.pending(), "saving a prefab inside a prefab queues a full build")
+	for file in DirAccess.get_files_at(NESTED_DIR):
+		DirAccess.remove_absolute(NESTED_DIR.path_join(file))
+	DirAccess.remove_absolute(NESTED_DIR)
+	link.free()
 	map.queue_free()
 	await t.process_frame
