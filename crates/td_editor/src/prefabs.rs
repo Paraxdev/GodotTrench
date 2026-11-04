@@ -84,6 +84,32 @@ fn transformed_bounds(b: &Aabb, m: &DMat4) -> Aabb {
 }
 
 impl PrefabCache {
+    /// Whether `map`, saved at `map_path`, instances the prefab at `target`, directly or through other prefabs.
+    pub fn instances(&mut self, map: &Map, map_path: Option<&Path>, target: &Path) -> bool {
+        self.instances_below(map, map_path, &crate::live_link::path_key(&crate::live_link::godot_path(target)), 0)
+    }
+
+    fn instances_below(&mut self, map: &Map, map_path: Option<&Path>, target: &str, depth: usize) -> bool {
+        let root = self.project_root.clone();
+        let paths: BTreeSet<PathBuf> = map
+            .nodes
+            .values()
+            .filter_map(|n| match &n.kind {
+                NodeKind::Instance(i) => resolve(&i.path, map_path, root.as_deref()),
+                _ => None,
+            })
+            .collect();
+        if paths.iter().any(|p| crate::live_link::path_key(&crate::live_link::godot_path(p)) == target) {
+            return true;
+        }
+
+        depth < MAX_DEPTH
+            && paths.iter().any(|p| match self.get(p).map.clone() {
+                Some(prefab) => self.instances_below(&prefab, Some(p), target, depth + 1),
+                None => false,
+            })
+    }
+
     /// Refreshes the entry for `path` if the file changed, returns it. A prefab outside the fence is not loaded, nor
     /// handed out when it was loaded before.
     pub fn get(&mut self, path: &Path) -> &PrefabEntry {

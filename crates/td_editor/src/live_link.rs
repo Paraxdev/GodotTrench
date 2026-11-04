@@ -276,11 +276,14 @@ impl LinkState {
 }
 
 pub enum Request {
-    /// `live` is the saved map while live mode syncs it, the session then carries on from the rebuilt scene.
+    /// `live` is the saved map while live mode syncs it, the session then carries on from the rebuilt scene. `users` are
+    /// the open maps that instance the saved file, by path and as shown in the editor, which Godot builds next when its
+    /// addon did not build them for the save.
     MapSaved {
         path: String,
         game_port: Option<u16>,
         live: Option<td_doc::Map>,
+        users: Vec<(String, td_doc::Map)>,
     },
     /// Full build of `map` as shown in the editor. With `live` the session carries on from the built scene.
     Build {
@@ -596,6 +599,19 @@ impl Worker {
         });
     }
 
+    /// A full build of `map` as shown in the editor.
+    fn build(&mut self, path: &str, map: &td_doc::Map) -> Result<Value, String> {
+        let key = path_key(path);
+        self.sessions.remove(&key);
+        let text = td_doc::format::to_string_with_lightmap(map);
+        let reply = self.long_call(json!({ "event": "build", "path": path, "text": text, "force": true }))?;
+        if reply["ok"].as_bool() == Some(true) {
+            self.keep_report(&key, &reply);
+        }
+
+        Ok(reply)
+    }
+
     fn keep_report(&self, key: &str, reply: &Value) {
         if let Some(report) = build_report(reply) {
             self.update(|s| {
@@ -630,34 +646,55 @@ impl Worker {
         }
 
         match request {
-            Request::MapSaved { path, game_port, live } => {
+            Request::MapSaved { path, game_port, live, users } => {
                 let key = path_key(&path);
                 self.sessions.remove(&key);
                 let message = saved_message(&path);
-                let status = match self.long_call(message.clone()) {
+                let reply = self.long_call(message.clone());
+                // An addon that builds the maps using a saved prefab itself counts them in rebuilt.
+                let users = if matches!(&reply, Ok(r) if r["rebuilt"].as_u64().is_some_and(|n| n > 0)) { Vec::new() } else { users };
+                let game = game_status(game_port, &message);
+                let status = match reply {
+                    // A prefab no scene builds itself reaches Godot through the maps that use it.
+                    Ok(reply) if reply["rebuilt"].as_u64() == Some(0) && !users.is_empty() && game.is_empty() => None,
                     Ok(reply) => {
                         self.keep_report(&key, &reply);
-                        rebuilt_status(&reply, &path)
+                        Some(rebuilt_status(&reply, &path))
                     }
-                    Err(e) => format!("Live link: {e}"),
+                    Err(e) => Some(format!("Live link: {e}")),
                 };
-                self.say(status + &game_status(game_port, &message));
+                if let Some(status) = status {
+                    self.say(status + &game);
+                }
+
                 if let Some(map) = live {
                     self.restart(&key, &path, map);
+                }
+
+                let file = |p: &str| p.rsplit('/').next().unwrap_or(p).to_string();
+                // A live session in Godot already builds again when a prefab of its map is saved.
+                let users: Vec<_> = users.into_iter().filter(|(user, _)| !self.sessions.contains_key(&path_key(user))).collect();
+                for (user, map) in users {
+                    let status = match self.build(&user, &map) {
+                        Ok(reply) if reply["ok"].as_bool() != Some(true) => {
+                            format!("Live link: Godot could not build {}: {}", file(&user), reply["error"].as_str().unwrap_or("unexpected reply"))
+                        }
+                        Ok(reply) => match build_report(&reply) {
+                            Some(report) => format!("Live link: Godot rebuilt {}, which uses {}{}", file(&user), file(&path), report.note()),
+                            None => format!("Live link: {}", nothing_built(&reply, &user, false)),
+                        },
+                        Err(e) => format!("Live link: {e}"),
+                    };
+                    self.say(status);
                 }
             }
             Request::Build { path, map, live } => {
                 let key = path_key(&path);
-                self.sessions.remove(&key);
-                let text = td_doc::format::to_string_with_lightmap(&map);
-                let status = match self.long_call(json!({ "event": "build", "path": path, "text": text, "force": true })) {
-                    Ok(reply) if reply["ok"].as_bool() == Some(true) => {
-                        self.keep_report(&key, &reply);
-                        match (reply["rebuilt"].as_u64(), build_report(&reply)) {
-                            (Some(n), Some(report)) => format!("Godot built {n} map node(s) from the map as shown here{}", report.note()),
-                            _ => nothing_built(&reply, &path, false),
-                        }
-                    }
+                let status = match self.build(&path, &map) {
+                    Ok(reply) if reply["ok"].as_bool() == Some(true) => match (reply["rebuilt"].as_u64(), build_report(&reply)) {
+                        (Some(n), Some(report)) => format!("Godot built {n} map node(s) from the map as shown here{}", report.note()),
+                        _ => nothing_built(&reply, &path, false),
+                    },
                     Ok(reply) => format!("Build in Godot failed: {}", reply["error"].as_str().unwrap_or("unexpected reply")),
                     Err(e) => format!("Build in Godot failed: {e}"),
                 };
@@ -1097,6 +1134,53 @@ mod tests {
         link.sync(&map_path, Frame { map, dragging: false, idle: true });
         wait_for("the report", || link.state().report(&map_path).is_some_and(|r| r.missing.is_empty()));
         assert_eq!(link.state().report(&map_path).unwrap().settings, ["res://crypt_settings.tres"]);
+    }
+
+    #[test]
+    fn a_saved_prefab_is_built_through_the_maps_that_use_it() {
+        let dir = std::env::temp_dir().join("td_live_link_test");
+        let (prefab, level) = (dir.join("crate.tdm"), dir.join("level.tdm"));
+        let answers = json!({ "map_saved": { "rebuilt": 0 }, "build": { "missing_classes": ["func_door"] } });
+        let (port, log) = fake_godot_with(godot_path(&level), Duration::ZERO, answers);
+        let link = LiveLink::start(None);
+        link.configure(port, true);
+        wait_for("heartbeat", || link.state().connected);
+        let users = vec![(godot_path(&level), td_doc::Map::new())];
+        link.request(Request::MapSaved { path: godot_path(&prefab), game_port: None, live: None, users });
+        let mut said = Vec::new();
+        wait_for("the build status", || {
+            said.extend(std::iter::from_fn(|| link.poll_status()));
+            said.iter().any(|s| s.starts_with("Live link: Godot rebuilt level.tdm, which uses crate.tdm"))
+        });
+        assert!(said.iter().all(|s| !s.contains("no open scene")), "the prefab itself builds in no scene, which is fine: {said:?}");
+        let builds: Vec<Value> = log.lock().unwrap().iter().filter(|m| m["event"] == "build").cloned().collect();
+        assert_eq!((builds.len(), builds[0]["path"].as_str()), (1, Some(godot_path(&level).as_str())));
+        assert!(builds[0]["text"].as_str().unwrap().contains("trenchdot-map"));
+        assert!(link.state().report(&level).is_some_and(|r| r.missing.contains("func_door")), "the build of the map is reported for the map");
+
+        link.sync(&level, Frame { map: td_doc::Map::new(), dragging: false, idle: true });
+        wait_for("the live session", || events(&log, "live_begin") == 1);
+        let users = vec![(godot_path(&level), td_doc::Map::new())];
+        link.request(Request::MapSaved { path: godot_path(&prefab), game_port: None, live: None, users });
+        link.request(Request::Focus);
+        wait_for("the second save", || events(&log, "focus") == 1);
+        assert_eq!(events(&log, "build"), 1, "Godot's live session builds the map again by itself");
+    }
+
+    #[test]
+    fn an_addon_that_builds_the_users_of_a_saved_prefab_is_left_to_it() {
+        let dir = std::env::temp_dir().join("td_live_link_test");
+        let (prefab, level) = (dir.join("barrel.tdm"), dir.join("yard.tdm"));
+        let (port, log) = fake_godot_with(godot_path(&level), Duration::ZERO, json!({ "map_saved": { "rebuilt": 1 } }));
+        let link = LiveLink::start(None);
+        link.configure(port, true);
+        wait_for("heartbeat", || link.state().connected);
+        let users = vec![(godot_path(&level), td_doc::Map::new())];
+        link.request(Request::MapSaved { path: godot_path(&prefab), game_port: None, live: None, users });
+        link.request(Request::Focus);
+        wait_for("the save", || events(&log, "focus") == 1);
+        assert_eq!(events(&log, "build"), 0);
+        assert!(link.poll_status().is_some_and(|s| s.starts_with("Live link: Godot rebuilt 1 map node(s)")));
     }
 
     fn capture(link: &LiveLink, path: &Path, build: Option<td_doc::Map>) -> Result<Value, String> {

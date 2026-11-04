@@ -1030,16 +1030,35 @@ impl EditorState {
         self.live.sent.remove(path);
         if self.prefs.live_link {
             let game_port = self.prefs.hot_reload.then_some(self.prefs.hot_reload_port);
+            let users = self.maps_using(path);
             match &self.link {
                 Some(link) if self.link_state.connected => {
                     let live = self.live_active().then(|| self.doc.map.clone());
-                    link.request(crate::live_link::Request::MapSaved { path: crate::live_link::godot_path(path), game_port, live })
+                    link.request(crate::live_link::Request::MapSaved { path: crate::live_link::godot_path(path), game_port, live, users })
                 }
                 _ => self.live_link_status = Some(crate::live_link::notify_saved_all(self.prefs.live_link_port, game_port, path)),
             }
         }
 
         Ok(())
+    }
+
+    /// The maps in other tabs that Godot shows and that instance the file at `path`, directly or through other prefabs,
+    /// by Godot path and as shown here. None in Restricted Mode, which has Godot build saved files only.
+    fn maps_using(&mut self, path: &Path) -> Vec<(String, td_doc::Map)> {
+        let mut out = Vec::new();
+        if self.restricted() {
+            return out;
+        }
+
+        for tab in &self.tabs {
+            let Some(tab_path) = tab.doc.path.as_deref().filter(|p| self.link_state.has_map(p)) else { continue };
+            if self.prefabs.instances(&tab.doc.map, Some(tab_path), path) {
+                out.push((crate::live_link::godot_path(tab_path), tab.doc.map.clone()));
+            }
+        }
+
+        out
     }
 
     /// Picks up the asynchronous live link result, if one arrived.
@@ -1525,6 +1544,56 @@ mod tests {
             Some("Godot has no definition for func_door, it shows a plain node. Install the Gameplay entities pack or add the class to the map settings FGD"),
             "my_lamp is no longer in the map"
         );
+    }
+
+    #[test]
+    fn saving_a_prefab_has_godot_build_the_open_maps_that_use_it() {
+        let dir = std::env::temp_dir().join(format!("td_prefab_users_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let instance = |path: &str| {
+            td_doc::NodeKind::Instance(td_doc::map::Instance {
+                path: path.into(),
+                origin: Default::default(),
+                angles: Default::default(),
+                fixup: String::new(),
+            })
+        };
+        let mut nest = td_doc::Map::new();
+        let layer = nest.default_layer();
+        nest.insert(layer, instance("crate.tdm"));
+        format::save(&nest, &dir.join("nest.tdm")).unwrap();
+
+        let mut state = EditorState::new(Prefs::default());
+        state.link = Some(crate::live_link::LiveLink::idle());
+        let key = |name: &str| crate::live_link::path_key(&crate::live_link::godot_path(&dir.join(name)));
+        state.link_state = crate::live_link::LinkState {
+            connected: true,
+            maps: [(key("direct.tdm"), 1), (key("nested.tdm"), 1), (key("other.tdm"), 1)].into(),
+            ..Default::default()
+        };
+        for (name, uses) in [("direct.tdm", "crate.tdm"), ("nested.tdm", "nest.tdm"), ("other.tdm", "barrel.tdm"), ("hidden.tdm", "crate.tdm")] {
+            let mut doc = Document::new();
+            let layer = doc.map.default_layer();
+            doc.map.insert(layer, instance(uses));
+            doc.path = Some(dir.join(name));
+            state.open_tab(doc);
+        }
+
+        state.open_tab(Document::new());
+        state.save_map(&dir.join("crate.tdm")).unwrap();
+        let requests = state.link.as_ref().unwrap().take_requests();
+        let [crate::live_link::Request::MapSaved { users, .. }] = &requests[..] else { panic!("one save request") };
+        let names: Vec<&str> = users.iter().map(|(p, _)| p.rsplit('/').next().unwrap()).collect();
+        assert_eq!(names, ["direct.tdm", "nested.tdm"], "not a map using another prefab, nor one Godot does not show");
+
+        state.game.project_root = Some(dir.clone());
+        assert!(state.restricted());
+        state.save_map(&dir.join("crate.tdm")).unwrap();
+        let requests = state.link.as_ref().unwrap().take_requests();
+        let [crate::live_link::Request::MapSaved { users, .. }] = &requests[..] else { panic!("one save request") };
+        assert!(users.is_empty(), "Restricted Mode does not have Godot build maps from the editor");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

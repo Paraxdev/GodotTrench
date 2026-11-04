@@ -2321,6 +2321,37 @@ fn live_mode_tells_about_classes_godot_lacks() {
     assert!(issues["issues"].as_array().unwrap().iter().any(|i| i["code"] == "godot_missing_class"), "{issues}");
 }
 
+/// Saving a prefab has the connected Godot build the open maps that instance it, from the map as shown in the editor.
+#[test]
+#[ignore]
+fn saving_a_prefab_rebuilds_the_maps_that_use_it() {
+    let dir = linked_project("godot_prefab_users", json!([]));
+    let (prefab, level) = (dir.join("maps/crate.tdm"), dir.join("maps/level.tdm"));
+    let answers = json!({ "map_saved": { "rebuilt": 0 }, "build": { "rebuilt": 1 } });
+    let (godot, sent) = fake_godot_editor_with(&dir, &[&level], answers);
+    let ed = Editor::launch_with("godot_prefab_users", &["--project", dir.to_str().unwrap()]);
+    ed.call("set_editor", json!({ "live_link_port": godot }));
+    wait_state(&ed, "the live link", |s| s["godot"]["project_open"] == true);
+
+    ed.box_brush([0.0, 0.0, 0.0], [32.0, 32.0, 32.0]);
+    ed.call("map_file", json!({ "op": "save", "path": prefab }));
+    ed.call("run_action", json!({ "action": "new_tab" }));
+    ed.call("run_action", json!({ "action": "insert_prefab", "args": { "path": prefab, "origin": [128, 0, 0] } }));
+    ed.call("map_file", json!({ "op": "save", "path": level }));
+    assert!(sent_events(&sent, "build").is_empty(), "nothing instances the level");
+
+    ed.call("map_file", json!({ "op": "open_tab", "path": prefab }));
+    ed.box_brush([0.0, 32.0, 0.0], [16.0, 48.0, 16.0]);
+    ed.call("run_action", json!({ "action": "save" }));
+    let state = wait_state(&ed, "the build", |s| s["status"].as_str().is_some_and(|t| t.contains("which uses")));
+    assert_eq!(state["status"], "Live link: Godot rebuilt level.tdm, which uses crate.tdm");
+    let builds = sent_events(&sent, "build");
+    assert_eq!(builds.len(), 1, "{builds:?}");
+    assert!(builds[0]["path"].as_str().unwrap().ends_with("maps/level.tdm"), "{}", builds[0]["path"]);
+    let text = builds[0]["text"].as_str().unwrap();
+    assert!(text.contains("trenchdot-map") && text.contains("crate.tdm"), "the level as shown, with its instance: {text}");
+}
+
 /// `screenshot {source: godot}` asks the connected Godot editor for a picture of the map as shown in TrenchDot and
 /// returns it with what Godot logged, and says what is missing when it cannot.
 #[test]
