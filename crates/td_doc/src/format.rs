@@ -37,6 +37,8 @@ pub enum FormatError {
 pub struct Loaded {
     pub map: Map,
     pub problems: Vec<String>,
+    /// The file was written under the format's old name, saving writes it under the current one.
+    pub old_format: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -401,7 +403,7 @@ pub fn from_str(text: &str) -> Result<Map, FormatError> {
 /// Reads a map file of either kind, told apart by its first bytes.
 pub fn from_bytes(bytes: &[u8]) -> Result<Loaded, FormatError> {
     let (value, mut problems, unknown, lightmap) = file_value(bytes)?;
-    let mut map = from_value(value)?;
+    let (mut map, old_format) = read_value(value)?;
     if let Some(lightmap) = lightmap {
         map.lightmap = crate::lightmap::Lightmap::from_json(&lightmap).map(std::sync::Arc::new);
         if map.lightmap.is_none() {
@@ -410,7 +412,7 @@ pub fn from_bytes(bytes: &[u8]) -> Result<Loaded, FormatError> {
     }
 
     map.unknown_chunks = unknown.into_iter().filter(|c| c.tag != crate::lightmap::TAG).collect();
-    Ok(Loaded { map, problems })
+    Ok(Loaded { map, problems, old_format })
 }
 
 const LIGHTMAP_DROPPED: &str = "the baked lighting is damaged or from a newer editor and was dropped, bake the lighting again";
@@ -463,9 +465,15 @@ pub fn file_to_binary(bytes: &[u8]) -> Result<(Vec<u8>, Vec<String>), FormatErro
     Ok((out, problems))
 }
 
-fn from_value(mut value: Value) -> Result<Map, FormatError> {
+fn from_value(value: Value) -> Result<Map, FormatError> {
+    read_value(value).map(|(map, _)| map)
+}
+
+/// The map and whether its format name was the old one.
+fn read_value(mut value: Value) -> Result<(Map, bool), FormatError> {
     let format = value.get("format").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-    if format != FORMAT_NAME {
+    let old_format = format == crate::legacy::MAP_FORMAT;
+    if format != FORMAT_NAME && !old_format {
         return Err(FormatError::WrongFormat(format));
     }
 
@@ -502,7 +510,7 @@ fn from_value(mut value: Value) -> Result<Map, FormatError> {
         map.add_layer("Default");
     }
 
-    Ok(map)
+    Ok((map, old_format))
 }
 
 pub fn load(path: &Path) -> Result<Loaded, FormatError> {
@@ -512,7 +520,7 @@ pub fn load(path: &Path) -> Result<Loaded, FormatError> {
 /// Writes atomically through a temp file so a crash never leaves a truncated map. A `.json` path gets the readable
 /// JSON layout for hand editing, anything else the binary container.
 pub fn save(map: &Map, path: &Path) -> Result<(), FormatError> {
-    let tmp = path.with_extension("tdm.tmp");
+    let tmp = path.with_extension(format!("{}.tmp", crate::legacy::map_ext(path)));
     // Whatever sits at the temp path, a link included, is replaced rather than written through.
     if tmp.symlink_metadata().is_ok() {
         std::fs::remove_file(&tmp)?;
@@ -958,6 +966,37 @@ mod tests {
         std::fs::write(path.with_extension("tdm.tmp"), "left by a crash").unwrap();
         save(&sample(), &path).unwrap();
         assert!(!path.with_extension("tdm.tmp").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_map_under_the_old_format_name_loads_and_saves_under_the_current_one() {
+        let mut value: Value = serde_json::from_str(&file_to_json(&to_bytes(&sample()).unwrap()).unwrap().0).unwrap();
+        assert!(!from_bytes(&to_bytes(&sample()).unwrap()).unwrap().old_format);
+        value["format"] = crate::legacy::MAP_FORMAT.into();
+        let text = value.to_string();
+        let loaded = from_bytes(text.as_bytes()).unwrap();
+        assert!(loaded.old_format && loaded.problems.is_empty());
+        assert_eq!(loaded.map.nodes.len(), sample().nodes.len());
+        assert_eq!(from_str(&text).unwrap().nodes.len(), sample().nodes.len());
+
+        let binary = crate::binary::encode(value, &[]).unwrap();
+        assert!(from_bytes(&binary).unwrap().old_format, "the container did not change, only the name in it");
+        let (saved, _) = file_json_value(&to_bytes(&loaded.map).unwrap()).unwrap();
+        assert_eq!(saved["format"], FORMAT_NAME);
+        assert!(matches!(from_str(r#"{"format":"other","version":1}"#), Err(FormatError::WrongFormat(_))));
+    }
+
+    #[test]
+    fn an_old_map_keeps_its_extension_for_the_temp_file() {
+        let dir = std::env::temp_dir().join(format!("td_save_old_ext_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("a.{}", crate::legacy::MAP_EXTS[1]));
+        let tmp = path.with_extension(format!("{}.tmp", crate::legacy::MAP_EXTS[1]));
+        std::fs::write(&tmp, "left by a crash").unwrap();
+        save(&sample(), &path).unwrap();
+        assert!(!tmp.exists() && !path.with_extension("tdm.tmp").exists());
+        assert_eq!(load(&path).unwrap().map.nodes.len(), sample().nodes.len());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

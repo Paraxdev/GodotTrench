@@ -122,7 +122,7 @@ impl PrefabCache {
         let stale = self.entries.get(path).is_none_or(|e| e.modified != modified);
         if stale {
             let entry = match format::load(path) {
-                Ok(format::Loaded { map, problems }) => {
+                Ok(format::Loaded { map, problems, .. }) => {
                     for p in problems {
                         eprintln!("prefab {}: {p}", path.display());
                         self.problems.push(format!("Prefab {} is damaged: {p}", path.display()));

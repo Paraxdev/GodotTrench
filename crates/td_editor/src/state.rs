@@ -1531,7 +1531,7 @@ pub fn absolute(path: &Path) -> PathBuf {
 /// Loads a map, turning an autosave into an unsaved recovery of the map it belongs to.
 pub fn load_document(path: &Path) -> Result<Document, String> {
     let path = &absolute(path);
-    let format::Loaded { map, problems } = format::load(path).map_err(|e| e.to_string())?;
+    let format::Loaded { map, problems, .. } = format::load(path).map_err(|e| e.to_string())?;
     for p in &problems {
         eprintln!("{}: {p}", path.display());
     }

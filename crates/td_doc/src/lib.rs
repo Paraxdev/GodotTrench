@@ -6,6 +6,7 @@ pub mod entity;
 pub mod format;
 pub mod issues;
 mod json_fmt;
+pub mod legacy;
 pub mod lightmap;
 pub mod linked;
 pub mod map;
