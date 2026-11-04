@@ -29,6 +29,7 @@ func run(runner: SceneTree) -> void:
 	test_hot_reload_uid()
 	test_csharp_initializers()
 	test_definitions()
+	test_pack_scripts_by_path()
 	await test_light_fixture()
 	await test_prop_model_node()
 	for file in [ENEMY, VARIANTS]:
@@ -497,6 +498,30 @@ public partial class CsInit : Node3D
 
 static func near(a: float, b: float) -> bool:
 	return absf(a - b) < 0.001
+
+## Godot only knows a class_name after its filesystem scan, and a script that uses another pack class by name before
+## then fails to parse for good. Scripts that use each other by path compile whenever they load.
+func test_pack_scripts_by_path() -> void:
+	print("- pack scripts use other pack scripts by path")
+	var dir := TrenchDotEntityPack.TEMPLATE.path_join("scripts")
+	var named := RegEx.create_from_string("(?m)^class_name (\\w+)")
+	var classes := {}
+	for f in DirAccess.get_files_at(dir):
+		var found := named.search(FileAccess.get_file_as_string(dir.path_join(f)))
+		if found:
+			classes[found.get_string(1)] = f
+	check(classes.has("TDTrigger") and classes.has("TDMath"), "the pack scripts have class names, got %d" % classes.size())
+	var word := RegEx.create_from_string("\\bGT\\w+")
+	for f in DirAccess.get_files_at(dir):
+		var used := {}
+		for line in FileAccess.get_file_as_string(dir.path_join(f)).split("\n"):
+			if line.strip_edges().begins_with("#") or line.begins_with("class_name"):
+				continue
+			for m in word.search_all(line):
+				if classes.get(m.get_string(), f) != f:
+					used[m.get_string()] = true
+		check(used.is_empty(), "%s uses %s by path, not by class_name" % [f, ", ".join(used.keys())])
+	check(FileAccess.get_file_as_string(dir.path_join("td_hurt.gd")).contains('extends "td_trigger.gd"'), "trigger_hurt extends the trigger by path")
 
 func test_definitions() -> void:
 	print("- trigger definitions and the demo lights")
