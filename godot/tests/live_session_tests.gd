@@ -25,6 +25,7 @@ func run(runner: SceneTree) -> void:
 	await test_restart_after_live_edits()
 	await test_definitions_change_during_session()
 	await test_live_rebuild_finishes()
+	await test_unresolved_classes()
 
 ## A map node in the tree, built from the test map's JSON.
 func _map() -> FuncGodotMap:
@@ -207,5 +208,45 @@ func test_live_rebuild_finishes() -> void:
 	check(box != null and t.near(box.size, Vector3(2, 4, 2)) and t.collect(box, func(n): return n is MeshInstance3D).is_empty(), "a rebuilt reflection probe is fitted to its brush, got %s" % (box.size if box else null))
 	var warned := Array(collector.lines).filter(func(l: String) -> bool: return l.contains("no definition") and l.contains("td_tests_live_unknown"))
 	check(warned.size() == 1, "a rebuilt entity without a definition is reported, got %s" % [collector.lines])
+	map.queue_free()
+	await t.process_frame
+
+func test_unresolved_classes() -> void:
+	print("- live sessions name the classes they build without a definition")
+	var text := FileAccess.get_file_as_string(MAP_JSON)
+	var map := _map()
+	var session := _session(map)
+	_without_pack(session.begin.bind(text))
+	check(session.take_unresolved() == ["func_button", "func_door", "trigger_area"], "a session that builds without the pack names its classes")
+	check(session.take_unresolved().is_empty(), "and only once")
+	_without_pack(session.begin.bind(text))
+	check(session.take_unresolved() == ["func_button", "func_door", "trigger_area"], "and so does one that keeps the scene built without it")
+	session.begin(text)
+	check(session.take_unresolved().is_empty(), "a build with every definition names none")
+	session.begin(text)
+	check(session.take_unresolved().is_empty(), "and neither does a session that keeps the scene")
+	var unknown := { "id": 52, "type": "entity", "classname": "td_tests_live_unknown", "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "properties": {} }
+	session.apply([{ "op": "set", "id": 52, "parent": 1, "index": 0, "node": unknown }, { "op": "set", "id": 15, "parent": 1, "index": 8, "node": session._nodes[15].duplicate(true) }])
+	check(session.take_unresolved() == ["td_tests_live_unknown"], "an edit names the classes it queues without a definition before they are built")
+	_settle(session)
+	session.apply([{ "op": "translate", "ids": [15], "offset": [32.0, 0.0, 0.0] }])
+	check(session.take_unresolved().is_empty(), "an edit that rebuilds nothing names nothing")
+
+	var reply := TrenchDotEditorIntegration.with_unresolved({ "ok": true }, session)
+	check(not reply.has("unresolved") and reply.get("settings") == [SETTINGS], "a reply without such classes has no unresolved key and names the map settings, got %s" % reply)
+	session.apply([{ "op": "set", "id": 52, "parent": 1, "index": 0, "node": unknown }])
+	reply = TrenchDotEditorIntegration.with_unresolved({ "ok": true }, session)
+	check(reply.get("unresolved") == ["td_tests_live_unknown"], "and one with them names them, got %s" % reply)
+
+	_settle(session)
+	_without_pack(func() -> void:
+		session.check_definitions()
+		_settle(session))
+	check(not TrenchDotBuild.nodes_by_id(map).get(DOOR) is TDDoor, "a full build the session starts by itself builds without the pack")
+	session.apply([{ "op": "translate", "ids": [15], "offset": [32.0, 0.0, 0.0] }])
+	check(session.take_unresolved().is_empty(), "and the next edit does not name its classes")
+	var prefab := { "id": 70, "type": "instance", "path": "prefab.tdm", "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0] }
+	session.apply([{ "op": "set", "id": 70, "parent": 1, "index": 0, "node": prefab }])
+	check(session.take_unresolved() == ["td_tests_live_unknown"], "an edit that queues a full build names the classes of every entity of the map")
 	map.queue_free()
 	await t.process_frame

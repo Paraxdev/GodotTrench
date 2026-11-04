@@ -163,7 +163,16 @@ class Runner extends Node:
 		# Note: only saves through the editor's own save path emit resource_saved, ResourceSaver.save does not.
 		link.plugin.resource_saved.emit(core)
 		check(await until(func() -> bool: return door() != null and not door() is TDDoor), "a saved resource makes the session build with the definitions it has now, got %s" % door())
+		var nudge := { "ops": [{ "op": "translate", "ids": [15], "offset": [0.0, 0.0, 0.0] }] }
+		reply = await live("live_delta", nudge)
+		check(reply.get("ok") == true and not reply.has("unresolved"), "a live reply leaves out the classes of a build the session started by itself, got %s" % reply)
+		var session: TrenchDotLiveSession = link._sessions.get(TrenchDotEditorIntegration.path_key(ProjectSettings.globalize_path(MAP_FILE)))
+		var door_edit := { "ops": [{ "op": "set", "id": 9, "parent": 1, "index": 9, "node": session._nodes[9].duplicate(true) }] }
+		reply = await live("live_delta", door_edit)
+		check(reply.get("unresolved") == ["func_door"], "and names those of the entities it rebuilds itself, got %s" % reply)
 		core.pack_fgd_path = installed
 		link.plugin.resource_saved.emit(core)
 		check(await until(func() -> bool: return door() is TDDoor), "and again once the pack is back, got %s" % door())
+		reply = await live("live_delta", nudge)
+		check(reply.get("ok") == true and not reply.has("unresolved"), "after which a live reply names none, got %s" % reply)
 		await live("live_end")
