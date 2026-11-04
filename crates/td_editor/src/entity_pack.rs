@@ -263,11 +263,17 @@ pub fn install_in_project(state: &mut crate::state::EditorState) -> Result<Repor
     Ok(report)
 }
 
-/// The pack's classnames that the project's maps use, for a project that has not installed the pack.
+/// The pack's classnames that the project's maps use, for a project that has not installed the pack. Maps are read as
+/// maps, the binary files the editor saves included, and a file that does not load is searched as text.
 pub fn used_by_maps(root: &Path) -> BTreeSet<String> {
     let pack = GameConfig::gameplay_pack();
     let mut used = BTreeSet::new();
     for map in crate::validate::project_maps(root) {
+        if let Ok(loaded) = td_doc::format::load(&map) {
+            used.extend(loaded.map.entities().filter(|(_, e)| in_pack(&e.classname)).map(|(_, e)| e.classname.clone()));
+            continue;
+        }
+
         let Ok(text) = std::fs::read_to_string(&map) else { continue };
         for def in &pack.entities {
             if !used.contains(&def.classname) && text.contains(&format!("\"{}\"", def.classname)) {
@@ -491,5 +497,15 @@ mod tests {
         write(&dir.path().join(".godot/b.tdm"), r#""trigger_once""#);
         assert_eq!(used_by_maps(dir.path()).into_iter().collect::<Vec<_>>(), ["func_door"]);
         assert!(in_pack("func_door") && !in_pack("light") && !in_pack("worldspawn"));
+
+        let mut map = td_doc::Map::new();
+        let layer = map.default_layer();
+        for class in ["trigger_once", "light", "my_door"] {
+            map.insert(layer, td_doc::NodeKind::Entity(td_doc::Entity::new(class)));
+        }
+
+        td_doc::format::save(&map, &dir.path().join("maps/saved.tdm")).unwrap();
+        assert!(!std::fs::read(dir.path().join("maps/saved.tdm")).unwrap().starts_with(b"{"), "the editor saves the binary container");
+        assert_eq!(used_by_maps(dir.path()).into_iter().collect::<Vec<_>>(), ["func_door", "trigger_once"]);
     }
 }
