@@ -25,24 +25,12 @@ Maps are saved as `.tdm` and built into Godot scenes by the [TrenchDot addon](ht
   </tr>
 </table>
 
-the showcase maps above are rendered in Godot and were built entirely through the editor's MCP tools, see [examples/mcp](examples/mcp).
+the showcase maps above are rendered in Godot and were built entirely with the editor's scripting interface, see [examples/mcp](examples/mcp).
 
 ![Live mode: edits in TrenchDot show up in the Godot editor before saving](docs/screenshots/TrenchDot-demo-live-view.gif)
 
 work in live mode to instantly see changes before saving 
 [Live mode](docs/godot/live.md).
-
-# Disclosure
-This project makes use of AI / LLMs, specifically Claude.
-Expect bugs and weird shenanigans, feel free to open issues or pull requests with fixes.
-
-If you want to use AI to create pull requests you must ensure it isn't sloppy (like heavy em dash use, useless and unnecessary comments and a heavy use of emojis)
-
-by creating a pull request you vouch for the changes the AI made, and if it causes any faults you own the blame.
-
-you must pass the whole test suite and preferably write tests for the feature you changed or added.
-
-agents working on the repo should follow [AGENTS.md](AGENTS.md), it lists the checks, style and gotchas.
 
 ## Download
 
@@ -58,7 +46,6 @@ to use a map in Godot, add a `FuncGodotMap` node, point it at a `.tdm` file and 
 * scatter trees, rocks and foliage onto chosen surfaces, blend materials and terrain layers
 * doors, lifts, buttons, triggers, spawners and logic entities with Hammer style I/O, plus C# entities
 * live link to Godot with a live mode that shows edits before saving, lit preview, prefabs, displacements and decals
-* an MCP server so agents and scripts can build maps too
 
 ## Docs
 
@@ -69,9 +56,25 @@ The documentation is at **[paraxdev.github.io/TrenchDot](https://paraxdev.github
 * [Shortcuts](docs/editor/shortcuts.md)
 * [Building maps in Godot](docs/godot/building.md)
 * [How entity I/O works](docs/gameplay/io.md)
-* [MCP server](docs/mcp.md)
 * [Development: building, tests, CI](docs/development.md)
 * [The Godot addon](https://github.com/Paraxdev/trenchdot_func)
+
+# Advanced
+
+the editor has an optional MCP server so agents and scripts can build maps too, its settings are under Advanced in Preferences. See the [MCP server docs](docs/mcp.md).
+
+# Contributing
+
+This project makes use of AI / LLMs, specifically Claude.
+Expect bugs and weird shenanigans, feel free to open issues or pull requests with fixes.
+
+If you want to use AI to create pull requests you must ensure it isn't sloppy (like heavy em dash use, useless and unnecessary comments and a heavy use of emojis)
+
+by creating a pull request you vouch for the changes the AI made, and if it causes any faults you own the blame.
+
+you must pass the whole test suite and preferably write tests for the feature you changed or added.
+
+agents working on the repo should follow [AGENTS.md](AGENTS.md), it lists the checks, style and gotchas.
 
 # Thanks
 
