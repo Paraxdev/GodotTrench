@@ -24,6 +24,7 @@ func run(runner: SceneTree) -> void:
 	test_csharp_definitions_count()
 	await test_restart_after_live_edits()
 	await test_definitions_change_during_session()
+	await test_live_rebuild_finishes()
 
 ## A map node in the tree, built from the test map's JSON.
 func _map() -> FuncGodotMap:
@@ -174,5 +175,37 @@ func test_definitions_change_during_session() -> void:
 	link.free()
 	session._clear_pending()
 	check(TrenchDotBuild.nodes_by_id(map).get(0) == world, "checking alone builds nothing")
+	map.queue_free()
+	await t.process_frame
+
+func test_live_rebuild_finishes() -> void:
+	print("- entities a live session rebuilds get the steps after assembly of a full build")
+	var map := _map()
+	var session := _session(map)
+	session.begin(FileAccess.get_file_as_string(MAP_JSON))
+	var gi := LightmapGI.new()
+	gi.name = TrenchDotLightmap.NODE_NAME
+	map.add_child(gi)
+	var lamp: Dictionary = session._nodes[15].duplicate(true)
+	lamp["properties"]["bake_mode"] = "realtime"
+	var probe := { "id": 50, "type": "entity", "classname": "env_reflection_probe", "properties": {} }
+	var unknown := { "id": 52, "type": "entity", "classname": "td_tests_live_unknown", "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "properties": {} }
+	var collector := TrenchDotCapture.Collector.new()
+	OS.add_logger(collector)
+	session.apply([
+		{ "op": "set", "id": 15, "parent": 1, "index": 8, "node": lamp },
+		{ "op": "set", "id": 50, "parent": 1, "index": 0, "node": probe },
+		{ "op": "set", "id": 51, "parent": 50, "index": 0, "node": t.box_node(51, Vector3(0, 0, 0), Vector3(64, 128, 64)) },
+		{ "op": "set", "id": 52, "parent": 1, "index": 0, "node": unknown },
+	])
+	_settle(session)
+	OS.remove_logger(collector)
+	var by_id := TrenchDotBuild.nodes_by_id(map)
+	var light := by_id.get(15) as Light3D
+	check(light != null and light.light_bake_mode == Light3D.BAKE_DISABLED, "a rebuilt light in a baked scene takes its bake mode, got %s" % (light.light_bake_mode if light else null))
+	var box := by_id.get(50) as ReflectionProbe
+	check(box != null and t.near(box.size, Vector3(2, 4, 2)) and t.collect(box, func(n): return n is MeshInstance3D).is_empty(), "a rebuilt reflection probe is fitted to its brush, got %s" % (box.size if box else null))
+	var warned := Array(collector.lines).filter(func(l: String) -> bool: return l.contains("no definition") and l.contains("td_tests_live_unknown"))
+	check(warned.size() == 1, "a rebuilt entity without a definition is reported, got %s" % [collector.lines])
 	map.queue_free()
 	await t.process_frame
