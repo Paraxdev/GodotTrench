@@ -10,7 +10,7 @@ automatically. The server is off until you start it, and it only listens on your
 
 | Transport | How to start it |
 | --- | --- |
-| HTTP | Launch the editor with `--mcp-http` for port 7841, or `--mcp-http=PORT` for another port. To have it start every time, go to *File > Preferences*, tick *enable on startup* next to *MCP server (HTTP, localhost)*, set the port beside it and restart |
+| HTTP | Launch the editor with `--mcp-http` for port 7841, or `--mcp-http=PORT` for another port. To have it start every time, go to *File > Preferences*, open *Advanced*, tick *enable on startup* next to *MCP server (HTTP, localhost)*, set the port beside it and restart |
 | stdio | Launch with `--mcp`. The client starts the editor itself for each session and talks to it over standard input and output |
 
 Pick HTTP when you keep the editor open and work in it yourself while an agent helps. Pick stdio when the client
@@ -31,7 +31,7 @@ Started the editor on another port? Set `TRENCHDOT_MCP_URL` and
 ### The HTTP token
 
 Any program on your computer can reach the HTTP server, and so can other people signed in to it. To keep them out,
-tick *Require a token* in the MCP part of *File > Preferences*. From the next request on, the server only answers
+tick *Require a token* under *Advanced* in *File > Preferences*. From the next request on, the server only answers
 requests that send its token as `Authorization: Bearer <token>`. The command in Preferences then includes the token,
 use it instead of `.mcp.json`. stdio needs no token, only the client that started the editor can talk to it.
 

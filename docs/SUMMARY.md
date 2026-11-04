@@ -79,6 +79,6 @@
         * [JSON layout](format/json.md)
     * [Development](development.md)
     * [The Godot addon](https://github.com/Paraxdev/trenchdot_func#readme)
-* MCP
+* Advanced
     * [MCP server](mcp.md)
     * [MCP scripts](mcp-scripts.md)

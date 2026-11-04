@@ -31,9 +31,9 @@ For building it from source, visit [Development](development.md).
 
 <div class="td-mcp" markdown>
 
-## MCP
+## Advanced: MCP
 
-The editor can also be driven from scripts or AI agents. The [MCP server](mcp.md) page explains how to connect one and
+Optional, and not needed to make maps. The editor can also be driven from scripts or AI agents. The [MCP server](mcp.md) page explains how to connect one and
 which tools it offers.
 
 </div>
