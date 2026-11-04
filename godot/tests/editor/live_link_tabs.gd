@@ -1,7 +1,7 @@
 @tool
 extends Node
 ## Checks in a headless Godot editor that the live link follows scene tabs as they are opened, closed, reloaded and
-## switched. res://tests/live_link_tests.gd starts it with
+## switched, and that an editor build names entity scripts without @tool. res://tests/live_link_tests.gd starts it with
 ## godot --headless --editor --path godot res://tests/editor/live_link_tabs.tscn -- --td-live-link-tabs
 ## and it does nothing when the scene is opened any other way.
 
@@ -9,6 +9,7 @@ const FLAG := "--td-live-link-tabs"
 const SELF := "res://tests/editor/live_link_tabs.tscn"
 const MAP_SCENE := "res://tests/editor/live_link_map.tscn"
 const MAP_FILE := "res://tests/maps/basic.tdm"
+const NOT_TOOL := "res://tests/helpers/not_tool_entity.gd"
 
 func _ready() -> void:
 	if not Engine.is_editor_hint() or not FLAG in OS.get_cmdline_user_args():
@@ -102,6 +103,28 @@ class Runner extends Node:
 		await show_scene(MAP_SCENE)
 		await frames(30)
 		check(builds[0] == 1, "a missed save is built once, %d builds" % builds[0])
+		_check_tool_scripts()
 
 		print("%d failures" % failures)
 		get_tree().quit(1 if failures > 0 else 0)
+
+	func _check_tool_scripts() -> void:
+		var def := FuncGodotFGDPointClass.new()
+		def.classname = "td_tests_not_tool"
+		def.node_class = "Node3D"
+		def.script_class = load(NOT_TOOL)
+		var fgd := FuncGodotFGDFile.new()
+		fgd.base_fgd_files = [load("res://demo/demo_fgd.tres")]
+		fgd.entity_definitions = [def]
+		var settings: FuncGodotMapSettings = load("res://demo/demo_map_settings.tres").duplicate()
+		settings.entity_fgd = fgd
+		var map := FuncGodotMap.new()
+		map.map_settings = settings
+		map.local_map_file = MAP_FILE
+		var entity := { "id": 2, "type": "entity", "classname": "td_tests_not_tool", "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "properties": {} }
+		var report := map.build_from_text(JSON.stringify({ "format": "trenchdot-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": [entity] }] }))
+		var lines := Array(report["warnings"]).filter(func(w: String) -> bool: return w.contains(NOT_TOOL) and w.contains("has no @tool"))
+		check(lines.size() == 1, "an editor build names the entity script without @tool, got %s" % [report["warnings"]])
+		var built := map.find_children("*td_tests_not_tool*", "", true, false)
+		check(built.size() == 1 and not built[0].has_meta(&"applied"), "and does not call its placeholder, got %s" % [built])
+		map.free()
