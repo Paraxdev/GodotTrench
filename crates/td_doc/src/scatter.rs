@@ -30,19 +30,34 @@ impl ScatterKind {
 #[serde(rename_all = "snake_case")]
 pub enum ScatterCollision {
     None,
+    Box,
     #[default]
     Convex,
+    Decomposition,
     Trimesh,
 }
 
 impl ScatterCollision {
-    pub const ALL: [ScatterCollision; 3] = [ScatterCollision::None, ScatterCollision::Convex, ScatterCollision::Trimesh];
+    pub const ALL: [ScatterCollision; 5] =
+        [ScatterCollision::None, ScatterCollision::Box, ScatterCollision::Convex, ScatterCollision::Decomposition, ScatterCollision::Trimesh];
 
     pub fn label(&self) -> &'static str {
         match self {
             ScatterCollision::None => "none",
+            ScatterCollision::Box => "box",
             ScatterCollision::Convex => "convex",
+            ScatterCollision::Decomposition => "decomposition",
             ScatterCollision::Trimesh => "trimesh",
+        }
+    }
+
+    pub fn tooltip(&self) -> &'static str {
+        match self {
+            ScatterCollision::None => "No collision",
+            ScatterCollision::Box => "One box around each instance",
+            ScatterCollision::Convex => "One convex hull around each instance",
+            ScatterCollision::Decomposition => "Several convex hulls per instance that follow concave models, slower to build",
+            ScatterCollision::Trimesh => "Every face of the model, exact but the most expensive",
         }
     }
 

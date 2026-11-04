@@ -755,7 +755,7 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
         ui.label("Collision");
         ui.horizontal(|ui| {
             for c in ScatterCollision::ALL {
-                changed |= ui.selectable_value(&mut edited.collision, c, c.label()).changed();
+                changed |= ui.selectable_value(&mut edited.collision, c, c.label()).on_hover_text(c.tooltip()).changed();
             }
         });
         ui.end_row();

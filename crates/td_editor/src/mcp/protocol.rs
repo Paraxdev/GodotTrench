@@ -475,7 +475,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "radius": { "type": "number" }, "density": { "type": "number" }, "slope": numbers(), "height": numbers(),
                 "falloff": { "type": "number" }, "amount": { "type": "number" }, "seed": { "type": "integer" }, "only_targets": { "type": "boolean" },
                 "exposed_only": { "type": "boolean" }, "clearance": { "type": "number" },
-                "collision": { "type": "string", "enum": ["none", "convex", "trimesh"] }, "cast_shadows": { "type": "boolean" }, "visibility_range": { "type": "number" },
+                "collision": { "type": "string", "enum": ["none", "box", "convex", "decomposition", "trimesh"] }, "cast_shadows": { "type": "boolean" }, "visibility_range": { "type": "number" },
                 "output": { "type": "string", "enum": ["set", "entities"], "description": "paint into a scatter set (default) or place one point entity per instance" },
                 "overwrite": { "type": "boolean", "description": "install_models replaces files already there" },
                 "chunk_size": { "type": "number" }, "material": { "type": "string" }, "item": { "type": "integer" }

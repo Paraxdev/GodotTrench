@@ -853,6 +853,20 @@ mod tests {
     }
 
     #[test]
+    fn scatter_box_and_decomposition_collision_round_trip() {
+        let m = Map::new();
+        let layer = m.default_layer();
+        let mut v = to_value(&m);
+        for (name, collision) in [("box", crate::scatter::ScatterCollision::Box), ("decomposition", crate::scatter::ScatterCollision::Decomposition)] {
+            v["layers"][0]["children"] = serde_json::json!([{ "id": 50, "type": "scatter", "name": "s", "kind": "props", "items": [], "collision": name }]);
+            let back = from_str(&v.to_string()).unwrap();
+            let id = back.get(layer).unwrap().children[0];
+            assert_eq!(back.scatter(id).unwrap().collision, collision);
+            assert_eq!(to_value(&back)["layers"][0]["children"][0]["collision"], name);
+        }
+    }
+
+    #[test]
     fn scatter_missing_settings_match_a_new_set() {
         let m = Map::new();
         let layer = m.default_layer();
