@@ -64,6 +64,7 @@ func _initialize() -> void:
 	test_bbmodel()
 	test_default_fgd()
 	test_entity_pack()
+	test_resource_scripts_without_static_vars()
 	test_clashes()
 	test_build_report()
 	test_map_resource_paths()
@@ -742,6 +743,26 @@ func test_entity_pack() -> void:
 			DirAccess.remove_absolute(to.path_join(dir).path_join(f))
 		DirAccess.remove_absolute(to.path_join(dir))
 	DirAccess.remove_absolute(to)
+
+func test_resource_scripts_without_static_vars() -> void:
+	print("- addon Resource classes keep no static vars")
+	var bases := {}
+	for c in ProjectSettings.get_global_class_list():
+		bases[c["class"]] = c
+	var offenders: Array[String] = []
+	for c in bases.values():
+		if not String(c["path"]).begins_with("res://addons/func_godot/"):
+			continue
+		var base: StringName = c["base"]
+		while bases.has(base):
+			base = bases[base]["base"]
+		if not ClassDB.is_parent_class(base, &"Resource"):
+			continue
+		for line in FileAccess.get_file_as_string(c["path"]).split("\n"):
+			if line.begins_with("static var "):
+				offenders.append("%s: %s" % [c["class"], line])
+	# Note: static vars on TrenchDotFGDFile made Godot crash on exit now and then.
+	check(offenders.is_empty(), "no addon Resource class declares a static var, got %s" % [offenders])
 
 func test_clashes() -> void:
 	print("- classnames defined twice are exported as clashes, the last one wins")

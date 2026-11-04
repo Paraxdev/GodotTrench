@@ -1,8 +1,8 @@
 @tool
 extends Node
 ## Checks in a headless Godot editor that the live link follows scene tabs as they are opened, closed, reloaded and
-## switched, that live sessions follow entity definitions that change or appear on disk and prefabs that are saved, and
-## that an editor build names entity scripts without @tool. res://tests/live_link_tests.gd starts it with
+## switched, that live sessions follow entity definitions that change or appear on disk and prefabs that are saved, that
+## a pack copied in is read once Godot lists it, and that an editor build names entity scripts without @tool. res://tests/live_link_tests.gd starts it with
 ## godot --headless --editor --path godot res://tests/editor/live_link_tabs.tscn -- --td-live-link-tabs
 ## and it does nothing when the scene is opened any other way.
 
@@ -17,6 +17,9 @@ const CORE_FGD := "res://addons/func_godot/fgd/trenchdot/trenchdot_fgd.tres"
 ## A definition and its script class written while a session runs, removed again afterwards.
 const NEW_DEFS := "res://tests/td_tests_new_definitions"
 const NEW_CLASS := "TDTestsNewEntity"
+## A pack written while Godot runs, removed again afterwards.
+const LATE_PACK := "res://tests/td_tests_late_pack"
+const LATE_CLASS := "TDTestsLateBase"
 
 func _ready() -> void:
 	if not Engine.is_editor_hint() or not FLAG in OS.get_cmdline_user_args():
@@ -121,6 +124,7 @@ class Runner extends Node:
 		await _check_definition_hooks()
 		await _check_scan()
 		await _check_prefab_save()
+		await _check_late_pack()
 		_check_tool_scripts()
 
 		print("%d failures" % failures)
@@ -264,3 +268,59 @@ class Runner extends Node:
 		reply = await link.handle_message(JSON.stringify(save_prefab))
 		check(reply.get("ok") == true and reply.get("rebuilt") == 0 and session != null and session.pending(), "and queues a full build of a live map that instances it, got %s" % reply)
 		await live("live_end")
+
+	func _write(path: String, text: String) -> void:
+		var file := FileAccess.open(path, FileAccess.WRITE)
+		file.store_string(text)
+		file.close()
+
+	## A pack FGD with a point class td_tests_late_<name> for each script <name>.gd of [param scripts].
+	func _late_fgd(scripts: Array) -> String:
+		var text := "[gd_resource type=\"Resource\" script_class=\"FuncGodotFGDFile\" format=3]\n\n"
+		text += "[ext_resource type=\"Script\" path=\"res://addons/func_godot/src/fgd/func_godot_fgd_file.gd\" id=\"fgd\"]\n"
+		text += "[ext_resource type=\"Script\" path=\"res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd\" id=\"point\"]\n"
+		for name: String in scripts:
+			text += "[ext_resource type=\"Script\" path=\"%s\" id=\"%s\"]\n" % [LATE_PACK.path_join(name + ".gd"), name]
+		var defs := PackedStringArray()
+		for name: String in scripts:
+			text += "\n[sub_resource type=\"Resource\" id=\"def_%s\"]\nscript = ExtResource(\"point\")\nclassname = \"td_tests_late_%s\"\nscript_class = ExtResource(\"%s\")\nnode_class = \"Node3D\"\n" % [name, name, name]
+			defs.append("SubResource(\"def_%s\")" % name)
+		return text + "\n[resource]\nscript = ExtResource(\"fgd\")\nentity_definitions = [%s]\n" % ", ".join(defs)
+
+	## A pack copied in while Godot runs, whose entity script extends a class another new script of it declares, the
+	## way the TrenchDot editor installs the Gameplay pack. Reading it before the scan registers that class would
+	## break the script for good.
+	func _check_late_pack() -> void:
+		var fs := EditorInterface.get_resource_filesystem()
+		await until(func() -> bool: return not fs.is_scanning(), 1200)
+		DirAccess.make_dir_recursive_absolute(LATE_PACK)
+		_write(LATE_PACK.path_join("base.gd"), "@tool\nclass_name %s extends Node3D\n" % LATE_CLASS)
+		_write(LATE_PACK.path_join("entity.gd"), "@tool\nextends %s\n" % LATE_CLASS)
+		_write(LATE_PACK.path_join("fgd.tres"), _late_fgd(["entity"]))
+		var fgd := TrenchDotFGDFile.new()
+		fgd.pack_fgd_path = LATE_PACK.path_join("fgd.tres")
+		check(not fgd.get_entity_definitions().has("td_tests_late_entity"), "a pack Godot does not list yet is not read")
+		check(fgd.waiting_for_scan, "and its FGD says so")
+		var settings := FuncGodotMapSettings.new()
+		settings.entity_fgd = fgd
+		var report := TrenchDotBuildReport.new(MAP_FILE)
+		report.use_settings(settings)
+		report.missing_classes.append("func_door")
+		var warned := Array(report.warnings()).filter(func(w: String) -> bool: return w.contains("no definition"))
+		check(warned.size() == 1 and warned[0].contains("Godot is still scanning its files") and warned[0].contains("Build the map again"), "a build that left out the pack says Godot is still scanning it, got %s" % [warned])
+		check(not ResourceLoader.has_cached(LATE_PACK.path_join("entity.gd")), "so its scripts are not loaded either")
+		var listed := func() -> bool: return fs.get_file_type(fgd.pack_fgd_path) != "" and not fs.is_scanning() and ProjectSettings.get_global_class_list().any(func(c): return c["class"] == LATE_CLASS)
+		check(await until(listed, 1200), "reading it starts the scan that lists it")
+		var defs := fgd.get_entity_definitions()
+		var entity: Script = defs["td_tests_late_entity"].script_class if defs.has("td_tests_late_entity") else null
+		check(entity != null and entity.can_instantiate() and not fgd.waiting_for_scan, "after the scan the pack is read and its script compiles, got %s" % entity)
+		fs.scan()
+		TrenchDotFGDFile.files_changed()
+		check(fs.is_scanning() and fgd.get_entity_definitions().has("td_tests_late_entity"), "a build while Godot scans keeps the pack it read before")
+		await until(func() -> bool: return not fs.is_scanning(), 1200)
+
+		for file in DirAccess.get_files_at(LATE_PACK):
+			DirAccess.remove_absolute(LATE_PACK.path_join(file))
+		DirAccess.remove_absolute(LATE_PACK)
+		fs.scan()
+		await until(func() -> bool: return not fs.is_scanning() and not ProjectSettings.get_global_class_list().any(func(c): return c["class"] == LATE_CLASS), 1200)
