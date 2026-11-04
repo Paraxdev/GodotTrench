@@ -18,10 +18,15 @@ import urllib.error
 import urllib.request
 
 
+def env(name, default=""):
+    """TRENCHDOT_<name>, or the variable's old GODOTTRENCH_ spelling."""
+    return os.environ.get("TRENCHDOT_" + name) or os.environ.get("GODOTTRENCH_" + name) or default
+
+
 TIMEOUT = 3600
 # TRENCHDOT_MCP_URL overrides this, useful when the editor was started with --mcp-http on another port.
-DEFAULT_URL = os.environ.get("TRENCHDOT_MCP_URL", "http://127.0.0.1:7841/mcp")
-TOKEN = os.environ.get("TRENCHDOT_MCP_TOKEN", "")
+DEFAULT_URL = env("MCP_URL", "http://127.0.0.1:7841/mcp")
+TOKEN = env("MCP_TOKEN")
 
 
 def rpc(url, method, params=None):

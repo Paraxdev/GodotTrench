@@ -38,7 +38,10 @@ fn editor_command(port: u16) -> Command {
     }
 
     // A token or switch from the shell that runs the tests would lock the harness out.
-    command.env_remove("TRENCHDOT_MCP_TOKEN").env_remove("TRENCHDOT_DISABLE_MCP");
+    for var in ["MCP_TOKEN", "DISABLE_MCP"] {
+        command.env_remove(format!("TRENCHDOT_{var}")).env_remove(format!("{}{var}", td_editor::legacy::ENV_PREFIX));
+    }
+
     command
 }
 
@@ -2954,19 +2957,30 @@ fn wait_until_closed(port: u16) {
 #[test]
 #[ignore]
 fn mcp_turned_off_by_the_variable_serves_nothing() {
+    mcp_off_by_variable("TRENCHDOT_DISABLE_MCP", "mcp_off_env");
+}
+
+/// The variable's old name, from before TrenchDot was renamed, is still a kill switch.
+#[test]
+#[ignore]
+fn mcp_turned_off_by_the_old_variable_serves_nothing() {
+    mcp_off_by_variable(&format!("{}DISABLE_MCP", td_editor::legacy::ENV_PREFIX), "mcp_off_old_env");
+}
+
+fn mcp_off_by_variable(variable: &str, name: &'static str) {
     use std::io::{BufRead, BufReader};
     use std::process::Stdio;
 
     let port = free_port();
     let child = editor_command(port)
         .arg("--mcp")
-        .env("TRENCHDOT_DISABLE_MCP", "1")
+        .env(variable, "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("launch editor");
-    let mut ed = Editor { child, port, token: None, name: "mcp_off_env" };
+    let mut ed = Editor { child, port, token: None, name };
     let mut stdin = ed.child.stdin.take().unwrap();
     let stdout = ed.child.stdout.take().unwrap();
     let init = json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "e2e", "version": "1" } } });

@@ -625,7 +625,7 @@ pub fn install(root: &Path, choice: Choice, api: &str, report: &Reporter) -> Out
 
 /// [`RELEASES_API`], or the server [`API_ENV`] names.
 pub fn api_url() -> String {
-    std::env::var(API_ENV).ok().filter(|v| !v.is_empty()).unwrap_or_else(|| RELEASES_API.to_string())
+    crate::legacy::env_var(API_ENV).unwrap_or_else(|| RELEASES_API.to_string())
 }
 
 /// An install running on its own thread.

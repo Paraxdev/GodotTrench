@@ -750,10 +750,10 @@ impl App {
 
         state.materials.watch(cc.egui_ctx.clone());
         state.watch_game_config(cc.egui_ctx.clone());
-        let startup = switch::startup(args.mcp_stdio, args.mcp_http, &state.prefs, std::env::var_os(switch::DISABLE_ENV).as_deref());
+        let startup = switch::startup(args.mcp_stdio, args.mcp_http, &state.prefs, crate::legacy::env_var_os(switch::DISABLE_ENV).as_deref());
         let mut mcp = None;
         let mut mcp_http = None;
-        let mut mcp_tokens = token::Tokens::new(args.mcp_token.clone(), std::env::var(token::ENV).ok(), crate::mcp_token_file(args.default_prefs));
+        let mut mcp_tokens = token::Tokens::new(args.mcp_token.clone(), crate::legacy::env_var(token::ENV), crate::mcp_token_file(args.default_prefs));
         if startup.stdio || startup.http.is_some() {
             let host = McpHost::new(cc.egui_ctx.clone(), startup.off);
             if startup.stdio {
