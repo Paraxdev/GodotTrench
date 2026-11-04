@@ -329,6 +329,44 @@ fn name_list(names: &[td_formats::IoDef]) -> String {
     format!("[{}]", names.iter().map(|n| gd_string(&n.name)).collect::<Vec<_>>().join(", "))
 }
 
+/// The class_properties and class_property_descriptions lines of `def`.
+fn class_properties(def: &EntityDef) -> String {
+    let props: Vec<String> = def.properties.iter().map(|p| format!("{}: {}", gd_string(&p.name), godot_value(p))).collect();
+    let mut out = format!("class_properties = Dictionary[String, Variant]({{\n{}\n}})\n", props.join(",\n"));
+    let descs: Vec<String> = def
+        .properties
+        .iter()
+        .map(|p| {
+            let text = if p.description.is_empty() { p.name.clone() } else { p.description.clone() };
+            if p.ty == PropertyType::Choices {
+                format!("{}: [{}, {}]", gd_string(&p.name), gd_string(&text), choice_value(p.default.trim()))
+            } else {
+                format!("{}: {}", gd_string(&p.name), gd_string(&text))
+            }
+        })
+        .collect();
+    out += &format!("class_property_descriptions = Dictionary[String, Variant]({{\n{}\n}})\n", descs.join(",\n"));
+    out
+}
+
+/// The property_types meta entry of `def`, if any property needs one.
+fn property_types(def: &EntityDef) -> Option<String> {
+    let types: Vec<String> = def.properties.iter().filter_map(|p| declared_type(p).map(|t| format!("{}: {}", gd_string(&p.name), gd_string(t)))).collect();
+    (!types.is_empty()).then(|| format!("\"property_types\": {{{}}}", types.join(", ")))
+}
+
+/// A FuncGodotFGDBaseClass holding the keys of `def`. FuncGodot's worldspawn names it in its editor_properties meta
+/// property instead of its base classes, since a build fills in the defaults of base class keys a map leaves out, and a
+/// worldspawn with any sky key builds an environment.
+fn editor_keys_resource(def: &EntityDef) -> String {
+    let mut out = "[gd_resource type=\"Resource\" script_class=\"FuncGodotFGDBaseClass\" load_steps=2 format=3]\n\n".to_string();
+    out += "[ext_resource type=\"Script\" path=\"res://addons/func_godot/src/fgd/func_godot_fgd_base_class.gd\" id=\"1_class\"]\n";
+    out += &format!("\n[resource]\nscript = ExtResource(\"1_class\")\nclassname = \"WorldspawnKeys\"\ndescription = {}\n", gd_string(&def.description));
+    out += &class_properties(def);
+    out += &format!("meta_properties = Dictionary[String, Variant]({{\n{}\n}})\n", property_types(def).unwrap_or_default());
+    out
+}
+
 pub fn fgd_resource(def: &EntityDef) -> String {
     let solid = def.kind == EntityKind::Solid;
     let base = if solid { "func_godot_fgd_solid_class" } else { "func_godot_fgd_point_class" };
@@ -355,21 +393,7 @@ pub fn fgd_resource(def: &EntityDef) -> String {
         out += "script_class = ExtResource(\"2_script\")\n";
     }
 
-    let props: Vec<String> = def.properties.iter().map(|p| format!("{}: {}", gd_string(&p.name), godot_value(p))).collect();
-    out += &format!("class_properties = Dictionary[String, Variant]({{\n{}\n}})\n", props.join(",\n"));
-    let descs: Vec<String> = def
-        .properties
-        .iter()
-        .map(|p| {
-            let text = if p.description.is_empty() { p.name.clone() } else { p.description.clone() };
-            if p.ty == PropertyType::Choices {
-                format!("{}: [{}, {}]", gd_string(&p.name), gd_string(&text), choice_value(p.default.trim()))
-            } else {
-                format!("{}: {}", gd_string(&p.name), gd_string(&text))
-            }
-        })
-        .collect();
-    out += &format!("class_property_descriptions = Dictionary[String, Variant]({{\n{}\n}})\n", descs.join(",\n"));
+    out += &class_properties(def);
     let c = def.color;
     let mut meta = vec![format!("\"color\": Color({}, {}, {}, 1)", c.r, c.g, c.b)];
     if !solid {
@@ -377,10 +401,7 @@ pub fn fgd_resource(def: &EntityDef) -> String {
         meta.push(format!("\"size\": AABB({}, {}, {}, {}, {}, {})", a.z, a.x, a.y, b.z, b.x, b.y));
     }
 
-    let types: Vec<String> = def.properties.iter().filter_map(|p| declared_type(p).map(|t| format!("{}: {}", gd_string(&p.name), gd_string(t)))).collect();
-    if !types.is_empty() {
-        meta.push(format!("\"property_types\": {{{}}}", types.join(", ")));
-    }
+    meta.extend(property_types(def));
 
     if !def.gizmos.is_empty() {
         meta.push(format!("\"gizmos\": [{}]", def.gizmos.iter().map(gizmo_dict).collect::<Vec<_>>().join(", ")));
@@ -442,6 +463,10 @@ pub fn addon_fgd_files() -> Vec<(String, String)> {
             out.push((format!("fgd/trenchdot/{class}.tres"), fgd_resource(def)));
             listed.push((class.to_string(), format!("res://addons/func_godot/fgd/trenchdot/{class}.tres")));
         }
+    }
+
+    if let Some(def) = core.entity("worldspawn") {
+        out.push(("fgd/trenchdot/worldspawn_keys.tres".into(), editor_keys_resource(def)));
     }
 
     out.push(("fgd/trenchdot/trenchdot_fgd.tres".into(), fgd_file("TrenchDotFGDFile", "res://addons/func_godot/src/trenchdot/trenchdot_fgd_file.gd", &listed)));

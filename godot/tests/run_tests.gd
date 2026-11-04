@@ -1004,6 +1004,15 @@ func test_game_config() -> void:
 		check(ins.has("open") and ins.has("toggle"), "door inputs from script methods, got %s" % [ins])
 		var props: Array = by_name["func_door"]["properties"]
 		check(props.any(func(p): return p["name"] == "targetname" and p["type"] == "target_source"), "targetname typed as target_source")
+	check(by_name.has("worldspawn"), "worldspawn exported")
+	if by_name.has("worldspawn"):
+		var types := {}
+		for p in by_name["worldspawn"]["properties"]:
+			types[p["name"]] = p["type"]
+		check(types.get("sun_color") == "color" and types.get("environment") == "choices" and types.get("sky_panorama") == "resource", "worldspawn exports the sky, fog and sun keys, got %s" % [types])
+		check(types.has("_cull_interior_faces"), "worldspawn keeps its own keys")
+		var built: Dictionary = config.fgd_file.get_entity_definitions()["worldspawn"].retrieve_all_class_properties()
+		check(not built.has("sun_angles"), "a build leaves out the sky keys a map does not set, so it builds no environment")
 	if by_name.has("trigger_area"):
 		var outs: Array = by_name["trigger_area"]["outputs"].map(func(o): return o["name"])
 		check(outs.has("body_entered"), "Area3D signals exported, got %s" % [outs])

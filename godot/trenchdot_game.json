@@ -55,6 +55,158 @@
           "type": "bool",
           "default": "0",
           "description": "If true, cull interior faces with matching vertices or faces that are flush within a larger face. Note: This has a performance impact that scales with how many brushes are in the brush entity."
+        },
+        {
+          "name": "message",
+          "type": "string",
+          "default": "",
+          "description": "Map title"
+        },
+        {
+          "name": "sun_angles",
+          "type": "string",
+          "default": "-40 -45",
+          "description": "Sun pitch and yaw in degrees"
+        },
+        {
+          "name": "sun_color",
+          "type": "color",
+          "default": "255 245 224",
+          "description": "Sun color"
+        },
+        {
+          "name": "sun_energy",
+          "type": "float",
+          "default": "1.1",
+          "description": "Sun brightness"
+        },
+        {
+          "name": "sun_bake_mode",
+          "type": "choices",
+          "default": "auto",
+          "description": "How Bake Lighting treats the sun: baked with its shadow, only its bounced light, or left real time",
+          "options": [
+            [
+              "auto",
+              "auto"
+            ],
+            [
+              "baked",
+              "baked"
+            ],
+            [
+              "bounce only",
+              "bounce"
+            ],
+            [
+              "real time",
+              "realtime"
+            ]
+          ]
+        },
+        {
+          "name": "ambient_color",
+          "type": "color",
+          "default": "66 71 84",
+          "description": "Ambient light"
+        },
+        {
+          "name": "sky_top_color",
+          "type": "color",
+          "default": "82 128 199",
+          "description": "Sky zenith"
+        },
+        {
+          "name": "sky_horizon_color",
+          "type": "color",
+          "default": "184 204 224",
+          "description": "Sky horizon"
+        },
+        {
+          "name": "sky_ground_color",
+          "type": "color",
+          "default": "107 112 117",
+          "description": "Below the horizon"
+        },
+        {
+          "name": "sky_panorama",
+          "type": "resource",
+          "default": "",
+          "description": "A res:// panorama image Godot shows as the sky instead of the sky colors. Godot only, the editor and its bake keep using the sky colors"
+        },
+        {
+          "name": "fog_color",
+          "type": "color",
+          "default": "179 199 219",
+          "description": "Fog color"
+        },
+        {
+          "name": "fog_density",
+          "type": "float",
+          "default": "0.0",
+          "description": "Fog density per meter, 0 disables fog"
+        },
+        {
+          "name": "ambient_energy",
+          "type": "float",
+          "default": "1.0",
+          "description": "Ambient light brightness, low for night maps"
+        },
+        {
+          "name": "sky_energy",
+          "type": "float",
+          "default": "1.0",
+          "description": "Sky brightness, low for night maps"
+        },
+        {
+          "name": "glow_intensity",
+          "type": "float",
+          "default": "0.0",
+          "description": "Glow around bright lights and emissive materials, 0 disables it"
+        },
+        {
+          "name": "ssr",
+          "type": "bool",
+          "default": "0",
+          "description": "Screen space reflections in Godot, so glossy floors and wet streets mirror lights and signs"
+        },
+        {
+          "name": "environment",
+          "type": "choices",
+          "default": "1",
+          "description": "What Godot builds from these keys. A scene with its own WorldEnvironment or DirectionalLight3D keeps it",
+          "options": [
+            [
+              "environment and sun",
+              "1"
+            ],
+            [
+              "sun only",
+              "sun_only"
+            ],
+            [
+              "none",
+              "0"
+            ]
+          ]
+        },
+        {
+          "name": "chunk_streaming",
+          "type": "bool",
+          "default": "0",
+          "description": "Group the built map into chunks and only draw the ones near the camera"
+        },
+        {
+          "name": "chunk_size",
+          "type": "float",
+          "default": "2048.0",
+          "description": "Size of a streaming chunk in map units"
+        },
+        {
+          "name": "load_radius",
+          "type": "float",
+          "default": "8192.0",
+          "description": "Distance from the camera a chunk stays drawn within, in map units"
         }
       ],
       "outputs": [

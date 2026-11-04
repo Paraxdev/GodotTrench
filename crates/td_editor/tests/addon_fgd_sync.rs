@@ -68,3 +68,22 @@ fn the_demo_project_has_the_pack_installed() {
 
     assert_eq!(td_editor::entity_pack::Status::check(&godot()).changes, 0, "the demo's record is current");
 }
+
+/// A project's worldspawn offers the keys the editor's own worldspawn has, so the Inspector lists the sky, fog and sun
+/// inside a project too. The demo's trenchdot_game.json is exported by the addon, run its export_game_config_cli.gd.
+#[test]
+fn a_project_worldspawn_lists_the_builtin_keys() {
+    let project = td_formats::GameConfig::load(&godot().join("trenchdot_game.json")).unwrap();
+    let have = project.entity("worldspawn").unwrap();
+    let builtin = td_formats::GameConfig::builtin();
+    for want in &builtin.entity("worldspawn").unwrap().properties {
+        let Some(p) = have.properties.iter().find(|p| p.name == want.name) else { panic!("worldspawn lacks {}", want.name) };
+        assert_eq!(p.ty, want.ty, "{} type", want.name);
+        assert_eq!(p.options, want.options, "{} options", want.name);
+        let same = match (p.default.parse::<f64>(), want.default.parse::<f64>()) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => p.default == want.default,
+        };
+        assert!(same, "{} default is {:?}, the editor's is {:?}", want.name, p.default, want.default);
+    }
+}
