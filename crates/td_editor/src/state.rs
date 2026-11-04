@@ -540,6 +540,13 @@ fn game_file_stamp(root: &Path) -> Option<FileStamp> {
     Some((path, meta.modified().ok(), meta.len()))
 }
 
+/// Godot writes the game config in place, so a read right after it started can find the file cut off. A cut off file
+/// only counts as broken once it has stayed that way for a moment.
+fn still_written((path, modified, _): &FileStamp) -> bool {
+    modified.and_then(|m| m.elapsed().ok()).is_some_and(|age| age.as_secs() < 2)
+        && matches!(GameConfig::load(path), Err(td_formats::game::GameError::Json(e)) if e.is_eof())
+}
+
 /// Looks at a project's game config once a second on a thread and wakes the UI once the file differs from the one
 /// loaded, so a config exported from Godot is picked up without a click.
 struct GameWatch {
@@ -1372,7 +1379,8 @@ impl EditorState {
     /// Reloads the project when its game config file differs from the one loaded. Returns true when it reloaded.
     pub fn reload_changed_game_config(&mut self) -> bool {
         let Some(root) = self.game.project_root.clone() else { return false };
-        if game_file_stamp(&root) == self.game_file {
+        let stamp = game_file_stamp(&root);
+        if stamp == self.game_file || stamp.as_ref().is_some_and(still_written) {
             if self.game_config_changed() {
                 self.restart_game_watch();
             }
@@ -1962,6 +1970,36 @@ mod tests {
 
         std::fs::remove_file(&file).unwrap();
         assert!(state.reload_changed_game_config() && state.game.entity("clue_spot").is_none(), "a removed config falls back to the built-in one");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_game_config_caught_half_written_keeps_the_build_status() {
+        let dir = std::env::temp_dir().join(format!("td_game_half_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("project.godot"), "").unwrap();
+        let file = dir.join(td_formats::game::GAME_FILE_NAME);
+        let full = serde_json::json!({ "format": "trenchdot-game", "entities": [{ "classname": "game_locker", "type": "point" }] }).to_string();
+        std::fs::write(&file, &full).unwrap();
+        let mut state = EditorState::new(Prefs::default());
+        state.load_project(&dir);
+        state.set_status("Live link: Godot rebuilt 1 map node(s)");
+
+        std::fs::write(&file, &full[..full.len() / 2]).unwrap();
+        assert!(!state.reload_changed_game_config(), "Godot is still writing the file");
+        assert_eq!(state.status, "Live link: Godot rebuilt 1 map node(s)");
+        assert!(state.game.entity("game_locker").is_some(), "the loaded config stays until the file is whole");
+
+        std::fs::write(&file, full.replace("game_locker", "clue_spot")).unwrap();
+        assert!(state.reload_changed_game_config() && state.game.entity("clue_spot").is_some());
+        assert_eq!(state.status, "Live link: Godot rebuilt 1 map node(s)");
+
+        std::fs::write(&file, &full[..full.len() / 2]).unwrap();
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(10);
+        std::fs::File::options().write(true).open(&file).unwrap().set_modified(old).unwrap();
+        assert!(state.reload_changed_game_config());
+        assert!(state.status.starts_with("Failed to load"), "a file that stays cut off is broken: {}", state.status);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
