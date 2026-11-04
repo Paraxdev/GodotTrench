@@ -48,6 +48,9 @@ A terrain layer setting from 0 to 1 that turns and shifts every repeat of the te
 ## displacement
 A four sided brush face split into a grid of vertices that can each be raised or lowered, as in Hammer. It gives uneven ground inside a brush built level. Large outdoor areas are better built as a terrain.
 
+## entity definition
+The description of one entity class in an FGD: its classname, keys, inputs and outputs, and what Godot builds for it, such as the node class and the script. In Godot it is a FuncGodotFGDPointClass or FuncGodotFGDSolidClass resource, listed under Entity Definitions of an FGD file.
+
 ## falloff
 How a paint brush, such as the Blend tool's, fades from its center to its edge. A smooth falloff gives soft borders, a constant one paints the whole disc at the same strength.
 

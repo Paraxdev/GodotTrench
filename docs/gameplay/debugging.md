@@ -3,6 +3,10 @@
 Most wiring mistakes fail quietly: the door just stays shut. Check in this order, from the quickest check to the most
 thorough.
 
+> [!TIP]
+> A door or trigger that does not even block the player was built without its definition, which is not a wiring
+> mistake. See [Entities that do nothing](../godot/entities-troubleshooting.md).
+
 ## 1. The Issues panel
 
 Open the **Issues** tab, next to Outliner and History on the left. It flags outputs aimed at a targetname no entity

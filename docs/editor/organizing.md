@@ -123,6 +123,10 @@ scene plays in Godot. You get one for each `logic_script` with a `source` or `ex
 that can hand one code, such as an output that sends `source` to it, and each prefab that holds any of these. Read them
 before you play a map someone else made.
 
+Warnings that start with "Godot" come from the last build in Godot, after a save or *Build in Godot*: the classes it
+built without their definition, and the other warnings of that build. See
+[Entities that do nothing](../godot/entities-troubleshooting.md).
+
 ## History
 
 The History panel lists every edit, newest at the top. Click an older entry to undo back to it, that entry included.

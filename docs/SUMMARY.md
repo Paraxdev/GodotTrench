@@ -28,6 +28,7 @@
     * [Shortcuts](editor/shortcuts.md)
 * Godot
     * [Building maps](godot/building.md)
+    * [Entities that do nothing](godot/entities-troubleshooting.md)
     * [Navigation](godot/navigation.md)
     * [Shader warm-up](godot/warm-up.md)
     * [Streaming big maps](godot/streaming.md)
