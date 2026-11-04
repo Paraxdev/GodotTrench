@@ -2863,7 +2863,7 @@ impl eframe::App for App {
         self.ui_had_focus = ctx.egui_wants_keyboard_input();
         self.manual_under_pointer = help::take_hovered(&ctx);
 
-        let title = format!("{} - TrenchDot", self.state.doc.title());
+        let title = format!("{}, TrenchDot", self.state.doc.title());
         if title != self.title {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
             self.title = title;
