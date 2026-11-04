@@ -387,6 +387,22 @@ fn register_model_textures(renderer: &mut Renderer, model: &crate::models::Model
     }
 }
 
+fn node_materials(node: &td_doc::Node, needed: &mut BTreeSet<String>) {
+    match &node.kind {
+        NodeKind::Brush(b) => needed.extend(b.faces.iter().map(|f| f.data.material.clone())),
+        NodeKind::Mesh(m) => {
+            needed.extend(m.faces.iter().map(|f| f.data.material.clone()));
+            if m.decal {
+                needed.extend(m.faces.iter().map(|f| decal_key(&f.data.material)));
+            }
+        }
+        NodeKind::Terrain(t) => needed.extend(t.layers.iter().map(|l| l.material.clone())),
+        NodeKind::Entity(e) => needed.extend(e.property("texture").filter(|t| t.starts_with("res://")).map(str::to_string)),
+        NodeKind::Scatter(s) => needed.extend((0..s.items.len()).filter_map(|i| s.item_material(i)).map(str::to_string)),
+        _ => {}
+    }
+}
+
 const SCATTER_CHUNK: f64 = 1024.0;
 
 /// GPU data of one scatter set, split into spatial chunks so painting only rebuilds the chunks it touched.
@@ -1617,21 +1633,9 @@ impl SceneCache {
         }
 
         needed.extend(blend_pairs.iter().map(|(_, b)| b.clone()));
-        let collect = |node: &td_doc::Node, needed: &mut BTreeSet<String>| match &node.kind {
-            NodeKind::Brush(b) => needed.extend(b.faces.iter().map(|f| f.data.material.clone())),
-            NodeKind::Mesh(m) => {
-                needed.extend(m.faces.iter().map(|f| f.data.material.clone()));
-                if m.decal {
-                    needed.extend(m.faces.iter().map(|f| decal_key(&f.data.material)));
-                }
-            }
-            NodeKind::Terrain(t) => needed.extend(t.layers.iter().map(|l| l.material.clone())),
-            NodeKind::Entity(e) => needed.extend(e.property("texture").filter(|t| t.starts_with("res://")).map(str::to_string)),
-            _ => {}
-        };
         for id in &dirty {
             let Some(node) = map.get(*id) else { continue };
-            collect(node, &mut needed);
+            node_materials(node, &mut needed);
             if let NodeKind::Instance(i) = &node.kind
                 && let Some(p) = prefabs::resolve(&i.path, state.doc.path.as_deref(), state.game.project_root.as_deref())
             {
@@ -1649,7 +1653,7 @@ impl SceneCache {
 
             if let Some(prefab) = state.prefabs.get(&path).map.clone() {
                 for (_, n) in prefabs::exported_nodes(&prefab) {
-                    collect(n, &mut needed);
+                    node_materials(n, &mut needed);
                     match &n.kind {
                         NodeKind::Instance(i) => {
                             if let Some(p) = prefabs::resolve(&i.path, Some(&path), state.game.project_root.as_deref()) {
@@ -2213,5 +2217,22 @@ mod tests {
         assert_eq!(night.sun_energy, 0.1);
         assert_eq!(night.lights.len(), 1, "lights that start off are left out of the preview");
         assert_eq!(night.lights[0].range, 8.0 * game.units_per_meter as f32);
+    }
+
+    #[test]
+    fn scatter_material_overrides_are_loaded() {
+        let mut set = td_doc::Scatter::new(
+            "trees",
+            td_doc::ScatterKind::Props,
+            vec![td_doc::ScatterItem::new("res://tree.bbmodel"), td_doc::ScatterItem::new("res://bush.bbmodel")],
+        );
+        set.material = Some("psx/leaves".into());
+        set.items[1].material = Some("psx/bark".into());
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        let id = map.insert(layer, NodeKind::Scatter(set));
+        let mut needed = BTreeSet::new();
+        node_materials(map.get(id).unwrap(), &mut needed);
+        assert_eq!(needed, BTreeSet::from(["psx/bark".to_string(), "psx/leaves".to_string()]));
     }
 }
