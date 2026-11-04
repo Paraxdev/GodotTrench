@@ -603,6 +603,14 @@ pub fn install(root: &Path, choice: Choice, api: &str, report: &Reporter) -> Out
         }
     }
 
+    // The demo's prebuilt scenes use the Gameplay pack's scripts, which ship with the addon rather than the demo zip.
+    if choice == Choice::Demo && outcome.error.is_none() && !crate::entity_pack::installed(root) && crate::entity_pack::available(root) {
+        if let Ok(pack) = crate::entity_pack::install(root) {
+            let dir = crate::entity_pack::install_dir(root);
+            outcome.added.written.extend(pack.added.iter().map(|rel| dir.join(rel)));
+        }
+    }
+
     if outcome.error.as_ref().is_some_and(Error::is_download) {
         let nature = nature_dir(root);
         if let Ok(written) = td_formats::nature::install(&nature, &[], false) {
@@ -1128,9 +1136,13 @@ mod tests {
             assert!(pack.contains(&nature(&format!("{folder}/pack.json"))), "pack_installed looks for {folder}/pack.json");
         }
 
-        // The demo only refers to itself, the nature pack and the addon, so it works in any project.
+        // The demo only refers to itself, the nature pack, the addon and the Gameplay pack its install adds, so it works
+        // in any project.
         let demo = archived(&DEMO_CONTENT);
-        let shipped = |res: &str| demo.iter().chain(&pack).any(|f| f == res) || res.starts_with("addons/func_godot/") || res.starts_with(".godot/");
+        let gameplay =
+            |res: &str| res.strip_prefix("trenchdot/entities/").is_some_and(|rel| repo().join("godot/addons/func_godot/gameplay_pack").join(rel).is_file());
+        let shipped =
+            |res: &str| demo.iter().chain(&pack).any(|f| f == res) || res.starts_with("addons/func_godot/") || res.starts_with(".godot/") || gameplay(res);
         let mut refs = 0;
         for name in demo.iter().filter(|f| !f.ends_with(".md")) {
             let mut bytes = std::fs::read(repo().join("godot").join(name)).unwrap();
