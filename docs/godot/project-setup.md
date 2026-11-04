@@ -76,10 +76,15 @@ there clashes with it, and an addon update does not undo it.
 
 2. Check that it worked
 
-    The window should now say "Installed in res://trenchdot/entities" in green. The editor offers the new entities
-    right away, and Godot picks up the files and exports the game config again on its own.
+    The window should now say "Installed in res://trenchdot/entities" in green, and the editor offers the new
+    entities right away.
 
-    ![The Gameplay entities section after installing, saying it added 85 files to res://trenchdot/entities](../assets/project-setup/setup-gameplay-installed.png)
+    ![The Gameplay entities section after installing, saying it added 85 files to res://trenchdot/entities and to restart Godot if it has the project open](../assets/project-setup/setup-gameplay-installed.png)
+
+    When a Godot editor has the project open, TrenchDot asks it to pick up the new files, and the window says so. A
+    scene in [live mode](live.md#live-mode) then rebuilds by itself. Press **Build Map** in the other scenes that use
+    your maps and save them, since they were built without the pack. When Godot is not running, or runs an older
+    addon, the window says to restart Godot if it has the project open, then to build and save those scenes.
 
 3. (Optionally) Update it later
 
