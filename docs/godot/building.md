@@ -70,9 +70,10 @@ The node emits `build_complete` when it is done, or `build_failed` when the map 
 ## Environment and sun
 
 The sky, fog and sun keys on worldspawn build a `WorldEnvironment` and a light named `sun` into the map, so a map looks
-lit without any setup in Godot. Press Escape so nothing is selected, the Inspector then shows *Map (worldspawn)*. Its
-`environment` key picks what gets built. If the list does not show that key, type `environment` and the value into the
-two fields at the bottom and click **Add**.
+lit without any setup in Godot. Press Escape so nothing is selected, the Inspector then shows *Map (worldspawn)* with
+these keys listed. Its `environment` key picks what gets built. A key you leave unset stays out of the map, so a map
+with none of them builds no environment at all. If a project made with an older addon does not list the keys, update
+the addon and [export the game config](project-setup.md#the-game-config) again.
 
 | `environment` | Builds |
 | --- | --- |
