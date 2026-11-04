@@ -226,6 +226,10 @@ shows them as they were built.
 To make the room do something, read [How entity I/O works](gameplay/io.md) and build
 [Button opens a door](tutorials/button-door.md).
 
+Your own player needs two things for the pack's entities. Triggers only react to bodies in the Godot group `player` on
+physics layer 1, so put your player there. Doors and buttons move when your player code calls `use()` on the one it
+looks at, see [Let the player press it](tutorials/button-door.md#let-the-player-press-it).
+
 <div class="td-mcp" markdown>
 
 ## MCP
