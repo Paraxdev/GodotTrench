@@ -142,7 +142,7 @@ fn file(rel: &str, name: &str, path: &Path) -> Result<(), Code> {
         "res" | "scn" => Err(code(rel, "is a binary resource, which can hold scripts")),
         "tscn" | "tres" | "escn" => text_resource(rel, &read(rel, path)?),
         "import" => import(rel, &text(rel, path)?),
-        "tdm" => map(rel, &read(rel, path)?),
+        "tdm" | "gtm" => map(rel, &read(rel, path)?),
         "map" | "vmf" if text(rel, path)?.to_ascii_lowercase().contains("logic_script") => {
             Err(code(rel, "has a logic_script, which runs GDScript from the map"))
         }
@@ -740,6 +740,11 @@ mod tests {
         td_doc::format::save(&map, &root.join("maps/trap.tdm")).unwrap();
         assert_eq!(found(root).as_deref(), Some("maps/trap.tdm"));
         std::fs::remove_file(root.join("maps/trap.tdm")).unwrap();
+
+        let old = format!("maps/trap.{}", td_doc::legacy::MAP_EXTS[1]);
+        td_doc::format::save(&map, &root.join(&old)).unwrap();
+        assert_eq!(found(root).as_deref(), Some(old.as_str()), "an old map counts like a new one");
+        std::fs::remove_file(root.join(&old)).unwrap();
 
         write(root, ".godot/imported/yard.tdm-2.tres", imported_map(&td_doc::format::to_bytes(&map).unwrap()));
         assert_eq!(found(root).as_deref(), Some(".godot/imported/yard.tdm-2.tres"), "the map Godot imported counts too");

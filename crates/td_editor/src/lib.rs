@@ -125,7 +125,7 @@ Options:
   --offscreen            Open the window outside every screen, for tests and agents
   --dump <map>           Print a map as JSON and exit
   --to-json <map> <out>  Write a map as JSON and exit
-  --to-gtm <map> <out>   Write a map as a binary .tdm and exit
+  --to-tdm <map> <out>   Write a map as a binary .tdm and exit
   --export-glb <map> <out.glb>
                          Write a map's geometry and materials as glTF binary and exit
   --export-obj <map> <out.obj>

@@ -254,7 +254,8 @@ impl Rewinds {
 /// The files a map save to `path` writes: the map, the file it goes through on the way and the backup of the one it
 /// replaces.
 pub fn save_files(path: &Path) -> [PathBuf; 3] {
-    [path.to_path_buf(), path.with_extension("tdm.tmp"), path.with_extension("tdm.bak")]
+    let ext = td_doc::legacy::map_ext(path);
+    [path.to_path_buf(), path.with_extension(format!("{ext}.tmp")), path.with_extension(format!("{ext}.bak"))]
 }
 
 /// Why a step may not write `path`, for an error.
@@ -685,6 +686,9 @@ mod tests {
         assert!(!fence.may_read(&dir.join("secret.png")) && !fence.may_write(&dir.join("secret.png")));
         assert!(!fence.may_read(Path::new("//host/share/project/a.tdm")) && !fence.may_write(Path::new(r"\\host\share\a.tdm")));
         assert_eq!(save_files(&project.join("a.tdm")).map(|p| p.file_name().unwrap().to_string_lossy().into_owned()), ["a.tdm", "a.tdm.tmp", "a.tdm.bak"]);
+        let old = td_doc::legacy::MAP_EXTS[1];
+        let names = save_files(&project.join(format!("a.{old}"))).map(|p| p.file_name().unwrap().to_string_lossy().into_owned());
+        assert_eq!(names, [format!("a.{old}"), format!("a.{old}.tmp"), format!("a.{old}.bak")]);
         let _ = std::fs::remove_dir_all(dir);
     }
 

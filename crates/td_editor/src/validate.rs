@@ -237,7 +237,7 @@ pub fn project_maps(root: &Path) -> Vec<PathBuf> {
 
             if path.is_dir() {
                 walk(&path, out);
-            } else if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("tdm")) {
+            } else if td_doc::legacy::is_map_path(&path) {
                 out.push(path);
             }
         }
@@ -715,11 +715,13 @@ mod tests {
             std::fs::create_dir_all(dir.join(sub)).unwrap();
         }
 
-        for file in ["maps/a.tdm", "maps/blocks/b.TDM", ".godot/imported/c.tdm", "maps/a.tdm.bak", "maps/a.json"] {
+        let old = td_doc::legacy::MAP_EXTS[1];
+        let files = ["maps/a.tdm", "maps/blocks/b.TDM", ".godot/imported/c.tdm", "maps/a.tdm.bak", "maps/a.json"].map(String::from);
+        for file in files.into_iter().chain([format!("maps/old.{old}"), format!("maps/old.{old}.bak")]) {
             std::fs::write(dir.join(file), "").unwrap();
         }
 
-        assert_eq!(project_maps(&dir), [dir.join("maps/a.tdm"), dir.join("maps/blocks/b.TDM")]);
+        assert_eq!(project_maps(&dir), [dir.join("maps/a.tdm"), dir.join("maps/blocks/b.TDM"), dir.join(format!("maps/old.{old}"))]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

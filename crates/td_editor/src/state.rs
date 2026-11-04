@@ -1011,7 +1011,7 @@ impl EditorState {
     pub fn save_map(&mut self, path: &Path) -> Result<(), String> {
         let path = &absolute(path);
         if path.exists() {
-            let _ = std::fs::copy(path, path.with_extension("tdm.bak"));
+            let _ = std::fs::copy(path, path.with_extension(format!("{}.bak", td_doc::legacy::map_ext(path))));
         }
 
         format::save(&self.doc.map, path).map_err(|e| e.to_string())?;
@@ -1505,21 +1505,17 @@ pub fn autosave_path(path: &Path) -> PathBuf {
 
 fn legacy_autosave_path(path: &Path) -> PathBuf {
     let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "map".into());
-    path.with_file_name(format!("{stem}.autosave.tdm"))
+    path.with_file_name(format!("{stem}.autosave.{}", td_doc::legacy::map_ext(path)))
 }
 
 /// The map an autosave belongs to, for both `level.tdm.autosave` and the older `level.autosave.tdm`.
 pub fn autosave_source(path: &Path) -> Option<PathBuf> {
     let name = path.file_name()?.to_string_lossy().into_owned();
     let lower = name.to_lowercase();
-    let stem_len = if lower.ends_with(".tdm.autosave") {
-        name.len() - ".tdm.autosave".len()
-    } else if lower.ends_with(".autosave.tdm") {
-        name.len() - ".autosave.tdm".len()
-    } else {
-        return None;
-    };
-    Some(path.with_file_name(format!("{}.tdm", name.get(..stem_len)?)))
+    td_doc::legacy::MAP_EXTS.iter().find_map(|ext| {
+        let suffix = [format!(".{ext}.autosave"), format!(".autosave.{ext}")].into_iter().find(|suffix| lower.ends_with(suffix.as_str()))?;
+        Some(path.with_file_name(format!("{}.{ext}", name.get(..name.len() - suffix.len())?)))
+    })
 }
 
 /// Resolves `path` against the working directory once, so the watcher threads never depend on it and a file dialog may
@@ -1652,6 +1648,28 @@ mod tests {
         assert!(map_path.exists());
         assert!(!autosave_path(&map_path).exists() && !legacy_autosave_path(&map_path).exists());
         assert_eq!(state.doc.title(), "church.tdm");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_old_map_keeps_its_extension_through_a_save_and_its_autosave() {
+        let old = td_doc::legacy::MAP_EXTS[1];
+        let map = Path::new("maps").join(format!("church.{old}"));
+        assert_eq!(autosave_path(&map), Path::new("maps").join(format!("church.{old}.autosave")));
+        assert_eq!(autosave_source(&autosave_path(&map)).as_deref(), Some(map.as_path()));
+        assert_eq!(autosave_source(&legacy_autosave_path(&map)).as_deref(), Some(map.as_path()));
+        assert_eq!(legacy_autosave_path(&map), Path::new("maps").join(format!("church.autosave.{old}")));
+
+        let dir = std::env::temp_dir().join(format!("td_old_ext_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("hall.{old}"));
+        let mut state = EditorState::new(Prefs::default());
+        state.prefs.live_link = false;
+        state.save_map(&path).unwrap();
+        state.save_map(&path).unwrap();
+        assert!(dir.join(format!("hall.{old}.bak")).is_file() && !dir.join("hall.tdm.bak").exists());
+        assert!(!dir.join(format!("hall.{old}.tmp")).exists());
+        assert_eq!(state.doc.path.as_deref(), Some(path.as_path()));
         let _ = std::fs::remove_dir_all(dir);
     }
 

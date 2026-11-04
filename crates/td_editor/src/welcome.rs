@@ -89,7 +89,7 @@ pub fn find_maps(root: &Path) -> Vec<PathBuf> {
                 if depth < 8 && !name.starts_with('.') && name != "addons" {
                     walk(&path, depth + 1, out);
                 }
-            } else if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("tdm")) {
+            } else if td_doc::legacy::is_map_path(&path) {
                 out.push(path);
             }
         }
@@ -233,13 +233,14 @@ mod tests {
             std::fs::create_dir_all(dir.join(sub)).unwrap();
         }
 
-        for file in ["maps/b.tdm", "maps/z.tdm", "maps/showcase/a.tdm", "addons/func_godot/test.tdm", ".godot/cache.tdm", "maps/notes.txt"] {
+        let old = format!("maps/c.{}", td_doc::legacy::MAP_EXTS[1]);
+        for file in ["maps/b.tdm", "maps/z.tdm", "maps/showcase/a.tdm", "addons/func_godot/test.tdm", ".godot/cache.tdm", "maps/notes.txt", &old] {
             std::fs::write(dir.join(file), "").unwrap();
         }
 
         let found: Vec<String> = find_maps(&dir).iter().map(|p| p.strip_prefix(&dir).unwrap().to_string_lossy().replace('\\', "/")).collect();
         std::fs::remove_dir_all(&dir).ok();
-        assert_eq!(found, ["maps/b.tdm", "maps/z.tdm", "maps/showcase/a.tdm"], "a folder's maps stay together");
+        assert_eq!(found, ["maps/b.tdm", &old, "maps/z.tdm", "maps/showcase/a.tdm"], "a folder's maps stay together, old ones too");
     }
 
     #[test]

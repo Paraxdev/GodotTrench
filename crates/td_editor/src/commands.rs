@@ -948,7 +948,10 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         }
         Action::OpenMap => {
             let picked = file_dialog(state, |d| {
-                d.add_filter("TrenchDot map", &["tdm"]).add_filter("Map as JSON", &["json"]).add_filter("Autosave (recover a map)", &["autosave"]).pick_file()
+                d.add_filter("TrenchDot map", &td_doc::legacy::MAP_EXTS)
+                    .add_filter("Map as JSON", &["json"])
+                    .add_filter("Autosave (recover a map)", &["autosave"])
+                    .pick_file()
             });
             if let Some(path) = picked
                 && let Err(e) = open_map_in_tab(state, &path)
@@ -1536,7 +1539,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::CreatePrefab => create_prefab(state),
         Action::ExplodeInstances => explode_instances(state),
         Action::InsertPrefab => {
-            if let Some(path) = file_dialog(state, |d| d.add_filter("TrenchDot map", &["tdm"]).pick_file()) {
+            if let Some(path) = file_dialog(state, |d| d.add_filter("TrenchDot map", &td_doc::legacy::MAP_EXTS).pick_file()) {
                 let reference = prefab_reference(&path, state.doc.path.as_deref(), state.game.project_root.as_deref());
                 let origin = state.snap(state.cursor_world.unwrap_or(DVec3::ZERO));
                 state.doc.edit("Insert Prefab", |m, s| {

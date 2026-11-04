@@ -192,7 +192,7 @@ fn scan(root: &Path, dir: &Path, out: &mut Vec<Entry>) {
             continue;
         }
 
-        if path.extension().is_none_or(|e| !e.eq_ignore_ascii_case("tdm")) {
+        if !td_doc::legacy::is_map_path(&path) {
             continue;
         }
 
