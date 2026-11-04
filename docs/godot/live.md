@@ -5,7 +5,8 @@
 Keep the scene with your `FuncGodotMap` open in the Godot editor and just save in TrenchDot with Ctrl+S. Godot
 rebuilds that scene straight away, as long as its tab is the one Godot shows and the map node has *Auto Rebuild On Save*
 on. A scene in another tab that uses the map rebuilds when you switch to its tab. Closing and reopening a tab or
-reloading a scene does not break this.
+reloading a scene does not break this. Saving a [prefab](../editor/prefab-library.md) rebuilds the maps of that scene
+that use it, directly or through another prefab.
 
 The status bar at the bottom left tells you what Godot did. When it worked, it should say:
 
@@ -59,6 +60,21 @@ From Export* on a layer and editing prefab instances rebuild the whole map inste
 
 The preview is close to a full build but not always identical. Saving always does a full build, and quitting without
 saving sends Godot back to the saved file, so nothing you tried in live mode sticks unless you save it.
+
+### When live mode rebuilds the whole map
+
+Godot rebuilds the whole map by itself when the scene no longer matches what a full build would give. When live mode
+starts on a scene it does so right away, otherwise once you pause editing:
+
+| When | Why |
+| --- | --- |
+| Live mode starts on a scene that was built with other entity definitions | The scene was built before you installed the Gameplay entities pack or added a definition, so some entities are plain nodes |
+| Live mode starts on a scene that earlier live edits changed | The scene still holds live edits of an earlier session that you never saved |
+| The entity definitions change while live mode runs | You saved an FGD or a definition in Godot's Inspector, a script class changed, or new files arrived, like an installed pack |
+| You save a prefab the map uses | The scene still shows the prefab as it was |
+
+Open scenes outside live mode keep their entities as they were built, and Godot's Output panel warns when one of them
+was built with other entity definitions. Press **Build Map** in it and save.
 
 ## Hot reload in a running game
 

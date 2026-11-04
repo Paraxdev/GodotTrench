@@ -82,9 +82,10 @@ there clashes with it, and an addon update does not undo it.
     ![The Gameplay entities section after installing, saying it added 85 files to res://trenchdot/entities and to restart Godot if it has the project open](../assets/project-setup/setup-gameplay-installed.png)
 
     When a Godot editor has the project open, TrenchDot asks it to pick up the new files, and the window says so. A
-    scene in [live mode](live.md#live-mode) then rebuilds by itself. Press **Build Map** in the other scenes that use
-    your maps and save them, since they were built without the pack. When Godot is not running, or runs an older
-    addon, the window says to restart Godot if it has the project open, then to build and save those scenes.
+    scene in [live mode](live.md#when-live-mode-rebuilds-the-whole-map) then rebuilds by itself. Press **Build Map**
+    in the other scenes that use your maps and save them, since they were built without the pack. When Godot is not
+    running, or runs an older addon, the window says to restart Godot if it has the project open, then to build and
+    save those scenes.
 
 3. (Optionally) Update it later
 
