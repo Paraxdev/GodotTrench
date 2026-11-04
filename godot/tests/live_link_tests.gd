@@ -13,6 +13,7 @@ static func run(t) -> void:
 	print("- live link port and scene tabs")
 	_test_port_taken_over(t)
 	_test_settings_apply_at_once(t)
+	_test_play(t)
 	await _test_foreign_lines(t)
 	await _test_hot_reload_lines(t)
 	await _test_scene_tabs(t)
@@ -144,6 +145,23 @@ static func _test_settings_apply_at_once(t) -> void:
 	ProjectSettings.set_setting(TrenchDotEditorIntegration.SETTING_PORT, before[0])
 	ProjectSettings.set_setting(TrenchDotEditorIntegration.SETTING_LIVE_LINK, before[1])
 	link.stop_live_link()
+	link.free()
+
+## Playing needs a main scene that exists, and only the Godot editor plays.
+static func _test_play(t) -> void:
+	const MAIN := "application/run/main_scene"
+	var main: Variant = ProjectSettings.get_setting(MAIN)
+	var link := TrenchDotEditorIntegration.new()
+	var play := func() -> Dictionary: return link._handle({ "event": "play" })
+	ProjectSettings.set_setting(MAIN, "")
+	var reply: Dictionary = play.call()
+	t.check(reply.get("ok") == false and str(reply.get("error")).contains("no main scene"), "play without a main scene says so, got %s" % reply)
+	ProjectSettings.set_setting(MAIN, "res://tests/td_tests_no_such_scene.tscn")
+	reply = play.call()
+	t.check(reply.get("ok") == false and str(reply.get("error")).contains("res://tests/td_tests_no_such_scene.tscn"), "play names a main scene that does not exist, got %s" % reply)
+	ProjectSettings.set_setting(MAIN, main)
+	reply = play.call()
+	t.check(reply.get("ok") == false and str(reply.get("error")).contains("Godot editor"), "outside the editor nothing is played, got %s" % reply)
 	link.free()
 
 static func _test_scene_tabs(t) -> void:
