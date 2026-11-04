@@ -60,40 +60,7 @@ pub fn map_issues(
         },
         external,
     );
-    for (id, e) in map.entities() {
-        if e.classname.is_empty() {
-            continue;
-        }
-
-        if game.entity(&e.classname).is_none() {
-            list.push(Issue {
-                node: Some(id),
-                severity: Severity::Warning,
-                code: "unknown_class",
-                message: if crate::entity_pack::in_pack(&e.classname) {
-                    format!(
-                        "No entity definition for '{}', it comes with the Gameplay entities pack. Gameplay > Install Gameplay Entities adds it",
-                        e.classname
-                    )
-                } else {
-                    format!("No entity definition for '{}'", e.classname)
-                },
-            });
-        } else if let Some(build) = game.build.as_ref().filter(|b| !b.defines(&e.classname)) {
-            list.push(Issue {
-                node: Some(id),
-                severity: Severity::Warning,
-                code: "build_lacks_class",
-                message: format!(
-                    "Godot builds with {}, whose FGD {}has no '{}'. Set its Entity Fgd to the FGD your game config uses",
-                    build.map_settings,
-                    if build.entity_fgd.is_empty() { String::new() } else { format!("{} ", build.entity_fgd) },
-                    e.classname
-                ),
-            });
-        }
-    }
-
+    list.extend(definition_issues(map, game));
     for clash in &game.clashes {
         if map.entities().any(|(_, e)| e.classname == clash.classname) {
             list.push(Issue { node: None, severity: Severity::Warning, code: "entity_clash", message: clash.describe() });
@@ -105,6 +72,50 @@ pub fn map_issues(
     list.extend(map_script_issues(map, prefabs, map_path));
     list.extend(crate::zfight::coplanar_issues(map, game, materials));
     list.sort_by_key(|i| Reverse(i.severity));
+    list
+}
+
+/// Entities that Godot builds without their definition, or with one that does not fit them.
+fn definition_issues(map: &Map, game: &GameConfig) -> Vec<Issue> {
+    let mut list = Vec::new();
+    for (id, e) in map.entities() {
+        if e.classname.is_empty() {
+            continue;
+        }
+
+        let issue = |code, message| Issue { node: Some(id), severity: Severity::Warning, code, message };
+        let Some(def) = game.entity(&e.classname) else {
+            let message = if crate::entity_pack::in_pack(&e.classname) {
+                format!("No entity definition for '{}', it comes with the Gameplay entities pack. Gameplay > Install Gameplay Entities adds it", e.classname)
+            } else {
+                format!("No entity definition for '{}'", e.classname)
+            };
+            list.push(issue("unknown_class", message));
+            continue;
+        };
+
+        if let Some(build) = game.build.as_ref().filter(|b| !b.defines(&e.classname)) {
+            let fgd = if build.entity_fgd.is_empty() { String::new() } else { format!("{} ", build.entity_fgd) };
+            let message = format!(
+                "Godot builds with {}, whose FGD {fgd}has no '{}'. Set its Entity Fgd to the FGD your game config uses",
+                build.map_settings, e.classname
+            );
+            list.push(issue("build_lacks_class", message));
+        }
+
+        let brushes =
+            map.get(id).is_some_and(|n| n.children.iter().any(|c| matches!(map.get(*c).map(|c| &c.kind), Some(NodeKind::Brush(_) | NodeKind::Mesh(_)))));
+        match (def.kind, brushes) {
+            (td_formats::EntityKind::Point, true) => list.push(issue(
+                "point_class_brushes",
+                format!("{} is a point entity in its definition, so Godot drops its brushes. Make the definition a FuncGodotFGDSolidClass", e.classname),
+            )),
+            (td_formats::EntityKind::Solid, false) => list
+                .push(issue("brush_entity_empty", format!("{} is a brush entity without brushes, so Godot builds it with no mesh or collision", e.classname))),
+            _ => {}
+        }
+    }
+
     list
 }
 
@@ -441,6 +452,34 @@ mod tests {
             [
                 "No entity definition for 'func_door', it comes with the Gameplay entities pack. Gameplay > Install Gameplay Entities adds it",
                 "No entity definition for 'my_thing'"
+            ]
+        );
+    }
+
+    #[test]
+    fn brushes_on_a_point_class_and_a_brush_class_without_any_are_named() {
+        let game = GameConfig::with_gameplay_pack();
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        let cube = || NodeKind::Brush(td_geom::Brush::from_aabb(&td_core::Aabb::new(td_core::DVec3::ZERO, td_core::DVec3::splat(32.0)), "base/floor").unwrap());
+        let lamp = map.insert(layer, NodeKind::Entity(Entity::new("light")));
+        map.insert(lamp, cube());
+        let door = map.insert(layer, NodeKind::Entity(Entity::new("func_door")));
+        let fine = map.insert(layer, NodeKind::Entity(Entity::new("func_detail")));
+        map.insert(fine, cube());
+        map.insert(layer, NodeKind::Entity(Entity::new("info_player_start")));
+        let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &BTreeSet::new());
+        let shape: Vec<(Option<NodeId>, &str, &str)> =
+            found.iter().filter(|i| matches!(i.code, "point_class_brushes" | "brush_entity_empty")).map(|i| (i.node, i.code, i.message.as_str())).collect();
+        assert_eq!(
+            shape,
+            [
+                (
+                    Some(lamp),
+                    "point_class_brushes",
+                    "light is a point entity in its definition, so Godot drops its brushes. Make the definition a FuncGodotFGDSolidClass"
+                ),
+                (Some(door), "brush_entity_empty", "func_door is a brush entity without brushes, so Godot builds it with no mesh or collision"),
             ]
         );
     }
