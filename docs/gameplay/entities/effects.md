@@ -14,6 +14,8 @@ A crate or barrel that can be thrown, damaged and broken. It breaks at 0 health,
 | --- | --- | --- |
 | `model` | | The scene it looks like, only for looks |
 | `size` | 16 16 16 | Half extents of its box collision, so the default is one meter wide |
+| `collision` | default | default and box use `size`, convex hull and convex decomposition follow the model, see [Collision](collision.md) |
+| `collision_layer`, `collision_mask` | empty | Layer numbers such as `1, 3`, empty keeps the project default |
 | `mass` | 5.0 | Mass in kilograms |
 | `health` | 30 | Damage it takes before breaking |
 | `explosive` | 0 | Blasts when it breaks |
@@ -35,10 +37,13 @@ is not saved with the scene.
 
 A static model with optional collision, for furniture, rocks and other props that should not move.
 
-* **Keys:** `model` (.bbmodel, .glb, .gltf or .tscn), `model_node`, `collision` convex (or none, trimesh), `scale` 1.0
+* **Keys:** `model` (.bbmodel, .glb, .gltf or .tscn), `model_node`, `collision`, `collision_layer`,
+  `collision_mask`, `scale` 1.0
 
-`convex` wraps the model in one cheap hull, fine for boxy shapes. `trimesh` follows every triangle, for shapes the
-player walks through or on, like an arch. Collision is only generated when the model has none of its own. For a file
+`collision` default gives each mesh a convex hull, fine for boxy shapes. Pick convex decomposition or trimesh for
+shapes the player walks through or on, like an arch, or box for the cheapest shape, see [Collision](collision.md).
+Collision is only generated when the model has none of its own. Models placed with *Model Prop* and models inside
+prefabs are prop_model entities, so they collide the same way. For a file
 that holds several variants side by side, `model_node` keeps only the named node and moves it to the prop's origin.
 
 ## env_explosion

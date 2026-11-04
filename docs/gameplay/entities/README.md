@@ -49,6 +49,8 @@ settings, and the Inspector shows it when nothing is selected. The FuncGodot cla
 spawns but spawns nothing itself, your game code puts the player there. [`light` and `light_spot`](effects.md) are the
 switchable lights.
 
+Brush entities and model entities collide by default, see [Collision](collision.md) for the keys that change it.
+
 **The player** is not an entity, it is a scene from your own game. The pack expects it in the `player` group and on
 collision layer 1, where triggers look, with a `take_damage(amount, source)` method that hurt triggers and explosions
 call. A player on another layer needs that layer in *Trigger Collision Mask*, see

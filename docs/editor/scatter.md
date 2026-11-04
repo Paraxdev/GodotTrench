@@ -89,6 +89,17 @@ A set's **Kind** decides what Godot builds.
 | props | MultiMeshes with collision and shadows. Models whose scenes carry scripts are instanced one by one so the scripts run |
 | foliage | MultiMeshes without collision or shadows, hidden beyond 2400 units by default. Meant for grass and small plants |
 
+Select the set in the Outliner and its **Collision** row in the Inspector picks the shape each instance collides with.
+New props sets start on convex and foliage sets on none.
+
+| Collision | Shape per instance |
+| --- | --- |
+| none | No collision |
+| box | One box around the instance |
+| convex | One convex hull around the instance |
+| decomposition | Several convex hulls that follow concave models, such as an arch, slower to build |
+| trimesh | Every face of the model, exact but the most expensive |
+
 When you need to edit single props, **To Entities** at the bottom of the Scatter panel, or *Terrain > Scatter > Scatter
 Sets to Entities* for the selected sets, replaces a set with one `prop_model` entity per instance.
 

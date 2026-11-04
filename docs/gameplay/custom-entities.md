@@ -41,7 +41,7 @@ definition is a resource of its own, and the kind you pick decides what Godot bu
 | Your entity | Definition | What to set |
 | --- | --- | --- |
 | A point entity, at one spot, like a lamp or a pickup | `FuncGodotFGDPointClass` | *Script Class* to your script. To spawn a scene instead, set *Scene File*, a *Script Class* then replaces the script of the scene's root |
-| A brush entity, built from brushes, like a door or a trigger | `FuncGodotFGDSolidClass` | *Script Class* to your script, and *Node Class* to the body it extends: `StaticBody3D`, `AnimatableBody3D` or `Area3D`. Left empty, Godot builds the node the script extends. A brush entity that is not a physics body has no collision |
+| A brush entity, built from brushes, like a door or a trigger | `FuncGodotFGDSolidClass` | *Script Class* to your script, and *Node Class* to the body it extends: `StaticBody3D`, `AnimatableBody3D` or `Area3D`. Left empty, Godot builds the body the script extends, or a `StaticBody3D` when the script extends `Node3D` or there is none. See [Collision](entities/collision.md) |
 
 This is the definition of the alarm above, saved as `res://entities/alarm.tres` next to its script `alarm.gd`:
 

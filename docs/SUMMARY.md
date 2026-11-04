@@ -56,6 +56,7 @@
         * [Spawners and paths](gameplay/entities/actors.md)
         * [Props, lights and effects](gameplay/entities/effects.md)
         * [Streamed sections](gameplay/entities/sections.md)
+        * [Collision](gameplay/entities/collision.md)
     * [Custom entities in GDScript](gameplay/custom-entities.md)
     * [C# entities](gameplay/csharp.md)
 * Tutorials

@@ -45,7 +45,7 @@ A scatter set keeps many copies of a few models, like trees, rocks or grass pain
 | `kind` | string | `props` | What Godot builds. `props` keeps scripts and collision, `foliage` is a MultiMesh without collision |
 | `targets` | array of node ids | omitted | The surfaces the set is painted on |
 | `items` | array | required | The models it scatters, see below |
-| `collision` | string | `none` for foliage, else `convex` | Collision shape per instance: `none`, `convex` or `trimesh` |
+| `collision` | string | `none` for foliage, else `convex` | Collision shape per instance: `none`, `box`, `convex`, `decomposition` or `trimesh` |
 | `cast_shadows` | bool | `true` | Whether the instances cast shadows |
 | `visibility_range` | number | `0` | Hide instances beyond this distance, 0 is never |
 | `chunk_size` | number | `0` | Split the set into cells of this size so Godot can cull what is off screen, 0 is one cell. New sets use 2048 |

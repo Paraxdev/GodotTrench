@@ -62,6 +62,8 @@ passing a window. It moves in straight lines, ignoring gravity and walls, so lay
 | `start_active` | 0 | Walks from map load |
 | `walk_anim`, `idle_anim` | walk, idle | Animations played while walking and while stopped |
 | `face_travel` | 1 | Turns to face where it walks |
+| `collision` | default | The shape built from its model, so other bodies bump into it, see [Collision](collision.md) |
+| `collision_layer`, `collision_mask` | empty | Layer numbers such as `1, 3`, empty keeps the project default |
 
 * **Inputs:** `start`, `stop`, `walk_to(corner)`, `play_anim(name)`, `face(target)`
 * **Outputs:** `arrived(corner)`, `reached_goal`, `finished` (both at the last corner when not looping)

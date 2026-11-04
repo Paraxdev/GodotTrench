@@ -53,7 +53,7 @@ flags the last two before you save.
 
 | The message says | Why | Do this |
 | --- | --- | --- |
-| `func_crusher builds as a Node3D, so its brushes have no collision` | The definition has no *Node Class*, and its script extends no physics body | Set *Node Class* to `StaticBody3D`, `AnimatableBody3D` or `Area3D`, or have the script extend one of them |
+| `func_crusher builds as a Marker3D, so its brushes have no collision` | The definition has no *Node Class*, and its script extends a node that is no physics body | Set *Node Class* to `StaticBody3D`, `AnimatableBody3D` or `Area3D`, or have the script extend one of them |
 | `func_crusher: Node Class AnimatedBody3D not found, building it as a Node3D` | A typo, or a `class_name` Godot has not registered yet | Fix the name. For C#, see [C# entities](../gameplay/csharp.md) |
 | `alarm: res://entities/alarm.gd has no @tool` | The editor only runs tool scripts, so the keys from the map never reach the node | Add `@tool` at the top of the script |
 | `light is a point entity, so its brushes are dropped` | A `FuncGodotFGDPointClass` is used for a brush entity | Make the definition a `FuncGodotFGDSolidClass` |
