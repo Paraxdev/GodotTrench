@@ -22,6 +22,8 @@ Save the scene in Godot to keep the result. If the status bar says something els
 | The current scene tab has no `FuncGodotMap` for the map | Open the scene that builds the map, or turn on *Auto Rebuild On Save* on its map node |
 | Godot has no scene open | Open the scene with the map in Godot, and if it is open, read on |
 | Godot is not running with the TrenchDot addon | Open the project in the Godot editor with the addon enabled |
+| Godot rebuilt the map, but the map settings have no definition for some classes, so they build as plain nodes | Add the definitions, see [Entities that do nothing](entities-troubleshooting.md) |
+| Godot rebuilt the map with warnings, see the Issues panel | Read them in the Issues panel, where they start with "Godot:" |
 
 Only one Godot editor can hold the live link port. A second editor with the same project warns in its Output panel that
 the live link could not listen, and TrenchDot keeps talking to the first one, which may have no scene open. Close the
@@ -75,6 +77,20 @@ starts on a scene it does so right away, otherwise once you pause editing:
 
 Open scenes outside live mode keep their entities as they were built, and Godot's Output panel warns when one of them
 was built with other entity definitions. Press **Build Map** in it and save.
+
+### Entities without a definition
+
+When live mode builds an entity whose class Godot has no definition for, the status bar names the class and the FGD to
+add it to:
+
+![The status bar saying Godot has no definition for crypt_lamp, it shows a plain node, add the class to the FGD of res://crypt_settings.tres](../assets/live/status-no-definition.png)
+
+The live mode button's tooltip keeps the same note while the map uses that class:
+
+![The live mode button switched on, its tooltip saying edits reach Godot before you save, and that Godot has no definition for crypt_lamp](../assets/live/toolbar-live-mode-no-definition.png)
+
+Add the definition and save it, and Godot rebuilds the map by itself. The note goes away with your next save. See
+[Entities that do nothing](entities-troubleshooting.md) for where a definition goes.
 
 ## Hot reload in a running game
 
