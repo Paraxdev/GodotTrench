@@ -111,6 +111,9 @@ Pushes your edits into the scene open in the Godot editor as you make them, befo
 ## logic gate
 A rule that turns two true or false inputs into one answer, like and (both are true) or xor (exactly one is). The logic_gate entity offers the common ones.
 
+## main scene
+The scene Godot plays when you run the project, set under Project > Project Settings > Application > Run. Run Project in TrenchDot and the Play button in Godot both start it.
+
 ## map settings
 A FuncGodotMapSettings resource that says where textures, materials and entity definitions come from and how many map units make a meter. A FuncGodotMap can have its own, otherwise the project default is used.
 

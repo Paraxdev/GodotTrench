@@ -1,10 +1,22 @@
 # Running Godot from the editor
 
 Saving, builds and live mode talk to the addon over the live link, so they work with any Godot editor that has the
-project open. TrenchDot only needs to find the Godot executable for *Godot > Run Project* (F5), *Godot > Open Project
-in Godot Editor* and the Godot robot in the toolbar, since those start Godot themselves.
+project open. TrenchDot only needs to find the Godot executable for *Godot > Open Project in Godot Editor*, the Godot
+robot in the toolbar, and *Godot > Run Project* (F5) while no Godot editor has the project open, since those start
+Godot themselves.
 
 ![The Godot menu with Run Project hovered, its F5 shortcut on the right and Open Project in Godot Editor below](../assets/running-godot/menu-run-project.png)
+
+## Run Project
+
+While a Godot editor has the project open, *Run Project* asks that editor to save its open scenes and play the main
+scene, as pressing Play in Godot does. The game then has everything Godot built, live edits included. The status bar
+should say "Godot saved its open scenes and runs the main scene". If the project has no main scene, it says so, set
+one in Godot under *Project > Project Settings > Application > Run*.
+
+Without a Godot editor, *Run Project* starts the game with the Godot executable. It then runs the scenes as they were
+last saved in Godot. The same happens with an older addon, and the status bar adds that Godot may have map changes it
+has not saved. Save them in Godot, or press Play there.
 
 ## Finding the executable
 
@@ -14,8 +26,8 @@ beneath the input field.
 ![The Godot executable field in Preferences with the "Using" line and the path beneath it](../assets/running-godot/prefs-godot-using.png)
 
 When it says "Not found" in yellow, click the "…" button next to the field and pick the Godot executable on your disk,
-the one starting with "Godot_v". Do the same if it picked the wrong Godot. Until it finds one, Run Project and Open
-Project in Godot Editor stay greyed out.
+the one starting with "Godot_v". Do the same if it picked the wrong Godot. Until it finds one, Open Project in Godot
+Editor stays greyed out, and so does Run Project while no Godot editor has the project open.
 
 ![The empty Godot executable field with the … button and the yellow Not found line](../assets/running-godot/prefs-godot-not-found.png)
 
