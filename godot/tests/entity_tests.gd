@@ -32,6 +32,7 @@ func run(runner: SceneTree) -> void:
 	test_pack_scripts_by_path()
 	await test_light_fixture()
 	await test_prop_model_node()
+	await test_npc_keeps_model_body()
 	for file in [ENEMY, VARIANTS]:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(file))
 
@@ -648,3 +649,27 @@ func test_prop_model_node() -> void:
 	check(prop.get_child_count() == 1 and prop.get_child(0).get_child_count() == 2, "without model_node the whole model is back")
 	map.queue_free()
 	await t.process_frame
+
+func test_npc_keeps_model_body() -> void:
+	print("- npc_walker keeps the body its model brings")
+	var root := StaticBody3D.new()
+	var mesh := MeshInstance3D.new()
+	mesh.mesh = BoxMesh.new()
+	var own := CollisionShape3D.new()
+	own.shape = BoxShape3D.new()
+	root.add_child(mesh)
+	root.add_child(own)
+	mesh.owner = root
+	own.owner = root
+	var packed := PackedScene.new()
+	packed.pack(root)
+	root.free()
+	packed.take_over_path("res://tests/td_npc_body_fixture.tscn")
+	var map := _map()
+	var npc := TDNpc.new()
+	npc._func_godot_apply_properties({ "model": "res://tests/td_npc_body_fixture.tscn" })
+	map.add_child(npc)
+	await t.process_frame
+	var direct := npc.get_children().filter(func(c): return c is CollisionShape3D)
+	check(npc.get_child_count() == 1 and direct.is_empty(), "an npc whose model has a body adds no shapes, got %s" % [npc.get_children()])
+	map.queue_free()

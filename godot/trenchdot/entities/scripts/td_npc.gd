@@ -20,6 +20,9 @@ const _Animate := preload("td_animate.gd")
 @export var walk_anim := "walk"
 @export var idle_anim := "idle"
 @export var face_travel := true
+## Shape built from the model, see [TrenchDotCollision]. A character body cannot use trimesh, so it builds
+## convex hulls for it.
+@export_enum("default", "none", "box", "convex", "decomposition", "trimesh") var collision := "default"
 
 var _running := false
 var _next: Node3D
@@ -38,6 +41,8 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	walk_anim = str(props.get("walk_anim", walk_anim))
 	idle_anim = str(props.get("idle_anim", idle_anim))
 	face_travel = TrenchDotIO.to_bool(props.get("face_travel", face_travel))
+	collision = str(props.get("collision", collision))
+	TrenchDotCollision.apply_layers(self, props)
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
@@ -46,7 +51,10 @@ func _ready() -> void:
 	if path != "" and ResourceLoader.exists(path):
 		var packed := load(path) as PackedScene
 		if packed:
-			add_child(packed.instantiate())
+			var body := packed.instantiate()
+			add_child(body)
+			if not (body is CollisionObject3D) and body.find_children("*", "CollisionObject3D", true, false).is_empty():
+				TrenchDotCollision.add_shapes(self, TrenchDotCollision.shapes(body, self, TrenchDotCollision.mode(collision), false))
 	_player = _Animate._find_animation_player(self)
 	_play(idle_anim)
 	if start_active:

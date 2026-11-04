@@ -30,6 +30,7 @@ func run(runner: SceneTree) -> void:
 	test_brush_entity_body()
 	test_brushes_and_definition_type()
 	test_scene_script_class()
+	await test_collision_controls()
 
 ## The demo's map settings with [param fgd] as their Entity Fgd.
 func _settings(fgd: FuncGodotFGDFile) -> FuncGodotMapSettings:
@@ -260,17 +261,72 @@ func test_unknown_node_class() -> void:
 	_free(map)
 
 func test_brush_entity_body() -> void:
-	print("- a brush entity without a Node Class takes the body its script extends, or warns")
-	var settings := _settings(_fgd([_solid("td_tests_scripted_body", "", load(STATIC_BODY_SCRIPT)), _solid("td_tests_plain_brush")]))
-	var children := [_entity(2, "td_tests_scripted_body", [_box(3)]), _entity(4, "td_tests_plain_brush", [_box(5, 128)]), _entity(6, "td_tests_plain_brush", [_box(7, 256)]), _entity(8, "env_reflection_probe", [_box(9, 384)])]
+	print("- a brush entity without a Node Class takes the body its script extends, a static body, or warns")
+	var marker_script := GDScript.new()
+	marker_script.source_code = "extends Marker3D
+"
+	marker_script.reload()
+	var settings := _settings(_fgd([_solid("td_tests_scripted_body", "", load(STATIC_BODY_SCRIPT)), _solid("td_tests_plain_brush"), _solid("td_tests_marker_brush", "", marker_script)]))
+	var children := [_entity(2, "td_tests_scripted_body", [_box(3)]), _entity(4, "td_tests_plain_brush", [_box(5, 128)]), _entity(6, "td_tests_plain_brush", [_box(7, 256)]), _entity(8, "env_reflection_probe", [_box(9, 384)]), _entity(10, "td_tests_marker_brush", [_box(11, 512)]), _entity(12, "td_tests_marker_brush", [_box(13, 640)])]
 	var map := _build(settings, children)
 	var body := _child_named(map, "td_tests_scripted_body")
 	check(body is StaticBody3D and body.get_script() == load(STATIC_BODY_SCRIPT), "it builds the script's StaticBody3D with the script, got %s" % body)
 	check(body != null and t.collect(body, func(n): return n is CollisionShape3D).size() == 1, "which collides")
 	check(_problems(map, "td_tests_scripted_body").is_empty(), "and is not reported")
-	var problems := _problems(map, "td_tests_plain_brush")
-	check(problems.size() == 1 and problems[0]["problem"].begins_with("td_tests_plain_brush builds as a Node3D, so its brushes have no collision"), "a plain Node3D with collision shapes warns once per class, got %s" % [problems])
+	var plain := _child_named(map, "td_tests_plain_brush")
+	check(plain is StaticBody3D and t.collect(plain, func(n): return n is CollisionShape3D).size() == 1, "one with no script collides as a StaticBody3D, got %s" % plain)
+	check(_problems(map, "td_tests_plain_brush").is_empty(), "and is not reported, got %s" % [_problems(map, "td_tests_plain_brush")])
+	var problems := _problems(map, "td_tests_marker_brush")
+	check(problems.size() == 1 and problems[0]["problem"].begins_with("td_tests_marker_brush builds as a Marker3D, so its brushes have no collision"), "a script extending a node that is no body warns once per class, got %s" % [problems])
 	check(_problems(map, "env_reflection_probe").is_empty(), "a volume like a reflection probe does not, got %s" % [_problems(map, "env_reflection_probe")])
+	_free(map)
+
+func _shapes(node: Node) -> Array:
+	return node.get_children(true).filter(func(n): return n is CollisionShape3D).map(func(n): return n.shape) if node else []
+
+func test_collision_controls() -> void:
+	print("- collision keys pick the shape, layer and mask of brush entities and model entities")
+	var children := [
+		_entity(2, "func_door", [_box(3)], { "targetname": "door_none", "collision": "none" }),
+		_entity(4, "func_door", [_box(5, 128), _box(6, 160)], { "targetname": "door_box", "collision": "box", "collision_layer": "2, 4", "collision_mask": "none" }),
+		_entity(7, "func_door", [_box(8, 256)], { "targetname": "door_trimesh", "collision": "trimesh" }),
+		_entity(9, "trigger_area", [_box(10, 384)], { "targetname": "area_trimesh", "collision": "trimesh" }),
+		_entity(11, "func_door", [_box(12, 512)], { "targetname": "door_plain" }),
+		_entity(13, "prop_model", [], { "model": PINE, "targetname": "pine_box", "collision": "box", "collision_layer": "3" }),
+		_entity(14, "prop_model", [], { "model": PINE, "targetname": "pine_decomp", "collision": "decomposition" }),
+		_entity(15, "prop_model", [], { "model": PINE, "targetname": "pine_default" }),
+		_entity(16, "prop_physics", [], { "model": PINE, "targetname": "crate_convex", "collision": "convex", "collision_mask": "1 2" }),
+		_entity(17, "prop_physics", [], { "targetname": "crate_plain" }),
+		_entity(18, "npc_walker", [], { "model": PINE, "targetname": "walker" }),
+	]
+	var map := _build(_settings(_fgd([])), children)
+	var find := func(n: String) -> Node: return t.find_targetname(map, n)
+	check(_shapes(find.call("door_none")).is_empty(), "collision none builds no shapes")
+	var door_box: Node = find.call("door_box")
+	var box_shapes := _shapes(door_box)
+	check(box_shapes.size() == 1 and box_shapes[0] is ConvexPolygonShape3D and box_shapes[0].points.size() == 8, "box wraps both brushes in one box, got %s" % [box_shapes])
+	check(door_box.collision_layer == 10 and door_box.collision_mask == 0, "collision_layer and collision_mask take layer numbers, got %s %s" % [door_box.collision_layer, door_box.collision_mask])
+	var trimesh := _shapes(find.call("door_trimesh"))
+	check(trimesh.size() == 1 and trimesh[0] is ConcavePolygonShape3D, "a door is a static body, so it takes trimesh, got %s" % [trimesh])
+	var area := _shapes(find.call("area_trimesh"))
+	check(area.size() == 1 and area[0] is ConvexPolygonShape3D, "an Area3D builds convex hulls for trimesh, got %s" % [area])
+	check(_problems(map, "trigger_area").any(func(p): return p["problem"].contains("trimesh")), "and warns, got %s" % [_problems(map, "trigger_area")])
+	var plain: Node = find.call("door_plain")
+	check(_shapes(plain).size() == 1 and _shapes(plain)[0] is ConvexPolygonShape3D and plain.collision_layer == 1, "a door without keys keeps its convex hull on layer 1")
+	var pine_box: Node = find.call("pine_box").get_node_or_null("prop_collision")
+	check(pine_box != null and _shapes(pine_box).size() == 1 and _shapes(pine_box)[0] is BoxShape3D and pine_box.collision_layer == 4, "a prop takes a box on its layer, got %s" % [_shapes(pine_box)])
+	var decomp: Node = find.call("pine_decomp").get_node_or_null("prop_collision")
+	check(decomp != null and _shapes(decomp).size() > 0 and _shapes(decomp).all(func(s): return s is ConvexPolygonShape3D), "decomposition builds convex hulls")
+	var plain_prop: Node = find.call("pine_default").get_node_or_null("prop_collision")
+	check(plain_prop != null and _shapes(plain_prop).size() > 0 and _shapes(plain_prop).all(func(s): return s is ConvexPolygonShape3D), "a prop without keys still gets convex hulls")
+	check(TrenchDotCollision.decompose(TorusMesh.new()).size() > 1, "a torus decomposes into several hulls")
+	t.root.add_child(map.owner)
+	await t.process_frame
+	var crate: Node = find.call("crate_convex")
+	check(_shapes(crate).size() > 0 and _shapes(crate).all(func(s): return s is ConvexPolygonShape3D) and crate.collision_mask == 3, "prop_physics builds convex hulls from its model, got %s" % [_shapes(crate)])
+	var plain_crate := _shapes(find.call("crate_plain"))
+	check(plain_crate.size() == 1 and plain_crate[0] is BoxShape3D, "prop_physics without keys keeps its box from size, got %s" % [plain_crate])
+	check(_shapes(find.call("walker")).size() > 0, "npc_walker collides with its model's shape")
 	_free(map)
 
 func test_brushes_and_definition_type() -> void:

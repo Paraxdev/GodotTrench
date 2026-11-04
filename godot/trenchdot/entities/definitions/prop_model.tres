@@ -11,18 +11,25 @@ script_class = ExtResource("2_script")
 class_properties = Dictionary[String, Variant]({
 "model": "",
 "model_node": "",
+"scale": 1.0,
 "collision": {
+"default": "default",
 "none": "none",
-"convex": "convex",
+"box": "box",
+"convex hull": "convex",
+"convex decomposition": "decomposition",
 "trimesh": "trimesh"
 },
-"scale": 1.0
+"collision_layer": "",
+"collision_mask": ""
 })
 class_property_descriptions = Dictionary[String, Variant]({
 "model": "res:// path of the model",
 "model_node": "Name of one node in the model to use, placed at the origin, for files that hold several variants side by side",
-"collision": ["Collision shape", "convex"],
-"scale": "Uniform scale"
+"scale": "Uniform scale",
+"collision": ["Collision shape built from the model, unless the model brings its own. default uses the project setting trenchdot/collision/model_shape, convex unless changed. box is one box around the model, convex decomposition several hulls that follow concave models, trimesh follows every face", "default"],
+"collision_layer": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the project default, none puts it on no layer",
+"collision_mask": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the project default, none detects nothing"
 })
 meta_properties = Dictionary[String, Variant]({
 "color": Color(0.54901963, 0.8509804, 0.4509804, 1),

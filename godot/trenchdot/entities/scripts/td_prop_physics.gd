@@ -9,10 +9,13 @@ signal broken
 
 const _Explosion := preload("td_explosion.gd")
 
-## res:// scene used for the visual, its collision is ignored in favor of a box from size.
+## res:// scene used for the visual, its own collision is ignored.
 @export var model := ""
 ## Half extents of the box collision in map units.
 @export var size := Vector3(16, 16, 16)
+## Shape of the body: default and box use size, convex and decomposition the model. A rigid body cannot use
+## trimesh, so it builds convex hulls for it.
+@export_enum("default", "none", "box", "convex", "decomposition", "trimesh") var collision := "default"
 @export var health := 30.0
 @export var explosive := false
 @export var explosion_radius := 192.0
@@ -42,6 +45,8 @@ func _func_godot_apply_properties(props: Dictionary) -> void:
 	impact_speed = float(props.get("impact_speed", impact_speed))
 	debris_scene = str(props.get("debris_scene", debris_scene))
 	mass = float(props.get("mass", mass))
+	collision = str(props.get("collision", collision))
+	TrenchDotCollision.apply_layers(self, props)
 	_hp = health
 
 func _ready() -> void:
@@ -55,25 +60,32 @@ func _ready() -> void:
 
 func _build_body() -> void:
 	var full := (size / TrenchDotIO.units_per_meter(self)) * 2.0
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = full
-	shape.shape = box
-	_add(shape)
+	var visual: Node = null
 	var path := TrenchDotBuild.map_resource_path(model, TrenchDotBuild.MODEL_FILES)
 	if path != "" and ResourceLoader.exists(path):
 		var packed := load(path) as PackedScene
 		if packed:
-			_add(packed.instantiate())
-			return
+			visual = packed.instantiate()
 	elif path != "" and not TrenchDotProp.quiet_missing and not _warned_models.has(model):
 		_warned_models[model] = true
 		push_warning("[TrenchDot] prop_physics model %s not found, %s and any other prop using it draw a box" % [model, name])
-	var mesh := MeshInstance3D.new()
-	var box_mesh := BoxMesh.new()
-	box_mesh.size = full
-	mesh.mesh = box_mesh
-	_add(mesh)
+	if not visual:
+		var box_mesh := BoxMesh.new()
+		box_mesh.size = full
+		visual = MeshInstance3D.new()
+		visual.mesh = box_mesh
+	_add(visual)
+	var shape_mode := TrenchDotCollision.mode(collision, "box")
+	var pairs := [] if shape_mode in ["box", "none"] else TrenchDotCollision.shapes(visual, self, shape_mode, false)
+	if shape_mode != "none" and pairs.is_empty():
+		var box := BoxShape3D.new()
+		box.size = full
+		pairs = [[box, Transform3D.IDENTITY]]
+	for pair in pairs:
+		var shape := CollisionShape3D.new()
+		shape.shape = pair[0]
+		shape.transform = pair[1]
+		_add(shape)
 
 ## In the editor the body is only a preview, built again whenever the scene loads. Internal children are left out of
 ## get_children(), so builds never give them an owner and the scene is saved without them.

@@ -16,7 +16,17 @@ class_properties = Dictionary[String, Variant]({
 "filter_group": "player",
 "keep_velocity": false,
 "cooldown": 0.5,
-"start_disabled": false
+"start_disabled": false,
+"collision": {
+"default": "default",
+"none": "none",
+"box": "box",
+"convex hull": "convex",
+"convex decomposition": "decomposition",
+"trimesh": "trimesh"
+},
+"collision_layer": "",
+"collision_mask": ""
 })
 class_property_descriptions = Dictionary[String, Variant]({
 "targetname": "Name",
@@ -24,7 +34,10 @@ class_property_descriptions = Dictionary[String, Variant]({
 "filter_group": "Only bodies in this group",
 "keep_velocity": "Keeps the body's velocity",
 "cooldown": "Seconds before the same body fires it again",
-"start_disabled": "Needs an enable input first"
+"start_disabled": "Needs an enable input first",
+"collision": ["Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "default"],
+"collision_layer": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer",
+"collision_mask": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing"
 })
 meta_properties = Dictionary[String, Variant]({
 "color": Color(0.4, 0.8666667, 1, 1),
