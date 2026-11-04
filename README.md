@@ -84,3 +84,5 @@ the toolbar, menu and outliner icons are from [Lucide](https://lucide.dev).
 # License
 TrenchDot is AGPLv3 licensed, see [LICENSE](LICENSE). third party code and assets are listed with their licenses in [LICENSES.md](LICENSES.md).
 
+
+Godot and the Godot logo are trademarks of the Godot Foundation. TrenchDot is not affiliated with or endorsed by the Godot Foundation.
