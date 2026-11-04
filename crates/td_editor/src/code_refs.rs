@@ -399,6 +399,15 @@ pub fn fgd_resource(def: &EntityDef) -> String {
     out
 }
 
+/// The files of a new definition modelled on `def`, by path relative to the project: an FGD resource with a classname
+/// of its own, so it adds an entity rather than replacing `def`, and the GDScript class it runs.
+pub fn project_definition(def: &EntityDef) -> [(String, String); 2] {
+    let mut own = def.clone();
+    own.classname = format!("my_{}", def.classname);
+    own.script = format!("res://entities/{}.gd", own.classname);
+    [(format!("entities/{}.tres", own.classname), fgd_resource(&own)), (format!("entities/{}.gd", own.classname), gdscript_class(&own))]
+}
+
 /// Node classes of solid entities whose brushes only give the box of a probe.
 pub const PROBE_VOLUMES: [&str; 2] = ["ReflectionProbe", "VoxelGI"];
 
@@ -541,6 +550,17 @@ mod tests {
         assert!(tres.contains("classname = \"func_door_rotating\"") && tres.contains("td_door_rotating.gd"));
         assert!(gdscript_usage(door).contains("TrenchDotIO.invoke(node, &\"open\""));
         assert_eq!(CodeKind::from_name("c#"), Some(CodeKind::CsharpClass));
+    }
+
+    #[test]
+    fn a_definition_made_in_the_project_has_a_classname_and_script_of_its_own() {
+        let cfg = td_formats::GameConfig::gameplay_pack();
+        let [(tres_path, tres), (gd_path, gd)] = project_definition(cfg.entity("func_button").unwrap());
+        assert_eq!((tres_path.as_str(), gd_path.as_str()), ("entities/my_func_button.tres", "entities/my_func_button.gd"));
+        assert!(tres.contains("classname = \"my_func_button\""), "{tres}");
+        assert!(tres.contains("path=\"res://entities/my_func_button.gd\" id=\"2_script\"") && !tres.contains("td_button.gd"), "{tres}");
+        assert!(tres.contains("script_class = ExtResource(\"2_script\")") && tres.contains("node_class = \"AnimatableBody3D\""), "{tres}");
+        assert!(gd.starts_with("@tool\nclass_name MyFuncButton extends AnimatableBody3D"), "{gd}");
     }
 
     #[test]

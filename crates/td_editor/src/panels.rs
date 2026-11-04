@@ -3044,18 +3044,39 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
             state.set_status("Copied to the clipboard");
         }
 
+        let tip = if kind == CodeKind::FgdResource {
+            format!(
+                "Writes res://entities/my_{0}.tres, a definition with a classname of its own, and the script it runs, unless they exist. Godot builds it once the .tres is in Entity Definitions of the FGD your map settings use",
+                def.classname
+            )
+        } else {
+            "Writes the file under res://entities/ unless it exists".to_string()
+        };
         if matches!(kind, CodeKind::GdscriptClass | CodeKind::CsharpClass | CodeKind::FgdResource)
             && let Some(root) = state.game.project_root.clone()
-            && ui.button("Create in project").on_hover_text("Writes the file under res://entities/ unless it exists").clicked()
+            && ui.button("Create in project").on_hover_text(tip).clicked()
         {
             let stem = if kind == CodeKind::CsharpClass { code_refs::pascal(&def.classname) } else { def.classname.clone() };
-            let path = root.join("entities").join(format!("{stem}.{}", kind.extension()));
+            let files = match kind {
+                CodeKind::FgdResource => code_refs::project_definition(&def).to_vec(),
+                _ => vec![(format!("entities/{stem}.{}", kind.extension()), code.clone())],
+            };
+            let path = root.join(&files[0].0);
             let result = if path.exists() {
                 Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "file exists"))
             } else {
-                std::fs::create_dir_all(root.join("entities")).and_then(|_| std::fs::write(&path, &code))
+                std::fs::create_dir_all(root.join("entities")).and_then(|_| {
+                    files.iter().filter(|(rel, _)| !root.join(rel).exists()).try_for_each(|(rel, text)| std::fs::write(root.join(rel), text))
+                })
             };
             state.set_status(match result {
+                Ok(()) if kind == CodeKind::FgdResource => {
+                    let fgd = state.game.build.as_ref().filter(|b| !b.entity_fgd.is_empty()).map(|b| format!(", {}", b.entity_fgd)).unwrap_or_default();
+                    format!(
+                        "Wrote {} and the script it runs. Godot builds it once you add it to Entity Definitions of the FGD your map settings use{fgd}",
+                        path.display()
+                    )
+                }
                 Ok(()) => format!("Wrote {}", path.display()),
                 Err(e) => format!("{}: {e}", path.display()),
             });
