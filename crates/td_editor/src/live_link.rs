@@ -1,7 +1,7 @@
 //! Connection to a Godot editor running the TrenchDot addon: save notifications, builds, focus and live mode.
 //! Protocol: one JSON object per line over TCP on 127.0.0.1, each answered by one JSON line echoing its `seq`.
 
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
@@ -63,8 +63,72 @@ fn saved_message(path: &str) -> Value {
 fn rebuilt_status(reply: &Value, path: &str) -> String {
     match reply["rebuilt"].as_u64() {
         Some(0) => format!("Live link: {}", nothing_built(reply, path, true)),
-        Some(n) => format!("Live link: Godot rebuilt {n} map node(s)"),
+        Some(n) => format!("Live link: Godot rebuilt {n} map node(s){}", build_report(reply).map(|r| r.note()).unwrap_or_default()),
         None => format!("Live link: {}", reply["error"].as_str().unwrap_or("unexpected reply")),
+    }
+}
+
+fn strings(value: &Value) -> Vec<String> {
+    value.as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect()
+}
+
+/// What a save or build reply says about the maps it rebuilt. None when it rebuilt none.
+fn build_report(reply: &Value) -> Option<GodotReport> {
+    (reply["rebuilt"].as_u64().unwrap_or(0) > 0).then(|| GodotReport {
+        missing: strings(&reply["missing_classes"]).into_iter().collect(),
+        settings: strings(&reply["settings"]),
+        warnings: strings(&reply["warnings"]).into_iter().filter(|w| !names_missing_classes(w)).collect(),
+    })
+}
+
+/// The addon's own warning about the classes without a definition, which the editor already names one by one.
+fn names_missing_classes(warning: &str) -> bool {
+    warning.split_once(' ').is_some_and(|(count, rest)| {
+        count.parse::<u32>().is_ok() && ["entity class has no definition in ", "entity classes have no definition in "].iter().any(|s| rest.starts_with(s))
+    })
+}
+
+/// "a", "a and b", "a, b and c" or "a, b, c and 2 more".
+pub fn name_list<S: AsRef<str>>(names: &[S]) -> String {
+    let names: Vec<&str> = names.iter().map(AsRef::as_ref).collect();
+    match &names[..] {
+        [] => String::new(),
+        [one] => one.to_string(),
+        [first @ .., last] if names.len() <= 3 => format!("{} and {last}", first.join(", ")),
+        more => format!("{} and {} more", more[..3].join(", "), more.len() - 3),
+    }
+}
+
+/// What Godot reported when it last built one map.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct GodotReport {
+    /// Classnames Godot built without a definition, as plain nodes without script or collision.
+    pub missing: BTreeSet<String>,
+    /// Resource paths of the map settings the build used. Empty from addons that do not say.
+    pub settings: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+impl GodotReport {
+    /// The map settings by name with the verb that follows, "res://a.tres has" or "res://a.tres and res://b.tres have".
+    pub fn settings_have(&self) -> String {
+        match self.settings.len() {
+            0 => "the FGD Godot builds with has".to_string(),
+            1 => format!("{} has", self.settings[0]),
+            _ => format!("{} have", name_list(&self.settings)),
+        }
+    }
+
+    /// What a status line about the build adds.
+    fn note(&self) -> String {
+        let missing: Vec<&String> = self.missing.iter().collect();
+        match (missing.len(), self.warnings.len()) {
+            (0, 0) => String::new(),
+            (0, 1) => " with a warning, see the Issues panel".to_string(),
+            (0, n) => format!(" with {n} warnings, see the Issues panel"),
+            (1, _) => format!(", but {} no definition for {}, so it builds as a plain node. See the Issues panel", self.settings_have(), missing[0]),
+            _ => format!(", but {} no definition for {}, so they build as plain nodes. See the Issues panel", self.settings_have(), name_list(&missing)),
+        }
     }
 }
 
@@ -142,9 +206,24 @@ pub struct LinkState {
     pub busy: bool,
     /// Goes up whenever live sessions were dropped, so the editor sends its map again.
     pub resync: u64,
+    /// By `path_key` of the map.
+    pub reports: BTreeMap<String, GodotReport>,
 }
 
 impl LinkState {
+    /// What Godot reported building the map at `path`.
+    pub fn report(&self, path: &Path) -> Option<&GodotReport> {
+        self.reports.get(&path_key(&godot_path(path)))
+    }
+
+    /// Godot reported `classes` missing before their definitions appeared, so its next build tells again whether it has
+    /// them.
+    pub fn forget_missing(&mut self, classes: &BTreeSet<String>) {
+        for report in self.reports.values_mut() {
+            report.missing.retain(|c| !classes.contains(c));
+        }
+    }
+
     pub fn has_project(&self, root: &Path) -> bool {
         self.connected && self.project.as_deref() == Some(path_key(&godot_path(root)).as_str())
     }
@@ -257,6 +336,11 @@ impl LiveLink {
 
     pub fn poll_status(&self) -> Option<String> {
         self.statuses.try_recv().ok()
+    }
+
+    /// Takes `classes` out of what Godot reported missing, see [`LinkState::forget_missing`].
+    pub fn forget_missing(&self, classes: &BTreeSet<String>) {
+        self.with(|s| s.state.forget_missing(classes));
     }
 }
 
@@ -470,6 +554,14 @@ impl Worker {
         });
     }
 
+    fn keep_report(&self, key: &str, reply: &Value) {
+        if let Some(report) = build_report(reply) {
+            self.update(|s| {
+                s.reports.insert(key.to_string(), report);
+            });
+        }
+    }
+
     fn long_call(&mut self, message: Value) -> Result<Value, String> {
         self.update(|s| s.busy = true);
         let reply = self.call(message, BUILD_REPLY);
@@ -501,7 +593,10 @@ impl Worker {
                 self.sessions.remove(&key);
                 let message = saved_message(&path);
                 let status = match self.long_call(message.clone()) {
-                    Ok(reply) => rebuilt_status(&reply, &path),
+                    Ok(reply) => {
+                        self.keep_report(&key, &reply);
+                        rebuilt_status(&reply, &path)
+                    }
                     Err(e) => format!("Live link: {e}"),
                 };
                 self.say(status + &game_status(game_port, &message));
@@ -514,10 +609,13 @@ impl Worker {
                 self.sessions.remove(&key);
                 let text = td_doc::format::to_string_with_lightmap(&map);
                 let status = match self.long_call(json!({ "event": "build", "path": path, "text": text, "force": true })) {
-                    Ok(reply) if reply["ok"].as_bool() == Some(true) => match reply["rebuilt"].as_u64() {
-                        Some(0) | None => nothing_built(&reply, &path, false),
-                        Some(n) => format!("Godot built {n} map node(s) from the map as shown here"),
-                    },
+                    Ok(reply) if reply["ok"].as_bool() == Some(true) => {
+                        self.keep_report(&key, &reply);
+                        match (reply["rebuilt"].as_u64(), build_report(&reply)) {
+                            (Some(n), Some(report)) => format!("Godot built {n} map node(s) from the map as shown here{}", report.note()),
+                            _ => nothing_built(&reply, &path, false),
+                        }
+                    }
                     Ok(reply) => format!("Build in Godot failed: {}", reply["error"].as_str().unwrap_or("unexpected reply")),
                     Err(e) => format!("Build in Godot failed: {e}"),
                 };
@@ -694,6 +792,35 @@ mod tests {
     }
 
     #[test]
+    fn a_build_names_the_classes_godot_has_no_definition_for() {
+        assert_eq!(name_list(&["a"]), "a");
+        assert_eq!(name_list(&["a", "b", "c"]), "a, b and c");
+        assert_eq!(name_list(&["a", "b", "c", "d", "e"]), "a, b, c and 2 more");
+        let path = "C:/game/maps/shop.tdm";
+        let status = |extra: Value| {
+            let mut reply = json!({ "ok": true, "rebuilt": 1 });
+            reply.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+            rebuilt_status(&reply, path)
+        };
+        assert_eq!(status(json!({})), "Live link: Godot rebuilt 1 map node(s)", "an older addon says nothing more");
+        assert_eq!(
+            status(json!({ "missing_classes": ["light", "func_door"], "settings": ["res://my_settings.tres"], "warnings": ["a"] })),
+            "Live link: Godot rebuilt 1 map node(s), but res://my_settings.tres has no definition for func_door and light, so they build as plain nodes. See the Issues panel"
+        );
+        assert_eq!(
+            status(json!({ "missing_classes": ["func_door"] })),
+            "Live link: Godot rebuilt 1 map node(s), but the FGD Godot builds with has no definition for func_door, so it builds as a plain node. See the Issues panel"
+        );
+        assert_eq!(status(json!({ "warnings": ["a", "b"] })), "Live link: Godot rebuilt 1 map node(s) with 2 warnings, see the Issues panel");
+        assert_eq!(build_report(&json!({ "ok": true, "rebuilt": 0, "missing_classes": ["func_door"] })), None, "nothing built, nothing learned");
+        let summary = "2 entity classes have no definition in res://my_settings.tres (Entity Fgd res://my.tres): func_door, my_lamp. They build as plain nodes";
+        let report = build_report(
+            &json!({ "ok": true, "rebuilt": 1, "missing_classes": ["func_door", "my_lamp"], "warnings": [summary, "model res://a.glb not found"] }),
+        );
+        assert_eq!(report.unwrap().warnings, ["model res://a.glb not found"], "the classes are named one by one already");
+    }
+
+    #[test]
     fn reports_missing_godot() {
         let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
         assert!(send(port, &json!({ "event": "hello" })).is_err());
@@ -707,8 +834,13 @@ mod tests {
         }
     }
 
-    /// Answers like the addon: status lists `map`, live messages are counted and acknowledged after `delay`.
     fn fake_godot(map: String, delay: Duration) -> (u16, Arc<Mutex<Vec<Value>>>) {
+        fake_godot_with(map, delay, json!({}))
+    }
+
+    /// Answers like the addon: status lists `map`, live messages are counted and acknowledged after `delay`. The replies
+    /// to each event in `answers` carry its fields too.
+    fn fake_godot_with(map: String, delay: Duration, answers: Value) -> (u16, Arc<Mutex<Vec<Value>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let seen = Arc::new(Mutex::new(Vec::new()));
@@ -738,6 +870,10 @@ mod tests {
                             reply["rebuilt"] = json!(1);
                         }
                         _ => std::thread::sleep(delay),
+                    }
+
+                    if let Some(extra) = answers[event.as_str()].as_object() {
+                        reply.as_object_mut().unwrap().extend(extra.clone());
                     }
 
                     log.lock().unwrap().push(msg);
@@ -804,6 +940,24 @@ mod tests {
         map.insert(layer, td_doc::NodeKind::Entity(td_doc::Entity::new("light")));
         link.sync(&map_path, Frame { map: map.clone(), dragging: false, idle: false });
         wait_for("new session after a build outside live mode", || events(&log, "live_begin") == 3);
+    }
+
+    #[test]
+    fn what_godot_reports_about_a_build_is_kept_per_map() {
+        let map_path = std::env::temp_dir().join("td_live_link_test").join("report.tdm");
+        let answers = json!({ "build": { "missing_classes": ["func_door"], "settings": ["res://my_settings.tres"], "warnings": ["Node Class AnimatedBody3D not found"] } });
+        let (port, _) = fake_godot_with(godot_path(&map_path), Duration::ZERO, answers);
+        let link = LiveLink::start(None);
+        link.configure(port, true);
+        wait_for("heartbeat", || link.state().connected);
+        link.request(Request::Build { path: godot_path(&map_path), map: td_doc::Map::new(), live: false });
+        let named = "Godot built 1 map node(s) from the map as shown here, but res://my_settings.tres has no definition for func_door";
+        wait_for("build status", || link.poll_status().is_some_and(|s| s.starts_with(named)));
+        let state = link.state();
+        let report = state.report(&map_path).expect("a report for the map");
+        assert_eq!(report.missing.iter().collect::<Vec<_>>(), ["func_door"]);
+        assert_eq!((report.settings_have(), report.warnings.len()), ("res://my_settings.tres has".to_string(), 1));
+        assert!(state.report(&map_path.with_file_name("other.tdm")).is_none());
     }
 
     fn capture(link: &LiveLink, path: &Path, build: Option<td_doc::Map>) -> Result<Value, String> {

@@ -52,6 +52,7 @@ pub struct PanelState {
     issues_revision: u64,
     issues_overlays: u64,
     issues_materials: u64,
+    issues_godot: Option<crate::live_link::GodotReport>,
     pub uv: crate::uv_editor::UvEditorState,
     pub reference_class: String,
     reference_filter: String,
@@ -92,6 +93,7 @@ impl Default for PanelState {
             issues_revision: 0,
             issues_overlays: 0,
             issues_materials: 0,
+            issues_godot: None,
             uv: Default::default(),
             reference_class: String::new(),
             reference_filter: String::new(),
@@ -2789,9 +2791,13 @@ fn place_action(state: &EditorState, classnames: Vec<String>) -> Action {
 
 pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
     use td_doc::issues::{self, Severity};
-    let stale =
-        ps.issues_revision != state.doc.revision || ps.issues_overlays != state.overlay_ghosts.generation || ps.issues_materials != state.materials.generation;
+    let godot = state.doc.path.as_deref().and_then(|p| state.link_state.report(p));
+    let stale = ps.issues_revision != state.doc.revision
+        || ps.issues_overlays != state.overlay_ghosts.generation
+        || ps.issues_materials != state.materials.generation
+        || ps.issues_godot.as_ref() != godot;
     if stale && !state.doc.in_transaction() {
+        ps.issues_godot = godot.cloned();
         ps.issues = crate::validate::open_map_issues(state);
         ps.issues_revision = state.doc.revision;
         ps.issues_overlays = state.overlay_ghosts.generation;
@@ -2818,20 +2824,22 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
     let mut select: Option<NodeId> = None;
     ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for issue in &ps.issues {
-            ui.horizontal(|ui| {
+            ui.horizontal_top(|ui| {
                 let (tag, color) = match issue.severity {
                     Severity::Error => ("Error", theme::ERROR),
                     Severity::Warning => ("Warning", theme::WARNING),
                     Severity::Info => ("Info", theme::INFO),
                 };
                 ui.label(RichText::new(tag).small().strong().color(color));
-                let name = issue.node.and_then(|n| state.doc.map.get(n)).map(|n| n.name()).unwrap_or_default();
-                if ui.selectable_label(false, format!("{}  {}", issue.message, RichText::new(name).weak().text())).clicked() {
-                    select = issue.node;
-                }
-
                 if issues::fixable(issue.code) && ui.small_button("Fix").clicked() {
                     fix.push(issue.clone());
+                }
+
+                // Messages name files and the fix, so they wrap instead of being cut off.
+                let name = issue.node.and_then(|n| state.doc.map.get(n)).map(|n| n.name()).unwrap_or_default();
+                let row = egui::Button::selectable(false, format!("{}  {}", issue.message, RichText::new(name).weak().text())).wrap();
+                if ui.add(row).clicked() {
+                    select = issue.node;
                 }
             });
         }

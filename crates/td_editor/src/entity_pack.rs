@@ -261,7 +261,9 @@ pub fn install_in_project(state: &mut crate::state::EditorState) -> Result<Repor
     let report = install_where(&root, &|p| state.may_write(p));
     state.gameplay_pack = Status::check(&root);
     let report = report?;
+    let before = state.defined_classes();
     add_unexported(&mut state.game, &root);
+    state.forget_godot_missing(&before);
     Ok(report)
 }
 
@@ -453,6 +455,17 @@ mod tests {
         let mut game = GameConfig::builtin();
         game.source = Some(exported);
         assert_eq!(add_unexported(&mut game, root), 0);
+    }
+
+    #[test]
+    fn installing_the_pack_drops_what_godot_reported_missing_before() {
+        let dir = project();
+        let mut state = crate::state::EditorState::new(Default::default());
+        state.load_project(dir.path());
+        let report = crate::live_link::GodotReport { missing: ["func_door".to_string(), "my_lamp".to_string()].into(), ..Default::default() };
+        state.link_state.reports.insert("hall".into(), report);
+        install_in_project(&mut state).unwrap();
+        assert_eq!(state.link_state.reports["hall"].missing.iter().collect::<Vec<_>>(), ["my_lamp"]);
     }
 
     #[test]

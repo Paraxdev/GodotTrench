@@ -1221,6 +1221,11 @@ impl EditorState {
 
     /// Loads the game config of a Godot project, falling back to built-in definitions.
     pub fn load_project(&mut self, root: &Path) {
+        self.load_project_with(root, true);
+    }
+
+    /// Like [`EditorState::load_project`]. Without `announce` only a failure or an install changes the status.
+    fn load_project_with(&mut self, root: &Path, announce: bool) {
         let root = &absolute(root);
         let switched = self.game.project_root.as_ref() != Some(root);
         // Taken before reading, so a file still being written when it was read counts as changed afterwards.
@@ -1228,7 +1233,10 @@ impl EditorState {
         let mut game = match GameConfig::discover(root) {
             Some(path) => match GameConfig::load(&path) {
                 Ok(g) => {
-                    self.set_status(format!("Loaded game config {}", path.display()));
+                    if announce {
+                        self.set_status(format!("Loaded game config {}", path.display()));
+                    }
+
                     g
                 }
                 Err(e) => {
@@ -1257,12 +1265,14 @@ impl EditorState {
         self.materials.rescan(&game);
         self.model_library.rescan(&game);
         self.prefab_library.rescan(Some(root));
+        let before = self.defined_classes();
         self.game = game;
         // Checked again each time a project opens, but not while it stays open: Godot adds imported files to it then.
         if switched || self.no_code_root.as_ref() != Some(root) {
             self.no_code_root = (!self.is_trusted(root) && crate::code_scan::find(root).is_none()).then(|| root.clone());
         }
 
+        self.forget_godot_missing(&before);
         self.refresh_trust();
         if switched && self.restricted() {
             self.trust_request = Some(TrustRequest::Project(root.clone()));
@@ -1282,13 +1292,13 @@ impl EditorState {
         self.prefs.recent_projects.truncate(8);
         if let Some(status) = crate::entity_pack::install_for_maps(self) {
             self.set_status(status);
-        } else if let Some(clash) = self.game.clashes.first() {
+        } else if let Some(clash) = self.game.clashes.first().filter(|_| announce) {
             let more = match self.game.clashes.len() {
                 1 => String::new(),
                 n => format!(" {} more classnames are defined twice, the Issues panel lists the ones a map uses.", n - 1),
             };
             self.set_status(format!("{}.{more}", clash.describe()));
-        } else if self.gameplay_pack.update() {
+        } else if announce && self.gameplay_pack.update() {
             self.set_status("The addon has a newer Gameplay entities pack. Gameplay > Update Gameplay Entities installs it and keeps the files you edited.");
         }
     }
@@ -1322,8 +1332,30 @@ impl EditorState {
             return false;
         }
 
-        self.load_project(&root);
+        // Godot exports the config again after each build, which must not hide what the build reported.
+        self.load_project_with(&root, false);
         true
+    }
+
+    /// The classes the game config defines, and those its export says the FGD Godot builds with defines.
+    pub fn defined_classes(&self) -> [std::collections::BTreeSet<String>; 2] {
+        let built = self.game.build.iter().flat_map(|b| b.classes.iter().cloned()).collect();
+        [self.game.entities.iter().map(|e| e.classname.clone()).collect(), built]
+    }
+
+    /// What Godot reported missing predates the definitions added since `before`, in the game config or in the FGD Godot
+    /// builds with.
+    pub fn forget_godot_missing(&mut self, before: &[std::collections::BTreeSet<String>; 2]) {
+        let now = self.defined_classes();
+        let added: std::collections::BTreeSet<String> = now.iter().zip(before).flat_map(|(now, before)| now.difference(before).cloned()).collect();
+        if added.is_empty() {
+            return;
+        }
+
+        self.link_state.forget_missing(&added);
+        if let Some(link) = &self.link {
+            link.forget_missing(&added);
+        }
     }
 
     /// Autosaves every open map with unsaved changes once the autosave interval has passed.
@@ -1777,8 +1809,26 @@ mod tests {
         }
 
         assert!(state.game_config_changed(), "the watcher notices the export");
+        let map = dir.join("hall.tdm");
+        let report = crate::live_link::GodotReport { missing: ["clue_spot".to_string(), "my_lamp".to_string()].into(), ..Default::default() };
+        state.link_state.reports.insert(crate::live_link::path_key(&crate::live_link::godot_path(&map)), report);
+        state.set_status("Live link: Godot rebuilt 1 map node(s)");
         assert!(state.reload_changed_game_config() && state.game.entity("clue_spot").is_some());
         assert!(!state.game_config_changed(), "the reload watches the new file");
+        assert_eq!(state.status, "Live link: Godot rebuilt 1 map node(s)", "Godot exports after each build, the build status stays");
+        let missing: Vec<&String> = state.link_state.report(&map).unwrap().missing.iter().collect();
+        assert_eq!(missing, ["my_lamp"], "Godot reported clue_spot before its definition appeared");
+
+        for report in state.link_state.reports.values_mut() {
+            report.missing.insert("clue_spot".into());
+        }
+
+        let entities = serde_json::json!([{ "classname": "game_locker", "type": "point" }, { "classname": "clue_spot", "type": "point" }]);
+        let build = serde_json::json!({ "map_settings": "res://settings.tres", "classes": ["clue_spot", "game_locker"] });
+        std::fs::write(&file, serde_json::json!({ "format": "trenchdot-game", "entities": entities, "build": build }).to_string()).unwrap();
+        assert!(state.reload_changed_game_config());
+        let missing: Vec<&String> = state.link_state.report(&map).unwrap().missing.iter().collect();
+        assert_eq!(missing, ["my_lamp"], "the FGD Godot builds with has clue_spot now, though the game config had it before");
 
         std::fs::remove_file(&file).unwrap();
         assert!(state.reload_changed_game_config() && state.game.entity("clue_spot").is_none(), "a removed config falls back to the built-in one");

@@ -47,6 +47,8 @@ pub struct Context {
     pub external: BTreeSet<String>,
     /// The Gameplay entities pack is installed in the project.
     pub pack_installed: bool,
+    /// What Godot reported when it last built the map.
+    pub godot: Option<crate::live_link::GodotReport>,
 }
 
 /// Every issue of `map`.
@@ -70,6 +72,7 @@ pub fn map_issues(
         &context.external,
     );
     list.extend(definition_issues(map, game, context));
+    list.extend(godot_issues(map, game, context));
     for clash in &game.clashes {
         if map.entities().any(|(_, e)| e.classname == clash.classname) {
             list.push(Issue { node: None, severity: Severity::Warning, code: "entity_clash", message: clash.describe() });
@@ -110,7 +113,12 @@ fn definition_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Iss
             continue;
         };
 
-        if let Some(build) = game.build.as_ref().filter(|b| !b.defines(&e.classname)) {
+        // Once Godot named the map settings it built with, its report says what it lacked, unless the export changed
+        // since: a class it built fine that the default map settings lack now.
+        let reported = |b: &td_formats::BuildConfig| {
+            context.godot.as_ref().is_some_and(|r| !r.settings.is_empty() && (r.missing.contains(&e.classname) || !r.settings.contains(&b.map_settings)))
+        };
+        if let Some(build) = game.build.as_ref().filter(|b| !b.defines(&e.classname) && !reported(b)) {
             let fgd = if build.entity_fgd.is_empty() { String::new() } else { format!("{} ", build.entity_fgd) };
             let message = format!(
                 "Godot builds with {}, whose FGD {fgd}has no '{}'. Set its Entity Fgd to the FGD your game config uses",
@@ -135,13 +143,45 @@ fn definition_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Iss
     list
 }
 
+/// The classes Godot built without a definition the last time it built the map, one warning each, and the warnings of
+/// that build. Classes the editor does not know either are left to `unknown_class`.
+fn godot_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Issue> {
+    let Some(report) = &context.godot else { return Vec::new() };
+    let mut list = Vec::new();
+    for class in &report.missing {
+        let Some((id, _)) = map.entities().find(|(_, e)| e.classname == *class).filter(|_| game.entity(class).is_some()) else { continue };
+        let hint = match (crate::entity_pack::in_pack(class), context.pack_installed) {
+            (true, false) => "Gameplay > Install Gameplay Entities adds it".to_string(),
+            (true, true) if builds_with_addon_fgd(game, report) => "Set its Entity Fgd to the FGD your game config uses".to_string(),
+            (true, true) => format!("Add {} to the Base Fgd Files of its Entity Fgd", crate::entity_pack::DEFAULT_FGD),
+            _ => "Add the definition to its Entity Fgd".to_string(),
+        };
+        list.push(Issue {
+            node: Some(id),
+            severity: Severity::Warning,
+            code: "godot_missing_class",
+            message: format!("Godot built {class} as a plain node without script or collision, {} no definition for it. {hint}", report.settings_have()),
+        });
+    }
+
+    list.extend(report.warnings.iter().map(|w| Issue { node: None, severity: Severity::Warning, code: "godot_warning", message: format!("Godot: {w}") }));
+    list
+}
+
+/// The export names an FGD of the addon as the Entity Fgd Godot built the map with, which an edit to its Base Fgd Files
+/// does not belong in and which brings no pack when it lacks it.
+fn builds_with_addon_fgd(game: &GameConfig, report: &crate::live_link::GodotReport) -> bool {
+    game.build.as_ref().is_some_and(|b| b.entity_fgd.starts_with("res://addons/") && (report.settings.is_empty() || report.settings.contains(&b.map_settings)))
+}
+
 /// Issues of the open map, after looking for materials and overlay changes written since the last check.
 pub fn open_map_issues(state: &mut EditorState) -> Vec<Issue> {
     let unknown: Vec<String> = crate::texture_convert::missing_materials(state).into_keys().collect();
     state.find_new_materials(unknown.iter().map(String::as_str));
     let path = state.doc.path.clone();
     state.overlay_ghosts.refresh(path.as_deref());
-    let context = Context { external: state.overlay_ghosts.targetnames(), pack_installed: state.gameplay_pack.installed };
+    let godot = path.as_deref().and_then(|p| state.link_state.report(p)).cloned();
+    let context = Context { external: state.overlay_ghosts.targetnames(), pack_installed: state.gameplay_pack.installed, godot };
     map_issues(&state.doc.map, &state.game, &mut state.materials, &mut state.prefabs, path.as_deref(), &context)
 }
 
@@ -161,7 +201,7 @@ pub fn file_issues(state: &mut EditorState, path: &Path) -> Result<(Map, Vec<Iss
     state.find_new_materials(unknown.iter().map(String::as_str));
     let sidecar = std::fs::read_to_string(crate::overlays::sidecar_path(path)).ok().and_then(|t| crate::overlays::parse(&t).ok());
     let external = sidecar.unwrap_or_default().into_iter().flat_map(|i| i.targetnames).collect();
-    let context = Context { external, pack_installed: state.gameplay_pack.installed };
+    let context = Context { external, pack_installed: state.gameplay_pack.installed, godot: state.link_state.report(path).cloned() };
     let found = map_issues(&map, &state.game, &mut state.materials, &mut state.prefabs, Some(path), &context);
     Ok((map, found))
 }
@@ -535,6 +575,90 @@ mod tests {
             found[0].message,
             "Godot builds with res://my_settings.tres, whose FGD res://addons/func_godot/fgd/func_godot_fgd.tres has no 'func_door'. Set its Entity Fgd to the FGD your game config uses"
         );
+    }
+
+    #[test]
+    fn classes_godot_built_without_a_definition_are_listed_once_each() {
+        let mut game = GameConfig::with_gameplay_pack();
+        game.build = Some(td_formats::BuildConfig { map_settings: "res://default_settings.tres".into(), ..Default::default() });
+        game.entities.push(td_formats::EntityDef { classname: "my_crate".into(), ..game.entity("info_player_start").unwrap().clone() });
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        let door = map.insert(layer, NodeKind::Entity(Entity::new("func_door")));
+        map.insert(layer, NodeKind::Entity(Entity::new("func_door")));
+        let crate_box = map.insert(layer, NodeKind::Entity(Entity::new("my_crate")));
+        map.insert(layer, NodeKind::Entity(Entity::new("my_thing")));
+        let report = crate::live_link::GodotReport {
+            missing: ["func_door", "my_crate", "my_thing", "light"].map(String::from).into(),
+            settings: vec!["res://my_settings.tres".into()],
+            warnings: vec!["func_breakable builds as a Node3D, so its brushes have no collision".into()],
+        };
+        let check = |godot: Option<crate::live_link::GodotReport>, pack_installed: bool| {
+            let context = Context { godot, pack_installed, ..Default::default() };
+            let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &context);
+            found.into_iter().filter(|i| i.code.starts_with("godot_") || i.code == "build_lacks_class").map(|i| (i.node, i.code, i.message)).collect::<Vec<_>>()
+        };
+        let plain = "as a plain node without script or collision, res://my_settings.tres has no definition for it";
+        assert_eq!(
+            check(Some(report.clone()), true),
+            [
+                (
+                    Some(door),
+                    "godot_missing_class",
+                    format!("Godot built func_door {plain}. Add {} to the Base Fgd Files of its Entity Fgd", crate::entity_pack::DEFAULT_FGD)
+                ),
+                (Some(crate_box), "godot_missing_class", format!("Godot built my_crate {plain}. Add the definition to its Entity Fgd")),
+                (None, "godot_warning", "Godot: func_breakable builds as a Node3D, so its brushes have no collision".to_string()),
+            ],
+            "light is not in the map and my_thing is an unknown class already"
+        );
+        assert!(check(Some(report), false)[0].2.ends_with("Gameplay > Install Gameplay Entities adds it"));
+        let lacking = check(None, false);
+        assert!(lacking.len() == 3 && lacking.iter().all(|i| i.1 == "build_lacks_class"), "before a build the export is all there is: {lacking:?}");
+        let old_addon = crate::live_link::GodotReport::default();
+        assert_eq!(check(Some(old_addon), false).len(), 3, "an addon that names no settings leaves the export check on");
+    }
+
+    #[test]
+    fn a_class_godot_built_fine_is_checked_against_the_newer_export() {
+        let mut game = GameConfig::with_gameplay_pack();
+        game.build = Some(td_formats::BuildConfig { map_settings: "res://default_settings.tres".into(), classes: vec!["light".into()], ..Default::default() });
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        map.insert(layer, NodeKind::Entity(Entity::new("func_door")));
+        map.insert(layer, NodeKind::Entity(Entity::new("func_button")));
+        let report = crate::live_link::GodotReport {
+            missing: ["func_button".to_string()].into(),
+            settings: vec!["res://default_settings.tres".into()],
+            ..Default::default()
+        };
+        let lacking = |report: crate::live_link::GodotReport| {
+            let context = Context { godot: Some(report), pack_installed: true, ..Default::default() };
+            let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &context);
+            found.into_iter().filter(|i| i.code == "build_lacks_class").map(|i| i.message).collect::<Vec<_>>()
+        };
+        let found = lacking(report.clone());
+        assert!(found.len() == 1 && found[0].contains("'func_door'"), "Godot built func_door before the export lost it, func_button it reported: {found:?}");
+        let own = crate::live_link::GodotReport { settings: vec!["res://crypt_settings.tres".into()], ..report };
+        assert!(lacking(own).is_empty(), "a map with map settings of its own does not build with the export's");
+    }
+
+    #[test]
+    fn a_pack_class_built_with_an_addon_fgd_points_to_the_game_config_fgd() {
+        let mut game = GameConfig::with_gameplay_pack();
+        let mut map = Map::new();
+        map.insert(map.default_layer(), NodeKind::Entity(Entity::new("func_door")));
+        let report = crate::live_link::GodotReport { missing: ["func_door".to_string()].into(), settings: vec!["res://s.tres".into()], ..Default::default() };
+        let hint = |game: &GameConfig| {
+            let context = Context { godot: Some(report.clone()), pack_installed: true, ..Default::default() };
+            let found = map_issues(&map, game, &mut MaterialLibrary::new(game), &mut PrefabCache::default(), None, &context);
+            found.into_iter().find(|i| i.code == "godot_missing_class").map(|i| i.message).unwrap_or_default()
+        };
+        assert!(hint(&game).ends_with("Base Fgd Files of its Entity Fgd"), "{}", hint(&game));
+        for fgd in ["res://addons/func_godot/fgd/func_godot_fgd.tres", crate::entity_pack::DEFAULT_FGD] {
+            game.build = Some(td_formats::BuildConfig { map_settings: "res://s.tres".into(), entity_fgd: fgd.into(), ..Default::default() });
+            assert!(hint(&game).ends_with("Set its Entity Fgd to the FGD your game config uses"), "{fgd}: {}", hint(&game));
+        }
     }
 
     #[test]

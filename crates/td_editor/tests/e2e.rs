@@ -2153,19 +2153,27 @@ fn imports_convert_valve_and_quake_textures() {
     assert!(colors > 2);
 }
 
-/// Answers the live link like a Godot editor with `map` open: status lists it, a capture returns a small red PNG and a
-/// walkable request a floor with a small island up on a wall. Every capture and walkable message is kept.
-fn fake_godot_editor(project: &std::path::Path, map: &std::path::Path) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<Value>>>) {
-    fake_godot(project, map, true)
+type Sent = std::sync::Arc<std::sync::Mutex<Vec<Value>>>;
+
+fn fake_godot_editor(project: &std::path::Path, map: &std::path::Path) -> (u16, Sent) {
+    fake_godot_editor_with(project, &[map], json!({}))
 }
 
-/// A fake Godot editor that never answers captures when `captures` is false.
-fn fake_godot(project: &std::path::Path, map: &std::path::Path, captures: bool) -> (u16, std::sync::Arc<std::sync::Mutex<Vec<Value>>>) {
+fn fake_godot_editor_with(project: &std::path::Path, maps: &[&std::path::Path], answers: Value) -> (u16, Sent) {
+    fake_godot(project, maps, answers, true)
+}
+
+/// Answers the live link like a Godot editor with `maps` open: status lists them, a capture returns a small red PNG and
+/// a walkable request a floor with a small island up on a wall. Any other event in `answers` gets `{"ok": true}` with
+/// the fields given for it, the rest are unknown events as an older addon answers them. Every message but status is
+/// kept. Captures go unanswered when `captures` is false.
+fn fake_godot(project: &std::path::Path, maps: &[&std::path::Path], answers: Value, captures: bool) -> (u16, Sent) {
     use std::io::BufRead;
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let slash = |p: &std::path::Path| p.to_string_lossy().replace('\\', "/");
-    let (project, map) = (slash(project), slash(map));
+    let project = slash(project);
+    let listed: Vec<Value> = maps.iter().map(|m| json!({ "path": slash(m), "epoch": 1 })).collect();
     let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let log = seen.clone();
     let mut png = std::io::Cursor::new(Vec::new());
@@ -2179,18 +2187,16 @@ fn fake_godot(project: &std::path::Path, map: &std::path::Path, captures: bool) 
             while reader.read_line(&mut line).unwrap_or(0) > 0 {
                 let msg: Value = serde_json::from_str(&line).unwrap();
                 line.clear();
-                let mut reply = match msg["event"].as_str() {
-                    Some("status") => json!({ "ok": true, "project": project, "godot": "4.7", "pid": 1, "maps": [{ "path": map, "epoch": 1 }] }),
-                    Some("capture") => {
-                        log.lock().unwrap().push(msg.clone());
-                        if !captures {
-                            continue;
-                        }
+                let event = msg["event"].as_str().unwrap_or_default();
+                if event != "status" {
+                    log.lock().unwrap().push(msg.clone());
+                }
 
-                        json!({ "ok": true, "png": png, "width": 8, "height": 4, "warnings": ["warning: prop model res://gone.glb not found"] })
-                    }
-                    Some("walkable") => {
-                        log.lock().unwrap().push(msg.clone());
+                let mut reply = match event {
+                    "status" => json!({ "ok": true, "project": project, "godot": "4.7", "pid": 1, "maps": listed.clone() }),
+                    "capture" if !captures => continue,
+                    "capture" => json!({ "ok": true, "png": png, "width": 8, "height": 4, "warnings": ["warning: prop model res://gone.glb not found"] }),
+                    "walkable" => {
                         json!({
                             "ok": true, "units_per_meter": 32.0, "agent": msg["agent"], "msec": 5,
                             "vertices": [8, 16.5, 8, 8, 16.5, 248, 248, 16.5, 248, 248, 16.5, 8, 300, 128, 0, 300, 128, 32, 332, 128, 32, 332, 128, 0],
@@ -2198,7 +2204,14 @@ fn fake_godot(project: &std::path::Path, map: &std::path::Path, captures: bool) 
                             "islands": [[0], [1]]
                         })
                     }
-                    _ => json!({ "ok": false, "error": "unknown event" }),
+                    other => match answers[other].as_object() {
+                        Some(fields) => {
+                            let mut reply = json!({ "ok": true });
+                            reply.as_object_mut().unwrap().extend(fields.clone());
+                            reply
+                        }
+                        None => json!({ "ok": false, "error": "unknown event" }),
+                    },
                 };
                 reply["seq"] = msg["seq"].clone();
                 if writeln!(&stream, "{reply}").is_err() {
@@ -2208,6 +2221,71 @@ fn fake_godot(project: &std::path::Path, map: &std::path::Path, captures: bool) 
         }
     });
     (port, seen)
+}
+
+/// The messages of one event the fake Godot editor got.
+fn sent_events(sent: &Sent, event: &str) -> Vec<Value> {
+    sent.lock().unwrap().iter().filter(|m| m["event"] == event).cloned().collect()
+}
+
+/// Waits until `what` holds for the editor's state.
+fn wait_state(ed: &Editor, label: &str, what: impl Fn(&Value) -> bool) -> Value {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let state = ed.state();
+        if what(&state) {
+            return state;
+        }
+
+        assert!(Instant::now() < deadline, "timed out waiting for {label}: {state}");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// A project folder for a test against the fake Godot editor, with a game config that defines `entities`.
+fn linked_project(name: &str, entities: Value) -> PathBuf {
+    let dir = artifacts().join(name);
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("maps")).unwrap();
+    std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+    let config = json!({ "format": "trenchdot-game", "version": 1, "entities": entities });
+    std::fs::write(dir.join("trenchdot_game.json"), config.to_string()).unwrap();
+    // The editor compares project paths with Godot's, which have no `..` and no verbatim prefix.
+    PathBuf::from(dir.canonicalize().unwrap().to_string_lossy().trim_start_matches(r"\\?\").to_string())
+}
+
+/// Godot names the entity classes it built without a definition and the map settings it used, and the editor shows them
+/// in the status bar and the Issues panel.
+#[test]
+#[ignore]
+fn godot_names_the_classes_it_built_without_a_definition() {
+    let dir = linked_project("godot_missing_classes", json!([{ "classname": "func_door", "type": "solid" }]));
+    let map = dir.join("maps/hall.tdm");
+    let warning = "func_crusher: Node Class AnimatedBody3D not found, building it as a Node3D";
+    let answers = json!({ "map_saved": { "rebuilt": 1, "missing_classes": ["func_door"], "settings": ["res://my_settings.tres"], "warnings": [warning] } });
+    let (godot, sent) = fake_godot_editor_with(&dir, &[&map], answers);
+    let ed = Editor::launch_with("godot_missing", &["--project", dir.to_str().unwrap()]);
+    ed.call("set_editor", json!({ "live_link_port": godot }));
+    wait_state(&ed, "the live link", |s| s["godot"]["project_open"] == true);
+
+    let leaf = ed.box_brush([0.0, 0.0, 0.0], [8.0, 96.0, 64.0]);
+    ed.call("gameplay", json!({ "op": "brush_entity", "ids": [leaf], "classname": "func_door" }));
+    ed.call("map_file", json!({ "op": "save", "path": map }));
+    let state = wait_state(&ed, "the save reply", |s| s["status"].as_str().is_some_and(|t| t.contains("no definition")));
+    assert_eq!(
+        state["status"],
+        "Live link: Godot rebuilt 1 map node(s), but res://my_settings.tres has no definition for func_door, so it builds as a plain node. See the Issues panel"
+    );
+    assert_eq!(state["godot"]["missing_classes"], json!(["func_door"]));
+    assert_eq!(sent_events(&sent, "map_saved").len(), 1);
+    let issues = ed.call("validate_map", json!({}));
+    let godot_issues: Vec<&Value> = issues["issues"].as_array().unwrap().iter().filter(|i| i["code"].as_str().unwrap().starts_with("godot_")).collect();
+    assert_eq!(godot_issues.len(), 2, "{issues}");
+    assert!(
+        godot_issues[0]["message"].as_str().unwrap().contains("Godot built func_door as a plain node")
+            && godot_issues[0]["message"].as_str().unwrap().contains("res://my_settings.tres")
+    );
+    assert_eq!(godot_issues[1]["message"], format!("Godot: {warning}"));
 }
 
 /// `screenshot {source: godot}` asks the connected Godot editor for a picture of the map as shown in TrenchDot and
@@ -2239,7 +2317,7 @@ fn godot_captures_come_over_the_live_link() {
     let note = content[1]["text"].as_str().unwrap();
     assert!(note.contains("yard.tdm") && note.contains("built from the map") && note.contains("res://gone.glb"), "{note}");
 
-    let sent = captures.lock().unwrap().clone();
+    let sent = sent_events(&captures, "capture");
     assert_eq!(sent.len(), 1);
     assert_eq!((sent[0]["width"].as_u64(), sent[0]["height"].as_u64()), (Some(320), Some(200)));
     let forward: Vec<f64> = sent[0]["camera"]["forward"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
@@ -2247,7 +2325,7 @@ fn godot_captures_come_over_the_live_link() {
     assert!(sent[0]["text"].as_str().is_some_and(|t| t.contains("trenchdot-map")), "the map as shown goes along to build");
 
     ed.call("screenshot", json!({ "source": "godot", "build": false, "position": [512, 64, 0], "look_at": [0, 64, 0] }));
-    let sent = captures.lock().unwrap().clone();
+    let sent = sent_events(&captures, "capture");
     assert!(sent[1]["text"].is_null() && sent[1]["camera"]["position"] == json!([512.0, 64.0, 0.0]), "{}", sent[1]);
 
     ed.call("set_editor", json!({ "live_link_port": free_port() }));
@@ -2288,7 +2366,7 @@ fn the_walkable_area_comes_from_godot() {
     assert_eq!(r["area_m2"], 57.3, "{r}");
     assert_eq!(r["main"]["bounds"]["min"], json!([8.0, 16.5, 8.0]));
     assert_eq!(r["cut_off"][0]["center"], json!([316.0, 128.0, 16.0]));
-    let first = sent.lock().unwrap()[0].clone();
+    let first = sent_events(&sent, "walkable")[0].clone();
     assert_eq!(first["agent"]["radius"], 0.5);
     assert!(first["text"].as_str().is_some_and(|t| t.contains("trenchdot-map")), "the map as shown goes along to build");
 
@@ -2301,7 +2379,7 @@ fn the_walkable_area_comes_from_godot() {
 
     ed.box_brush([64.0, 16.0, 64.0], [96.0, 64.0, 96.0]);
     let start = Instant::now();
-    while sent.lock().unwrap().len() < 2 {
+    while sent_events(&sent, "walkable").len() < 2 {
         assert!(start.elapsed() < Duration::from_secs(10), "an edit bakes the overlay again");
         std::thread::sleep(Duration::from_millis(100));
     }
@@ -2780,7 +2858,7 @@ fn turning_mcp_off_answers_calls_that_wait_for_godot() {
     )
     .unwrap();
     let map = dir.join("maps/yard.tdm");
-    let (godot, asked) = fake_godot(&dir, &map, false);
+    let (godot, asked) = fake_godot(&dir, &[&map], json!({}), false);
     let port = free_port();
     let child = editor_command(port).args(["--mcp", "--project", dir.to_str().unwrap()]).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
     let mut ed = Editor { child, port, token: None, name: "mcp_off_godot" };
