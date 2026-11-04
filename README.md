@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/brand/github-social-1280x640.png" alt="TrenchDot, a brush based level editor for Godot, on Linux, Windows and macOS">
+  <img src="docs/assets/brand/github-social-1280x640.png" alt="TrenchDot, a level editor for Godot, on Linux, Windows and macOS">
 </p>
 
 # TrenchDot
