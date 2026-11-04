@@ -738,7 +738,15 @@ func test_entity_pack() -> void:
 	var used := TrenchDotEntityPack.missing(core.get_entity_definitions(), maps)
 	check(TrenchDotTdmFile.is_binary(FileAccess.get_file_as_bytes(maps.path_join("saved.tdm"))), "the editor saves maps in the binary container")
 	check(used.has("func_door") and used.has("func_button") and used.has("trigger_area") and not used.has("light"), "a binary map with a door needs the pack too, got %s" % used)
-	for dir in ["pack/scripts", "pack/definitions", "pack", "maps"]:
+
+	var template := to.path_join("template")
+	DirAccess.make_dir_recursive_absolute(template)
+	check(not TrenchDotEntityPack.hide_template(template), "a folder without a pack manifest gets no .gdignore")
+	FileAccess.open(template.path_join("pack.json"), FileAccess.WRITE).store_string("{}")
+	check(TrenchDotEntityPack.hide_template(template) and FileAccess.file_exists(template.path_join(".gdignore")), "a pack template that lost its .gdignore gets it back")
+	check(not TrenchDotEntityPack.hide_template(template), "and keeps the one it has")
+	DirAccess.remove_absolute(template.path_join(".gdignore"))
+	for dir in ["pack/scripts", "pack/definitions", "pack", "maps", "template"]:
 		for f in DirAccess.get_files_at(to.path_join(dir)):
 			DirAccess.remove_absolute(to.path_join(dir).path_join(f))
 		DirAccess.remove_absolute(to.path_join(dir))
