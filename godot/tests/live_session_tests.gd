@@ -10,6 +10,7 @@ const CORE_FGD := "res://addons/func_godot/fgd/trenchdot/trenchdot_fgd.tres"
 const CSHARP_DIR := "user://td_tests_live_csharp"
 const PREFAB := "res://tests/maps/prefab.tdm"
 const NESTED_DIR := "user://td_tests_live_prefabs"
+const PINE := "res://demo/models/pine.bbmodel"
 const DOOR := 9
 const BUTTON := 11
 
@@ -29,6 +30,7 @@ func run(runner: SceneTree) -> void:
 	await test_live_rebuild_finishes()
 	await test_unresolved_classes()
 	await test_saved_prefabs()
+	await test_live_rebuilds_are_saved()
 
 ## A map node in the tree, built from the test map's JSON.
 func _map() -> FuncGodotMap:
@@ -293,4 +295,31 @@ func test_saved_prefabs() -> void:
 	DirAccess.remove_absolute(NESTED_DIR)
 	link.free()
 	map.queue_free()
+	await t.process_frame
+
+func test_live_rebuilds_are_saved() -> void:
+	print("- every node a live session builds is saved with the scene")
+	var scene := Node3D.new()
+	scene.name = "Scene"
+	t.root.add_child(scene)
+	var map := FuncGodotMap.new()
+	map.map_settings = load(SETTINGS)
+	map.local_map_file = MAP
+	scene.add_child(map)
+	map.owner = scene
+	var session := _session(map)
+	session.begin(FileAccess.get_file_as_string(MAP_JSON))
+	var prop := { "id": 60, "type": "entity", "classname": "prop_model", "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "properties": { "model": PINE, "targetname": "live_pine" } }
+	session.apply([{ "op": "set", "id": 60, "parent": 1, "index": 0, "node": prop }, { "op": "set", "id": DOOR, "parent": 1, "index": 9, "node": session._nodes[DOOR].duplicate(true) }])
+	_settle(session)
+	var unowned: Array = t.collect(map, func(n: Node) -> bool: return n != map and n.owner == null).map(func(n: Node) -> String: return String(n.name))
+	check(unowned == [], "every node of the live rebuilds has an owner, got %s" % [unowned])
+	var packed := PackedScene.new()
+	packed.pack(scene)
+	var copy := packed.instantiate()
+	var saved: Node = t.find_targetname(copy, "live_pine")
+	var parts: Array = saved.get_children().filter(func(c: Node) -> bool: return c.has_meta(&"td_prop_generated")) if saved else []
+	check(parts.size() == 2 and saved.get_node_or_null("prop_collision") != null, "a prop rebuilt live keeps its model and collision when saved, got %s" % [saved.get_children() if saved else null])
+	copy.free()
+	scene.queue_free()
 	await t.process_frame
