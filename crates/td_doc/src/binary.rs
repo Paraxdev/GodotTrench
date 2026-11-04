@@ -377,10 +377,6 @@ fn decode_with(bytes: &[u8], mut raw_left: usize, mut memory_left: usize) -> Res
             continue;
         };
         raw_left = left;
-        if h.tag == LMAP {
-            unknown.push(RawChunk { tag: h.tag, flags: h.flags, raw_size: h.raw, data: data.into() });
-        }
-
         let read = if h.raw as usize > memory_left {
             Err(variant::Refused::TooBig)
         } else {
@@ -399,7 +395,10 @@ fn decode_with(bytes: &[u8], mut raw_left: usize, mut memory_left: usize) -> Res
             HEAD => head = if let Value::Object(map) = value { Some(map) } else { None },
             NODE => tree.add_batch(value),
             END => end = Some(value),
-            _ => lightmap = lightmap.or(Some(value)),
+            _ => {
+                unknown.push(RawChunk { tag: h.tag, flags: h.flags, raw_size: h.raw, data: data.into() });
+                lightmap = lightmap.or(Some(value));
+            }
         }
     }
 
@@ -883,6 +882,11 @@ mod tests {
         assert!(loaded.problems.iter().all(|p| p.contains("baked lighting")), "{:?}", loaded.problems);
         let (_, problems) = format::file_to_json(&crafted).unwrap();
         assert_eq!(problems, loaded.problems);
+        for crafted in [crafted, insert(&bytes, &[(LMAP, vec![0xff; 16])])] {
+            let (out, problems) = format::file_to_binary(&crafted).unwrap();
+            assert_eq!(problems.len(), 1, "{problems:?}");
+            assert!(chunks(&out).iter().all(|(_, h)| h.tag != LMAP), "a dropped bake is not written again");
+        }
     }
 
     #[test]
