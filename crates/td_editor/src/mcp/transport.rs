@@ -204,7 +204,10 @@ fn respond(stream: &mut TcpStream, status: &str, extra_headers: &[(&str, String)
     head.push_str("\r\n");
     stream.write_all(head.as_bytes())?;
     stream.write_all(body)?;
-    stream.flush()
+    stream.flush()?;
+    // On Windows a process the editor starts inherits the sockets it accepted, which then stay open after the editor
+    // drops them and reset when that process exits. Ending the reply here gets it to the client whole either way.
+    stream.shutdown(Shutdown::Write)
 }
 
 fn serve_connection(stream: TcpStream, shared: &Shared, exec: &dyn ToolExecutor) -> std::io::Result<()> {
