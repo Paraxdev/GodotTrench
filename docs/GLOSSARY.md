@@ -169,7 +169,7 @@ The world size that one repeat of a texture covers, set as metadata/texture_size
 Special textures that tell the build what a brush face is for instead of drawing it. Clip faces only collide, skip faces build nothing, and origin faces set where a brush entity's origin is. Every texture in the special/, tools/ or td/ folder draws nothing in Godot, and so do nodraw, hint, trigger and the other tool names in any folder.
 
 ## TrenchBroom
-A free level editor for Quake style games. TrenchDot works much like it and can import its .map files.
+A free level editor for Quake style games. TrenchDot draws a lot of inspiration from it and can import its .map files.
 
 ## trigger volume
 An invisible brush entity that fires outputs when a body enters or leaves it, for example to start a cutscene when the player walks into a room. Draw one with the Volume tool (Shift+E).

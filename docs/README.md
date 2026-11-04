@@ -5,6 +5,9 @@
 TrenchDot is a brush based level editor for Godot in the spirit of TrenchBroom and Hammer.
 Supports I/O, custom meshes (Hammer, Quake, Blockbench) and more!
 
+TrenchDot draws a lot of inspiration from TrenchBroom and goes its own way around Godot. It is not affiliated with the
+TrenchBroom project.
+
 ![The TrenchDot editor](screenshots/editor.png)
 
 ## Where to go

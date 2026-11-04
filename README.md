@@ -4,11 +4,17 @@
 
 # TrenchDot
 
-TrenchDot is a brush based level editor for Godot, written in Rust. heavily inspired by TrenchBroom and Hammer++, it aims for TrenchBroom parity plus
-Hammer++ features (entity I/O, prefabs, displacements, decals, vertex paint, lit preview) and Godot specific QoL like a live view.
+TrenchDot is a brush based level editor for Godot, written in Rust. It takes its inspiration from TrenchBroom and Hammer++, with Hammer++ style
+features (entity I/O, prefabs, displacements, decals, vertex paint, lit preview) and Godot specific QoL like a live view.
 
 Maps are saved as `.tdm` and built into Godot scenes by the [TrenchDot addon](https://github.com/Paraxdev/trenchdot_func), which started as a fork of
 [FuncGodot](https://github.com/func-godot/func_godot_plugin).
+
+## TrenchDot and TrenchBroom
+
+TrenchDot owes a lot to TrenchBroom. It is a great editor that was fun to use, and much of how TrenchDot feels comes from it. From there
+TrenchDot goes its own way around Godot, with its own map format and features. It is not affiliated with the TrenchBroom project, and has a
+lot of respect for it.
 
 ![The TrenchDot editor](docs/screenshots/editor.png)
 
