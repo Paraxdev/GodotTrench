@@ -5,6 +5,7 @@ extends RefCounted
 const SETTINGS := "res://demo/demo_map_settings.tres"
 const MAP := "res://tests/maps/basic.tdm"
 const UPSTREAM_FGD := "res://addons/func_godot/fgd/func_godot_fgd.tres"
+const TRENCHDOT_FGD := "res://addons/func_godot/fgd/trenchdot_default_fgd.tres"
 ## Map settings without the Gameplay entities pack, a path the build report can name.
 const NO_PACK_SETTINGS := "res://tests/td_no_pack_settings.tres"
 
@@ -17,6 +18,7 @@ func check(cond: bool, what: String) -> void:
 func run(runner: SceneTree) -> void:
 	t = runner
 	test_missing_class_warning()
+	test_new_resources_use_the_gameplay_fgd()
 
 ## The demo's map settings with [param fgd] as their Entity Fgd.
 func _settings(fgd: FuncGodotFGDFile) -> FuncGodotMapSettings:
@@ -97,3 +99,16 @@ func test_missing_class_warning() -> void:
 	var reply := link.built_reply(MAP, [report], false)
 	check(reply.get("rebuilt") == 1 and reply.get("missing_classes", []).size() == 3 and reply.get("settings") == [NO_PACK_SETTINGS], "a save reply carries them, got %s" % [reply])
 	link.free()
+
+func test_new_resources_use_the_gameplay_fgd() -> void:
+	print("- new map settings and game configs start on the TrenchDot FGD")
+	var settings := FuncGodotMapSettings.new()
+	check(settings.entity_fgd.resource_path == TRENCHDOT_FGD, "new map settings use %s, got %s" % [TRENCHDOT_FGD, settings.entity_fgd.resource_path])
+	check(TrenchDotGameConfig.new().fgd_file.resource_path == TRENCHDOT_FGD, "and so does a new game config")
+	var map := _build(settings, [_entity(2, "func_door", [_box(3)]), _entity(4, "light")])
+	var door := _child_named(map, "func_door")
+	var light := _child_named(map, "light")
+	check(door is AnimatableBody3D and door.get_script() != null and t.collect(door, func(n): return n is CollisionShape3D).size() == 1, "a door built with them moves and collides, got %s" % door)
+	check(light is OmniLight3D, "and a light is a light, got %s" % light)
+	check(map.build_report["missing_classes"].is_empty(), "no class is missing, got %s" % [map.build_report["missing_classes"]])
+	_free(map)
