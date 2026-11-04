@@ -40,14 +40,23 @@ pub fn class_inputs(game: &GameConfig) -> BTreeMap<String, Vec<String>> {
         .collect()
 }
 
-/// Every issue of `map`. `external` holds the targetnames its overlays add in Godot.
+/// What the checks know about a map besides the map itself and the game config.
+#[derive(Clone, Debug, Default)]
+pub struct Context {
+    /// Targetnames the map's overlays add in Godot.
+    pub external: BTreeSet<String>,
+    /// The Gameplay entities pack is installed in the project.
+    pub pack_installed: bool,
+}
+
+/// Every issue of `map`.
 pub fn map_issues(
     map: &Map,
     game: &GameConfig,
     materials: &mut MaterialLibrary,
     prefabs: &mut PrefabCache,
     map_path: Option<&Path>,
-    external: &BTreeSet<String>,
+    context: &Context,
 ) -> Vec<Issue> {
     let inputs = class_inputs(game);
     let mut list = issues::check_with_external(
@@ -58,9 +67,9 @@ pub fn map_issues(
                 inputs: inputs.get(class).map(|list| list.iter().map(String::as_str).collect()).unwrap_or_default(),
             })
         },
-        external,
+        &context.external,
     );
-    list.extend(definition_issues(map, game));
+    list.extend(definition_issues(map, game, context));
     for clash in &game.clashes {
         if map.entities().any(|(_, e)| e.classname == clash.classname) {
             list.push(Issue { node: None, severity: Severity::Warning, code: "entity_clash", message: clash.describe() });
@@ -76,7 +85,7 @@ pub fn map_issues(
 }
 
 /// Entities that Godot builds without their definition, or with one that does not fit them.
-fn definition_issues(map: &Map, game: &GameConfig) -> Vec<Issue> {
+fn definition_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Issue> {
     let mut list = Vec::new();
     for (id, e) in map.entities() {
         if e.classname.is_empty() {
@@ -85,10 +94,17 @@ fn definition_issues(map: &Map, game: &GameConfig) -> Vec<Issue> {
 
         let issue = |code, message| Issue { node: Some(id), severity: Severity::Warning, code, message };
         let Some(def) = game.entity(&e.classname) else {
-            let message = if crate::entity_pack::in_pack(&e.classname) {
-                format!("No entity definition for '{}', it comes with the Gameplay entities pack. Gameplay > Install Gameplay Entities adds it", e.classname)
-            } else {
-                format!("No entity definition for '{}'", e.classname)
+            let message = match (crate::entity_pack::in_pack(&e.classname), context.pack_installed) {
+                (true, false) => format!(
+                    "No entity definition for '{}', it comes with the Gameplay entities pack. Gameplay > Install Gameplay Entities adds it",
+                    e.classname
+                ),
+                (true, true) => format!(
+                    "No entity definition for '{}'. The Gameplay entities pack is installed, but your FGD does not include it. Add {} to its Base Fgd Files",
+                    e.classname,
+                    crate::entity_pack::DEFAULT_FGD
+                ),
+                _ => format!("No entity definition for '{}'", e.classname),
             };
             list.push(issue("unknown_class", message));
             continue;
@@ -125,8 +141,8 @@ pub fn open_map_issues(state: &mut EditorState) -> Vec<Issue> {
     state.find_new_materials(unknown.iter().map(String::as_str));
     let path = state.doc.path.clone();
     state.overlay_ghosts.refresh(path.as_deref());
-    let external = state.overlay_ghosts.targetnames();
-    map_issues(&state.doc.map, &state.game, &mut state.materials, &mut state.prefabs, path.as_deref(), &external)
+    let context = Context { external: state.overlay_ghosts.targetnames(), pack_installed: state.gameplay_pack.installed };
+    map_issues(&state.doc.map, &state.game, &mut state.materials, &mut state.prefabs, path.as_deref(), &context)
 }
 
 /// Issues of the map saved at `path`, which does not have to be open. A map open in a tab is checked as it is in the
@@ -145,7 +161,8 @@ pub fn file_issues(state: &mut EditorState, path: &Path) -> Result<(Map, Vec<Iss
     state.find_new_materials(unknown.iter().map(String::as_str));
     let sidecar = std::fs::read_to_string(crate::overlays::sidecar_path(path)).ok().and_then(|t| crate::overlays::parse(&t).ok());
     let external = sidecar.unwrap_or_default().into_iter().flat_map(|i| i.targetnames).collect();
-    let found = map_issues(&map, &state.game, &mut state.materials, &mut state.prefabs, Some(path), &external);
+    let context = Context { external, pack_installed: state.gameplay_pack.installed };
+    let found = map_issues(&map, &state.game, &mut state.materials, &mut state.prefabs, Some(path), &context);
     Ok((map, found))
 }
 
@@ -354,7 +371,7 @@ mod tests {
         assert!(found[2].message.starts_with("logic_auto (start) sends source to blank, which can make a logic_script run GDScript"), "{}", found[2].message);
         assert!(found[4].message.starts_with("logic_call (setter) calls set on blank"), "{}", found[4].message);
         let game = GameConfig::with_gameplay_pack();
-        let all = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &BTreeSet::new());
+        let all = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &Context::default());
         assert_eq!(all.iter().filter(|i| i.code == "map_script").count(), 5, "validate_map and the Issues panel list them");
     }
 
@@ -444,7 +461,7 @@ mod tests {
         let layer = map.default_layer();
         map.insert(layer, NodeKind::Entity(Entity::new("func_door")));
         map.insert(layer, NodeKind::Entity(Entity::new("my_thing")));
-        let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &BTreeSet::new());
+        let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &Context::default());
         let mut unknown: Vec<&str> = found.iter().filter(|i| i.code == "unknown_class").map(|i| i.message.as_str()).collect();
         unknown.sort();
         assert_eq!(
@@ -453,6 +470,14 @@ mod tests {
                 "No entity definition for 'func_door', it comes with the Gameplay entities pack. Gameplay > Install Gameplay Entities adds it",
                 "No entity definition for 'my_thing'"
             ]
+        );
+
+        let installed = Context { pack_installed: true, ..Default::default() };
+        let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &installed);
+        let door = found.iter().find(|i| i.code == "unknown_class" && i.message.contains("func_door")).unwrap();
+        assert_eq!(
+            door.message,
+            "No entity definition for 'func_door'. The Gameplay entities pack is installed, but your FGD does not include it. Add res://addons/func_godot/fgd/trenchdot_default_fgd.tres to its Base Fgd Files"
         );
     }
 
@@ -468,7 +493,7 @@ mod tests {
         let fine = map.insert(layer, NodeKind::Entity(Entity::new("func_detail")));
         map.insert(fine, cube());
         map.insert(layer, NodeKind::Entity(Entity::new("info_player_start")));
-        let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &BTreeSet::new());
+        let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &Context::default());
         let shape: Vec<(Option<NodeId>, &str, &str)> =
             found.iter().filter(|i| matches!(i.code, "point_class_brushes" | "brush_entity_empty")).map(|i| (i.node, i.code, i.message.as_str())).collect();
         assert_eq!(
@@ -493,7 +518,7 @@ mod tests {
         map.insert(layer, NodeKind::Entity(Entity::new("light")));
         map.insert(layer, NodeKind::Entity(Entity::new("my_thing")));
         let lacking = |game: &GameConfig| {
-            let found = map_issues(&map, game, &mut MaterialLibrary::new(game), &mut PrefabCache::default(), None, &BTreeSet::new());
+            let found = map_issues(&map, game, &mut MaterialLibrary::new(game), &mut PrefabCache::default(), None, &Context::default());
             found.into_iter().filter(|i| i.code == "build_lacks_class").collect::<Vec<_>>()
         };
         assert!(lacking(&game).is_empty(), "an export without the build block is not checked");
@@ -521,7 +546,7 @@ mod tests {
         let mut map = Map::new();
         let layer = map.default_layer();
         map.insert(layer, NodeKind::Entity(Entity::new("func_door")));
-        let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &BTreeSet::new());
+        let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &Context::default());
         let clashes: Vec<&Issue> = found.iter().filter(|i| i.code == "entity_clash").collect();
         assert_eq!(clashes.len(), 1, "only the class the map uses: {found:?}");
         assert_eq!(clashes[0].severity, Severity::Warning);
