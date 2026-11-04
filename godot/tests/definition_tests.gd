@@ -27,6 +27,7 @@ func run(runner: SceneTree) -> void:
 	test_map_node_follows_the_project_setting()
 	test_unknown_node_class()
 	test_brush_entity_body()
+	test_brushes_and_definition_type()
 
 ## The demo's map settings with [param fgd] as their Entity Fgd.
 func _settings(fgd: FuncGodotFGDFile) -> FuncGodotMapSettings:
@@ -268,4 +269,15 @@ func test_brush_entity_body() -> void:
 	var problems := _problems(map, "td_tests_plain_brush")
 	check(problems.size() == 1 and problems[0]["problem"].begins_with("td_tests_plain_brush builds as a Node3D, so its brushes have no collision"), "a plain Node3D with collision shapes warns once per class, got %s" % [problems])
 	check(_problems(map, "env_reflection_probe").is_empty(), "a volume like a reflection probe does not, got %s" % [_problems(map, "env_reflection_probe")])
+	_free(map)
+
+func test_brushes_and_definition_type() -> void:
+	print("- a point entity with brushes and a brush entity without warn")
+	var settings := _settings(_fgd([_point("td_tests_point_with_brush", "Node3D"), _solid("td_tests_empty_solid", "StaticBody3D")]))
+	var map := _build(settings, [_entity(2, "td_tests_point_with_brush", [_box(3)]), _entity(4, "td_tests_empty_solid"), _entity(5, "func_door", [_box(6, 128)])])
+	var problems := _problems(map, "td_tests_point_with_brush")
+	check(problems.size() == 1 and problems[0]["problem"] == "td_tests_point_with_brush is a point entity, so its brushes are dropped. Make its definition a FuncGodotFGDSolidClass", "a point entity names its dropped brushes, got %s" % [problems])
+	problems = _problems(map, "td_tests_empty_solid")
+	check(problems.size() == 1 and problems[0]["problem"].begins_with("td_tests_empty_solid is a brush entity without brushes"), "a brush entity without brushes says so, got %s" % [problems])
+	check(_problems(map, "func_door").is_empty() and _problems(map, "worldspawn").is_empty(), "entities that match their definition do not")
 	_free(map)
