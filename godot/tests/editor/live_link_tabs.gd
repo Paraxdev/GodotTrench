@@ -296,7 +296,20 @@ class Runner extends Node:
 		DirAccess.make_dir_recursive_absolute(LATE_PACK)
 		_write(LATE_PACK.path_join("base.gd"), "@tool\nclass_name %s extends Node3D\n" % LATE_CLASS)
 		_write(LATE_PACK.path_join("entity.gd"), "@tool\nextends %s\n" % LATE_CLASS)
-		_write(LATE_PACK.path_join("fgd.tres"), _late_fgd(["entity"]))
+		_write(LATE_PACK.path_join("broken.gd"), "@tool\nextends %s\n" % LATE_CLASS)
+		_write(LATE_PACK.path_join("fgd.tres"), _late_fgd(["entity", "broken"]))
+		# Note: the pack's scripts have to be freed before their files go, or Godot now and then crashes on exit.
+		await _read_late_pack(fs)
+		for file in DirAccess.get_files_at(LATE_PACK):
+			DirAccess.remove_absolute(LATE_PACK.path_join(file))
+		DirAccess.remove_absolute(LATE_PACK)
+		fs.scan()
+		await until(func() -> bool: return not fs.is_scanning() and not ProjectSettings.get_global_class_list().any(func(c): return c["class"] == LATE_CLASS), 1200)
+
+	func _read_late_pack(fs: EditorFileSystem) -> void:
+		# Something else loads a pack script before the scan, as an older addon did, and Godot keeps it broken.
+		var broken: Script = load(LATE_PACK.path_join("broken.gd"))
+		check(broken != null and not broken.can_instantiate(), "a script loaded before its base class is registered is broken")
 		var fgd := TrenchDotFGDFile.new()
 		fgd.pack_fgd_path = LATE_PACK.path_join("fgd.tres")
 		check(not fgd.get_entity_definitions().has("td_tests_late_entity"), "a pack Godot does not list yet is not read")
@@ -314,13 +327,8 @@ class Runner extends Node:
 		var defs := fgd.get_entity_definitions()
 		var entity: Script = defs["td_tests_late_entity"].script_class if defs.has("td_tests_late_entity") else null
 		check(entity != null and entity.can_instantiate() and not fgd.waiting_for_scan, "after the scan the pack is read and its script compiles, got %s" % entity)
+		check(defs.has("td_tests_late_broken") and defs["td_tests_late_broken"].script_class == broken and broken.can_instantiate(), "and reading it compiles the broken one again")
 		fs.scan()
 		TrenchDotFGDFile.files_changed()
 		check(fs.is_scanning() and fgd.get_entity_definitions().has("td_tests_late_entity"), "a build while Godot scans keeps the pack it read before")
 		await until(func() -> bool: return not fs.is_scanning(), 1200)
-
-		for file in DirAccess.get_files_at(LATE_PACK):
-			DirAccess.remove_absolute(LATE_PACK.path_join(file))
-		DirAccess.remove_absolute(LATE_PACK)
-		fs.scan()
-		await until(func() -> bool: return not fs.is_scanning() and not ProjectSettings.get_global_class_list().any(func(c): return c["class"] == LATE_CLASS), 1200)
