@@ -11,6 +11,7 @@ const NO_PACK_SETTINGS := "res://tests/td_no_pack_settings.tres"
 const CHILD_ADDER := "res://tests/helpers/child_adder.gd"
 const PINE := "res://demo/models/pine.bbmodel"
 const PROJECT_SETTINGS := "res://tests/td_project_map_settings.tres"
+const STATIC_BODY_SCRIPT := "res://tests/helpers/static_body_entity.gd"
 
 ## The run_tests.gd runner, untyped so its check() is reachable.
 var t
@@ -25,6 +26,7 @@ func run(runner: SceneTree) -> void:
 	await test_added_nodes_are_saved()
 	test_map_node_follows_the_project_setting()
 	test_unknown_node_class()
+	test_brush_entity_body()
 
 ## The demo's map settings with [param fgd] as their Entity Fgd.
 func _settings(fgd: FuncGodotFGDFile) -> FuncGodotMapSettings:
@@ -252,4 +254,18 @@ func test_unknown_node_class() -> void:
 	problems = _problems(map, "td_tests_cs_point")
 	check(problems.size() == 1 and problems[0]["problem"].contains("C# entities need the .NET build of Godot, a built C# project and [GlobalClass]"), "a C# class names what it needs, got %s" % [problems])
 	check(Array(map.build_report["warnings"]).any(func(w: String) -> bool: return w.contains("NoSuchBody not found")), "the warnings the editor gets list them")
+	_free(map)
+
+func test_brush_entity_body() -> void:
+	print("- a brush entity without a Node Class takes the body its script extends, or warns")
+	var settings := _settings(_fgd([_solid("td_tests_scripted_body", "", load(STATIC_BODY_SCRIPT)), _solid("td_tests_plain_brush")]))
+	var children := [_entity(2, "td_tests_scripted_body", [_box(3)]), _entity(4, "td_tests_plain_brush", [_box(5, 128)]), _entity(6, "td_tests_plain_brush", [_box(7, 256)]), _entity(8, "env_reflection_probe", [_box(9, 384)])]
+	var map := _build(settings, children)
+	var body := _child_named(map, "td_tests_scripted_body")
+	check(body is StaticBody3D and body.get_script() == load(STATIC_BODY_SCRIPT), "it builds the script's StaticBody3D with the script, got %s" % body)
+	check(body != null and t.collect(body, func(n): return n is CollisionShape3D).size() == 1, "which collides")
+	check(_problems(map, "td_tests_scripted_body").is_empty(), "and is not reported")
+	var problems := _problems(map, "td_tests_plain_brush")
+	check(problems.size() == 1 and problems[0]["problem"].begins_with("td_tests_plain_brush builds as a Node3D, so its brushes have no collision"), "a plain Node3D with collision shapes warns once per class, got %s" % [problems])
+	check(_problems(map, "env_reflection_probe").is_empty(), "a volume like a reflection probe does not, got %s" % [_problems(map, "env_reflection_probe")])
 	_free(map)
