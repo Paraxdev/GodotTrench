@@ -22,6 +22,7 @@ const RECONNECT: Duration = Duration::from_secs(3);
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(400);
 const QUICK_REPLY: Duration = Duration::from_secs(15);
 const BUILD_REPLY: Duration = Duration::from_secs(180);
+const SCAN_REPLY: Duration = Duration::from_secs(3);
 
 /// Called with Godot's reply to a capture or walkable request, on the live link thread.
 pub type Done = Box<dyn FnOnce(Result<Value, String>) + Send>;
@@ -213,6 +214,14 @@ fn game_status(game_port: Option<u16>, message: &Value) -> String {
     }
 }
 
+/// Has the Godot editor on `port` look for new files, so its live sessions rebuild what their definitions changed.
+/// Returns the number of the scan, which [`LinkState::scanned`] reaches once it is done, or None from an addon before
+/// the scan event. The reply comes before the scan finishes.
+pub fn scan(port: u16) -> Option<u64> {
+    let reply = send_timeout(port, &json!({ "event": "scan" }), SCAN_REPLY).ok().filter(|reply| reply["ok"].as_bool() == Some(true))?;
+    Some(reply["scan"].as_u64().unwrap_or(0))
+}
+
 /// Sends `map_saved` on a background thread. The receiver yields a status message.
 pub fn notify_saved(port: u16, path: &Path) -> Receiver<String> {
     notify_saved_all(port, None, path)
@@ -250,6 +259,8 @@ pub struct LinkState {
     pub resync: u64,
     /// By `path_key` of the map.
     pub reports: BTreeMap<String, GodotReport>,
+    /// The number of the last scan Godot finished, see [`scan`].
+    pub scanned: u64,
 }
 
 impl LinkState {
@@ -598,6 +609,7 @@ impl Worker {
             s.godot = reply["godot"].as_str().unwrap_or_default().to_string();
             s.pid = reply["pid"].as_u64().map(|p| p as u32);
             s.maps = maps;
+            s.scanned = reply["scanned"].as_u64().unwrap_or(0);
             if dropped {
                 s.resync += 1;
             }
@@ -1244,6 +1256,20 @@ mod tests {
         link.configure(dead, true);
         let e = walkable(&link, None).unwrap_err();
         assert!(e.contains("not running") && e.contains(&dead.to_string()), "{e}");
+    }
+
+    #[test]
+    fn only_an_addon_with_the_scan_event_scans() {
+        let (port, log) = fake_godot_with("C:/x.tdm".into(), Duration::ZERO, json!({ "scan": { "scan": 4 }, "status": { "scanned": 3 } }));
+        assert_eq!(scan(port), Some(4));
+        assert_eq!(events(&log, "scan"), 1);
+        let link = LiveLink::start(None);
+        link.configure(port, true);
+        wait_for("the status names the last scan done", || link.state().scanned == 3);
+        let (old, _) = fake_godot_with("C:/x.tdm".into(), Duration::ZERO, json!({ "scan": { "ok": false, "error": "unknown event" } }));
+        assert_eq!(scan(old), None);
+        let dead = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        assert_eq!(scan(dead), None, "no Godot");
     }
 
     #[test]

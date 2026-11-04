@@ -468,6 +468,8 @@ pub struct EditorState {
     /// The Gameplay entities pack in the open project, checked when it loads and after an install.
     pub gameplay_pack: crate::entity_pack::Status,
     live_link_status: Option<std::sync::mpsc::Receiver<String>>,
+    /// The scan Godot runs for an installed Gameplay pack, until it is done, see [`crate::live_link::scan`].
+    pub godot_scan: Option<u64>,
     /// Godot's answer to Run Project, see [`crate::commands::poll_play`].
     pub play_reply: Option<std::sync::mpsc::Receiver<Result<serde_json::Value, String>>>,
     /// Links the system opener found no browser for, sent back from its thread to be copied instead.
@@ -624,6 +626,7 @@ impl EditorState {
             no_code_root: None,
             gameplay_pack: Default::default(),
             live_link_status: None,
+            godot_scan: None,
             play_reply: None,
             unopened_links: std::sync::mpsc::channel(),
             godot: Default::default(),
@@ -1086,6 +1089,21 @@ impl EditorState {
         (!used.is_empty()).then(|| crate::live_link::unresolved_text(&used, report))
     }
 
+    fn note_scan_done(&mut self) {
+        if self.godot_scan.is_some_and(|scan| !self.link_state.connected || self.link_state.scanned >= scan) {
+            self.godot_scan = None;
+        }
+    }
+
+    /// Shows a live link message. Until Godot is done scanning for an installed pack it keeps saying so, the next live
+    /// reply would hide it otherwise.
+    fn link_status(&mut self, msg: String) {
+        match self.godot_scan {
+            Some(_) => self.set_status(format!("{}. {}", msg.trim_end_matches('.'), crate::entity_pack::SCAN_NOTE)),
+            None => self.set_status(msg),
+        }
+    }
+
     /// Edits of the current map are being sent to Godot.
     pub fn live_active(&self) -> bool {
         self.prefs.live_link
@@ -1107,8 +1125,9 @@ impl EditorState {
         }
 
         self.link_state = state;
+        self.note_scan_done();
         for msg in messages {
-            self.set_status(msg);
+            self.link_status(msg);
         }
 
         if self.doc.revision != self.live.revision {
@@ -1879,6 +1898,20 @@ mod tests {
         assert_eq!(state.close_other_tabs(true), Ok(2));
         assert!(state.tabs.is_empty());
         assert!(!state.doc.is_modified(), "closing others left the active tab alone");
+    }
+
+    #[test]
+    fn live_link_messages_say_godot_scans_until_it_is_done() {
+        let mut state = EditorState::new(Prefs::default());
+        state.godot_scan = Some(3);
+        state.link_state = crate::live_link::LinkState { connected: true, scanned: 2, ..Default::default() };
+        state.note_scan_done();
+        state.link_status("Godot has no definition for func_door, it shows a plain node".into());
+        assert_eq!(state.status, format!("Godot has no definition for func_door, it shows a plain node. {}", crate::entity_pack::SCAN_NOTE));
+        state.link_state.scanned = 3;
+        state.note_scan_done();
+        state.link_status("Live link: Godot rebuilt 1 map node(s)".into());
+        assert_eq!((state.status.as_str(), state.godot_scan), ("Live link: Godot rebuilt 1 map node(s)", None));
     }
 
     #[test]

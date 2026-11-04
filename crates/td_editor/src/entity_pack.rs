@@ -194,11 +194,14 @@ pub struct Report {
     pub updated: Vec<String>,
     /// Edited files the template changed, which stayed as they are.
     pub kept: Vec<String>,
+    /// The Godot editor with the project open scans for the new files.
+    pub scanned: bool,
 }
 
 /// Pack scripts that appear while Godot runs can be compiled before Godot knows the classes they use, and stay broken
 /// until Godot starts again.
 pub const RESTART_NOTE: &str = "If Godot has the project open, restart it, then press Build Map in each scene that uses your maps and save.";
+pub const SCAN_NOTE: &str = "Godot is picking up the new files. A scene in live mode rebuilds by itself, press Build Map in the others and save.";
 
 impl Report {
     pub fn summary(&self) -> String {
@@ -213,7 +216,7 @@ impl Report {
         }
 
         if !self.added.is_empty() || !self.updated.is_empty() {
-            text += &format!(" {RESTART_NOTE}");
+            text += &format!(" {}", if self.scanned { SCAN_NOTE } else { RESTART_NOTE });
         }
 
         text
@@ -263,15 +266,21 @@ fn install_where(root: &Path, may_write: &dyn Fn(&Path) -> Result<(), String>) -
     Ok(report)
 }
 
-/// Installs or updates the pack in the open project, and lets the editor know its entities right away.
+/// Installs or updates the pack in the open project, and lets the editor and a Godot editor with the project open know
+/// its entities right away.
 pub fn install_in_project(state: &mut crate::state::EditorState) -> Result<Report, String> {
     let root = state.game.project_root.clone().ok_or("Open a Godot project first, the Gameplay entities pack goes into it.")?;
     let report = install_where(&root, &|p| state.may_write(p));
     state.gameplay_pack = Status::check(&root);
-    let report = report?;
+    let mut report = report?;
     let before = state.defined_classes();
     add_unexported(&mut state.game, &root);
     state.forget_godot_missing(&before);
+    if (!report.added.is_empty() || !report.updated.is_empty()) && state.godot_has_project() {
+        state.godot_scan = crate::live_link::scan(state.prefs.live_link_port);
+        report.scanned = state.godot_scan.is_some();
+    }
+
     Ok(report)
 }
 
@@ -437,6 +446,49 @@ mod tests {
         let updated = Report { updated: vec!["a".into()], kept: vec!["b".into()], ..Default::default() };
         assert!(updated.summary().ends_with(&format!("newer version of it. {RESTART_NOTE}")), "{}", updated.summary());
         assert!(!Report::default().summary().contains("restart"), "nothing changed, nothing to pick up");
+    }
+
+    #[test]
+    fn a_connected_godot_scans_for_the_installed_pack() {
+        let dir = project();
+        let root = dir.path();
+        let mut state = crate::state::EditorState::new(Default::default());
+        state.load_project(root);
+        state.link_state = crate::live_link::LinkState {
+            connected: true,
+            project: Some(crate::live_link::path_key(&crate::live_link::godot_path(&state.game.project_root.clone().unwrap()))),
+            ..Default::default()
+        };
+        let (port, scans) = fake_scan(serde_json::json!({ "ok": true }));
+        state.prefs.live_link_port = port;
+        let report = install_in_project(&mut state).unwrap();
+        assert!(report.scanned && report.summary().ends_with(SCAN_NOTE), "{}", report.summary());
+        assert_eq!(state.godot_scan, Some(0), "an addon that does not number its scans");
+        assert_eq!(scans.recv_timeout(std::time::Duration::from_secs(5)).unwrap()["event"], "scan");
+        let again = install_in_project(&mut state).unwrap();
+        assert!(!again.scanned && scans.try_recv().is_err(), "nothing new, nothing to scan");
+
+        std::fs::remove_dir_all(install_dir(root)).unwrap();
+        let (port, _) = fake_scan(serde_json::json!({ "ok": false, "error": "unknown event" }));
+        state.prefs.live_link_port = port;
+        let report = install_in_project(&mut state).unwrap();
+        assert!(!report.scanned && report.summary().ends_with(RESTART_NOTE), "an addon from before the scan event: {}", report.summary());
+    }
+
+    /// Answers one message on a port of its own with `reply`, and passes the message on.
+    fn fake_scan(reply: serde_json::Value) -> (u16, std::sync::mpsc::Receiver<serde_json::Value>) {
+        use std::io::{BufRead, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            std::io::BufReader::new(stream.try_clone().unwrap()).read_line(&mut line).unwrap();
+            let _ = tx.send(serde_json::from_str(&line).unwrap());
+            writeln!(&stream, "{reply}").unwrap();
+        });
+        (port, rx)
     }
 
     #[test]
