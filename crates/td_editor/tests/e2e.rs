@@ -209,6 +209,15 @@ fn map_file_save_creates_its_folder() {
 
 #[test]
 #[ignore]
+fn gameplay_place_refuses_unknown_classnames() {
+    let ed = Editor::launch("place_unknown");
+    let e = ed.call_err("gameplay", json!({ "op": "place", "classname": "ligth", "origin": [0, 0, 0] }));
+    assert!(e.contains("no entity definition for 'ligth'") && e.contains("light"), "{e}");
+    assert_eq!(ed.call("gameplay", json!({ "op": "place", "classname": "light", "origin": [0, 0, 0] }))["classname"], "light");
+}
+
+#[test]
+#[ignore]
 fn draw_select_move_delete_undo() {
     let ed = Editor::launch("basic");
     // Draw a brush by dragging in the top view. The first brush is 128 units tall, a room once hollowed.

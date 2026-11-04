@@ -858,6 +858,7 @@ impl App {
             "make_platform" => vec!["func_platform"],
             "make_button" => vec!["func_button"],
             "volume" => vec![args["classname"].as_str().unwrap_or("trigger_once")],
+            "place" => vec![args["classname"].as_str().unwrap_or("info_null")],
             _ => Vec::new(),
         };
         let installed = match crate::entity_pack::install_for_wizard(&mut self.state, &pack_classes) {
@@ -969,6 +970,10 @@ impl App {
             }
             "place" => {
                 let classname = args["classname"].as_str().unwrap_or("info_null");
+                if self.state.game.entity(classname).is_none() {
+                    return err(unknown_class(&self.state.game, classname));
+                }
+
                 let Some(mut origin) = point(&args["origin"]) else { return err("origin required") };
                 let outs = match outputs(&args["outputs"]) {
                     Ok(o) => o,
@@ -1764,9 +1769,40 @@ impl App {
     }
 }
 
+/// Why `classname` cannot be placed, with the known classnames closest to it.
+fn unknown_class(game: &td_formats::GameConfig, classname: &str) -> String {
+    let distance = |a: &str, b: &str| {
+        let b: Vec<char> = b.chars().collect();
+        let mut row: Vec<usize> = (0..=b.len()).collect();
+        for (i, ca) in a.chars().enumerate() {
+            let mut last = row[0];
+            row[0] = i + 1;
+            for (j, cb) in b.iter().enumerate() {
+                let next = (row[j + 1] + 1).min(row[j] + 1).min(last + usize::from(ca != *cb));
+                last = row[j + 1];
+                row[j + 1] = next;
+            }
+        }
+
+        row[b.len()]
+    };
+    let mut known: Vec<&str> = game.entities.iter().map(|e| e.classname.as_str()).collect();
+    known.sort_by_key(|k| (!k.contains(classname) && !classname.contains(*k), distance(classname, k)));
+    known.truncate(3);
+    format!("no entity definition for '{classname}', known classnames like it: {}", known.join(", "))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unknown_classname_names_similar_known_ones() {
+        let game = td_formats::GameConfig::builtin();
+        let text = unknown_class(&game, "ligth");
+        assert!(text.starts_with("no entity definition for 'ligth', known classnames like it: light"), "{text}");
+        assert!(unknown_class(&game, "player_start").contains("info_player_start"), "a known name containing it comes first");
+    }
 
     #[test]
     fn platform_mode_takes_names_and_numbers() {
