@@ -1628,7 +1628,8 @@ impl App {
             menu(ui, "Godot", |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 let found = self.state.godot.found();
-                m.item_enabled(ui, Some(icons::PLAY), "Run Project", Action::RunGodotProject, found, commands::GODOT_NOT_FOUND);
+                let runs = found || self.state.godot_has_project();
+                m.item_enabled(ui, Some(icons::PLAY), "Run Project", Action::RunGodotProject, runs, commands::GODOT_NOT_FOUND);
                 m.item_enabled(ui, Some(icons::GODOT), "Open Project in Godot Editor", Action::OpenGodotEditor, found, commands::GODOT_NOT_FOUND);
                 let open = self.state.godot_has_project();
                 m.item_enabled(ui, None, "Build in Godot", Action::BuildInGodot, open, "Needs the Godot editor with this project open");
@@ -2853,6 +2854,7 @@ impl eframe::App for App {
 
         self.state.tick_autosave();
         self.state.poll_live_link();
+        commands::poll_play(&mut self.state);
         self.finish_input_script(&ctx);
         self.ui_had_focus = ctx.egui_wants_keyboard_input();
         self.manual_under_pointer = help::take_hovered(&ctx);

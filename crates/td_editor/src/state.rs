@@ -468,6 +468,8 @@ pub struct EditorState {
     /// The Gameplay entities pack in the open project, checked when it loads and after an install.
     pub gameplay_pack: crate::entity_pack::Status,
     live_link_status: Option<std::sync::mpsc::Receiver<String>>,
+    /// Godot's answer to Run Project, see [`crate::commands::poll_play`].
+    pub play_reply: Option<std::sync::mpsc::Receiver<Result<serde_json::Value, String>>>,
     /// Links the system opener found no browser for, sent back from its thread to be copied instead.
     pub(crate) unopened_links: (std::sync::mpsc::Sender<String>, std::sync::mpsc::Receiver<String>),
     pub godot: crate::godot::GodotStatus,
@@ -622,6 +624,7 @@ impl EditorState {
             no_code_root: None,
             gameplay_pack: Default::default(),
             live_link_status: None,
+            play_reply: None,
             unopened_links: std::sync::mpsc::channel(),
             godot: Default::default(),
             link: None,

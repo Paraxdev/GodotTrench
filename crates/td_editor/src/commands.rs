@@ -1344,7 +1344,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         | Action::MeshOp(_)
         | Action::StoreCamera(_)
         | Action::RecallCamera(_) => {}
-        Action::RunGodotProject => launch_godot(state, false),
+        Action::RunGodotProject => run_project(state),
         // A second Godot editor with the project could not take the live link port, so show the one that has it.
         Action::OpenGodotEditor | Action::FocusGodot => match &state.link {
             Some(link) if state.godot_has_project() => {
@@ -2432,6 +2432,52 @@ fn launch_godot(state: &mut EditorState, editor: bool) {
     }
 }
 
+/// Runs the game. The Godot editor with the project open saves its scenes first, so the game has what it built.
+fn run_project(state: &mut EditorState) {
+    match &state.link {
+        Some(link) if state.godot_has_project() => {
+            let (tx, rx) = std::sync::mpsc::channel();
+            link.request(crate::live_link::Request::Play {
+                done: Box::new(move |reply| {
+                    let _ = tx.send(reply);
+                }),
+            });
+            state.play_reply = Some(rx);
+            state.set_status("Asking Godot to save its scenes and run the project");
+        }
+        _ => {
+            launch_godot(state, false);
+            if state.link_state.outdated {
+                unsaved_in_godot(state);
+            }
+        }
+    }
+}
+
+/// Picks up Godot's answer to Run Project. An addon without the play event leaves the game to a Godot of its own.
+pub fn poll_play(state: &mut EditorState) {
+    let Some(reply) = state.play_reply.as_ref().and_then(|rx| rx.try_recv().ok()) else { return };
+    state.play_reply = None;
+    match reply {
+        Ok(r) if r["ok"].as_bool() == Some(true) => state.set_status("Godot saved its open scenes and runs the main scene"),
+        Ok(r) if r["error"] == "unknown event" => {
+            launch_godot(state, false);
+            unsaved_in_godot(state);
+        }
+        Ok(r) => state.fail_status(format!("Godot could not run the project: {}", r["error"].as_str().unwrap_or("unexpected reply"))),
+        Err(_) => launch_godot(state, false),
+    }
+}
+
+pub const UNSAVED_IN_GODOT: &str = "Godot may have map changes it has not saved, the game runs the scene saved in Godot. Save it there or press Play in Godot";
+
+fn unsaved_in_godot(state: &mut EditorState) {
+    if !state.status_failed() {
+        let status = format!("{}. {UNSAVED_IN_GODOT}", state.status);
+        state.set_status(status);
+    }
+}
+
 pub const GODOT_NOT_FOUND: &str = "Godot was not found, set the Godot executable in Preferences or the GODOT environment variable";
 pub const LIVE_LINK_OFF: &str = "Live mode needs the Godot live link, turn it on in Preferences first";
 
@@ -2623,6 +2669,40 @@ mod tests {
         let requests = state.link.as_ref().unwrap().take_requests();
         assert!(matches!(requests[..], [crate::live_link::Request::Focus]), "asks Godot to come forward, once");
         assert_eq!(state.status, "The Godot editor already has this project open, showing it", "no second editor is launched");
+    }
+
+    #[test]
+    fn run_project_has_the_godot_editor_save_and_play() {
+        let mut state = EditorState::new(Default::default());
+        let root = std::env::temp_dir().join(format!("td_play_{}", std::process::id()));
+        state.game.project_root = Some(root.clone());
+        state.trust_for_session(&root);
+        // Stands in for Godot when the editor falls back to starting the game itself, it exits right away.
+        state.prefs.godot_path = std::env::current_exe().unwrap();
+        state.link_state = crate::live_link::LinkState {
+            connected: true,
+            project: Some(crate::live_link::path_key(&crate::live_link::godot_path(&root))),
+            ..Default::default()
+        };
+        state.link = Some(crate::live_link::LiveLink::idle());
+        let ctx = egui::Context::default();
+        let answer = |state: &mut EditorState, reply: serde_json::Value| {
+            execute(state, Action::RunGodotProject, &ctx);
+            let requests = state.link.as_ref().unwrap().take_requests();
+            let [crate::live_link::Request::Play { .. }] = &requests[..] else { panic!("asks the Godot editor to play") };
+            let (tx, rx) = std::sync::mpsc::channel();
+            tx.send(Ok(reply)).unwrap();
+            state.play_reply = Some(rx);
+            poll_play(state);
+        };
+
+        answer(&mut state, serde_json::json!({ "ok": true }));
+        assert_eq!(state.status, "Godot saved its open scenes and runs the main scene", "no second Godot is started");
+        answer(&mut state, serde_json::json!({ "ok": false, "error": "the project has no main scene" }));
+        assert_eq!(state.status, "Godot could not run the project: the project has no main scene");
+        answer(&mut state, serde_json::json!({ "ok": false, "error": "unknown event" }));
+        assert!(state.status.starts_with("Launched ") && state.status.ends_with(UNSAVED_IN_GODOT), "an older addon: {}", state.status);
+        assert!(state.play_reply.is_none());
     }
 
     #[test]

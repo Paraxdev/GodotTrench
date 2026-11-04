@@ -314,6 +314,11 @@ pub enum Request {
         path: String,
         revert: bool,
     },
+    /// Godot saves its open scenes and runs the main scene. `done` gets its reply, which is an unknown event from an
+    /// older addon.
+    Play {
+        done: Done,
+    },
 }
 
 struct LiveJob {
@@ -635,7 +640,7 @@ impl Worker {
                     let message = saved_message(&path);
                     self.say(format!("Live link: Godot is not running with the TrenchDot addon{}", game_status(game_port, &message)));
                 }
-                Request::Capture { done, .. } | Request::Walkable { done, .. } => {
+                Request::Capture { done, .. } | Request::Walkable { done, .. } | Request::Play { done } => {
                     done(Err(format!("Godot is not running with the TrenchDot addon on port {}, open the project in the Godot editor", self.port)))
                 }
                 Request::LiveEnd { .. } => {}
@@ -756,6 +761,12 @@ impl Worker {
             Request::LiveEnd { path, revert } => {
                 self.sessions.remove(&path_key(&path));
                 let _ = self.long_call(json!({ "event": "live_end", "path": path, "revert": revert }));
+            }
+            Request::Play { done } => {
+                done(self.call(json!({ "event": "play" }), BUILD_REPLY));
+                if let Some(ctx) = &self.repaint {
+                    ctx.request_repaint();
+                }
             }
         }
     }

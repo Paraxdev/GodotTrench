@@ -256,7 +256,8 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
     }
 
     if !state.godot.found() {
-        out.retain(|(_, a)| !matches!(a, Action::OpenGodotEditor | Action::RunGodotProject));
+        let runs = state.godot_has_project();
+        out.retain(|(_, a)| !matches!(a, Action::OpenGodotEditor) && (runs || !matches!(a, Action::RunGodotProject)));
     }
 
     out
@@ -1145,6 +1146,19 @@ mod tests {
         }
 
         assert!(entries.iter().any(|(_, a)| *a == Action::ToggleEditMode));
+    }
+
+    #[test]
+    fn a_connected_godot_editor_runs_the_project_without_an_executable() {
+        let mut state = EditorState::new(crate::state::Prefs::default());
+        state.godot.exe = None;
+        let runs = |state: &EditorState| palette_entries(state).iter().any(|(_, a)| *a == Action::RunGodotProject);
+        assert!(!runs(&state));
+        let root = std::path::PathBuf::from("C:/game");
+        state.game.project_root = Some(root.clone());
+        state.link_state.connected = true;
+        state.link_state.project = Some(crate::live_link::path_key(&crate::live_link::godot_path(&root)));
+        assert!(runs(&state) && !palette_entries(&state).iter().any(|(_, a)| *a == Action::OpenGodotEditor));
     }
 
     #[test]

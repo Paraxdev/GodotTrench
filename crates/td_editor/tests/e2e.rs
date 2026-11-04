@@ -2352,6 +2352,34 @@ fn saving_a_prefab_rebuilds_the_maps_that_use_it() {
     assert!(text.contains("trenchdot-map") && text.contains("crate.tdm"), "the level as shown, with its instance: {text}");
 }
 
+/// Run Project has the connected Godot editor save its scenes and play, so the game has what Godot built. With an addon
+/// that has no play event the editor starts the game itself and says the game runs the scene saved in Godot.
+#[test]
+#[ignore]
+fn run_project_plays_in_the_connected_godot() {
+    let dir = linked_project("godot_play", json!([]));
+    let map = dir.join("maps/hall.tdm");
+    let (godot, sent) = fake_godot_editor_with(&dir, &[&map], json!({ "play": {} }));
+    let (old_godot, old_sent) = fake_godot_editor(&dir, &map);
+    // Stands in for Godot when the editor starts the game itself, it exits right away.
+    let stand_in = std::env::current_exe().unwrap();
+    let ed = Editor::launch_env("godot_play", &["--project", dir.to_str().unwrap()], &[("GODOT", stand_in.to_str().unwrap())]);
+    ed.call("set_editor", json!({ "live_link_port": godot }));
+    wait_state(&ed, "the live link", |s| s["godot"]["project_open"] == true);
+    ed.call("run_action", json!({ "action": "run_godot_project" }));
+    let state = wait_state(&ed, "the play reply", |s| s["status"].as_str().is_some_and(|t| t.starts_with("Godot saved")));
+    assert_eq!(state["status"], "Godot saved its open scenes and runs the main scene");
+    assert_eq!(sent_events(&sent, "play").len(), 1);
+
+    ed.call("set_editor", json!({ "live_link_port": old_godot }));
+    wait_state(&ed, "the older addon", |s| s["godot"]["project_open"] == true);
+    ed.call("run_action", json!({ "action": "run_godot_project" }));
+    let state = wait_state(&ed, "the fallback", |s| s["status"].as_str().is_some_and(|t| t.starts_with("Launched")));
+    let status = state["status"].as_str().unwrap();
+    assert!(status.ends_with(td_editor::commands::UNSAVED_IN_GODOT), "{status}");
+    assert_eq!(sent_events(&old_sent, "play").len(), 1, "asked first, then started the game itself");
+}
+
 /// `screenshot {source: godot}` asks the connected Godot editor for a picture of the map as shown in TrenchDot and
 /// returns it with what Godot logged, and says what is missing when it cannot.
 #[test]
