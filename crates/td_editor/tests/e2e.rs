@@ -2288,6 +2288,39 @@ fn godot_names_the_classes_it_built_without_a_definition() {
     assert_eq!(godot_issues[1]["message"], format!("Godot: {warning}"));
 }
 
+/// In live mode Godot names the classes an edit built without a definition, and the status bar says so.
+#[test]
+#[ignore]
+fn live_mode_tells_about_classes_godot_lacks() {
+    let dir = linked_project("godot_unresolved", json!([{ "classname": "func_door", "type": "solid" }]));
+    let map = dir.join("maps/hall.tdm");
+    let answers = json!({
+        "map_saved": { "rebuilt": 1, "settings": ["res://my_settings.tres"] },
+        "live_begin": { "epoch": 1 },
+        "live_delta": { "epoch": 1, "unresolved": ["func_door"], "settings": ["res://live_settings.tres"] },
+    });
+    let (godot, sent) = fake_godot_editor_with(&dir, &[&map], answers);
+    let ed = Editor::launch_with("godot_unresolved", &["--project", dir.to_str().unwrap()]);
+    ed.call("set_editor", json!({ "live_link_port": godot, "live_mode": true }));
+    wait_state(&ed, "the live link", |s| s["godot"]["project_open"] == true);
+    let leaf = ed.box_brush([0.0, 0.0, 0.0], [8.0, 96.0, 64.0]);
+    ed.call("gameplay", json!({ "op": "brush_entity", "ids": [leaf], "classname": "func_door" }));
+    ed.call("map_file", json!({ "op": "save", "path": map }));
+    wait_state(&ed, "the live session", |s| s["godot"]["live_session"] == true);
+    assert_eq!(ed.state()["godot"]["missing_classes"], json!([]), "the save built every class");
+
+    ed.box_brush([64.0, 0.0, 0.0], [128.0, 16.0, 64.0]);
+    let state = wait_state(&ed, "the live reply", |s| s["status"].as_str().is_some_and(|t| t.starts_with("Godot has no definition")));
+    assert_eq!(
+        state["status"],
+        "Godot has no definition for func_door, it shows a plain node. Install the Gameplay entities pack or add the class to the FGD of res://live_settings.tres"
+    );
+    assert_eq!(state["godot"]["missing_classes"], json!(["func_door"]));
+    assert!(!sent_events(&sent, "live_delta").is_empty());
+    let issues = ed.call("validate_map", json!({}));
+    assert!(issues["issues"].as_array().unwrap().iter().any(|i| i["code"] == "godot_missing_class"), "{issues}");
+}
+
 /// `screenshot {source: godot}` asks the connected Godot editor for a picture of the map as shown in TrenchDot and
 /// returns it with what Godot logged, and says what is missing when it cannot.
 #[test]

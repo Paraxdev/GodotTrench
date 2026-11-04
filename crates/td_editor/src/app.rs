@@ -1867,8 +1867,13 @@ impl App {
             (false, true, _) => "Live mode: send edits to Godot before saving",
             (false, false, _) => "Live mode needs the Godot editor with this project open",
         };
-        let toggle = ui.add_enabled_ui(live || (open && s.prefs.live_link), |ui| icons::toggle(ui, icons::LINK, size, live, "Live Mode", live_tip)).inner;
-        let toggle = toggle.on_disabled_hover_text(live_tip);
+        let live_tip = match s.godot_unresolved() {
+            Some(lacking) => format!("{live_tip}\n{lacking}"),
+            None => live_tip.to_string(),
+        };
+        let toggle =
+            ui.add_enabled_ui(live || (open && s.prefs.live_link), |ui| icons::toggle(ui, icons::LINK, size, live, "Live Mode", live_tip.as_str())).inner;
+        let toggle = toggle.on_disabled_hover_text(live_tip.as_str());
         rect |= toggle.rect;
         if toggle.clicked() {
             self.actions.push(Action::ToggleLiveMode);

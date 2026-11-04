@@ -5,6 +5,8 @@
 //!   the map's file records in its END chunk, so a scene built from that file is not rebuilt.
 //! - `live_delta {path, ops}` with `remove {id}`, `set {id, parent, index, node}`, `translate {ids, offset}` and
 //!   `properties {properties}`. `node` is the node as stored in the `.tdm` file, without its children.
+//!
+//! A reply names in `unresolved` the classnames the step built without a definition.
 
 use std::collections::{BTreeMap, BTreeSet};
 

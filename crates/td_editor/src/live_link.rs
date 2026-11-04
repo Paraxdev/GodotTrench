@@ -119,6 +119,17 @@ impl GodotReport {
         }
     }
 
+    /// Takes in what a live step built: the classes of `rebuilt` entities count again, Godot built the `unresolved`
+    /// ones without a definition, with the map settings of `settings`. Returns the unresolved classes that were not
+    /// missing before.
+    fn live_step(&mut self, rebuilt: &BTreeSet<String>, unresolved: BTreeSet<String>, settings: Vec<String>) -> Vec<String> {
+        let new = unresolved.iter().filter(|c| !self.missing.contains(*c)).cloned().collect();
+        self.missing.retain(|c| !rebuilt.contains(c));
+        self.missing.extend(unresolved);
+        self.settings = settings;
+        new
+    }
+
     /// What a status line about the build adds.
     fn note(&self) -> String {
         let missing: Vec<&String> = self.missing.iter().collect();
@@ -129,6 +140,37 @@ impl GodotReport {
             (1, _) => format!(", but {} no definition for {}, so it builds as a plain node. See the Issues panel", self.settings_have(), missing[0]),
             _ => format!(", but {} no definition for {}, so they build as plain nodes. See the Issues panel", self.settings_have(), name_list(&missing)),
         }
+    }
+}
+
+/// What the status bar and the live mode tooltip say while Godot shows `classes` without their definition.
+pub fn unresolved_text<S: AsRef<str>>(classes: &[S], report: &GodotReport) -> String {
+    let (shows, them) = if classes.len() == 1 { ("it shows a plain node", "the class") } else { ("they show as plain nodes", "the classes") };
+    let fgd = if report.settings.is_empty() { "the map settings FGD".to_string() } else { format!("the FGD of {}", name_list(&report.settings)) };
+    let what = if classes.iter().any(|c| crate::entity_pack::in_pack(c.as_ref())) {
+        format!("Install the Gameplay entities pack or add {them} to {fgd}")
+    } else {
+        format!("Add {them} to {fgd}")
+    };
+    format!("Godot has no definition for {}, {shows}. {what}", name_list(classes))
+}
+
+/// Classnames of the entities whose definitions the `reply` to a live message tells about again. The start of a
+/// session names every class without a definition, from addons that name the map settings in their live replies.
+fn rebuilt_classes(message: &Value, map: &td_doc::Map, reply: &Value) -> BTreeSet<String> {
+    match message["event"].as_str() {
+        Some("live_resync") => map.entities().map(|(_, e)| e.classname.clone()).collect(),
+        Some("live_begin") if reply["settings"].is_array() => map.entities().map(|(_, e)| e.classname.clone()).collect(),
+        Some("live_delta") => message["ops"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|op| op["op"] == "set")
+            .filter_map(|op| op["id"].as_u64().map(td_core::NodeId))
+            .filter_map(|id| map.entity(id).or_else(|| map.owning_entity(id).and_then(|e| map.entity(e))))
+            .map(|e| e.classname.clone())
+            .collect(),
+        _ => BTreeSet::new(),
     }
 }
 
@@ -696,34 +738,63 @@ impl Worker {
             },
             None => self.begin(&key, &job.path, map.clone()),
         };
-        match self.call(message, BUILD_REPLY) {
+        match self.call(message.clone(), BUILD_REPLY) {
             Ok(reply) if reply["ok"].as_bool() == Some(true) => {
                 if let (Some(session), Some(epoch)) = (self.sessions.get_mut(&key), reply["epoch"].as_u64()) {
                     session.epoch = epoch;
                 }
+
+                self.keep_unresolved(&key, &rebuilt_classes(&message, &map, &reply), &reply);
             }
             Ok(_) => {
                 // Godot lost track of the map (a build of its own, a changed scene), start over from the whole map.
-                let message = self.begin(&key, &job.path, map);
-                if let Ok(reply) = self.call(message, BUILD_REPLY)
-                    && let (Some(session), Some(epoch)) = (self.sessions.get_mut(&key), reply["epoch"].as_u64())
-                {
-                    session.epoch = epoch;
+                let message = self.begin(&key, &job.path, map.clone());
+                if let Ok(reply) = self.call(message.clone(), BUILD_REPLY) {
+                    if let (Some(session), Some(epoch)) = (self.sessions.get_mut(&key), reply["epoch"].as_u64()) {
+                        session.epoch = epoch;
+                    }
+
+                    self.keep_unresolved(&key, &rebuilt_classes(&message, &map, &reply), &reply);
                 }
             }
             Err(_) => {}
         }
     }
 
+    /// Takes in the classes a live step built without a definition, and says so when there are new ones.
+    fn keep_unresolved(&self, key: &str, rebuilt: &BTreeSet<String>, reply: &Value) {
+        let unresolved: BTreeSet<String> = strings(&reply["unresolved"]).into_iter().collect();
+        let before = self.shared.0.lock().unwrap_or_else(|e| e.into_inner()).state.reports.get(key).cloned();
+        let mut report = before.clone().unwrap_or_default();
+        let new = report.live_step(rebuilt, unresolved, strings(&reply["settings"]));
+        let unchanged = match &before {
+            Some(b) => *b == report,
+            None => report.missing.is_empty(),
+        };
+        if unchanged {
+            return;
+        }
+
+        if !new.is_empty() {
+            self.say(unresolved_text(&new, &report));
+        }
+
+        self.update(|s| {
+            s.reports.insert(key.to_string(), report);
+        });
+    }
+
     /// Starts a session from the map Godot has just fully built. The text matches that build, so Godot does not build again,
     /// and the next edit only sends what changed.
     fn restart(&mut self, key: &str, path: &str, map: td_doc::Map) {
-        let message = self.begin(key, path, map);
-        match self.call(message, BUILD_REPLY) {
+        let message = self.begin(key, path, map.clone());
+        match self.call(message.clone(), BUILD_REPLY) {
             Ok(reply) if reply["ok"].as_bool() == Some(true) => {
                 if let (Some(session), Some(epoch)) = (self.sessions.get_mut(key), reply["epoch"].as_u64()) {
                     session.epoch = epoch;
                 }
+
+                self.keep_unresolved(key, &rebuilt_classes(&message, &map, &reply), &reply);
             }
             _ => {
                 self.sessions.remove(key);
@@ -958,6 +1029,74 @@ mod tests {
         assert_eq!(report.missing.iter().collect::<Vec<_>>(), ["func_door"]);
         assert_eq!((report.settings_have(), report.warnings.len()), ("res://my_settings.tres has".to_string(), 1));
         assert!(state.report(&map_path.with_file_name("other.tdm")).is_none());
+    }
+
+    #[test]
+    fn live_steps_keep_track_of_the_classes_godot_lacks() {
+        let classes = |list: &[&str]| list.iter().map(|c| c.to_string()).collect::<BTreeSet<String>>();
+        let settings = || vec!["res://my_settings.tres".to_string()];
+        let mut report = GodotReport::default();
+        assert_eq!(report.live_step(&classes(&[]), classes(&["func_door", "my_lamp"]), settings()), ["func_door", "my_lamp"]);
+        assert!(report.live_step(&classes(&["light"]), classes(&[]), settings()).is_empty());
+        assert_eq!(report.missing, classes(&["func_door", "my_lamp"]), "a step that built other classes leaves them");
+        assert!(report.live_step(&classes(&["func_door"]), classes(&[]), settings()).is_empty());
+        assert_eq!(report.missing, classes(&["my_lamp"]), "the door was built again and found its definition");
+        assert!(report.live_step(&classes(&["my_lamp"]), classes(&["my_lamp"]), settings()).is_empty(), "nothing new to say");
+        assert_eq!(report.settings, settings(), "the reply names the map settings");
+
+        assert_eq!(
+            unresolved_text(&["func_door"], &GodotReport::default()),
+            "Godot has no definition for func_door, it shows a plain node. Install the Gameplay entities pack or add the class to the map settings FGD"
+        );
+        assert_eq!(
+            unresolved_text(&["my_lamp", "my_crate"], &report),
+            "Godot has no definition for my_lamp and my_crate, they show as plain nodes. Add the classes to the FGD of res://my_settings.tres"
+        );
+
+        let mut map = td_doc::Map::new();
+        let layer = map.default_layer();
+        let door = map.insert(layer, td_doc::NodeKind::Entity(td_doc::Entity::new("func_door")));
+        let leaf =
+            map.insert(door, td_doc::NodeKind::Brush(td_geom::Brush::from_aabb(&td_core::Aabb::new(td_core::DVec3::ZERO, td_core::DVec3::ONE), "a").unwrap()));
+        map.insert(layer, td_doc::NodeKind::Entity(td_doc::Entity::new("light")));
+        let delta = json!({ "event": "live_delta", "ops": [{ "op": "set", "id": leaf.0 }, { "op": "remove", "id": 99 }] });
+        let ok = json!({ "ok": true });
+        let named = json!({ "ok": true, "settings": [] });
+        assert_eq!(rebuilt_classes(&delta, &map, &ok), classes(&["func_door"]), "a brush rebuilds its entity");
+        assert_eq!(rebuilt_classes(&json!({ "event": "live_resync" }), &map, &ok), classes(&["func_door", "light"]));
+        assert!(rebuilt_classes(&json!({ "event": "live_begin" }), &map, &ok).is_empty(), "an older addon only names what a begin built");
+        assert_eq!(rebuilt_classes(&json!({ "event": "live_begin" }), &map, &named), classes(&["func_door", "light"]), "a newer one names every class");
+    }
+
+    #[test]
+    fn a_live_reply_with_unresolved_classes_is_told() {
+        let map_path = std::env::temp_dir().join("td_live_link_test").join("unresolved.tdm");
+        let answers = json!({ "live_begin": { "unresolved": ["func_door"] } });
+        let (port, _) = fake_godot_with(godot_path(&map_path), Duration::ZERO, answers);
+        let link = LiveLink::start(None);
+        link.configure(port, true);
+        wait_for("heartbeat", || link.state().connected);
+        link.sync(&map_path, Frame { map: td_doc::Map::new(), dragging: false, idle: true });
+        wait_for("the status", || link.poll_status().is_some_and(|s| s.starts_with("Godot has no definition for func_door, it shows a plain node")));
+        assert_eq!(link.state().report(&map_path).map(|r| r.missing.iter().cloned().collect::<Vec<_>>()), Some(vec!["func_door".to_string()]));
+        assert!(link.state().report(&map_path).is_some_and(|r| r.settings.is_empty()), "a reply that names no map settings names no file");
+    }
+
+    #[test]
+    fn a_new_session_drops_the_classes_godot_no_longer_lacks() {
+        let map_path = std::env::temp_dir().join("td_live_link_test").join("resolved.tdm");
+        let answers = json!({ "live_begin": { "settings": ["res://crypt_settings.tres"] } });
+        let (port, _) = fake_godot_with(godot_path(&map_path), Duration::ZERO, answers);
+        let link = LiveLink::start(None);
+        link.configure(port, true);
+        wait_for("heartbeat", || link.state().connected);
+        let stale = GodotReport { missing: ["func_door".to_string()].into(), settings: vec!["res://other_scene_settings.tres".into()], ..Default::default() };
+        link.with(|s| s.state.reports.insert(path_key(&godot_path(&map_path)), stale));
+        let mut map = td_doc::Map::new();
+        map.insert(map.default_layer(), td_doc::NodeKind::Entity(td_doc::Entity::new("func_door")));
+        link.sync(&map_path, Frame { map, dragging: false, idle: true });
+        wait_for("the report", || link.state().report(&map_path).is_some_and(|r| r.missing.is_empty()));
+        assert_eq!(link.state().report(&map_path).unwrap().settings, ["res://crypt_settings.tres"]);
     }
 
     fn capture(link: &LiveLink, path: &Path, build: Option<td_doc::Map>) -> Result<Value, String> {

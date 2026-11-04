@@ -1057,6 +1057,13 @@ impl EditorState {
         self.game.project_root.as_deref().is_some_and(|root| self.link_state.has_project(root))
     }
 
+    /// What to tell while Godot shows entities of the current map without their definition.
+    pub fn godot_unresolved(&self) -> Option<String> {
+        let report = self.link_state.report(self.doc.path.as_deref()?)?;
+        let used: Vec<&String> = report.missing.iter().filter(|c| self.doc.map.entities().any(|(_, e)| e.classname == **c)).collect();
+        (!used.is_empty()).then(|| crate::live_link::unresolved_text(&used, report))
+    }
+
     /// Edits of the current map are being sent to Godot.
     pub fn live_active(&self) -> bool {
         self.prefs.live_link
@@ -1501,6 +1508,24 @@ pub fn load_document(path: &Path) -> Result<Document, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn classes_godot_lacks_are_told_while_the_map_uses_them() {
+        let mut state = EditorState::new(Prefs::default());
+        let path = std::env::temp_dir().join("td_unresolved").join("hall.tdm");
+        state.doc.path = Some(path.clone());
+        let layer = state.doc.map.default_layer();
+        state.doc.edit("Door", |m, _| m.insert(layer, td_doc::NodeKind::Entity(td_doc::Entity::new("func_door"))));
+        assert_eq!(state.godot_unresolved(), None);
+        let report = crate::live_link::GodotReport { missing: ["func_door", "my_lamp"].map(String::from).into(), ..Default::default() };
+        let key = crate::live_link::path_key(&crate::live_link::godot_path(&path));
+        state.link_state.reports.insert(key, report);
+        assert_eq!(
+            state.godot_unresolved().as_deref(),
+            Some("Godot has no definition for func_door, it shows a plain node. Install the Gameplay entities pack or add the class to the map settings FGD"),
+            "my_lamp is no longer in the map"
+        );
+    }
 
     #[test]
     fn autosaves_recover_into_their_map() {
