@@ -1614,6 +1614,10 @@ impl App {
     }
 
     fn tool_map_file(&mut self, args: &Value) -> ToolResult {
+        let make_parent = |p: &std::path::Path| match p.parent().filter(|d| !d.as_os_str().is_empty() && !d.exists()) {
+            Some(dir) => std::fs::create_dir_all(dir).map_err(|e| format!("cannot create the folder {}: {e}", path_text(dir))),
+            None => Ok(()),
+        };
         let op = args["op"].as_str().unwrap_or_default();
         // Without a project a relative path resolves against the process directory, which a later save should not
         // depend on.
@@ -1643,7 +1647,7 @@ impl App {
                 })
             }),
             "save" => match path.or_else(|| self.state.doc.path.clone()) {
-                Some(p) => self.state.save_map(&p).map(|()| json!({})),
+                Some(p) => make_parent(&p).and_then(|()| self.state.save_map(&p)).map(|()| json!({})),
                 None => Err("map has no path yet, pass one".into()),
             },
             "import_map" => need(path).and_then(|p| {

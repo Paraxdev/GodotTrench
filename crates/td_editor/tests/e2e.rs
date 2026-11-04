@@ -188,6 +188,27 @@ fn approx(a: &[f64], b: &[f64]) -> bool {
 
 #[test]
 #[ignore]
+fn map_file_save_creates_its_folder() {
+    let ed = Editor::launch("save_folder");
+    let dir = artifacts().join("save_folder");
+    let _ = std::fs::remove_dir_all(&dir);
+    let path = dir.join("levels/crypt.tdm");
+    ed.call("map_file", json!({ "op": "save", "path": path }));
+    assert!(path.is_file(), "saved into a folder that did not exist");
+
+    let scripts = dir.join("scripts");
+    std::fs::create_dir_all(&scripts).unwrap();
+    let outside = dir.join("elsewhere/new/crypt.tdm");
+    let script = json!({ "steps": [{ "tool": "map_file", "args": { "op": "save", "path": outside } }] });
+    std::fs::write(scripts.join("save.json"), script.to_string()).unwrap();
+    let summary = ed.call("run_script", json!({ "path": scripts.join("save.json"), "continue_on_error": true }));
+    assert_eq!(summary["errors"].as_array().map(Vec::len), Some(1), "{summary}");
+    assert!(!dir.join("elsewhere").exists(), "a script makes no folder outside the places it may write");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+#[ignore]
 fn draw_select_move_delete_undo() {
     let ed = Editor::launch("basic");
     // Draw a brush by dragging in the top view. The first brush is 128 units tall, a room once hollowed.
