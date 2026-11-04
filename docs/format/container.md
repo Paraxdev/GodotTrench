@@ -175,6 +175,6 @@ building it:
 | Bytes, on top | `4 * ceil(n / 3) + n` for `n` bytes, their size as base64 and the copy a terrain or bake decodes them into |
 
 The biggest showcase map takes 76 MiB, a scatter instance 640 to 720 bytes, and the light, shadow and occlusion of a
-bake at the largest atlas size 299 MiB. Reading a file that fits into a map, or dumping it as JSON, takes at most about
-1.3 GiB on top of what the editor already uses. The editor refuses to save a map past either limit, so every file it
-writes reads in full.
+bake at the largest atlas size 299 MiB. The budgets only cover these values. The brushes, entities and instances a
+map builds from them take memory of their own, which is not counted, so a small file of many tiny nodes can still take
+a few GiB to open. The editor refuses to save a map past either limit, so every file it writes reads in full.
