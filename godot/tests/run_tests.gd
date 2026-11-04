@@ -124,6 +124,7 @@ func _initialize() -> void:
 	await load("res://tests/section_tests.gd").new().run(self)
 	await load("res://tests/logic_math_tests.gd").new().run(self)
 	await load("res://tests/definition_tests.gd").new().run(self)
+	await load("res://tests/live_session_tests.gd").new().run(self)
 	print("%d checks, %d failures" % [checks, failures.size()])
 	quit(1 if failures.size() > 0 else 0)
 
