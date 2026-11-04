@@ -864,14 +864,14 @@ impl Viewport {
             if let Some(payload) = response.dnd_hover_payload::<DndPayload>() {
                 ui.painter().rect_stroke(self.rect.shrink(1.0), 0.0, egui::Stroke::new(2.0, DROP_COLOR), egui::StrokeKind::Inside);
                 ui.ctx().set_cursor_icon(CursorIcon::Copy);
-                if let Some(pos) = response.hover_pos() {
+                if let Some(pos) = drop_pos(response) {
                     self.paint_drop_target(ui, cx, &payload, pos);
                 }
             }
 
             return;
         };
-        let Some(pos) = response.hover_pos() else { return };
+        let Some(pos) = drop_pos(response) else { return };
         let ray = self.camera.ray(self.rect, pos);
         let hit = picking::pick(cx.state, &ray);
         match payload.as_ref() {
@@ -1345,9 +1345,45 @@ pub fn set_terrain_layer(t: &mut td_geom::Terrain, layer: usize, material: &str)
     t.layers.len() - 1
 }
 
+/// Where a payload dragged from another widget is over the view. `hover_pos` is always None then, egui never counts a
+/// widget as hovered while another one is dragged.
+fn drop_pos(response: &Response) -> Option<Pos2> {
+    if !response.contains_pointer() {
+        return None;
+    }
+
+    let pos = response.ctx.input(|i| i.pointer.hover_pos())?;
+    Some(response.ctx.layer_transform_from_global(response.layer_id).map_or(pos, |t| t * pos))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_view_knows_where_a_drag_from_another_widget_is() {
+        let mut harness = egui_kittest::Harness::new_ui_state(
+            |ui, seen: &mut Option<Option<Pos2>>| {
+                let source = ui.allocate_rect(Rect::from_min_size(Pos2::ZERO, Vec2::new(60.0, 20.0)), Sense::drag());
+                source.dnd_set_drag_payload(DndPayload::Model("fir.glb".into()));
+                let view = ui.allocate_rect(Rect::from_min_size(Pos2::new(0.0, 40.0), Vec2::splat(200.0)), Sense::click_and_drag());
+                if view.dnd_hover_payload::<DndPayload>().is_some() {
+                    *seen = Some(drop_pos(&view));
+                }
+            },
+            None,
+        );
+        harness.hover_at(Pos2::new(10.0, 10.0));
+        harness.run();
+        harness.drag_at(Pos2::new(10.0, 10.0));
+        harness.run();
+        for pos in [Pos2::new(40.0, 60.0), Pos2::new(100.0, 120.0)] {
+            harness.hover_at(pos);
+            harness.run();
+        }
+
+        assert_eq!(*harness.state(), Some(Some(Pos2::new(100.0, 120.0))));
+    }
 
     #[test]
     fn dropping_past_the_last_terrain_layer_adds_one_layer() {

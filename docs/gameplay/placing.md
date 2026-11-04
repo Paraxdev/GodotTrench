@@ -10,10 +10,11 @@ there, grouped by category. Hover a card to see what it does.
 Drag a card into any view to place it, or double click it to drop it at the 3D cursor. (Ctrl or Shift click picks
 several cards, drag them in together and they land in a row.)
 
-The entity lands on the first solid surface under the pointer. Trigger volumes, brushes made only of tool textures
-and other entities are passed. In the Top view the roof of a room is in the way, so hold Alt while you drop and the
-entity passes the roof and lands on the floor inside. In the Front and Side views Alt passes the near wall and puts the
-entity halfway across the room.
+The entity lands on the first solid surface under the pointer. Trigger volumes, brushes made only of tool textures and
+other entities are passed. While you drag, a cyan marker shows where it will land. A 2D view cannot show depth, so there
+the marker is labeled with the height (or depth) it lands at. In the Top view the roof of a room is in the way, so hold
+Alt while you drop and the entity passes the roof and lands on the floor inside. In the Front and Side views Alt passes
+the near wall and puts the entity halfway across the room.
 
 ### Brush entities
 
