@@ -1,7 +1,7 @@
 @tool
 extends Node
 ## Checks in a headless Godot editor that the live link follows scene tabs as they are opened, closed, reloaded and
-## switched, that live sessions follow entity definitions that change, and that an editor
+## switched, that live sessions follow entity definitions that change or appear on disk, and that an editor
 ## build names entity scripts without @tool. res://tests/live_link_tests.gd starts it with
 ## godot --headless --editor --path godot res://tests/editor/live_link_tabs.tscn -- --td-live-link-tabs
 ## and it does nothing when the scene is opened any other way.
@@ -14,6 +14,9 @@ const NOT_TOOL := "res://tests/helpers/not_tool_entity.gd"
 const MAP_JSON := "res://tests/maps/basic_json.tdm"
 ## The TrenchDotFGDFile the demo's FGD has as a base, which brings the installed Gameplay entities pack.
 const CORE_FGD := "res://addons/func_godot/fgd/trenchdot/trenchdot_fgd.tres"
+## A definition and its script class written while a session runs, removed again afterwards.
+const NEW_DEFS := "res://tests/td_tests_new_definitions"
+const NEW_CLASS := "TDTestsNewEntity"
 
 func _ready() -> void:
 	if not Engine.is_editor_hint() or not FLAG in OS.get_cmdline_user_args():
@@ -116,6 +119,7 @@ class Runner extends Node:
 		await frames(30)
 		check(builds[0] == 1, "a missed save is built once, %d builds" % builds[0])
 		await _check_definition_hooks()
+		await _check_scan()
 		_check_tool_scripts()
 
 		print("%d failures" % failures)
@@ -176,3 +180,70 @@ class Runner extends Node:
 		reply = await live("live_delta", nudge)
 		check(reply.get("ok") == true and not reply.has("unresolved"), "after which a live reply names none, got %s" % reply)
 		await live("live_end")
+
+	## A definition and the script class it names appear on disk while a session runs, the way installing an entity
+	## pack or writing a custom entity does, and the scan event makes the session build them.
+	func _check_scan() -> void:
+		var auto_export: Variant = ProjectSettings.get_setting(TrenchDotEditorIntegration.SETTING_AUTO_EXPORT)
+		ProjectSettings.set_setting(TrenchDotEditorIntegration.SETTING_AUTO_EXPORT, false)
+		var map: FuncGodotMap = link.maps_for(MAP_FILE)[0]
+		var settings_before := map.map_settings
+		var fgd := TrenchDotFGDFile.new()
+		fgd.base_fgd_files = [load("res://demo/demo_fgd.tres")]
+		fgd.pack_fgd_path = NEW_DEFS.path_join("fgd.tres")
+		var settings: FuncGodotMapSettings = load("res://demo/demo_map_settings.tres").duplicate()
+		settings.entity_fgd = fgd
+		map.map_settings = settings
+		var entity := { "id": 2, "type": "entity", "classname": "td_tests_new_entity", "origin": [0.0, 0.0, 0.0], "angles": [0.0, 0.0, 0.0], "properties": {} }
+		var text := JSON.stringify({ "format": "trenchdot-map", "properties": {}, "layers": [{ "type": "layer", "id": 1, "children": [entity] }] })
+		var reply := await live("live_begin", { "text": text })
+		check(reply.get("unresolved") == ["td_tests_new_entity"], "a live session started before the definition exists names its class, got %s" % reply)
+
+		DirAccess.make_dir_recursive_absolute(NEW_DEFS)
+		var script := FileAccess.open(NEW_DEFS.path_join("new_entity.gd"), FileAccess.WRITE)
+		script.store_string("@tool\nclass_name %s extends StaticBody3D\n" % NEW_CLASS)
+		script.close()
+		var def := FuncGodotFGDPointClass.new()
+		def.classname = "td_tests_new_entity"
+		def.node_class = NEW_CLASS
+		var pack := FuncGodotFGDFile.new()
+		pack.entity_definitions = [def]
+		ResourceSaver.save(pack, fgd.pack_fgd_path)
+		reply = await live("scan")
+		check(reply.get("ok") == true, "the scan event is answered, got %s" % reply)
+		var built := func() -> Node: return TrenchDotBuild.nodes_by_id(map).get(2)
+		var is_new := func() -> bool:
+			var node: Node = built.call()
+			return node is StaticBody3D and node.get_script() != null and node.get_script().get_global_name() == NEW_CLASS
+		check(await until(is_new, 1200), "after the scan the session builds the entity with its new class, got %s" % built.call())
+		var number = reply.get("scan")
+		check(number is int and number > 0 and link._scans_done == number, "the reply numbers the scan, which counts as done then, got %s and %d" % [reply, link._scans_done])
+		reply = await live("live_delta", { "ops": [{ "op": "set", "id": 2, "parent": 1, "index": 0, "node": entity }] })
+		check(reply.get("ok") == true and not reply.has("unresolved"), "and live edits of it no longer name it, got %s" % reply)
+
+		# Godot reads modified times in whole seconds, the edit has to land in a later one to be seen.
+		var saved_at := FileAccess.get_modified_time(fgd.pack_fgd_path)
+		def.node_class = "Area3D"
+		var copy := "user://td_tests_edited_fgd.tres"
+		ResourceSaver.save(pack, copy)
+		var edited := FileAccess.get_file_as_string(copy)
+		DirAccess.remove_absolute(copy)
+		OS.delay_msec(maxi(0, int((saved_at + 1.05 - Time.get_unix_time_from_system()) * 1000.0)))
+		var out := FileAccess.open(fgd.pack_fgd_path, FileAccess.WRITE)
+		out.store_string(edited)
+		out.close()
+		await live("scan")
+		check(await until(func() -> bool: return built.call() is Area3D, 1200), "the scan event reads a definition edited outside Godot again, got %s" % built.call())
+
+		await live("live_end")
+		check(link.status().get("scanned") == number + 1, "the status names the last scan done, got %s" % link.status().get("scanned"))
+		map.map_settings = settings_before
+		for file in DirAccess.get_files_at(NEW_DEFS):
+			DirAccess.remove_absolute(NEW_DEFS.path_join(file))
+		DirAccess.remove_absolute(NEW_DEFS)
+		var fs := EditorInterface.get_resource_filesystem()
+		fs.scan()
+		await until(func() -> bool: return not fs.is_scanning() and not ProjectSettings.get_global_class_list().any(func(c): return c["class"] == NEW_CLASS), 1200)
+		ProjectSettings.set_setting(TrenchDotEditorIntegration.SETTING_AUTO_EXPORT, auto_export)
+		# Changed settings start the link again.
+		link.stop_live_link()
