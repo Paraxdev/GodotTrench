@@ -196,6 +196,10 @@ pub struct Report {
     pub kept: Vec<String>,
 }
 
+/// Pack scripts that appear while Godot runs can be compiled before Godot knows the classes they use, and stay broken
+/// until Godot starts again.
+pub const RESTART_NOTE: &str = "If Godot has the project open, restart it, then press Build Map in each scene that uses your maps and save.";
+
 impl Report {
     pub fn summary(&self) -> String {
         let mut text = match (self.added.len(), self.updated.len()) {
@@ -206,6 +210,10 @@ impl Report {
         };
         if !self.kept.is_empty() {
             text += &format!(" Kept your edited {}, the addon has a newer version of it.", self.kept.join(", "));
+        }
+
+        if !self.added.is_empty() || !self.updated.is_empty() {
+            text += &format!(" {RESTART_NOTE}");
         }
 
         text
@@ -420,6 +428,15 @@ mod tests {
         write(&install_dir(fresh.path()).join("scripts/td_door.gd"), "mine");
         assert_eq!(install(fresh.path()).unwrap().kept, ["scripts/td_door.gd"]);
         assert_eq!(read(fresh.path(), "scripts/td_door.gd"), "mine");
+    }
+
+    #[test]
+    fn the_summary_says_to_restart_godot_after_new_files() {
+        let added = Report { added: vec!["scripts/td_door.gd".into()], ..Default::default() };
+        assert_eq!(added.summary(), format!("Added 1 files of the {NAME} pack to {RES_DIR}. {RESTART_NOTE}"));
+        let updated = Report { updated: vec!["a".into()], kept: vec!["b".into()], ..Default::default() };
+        assert!(updated.summary().ends_with(&format!("newer version of it. {RESTART_NOTE}")), "{}", updated.summary());
+        assert!(!Report::default().summary().contains("restart"), "nothing changed, nothing to pick up");
     }
 
     #[test]
