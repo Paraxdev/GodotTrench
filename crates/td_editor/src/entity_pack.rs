@@ -302,6 +302,13 @@ pub fn add_unexported(game: &mut GameConfig, root: &Path) -> usize {
         return 0;
     }
 
+    // What the export says Godot builds with predates the pack, which Godot's default FGD includes once installed.
+    if let Some(build) = &mut game.build {
+        build.classes.extend(manifest.entities.iter().map(|e| e.classname.clone()));
+        build.classes.sort();
+        build.classes.dedup();
+    }
+
     let mut added = 0;
     for mut def in manifest.entities {
         def.fill_group();
@@ -429,6 +436,12 @@ mod tests {
         assert!(add_unexported(&mut game, root) > 30);
         assert_eq!(game.entity("func_door").unwrap().group, "func");
         assert_eq!(add_unexported(&mut game, root), 0, "known ones are not added twice");
+
+        let mut game = GameConfig::builtin();
+        game.build = Some(td_formats::BuildConfig { classes: vec!["light".into()], ..Default::default() });
+        add_unexported(&mut game, root);
+        let build = game.build.unwrap();
+        assert!(build.defines("func_door") && build.defines("light"), "an export from before the install does not know the pack");
 
         // A config Godot exported after the install is complete, the person may have removed entities from it.
         let exported = root.join(td_formats::game::GAME_FILE_NAME);

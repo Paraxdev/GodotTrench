@@ -61,7 +61,11 @@ pub fn map_issues(
         external,
     );
     for (id, e) in map.entities() {
-        if game.entity(&e.classname).is_none() && !e.classname.is_empty() {
+        if e.classname.is_empty() {
+            continue;
+        }
+
+        if game.entity(&e.classname).is_none() {
             list.push(Issue {
                 node: Some(id),
                 severity: Severity::Warning,
@@ -74,6 +78,18 @@ pub fn map_issues(
                 } else {
                     format!("No entity definition for '{}'", e.classname)
                 },
+            });
+        } else if let Some(build) = game.build.as_ref().filter(|b| !b.defines(&e.classname)) {
+            list.push(Issue {
+                node: Some(id),
+                severity: Severity::Warning,
+                code: "build_lacks_class",
+                message: format!(
+                    "Godot builds with {}, whose FGD {}has no '{}'. Set its Entity Fgd to the FGD your game config uses",
+                    build.map_settings,
+                    if build.entity_fgd.is_empty() { String::new() } else { format!("{} ", build.entity_fgd) },
+                    e.classname
+                ),
             });
         }
     }
@@ -426,6 +442,34 @@ mod tests {
                 "No entity definition for 'func_door', it comes with the Gameplay entities pack. Gameplay > Install Gameplay Entities adds it",
                 "No entity definition for 'my_thing'"
             ]
+        );
+    }
+
+    #[test]
+    fn a_class_the_godot_build_lacks_names_its_map_settings() {
+        let mut game = GameConfig::with_gameplay_pack();
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        let door = map.insert(layer, NodeKind::Entity(Entity::new("func_door")));
+        map.insert(layer, NodeKind::Entity(Entity::new("light")));
+        map.insert(layer, NodeKind::Entity(Entity::new("my_thing")));
+        let lacking = |game: &GameConfig| {
+            let found = map_issues(&map, game, &mut MaterialLibrary::new(game), &mut PrefabCache::default(), None, &BTreeSet::new());
+            found.into_iter().filter(|i| i.code == "build_lacks_class").collect::<Vec<_>>()
+        };
+        assert!(lacking(&game).is_empty(), "an export without the build block is not checked");
+
+        game.build = Some(td_formats::BuildConfig {
+            map_settings: "res://my_settings.tres".into(),
+            entity_fgd: "res://addons/func_godot/fgd/func_godot_fgd.tres".into(),
+            classes: vec!["light".into(), "worldspawn".into()],
+        });
+        let found = lacking(&game);
+        assert_eq!(found.len(), 1, "my_thing is an unknown class already: {found:?}");
+        assert_eq!(found[0].node, Some(door));
+        assert_eq!(
+            found[0].message,
+            "Godot builds with res://my_settings.tres, whose FGD res://addons/func_godot/fgd/func_godot_fgd.tres has no 'func_door'. Set its Entity Fgd to the FGD your game config uses"
         );
     }
 

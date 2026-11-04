@@ -32,6 +32,9 @@ pub struct GameConfig {
     /// Classnames that more than one FGD resource defines, as the addon's export found them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clashes: Vec<Clash>,
+    /// What Godot builds maps with when a map node names no map settings. None in files from older addons.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<BuildConfig>,
     /// Absolute path of the Godot project folder, filled in when loading.
     #[serde(skip)]
     pub project_root: Option<PathBuf>,
@@ -292,6 +295,25 @@ impl Clash {
     pub fn describe(&self) -> String {
         let hidden = &self.definitions[..self.definitions.len().saturating_sub(1)];
         format!("{} is defined more than once. {} wins over {}", self.classname, self.winner(), hidden.join(" and "))
+    }
+}
+
+/// The map settings of the project setting `func_godot/default_map_settings` and the classes their Entity Fgd defines,
+/// which can differ from the entities the game config lists.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct BuildConfig {
+    #[serde(default)]
+    pub map_settings: String,
+    #[serde(default)]
+    pub entity_fgd: String,
+    /// Sorted, C# entities included.
+    #[serde(default)]
+    pub classes: Vec<String>,
+}
+
+impl BuildConfig {
+    pub fn defines(&self, classname: &str) -> bool {
+        self.classes.iter().any(|c| c == classname)
     }
 }
 
@@ -820,6 +842,20 @@ mod tests {
             "func_door is defined more than once. res://my/door.tres wins over res://trenchdot/entities/definitions/func_door.tres"
         );
         assert!(GameConfig::builtin().clashes.is_empty());
+    }
+
+    #[test]
+    fn reads_what_godot_builds_with() {
+        let text = r#"{"format": "trenchdot-game", "version": 1, "build": {"map_settings": "res://my_settings.tres",
+            "entity_fgd": "res://my_fgd.tres", "classes": ["func_door", "worldspawn"]}}"#;
+        let cfg: GameConfig = serde_json::from_str(text).unwrap();
+        let build = cfg.build.as_ref().unwrap();
+        assert_eq!((build.map_settings.as_str(), build.entity_fgd.as_str()), ("res://my_settings.tres", "res://my_fgd.tres"));
+        assert!(build.defines("func_door") && !build.defines("light"));
+        let back: GameConfig = serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(back.build, cfg.build);
+        let old: GameConfig = serde_json::from_str(r#"{"format": "trenchdot-game", "version": 1}"#).unwrap();
+        assert!(old.build.is_none() && !serde_json::to_string(&old).unwrap().contains("\"build\""), "older exports have none");
     }
 
     #[test]
