@@ -100,9 +100,8 @@ Some bare bones entities are always included, like a simple `info_player_start` 
     bar says there is no `trenchdot_game.json`, and the editor offers the core entities, plus the gameplay entities if
     you installed them.
 
-If you want to add entities, you may use the GitHub source code as reference, or go through the addon source and view
-how the included ones are structured. For info on how to add entities that are more complex, see
-[Project setup](godot/project-setup.md).
+To add entities of your own, see [Custom entities in GDScript](gameplay/custom-entities.md) and
+[C# entities](gameplay/csharp.md). [Project setup](godot/project-setup.md) explains the resources that list them.
 
 ## 4. Build a room
 
