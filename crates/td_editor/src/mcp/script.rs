@@ -278,7 +278,9 @@ fn within(path: &Path, folders: &[PathBuf], below: bool) -> bool {
         let (path, folder) = (plain(path), plain(folder));
         (!below && path == folder) || path.starts_with(&format!("{folder}/"))
     };
-    if !folders.iter().any(|f| within(&lexical(path), &lexical(f))) {
+    // Note: only a network path is refused on its text alone, so it is never opened. Local paths are judged by where
+    // they really lead, since Windows spells one folder several ways (8.3 short names such as RUNNER~1).
+    if network(path) && !folders.iter().any(|f| within(&lexical(path), &lexical(f))) {
         return false;
     }
 
