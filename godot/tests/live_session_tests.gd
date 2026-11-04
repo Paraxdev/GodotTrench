@@ -22,6 +22,7 @@ func run(runner: SceneTree) -> void:
 	await test_stale_definitions_at_begin()
 	test_failed_parse_leaves_no_source()
 	test_csharp_definitions_count()
+	await test_restart_after_live_edits()
 
 ## A map node in the tree, built from the test map's JSON.
 func _map() -> FuncGodotMap:
@@ -118,3 +119,18 @@ public partial class LiveGuard : Node3D
 	TrenchDotCSharp.keep_file_list = false
 	DirAccess.remove_absolute(CSHARP_DIR)
 	ProjectSettings.set_setting(setting, dirs if had else null)
+
+func test_restart_after_live_edits() -> void:
+	print("- a session starting on a scene changed by live edits builds it again")
+	var map := _map()
+	var text := FileAccess.get_file_as_string(MAP_JSON)
+	var session := _session(map)
+	session.begin(text)
+	session.apply([{ "op": "remove", "id": DOOR }])
+	session.process()
+	check(not TrenchDotBuild.nodes_by_id(map).has(DOOR), "the live edit removed the door")
+	check(not map.has_meta(TrenchDotBuild.SOURCE_HASH_META), "and the scene no longer names the map it was built from")
+	_session(map).begin(text)
+	check(_is_door(TrenchDotBuild.nodes_by_id(map).get(DOOR)), "a new session over the original map brings the door back")
+	map.queue_free()
+	await t.process_frame
