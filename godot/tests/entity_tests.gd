@@ -324,6 +324,32 @@ func test_trigger_family() -> void:
 	trigger._body_entered(one)
 	check(fired == [one, two], "the cooldown is per body, got %s" % [fired])
 
+	var once := TDTrigger.new()
+	once.name = "td_test_trigger_once"
+	once._func_godot_apply_properties({ "filter_group": "td_test_players" })
+	map.add_child(once)
+	var player := CharacterBody3D.new()
+	player.name = "Player"
+	map.add_child(player)
+	var logged := func(body: Node, by: TDTrigger) -> PackedStringArray:
+		var collector := TrenchDotCapture.Collector.new()
+		OS.add_logger(collector)
+		by._body_entered(body)
+		OS.remove_logger(collector)
+		return collector.lines
+	var lines: PackedStringArray = logged.call(player, once)
+	check(lines.size() == 1 and lines[0].contains("td_test_trigger_once ignored Player") and lines[0].contains("'td_test_players'"), "a trigger whose filter group nobody is in says so, got %s" % lines)
+	lines = logged.call(player, once)
+	check(lines.is_empty(), "once, got %s" % lines)
+	player.add_to_group(&"td_test_players")
+	var other := StaticBody3D.new()
+	map.add_child(other)
+	var other_trigger := TDTrigger.new()
+	other_trigger._func_godot_apply_properties({ "filter_group": "td_test_players" })
+	map.add_child(other_trigger)
+	lines = logged.call(other, other_trigger)
+	check(lines.is_empty(), "a body outside a filter group someone is in passes quietly, got %s" % lines)
+
 	var hurt := TDHurt.new()
 	hurt._func_godot_apply_properties({ "filter_group": "" })
 	map.add_child(hurt)
