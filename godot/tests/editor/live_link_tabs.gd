@@ -2,8 +2,9 @@
 extends Node
 ## Checks in a headless Godot editor that the live link follows scene tabs as they are opened, closed, reloaded and
 ## switched, that live sessions follow entity definitions that change or appear on disk and prefabs that are saved, that
-## a pack copied in is read once Godot lists it, that prop_physics shows a preview the scene does not save, and that an
-## editor build names entity scripts without @tool. res://tests/live_link_tests.gd starts it with
+## other scenes warn when they were built with other definitions, that a pack copied in is read once Godot lists it,
+## that prop_physics shows a preview the scene does not save, and that an editor build names entity scripts without
+## @tool. res://tests/live_link_tests.gd starts it with
 ## godot --headless --editor --path godot res://tests/editor/live_link_tabs.tscn -- --td-live-link-tabs
 ## and it does nothing when the scene is opened any other way.
 
@@ -125,6 +126,7 @@ class Runner extends Node:
 		await _check_definition_hooks()
 		await _check_scan()
 		await _check_prefab_save()
+		await _check_stale_warning()
 		await _check_late_pack()
 		_check_prop_physics_preview()
 		_check_tool_scripts()
@@ -270,6 +272,41 @@ class Runner extends Node:
 		reply = await link.handle_message(JSON.stringify(save_prefab))
 		check(reply.get("ok") == true and reply.get("rebuilt") == 0 and session != null and session.pending(), "and queues a full build of a live map that instances it, got %s" % reply)
 		await live("live_end")
+
+	## A scene built while a definition was missing, outside live mode, is not built again by itself, the editor warns.
+	func _check_stale_warning() -> void:
+		var fs := EditorInterface.get_resource_filesystem()
+		await until(func() -> bool: return not fs.is_scanning(), 1200)
+		var map: FuncGodotMap = link.maps_for(MAP_FILE)[0]
+		var core: TrenchDotFGDFile = load(CORE_FGD)
+		var installed := core.pack_fgd_path
+		core.pack_fgd_path = "res://tests/td_tests_no_such_pack.tres"
+		map.build()
+		core.pack_fgd_path = installed
+		var collector := TrenchDotCapture.Collector.new()
+		OS.add_logger(collector)
+		await show_scene(SELF)
+		await show_scene(MAP_SCENE)
+		link.check_definitions()
+		OS.remove_logger(collector)
+		var stale := func(lines: Array) -> Array: return lines.filter(func(l: String) -> bool: return l.contains("other entity definitions"))
+		var lines: Array = stale.call(Array(collector.lines))
+		check(lines.size() == 1 and lines[0].contains(MAP_SCENE) and lines[0].contains(MAP_FILE) and lines[0].contains("res://demo/demo_map_settings.tres"), "showing a scene built with other definitions warns once, naming the scene, the map and its settings, got %s" % [lines])
+		var entry := func() -> Dictionary:
+			for m: Dictionary in link.status()["maps"]:
+				if TrenchDotEditorIntegration.path_key(m["path"]) == TrenchDotEditorIntegration.path_key(ProjectSettings.globalize_path(MAP_FILE)):
+					return m
+			return {}
+		check(entry.call().get("stale") == true and link.stale_scenes() == [MAP_SCENE], "the status marks its map and play names the scene, got %s and %s" % [entry.call(), link.stale_scenes()])
+		map.build()
+		check(not entry.call().has("stale") and link.stale_scenes().is_empty(), "until the map is built again, got %s and %s" % [entry.call(), link.stale_scenes()])
+		collector = TrenchDotCapture.Collector.new()
+		OS.add_logger(collector)
+		link.check_definitions()
+		await show_scene(SELF)
+		await show_scene(MAP_SCENE)
+		OS.remove_logger(collector)
+		check(stale.call(Array(collector.lines)).is_empty(), "a scene built again does not, got %s" % [collector.lines])
 
 	## prop_physics builds its body when it enters the tree. In the editor that body is a preview the scene never saves,
 	## the game builds its own.
