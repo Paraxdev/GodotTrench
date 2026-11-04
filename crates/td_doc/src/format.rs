@@ -513,12 +513,19 @@ pub fn load(path: &Path) -> Result<Loaded, FormatError> {
 /// JSON layout for hand editing, anything else the binary container.
 pub fn save(map: &Map, path: &Path) -> Result<(), FormatError> {
     let tmp = path.with_extension("tdm.tmp");
+    // Whatever sits at the temp path, a link included, is replaced rather than written through.
+    if tmp.symlink_metadata().is_ok() {
+        std::fs::remove_file(&tmp)?;
+    }
+
+    let file = || std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp);
     if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("json")) {
-        let mut out = std::io::BufWriter::new(std::fs::File::create(&tmp)?);
+        let mut out = std::io::BufWriter::new(file()?);
         write_json(&mut out, &value_with_lightmap(map))?;
         std::io::Write::flush(&mut out)?;
     } else {
-        std::fs::write(&tmp, to_bytes(map)?)?;
+        let bytes = to_bytes(map)?;
+        std::io::Write::write_all(&mut file()?, &bytes)?;
     }
 
     std::fs::rename(&tmp, path)?;
@@ -934,5 +941,23 @@ mod tests {
         sel.nodes.extend([ground, scatter]);
         let copies = crate::ops::duplicate_selection(&mut m, &mut sel, DVec3::ZERO, crate::ops::EditOptions { uv_lock: true, grid: 0.0 });
         assert_eq!(m.scatter(copies[1]).unwrap().targets, vec![copies[0], other]);
+    }
+
+    #[test]
+    fn saving_replaces_a_link_at_the_temp_path_instead_of_writing_through_it() {
+        let dir = std::env::temp_dir().join(format!("td_save_link_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (path, other) = (dir.join("a.tdm"), dir.join("other.txt"));
+        std::fs::write(&other, "keep").unwrap();
+        // A hard link stands in for a symbolic one, which Windows only lets an administrator make.
+        std::fs::hard_link(&other, path.with_extension("tdm.tmp")).unwrap();
+
+        save(&sample(), &path).unwrap();
+        assert_eq!(std::fs::read_to_string(&other).unwrap(), "keep");
+        assert_eq!(load(&path).unwrap().map.nodes.len(), sample().nodes.len());
+        std::fs::write(path.with_extension("tdm.tmp"), "left by a crash").unwrap();
+        save(&sample(), &path).unwrap();
+        assert!(!path.with_extension("tdm.tmp").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
