@@ -3,7 +3,10 @@
 A C# class can be a placeable entity without a `.tres` definition. The addon reads your source files: signals become
 outputs, exported members become keys and marked methods become inputs.
 
-Running C# entities needs the .NET build of Godot. The editor lists them either way.
+Running C# entities needs the .NET build of Godot. The editor lists them either way, but Godot can only build one
+when it runs the .NET build, the C# project is built and the class has `[GlobalClass]`. Otherwise a C# brush entity
+builds as a plain `Node3D` without collision and a point entity as an empty one, and Godot's Output panel says
+`Node Class ... not found` with these three things to check.
 
 ## 1. Add the helper
 
