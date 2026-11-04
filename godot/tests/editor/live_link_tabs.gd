@@ -2,7 +2,8 @@
 extends Node
 ## Checks in a headless Godot editor that the live link follows scene tabs as they are opened, closed, reloaded and
 ## switched, that live sessions follow entity definitions that change or appear on disk and prefabs that are saved, that
-## a pack copied in is read once Godot lists it, and that an editor build names entity scripts without @tool. res://tests/live_link_tests.gd starts it with
+## a pack copied in is read once Godot lists it, that prop_physics shows a preview the scene does not save, and that an
+## editor build names entity scripts without @tool. res://tests/live_link_tests.gd starts it with
 ## godot --headless --editor --path godot res://tests/editor/live_link_tabs.tscn -- --td-live-link-tabs
 ## and it does nothing when the scene is opened any other way.
 
@@ -125,6 +126,7 @@ class Runner extends Node:
 		await _check_scan()
 		await _check_prefab_save()
 		await _check_late_pack()
+		_check_prop_physics_preview()
 		_check_tool_scripts()
 
 		print("%d failures" % failures)
@@ -268,6 +270,23 @@ class Runner extends Node:
 		reply = await link.handle_message(JSON.stringify(save_prefab))
 		check(reply.get("ok") == true and reply.get("rebuilt") == 0 and session != null and session.pending(), "and queues a full build of a live map that instances it, got %s" % reply)
 		await live("live_end")
+
+	## prop_physics builds its body when it enters the tree. In the editor that body is a preview the scene never saves,
+	## the game builds its own.
+	func _check_prop_physics_preview() -> void:
+		var scene := Node3D.new()
+		var prop := TDPropPhysics.new()
+		scene.add_child(prop)
+		prop.owner = scene
+		add_child(scene)
+		var preview := prop.get_children(true)
+		check(prop.get_child_count() == 0 and preview.any(func(n: Node) -> bool: return n is CollisionShape3D) and preview.any(func(n: Node) -> bool: return n is MeshInstance3D), "prop_physics shows its box and collision in the editor, got %s" % [preview])
+		var packed := PackedScene.new()
+		packed.pack(scene)
+		var copy := packed.instantiate()
+		check(copy.get_child(0).get_child_count(true) == 0, "and the saved scene leaves them out")
+		copy.free()
+		scene.free()
 
 	func _write(path: String, text: String) -> void:
 		var file := FileAccess.open(path, FileAccess.WRITE)
