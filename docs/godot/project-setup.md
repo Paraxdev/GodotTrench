@@ -122,13 +122,20 @@ The quickest route is to copy `demo_fgd.tres`, `demo_map_settings.tres` and `dem
 make them yourself, do this in the Godot editor:
 
 1. Create a `FuncGodotFGDFile`. Set *Base Fgd Files* to `res://addons/func_godot/fgd/trenchdot_default_fgd.tres`, so
-   you keep the core and the installed pack, then add your own entities under *Entity Definitions*.
+   you keep the core and the installed pack, then add your own entities under *Entity Definitions*. Without that base
+   your FGD has none of them, and even worldspawn builds without collision.
 2. Create a `FuncGodotMapSettings`. Set *Entity Fgd* to the FGD from step 1 and *Base Texture Dir* to your texture
-   folder (default `res://textures`).
+   folder (default `res://textures`). A new map settings resource starts on `trenchdot_default_fgd.tres`, which has
+   the core and the pack but not your own entities.
 3. Create a `TrenchDotGameConfig`. Set its *Fgd File* and *Map Settings* to the two resources above. (Optionally) set
    *Game Name*, the editor shows it at the top right of the toolbar next to the project folder.
 4. In *Project > Project Settings*, point `func_godot/default_map_settings` at your map settings and
-   `trenchdot/game_config` at your game config.
+   `trenchdot/game_config` at your game config. Every map node whose *Map Settings* field is empty follows it. A
+   node added with an older addon stored the addon's defaults in that field, so clear it there.
+
+The editor offers the entities of the game config's FGD, but Godot builds with the FGD of the map settings, so keep the
+two the same. When they differ, Godot warns in its Output panel each time it exports the game config, and the
+TrenchDot Issues panel names every entity that the FGD Godot builds with lacks.
 
 > [!TIP]
 > Set *Entity Name Property* in the map settings to `targetname`, like the demo does. Built nodes are then
@@ -138,8 +145,9 @@ make them yourself, do this in the Godot editor:
 
 TrenchDot learns your entities, texture folders and unit scale from `res://trenchdot_game.json`, which the game
 config writes. The addon exports it again whenever Godot notices files changing, and the editor reloads it within a
-second. To export by hand, use *Project > Tools > TrenchDot: Export Game Config* in Godot, or run it headless, for
-example in CI:
+second. The export also names the default map settings and the classes their FGD defines, which is how the editor warns
+about entities Godot would build without a definition. To export by hand, use *Project > Tools > TrenchDot: Export
+Game Config* in Godot, or run it headless, for example in CI:
 
 ```sh
 godot --headless --path <project> --script res://addons/func_godot/src/trenchdot/export_game_config_cli.gd

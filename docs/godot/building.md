@@ -26,7 +26,7 @@ These are the settings you see in the Inspector:
 | Local Map File | The `res://` path of the `.tdm` to build. This is the normal choice. |
 | Global Map File | A map file outside the project. When both are set, this one wins. |
 | Auto Rebuild On Save | Rebuilds the node whenever TrenchDot saves this map, while its scene is the current tab in the Godot editor, see [Rebuild on save](live.md#rebuild-on-save). On by default. |
-| Map Settings | Where textures, materials and entity definitions come from and how big a map unit is. Left empty, it uses the project setting `func_godot/default_map_settings`, see [Project setup](project-setup.md). |
+| Map Settings | Where textures, materials and entity definitions come from and how big a map unit is. Left empty, it uses the project setting `func_godot/default_map_settings`, see [Project setup](project-setup.md). A map node added with an older addon stored the addon's default map settings here, and its build warns about it in Godot's Output, clear the field to follow the project setting. |
 | Use Baked Lighting | Lights the map with the lighting [baked in the editor](baked-lighting.md). On by default, untick it to use another lightmapper. |
 | Warm Up Shaders | Compiles the map's shaders while it loads, so the first seconds of play do not stutter. See [Shader warm-up](warm-up.md). |
 
@@ -91,7 +91,7 @@ which is usually a typo or a file that was renamed or never committed:
 
 | Key | What it lists | What you see in the game |
 | --- | --- | --- |
-| `missing_classes` | Entity classes that no entity definition describes | The entity builds as a plain node without its script, a point entity as an empty `Marker3D` |
+| `missing_classes` | Entity classes that no entity definition describes | A brush entity keeps its mesh but has no script and no collision, a point entity is an empty `Marker3D`, see [Entities that do nothing](entities-troubleshooting.md) |
 | `missing_models` | Model paths that do not exist, with the entities using each | The prop has no model |
 | `missing_materials` | Face textures with neither a material file nor an image | The faces show the placeholder texture |
 | `unknown_tool_textures` | Tool textures like `special/clip` that the map settings name differently | The faces still draw nothing, but an origin brush does not set its entity origin |
@@ -106,7 +106,9 @@ if not report["missing_models"].is_empty():
 	push_error("missing models: %s" % [report["missing_models"]])
 ```
 
-Missing models, materials and tool textures also print one warning each, however many props share the path.
+Every build also prints a warning in Godot's Output for what it could not find: one for all missing classes, and one for
+each missing model, material or tool texture, however many props share the path. After a save, TrenchDot lists the
+same warnings in its Issues panel.
 
 > [!NOTE]
 > Overlays you add after `build()` are not there when the report looks for targets, so their targetnames show
