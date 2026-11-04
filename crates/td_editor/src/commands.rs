@@ -1205,6 +1205,14 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::SetTool(t) => {
             state.tool = if state.tool == t { ToolKind::Select } else { t };
             state.set_status(format!("{} tool", state.tool.label()));
+            if state.tool == ToolKind::Volume {
+                let class = state.prefs.volume_class.clone();
+                match crate::entity_pack::install_for_wizard(state, &[&class]) {
+                    Ok(Some(report)) => state.set_status(format!("Volume tool. {}", report.summary())),
+                    Ok(None) => {}
+                    Err(e) => state.fail_status(e),
+                }
+            }
         }
         Action::EditMesh => {
             if state.tool == ToolKind::Mesh {
@@ -1603,7 +1611,8 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         }
         Action::MakeDoor { kind, trigger } => {
             let ids: Vec<NodeId> = state.doc.selection.nodes.iter().copied().collect();
-            if let Err(e) = crate::entity_wizards::make_door(state, &ids, &kind, trigger) {
+            let classes = [kind.classname(), if trigger { "trigger_multiple" } else { "" }];
+            if let Err(e) = crate::entity_pack::with_pack(state, &classes, |state| crate::entity_wizards::make_door(state, &ids, &kind, trigger)) {
                 state.fail_status(e);
             }
         }
@@ -1611,9 +1620,13 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             let ids: Vec<NodeId> = state.doc.selection.nodes.iter().copied().collect();
             let b = state.doc.map.bounds_of(ids.iter().copied());
             let travel = DVec3::new(0.0, (b.size().y * 4.0).max(grid * 8.0), 0.0);
-            match crate::entity_wizards::make_platform(state, &ids, travel, 0) {
-                Ok(_) => state.set_status("func_platform created, drag the travel handle to set where it goes"),
-                Err(e) => state.fail_status(e),
+            let made = crate::entity_pack::with_pack(state, &["func_platform"], |state| {
+                crate::entity_wizards::make_platform(state, &ids, travel, 0)?;
+                state.set_status("func_platform created, drag the travel handle to set where it goes");
+                Ok(())
+            });
+            if let Err(e) = made {
+                state.fail_status(e);
             }
         }
         Action::VolumeAroundSelection(classname) => {
@@ -1624,7 +1637,10 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             }
 
             let props = crate::volume_tool::default_props(&classname);
-            if let Err(e) = crate::entity_wizards::make_volume(state, &classname, &b.expanded(grid), &props, Vec::new()) {
+            let made = crate::entity_pack::with_pack(state, &[&classname], |state| {
+                crate::entity_wizards::make_volume(state, &classname, &b.expanded(grid), &props, Vec::new())
+            });
+            if let Err(e) = made {
                 state.fail_status(e);
             }
         }

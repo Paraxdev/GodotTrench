@@ -284,6 +284,47 @@ pub fn install_in_project(state: &mut crate::state::EditorState) -> Result<Repor
     Ok(report)
 }
 
+/// Installs the pack before a gameplay wizard places `classes` of it that the open project does not define. Returns the
+/// install, or why the pack cannot be installed. Without a project nothing is installed.
+pub fn install_for_wizard(state: &mut crate::state::EditorState, classes: &[&str]) -> Result<Option<Report>, String> {
+    if state.game.project_root.is_none() || state.gameplay_pack.installed {
+        return Ok(None);
+    }
+
+    let lacking: Vec<&str> = classes.iter().copied().filter(|c| in_pack(c) && !defined(&state.game, c)).collect();
+    if lacking.is_empty() {
+        return Ok(None);
+    }
+
+    let named = format!("{} {}", crate::live_link::name_list(&lacking), if lacking.len() == 1 { "comes" } else { "come" });
+    if !state.gameplay_pack.available {
+        return Err(format!(
+            "{named} with the {NAME} pack, which the addon in this project does not have. Update the addon with Godot > Install or Update Addon, then use Gameplay > Install Gameplay Entities"
+        ));
+    }
+
+    install_in_project(state)
+        .map(Some)
+        .map_err(|e| format!("{named} with the {NAME} pack, which could not be installed: {e} Gameplay > Install Gameplay Entities tries again"))
+}
+
+/// Runs a gameplay wizard that places `classes`, see [`install_for_wizard`]. What the install did follows the status the
+/// wizard set.
+pub fn with_pack<T>(
+    state: &mut crate::state::EditorState,
+    classes: &[&str],
+    wizard: impl FnOnce(&mut crate::state::EditorState) -> Result<T, String>,
+) -> Result<T, String> {
+    let installed = install_for_wizard(state, classes)?;
+    let result = wizard(state);
+    if let (Ok(_), Some(report)) = (&result, installed) {
+        let status = format!("{}. {}", state.status.trim_end_matches('.'), report.summary());
+        state.set_status(status);
+    }
+
+    result
+}
+
 /// The pack's classnames that the project's maps use, for a project that has not installed the pack. Maps are read as
 /// maps, the binary files the editor saves included, and a file that does not load is searched as text.
 pub fn used_by_maps(root: &Path) -> BTreeSet<String> {
@@ -489,6 +530,32 @@ mod tests {
             writeln!(&stream, "{reply}").unwrap();
         });
         (port, rx)
+    }
+
+    #[test]
+    fn a_wizard_installs_the_pack_it_needs_first() {
+        let dir = project();
+        let root = dir.path();
+        let mut state = crate::state::EditorState::new(Default::default());
+        state.load_project(root);
+        assert!(install_for_wizard(&mut state, &["light", "info_player_start"]).unwrap().is_none(), "core classes need no pack");
+        let made = with_pack(&mut state, &["func_door"], |state| {
+            state.set_status("func_door 'door_1' created");
+            Ok(7)
+        });
+        assert_eq!(made, Ok(7));
+        assert!(state.gameplay_pack.installed && state.game.entity("func_door").is_some());
+        assert!(state.status.starts_with("func_door 'door_1' created. Added 4 files of the Gameplay entities pack"), "{}", state.status);
+        assert!(install_for_wizard(&mut state, &["func_door"]).unwrap().is_none(), "once");
+
+        let bare = tempfile::tempdir().unwrap();
+        std::fs::write(bare.path().join("project.godot"), "config_version=5\n").unwrap();
+        state.load_project(bare.path());
+        let e = with_pack(&mut state, &["func_door", "trigger_multiple"], |_| Ok(())).unwrap_err();
+        assert!(e.starts_with("func_door and trigger_multiple come with the Gameplay entities pack, which the addon in this project does not have"), "{e}");
+        assert!(e.ends_with("Gameplay > Install Gameplay Entities"), "{e}");
+        state.game.project_root = None;
+        assert!(install_for_wizard(&mut state, &["func_door"]).unwrap().is_none(), "a map outside a project is placed as it is");
     }
 
     #[test]

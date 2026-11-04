@@ -52,6 +52,13 @@ fn default_angle() -> f64 {
 }
 
 impl DoorKind {
+    pub fn classname(&self) -> &'static str {
+        match self {
+            DoorKind::Hinged { .. } => "func_door_rotating",
+            DoorKind::Sliding { .. } => "func_door",
+        }
+    }
+
     /// The name the Gameplay menu, the Inspector and the palette show.
     pub fn label(&self) -> &'static str {
         match self {
@@ -130,10 +137,11 @@ pub fn make_door(state: &mut EditorState, ids: &[NodeId], kind: &DoorKind, trigg
 
     let bounds = state.doc.map.bounds_of(geometry.iter().copied());
     let name = unique_name(state, "door");
-    let (classname, props): (&str, Vec<(String, String)>) = match kind {
+    let classname = kind.classname();
+    let props: Vec<(String, String)> = match kind {
         DoorKind::Hinged { side, angle } => {
             let (hinge, angle) = hinge_for(&bounds, *side, *angle);
-            ("func_door_rotating", vec![("hinge".into(), fmt_vec3(hinge)), ("open_angle".into(), format!("{angle}")), ("open_away".into(), "1".into())])
+            vec![("hinge".into(), fmt_vec3(hinge)), ("open_angle".into(), format!("{angle}")), ("open_away".into(), "1".into())]
         }
         DoorKind::Sliding { direction, lip } => {
             let s = bounds.size();
@@ -146,7 +154,7 @@ pub fn make_door(state: &mut EditorState, ids: &[NodeId], kind: &DoorKind, trigg
                 SlideDirection::Right => travel[axis] = s[axis] - lip,
             }
 
-            ("func_door", vec![("travel".into(), fmt_vec3(travel))])
+            vec![("travel".into(), fmt_vec3(travel))]
         }
     };
     let parent = state.insert_parent();

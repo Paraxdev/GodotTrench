@@ -2166,7 +2166,7 @@ fn fake_godot_editor_with(project: &std::path::Path, maps: &[&std::path::Path], 
 /// Answers the live link like a Godot editor with `maps` open: status lists them, a capture returns a small red PNG and
 /// a walkable request a floor with a small island up on a wall. Any other event in `answers` gets `{"ok": true}` with
 /// the fields given for it, the rest are unknown events as an older addon answers them. Every message but status is
-/// kept. Captures go unanswered when `captures` is false.
+/// kept. Like the addon it serves several connections at once. Captures go unanswered when `captures` is false.
 fn fake_godot(project: &std::path::Path, maps: &[&std::path::Path], answers: Value, captures: bool) -> (u16, Sent) {
     use std::io::BufRead;
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -2182,42 +2182,45 @@ fn fake_godot(project: &std::path::Path, maps: &[&std::path::Path], answers: Val
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(stream) = stream else { return };
-            let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
-            let mut line = String::new();
-            while reader.read_line(&mut line).unwrap_or(0) > 0 {
-                let msg: Value = serde_json::from_str(&line).unwrap();
-                line.clear();
-                let event = msg["event"].as_str().unwrap_or_default();
-                if event != "status" {
-                    log.lock().unwrap().push(msg.clone());
-                }
-
-                let mut reply = match event {
-                    "status" => json!({ "ok": true, "project": project, "godot": "4.7", "pid": 1, "maps": listed.clone() }),
-                    "capture" if !captures => continue,
-                    "capture" => json!({ "ok": true, "png": png, "width": 8, "height": 4, "warnings": ["warning: prop model res://gone.glb not found"] }),
-                    "walkable" => {
-                        json!({
-                            "ok": true, "units_per_meter": 32.0, "agent": msg["agent"], "msec": 5,
-                            "vertices": [8, 16.5, 8, 8, 16.5, 248, 248, 16.5, 248, 248, 16.5, 8, 300, 128, 0, 300, 128, 32, 332, 128, 32, 332, 128, 0],
-                            "polygons": [[0, 1, 2, 3], [4, 5, 6, 7]],
-                            "islands": [[0], [1]]
-                        })
+            let (project, listed, log, png, answers) = (project.clone(), listed.clone(), log.clone(), png.clone(), answers.clone());
+            std::thread::spawn(move || {
+                let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                while reader.read_line(&mut line).unwrap_or(0) > 0 {
+                    let msg: Value = serde_json::from_str(&line).unwrap();
+                    line.clear();
+                    let event = msg["event"].as_str().unwrap_or_default();
+                    if event != "status" {
+                        log.lock().unwrap().push(msg.clone());
                     }
-                    other => match answers[other].as_object() {
-                        Some(fields) => {
-                            let mut reply = json!({ "ok": true });
-                            reply.as_object_mut().unwrap().extend(fields.clone());
-                            reply
+
+                    let mut reply = match event {
+                        "status" => json!({ "ok": true, "project": project, "godot": "4.7", "pid": 1, "maps": listed.clone() }),
+                        "capture" if !captures => continue,
+                        "capture" => json!({ "ok": true, "png": png, "width": 8, "height": 4, "warnings": ["warning: prop model res://gone.glb not found"] }),
+                        "walkable" => {
+                            json!({
+                                "ok": true, "units_per_meter": 32.0, "agent": msg["agent"], "msec": 5,
+                                "vertices": [8, 16.5, 8, 8, 16.5, 248, 248, 16.5, 248, 248, 16.5, 8, 300, 128, 0, 300, 128, 32, 332, 128, 32, 332, 128, 0],
+                                "polygons": [[0, 1, 2, 3], [4, 5, 6, 7]],
+                                "islands": [[0], [1]]
+                            })
                         }
-                        None => json!({ "ok": false, "error": "unknown event" }),
-                    },
-                };
-                reply["seq"] = msg["seq"].clone();
-                if writeln!(&stream, "{reply}").is_err() {
-                    break;
+                        other => match answers[other].as_object() {
+                            Some(fields) => {
+                                let mut reply = json!({ "ok": true });
+                                reply.as_object_mut().unwrap().extend(fields.clone());
+                                reply
+                            }
+                            None => json!({ "ok": false, "error": "unknown event" }),
+                        },
+                    };
+                    reply["seq"] = msg["seq"].clone();
+                    if writeln!(&stream, "{reply}").is_err() {
+                        break;
+                    }
                 }
-            }
+            });
         }
     });
     (port, seen)
@@ -2319,6 +2322,51 @@ fn live_mode_tells_about_classes_godot_lacks() {
     assert!(!sent_events(&sent, "live_delta").is_empty());
     let issues = ed.call("validate_map", json!({}));
     assert!(issues["issues"].as_array().unwrap().iter().any(|i| i["code"] == "godot_missing_class"), "{issues}");
+}
+
+/// Puts the Gameplay entities pack template into the project at `dir`, where an addon that has the pack carries it.
+fn add_pack_template(dir: &std::path::Path) {
+    fn copy(from: &std::path::Path, to: &std::path::Path) {
+        std::fs::create_dir_all(to).unwrap();
+        for entry in std::fs::read_dir(from).unwrap().flatten() {
+            let target = to.join(entry.file_name());
+            if entry.path().is_dir() {
+                copy(&entry.path(), &target);
+            } else {
+                std::fs::copy(entry.path(), target).unwrap();
+            }
+        }
+    }
+
+    copy(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../godot/addons/func_godot/gameplay_pack"), &dir.join("addons/func_godot/gameplay_pack"));
+}
+
+/// The door wizard installs the Gameplay entities pack into a project that lacks it, so the door it makes has its
+/// definition, and has the connected Godot scan for the new files.
+#[test]
+#[ignore]
+fn the_door_wizard_installs_the_gameplay_pack_first() {
+    let dir = linked_project("door_wizard_pack", json!([]));
+    add_pack_template(&dir);
+    let (godot, sent) = fake_godot_editor_with(&dir, &[&dir.join("maps/hall.tdm")], json!({ "scan": {} }));
+    let ed = Editor::launch_with("door_wizard_pack", &["--project", dir.to_str().unwrap()]);
+    ed.call("set_editor", json!({ "live_link_port": godot }));
+    wait_state(&ed, "the live link", |s| s["godot"]["project_open"] == true);
+
+    let leaf = ed.box_brush([0.0, 0.0, -4.0], [48.0, 96.0, 4.0]);
+    let door = ed.call("gameplay", json!({ "op": "make_door", "ids": [leaf], "trigger": true }));
+    assert_eq!(door["classname"], "func_door_rotating");
+    let summary = door["gameplay_pack"].as_str().unwrap_or_else(|| panic!("the pack was installed: {door}"));
+    assert!(summary.starts_with("Added ") && summary.ends_with(td_editor::entity_pack::SCAN_NOTE), "{summary}");
+    assert!(dir.join("trenchdot/entities/pack.json").is_file() && dir.join("trenchdot/entities/scripts/td_door.gd").is_file());
+    let issues = ed.call("validate_map", json!({}));
+    let unknown: Vec<&Value> = issues["issues"].as_array().unwrap().iter().filter(|i| i["code"] == "unknown_class").collect();
+    assert!(unknown.is_empty(), "{unknown:?}");
+    assert_eq!(sent_events(&sent, "scan").len(), 1, "Godot scans for the new files");
+
+    let lift = ed.box_brush([200.0, 0.0, 0.0], [264.0, 8.0, 64.0]);
+    let again = ed.call("gameplay", json!({ "op": "make_platform", "ids": [lift] }));
+    assert!(again["gameplay_pack"].is_null(), "installed once: {again}");
 }
 
 /// Saving a prefab has the connected Godot build the open maps that instance it, from the map as shown in the editor.
@@ -3007,6 +3055,7 @@ fn tool_defaults_paths_and_aliases_agree() {
     std::fs::create_dir_all(dir.join("maps")).unwrap();
     std::fs::create_dir_all(dir.join("scripts")).unwrap();
     std::fs::write(dir.join("project.godot"), "config_version=5\n").unwrap();
+    add_pack_template(&dir);
     let ed = Editor::launch_with("tool_defaults", &["--project", dir.to_str().unwrap()]);
     let bounds = |v: &Value| -> Vec<f64> { ["min", "max"].iter().flat_map(|k| v[*k].as_array().unwrap().iter().map(|x| x.as_f64().unwrap())).collect() };
 

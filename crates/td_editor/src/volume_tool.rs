@@ -81,11 +81,13 @@ impl VolumeTool {
                 if let Some(bounds) = self.preview(state, cam) {
                     let class = state.prefs.volume_class.clone();
                     let props = default_props(&class);
-                    match crate::entity_wizards::make_volume(state, &class, &bounds, &props, Vec::new()) {
-                        Ok(_) => {
-                            state.set_status(format!("{class} created. Set its outputs in the inspector, or use Gameplay > Logic > Link Two Selected Entities"))
-                        }
-                        Err(e) => state.set_status(e),
+                    let made = crate::entity_pack::with_pack(state, &[&class], |state| {
+                        crate::entity_wizards::make_volume(state, &class, &bounds, &props, Vec::new())?;
+                        state.set_status(format!("{class} created. Set its outputs in the inspector, or use Gameplay > Logic > Link Two Selected Entities"));
+                        Ok(())
+                    });
+                    if let Err(e) = made {
+                        state.fail_status(e);
                     }
                 }
 

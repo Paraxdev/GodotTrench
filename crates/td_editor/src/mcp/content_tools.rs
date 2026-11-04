@@ -851,6 +851,19 @@ impl App {
             let e = app.state.doc.map.entity(id);
             json!({ "id": id.0, "classname": e.map(|e| e.classname.clone()), "properties": e.map(|e| e.properties.clone()), "outputs": e.map(|e| e.outputs.clone()), "bounds": bounds_json(&app.state.doc.map.bounds(id)) })
         };
+        let door_class = if args["kind"] == "sliding" { "func_door" } else { "func_door_rotating" };
+        let trigger_class = if args["trigger"].as_bool() == Some(true) { "trigger_multiple" } else { "" };
+        let pack_classes = match op {
+            "make_door" => vec![door_class, trigger_class],
+            "make_platform" => vec!["func_platform"],
+            "make_button" => vec!["func_button"],
+            "volume" => vec![args["classname"].as_str().unwrap_or("trigger_once")],
+            _ => Vec::new(),
+        };
+        let installed = match crate::entity_pack::install_for_wizard(&mut self.state, &pack_classes) {
+            Ok(installed) => installed,
+            Err(e) => return err(e),
+        };
         let result: Result<Value, String> = match op {
             "make_door" => {
                 let kind = match args["kind"].as_str().unwrap_or("hinged") {
@@ -1000,7 +1013,13 @@ impl App {
             other => Err(format!("unknown gameplay op {other}, use make_door, make_platform, make_button, brush_entity, volume, link, place or gizmos")),
         };
         match result {
-            Ok(v) => ok(v),
+            Ok(mut v) => {
+                if let Some(report) = installed {
+                    v["gameplay_pack"] = json!(report.summary());
+                }
+
+                ok(v)
+            }
             Err(e) => err(e),
         }
     }
