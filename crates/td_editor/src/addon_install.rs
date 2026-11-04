@@ -52,11 +52,7 @@ impl Status {
     pub fn check(root: &Path) -> Status {
         let dir = root.join(DIR);
         let installed = match td_formats::game::addon_version(root) {
-            Some(version) => match compare(&version, crate::VERSION) {
-                Some(Ordering::Equal) => Installed::Current,
-                Some(Ordering::Greater) => Installed::Newer(version),
-                _ => Installed::Older(version),
-            },
+            Some(version) => installed(version, crate::VERSION),
             None if dir.exists() => Installed::Unknown,
             None => Installed::Missing,
         };
@@ -81,6 +77,27 @@ impl Status {
     }
 }
 
+/// How the addon `version` relates to the `editor` version. A beta editor downloads the newest beta, so a newer beta of
+/// the same release counts as current, or the editor would ask to replace it with the very same download.
+fn installed(version: String, editor: &str) -> Installed {
+    fn beta_of(v: &str) -> Option<&str> {
+        let (release, stamp) = v.trim().trim_start_matches('v').split_once("-beta.")?;
+        stamp.split('.').next()?.parse::<u64>().ok().map(|_| release)
+    }
+
+    match compare(&version, editor) {
+        Some(Ordering::Equal) => Installed::Current,
+        Some(Ordering::Greater) if beta_of(&version).is_some_and(|r| beta_of(editor) == Some(r)) => Installed::Current,
+        Some(Ordering::Greater) => Installed::Newer(version),
+        _ => Installed::Older(version),
+    }
+}
+
+/// The addon `version` does not match this editor.
+pub fn mismatched(version: &str) -> bool {
+    installed(version.to_string(), crate::VERSION) != Installed::Current
+}
+
 /// Whether opening the project should bring up the addon part of the setup wizard: the addon is missing or does not
 /// match the editor, and nobody dismissed that for this project and version.
 pub fn should_ask(root: &Path, dismissed: &BTreeMap<PathBuf, String>) -> bool {
@@ -90,6 +107,9 @@ pub fn should_ask(root: &Path, dismissed: &BTreeMap<PathBuf, String>) -> bool {
 
 /// Compares versions like `0.1.0` or `0.2.0-beta.1` part by part as numbers, a pre-release before its release. None
 /// when either is not such a version.
+///
+/// CI stamps beta builds as `0.1.0-beta.202611041532.d194b57`, the release they follow, the UTC commit time and the
+/// commit. Stamps order by their time, and come after the release they follow and after any other pre-release of it.
 pub fn compare(a: &str, b: &str) -> Option<Ordering> {
     fn parse(v: &str) -> Option<(Vec<u64>, Option<&str>)> {
         let v = v.trim().trim_start_matches('v').split('+').next().unwrap_or_default();
@@ -97,14 +117,23 @@ pub fn compare(a: &str, b: &str) -> Option<Ordering> {
         Some((core.split('.').map(|p| p.parse().ok()).collect::<Option<Vec<u64>>>()?, pre))
     }
 
+    fn stamp(pre: Option<&str>) -> Option<u64> {
+        pre?.strip_prefix("beta.")?.split('.').next()?.parse().ok()
+    }
+
     let ((a, a_pre), (b, b_pre)) = (parse(a)?, parse(b)?);
     let part = |v: &[u64], i: usize| v.get(i).copied().unwrap_or(0);
     let core = (0..a.len().max(b.len())).map(|i| part(&a, i).cmp(&part(&b, i))).find(|o| o.is_ne()).unwrap_or(Ordering::Equal);
-    let pre = match (a_pre, b_pre) {
-        (None, None) => Ordering::Equal,
-        (Some(_), None) => Ordering::Less,
-        (None, Some(_)) => Ordering::Greater,
-        (Some(x), Some(y)) => x.cmp(y),
+    let pre = match (stamp(a_pre), stamp(b_pre)) {
+        (Some(x), Some(y)) => x.cmp(&y),
+        (Some(_), None) => Ordering::Greater,
+        (None, Some(_)) => Ordering::Less,
+        (None, None) => match (a_pre, b_pre) {
+            (None, None) => Ordering::Equal,
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (Some(x), Some(y)) => x.cmp(y),
+        },
     };
     Some(core.then(pre))
 }
@@ -421,6 +450,24 @@ mod tests {
         assert_eq!(compare("0.1.0-beta", "0.1.0"), Some(Ordering::Less));
         assert_eq!(compare("v1.0.0", "0.9.9"), Some(Ordering::Greater));
         assert_eq!(compare("dev", "0.1.0"), None);
+    }
+
+    #[test]
+    fn beta_stamps_order_by_their_time() {
+        let (older, newer) = ("0.1.0-beta.202611031000.aaaaaaa", "0.1.0-beta.202611041532.d194b57");
+        assert_eq!(compare(older, newer), Some(Ordering::Less));
+        assert_eq!(compare(newer, older), Some(Ordering::Greater));
+        assert_eq!(compare(newer, "0.1.0-beta.202611041532.d194b57"), Some(Ordering::Equal));
+        assert_eq!(compare("0.1.0", newer), Some(Ordering::Less), "an addon from before the stamps is older than a stamped editor");
+        assert_eq!(compare(newer, "0.1.0"), Some(Ordering::Greater), "a beta comes after the release whose number it carries");
+        assert_eq!(compare("0.1.0-beta", newer), Some(Ordering::Less));
+        assert_eq!(compare("0.2.0", newer), Some(Ordering::Greater), "the release number counts first");
+
+        assert_eq!(installed(newer.into(), older), Installed::Current, "a beta editor downloads the newest beta");
+        assert_eq!(installed(older.into(), newer), Installed::Older(older.into()));
+        assert_eq!(installed(newer.into(), "0.1.0"), Installed::Newer(newer.into()), "a release editor downloads its release");
+        assert_eq!(installed("0.2.0-beta.202611031000.aaaaaaa".into(), older), Installed::Newer("0.2.0-beta.202611031000.aaaaaaa".into()));
+        assert!(!mismatched(crate::VERSION) && mismatched("0.0.1"));
     }
 
     #[test]

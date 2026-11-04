@@ -1305,7 +1305,7 @@ impl EditorState {
         crate::entity_pack::add_unexported(&mut game, root);
         self.gameplay_pack = crate::entity_pack::Status::check(root);
         if let Some(addon) = &game.addon_version
-            && addon != crate::VERSION
+            && crate::addon_install::mismatched(addon)
         {
             eprintln!("TrenchDot: info: the addon's plugin.cfg is v{addon}, the editor is v{}; update the addon submodule to match", crate::VERSION);
         }

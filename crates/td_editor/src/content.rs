@@ -114,12 +114,12 @@ impl std::fmt::Display for Error {
         match self {
             Error::Offline(why) => write!(f, "Could not reach GitHub ({why}). Check the internet connection and try again."),
             Error::NotPublished(asset) => {
-                write!(f, "{asset} is not published yet, neither with the v{} release nor with the rolling beta.", crate::VERSION)
+                write!(f, "{asset} is not published yet, neither with the v{} release nor with the rolling beta.", crate::RELEASE)
             }
             Error::NoRelease => write!(
                 f,
                 "Neither the v{} release nor the rolling beta was found. The beta is replaced after each change, try again in a few minutes.",
-                crate::VERSION
+                crate::RELEASE
             ),
             Error::Status(code @ (403 | 429)) => write!(f, "GitHub refused the request ({code}), it limits how often one address may ask. Try again later."),
             Error::Status(code) => write!(f, "GitHub answered with error {code}. Try again later."),
@@ -211,7 +211,7 @@ pub fn beta_build() -> bool {
 /// The releases to look in, in order. A beta carries the version of the last release, so it looks in the rolling beta
 /// first, or it would get that release's older downloads.
 pub fn release_tags() -> [String; 2] {
-    let version = format!("v{}", crate::VERSION);
+    let version = format!("v{}", crate::RELEASE);
     if beta_build() { ["beta".into(), version] } else { [version, "beta".into()] }
 }
 

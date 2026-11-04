@@ -776,7 +776,7 @@ impl App {
                             "materials": self.state.materials.entries.len(), "status": self.state.status, "restricted": self.state.restricted(),
                             "trust": trust_name(self.state.trust()),
                             "addon_version": self.state.game.addon_version,
-                            "addon_version_mismatch": self.state.game.addon_version.as_deref().is_some_and(|v| v != crate::VERSION),
+                            "addon_version_mismatch": self.state.game.addon_version.as_deref().is_some_and(crate::addon_install::mismatched),
                         }))
                     }
                     None => err("no project.godot found"),
@@ -967,7 +967,7 @@ impl App {
             "game": {
                 "name": s.game.name, "project_root": path_value(s.game.project_root.as_ref()), "entity_definitions": s.game.entities.len(),
                 "materials": s.materials.entries.len(), "editor_version": crate::VERSION, "addon_version": s.game.addon_version,
-                "addon_version_mismatch": s.game.addon_version.as_deref().is_some_and(|v| v != crate::VERSION),
+                "addon_version_mismatch": s.game.addon_version.as_deref().is_some_and(crate::addon_install::mismatched),
                 "restricted": s.restricted(), "trust": trust_name(s.trust()),
             },
             "godot": {

@@ -107,10 +107,25 @@ jobs:
         run: |
           "$GODOT" --headless --path godot --script res://tests/build_showcase.gd
 
+  stamp:
+    name: Build stamp
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.stamp.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: stamp
+        # The editor and the addon carry the same stamp, addon_install::compare orders them by the UTC commit time.
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n1)
+          time=$(date -u -d "@$(git log -1 --format=%ct)" +%Y%m%d%H%M)
+          echo "build=${version}-beta.${time}.${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
   package:
     name: Package (${{ matrix.name }})
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [rust, e2e, godot]
+    needs: [rust, e2e, godot, stamp]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -142,6 +157,7 @@ jobs:
         # TrenchDot ships only as the rolling beta, so the editor takes its downloads from there.
         env:
           TRENCHDOT_CHANNEL: beta
+          TRENCHDOT_BUILD: ${{ needs.stamp.outputs.build }}
         run: cargo build --release -p td_editor
       - name: Package
         shell: bash
@@ -160,7 +176,7 @@ jobs:
 
   publish:
     name: Publish
-    needs: [package]
+    needs: [stamp, package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -177,7 +193,11 @@ jobs:
           pattern: editor-*
           merge-multiple: true
       - name: Package Godot addon, demo project and content
+        env:
+          TRENCHDOT_BUILD: ${{ needs.stamp.outputs.build }}
         run: |
+          sed -i "s/^version=.*/version=\"${TRENCHDOT_BUILD}\"/" godot/addons/func_godot/plugin.cfg
+          grep -qx "version=\"${TRENCHDOT_BUILD}\"" godot/addons/func_godot/plugin.cfg
           # The addon is a submodule, its .git file and git settings stay out of the zips.
           (cd godot && zip -qr "../dist/func_godot-trenchdot-addon.zip" addons/func_godot -x "addons/func_godot/.git*")
           zip -qr dist/trenchdot-demo-project.zip godot -x "godot/.godot/*" "godot/addons/func_godot/.git*"

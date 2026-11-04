@@ -151,6 +151,10 @@ rolling beta first. A local build tries a release named after its own version fi
 try a zip before it's published, point the editor at another server with the `TRENCHDOT_RELEASES_API` environment
 variable.
 
+CI also stamps each beta, in `TRENCHDOT_BUILD` for the editor and in the zipped addon's `plugin.cfg`, as
+`0.1.0-beta.202611041532.d194b57`: the release number, the UTC commit time and the commit. That is how the editor
+tells an addon from an older beta and offers the update. A local build keeps the plain version.
+
 <div class="td-mcp" markdown>
 
 ## MCP

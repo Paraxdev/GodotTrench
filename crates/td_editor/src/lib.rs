@@ -61,8 +61,14 @@ pub mod zfight;
 
 use std::path::PathBuf;
 
-/// The editor's own version, compared against the Godot addon's `plugin.cfg` when a project loads.
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// The editor's own version, compared against the Godot addon's `plugin.cfg` when a project loads. CI stamps beta builds
+/// like their addon, see `TRENCHDOT_BUILD` in ci.yml, and a local build has the plain [`RELEASE`].
+pub const VERSION: &str = match option_env!("TRENCHDOT_BUILD") {
+    Some(build) => build,
+    None => RELEASE,
+};
+/// The release this build carries the number of, which names its downloads.
+pub const RELEASE: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Clone, Debug, Default)]
 pub struct CliArgs {
