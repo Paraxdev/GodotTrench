@@ -156,6 +156,16 @@ pub fn unresolved_text<S: AsRef<str>>(classes: &[S], report: &GodotReport) -> St
     format!("Godot has no definition for {}, {shows}. {what}", name_list(classes))
 }
 
+/// What the status bar says when Godot shows scenes built from the maps at `paths` with other entity definitions than
+/// their map settings hold now.
+pub fn stale_text<S: AsRef<str>>(paths: &[S]) -> String {
+    let files: Vec<&str> = paths.iter().map(|p| p.as_ref().rsplit(['/', '\\']).next().unwrap_or(p.as_ref())).collect();
+    format!(
+        "Godot shows {} built with other entity definitions than its map settings hold now, so entities may be plain nodes or out of date. Use Godot > Build in Godot, or press Build Map in Godot and save",
+        name_list(&files)
+    )
+}
+
 /// Classnames of the entities whose definitions the `reply` to a live message tells about again. The start of a
 /// session names every class without a definition, from addons that name the map settings in their live replies.
 fn rebuilt_classes(message: &Value, map: &td_doc::Map, reply: &Value) -> BTreeSet<String> {
@@ -261,6 +271,8 @@ pub struct LinkState {
     pub reports: BTreeMap<String, GodotReport>,
     /// The number of the last scan Godot finished, see [`scan`].
     pub scanned: u64,
+    /// `path_key` of each map whose scene Godot built with other entity definitions than its map settings hold now.
+    pub stale: BTreeSet<String>,
 }
 
 impl LinkState {
@@ -275,6 +287,10 @@ impl LinkState {
         for report in self.reports.values_mut() {
             report.missing.retain(|c| !classes.contains(c));
         }
+    }
+
+    pub fn is_stale(&self, path: &Path) -> bool {
+        self.stale.contains(&path_key(&godot_path(path)))
     }
 
     pub fn has_project(&self, root: &Path) -> bool {
@@ -599,6 +615,20 @@ impl Worker {
 
         let maps: BTreeMap<String, u64> =
             reply["maps"].as_array().into_iter().flatten().filter_map(|m| Some((path_key(m["path"].as_str()?), m["epoch"].as_u64().unwrap_or(0)))).collect();
+        let stale: BTreeSet<String> =
+            reply["maps"].as_array().into_iter().flatten().filter(|m| m["stale"] == true).filter_map(|m| m["path"].as_str()).map(path_key).collect();
+        let known = self.shared.0.lock().unwrap_or_else(|e| e.into_inner()).state.stale.clone();
+        let files: Vec<&str> = reply["maps"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|m| m["path"].as_str())
+            .filter(|p| stale.contains(&path_key(p)) && !known.contains(&path_key(p)))
+            .collect();
+        if !files.is_empty() {
+            self.say(stale_text(&files));
+        }
+
         let before = self.sessions.len();
         self.sessions.retain(|key, session| maps.get(key) == Some(&session.epoch));
         let dropped = self.sessions.len() != before;
@@ -610,6 +640,7 @@ impl Worker {
             s.pid = reply["pid"].as_u64().map(|p| p as u32);
             s.maps = maps;
             s.scanned = reply["scanned"].as_u64().unwrap_or(0);
+            s.stale = stale;
             if dropped {
                 s.resync += 1;
             }
@@ -1256,6 +1287,20 @@ mod tests {
         link.configure(dead, true);
         let e = walkable(&link, None).unwrap_err();
         assert!(e.contains("not running") && e.contains(&dead.to_string()), "{e}");
+    }
+
+    #[test]
+    fn scenes_built_with_other_definitions_are_told_once() {
+        let map_path = std::env::temp_dir().join("td_live_link_test").join("stale.tdm");
+        let map = godot_path(&map_path);
+        let answers = json!({ "status": { "maps": [{ "path": map, "epoch": 1, "stale": true }] } });
+        let (port, _) = fake_godot_with(map.clone(), Duration::ZERO, answers);
+        let link = LiveLink::start(None);
+        link.configure(port, true);
+        wait_for("the stale map", || link.state().is_stale(&map_path));
+        wait_for("the status", || link.poll_status().is_some_and(|s| s.starts_with("Godot shows stale.tdm built with other entity definitions")));
+        std::thread::sleep(HEARTBEAT * 2);
+        assert!(link.poll_status().is_none(), "told once");
     }
 
     #[test]

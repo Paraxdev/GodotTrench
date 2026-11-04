@@ -25,6 +25,10 @@ physics body. TrenchDot and Godot both tell you when this happens, and this page
     addon exports with the [game config](project-setup.md#the-game-config). An entity that FGD lacks gets the warning
     "Godot builds with ..., whose FGD ... has no ...".
 
+    When Godot shows a scene that it built before a definition was there, the status bar and the Issues panel say
+    "Godot shows ... built with other entity definitions". Choose *Godot > Build in Godot*, or press **Build Map** in
+    Godot and save, to build it again. **Run Project** says the same about the scenes it runs.
+
 3. Godot's Output panel
 
     Press **Build Map** on the `FuncGodotMap` node in Godot. The Output panel at the bottom of the Godot editor shows a

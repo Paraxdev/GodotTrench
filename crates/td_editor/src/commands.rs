@@ -2475,7 +2475,14 @@ pub fn poll_play(state: &mut EditorState) {
     let Some(reply) = state.play_reply.as_ref().and_then(|rx| rx.try_recv().ok()) else { return };
     state.play_reply = None;
     match reply {
-        Ok(r) if r["ok"].as_bool() == Some(true) => state.set_status("Godot saved its open scenes and runs the main scene"),
+        Ok(r) if r["ok"].as_bool() == Some(true) => match r["stale"].as_array().map(|a| a.iter().filter_map(|s| s.as_str()).collect::<Vec<_>>()) {
+            Some(scenes) if !scenes.is_empty() => state.set_status(format!(
+                "Godot saved its open scenes and runs the main scene. {} {} built with other entity definitions than the map settings hold now, so entities may be plain nodes or out of date until you build them again",
+                crate::live_link::name_list(&scenes),
+                if scenes.len() == 1 { "was" } else { "were" }
+            )),
+            _ => state.set_status("Godot saved its open scenes and runs the main scene"),
+        },
         Ok(r) if r["error"] == "unknown event" => {
             launch_godot(state, false);
             unsaved_in_godot(state);
@@ -2714,6 +2721,8 @@ mod tests {
 
         answer(&mut state, serde_json::json!({ "ok": true }));
         assert_eq!(state.status, "Godot saved its open scenes and runs the main scene", "no second Godot is started");
+        answer(&mut state, serde_json::json!({ "ok": true, "stale": ["res://crypt.tscn"] }));
+        assert!(state.status.contains(". res://crypt.tscn was built with other entity definitions"), "{}", state.status);
         answer(&mut state, serde_json::json!({ "ok": false, "error": "the project has no main scene" }));
         assert_eq!(state.status, "Godot could not run the project: the project has no main scene");
         answer(&mut state, serde_json::json!({ "ok": false, "error": "unknown event" }));

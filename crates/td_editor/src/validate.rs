@@ -49,6 +49,8 @@ pub struct Context {
     pub pack_installed: bool,
     /// What Godot reported when it last built the map.
     pub godot: Option<crate::live_link::GodotReport>,
+    /// Godot shows a scene built from the map with other entity definitions than its map settings hold now.
+    pub godot_stale: bool,
 }
 
 /// Every issue of `map`.
@@ -73,6 +75,7 @@ pub fn map_issues(
     );
     list.extend(definition_issues(map, game, context));
     list.extend(godot_issues(map, game, context));
+    list.extend(stale_issue(map_path, context));
     for clash in &game.clashes {
         if map.entities().any(|(_, e)| e.classname == clash.classname) {
             list.push(Issue { node: None, severity: Severity::Warning, code: "entity_clash", message: clash.describe() });
@@ -168,6 +171,12 @@ fn godot_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Issue> {
     list
 }
 
+fn stale_issue(path: Option<&Path>, context: &Context) -> Option<Issue> {
+    let path = path.filter(|_| context.godot_stale)?;
+    let message = crate::live_link::stale_text(&[path.to_string_lossy()]);
+    Some(Issue { node: None, severity: Severity::Warning, code: "godot_stale_scene", message })
+}
+
 /// The export names an FGD of the addon as the Entity Fgd Godot built the map with, which an edit to its Base Fgd Files
 /// does not belong in and which brings no pack when it lacks it.
 fn builds_with_addon_fgd(game: &GameConfig, report: &crate::live_link::GodotReport) -> bool {
@@ -181,7 +190,8 @@ pub fn open_map_issues(state: &mut EditorState) -> Vec<Issue> {
     let path = state.doc.path.clone();
     state.overlay_ghosts.refresh(path.as_deref());
     let godot = path.as_deref().and_then(|p| state.link_state.report(p)).cloned();
-    let context = Context { external: state.overlay_ghosts.targetnames(), pack_installed: state.gameplay_pack.installed, godot };
+    let godot_stale = path.as_deref().is_some_and(|p| state.link_state.is_stale(p));
+    let context = Context { external: state.overlay_ghosts.targetnames(), pack_installed: state.gameplay_pack.installed, godot, godot_stale };
     map_issues(&state.doc.map, &state.game, &mut state.materials, &mut state.prefabs, path.as_deref(), &context)
 }
 
@@ -201,7 +211,12 @@ pub fn file_issues(state: &mut EditorState, path: &Path) -> Result<(Map, Vec<Iss
     state.find_new_materials(unknown.iter().map(String::as_str));
     let sidecar = std::fs::read_to_string(crate::overlays::sidecar_path(path)).ok().and_then(|t| crate::overlays::parse(&t).ok());
     let external = sidecar.unwrap_or_default().into_iter().flat_map(|i| i.targetnames).collect();
-    let context = Context { external, pack_installed: state.gameplay_pack.installed, godot: state.link_state.report(path).cloned() };
+    let context = Context {
+        external,
+        pack_installed: state.gameplay_pack.installed,
+        godot: state.link_state.report(path).cloned(),
+        godot_stale: state.link_state.is_stale(path),
+    };
     let found = map_issues(&map, &state.game, &mut state.materials, &mut state.prefabs, Some(path), &context);
     Ok((map, found))
 }
@@ -659,6 +674,21 @@ mod tests {
             game.build = Some(td_formats::BuildConfig { map_settings: "res://s.tres".into(), entity_fgd: fgd.into(), ..Default::default() });
             assert!(hint(&game).ends_with("Set its Entity Fgd to the FGD your game config uses"), "{fgd}: {}", hint(&game));
         }
+    }
+
+    #[test]
+    fn a_scene_godot_built_with_other_definitions_is_a_warning() {
+        let game = GameConfig::builtin();
+        let map = Map::new();
+        let path = Path::new("C:/game/maps/crypt.tdm");
+        let stale = |godot_stale: bool| {
+            let context = Context { godot_stale, ..Default::default() };
+            let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), Some(path), &context);
+            found.into_iter().filter(|i| i.code == "godot_stale_scene").map(|i| i.message).collect::<Vec<_>>()
+        };
+        assert!(stale(false).is_empty());
+        let found = stale(true);
+        assert!(found.len() == 1 && found[0].starts_with("Godot shows crypt.tdm built with other entity definitions"), "{found:?}");
     }
 
     #[test]
