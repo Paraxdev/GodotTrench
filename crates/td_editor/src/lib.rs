@@ -106,7 +106,7 @@ pub enum Convert {
 
 pub const DEFAULT_MCP_PORT: u16 = 7841;
 
-const APP_ID: &str = "TrenchDot";
+pub(crate) const APP_ID: &str = "TrenchDot";
 
 pub const USAGE: &str = "\
 Usage: trenchdot [options] [map]

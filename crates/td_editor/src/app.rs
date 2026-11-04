@@ -1669,7 +1669,7 @@ impl App {
                 m.item(ui, None, "Entity and Code Reference", Action::ShowReference);
                 help_menu_links(ui);
                 ui.separator();
-                ui.label(RichText::new("TrenchDot, a brush and mesh level editor for Godot").weak());
+                ui.label(RichText::new("TrenchDot, a level editor for Godot").weak());
             });
         });
     }

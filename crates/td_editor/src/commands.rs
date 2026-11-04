@@ -2647,7 +2647,7 @@ mod tests {
             // The Debug form of a variant joins words without spaces and puts its payload in parentheses.
             let camel = label
                 .split(|c: char| !c.is_alphanumeric())
-                .filter(|w| !["glTF", "TrenchDot", "TrenchBroom"].contains(w))
+                .filter(|w| !["glTF", "TrenchBroom"].contains(w))
                 .any(|w| w.chars().zip(w.chars().skip(1)).any(|(a, b)| a.is_lowercase() && b.is_uppercase()));
             let payload = label.chars().zip(label.chars().skip(1)).any(|(a, b)| a.is_alphanumeric() && b == '(');
             assert!(!camel && !payload, "{action:?} reads {label}");

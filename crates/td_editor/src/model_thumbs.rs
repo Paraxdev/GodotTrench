@@ -106,7 +106,7 @@ impl ModelThumbnails {
     /// The mtime is baked into the filename, so a changed file misses instead of loading a stale image;
     /// nothing needs to scan for or clean up the file its old mtime left behind.
     fn disk_cache_path(&mut self, path: &Path, mtime: Option<SystemTime>) -> Option<PathBuf> {
-        let dir = self.disk_dir.get_or_insert_with(|| eframe::storage_dir("TrenchDot").map(|d| d.join("cache").join("model_thumbs"))).clone()?;
+        let dir = self.disk_dir.get_or_insert_with(|| eframe::storage_dir(crate::APP_ID).map(|d| d.join("cache").join("model_thumbs"))).clone()?;
         let secs = mtime.and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
         Some(dir.join(format!("{:016x}-{secs}-v{THUMB_VERSION}.png", fnv_hash(&path.to_string_lossy()))))
     }
