@@ -64,6 +64,7 @@ func _initialize() -> void:
 	test_bbmodel()
 	test_default_fgd()
 	test_entity_pack()
+	test_demo_load_problem()
 	test_resource_scripts_without_static_vars()
 	test_clashes()
 	test_build_report()
@@ -751,6 +752,13 @@ func test_entity_pack() -> void:
 			DirAccess.remove_absolute(to.path_join(dir).path_join(f))
 		DirAccess.remove_absolute(to.path_join(dir))
 	DirAccess.remove_absolute(to)
+
+func test_demo_load_problem() -> void:
+	print("- the demo says why a showcase scene does not load")
+	var demo: Variant = load("res://demo/demo.gd")
+	check(demo.load_problem("res://demo/showcase/td_tests_none.scn", true).contains("is missing, run tests/build_showcase.gd first"), "a scene that is not there has to be built")
+	check(demo.load_problem(MAP, false).contains("needs the Gameplay entities pack in res://trenchdot/entities"), "one that is there needs the pack when it is not installed")
+	check(demo.load_problem(MAP, true).contains("could not be loaded"), "and otherwise did not load for another reason")
 
 func test_resource_scripts_without_static_vars() -> void:
 	print("- addon Resource classes keep no static vars")

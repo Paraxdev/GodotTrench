@@ -25,7 +25,7 @@ func load_map(index: int) -> void:
 		_player.queue_free()
 	var scene := load(MAPS[index]) as PackedScene
 	if not scene:
-		push_error("%s is missing, run tests/build_showcase.gd first" % MAPS[index])
+		push_error(load_problem(MAPS[index], TrenchDotEntityPack.installed()))
 		return
 	_level = scene.instantiate()
 	add_child(_level)
@@ -34,6 +34,14 @@ func load_map(index: int) -> void:
 	var spawn := find_spawn(_level)
 	if spawn:
 		_player.global_transform = Transform3D(Basis(Vector3.UP, spawn.global_rotation.y), spawn.global_position + Vector3.UP * 0.1)
+
+## Why the showcase scene at [param path] did not load. The scenes use the scripts of the Gameplay entities pack.
+static func load_problem(path: String, pack_installed: bool) -> String:
+	if not FileAccess.file_exists(path):
+		return "%s is missing, run tests/build_showcase.gd first" % path
+	if not pack_installed:
+		return "%s needs the Gameplay entities pack in %s. Install it with Gameplay > Install Gameplay Entities in TrenchDot" % [path, TrenchDotEntityPack.DIR]
+	return "%s could not be loaded, see the errors above or run tests/build_showcase.gd to build it again" % path
 
 static func find_spawn(root: Node) -> Node3D:
 	var stack: Array[Node] = [root]
