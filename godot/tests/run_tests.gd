@@ -967,6 +967,14 @@ func test_game_config() -> void:
 	if by_name.has("info_player_start"):
 		var size: Array = by_name["info_player_start"]["size"]
 		check(size[0] == [-16.0, 0.0, -16.0] and size[1] == [16.0, 56.0, 16.0], "sizes converted to Y-up, got %s" % [size])
+	var build: Dictionary = data.get("build", {})
+	var settings: FuncGodotMapSettings = load(ProjectSettings.get_setting("func_godot/default_map_settings"))
+	check(build.get("map_settings") == settings.resource_path and build.get("entity_fgd") == settings.entity_fgd.resource_path, "the build block names the project's map settings and their FGD, got %s %s" % [build.get("map_settings"), build.get("entity_fgd")])
+	var classes: Array = build.get("classes", [])
+	var sorted := classes.duplicate()
+	sorted.sort()
+	check(classes == sorted and classes.has("func_door") and classes.has("worldspawn"), "with the sorted classes that FGD defines, got %s" % [classes])
+	check(classes.has("npc_guard") and classes.has("func_vault_door"), "C# entity classes a build adds included")
 
 func test_game_config_io_types() -> void:
 	print("- game config export types the I/O arguments")
@@ -1120,10 +1128,19 @@ func test_game_config_lint() -> void:
 	check(warnings.any(func(w): return w.begins_with("test_lint_point: meta_properties.size")), "a non AABB size is flagged, got %s" % [warnings])
 
 	point.meta_properties = { "size": AABB(Vector3(-8, 0, -8), Vector3(16, 32, 16)) }
-	check(config.lint().is_empty(), "a curated size with a positive AABB lints clean, got %s" % [config.lint()])
+	var own := func() -> Array: return config.lint().filter(func(w: String) -> bool: return w.begins_with("test_lint_point"))
+	check(own.call().is_empty(), "a curated size with a positive AABB lints clean, got %s" % [own.call()])
 
 	point.meta_properties = { "size": AABB(Vector3.ZERO, Vector3.ZERO) }
 	check(config.lint().any(func(w): return w.begins_with("test_lint_point: meta_properties.size")), "a zero size AABB is flagged")
+
+	var build_fgd: FuncGodotFGDFile = load(ProjectSettings.get_setting("func_godot/default_map_settings")).entity_fgd
+	var mismatch := config.lint().filter(func(w: String) -> bool: return w.contains("the FGD maps build with, %s" % build_fgd.resource_path))
+	check(mismatch.size() == 2, "an fgd_file that defines other classes than the build's FGD warns both ways, got %s" % [mismatch])
+	check(mismatch.any(func(w: String) -> bool: return w.begins_with("fgd_file defines test_lint_point, which") and w.contains("build plain nodes")), "naming the class maps cannot build, got %s" % [mismatch])
+	check(mismatch.any(func(w: String) -> bool: return w.contains("which fgd_file lacks, so TrenchDot does not offer them") and w.contains(" more")), "and the classes it leaves out, got %s" % [mismatch])
+	config.fgd_file = build_fgd
+	check(config.lint().is_empty(), "a game config on the build's FGD lints clean, got %s" % [config.lint()])
 
 func test_io_targets() -> void:
 	print("- I/O targets, arguments and C# style methods")
