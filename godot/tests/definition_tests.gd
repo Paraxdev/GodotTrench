@@ -12,6 +12,7 @@ const CHILD_ADDER := "res://tests/helpers/child_adder.gd"
 const PINE := "res://demo/models/pine.bbmodel"
 const PROJECT_SETTINGS := "res://tests/td_project_map_settings.tres"
 const STATIC_BODY_SCRIPT := "res://tests/helpers/static_body_entity.gd"
+const NOT_TOOL := "res://tests/helpers/not_tool_entity.gd"
 
 ## The run_tests.gd runner, untyped so its check() is reachable.
 var t
@@ -28,6 +29,7 @@ func run(runner: SceneTree) -> void:
 	test_unknown_node_class()
 	test_brush_entity_body()
 	test_brushes_and_definition_type()
+	test_scene_script_class()
 
 ## The demo's map settings with [param fgd] as their Entity Fgd.
 func _settings(fgd: FuncGodotFGDFile) -> FuncGodotMapSettings:
@@ -280,4 +282,22 @@ func test_brushes_and_definition_type() -> void:
 	problems = _problems(map, "td_tests_empty_solid")
 	check(problems.size() == 1 and problems[0]["problem"].begins_with("td_tests_empty_solid is a brush entity without brushes"), "a brush entity without brushes says so, got %s" % [problems])
 	check(_problems(map, "func_door").is_empty() and _problems(map, "worldspawn").is_empty(), "entities that match their definition do not")
+	_free(map)
+
+func test_scene_script_class() -> void:
+	print("- script_class replaces the script of a point entity's scene")
+	var root := Node3D.new()
+	root.set_script(load(NOT_TOOL))
+	var scene := PackedScene.new()
+	scene.pack(root)
+	root.free()
+	var replaced := _point("td_tests_scene_replaced", "", load(CHILD_ADDER))
+	replaced.scene_file = scene
+	var kept := _point("td_tests_scene_kept")
+	kept.scene_file = scene
+	var map := _build(_settings(_fgd([replaced, kept])), [_entity(2, "td_tests_scene_replaced"), _entity(3, "td_tests_scene_kept")])
+	var with_class := _child_named(map, "td_tests_scene_replaced")
+	var without := _child_named(map, "td_tests_scene_kept")
+	check(with_class != null and with_class.get_script() == load(CHILD_ADDER), "the scene root runs script_class, got %s" % [with_class.get_script() if with_class else null])
+	check(without != null and without.get_script() == load(NOT_TOOL), "without one it keeps its own script")
 	_free(map)
