@@ -496,8 +496,9 @@ func test_missing_map_settings() -> void:
 	map.map_settings = null
 	map.local_map_file = MAP
 	root.add_child(map)
-	map.build()
-	check(map.map_settings == load(ProjectSettings.get_setting("func_godot/default_map_settings")), "the default map settings are used")
+	var report := map.build()
+	check(report["map_settings"] == ProjectSettings.get_setting("func_godot/default_map_settings") and map.get_map_settings() == load(report["map_settings"]), "the default map settings are used, got %s" % report["map_settings"])
+	check(map.map_settings == null, "and the map node does not store them")
 	check(not collect(map, func(n): return n is MeshInstance3D).is_empty(), "and the map builds")
 	map.queue_free()
 	await process_frame

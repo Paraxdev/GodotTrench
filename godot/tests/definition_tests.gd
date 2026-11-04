@@ -10,6 +10,7 @@ const TRENCHDOT_FGD := "res://addons/func_godot/fgd/trenchdot_default_fgd.tres"
 const NO_PACK_SETTINGS := "res://tests/td_no_pack_settings.tres"
 const CHILD_ADDER := "res://tests/helpers/child_adder.gd"
 const PINE := "res://demo/models/pine.bbmodel"
+const PROJECT_SETTINGS := "res://tests/td_project_map_settings.tres"
 
 ## The run_tests.gd runner, untyped so its check() is reachable.
 var t
@@ -22,6 +23,7 @@ func run(runner: SceneTree) -> void:
 	test_missing_class_warning()
 	test_new_resources_use_the_gameplay_fgd()
 	await test_added_nodes_are_saved()
+	test_map_node_follows_the_project_setting()
 
 ## The demo's map settings with [param fgd] as their Entity Fgd.
 func _settings(fgd: FuncGodotFGDFile) -> FuncGodotMapSettings:
@@ -170,3 +172,46 @@ func test_added_nodes_are_saved() -> void:
 	check(prop != null and _generated(prop).size() == 2, "_ready rebuilt the model and its collision, got %s" % [prop.get_children() if prop else null])
 	copy.queue_free()
 	await t.process_frame
+
+func test_map_node_follows_the_project_setting() -> void:
+	print("- a map node without map settings follows the project setting")
+	var holder := Node3D.new()
+	var fresh := FuncGodotMap.new()
+	holder.add_child(fresh)
+	fresh.owner = holder
+	var packed := PackedScene.new()
+	packed.pack(holder)
+	holder.free()
+	var state := packed.get_state()
+	var stored := []
+	for i in state.get_node_property_count(1):
+		stored.append(state.get_node_property_name(1, i))
+	check(not &"map_settings" in stored, "a new map node saves no map settings, got %s" % [stored])
+
+	var only := FuncGodotFGDPointClass.new()
+	only.classname = "td_tests_project_only"
+	only.node_class = "Path3D"
+	var settings := _settings(_fgd([only]))
+	settings.inverse_scale_factor = 64.0
+	settings.take_over_path(PROJECT_SETTINGS)
+	var before: Variant = ProjectSettings.get_setting(FuncGodotMap.SETTING_DEFAULT_MAP_SETTINGS)
+	ProjectSettings.set_setting(FuncGodotMap.SETTING_DEFAULT_MAP_SETTINGS, PROJECT_SETTINGS)
+	var map := _build(null, [_entity(2, "td_tests_project_only")])
+	check(_child_named(map, "td_tests_project_only") is Path3D and map.build_report["map_settings"] == PROJECT_SETTINGS, "it builds with the settings the project names, got %s" % _child_named(map, "td_tests_project_only"))
+	check(not Array(map.build_report["warnings"]).any(func(w: String) -> bool: return w.contains("default map settings")), "and does not warn about them")
+	var built := _child_named(map, "td_tests_project_only")
+	ProjectSettings.set_setting(FuncGodotMap.SETTING_DEFAULT_MAP_SETTINGS, "res://tests/td_tests_no_such_settings.tres")
+	check(TrenchDotIO.units_per_meter(built) == 64.0, "and keeps their scale for a game exported without them, got %s" % TrenchDotIO.units_per_meter(built))
+	ProjectSettings.set_setting(FuncGodotMap.SETTING_DEFAULT_MAP_SETTINGS, PROJECT_SETTINGS)
+	_free(map)
+
+	map = _build(load(FuncGodotMap.ADDON_MAP_SETTINGS), [_entity(2, "light")])
+	var lines := Array(map.build_report["warnings"]).filter(func(w: String) -> bool: return w.contains("uses the addon's default map settings, not %s from Project Settings" % PROJECT_SETTINGS))
+	check(lines.size() == 1, "a map node that stored the addon's settings is told to clear them, got %s" % [map.build_report["warnings"]])
+	check(not map.has_meta(FuncGodotMap.UNITS_META), "a map node with its own settings keeps no scale of its own")
+	_free(map)
+	ProjectSettings.set_setting(FuncGodotMap.SETTING_DEFAULT_MAP_SETTINGS, FuncGodotMap.ADDON_MAP_SETTINGS)
+	map = _build(load(FuncGodotMap.ADDON_MAP_SETTINGS), [_entity(2, "light")])
+	check(not Array(map.build_report["warnings"]).any(func(w: String) -> bool: return w.contains("default map settings")), "not when the project uses them too")
+	_free(map)
+	ProjectSettings.set_setting(FuncGodotMap.SETTING_DEFAULT_MAP_SETTINGS, before)
