@@ -604,11 +604,13 @@ pub fn install(root: &Path, choice: Choice, api: &str, report: &Reporter) -> Out
     }
 
     // The demo's prebuilt scenes use the Gameplay pack's scripts, which ship with the addon rather than the demo zip.
-    if choice == Choice::Demo && outcome.error.is_none() && !crate::entity_pack::installed(root) && crate::entity_pack::available(root) {
-        if let Ok(pack) = crate::entity_pack::install(root) {
-            let dir = crate::entity_pack::install_dir(root);
-            outcome.added.written.extend(pack.added.iter().map(|rel| dir.join(rel)));
-        }
+    let wants_pack = choice == Choice::Demo && outcome.error.is_none() && !crate::entity_pack::installed(root);
+    if wants_pack
+        && crate::entity_pack::available(root)
+        && let Ok(pack) = crate::entity_pack::install(root)
+    {
+        let dir = crate::entity_pack::install_dir(root);
+        outcome.added.written.extend(pack.added.iter().map(|rel| dir.join(rel)));
     }
 
     if outcome.error.as_ref().is_some_and(Error::is_download) {
