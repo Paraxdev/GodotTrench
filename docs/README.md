@@ -1,5 +1,7 @@
 # TrenchDot
 
+![TrenchDot, a brush based level editor for Godot](assets/brand/itch-banner-960x300.png)
+
 TrenchDot is a brush based level editor for Godot in the spirit of TrenchBroom and Hammer.
 Supports I/O, custom meshes (Hammer, Quake, Blockbench) and more!
 
