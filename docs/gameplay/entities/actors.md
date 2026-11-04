@@ -29,6 +29,10 @@ ambush, or set an `interval` and `start` it for a steady stream. To spread spawn
 `all_dead` fires when every spawned node is gone, for "clear the room to open the door". Spawned nodes have no
 targetname, reach them through their `spawn_group`, like `@enemies`.
 
+With the default keys it spawns nothing until something fires `spawn` at it. For spawns without a trigger, set
+`spawn_on_ready`, or an `interval` with `start_active`. Spawning only happens in the running game, in Godot's editor
+the spawner stays an empty node.
+
 ## info_teleport_destination
 
 Marks where `trigger_teleport` sends bodies. Point it the way the player should look on arrival, its yaw becomes their
@@ -63,3 +67,5 @@ passing a window. It moves in straight lines, ignoring gravity and walls, so lay
 * **Outputs:** `arrived(corner)`, `reached_goal`, `finished` (both at the last corner when not looping)
 
 `face` and `walk_to` accept any target, like `!player`. `walk_to` drops the current leg and heads straight there.
+
+It loads its `model` only in the running game, so in Godot's editor it is an empty node.

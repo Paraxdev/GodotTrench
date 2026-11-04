@@ -28,6 +28,9 @@ A crate or barrel that can be thrown, damaged and broken. It breaks at 0 health,
 `push` takes a velocity in map units per second. `broken` fires after the blast, so whatever it triggers already sees
 the damage.
 
+The prop builds its model and collision box each time the scene loads. Godot's editor shows them as a preview, which
+is not saved with the scene.
+
 ## prop_model
 
 A static model with optional collision, for furniture, rocks and other props that should not move.
