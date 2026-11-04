@@ -8,6 +8,8 @@ const UPSTREAM_FGD := "res://addons/func_godot/fgd/func_godot_fgd.tres"
 const TRENCHDOT_FGD := "res://addons/func_godot/fgd/trenchdot_default_fgd.tres"
 ## Map settings without the Gameplay entities pack, a path the build report can name.
 const NO_PACK_SETTINGS := "res://tests/td_no_pack_settings.tres"
+const CHILD_ADDER := "res://tests/helpers/child_adder.gd"
+const PINE := "res://demo/models/pine.bbmodel"
 
 ## The run_tests.gd runner, untyped so its check() is reachable.
 var t
@@ -19,6 +21,7 @@ func run(runner: SceneTree) -> void:
 	t = runner
 	test_missing_class_warning()
 	test_new_resources_use_the_gameplay_fgd()
+	await test_added_nodes_are_saved()
 
 ## The demo's map settings with [param fgd] as their Entity Fgd.
 func _settings(fgd: FuncGodotFGDFile) -> FuncGodotMapSettings:
@@ -112,3 +115,58 @@ func test_new_resources_use_the_gameplay_fgd() -> void:
 	check(light is OmniLight3D, "and a light is a light, got %s" % light)
 	check(map.build_report["missing_classes"].is_empty(), "no class is missing, got %s" % [map.build_report["missing_classes"]])
 	_free(map)
+
+## The scene a built map is part of, packed and instanced again without entering the tree, so nothing runs _ready.
+func _saved(map: FuncGodotMap) -> Node:
+	var packed := PackedScene.new()
+	packed.pack(map.owner)
+	return packed.instantiate()
+
+func _generated(prop: Node) -> Array:
+	return prop.get_children().filter(func(c: Node) -> bool: return c.has_meta(&"td_prop_generated"))
+
+func test_added_nodes_are_saved() -> void:
+	print("- nodes an entity adds while its properties are applied are saved with the scene")
+	var adder := FuncGodotFGDPointClass.new()
+	adder.classname = "td_tests_child_adder"
+	adder.node_class = "Node3D"
+	adder.script_class = load(CHILD_ADDER)
+	var root := Node3D.new()
+	root.name = "Root"
+	var scene := PackedScene.new()
+	scene.pack(root)
+	root.free()
+	var instanced := FuncGodotFGDPointClass.new()
+	instanced.classname = "td_tests_scene_adder"
+	instanced.scene_file = scene
+	instanced.script_class = load(CHILD_ADDER)
+	var settings := _settings(_fgd([adder, instanced]))
+	var children := [_entity(2, "prop_model", [], { "model": PINE, "targetname": "pine" }), _entity(3, "td_tests_child_adder", [], { "targetname": "adder" }), _entity(4, "td_tests_scene_adder", [], { "targetname": "scene_adder" })]
+	var map := _build(settings, children)
+	var unowned: Array = t.collect(map, func(n: Node) -> bool: return n != map and n.owner == null).map(func(n: Node) -> String: return String(n.name))
+	check(unowned == [], "every built node has an owner, got %s" % [unowned])
+	var copy := _saved(map)
+	_free(map)
+	var prop: Node = t.find_targetname(copy, "pine")
+	var parts := _generated(prop) if prop else []
+	check(parts.size() == 2, "the saved prop keeps its model and collision, got %s" % [prop.get_children() if prop else null])
+	var body: Node = prop.get_node_or_null("prop_collision") if prop else null
+	check(body != null and t.collect(body, func(n): return n is CollisionShape3D).size() > 0, "and its collision shapes")
+	for target in ["adder", "scene_adder"]:
+		var entity: Node = t.find_targetname(copy, target)
+		check(entity != null and entity.get_node_or_null("added/inner") != null, "%s keeps the child it added, got %s" % [target, entity.get_children() if entity else null])
+		check(entity != null and entity.get_node_or_null("from_ready") == null, "%s does not save what _ready adds" % target)
+	copy.free()
+
+	print("- a prop saved without its model gets it back when it enters the tree")
+	map = _build(settings, [_entity(2, "prop_model", [], { "model": PINE, "targetname": "pine" })])
+	for part in _generated(t.find_targetname(map, "pine")):
+		t.collect(part, func(n: Node) -> bool: return true).map(func(n: Node) -> Node: n.owner = null; return n)
+	copy = _saved(map)
+	_free(map)
+	prop = t.find_targetname(copy, "pine")
+	check(prop != null and _generated(prop).is_empty(), "the old scene lost the model")
+	t.root.add_child(copy)
+	check(prop != null and _generated(prop).size() == 2, "_ready rebuilt the model and its collision, got %s" % [prop.get_children() if prop else null])
+	copy.queue_free()
+	await t.process_frame
