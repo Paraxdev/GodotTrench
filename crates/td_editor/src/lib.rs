@@ -217,6 +217,7 @@ pub fn convert(c: &Convert) -> Result<(), String> {
 }
 
 pub fn run(args: CliArgs) -> eframe::Result {
+    legacy::migrate_settings(args.default_prefs);
     let mut viewport =
         egui::ViewportBuilder::default().with_title("TrenchDot").with_icon(brand::icon()).with_inner_size([1600.0, 960.0]).with_min_inner_size([800.0, 500.0]);
     if args.offscreen {
