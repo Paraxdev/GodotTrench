@@ -61,7 +61,9 @@ class Runner extends Node:
 		await show_scene(MAP_SCENE)
 		check(shown_maps() == [map_file], "an opened scene tab reports its map, got %s" % [shown_maps()])
 		check(link.status()["scene"] == MAP_SCENE, "status names the shown scene, got %s" % link.status()["scene"])
-		check((await save())["rebuilt"] == 1, "a save rebuilds the shown scene")
+		var built := await save()
+		check(built["rebuilt"] == 1, "a save rebuilds the shown scene")
+		check(built.get("settings") == ["res://demo/demo_map_settings.tres"] and not built.has("missing_classes"), "a save names the map settings it built with, got %s" % built)
 
 		EditorInterface.close_scene()
 		await frames(5)
