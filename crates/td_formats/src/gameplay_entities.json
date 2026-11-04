@@ -18,7 +18,10 @@
       "script": "res://trenchdot/entities/scripts/td_section_stream.gd",
       "properties": [
         { "name": "section", "type": "string", "description": "The section on this side: its scene path, or a name found in the streamer's sections folder" },
-        { "name": "landmark", "type": "string", "description": "Name of the info_landmark in this connector" }
+        { "name": "landmark", "type": "string", "description": "Name of the info_landmark in this connector" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
       ]
     },
     {
@@ -39,8 +42,10 @@
       "properties": [
         { "name": "model", "type": "resource", "description": "res:// path of the model" },
         { "name": "model_node", "type": "string", "default": "", "description": "Name of one node in the model to use, placed at the origin, for files that hold several variants side by side" },
-        { "name": "collision", "type": "choices", "default": "convex", "description": "Collision shape", "options": [["none", "none"], ["convex", "convex"], ["trimesh", "trimesh"]] },
-        { "name": "scale", "type": "float", "default": "1.0", "description": "Uniform scale" }
+        { "name": "scale", "type": "float", "default": "1.0", "description": "Uniform scale" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape built from the model, unless the model brings its own. default uses the project setting trenchdot/collision/model_shape, convex unless changed. box is one box around the model, convex decomposition several hulls that follow concave models, trimesh follows every face", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the project default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the project default, none detects nothing" }
       ]
     },
     {
@@ -53,7 +58,10 @@
         { "name": "wait", "type": "float", "default": "-1", "description": "Seconds before it closes again, -1 stays open" },
         { "name": "locked", "type": "bool", "default": "0", "description": "Ignores open and use until unlocked" },
         { "name": "start_open", "type": "bool", "default": "0", "description": "Starts in the open position" },
-        { "name": "interact", "type": "bool", "default": "1", "description": "Opens when a player calls use() on it" }
+        { "name": "interact", "type": "bool", "default": "1", "description": "Opens when a player calls use() on it" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
       ],
       "outputs": [{ "name": "opened" }, { "name": "closed" }, { "name": "started_opening" }, { "name": "started_closing" }, { "name": "locked_use", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "open" }, { "name": "close" }, { "name": "toggle" }, { "name": "lock" }, { "name": "unlock" }, { "name": "use", "parameter": "activator", "type": "node" }],
@@ -72,7 +80,10 @@
         { "name": "wait", "type": "float", "default": "-1", "description": "Seconds before it closes again, -1 stays open" },
         { "name": "locked", "type": "bool", "default": "0", "description": "Ignores open and use until unlocked" },
         { "name": "start_open", "type": "bool", "default": "0", "description": "Starts open" },
-        { "name": "interact", "type": "bool", "default": "1", "description": "Opens when a player calls use() on it" }
+        { "name": "interact", "type": "bool", "default": "1", "description": "Opens when a player calls use() on it" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
       ],
       "outputs": [{ "name": "opened" }, { "name": "closed" }, { "name": "started_opening" }, { "name": "started_closing" }, { "name": "locked_use", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "open", "parameter": "activator", "type": "node" }, { "name": "close" }, { "name": "toggle", "parameter": "activator", "type": "node" }, { "name": "lock" }, { "name": "unlock" }, { "name": "use", "parameter": "activator", "type": "node" }],
@@ -85,7 +96,10 @@
         { "name": "targetname", "type": "target_source", "description": "Name" },
         { "name": "hinge", "type": "vector3", "default": "0 0 0", "description": "Hinge position relative to the leaf center, map units" },
         { "name": "open_angle", "type": "float", "default": "100", "description": "Degrees to swing" },
-        { "name": "speed", "type": "float", "default": "90", "description": "Degrees per second" }
+        { "name": "speed", "type": "float", "default": "90", "description": "Degrees per second" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
       ],
       "outputs": [{ "name": "opened" }, { "name": "closed" }],
       "inputs": [{ "name": "open" }, { "name": "close" }, { "name": "toggle" }],
@@ -100,7 +114,10 @@
         { "name": "speed", "type": "float", "default": "2.0", "description": "Meters per second" },
         { "name": "wait", "type": "float", "default": "1.0", "description": "Seconds spent at each end" },
         { "name": "mode", "type": "choices", "default": "0", "description": "toggle moves on input, ping pong loops, once goes to the end", "options": [["toggle", "0"], ["ping pong", "1"], ["once", "2"]] },
-        { "name": "start_active", "type": "bool", "default": "0", "description": "Starts moving on map load" }
+        { "name": "start_active", "type": "bool", "default": "0", "description": "Starts moving on map load" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
       ],
       "outputs": [{ "name": "reached_end" }, { "name": "reached_start" }, { "name": "started" }],
       "inputs": [{ "name": "start" }, { "name": "stop" }, { "name": "toggle" }, { "name": "go_to_end" }, { "name": "go_to_start" }],
@@ -115,7 +132,10 @@
         { "name": "speed", "type": "float", "default": "3.0", "description": "Meters per second" },
         { "name": "loop", "type": "bool", "default": "1", "description": "Returns to the first corner after the last" },
         { "name": "start_active", "type": "bool", "default": "1", "description": "Starts moving on map load" },
-        { "name": "orient", "type": "bool", "default": "0", "description": "Turns to face its direction of travel" }
+        { "name": "orient", "type": "bool", "default": "0", "description": "Turns to face its direction of travel" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
       ],
       "outputs": [{ "name": "arrived", "parameter": "corner", "type": "node" }, { "name": "finished" }],
       "inputs": [{ "name": "start" }, { "name": "stop" }, { "name": "toggle" }]
@@ -128,7 +148,10 @@
         { "name": "travel", "type": "vector3", "default": "0 -2 0", "description": "Press movement in map units" },
         { "name": "wait", "type": "float", "default": "1.0", "description": "Seconds before it pops out again, -1 stays pressed" },
         { "name": "locked", "type": "bool", "default": "0", "description": "Fires locked_use instead of pressed" },
-        { "name": "interact", "type": "bool", "default": "1", "description": "Pressed when a player calls use() on it" }
+        { "name": "interact", "type": "bool", "default": "1", "description": "Pressed when a player calls use() on it" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
       ],
       "outputs": [{ "name": "pressed", "parameter": "activator", "type": "node" }, { "name": "released" }, { "name": "locked_use", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "press", "parameter": "activator", "type": "node" }, { "name": "release" }, { "name": "lock" }, { "name": "unlock" }, { "name": "use", "parameter": "activator", "type": "node" }],
@@ -136,7 +159,12 @@
     },
     {
       "classname": "trigger_area", "type": "solid", "description": "Plain Area3D volume firing body_entered and body_exited", "color": "#e6991aff", "node_class": "Area3D",
-      "properties": [{ "name": "targetname", "type": "target_source", "description": "Name" }],
+      "properties": [
+        { "name": "targetname", "type": "target_source", "description": "Name" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
+      ],
       "outputs": [{ "name": "body_entered", "parameter": "body", "type": "node" }, { "name": "body_exited", "parameter": "body", "type": "node" }]
     },
     {
@@ -146,7 +174,10 @@
         { "name": "targetname", "type": "target_source", "description": "Name" },
         { "name": "filter_group", "type": "string", "default": "player", "description": "Only bodies in this group, empty accepts any body" },
         { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" },
-        { "name": "once", "type": "bool", "default": "1", "description": "Disables itself after firing" }
+        { "name": "once", "type": "bool", "default": "1", "description": "Disables itself after firing" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
       ],
       "outputs": [{ "name": "triggered", "parameter": "activator", "type": "node" }, { "name": "entered", "parameter": "activator", "type": "node" }, { "name": "exited", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
@@ -158,7 +189,10 @@
         { "name": "targetname", "type": "target_source", "description": "Name" },
         { "name": "filter_group", "type": "string", "default": "player", "description": "Only bodies in this group, empty accepts any body" },
         { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body fires it again" },
-        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
+        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
       ],
       "outputs": [{ "name": "triggered", "parameter": "activator", "type": "node" }, { "name": "entered", "parameter": "activator", "type": "node" }, { "name": "exited", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
@@ -174,7 +208,10 @@
         { "name": "arguments", "type": "string", "default": "[]", "description": "JSON array. $activator, $self and $position are replaced" },
         { "name": "once", "type": "bool", "default": "0", "description": "Only calls the first time" },
         { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body calls again" },
-        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
+        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
       ],
       "outputs": [{ "name": "called", "parameter": "result", "type": "variant" }, { "name": "triggered", "parameter": "activator", "type": "node" }, { "name": "entered", "parameter": "activator", "type": "node" }, { "name": "exited", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "trigger", "parameter": "activator", "type": "node" }, { "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
@@ -194,7 +231,10 @@
         { "name": "spawn_group", "type": "string", "default": "enemies", "description": "Group added to spawned nodes" },
         { "name": "snap_to_ground", "type": "bool", "default": "1", "description": "Drops spawns onto the floor below" },
         { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body fires it again" },
-        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
+        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
       ],
       "outputs": [{ "name": "spawned", "parameter": "node", "type": "node" }, { "name": "all_dead" }, { "name": "exhausted" }, { "name": "triggered", "parameter": "activator", "type": "node" }, { "name": "entered", "parameter": "activator", "type": "node" }, { "name": "exited", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "spawn" }, { "name": "start" }, { "name": "stop" }, { "name": "toggle" }, { "name": "kill_all" }, { "name": "enable" }, { "name": "disable" }]
@@ -208,7 +248,10 @@
         { "name": "damage_method", "type": "string", "default": "take_damage", "description": "Method called on the body with (amount, source)" },
         { "name": "interval", "type": "float", "default": "0.5", "description": "Seconds between damage ticks" },
         { "name": "filter_group", "type": "string", "default": "", "description": "Only bodies in this group, empty hurts any body" },
-        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
+        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
       ],
       "outputs": [{ "name": "hurt", "parameter": "activator", "type": "node" }, { "name": "triggered", "parameter": "activator", "type": "node" }, { "name": "entered", "parameter": "activator", "type": "node" }, { "name": "exited", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
@@ -222,7 +265,10 @@
         { "name": "filter_group", "type": "string", "default": "player", "description": "Only bodies in this group" },
         { "name": "keep_velocity", "type": "bool", "default": "0", "description": "Keeps the body's velocity" },
         { "name": "cooldown", "type": "float", "default": "0.5", "description": "Seconds before the same body fires it again" },
-        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
+        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
       ],
       "outputs": [{ "name": "teleported", "parameter": "activator", "type": "node" }, { "name": "triggered", "parameter": "activator", "type": "node" }, { "name": "entered", "parameter": "activator", "type": "node" }, { "name": "exited", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }]
@@ -235,7 +281,10 @@
         { "name": "push", "type": "vector3", "default": "0 384 0", "description": "Velocity in map units per second" },
         { "name": "filter_group", "type": "string", "default": "", "description": "Only bodies in this group" },
         { "name": "once", "type": "bool", "default": "1", "description": "One impulse on entering instead of a steady push" },
-        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" }
+        { "name": "start_disabled", "type": "bool", "default": "0", "description": "Needs an enable input first" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default keeps the class shape, a convex hull per brush. box is one box around all brushes, convex decomposition builds a hull per brush, trimesh follows every face and only works on static bodies such as doors and lifts", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the class default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the class default, none detects nothing" }
       ],
       "outputs": [{ "name": "pushed", "parameter": "activator", "type": "node" }, { "name": "triggered", "parameter": "activator", "type": "node" }, { "name": "entered", "parameter": "activator", "type": "node" }, { "name": "exited", "parameter": "activator", "type": "node" }],
       "inputs": [{ "name": "enable" }, { "name": "disable" }, { "name": "toggle" }],
@@ -416,7 +465,10 @@
         { "name": "explosion_damage", "type": "float", "default": "40", "description": "Blast damage when explosive" },
         { "name": "fuse", "type": "float", "default": "0.6", "description": "Seconds an ignited prop burns before it breaks" },
         { "name": "impact_speed", "type": "float", "default": "0", "description": "Breaks when it hits something faster than this in m/s, 0 never breaks on impact" },
-        { "name": "debris_scene", "type": "resource", "description": "res:// scene spawned where it broke" }
+        { "name": "debris_scene", "type": "resource", "description": "res:// scene spawned where it broke" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape. default and box build a box from size, convex hull and convex decomposition follow the model. A physics body cannot use trimesh, it builds convex hulls instead", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the project default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the project default, none detects nothing" }
       ],
       "outputs": [{ "name": "damaged", "parameter": "hp", "type": "float" }, { "name": "broken" }],
       "inputs": [{ "name": "smash" }, { "name": "ignite", "parameter": "activator", "type": "node" }, { "name": "push", "parameter": "direction", "type": "vector3" }, { "name": "take_damage", "parameter": "amount", "type": "float" }],
@@ -435,7 +487,10 @@
         { "name": "start_active", "type": "bool", "default": "0", "description": "Walks from map load" },
         { "name": "walk_anim", "type": "string", "default": "walk", "description": "Animation played while walking" },
         { "name": "idle_anim", "type": "string", "default": "idle", "description": "Animation played while stopped" },
-        { "name": "face_travel", "type": "bool", "default": "1", "description": "Turns to face its direction of travel" }
+        { "name": "face_travel", "type": "bool", "default": "1", "description": "Turns to face its direction of travel" },
+        { "name": "collision", "type": "choices", "default": "default", "description": "Collision shape built from the model. default uses the project setting trenchdot/collision/model_shape, convex unless changed. A character body cannot use trimesh, it builds convex hulls instead", "options": [["default", "default"], ["none", "none"], ["box", "box"], ["convex hull", "convex"], ["convex decomposition", "decomposition"], ["trimesh", "trimesh"]] },
+        { "name": "collision_layer", "type": "string", "default": "", "description": "Physics layers the body is on, as layer numbers such as 1, 3. Empty keeps the project default, none puts it on no layer" },
+        { "name": "collision_mask", "type": "string", "default": "", "description": "Physics layers the body detects, as layer numbers such as 1, 3. Empty keeps the project default, none detects nothing" }
       ],
       "outputs": [{ "name": "arrived", "parameter": "corner", "type": "node" }, { "name": "reached_goal" }, { "name": "finished" }],
       "inputs": [{ "name": "start" }, { "name": "stop" }, { "name": "walk_to", "parameter": "corner", "type": "string" }, { "name": "play_anim", "parameter": "name", "type": "string" }, { "name": "face", "parameter": "target", "type": "string" }]

@@ -802,6 +802,24 @@ mod tests {
     }
 
     #[test]
+    fn pack_brush_and_model_entities_offer_collision_keys() {
+        let pack = GameConfig::gameplay_pack();
+        let models = ["prop_model", "prop_physics", "npc_walker"];
+        let classes: Vec<&EntityDef> = pack.solid_entities().chain(pack.point_entities().filter(|e| models.contains(&e.classname.as_str()))).collect();
+        assert_eq!(classes.len(), pack.solid_entities().count() + models.len());
+        for def in classes {
+            let shape = def.property("collision").unwrap_or_else(|| panic!("{} has no collision key", def.classname));
+            assert_eq!((shape.ty, shape.default.as_str()), (PropertyType::Choices, "default"), "{}", def.classname);
+            let values: Vec<&str> = shape.options.iter().map(|(_, value)| value.as_str()).collect();
+            assert_eq!(values, ["default", "none", "box", "convex", "decomposition", "trimesh"], "{}", def.classname);
+            for key in ["collision_layer", "collision_mask"] {
+                let p = def.property(key).unwrap_or_else(|| panic!("{} has no {key}", def.classname));
+                assert_eq!((p.ty, p.default.as_str()), (PropertyType::String, ""), "{} {key}", def.classname);
+            }
+        }
+    }
+
+    #[test]
     fn builtin_holds_only_the_core_and_the_pack_the_rest() {
         let mut core: Vec<String> = GameConfig::builtin().entities.into_iter().map(|e| e.classname).collect();
         core.sort();
