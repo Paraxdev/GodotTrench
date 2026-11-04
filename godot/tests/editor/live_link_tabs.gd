@@ -1,7 +1,8 @@
 @tool
 extends Node
 ## Checks in a headless Godot editor that the live link follows scene tabs as they are opened, closed, reloaded and
-## switched, and that an editor build names entity scripts without @tool. res://tests/live_link_tests.gd starts it with
+## switched, that live sessions follow entity definitions that change, and that an editor
+## build names entity scripts without @tool. res://tests/live_link_tests.gd starts it with
 ## godot --headless --editor --path godot res://tests/editor/live_link_tabs.tscn -- --td-live-link-tabs
 ## and it does nothing when the scene is opened any other way.
 
@@ -10,6 +11,9 @@ const SELF := "res://tests/editor/live_link_tabs.tscn"
 const MAP_SCENE := "res://tests/editor/live_link_map.tscn"
 const MAP_FILE := "res://tests/maps/basic.tdm"
 const NOT_TOOL := "res://tests/helpers/not_tool_entity.gd"
+const MAP_JSON := "res://tests/maps/basic_json.tdm"
+## The TrenchDotFGDFile the demo's FGD has as a base, which brings the installed Gameplay entities pack.
+const CORE_FGD := "res://addons/func_godot/fgd/trenchdot/trenchdot_fgd.tres"
 
 func _ready() -> void:
 	if not Engine.is_editor_hint() or not FLAG in OS.get_cmdline_user_args():
@@ -32,6 +36,14 @@ class Runner extends Node:
 	func frames(n: int) -> void:
 		for i in n:
 			await get_tree().process_frame
+
+	## Waits up to [param limit] frames for [param done] to hold, and returns whether it did.
+	func until(done: Callable, limit := 600) -> bool:
+		for i in limit:
+			if done.call():
+				return true
+			await get_tree().process_frame
+		return done.call()
 
 	func show_scene(path: String) -> void:
 		EditorInterface.open_scene_from_path(path)
@@ -103,6 +115,7 @@ class Runner extends Node:
 		await show_scene(MAP_SCENE)
 		await frames(30)
 		check(builds[0] == 1, "a missed save is built once, %d builds" % builds[0])
+		await _check_definition_hooks()
 		_check_tool_scripts()
 
 		print("%d failures" % failures)
@@ -128,3 +141,29 @@ class Runner extends Node:
 		var built := map.find_children("*td_tests_not_tool*", "", true, false)
 		check(built.size() == 1 and not built[0].has_meta(&"applied"), "and does not call its placeholder, got %s" % [built])
 		map.free()
+
+	func live(event: String, extra := {}) -> Dictionary:
+		var msg := { "event": event, "path": ProjectSettings.globalize_path(MAP_FILE) }
+		msg.merge(extra)
+		return await link.handle_message(JSON.stringify(msg))
+
+	func door() -> Node:
+		var maps := link.maps_for(MAP_FILE)
+		return TrenchDotBuild.nodes_by_id(maps[0]).get(9) if not maps.is_empty() else null
+
+	func _check_definition_hooks() -> void:
+		var fs := EditorInterface.get_resource_filesystem()
+		check(fs.script_classes_updated.is_connected(link.check_definitions) and link.plugin.resource_saved.is_connected(link._on_resource_saved), "the live link checks definitions when script classes change and when resources are saved")
+		check(TrenchDotCSharp.keep_file_list, "and keeps the list of C# source files in between")
+		var reply := await live("live_begin", { "text": FileAccess.get_file_as_string(MAP_JSON) })
+		check(reply.get("ok") == true and door() is TDDoor, "a live session starts with a door, got %s %s" % [reply, door()])
+		var core: TrenchDotFGDFile = load(CORE_FGD)
+		var installed := core.pack_fgd_path
+		core.pack_fgd_path = "res://tests/td_tests_no_such_pack.tres"
+		# Note: only saves through the editor's own save path emit resource_saved, ResourceSaver.save does not.
+		link.plugin.resource_saved.emit(core)
+		check(await until(func() -> bool: return door() != null and not door() is TDDoor), "a saved resource makes the session build with the definitions it has now, got %s" % door())
+		core.pack_fgd_path = installed
+		link.plugin.resource_saved.emit(core)
+		check(await until(func() -> bool: return door() is TDDoor), "and again once the pack is back, got %s" % door())
+		await live("live_end")

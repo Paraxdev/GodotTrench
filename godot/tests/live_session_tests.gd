@@ -23,6 +23,7 @@ func run(runner: SceneTree) -> void:
 	test_failed_parse_leaves_no_source()
 	test_csharp_definitions_count()
 	await test_restart_after_live_edits()
+	await test_definitions_change_during_session()
 
 ## A map node in the tree, built from the test map's JSON.
 func _map() -> FuncGodotMap:
@@ -47,6 +48,14 @@ func _without_pack(build: Callable) -> Variant:
 func _session(map: FuncGodotMap) -> TrenchDotLiveSession:
 	var maps: Array[FuncGodotMap] = [map]
 	return TrenchDotLiveSession.new(MAP, maps)
+
+## Runs the session's queued rebuilds as if edits had paused, until it is idle.
+func _settle(session: TrenchDotLiveSession) -> void:
+	for i in 100:
+		if not session.pending():
+			return
+		session._last_change -= TrenchDotLiveSession.IDLE_MSEC + 1
+		session.process()
 
 func _is_door(node: Node) -> bool:
 	return node is TDDoor and node is AnimatableBody3D and t.collect(node, func(n): return n is CollisionShape3D).size() > 0
@@ -132,5 +141,38 @@ func test_restart_after_live_edits() -> void:
 	check(not map.has_meta(TrenchDotBuild.SOURCE_HASH_META), "and the scene no longer names the map it was built from")
 	_session(map).begin(text)
 	check(_is_door(TrenchDotBuild.nodes_by_id(map).get(DOOR)), "a new session over the original map brings the door back")
+	map.queue_free()
+	await t.process_frame
+
+func test_definitions_change_during_session() -> void:
+	print("- definitions that change while a session runs rebuild the entities no edit touched")
+	var text := FileAccess.get_file_as_string(MAP_JSON)
+	var session: TrenchDotLiveSession = _without_pack(func() -> TrenchDotLiveSession:
+		var s := _session(_map())
+		s.begin(text)
+		return s)
+	var map: FuncGodotMap = session.maps[0]
+	var lamp: Dictionary = session._nodes[15].duplicate(true)
+	lamp["properties"]["light_energy"] = "4"
+	session.apply([{ "op": "set", "id": 15, "parent": 1, "index": 8, "node": lamp }])
+	_settle(session)
+	check(not TrenchDotBuild.nodes_by_id(map).get(DOOR) is TDDoor, "the session started without the pack builds a plain door")
+	session.check_definitions()
+	check(session.pending(), "once the pack is back the session queues a build")
+	_settle(session)
+	var by_id := TrenchDotBuild.nodes_by_id(map)
+	check(_is_door(by_id.get(DOOR)) and by_id.get(BUTTON) is TDButton and by_id.get(13) is Area3D, "the door, button and trigger no edit touched are rebuilt, got %s %s %s" % [by_id.get(DOOR), by_id.get(BUTTON), by_id.get(13)])
+	check(by_id.get(15) is OmniLight3D and is_equal_approx(by_id[15].light_energy, 4.0), "and the edited lamp keeps its edit")
+	var world: Node = by_id.get(0)
+	session.check_definitions()
+	check(not session.pending(), "unchanged definitions queue nothing")
+
+	var link := TrenchDotEditorIntegration.new()
+	link._sessions["map"] = session
+	_without_pack(link.check_definitions)
+	check(session.pending(), "the editor integration checks every live session")
+	link.free()
+	session._clear_pending()
+	check(TrenchDotBuild.nodes_by_id(map).get(0) == world, "checking alone builds nothing")
 	map.queue_free()
 	await t.process_frame
