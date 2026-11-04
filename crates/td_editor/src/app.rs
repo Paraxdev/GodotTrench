@@ -2321,7 +2321,11 @@ impl App {
                 ui.end_row();
             });
             ui.separator();
-            self.mcp_prefs(ui);
+            let advanced = egui::CollapsingHeader::new("Advanced").default_open(false).show(ui, |ui| {
+                ui.label("For scripts and AI tools that drive the editor over MCP. Off by default.");
+                self.mcp_prefs(ui);
+            });
+            self.mcp_pref_rects.push(("advanced", advanced.header_response.rect));
 
             ui.separator();
             crate::trust::trusted_list(ui, &mut self.state);

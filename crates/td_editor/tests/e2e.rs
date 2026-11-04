@@ -2920,8 +2920,17 @@ fn open_preferences(ed: &Editor) {
     std::thread::sleep(Duration::from_millis(300));
 }
 
-/// A click on the middle of an MCP setting in Preferences, which has to be open.
+/// A click on the middle of an MCP setting in Preferences, which has to be open. The settings sit under the
+/// collapsed Advanced header, which this opens first.
 fn mcp_pref(ed: &Editor, name: &str) -> Value {
+    if ed.state()["ui"]["mcp_prefs"][name].is_null() {
+        let header = ed.state()["ui"]["mcp_prefs"]["advanced"].clone();
+        let r: Vec<f64> =
+            header.as_array().unwrap_or_else(|| panic!("no Advanced header in Preferences: {header}")).iter().map(|v| v.as_f64().unwrap()).collect();
+        ed.input("window", json!([{ "type": "click", "x": r[0] + 10.0, "y": (r[1] + r[3]) / 2.0 }]));
+        std::thread::sleep(Duration::from_millis(300));
+    }
+
     let rect = ed.state()["ui"]["mcp_prefs"][name].clone();
     let r: Vec<f64> = rect.as_array().unwrap_or_else(|| panic!("no {name} in Preferences: {rect}")).iter().map(|v| v.as_f64().unwrap()).collect();
     json!({ "type": "click", "x": (r[0] + r[2]) / 2.0, "y": (r[1] + r[3]) / 2.0 })
