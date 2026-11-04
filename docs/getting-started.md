@@ -72,14 +72,25 @@ Some bare bones entities are always included, like a simple `info_player_start` 
     (Note: close Godot first if it has the project open, otherwise Godot writes its own copy of `project.godot` back
     and the plugin stays off.)
 
-2. (Optionally) Extra Content
+2. Install the Gameplay entities
+
+    Click **Install Gameplay Entities** below the addon.
+
+    ![The Gameplay entities section of the Set up this project window with the Install Gameplay Entities button](assets/getting-started/setup-gameplay-entities.png)
+
+    Doors, buttons, lifts, triggers, props and spawners come with this pack. Without it Godot builds them as plain
+    shapes that have no collision and do nothing. The door and trigger helpers in the Gameplay menu install the pack
+    by themselves the first time you use them, but installing it now, before Godot first opens the project, means no
+    scene is ever built without it.
+
+3. (Optionally) Extra Content
 
     TrenchDot has optional content you may preload: CC0 textures and models from Poly Haven and ambientCG, plus models
     made for TrenchDot. The licenses and a list of where everything is from are included.
 
     If you do not want any extra content you can go with "Nothing extra", the minimal entities are still included.
 
-3. Open the project in Godot once
+4. Open the project in Godot once
 
     Once the plugin is enabled, open the project in Godot (the window has an "Open Project in Godot Editor" button for
     that). The addon then creates a file called `trenchdot_game.json` in the project root. This is where TrenchDot
@@ -182,7 +193,8 @@ light or a camera. Godot writes paths inside the project with `res://`, so `res:
 4. Press **Build Map** at the top of that Inspector, then save the scene with Ctrl+S.
 
 Brushes become meshes with collision and entities become nodes with their scripts, saved with the scene.
-[Building maps](godot/building.md) explains the node's other settings.
+[Building maps](godot/building.md) explains the node's other settings. If an entity comes out as a bare mesh without
+collision, TrenchDot's status bar says why, see [Entities that do nothing](godot/entities-troubleshooting.md).
 
 Leave that scene open in Godot and every save in TrenchDot rebuilds it, straight away while its tab is the current
 one, or when you switch back to it. Save the scene in Godot to keep the result. If a save does not rebuild, the status
