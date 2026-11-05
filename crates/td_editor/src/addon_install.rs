@@ -487,6 +487,15 @@ mod tests {
         std::fs::write(root.join(DIR).join("plugin.cfg"), "[plugin]\nname=\"Something\"\n").unwrap();
         assert_eq!(Status::check(&root).installed, Installed::Unknown);
 
+        // The addon of a GodotTrench install has the editor's own version number and is still older.
+        for version in [crate::VERSION, "0.0.1", "999.0.0"] {
+            let cfg = format!("[plugin]\nname=\"{}\"\nversion=\"{version}\"\n", td_doc::legacy::NAME);
+            std::fs::write(root.join(DIR).join("plugin.cfg"), cfg).unwrap();
+            let old = format!("{version} ({})", td_doc::legacy::NAME);
+            assert_eq!(Status::check(&root).installed, Installed::Older(old.clone()));
+            assert!(mismatched(&old) && should_ask(&root, &BTreeMap::new()));
+        }
+
         addon(&root, crate::VERSION);
         std::fs::write(root.join(DIR).join(".git"), "gitdir: ../../.git/modules/func_godot\n").unwrap();
         std::fs::write(root.join("project.godot"), format!("[editor_plugins]\n\nenabled=PackedStringArray(\"{PLUGIN}\")\n")).unwrap();

@@ -566,8 +566,8 @@ pub fn find_project_root(start: &Path) -> Option<PathBuf> {
     None
 }
 
-/// The `version` line of a Godot `plugin.cfg`'s `[plugin]` section.
-fn parse_plugin_version(text: &str) -> Option<String> {
+/// The value of `key` in a Godot `plugin.cfg`'s `[plugin]` section.
+fn parse_plugin_value(text: &str, key: &str) -> Option<String> {
     let mut in_plugin = false;
     for raw in text.lines() {
         let line = raw.trim();
@@ -578,7 +578,7 @@ fn parse_plugin_version(text: &str) -> Option<String> {
 
         if in_plugin
             && let Some((k, v)) = line.split_once('=')
-            && k.trim() == "version"
+            && k.trim() == key
         {
             return Some(v.trim().trim_matches('"').to_string());
         }
@@ -587,10 +587,14 @@ fn parse_plugin_version(text: &str) -> Option<String> {
     None
 }
 
-/// The version the TrenchDot addon declares in its `plugin.cfg`, for the editor to compare against its own.
+/// The version the TrenchDot addon declares in its `plugin.cfg`, for the editor to compare against its own. The addon of
+/// a GodotTrench install can carry the very version of this editor without its content, so it gets the old name behind
+/// the version, which no editor version equals.
 pub fn addon_version(project_root: &Path) -> Option<String> {
     let text = std::fs::read_to_string(project_root.join("addons/func_godot/plugin.cfg")).ok()?;
-    parse_plugin_version(&text)
+    let version = parse_plugin_value(&text, "version")?;
+    let old = parse_plugin_value(&text, "name").is_some_and(|n| n.eq_ignore_ascii_case(td_doc::legacy::NAME));
+    Some(if old { format!("{version} ({})", td_doc::legacy::NAME) } else { version })
 }
 
 /// Converts a file system path inside the project into a res:// path.
@@ -688,9 +692,9 @@ mod tests {
     #[test]
     fn plugin_version_reads_only_the_plugin_section() {
         let cfg = "[plugin]\nname=\"TrenchDot\"\nversion=\"0.1.0\"\n\n[other]\nversion=\"9.9.9\"\n";
-        assert_eq!(parse_plugin_version(cfg).as_deref(), Some("0.1.0"));
-        assert_eq!(parse_plugin_version("[plugin]\nname=\"x\"\n"), None, "no version line");
-        assert_eq!(parse_plugin_version("version=\"9.9.9\"\n"), None, "not inside [plugin]");
+        assert_eq!(parse_plugin_value(cfg, "version").as_deref(), Some("0.1.0"));
+        assert_eq!(parse_plugin_value("[plugin]\nname=\"x\"\n", "version"), None, "no version line");
+        assert_eq!(parse_plugin_value("version=\"9.9.9\"\n", "version"), None, "not inside [plugin]");
     }
 
     #[test]
