@@ -430,7 +430,7 @@ impl Default for GameConfig {
 impl GameConfig {
     /// Missing format/version fields mean a file written before they existed, and are accepted.
     fn check_version(&self) -> Result<(), GameError> {
-        if !self.format.is_empty() && self.format != GAME_FORMAT {
+        if !self.format.is_empty() && self.format != GAME_FORMAT && self.format != td_doc::legacy::GAME_FORMAT {
             return Err(GameError::WrongFormat(self.format.clone()));
         }
 
@@ -449,21 +449,22 @@ impl GameConfig {
         Ok(cfg)
     }
 
-    /// Finds a game config inside a Godot project, looking at the project root and one level of subfolders.
+    /// Finds a game config inside a Godot project, looking at the project root and one level of subfolders. A config
+    /// the addon wrote under its old name counts when there is no other.
     pub fn discover(project_root: &Path) -> Option<PathBuf> {
-        let direct = project_root.join(GAME_FILE_NAME);
-        if direct.is_file() {
+        let find = |dir: &Path| [GAME_FILE_NAME, td_doc::legacy::GAME_FILE].iter().map(|name| dir.join(name)).find(|p| p.is_file());
+        if let Some(direct) = find(project_root) {
             return Some(direct);
         }
 
         let entries = std::fs::read_dir(project_root).ok()?;
         for entry in entries.flatten() {
             let p = entry.path();
-            if p.is_dir() && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')) {
-                let candidate = p.join(GAME_FILE_NAME);
-                if candidate.is_file() {
-                    return Some(candidate);
-                }
+            if p.is_dir()
+                && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.'))
+                && let Some(candidate) = find(&p)
+            {
+                return Some(candidate);
             }
         }
 
@@ -791,6 +792,27 @@ mod tests {
         assert!(current.check_version().is_ok());
         let legacy: GameConfig = serde_json::from_str(r#"{"name":"Test"}"#).unwrap();
         assert!(legacy.check_version().is_ok());
+    }
+
+    #[test]
+    fn a_config_under_the_old_name_is_found_when_there_is_no_other() {
+        let root = &std::env::temp_dir().join(format!("td_game_old_name_{}", std::process::id()));
+        std::fs::create_dir_all(root).unwrap();
+        let old = root.join(td_doc::legacy::GAME_FILE);
+        std::fs::write(&old, format!(r#"{{"format":"{}","version":1}}"#, td_doc::legacy::GAME_FORMAT)).unwrap();
+        assert_eq!(GameConfig::discover(root), Some(old.clone()));
+        let loaded = GameConfig::load(&old).unwrap();
+        assert_eq!(loaded.source.as_deref(), Some(old.as_path()));
+
+        let new = root.join(GAME_FILE_NAME);
+        std::fs::write(&new, "{}").unwrap();
+        assert_eq!(GameConfig::discover(root), Some(new), "the current name wins");
+        std::fs::remove_file(root.join(GAME_FILE_NAME)).unwrap();
+        std::fs::remove_file(&old).unwrap();
+        std::fs::create_dir(root.join("game")).unwrap();
+        std::fs::write(root.join("game").join(td_doc::legacy::GAME_FILE), "{}").unwrap();
+        assert_eq!(GameConfig::discover(root), Some(root.join("game").join(td_doc::legacy::GAME_FILE)));
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
