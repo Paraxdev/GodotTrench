@@ -22,6 +22,9 @@ const NEW_CLASS := "TDTestsNewEntity"
 ## A pack written while Godot runs, removed again afterwards.
 const LATE_PACK := "res://tests/td_tests_late_pack"
 const LATE_CLASS := "TDTestsLateBase"
+## A map and a model whose .import files name the importers of before the rename, removed again afterwards.
+const OLD_MAP := "res://tests/td_tests_legacy_import.gtm"
+const OLD_MODEL := "res://tests/td_tests_legacy_import.bbmodel"
 
 func _ready() -> void:
 	if not Engine.is_editor_hint() or not FLAG in OS.get_cmdline_user_args():
@@ -128,6 +131,7 @@ class Runner extends Node:
 		await _check_prefab_save()
 		await _check_stale_warning()
 		await _check_late_pack()
+		await _check_legacy_importers()
 		_check_prop_physics_preview()
 		_check_tool_scripts()
 
@@ -342,6 +346,60 @@ class Runner extends Node:
 			text += "\n[sub_resource type=\"Resource\" id=\"def_%s\"]\nscript = ExtResource(\"point\")\nclassname = \"td_tests_late_%s\"\nscript_class = ExtResource(\"%s\")\nnode_class = \"Node3D\"\n" % [name, name, name]
 			defs.append("SubResource(\"def_%s\")" % name)
 		return text + "\n[resource]\nscript = ExtResource(\"fgd\")\nentity_definitions = [%s]\n" % ", ".join(defs)
+
+	## Reimporting files whose .import files name the importers of before the rename must work, and the files keep
+	## those importer names.
+	func _check_legacy_importers() -> void:
+		var model_source := FileAccess.get_file_as_string("res://trenchdot/nature/pine.bbmodel")
+		var files := {
+			OLD_MAP: [TrenchDotLegacy.MAP_IMPORTER, "GodotTrenchImportedMap", "tres", "uid://bleg4cy7m4p0", ""],
+			OLD_MODEL: [TrenchDotLegacy.BBMODEL_IMPORTER, "PackedScene", "scn", "uid://bleg4cy7m4p1", "units_per_meter=16.0
+collision=\"none\"
+nearest_filter=true
+"],
+		}
+		for source in files:
+			var f: Array = files[source]
+			var file := FileAccess.open(source, FileAccess.WRITE)
+			file.store_string(model_source if source == OLD_MODEL else FileAccess.get_file_as_string(MAP_JSON).replace("trenchdot-map", TrenchDotLegacy.MAP_FORMAT))
+			file.close()
+			var dest := "res://.godot/imported/%s-0123456789abcdef0123456789abcdef.%s" % [source.get_file(), f[2]]
+			var import := FileAccess.open(source + ".import", FileAccess.WRITE)
+			import.store_string("[remap]
+
+importer=\"%s\"
+type=\"%s\"
+uid=\"%s\"
+path=\"%s\"
+
+[deps]
+
+source_file=\"%s\"
+dest_files=[\"%s\"]
+
+[params]
+
+%s" % [f[0], f[1], f[3], dest, source, dest, f[4]])
+			import.close()
+		var fs := EditorInterface.get_resource_filesystem()
+		fs.scan()
+		await until(func() -> bool: return not fs.is_scanning() and fs.get_file_type(OLD_MAP) != "", 1200)
+		fs.reimport_files(PackedStringArray([OLD_MAP, OLD_MODEL]))
+		await frames(5)
+		for source in files:
+			var text := FileAccess.get_file_as_string(source + ".import")
+			check(text.contains("importer=\"%s\"" % files[source][0]), "%s is still imported by %s, got %s" % [source, files[source][0], text])
+			check(ResourceLoader.exists(source), "%s loads after the reimport" % source)
+		check(not FileAccess.get_file_as_string(OLD_MAP + ".import").contains("GodotTrenchImportedMap") and load(OLD_MAP) is TrenchDotImportedMap, "the imported map is a TrenchDotImportedMap")
+		check(load(OLD_MODEL) is PackedScene, "the imported model is a scene")
+		for source in files:
+			for file in DirAccess.get_files_at("res://.godot/imported"):
+				if file.begins_with(source.get_file() + "-"):
+					DirAccess.remove_absolute("res://.godot/imported".path_join(file))
+			DirAccess.remove_absolute(source)
+			DirAccess.remove_absolute(source + ".import")
+		fs.scan()
+		await until(func() -> bool: return not fs.is_scanning(), 1200)
 
 	## A pack copied in while Godot runs, whose entity script extends a class another new script of it declares, the
 	## way the TrenchDot editor installs the Gameplay pack. Reading it before the scan registers that class would
