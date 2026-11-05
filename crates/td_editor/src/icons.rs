@@ -165,6 +165,7 @@ pub fn toggle(ui: &mut Ui, icon: Icon, size: f32, selected: bool, label: &str, t
         .selected(selected)
         .frame_when_inactive(selected)
         .image_tint_follows_text_color(true)
+        .corner_radius(12)
         .ui(ui)
         .on_hover_text(tooltip)
 }

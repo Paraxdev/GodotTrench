@@ -810,7 +810,7 @@ impl App {
 
         state.link = Some(crate::live_link::LiveLink::start(Some(cc.egui_ctx.clone())));
         let dock: Option<DockState<Tab>> = if keep_prefs { cc.storage.and_then(|s| eframe::get_value(s, DOCK_KEY)).filter(valid_dock) } else { None };
-        cc.egui_ctx.set_visuals(crate::theme::visuals());
+        cc.egui_ctx.global_style_mut(crate::theme::style);
         cc.egui_ctx.set_fonts(crate::theme::fonts());
         // UI scale shortcuts go through the keymap so they are rebindable and saved in the preferences.
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
@@ -2321,7 +2321,7 @@ impl App {
                 ui.end_row();
             });
             ui.separator();
-            let advanced = egui::CollapsingHeader::new("Advanced").default_open(false).show(ui, |ui| {
+            let advanced = crate::widgets::collapsing("Advanced").default_open(false).show(ui, |ui| {
                 ui.label("For scripts and AI tools that drive the editor over MCP. Off by default.");
                 self.mcp_prefs(ui);
             });
@@ -2569,6 +2569,8 @@ impl App {
 }
 
 struct Tabs<'a> {
+    /// The tab on top in each leaf, the only ones that get a close button so the rest of the strip fits.
+    shown: Vec<Tab>,
     views_open: usize,
     start_view: Option<ViewKind>,
     state: &'a mut EditorState,
@@ -2636,7 +2638,7 @@ impl TabViewer for Tabs<'_> {
     }
 
     fn is_closeable(&self, tab: &Tab) -> bool {
-        view_closeable(tab, self.views_open)
+        self.shown.contains(tab) && view_closeable(tab, self.views_open)
     }
 
     fn closeable(&mut self, tab: &mut Tab) -> bool {
@@ -2687,23 +2689,25 @@ impl eframe::App for App {
             v.popup_open = popup_open;
         }
 
-        egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
+        let bar = crate::theme::bar_frame(&ctx.global_style());
+        egui::Panel::top("menu").frame(bar).show(ui, |ui| self.menu_bar(ui));
         let margin = bar_margin(&ctx.global_style());
         let padding = ctx.global_style().spacing.button_padding.y * 2.0;
-        let toolbar = egui::Panel::top(TOOLBAR_ID).resizable(true).max_size(self.toolbar_fit.max_height(padding) + margin).show(ui, |ui| {
+        let toolbar = egui::Panel::top(TOOLBAR_ID).frame(bar).resizable(true).max_size(self.toolbar_fit.max_height(padding) + margin).show(ui, |ui| {
             let bar_height = ui.available_height();
             bar_contents(ui, |ui| self.toolbar(ui, bar_height))
         });
         self.toolbar_fit.content_height = toolbar.inner;
         let options_max = TOOL_OPTIONS_MAX_HEIGHT.max(self.tool_options_height) + margin;
-        let options = egui::Panel::top(TOOL_OPTIONS_ID).resizable(true).max_size(options_max).show(ui, |ui| bar_contents(ui, |ui| self.tool_options(ui)));
+        let options =
+            egui::Panel::top(TOOL_OPTIONS_ID).frame(bar).resizable(true).max_size(options_max).show(ui, |ui| bar_contents(ui, |ui| self.tool_options(ui)));
         self.tool_options_height = options.inner;
         self.tool_options_rect = options.response.rect;
         if !self.state.tabs.is_empty() {
-            egui::Panel::top("map_tabs").show(ui, |ui| self.tab_bar(ui));
+            egui::Panel::top("map_tabs").frame(bar).show(ui, |ui| self.tab_bar(ui));
         }
 
-        egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
+        egui::Panel::bottom("status").frame(bar).show(ui, |ui| self.status_bar(ui));
 
         if self.state.game_config_changed() && self.state.reload_changed_game_config() {
             self.project_generation += 1;
@@ -2744,8 +2748,10 @@ impl eframe::App for App {
         let start_view = [ViewKind::Top, ViewKind::Front, ViewKind::Side]
             .into_iter()
             .find(|k| self.viewports.iter().enumerate().any(|(i, v)| v.kind() == *k && tab_shown(&self.dock, &Tab::View(i))));
-        egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| {
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(crate::theme::BACKDROP)).show(ui, |ui| {
+            let shown = self.dock.iter_all_tabs().map(|(_, t)| *t).filter(|t| tab_shown(&self.dock, t)).collect();
             let mut tabs = Tabs {
+                shown,
                 views_open: open_views(&self.dock).len(),
                 start_view,
                 state: &mut self.state,
@@ -2757,7 +2763,8 @@ impl eframe::App for App {
                 actions: &mut self.actions,
                 project_maps: &mut self.project_maps,
             };
-            DockArea::new(&mut self.dock).show_leaf_collapse_buttons(false).show_inside(ui, &mut tabs);
+            let style = crate::theme::dock_style(ui.style());
+            DockArea::new(&mut self.dock).style(style).show_leaf_collapse_buttons(false).show_leaf_close_all_buttons(false).show_inside(ui, &mut tabs);
             // Closing every tab of a leaf at once can take the last view with it.
             let open = open_views(&self.dock);
             if open.is_empty() {

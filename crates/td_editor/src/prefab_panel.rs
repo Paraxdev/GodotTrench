@@ -101,7 +101,7 @@ fn paste(state: &mut EditorState, entry: &Entry, actions: &mut Vec<Action>) {
 }
 
 fn add_row(ui: &mut Ui, state: &mut EditorState, ps: &mut PrefabPanel) {
-    egui::CollapsingHeader::new("Add the selection").id_salt("prefab_add").show(ui, |ui| {
+    crate::widgets::collapsing("Add the selection").id_salt("prefab_add").show(ui, |ui| {
         ui.horizontal_wrapped(|ui| {
             ui.add(egui::TextEdit::singleline(&mut ps.new_name).hint_text("Name").desired_width(120.0));
             ui.add(egui::TextEdit::singleline(&mut ps.new_category).hint_text("Category").desired_width(100.0));

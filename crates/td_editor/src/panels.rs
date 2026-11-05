@@ -623,7 +623,7 @@ fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mu
 
 /// Collapsible inspector section with a strong title. `tip` says what is inside, F1 opens its page of the manual.
 fn section<R>(ui: &mut Ui, title: &str, tip: &str, open: bool, add_contents: impl FnOnce(&mut Ui) -> R) {
-    let header = egui::CollapsingHeader::new(RichText::new(title).strong()).id_salt(title).default_open(open).show(ui, add_contents).header_response;
+    let header = crate::widgets::collapsing(RichText::new(title).strong()).id_salt(title).default_open(open).show(ui, add_contents).header_response;
     section_help(&header, title, tip);
 }
 
@@ -703,7 +703,7 @@ fn brush_entity_section(ui: &mut Ui, state: &EditorState, actions: &mut Vec<Acti
     }
 
     let title = format!("Make Brush Entity ({})", groups.iter().map(|(_, d)| d.len()).sum::<usize>());
-    let section = egui::CollapsingHeader::new(RichText::new(title).strong()).id_salt("brush_entity_section").default_open(false).show(ui, |ui| {
+    let section = crate::widgets::collapsing(RichText::new(title).strong()).id_salt("brush_entity_section").default_open(false).show(ui, |ui| {
         if groups.is_empty() {
             sub_heading(ui, "No brush entities, open a Godot project with a game config");
         }
@@ -1190,7 +1190,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
     }
 
     let value_x = ui.cursor().left() + label_w;
-    let properties = egui::CollapsingHeader::new(RichText::new("Properties").strong()).id_salt("entity_properties").default_open(true).show(ui, |ui| {
+    let properties = crate::widgets::collapsing(RichText::new("Properties").strong()).id_salt("entity_properties").default_open(true).show(ui, |ui| {
         let label_w = value_x - ui.cursor().left();
         let mut index = 0;
         if let Some(d) = &def {
@@ -1269,7 +1269,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
 
     section_help(&properties.header_response, "Properties", "");
     let title = format!("Outputs (I/O, {})", entity.outputs.len());
-    let outputs = egui::CollapsingHeader::new(RichText::new(title).strong()).id_salt("entity_outputs").default_open(true).show(ui, |ui| {
+    let outputs = crate::widgets::collapsing(RichText::new(title).strong()).id_salt("entity_outputs").default_open(true).show(ui, |ui| {
         io_editor(ui, state, id, &entity, def.as_ref());
     });
     section_help(&outputs.header_response, "Outputs", "");
@@ -2674,7 +2674,7 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
     let mut to_reference: Option<String> = None;
     ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for (group, defs) in &groups {
-            let section = egui::CollapsingHeader::new(group).default_open(true).show(ui, |ui| {
+            let section = crate::widgets::collapsing(group).default_open(true).show(ui, |ui| {
                 let cols = ((ui.available_width() / cell_width).floor() as usize).max(1);
                 for chunk in defs.chunks(cols) {
                     ui.horizontal(|ui| {
@@ -3013,7 +3013,7 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
         });
     }
 
-    egui::CollapsingHeader::new(format!("Properties ({})", def.properties.len())).default_open(true).show(ui, |ui| {
+    crate::widgets::collapsing(format!("Properties ({})", def.properties.len())).default_open(true).show(ui, |ui| {
         for p in &def.properties {
             ui.horizontal_wrapped(|ui| {
                 ui.label(RichText::new(&p.name).strong());
@@ -3022,7 +3022,7 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
             });
         }
     });
-    egui::CollapsingHeader::new(format!("Inputs ({}) and outputs ({})", def.inputs.len(), def.outputs.len())).default_open(true).show(ui, |ui| {
+    crate::widgets::collapsing(format!("Inputs ({}) and outputs ({})", def.inputs.len(), def.outputs.len())).default_open(true).show(ui, |ui| {
         for i in &def.inputs {
             ui.label(format!("input  {}({})", i.name, i.parameter));
         }

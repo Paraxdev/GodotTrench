@@ -230,7 +230,7 @@ fn draw_select_move_delete_undo() {
     assert!(approx(&min, &[-64.0, 0.0, -64.0]) && approx(&max, &[64.0, 128.0, 32.0]), "{min:?} {max:?}");
 
     // Click empty space deselects, clicking the brush selects it again.
-    ed.input("top", json!([{ "type": "click", "world": [400, 0, 200] }]));
+    ed.input("top", json!([{ "type": "click", "world": [200, 0, 120] }]));
     assert!(ed.state()["selection"]["nodes"].as_array().unwrap().is_empty());
     ed.input("front", json!([{ "type": "click", "world": [0, 32, 0] }]));
     assert_eq!(ed.state()["selection"]["nodes"].as_array().unwrap().len(), 1);

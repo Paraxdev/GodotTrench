@@ -3,18 +3,18 @@
 
 use std::sync::Arc;
 
-use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontTweak, Stroke, Visuals};
+use egui::{Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontTweak, Margin, Shadow, Stroke, Vec2, Visuals};
 
 pub const BG: Color32 = Color32::from_rgb(0x05, 0x06, 0x08);
-pub const FG: Color32 = Color32::from_rgb(0xd6, 0xda, 0xe2);
-pub const GRAY_0: Color32 = Color32::from_rgb(0x09, 0x0b, 0x0f);
-pub const GRAY_1: Color32 = Color32::from_rgb(0x14, 0x17, 0x1c);
-pub const GRAY_2: Color32 = Color32::from_rgb(0x24, 0x29, 0x30);
-pub const GRAY_3: Color32 = Color32::from_rgb(0x3b, 0x41, 0x4c);
-pub const GRAY_4: Color32 = Color32::from_rgb(0x57, 0x60, 0x70);
-pub const GRAY_5: Color32 = Color32::from_rgb(0x7a, 0x86, 0x9b);
-pub const GRAY_6: Color32 = Color32::from_rgb(0xa7, 0xb1, 0xc3);
-pub const GRAY_7: Color32 = Color32::from_rgb(0xdf, 0xe2, 0xe9);
+pub const FG: Color32 = Color32::from_rgb(0xdd, 0xe0, 0xe6);
+pub const GRAY_0: Color32 = Color32::from_rgb(0x11, 0x12, 0x15);
+pub const GRAY_1: Color32 = Color32::from_rgb(0x1d, 0x1e, 0x23);
+pub const GRAY_2: Color32 = Color32::from_rgb(0x2b, 0x2d, 0x34);
+pub const GRAY_3: Color32 = Color32::from_rgb(0x3e, 0x41, 0x4a);
+pub const GRAY_4: Color32 = Color32::from_rgb(0x5b, 0x5f, 0x6c);
+pub const GRAY_5: Color32 = Color32::from_rgb(0x83, 0x88, 0x96);
+pub const GRAY_6: Color32 = Color32::from_rgb(0xad, 0xb2, 0xbf);
+pub const GRAY_7: Color32 = Color32::from_rgb(0xe7, 0xe9, 0xee);
 // Accents use a colorblind-safe palette derived from Okabe & Ito, so meaning carried by hue (axes,
 // error/success/warning, entity and format tints) stays distinguishable under deuteranopia,
 // protanopia and tritanopia. RED is a vermillion and GREEN a bluish green, the pair that keeps
@@ -28,7 +28,16 @@ pub const PINK: Color32 = Color32::from_rgb(0xe0, 0x69, 0x9f);
 pub const RED: Color32 = Color32::from_rgb(0xe8, 0x61, 0x3c);
 pub const TEAL: Color32 = Color32::from_rgb(0x17, 0xb3, 0xc4);
 
-pub const ACCENT: Color32 = BLUE;
+pub const ACCENT: Color32 = Color32::from_rgb(0x6c, 0x8d, 0xff);
+/// Behind and between the docks, which sit on it as rounded cards.
+pub const BACKDROP: Color32 = GRAY_0;
+/// The menu, toolbar and status bars.
+pub const CHROME: Color32 = Color32::from_rgb(0x16, 0x17, 0x1b);
+/// Collapsible section headers.
+pub const HEADER: Color32 = Color32::from_rgb(0x26, 0x28, 0x2e);
+const RADIUS: u8 = 6;
+const WINDOW_RADIUS: u8 = 10;
+pub const DOCK_GAP: f32 = 8.0;
 pub const AXIS: [Color32; 3] = [RED, GREEN, BLUE];
 pub const ERROR: Color32 = RED;
 pub const WARNING: Color32 = YELLOW;
@@ -105,7 +114,7 @@ pub fn linear(c: Color32) -> [f64; 4] {
 
 pub fn visuals() -> Visuals {
     let mut v = Visuals::dark();
-    let radius = CornerRadius::same(3);
+    let radius = CornerRadius::same(RADIUS);
     v.panel_fill = GRAY_1;
     v.window_fill = GRAY_1;
     v.window_stroke = Stroke::new(1.0, GRAY_3);
@@ -117,9 +126,13 @@ pub fn visuals() -> Visuals {
     v.warn_fg_color = WARNING;
     v.error_fg_color = ERROR;
     v.selection.bg_fill = blend(GRAY_2, ACCENT, 0.7);
-    v.selection.stroke = Stroke::new(1.0, GRAY_7);
-    v.window_corner_radius = CornerRadius::same(5);
-    v.menu_corner_radius = CornerRadius::same(4);
+    v.selection.stroke = Stroke::new(1.0, blend(ACCENT, GRAY_7, 0.35));
+    v.window_corner_radius = CornerRadius::same(WINDOW_RADIUS);
+    v.menu_corner_radius = CornerRadius::same(WINDOW_RADIUS - 1);
+    let shadow = Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(90) };
+    v.window_shadow = shadow;
+    v.popup_shadow = shadow;
+    v.indent_has_left_vline = false;
 
     let w = &mut v.widgets;
     w.noninteractive.bg_fill = GRAY_1;
@@ -132,11 +145,11 @@ pub fn visuals() -> Visuals {
     w.inactive.fg_stroke = Stroke::new(1.0, FG);
     w.hovered.bg_fill = GRAY_3;
     w.hovered.weak_bg_fill = GRAY_3;
-    w.hovered.bg_stroke = Stroke::new(1.0, GRAY_4);
+    w.hovered.bg_stroke = Stroke::new(1.0, blend(GRAY_4, ACCENT, 0.35));
     w.hovered.fg_stroke = Stroke::new(1.5, GRAY_7);
     w.active.bg_fill = GRAY_4;
     w.active.weak_bg_fill = GRAY_4;
-    w.active.bg_stroke = Stroke::new(1.0, GRAY_5);
+    w.active.bg_stroke = Stroke::new(1.0, ACCENT);
     w.active.fg_stroke = Stroke::new(2.0, GRAY_7);
     w.open.bg_fill = GRAY_2;
     w.open.weak_bg_fill = GRAY_2;
@@ -147,6 +160,50 @@ pub fn visuals() -> Visuals {
     }
 
     v
+}
+
+/// Colors and the roomier spacing the editor uses over egui's defaults.
+pub fn style(style: &mut egui::Style) {
+    style.visuals = visuals();
+    style.spacing.item_spacing = Vec2::new(8.0, 5.0);
+    style.spacing.button_padding = Vec2::new(8.0, 3.0);
+    style.spacing.interact_size.y = 24.0;
+    style.spacing.indent = 18.0;
+}
+
+/// The frame of a top or bottom bar, the menu, the status line and the like.
+pub fn bar_frame(style: &egui::Style) -> egui::Frame {
+    egui::Frame::side_top_panel(style).fill(CHROME)
+}
+
+/// The docks as rounded cards on the backdrop, each with its tabs as pills along the top.
+pub fn dock_style(base: &egui::Style) -> egui_dock::Style {
+    let mut s = egui_dock::Style::from_egui(base);
+    let none = Color32::TRANSPARENT;
+    let pill = CornerRadius::same(RADIUS + 2);
+    let tab = |bg: Color32, text: Color32| egui_dock::TabInteractionStyle { outline_color: none, corner_radius: pill, bg_fill: bg, text_color: text };
+    s.main_surface_border_stroke = Stroke::NONE;
+    s.dock_area_padding = Some(Margin::same(DOCK_GAP as i8));
+    s.separator.width = DOCK_GAP;
+    s.separator.color_idle = none;
+    s.separator.color_hovered = ACCENT;
+    s.separator.color_dragged = ACCENT;
+    s.buttons.close_tab_color = GRAY_5;
+    s.buttons.close_tab_active_color = GRAY_7;
+    s.buttons.close_tab_bg_fill = none;
+    s.tab_bar.bg_fill = GRAY_1;
+    s.tab_bar.hline_color = none;
+    s.tab_bar.height = 34.0;
+    s.tab_bar.inner_margin = Margin::symmetric(6, 3);
+    s.tab_bar.corner_radius = CornerRadius { nw: WINDOW_RADIUS, ne: WINDOW_RADIUS, sw: 0, se: 0 };
+    s.tab.active = tab(GRAY_2, GRAY_7);
+    s.tab.focused = tab(GRAY_2, GRAY_7);
+    s.tab.inactive = tab(none, GRAY_5);
+    s.tab.hovered = tab(blend(GRAY_1, GRAY_2, 0.6), GRAY_7);
+    s.tab.tab_body.bg_fill = GRAY_1;
+    s.tab.tab_body.stroke = Stroke::NONE;
+    s.tab.tab_body.corner_radius = CornerRadius { nw: 0, ne: 0, sw: WINDOW_RADIUS, se: WINDOW_RADIUS };
+    s
 }
 
 const UI_FONT: &str = "IBM Plex Sans";
@@ -262,6 +319,11 @@ mod tests {
             for (a, b, what) in pairs {
                 let d = distance(simulate(a, kind), simulate(b, kind));
                 assert!(d >= MIN, "cvd {kind}: {what} too close ({d:.0} < {MIN})");
+            }
+
+            for (c, what) in [(ERROR, "error"), (SUCCESS, "success"), (WARNING, "warning"), (AXIS[0], "axis x"), (AXIS[1], "axis y")] {
+                let d = distance(simulate(ACCENT, kind), simulate(c, kind));
+                assert!(d >= MIN, "cvd {kind}: accent vs {what} too close ({d:.0} < {MIN})");
             }
         }
     }

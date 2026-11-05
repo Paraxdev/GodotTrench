@@ -203,6 +203,62 @@ pub fn effective_type(defined: Option<PropertyType>, name: &str, value: &str) ->
     }
 }
 
+/// A collapsible section on a raised header card.
+pub struct Collapsing {
+    title: RichText,
+    salt: Option<String>,
+    open: bool,
+}
+
+pub fn collapsing(title: impl Into<RichText>) -> Collapsing {
+    Collapsing { title: title.into(), salt: None, open: false }
+}
+
+impl Collapsing {
+    pub fn id_salt(mut self, salt: &str) -> Self {
+        self.salt = Some(salt.to_owned());
+        self
+    }
+
+    pub fn default_open(mut self, open: bool) -> Self {
+        self.open = open;
+        self
+    }
+
+    pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> egui::CollapsingResponse<R> {
+        let salt = self.salt.unwrap_or_else(|| self.title.text().to_owned());
+        let outer = ui.style().clone();
+        ui.scope(|ui| {
+            let label = RichText::new(self.title.text()).size(12.5).color(theme::GRAY_7);
+            ui.spacing_mut().button_padding.y = 5.0;
+            let v = ui.visuals_mut();
+            v.collapsing_header_frame = true;
+            for state in [&mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active] {
+                state.expansion = 0.0;
+                state.bg_stroke = Stroke::NONE;
+            }
+
+            let hover = theme::blend(theme::HEADER, theme::GRAY_3, 0.5);
+            v.widgets.inactive.weak_bg_fill = theme::HEADER;
+            v.widgets.hovered.weak_bg_fill = hover;
+            v.widgets.active.weak_bg_fill = hover;
+            egui::CollapsingHeader::new(label).id_salt(salt).default_open(self.open).icon(chevron).show(ui, |ui| {
+                ui.set_style(outer);
+                body(ui)
+            })
+        })
+        .inner
+    }
+}
+
+fn chevron(ui: &mut Ui, openness: f32, response: &egui::Response) {
+    let color = if response.hovered() { theme::GRAY_7 } else { theme::ACCENT };
+    let c = response.rect.center();
+    let turn = egui::emath::Rot2::from_angle(openness * std::f32::consts::FRAC_PI_2);
+    let points = [egui::vec2(-2.0, -3.5), egui::vec2(2.0, 0.0), egui::vec2(-2.0, 3.5)].map(|p| c + turn * p);
+    ui.painter().add(egui::Shape::line(points.to_vec(), Stroke::new(1.5, color)));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -509,7 +509,7 @@ fn brush_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>) {
         }
     }
 
-    egui::CollapsingHeader::new("New set defaults").id_salt("scatter_new_defaults").show(ui, |ui| {
+    crate::widgets::collapsing("New set defaults").id_salt("scatter_new_defaults").show(ui, |ui| {
         let s = &mut state.prefs.scatter;
         egui::Grid::new("scatter_panel_defaults").num_columns(2).show(ui, |ui| {
             ui.label("Chunk size");
