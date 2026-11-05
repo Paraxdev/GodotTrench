@@ -588,7 +588,7 @@ fn parse_plugin_value(text: &str, key: &str) -> Option<String> {
 }
 
 /// The version the TrenchDot addon declares in its `plugin.cfg`, for the editor to compare against its own. The addon of
-/// a GodotTrench install can carry the very version of this editor without its content, so it gets the old name behind
+/// an install from before the rename can carry the very version of this editor without its content, so it gets the old name behind
 /// the version, which no editor version equals.
 pub fn addon_version(project_root: &Path) -> Option<String> {
     let text = std::fs::read_to_string(project_root.join("addons/func_godot/plugin.cfg")).ok()?;

@@ -487,7 +487,7 @@ mod tests {
         std::fs::write(root.join(DIR).join("plugin.cfg"), "[plugin]\nname=\"Something\"\n").unwrap();
         assert_eq!(Status::check(&root).installed, Installed::Unknown);
 
-        // The addon of a GodotTrench install has the editor's own version number and is still older.
+        // The addon of an install from before the rename has the editor's own version number and is still older.
         for version in [crate::VERSION, "0.0.1", "999.0.0"] {
             let cfg = format!("[plugin]\nname=\"{}\"\nversion=\"{version}\"\n", td_doc::legacy::NAME);
             std::fs::write(root.join(DIR).join("plugin.cfg"), cfg).unwrap();

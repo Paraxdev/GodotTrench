@@ -2952,6 +2952,55 @@ fn wait_until_closed(port: u16) {
     }
 }
 
+/// A map saved under the old name, as JSON text or in the binary container, opens as modified under its own path, says
+/// it was updated, and saves back in place in the current format with its .bak next to it.
+#[test]
+#[ignore]
+fn a_map_of_the_old_format_opens_updated_and_saves_in_place() {
+    use td_doc::{Entity, Map, NodeKind, format, legacy};
+
+    let mut map = Map::new();
+    let layer = map.default_layer();
+    let mut door = Entity::new("func_door");
+    door.properties.insert("targetname".into(), "door1".into());
+    map.insert(layer, NodeKind::Entity(door));
+    let mut value: Value = serde_json::from_str(&format::to_string(&map)).unwrap();
+    value["format"] = legacy::MAP_FORMAT.into();
+    let old = legacy::MAP_EXTS[1];
+    let dir = artifacts().join("legacy_maps");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let text = dir.join(format!("text_room.{old}"));
+    let binary = dir.join(format!("binary_room.{old}"));
+    std::fs::write(&text, value.to_string()).unwrap();
+    std::fs::write(&binary, td_doc::binary::encode(value, &[]).unwrap()).unwrap();
+    assert!(td_doc::binary::is_binary(&std::fs::read(&binary).unwrap()));
+
+    let ed = Editor::launch("legacy_map");
+    for (path, name) in [(&text, format!("text_room.{old}")), (&binary, format!("binary_room.{old}"))] {
+        let opened = ed.call("map_file", json!({ "op": "open", "path": path }));
+        assert_eq!(opened["problems"], json!([]), "{opened}");
+        let state = ed.state();
+        assert_eq!(state["map"]["modified"], true, "{state}");
+        assert_eq!(state["map"]["entities"], 1);
+        let status = state["status"].as_str().unwrap();
+        assert_eq!(status, format!("Updated {name} from the {} format, save to keep it", legacy::NAME));
+        assert!(state["map"]["path"].as_str().unwrap().ends_with(&name));
+
+        let saved = ed.call("map_file", json!({ "op": "save" }));
+        assert!(saved["path"].as_str().unwrap().ends_with(&name), "{saved}");
+        assert_eq!(ed.state()["map"]["modified"], false);
+        let bytes = std::fs::read(path).unwrap();
+        assert!(td_doc::binary::is_binary(&bytes), "saved in the binary container");
+        let (value, _) = format::file_json_value(&bytes).unwrap();
+        assert_eq!(value["format"], format::FORMAT_NAME);
+        assert!(path.with_extension(format!("{old}.bak")).is_file(), "the old file is kept as .bak");
+        assert!(!path.with_extension("tdm").exists());
+        ed.call("map_file", json!({ "op": "open", "path": path }));
+        assert_eq!(ed.state()["map"]["modified"], false, "the saved map needs no update");
+    }
+}
+
 /// With TRENCHDOT_DISABLE_MCP set, --mcp-http opens no port and --mcp answers initialize with an error, while the
 /// editor itself runs on and says why on stderr.
 #[test]

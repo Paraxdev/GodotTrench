@@ -1673,7 +1673,7 @@ mod tests {
         state.prefs.live_link = false;
         state.open_map(&path).unwrap();
         assert!(state.doc.is_modified() && state.doc.migrated);
-        assert_eq!(state.status, format!("Updated room.{} from the GodotTrench format, save to keep it", td_doc::legacy::MAP_EXTS[1]));
+        assert_eq!(state.status, format!("Updated room.{} from the {} format, save to keep it", td_doc::legacy::MAP_EXTS[1], td_doc::legacy::NAME));
         assert_eq!(state.doc.map.entities().count(), 1);
 
         state.save_map(&path).unwrap();
