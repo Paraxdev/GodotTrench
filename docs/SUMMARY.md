@@ -38,6 +38,7 @@
     * [Night lighting](godot/night-lighting.md)
     * [Baked lighting in Godot](godot/baked-lighting.md)
     * [Overlays](godot/overlays.md)
+    * [Updating a GodotTrench project](godot/updating-old-projects.md)
     * [Project setup](godot/project-setup.md)
     * [Live link protocol](godot/live-link.md)
 * Gameplay
