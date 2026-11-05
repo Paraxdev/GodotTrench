@@ -991,6 +991,7 @@ impl EditorState {
             )),
             (Some(_), Some(map_path)) => self.set_status(format!("Recovered {} from its autosave, save to keep the changes", map_path.display())),
             (Some(_), None) => self.set_status("Recovered an untitled map from its autosave, save it to keep the changes"),
+            _ if self.doc.migrated => self.set_status(crate::legacy::migrated_status(path)),
             _ => self.set_status(format!("Opened {}", path.display())),
         }
 
@@ -1527,7 +1528,7 @@ pub fn absolute(path: &Path) -> PathBuf {
 /// Loads a map, turning an autosave into an unsaved recovery of the map it belongs to.
 pub fn load_document(path: &Path) -> Result<Document, String> {
     let path = &absolute(path);
-    let format::Loaded { map, problems, .. } = format::load(path).map_err(|e| e.to_string())?;
+    let format::Loaded { map, problems, old_format } = format::load(path).map_err(|e| e.to_string())?;
     for p in &problems {
         eprintln!("{}: {p}", path.display());
     }
@@ -1544,6 +1545,11 @@ pub fn load_document(path: &Path) -> Result<Document, String> {
     };
     if !problems.is_empty() {
         doc.load_problems = problems;
+        doc.mark_unsaved();
+    }
+
+    if old_format {
+        doc.migrated = true;
         doc.mark_unsaved();
     }
 
@@ -1648,6 +1654,34 @@ mod tests {
         assert!(map_path.exists());
         assert!(!autosave_path(&map_path).exists() && !legacy_autosave_path(&map_path).exists());
         assert_eq!(state.doc.title(), "church.tdm");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_map_of_the_old_format_opens_modified_and_saves_in_the_current_one() {
+        let dir = std::env::temp_dir().join(format!("td_old_format_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(format!("room.{}", td_doc::legacy::MAP_EXTS[1]));
+        let mut map = td_doc::Map::new();
+        let layer = map.default_layer();
+        td_doc::ops::create_point_entity(&mut map, layer, "light", DVec3::ZERO);
+        let mut value: serde_json::Value = serde_json::from_str(&format::to_string(&map)).unwrap();
+        value["format"] = td_doc::legacy::MAP_FORMAT.into();
+        std::fs::write(&path, value.to_string()).unwrap();
+
+        let mut state = EditorState::new(Prefs::default());
+        state.prefs.live_link = false;
+        state.open_map(&path).unwrap();
+        assert!(state.doc.is_modified() && state.doc.migrated);
+        assert_eq!(state.status, format!("Updated room.{} from the GodotTrench format, save to keep it", td_doc::legacy::MAP_EXTS[1]));
+        assert_eq!(state.doc.map.entities().count(), 1);
+
+        state.save_map(&path).unwrap();
+        assert!(!state.doc.is_modified() && !state.doc.migrated);
+        let (saved, _) = format::file_json_value(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["format"], format::FORMAT_NAME);
+        state.open_map(&path).unwrap();
+        assert!(!state.doc.is_modified());
         let _ = std::fs::remove_dir_all(dir);
     }
 

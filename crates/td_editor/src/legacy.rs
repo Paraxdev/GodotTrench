@@ -23,6 +23,12 @@ pub fn env_var(name: &str) -> Option<String> {
     env_var_os(name)?.into_string().ok()
 }
 
+/// What the status line says about a map that was updated while it was read.
+pub fn migrated_status(path: &Path) -> String {
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
+    format!("Updated {name} from the {} format, save to keep it", td_doc::legacy::NAME)
+}
+
 /// Brings the settings of an install made under the old name into the settings folder of this one, once. The old folder
 /// stays where it is, so going back to the old version loses nothing. A run with default preferences never touches
 /// either, and neither does one that already has settings of its own.
@@ -97,6 +103,11 @@ mod tests {
         unsafe { std::env::set_var("PATH_LEGACY_TEST", "x") };
         assert_eq!(env_var("PATH_LEGACY_TEST").as_deref(), Some("x"));
         assert_eq!(env_var("OTHER_LEGACY_TEST_B"), None);
+    }
+
+    #[test]
+    fn the_status_names_the_file_and_the_old_format() {
+        assert_eq!(migrated_status(Path::new("maps/room.gtm")), "Updated room.gtm from the GodotTrench format, save to keep it");
     }
 
     fn put(dir: &Path, file: &str, text: &str) {

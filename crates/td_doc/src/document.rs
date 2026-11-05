@@ -63,6 +63,8 @@ pub struct Document {
     pub recovered_from: Option<PathBuf>,
     /// What reading a damaged file lost or moved, until the map is saved.
     pub load_problems: Vec<String>,
+    /// The file came from an older version and was updated while reading it, until the map is saved.
+    pub migrated: bool,
     pub history: History,
     /// Incremented on every change, used by renderers and caches. Code that changes `map` directly bumps it, which
     /// also marks the document modified.
@@ -104,6 +106,7 @@ impl Document {
             path,
             recovered_from: None,
             load_problems: Vec::new(),
+            migrated: false,
             history: History { limit: 512, ..Default::default() },
             revision: 1,
             state: 1,
@@ -129,6 +132,7 @@ impl Document {
         self.saved_map = self.map.clone();
         self.recovered_from = None;
         self.load_problems.clear();
+        self.migrated = false;
         // The saved state has to stay reachable by undo, so the next coalesced edit starts its own step.
         self.last_edit = None;
     }

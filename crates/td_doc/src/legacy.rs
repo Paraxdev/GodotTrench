@@ -12,9 +12,6 @@ pub const GAME_FILE: &str = "godottrench_game.json";
 /// Map extensions, the current one first.
 pub const MAP_EXTS: [&str; 2] = ["tdm", "gtm"];
 
-const CLASS_PREFIX: &str = "gt_";
-const NEW_CLASS_PREFIX: &str = "td_";
-
 /// Whether `path` is a map file, by its extension.
 pub fn is_map_path(path: &Path) -> bool {
     path.extension().is_some_and(|e| MAP_EXTS.iter().any(|m| e.eq_ignore_ascii_case(m)))
@@ -25,11 +22,6 @@ pub fn is_map_path(path: &Path) -> bool {
 pub fn map_ext(path: &Path) -> &'static str {
     let ext = path.extension().and_then(|e| MAP_EXTS.iter().find(|m| e.eq_ignore_ascii_case(m)));
     ext.copied().unwrap_or(MAP_EXTS[0])
-}
-
-/// The current classname for an old one, whether or not anything defines it.
-pub fn modern_classname(classname: &str) -> Option<String> {
-    classname.strip_prefix(CLASS_PREFIX).map(|rest| format!("{NEW_CLASS_PREFIX}{rest}"))
 }
 
 #[cfg(test)]
@@ -49,13 +41,5 @@ mod tests {
         assert_eq!(map_ext(Path::new("level.tdm")), "tdm");
         assert_eq!(map_ext(Path::new("level.json")), "tdm");
         assert_eq!(map_ext(Path::new("level")), "tdm");
-    }
-
-    #[test]
-    fn classnames_change_their_prefix_only() {
-        assert_eq!(modern_classname("gt_door").as_deref(), Some("td_door"));
-        assert_eq!(modern_classname("gt_door_rotating").as_deref(), Some("td_door_rotating"));
-        assert_eq!(modern_classname("td_door"), None);
-        assert_eq!(modern_classname("func_gt_door"), None);
     }
 }
