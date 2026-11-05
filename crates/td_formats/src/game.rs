@@ -593,8 +593,12 @@ fn parse_plugin_value(text: &str, key: &str) -> Option<String> {
 pub fn addon_version(project_root: &Path) -> Option<String> {
     let text = std::fs::read_to_string(project_root.join("addons/func_godot/plugin.cfg")).ok()?;
     let version = parse_plugin_value(&text, "version")?;
-    let old = parse_plugin_value(&text, "name").is_some_and(|n| n.eq_ignore_ascii_case(td_doc::legacy::NAME));
-    Some(if old { format!("{version} ({})", td_doc::legacy::NAME) } else { version })
+    let name = parse_plugin_value(&text, "name");
+    let old = name.as_deref().and_then(|n| td_doc::legacy::ADDON_NAMES.into_iter().find(|old| n.eq_ignore_ascii_case(old)));
+    Some(match old {
+        Some(old) => format!("{version} ({old})"),
+        None => version,
+    })
 }
 
 /// Converts a file system path inside the project into a res:// path.

@@ -5,6 +5,9 @@ use std::path::Path;
 /// The product's old name, as the addon's plugin.cfg and status messages spell it.
 pub const NAME: &str = "GodotTrench";
 
+/// The names an old addon's plugin.cfg may carry. Beta builds briefly called it LevelBench, with the GodotTrench names inside.
+pub const ADDON_NAMES: [&str; 2] = [NAME, "LevelBench"];
+
 pub const MAP_FORMAT: &str = "godottrench-map";
 pub const GAME_FORMAT: &str = "godottrench-game";
 pub const GAME_FILE: &str = "godottrench_game.json";
