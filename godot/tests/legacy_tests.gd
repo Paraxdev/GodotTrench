@@ -11,6 +11,8 @@ const OLD_BINARY := "res://tests/td_tests_legacy_binary.gtm"
 const OLD_PACK := "res://tests/td_tests_old_pack"
 const OLD_GAME_FILE := "res://godottrench_game.json"
 const GAME_FILE := "res://trenchdot_game.json"
+const OLD_PROJECT := "res://tests/td_tests_old_project"
+const ADDON := "res://addons/func_godot/"
 
 ## The run_tests.gd runner, untyped so its check() is reachable.
 var t
@@ -30,6 +32,7 @@ func run(runner: SceneTree) -> void:
 	test_csharp_attributes()
 	await test_saved_scene_metadata()
 	await test_old_pack()
+	await test_old_addon_paths()
 	test_old_names_stay_in_one_place()
 
 func _entity(id: int, classname: String, properties := {}) -> Dictionary:
@@ -285,9 +288,71 @@ func test_old_pack() -> void:
 	await t.process_frame
 	_remove_old_pack()
 
+func test_old_addon_paths() -> void:
+	print("- resources that name the addon's old file paths without a uid still load")
+	DirAccess.make_dir_recursive_absolute(OLD_PROJECT)
+	var old_fgd := ADDON + "fgd/godottrench_default_fgd.tres"
+	var old_core := ADDON + "fgd/godottrench/godottrench_fgd.tres"
+	var old_config := ADDON + "game_config/godottrench/godottrench_game_config.tres"
+	var old_script := ADDON + "src/godottrench/godottrench_game_config.gd"
+	for path in [old_fgd, old_core, old_config, old_script]:
+		check(ResourceLoader.exists(path), "%s exists" % path)
+	_write(OLD_PROJECT.path_join("game_fgd.tres"), "[gd_resource type=\"Resource\" script_class=\"FuncGodotFGDFile\" load_steps=4 format=3]
+
+[ext_resource type=\"Script\" path=\"%s\" id=\"1\"]
+[ext_resource type=\"Resource\" path=\"%s\" id=\"2\"]
+
+[resource]
+script = ExtResource(\"1\")
+base_fgd_files = Array[Resource]([ExtResource(\"2\")])
+" % [ADDON + "src/fgd/func_godot_fgd_file.gd", old_core])
+	_write(OLD_PROJECT.path_join("game_config.tres"), "[gd_resource type=\"Resource\" script_class=\"GodotTrenchGameConfig\" load_steps=4 format=3]
+
+[ext_resource type=\"Script\" path=\"%s\" id=\"1\"]
+[ext_resource type=\"Resource\" path=\"%s\" id=\"2\"]
+
+[resource]
+script = ExtResource(\"1\")
+game_name = \"Old\"
+fgd_file = ExtResource(\"2\")
+csharp_source_dirs = PackedStringArray()
+output_path = \"user://td_tests_old_project_game.json\"
+" % [old_script, old_fgd])
+	var fgd := ResourceLoader.load(OLD_PROJECT.path_join("game_fgd.tres"), "", ResourceLoader.CACHE_MODE_IGNORE) as FuncGodotFGDFile
+	var current := load(ADDON + "fgd/trenchdot/trenchdot_fgd.tres") as FuncGodotFGDFile
+	var names := fgd.get_entity_definitions().keys() if fgd else []
+	names.sort()
+	var expected := current.get_entity_definitions().keys()
+	expected.sort()
+	check(fgd != null and not names.is_empty() and names == expected, "an FGD with the old core as its base lists the entities of the TrenchDot core")
+	var config := ResourceLoader.load(OLD_PROJECT.path_join("game_config.tres"), "", ResourceLoader.CACHE_MODE_IGNORE) as TrenchDotGameConfig
+	check(config != null and config.get_script() == load(old_script) and config is GodotTrenchGameConfig and config.game_name == "Old", "a game config of the old script loads as a TrenchDotGameConfig")
+	if config:
+		var all := load(ADDON + "fgd/trenchdot_default_fgd.tres") as FuncGodotFGDFile
+		var all_names := config.fgd_file.get_entity_definitions().keys()
+		all_names.sort()
+		var all_expected := all.get_entity_definitions().keys()
+		all_expected.sort()
+		check(not all_names.is_empty() and all_names == all_expected, "and its default FGD lists the entities of the TrenchDot one")
+		check(config.export_file() == OK and FileAccess.file_exists(config.output_path), "and exports")
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(config.output_path))
+	var shipped := load(old_config) as TrenchDotGameConfig
+	var shipped_now := load(ADDON + "game_config/trenchdot/trenchdot_game_config.tres") as TrenchDotGameConfig
+	check(shipped != null and shipped.map_settings == shipped_now.map_settings and shipped.fgd_file.get_entity_definitions().keys() == shipped_now.fgd_file.get_entity_definitions().keys(), "the old default game config matches the new one")
+
+	var settings := _settings(config.fgd_file)
+	var map := _map(settings, MAP)
+	map.build_from_text(_old_text([_entity(2, "light")]))
+	check(not map.build_report.get("missing_classes", ["light"]).has("light") and not _entity_nodes(map, "light").is_empty(), "and a map builds with it")
+	map.free()
+	await t.process_frame
+	for file in DirAccess.get_files_at(OLD_PROJECT):
+		DirAccess.remove_absolute(OLD_PROJECT.path_join(file))
+	DirAccess.remove_absolute(OLD_PROJECT)
+
 func test_old_names_stay_in_one_place() -> void:
 	print("- the addon spells the old names in its legacy files only")
-	var stand_ins := ["GodotTrenchBuild", "GodotTrenchCollision", "GodotTrenchIO", "GodotTrenchProp"]
+	var stand_ins := ["GodotTrenchBuild", "GodotTrenchCollision", "GodotTrenchGameConfig", "GodotTrenchIO", "GodotTrenchProp"]
 	var found: Array[String] = []
 	for c in ProjectSettings.get_global_class_list():
 		var class_name_text := String(c["class"])
@@ -305,6 +370,6 @@ func test_old_names_stay_in_one_place() -> void:
 			dirs.append(dir.path_join(sub))
 		for file in DirAccess.get_files_at(dir):
 			var path := dir.path_join(file)
-			if file.get_extension() == "gd" and not path.contains("/legacy/") and not file.begins_with("trenchdot_legacy") and old.search(FileAccess.get_file_as_string(path)):
+			if file.get_extension() == "gd" and not path.contains("/legacy/") and not path.contains("/src/godottrench/") and not file.begins_with("trenchdot_legacy") and old.search(FileAccess.get_file_as_string(path)):
 				offenders.append(path.trim_prefix("res://addons/func_godot/"))
 	check(offenders.is_empty(), "no other script spells an old name, got %s" % [offenders])
