@@ -263,6 +263,11 @@ pub fn write_refused(path: &Path) -> String {
     format!("{} is outside the project, the script's folder and the folders passed in vars, scripts cannot write there", super::tools::path_text(path))
 }
 
+/// Why a step may not read `path`, for an error.
+pub fn read_refused(path: &Path) -> String {
+    format!("{} is outside the folders the running script may read", super::tools::path_text(path))
+}
+
 /// `path` lies inside one of `folders` or is one of them, also once links are resolved. The text is compared first, so
 /// a path anywhere else, such as on a network share, is never looked up.
 pub fn inside(path: &Path, folders: &[PathBuf]) -> bool {

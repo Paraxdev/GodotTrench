@@ -234,6 +234,11 @@ pub struct MaterialLibrary {
     checked_at: Option<Instant>,
     repaint: Option<egui::Context>,
     watch: Option<Watch>,
+    /// While a run_script runs, the fence its material files are read within, see [`Self::set_fence`].
+    fence: Option<crate::mcp::script::Fence>,
+    /// A rescan inside the fence left material files unread, so the library scans again once the fence lifts.
+    rescan_owed: bool,
+    unread: std::sync::Mutex<std::collections::BTreeSet<PathBuf>>,
 }
 
 impl MaterialLibrary {
@@ -255,6 +260,9 @@ impl MaterialLibrary {
             checked_at: None,
             repaint: None,
             watch: None,
+            fence: None,
+            rescan_owed: false,
+            unread: Default::default(),
         };
         lib.rescan(game);
         lib
@@ -279,7 +287,31 @@ impl MaterialLibrary {
             checked_at: self.checked_at,
             repaint: None,
             watch: None,
+            fence: self.fence.clone(),
+            rescan_owed: false,
+            unread: Default::default(),
         }
+    }
+
+    /// Reads material files and images only within `fence` while a run_script runs, None reads anywhere again.
+    /// What was read before is not handed out inside it.
+    pub fn set_fence(&mut self, fence: Option<crate::mcp::script::Fence>) {
+        self.fence = fence;
+        self.unread.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    }
+
+    fn may_read(&self, path: &Path) -> bool {
+        let ok = self.fence.as_ref().is_none_or(|f| f.may_read(path));
+        if !ok {
+            self.unread.lock().unwrap_or_else(|e| e.into_inner()).insert(path.to_path_buf());
+        }
+
+        ok
+    }
+
+    /// Files the fence kept from being read since it was set.
+    pub fn unread(&self) -> Vec<PathBuf> {
+        self.unread.lock().unwrap_or_else(|e| e.into_inner()).iter().cloned().collect()
     }
 
     pub fn rescan(&mut self, game: &GameConfig) {
@@ -288,6 +320,7 @@ impl MaterialLibrary {
         self.sizes.clear();
         self.world_sizes.clear();
         self.infos.clear();
+        self.rescan_owed = false;
         self.root = game.texture_root().filter(|p| p.is_dir());
         self.project_root = game.project_root.clone();
         self.material_ext = game.textures.material_extension.trim_start_matches('.').to_ascii_lowercase();
@@ -318,7 +351,12 @@ impl MaterialLibrary {
             scan_dir(&mat_root, &mat_root, &[self.material_ext.clone(), "material".into()], &mut files);
             for f in files {
                 let file = f.path.clone();
-                let parsed = file.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| self.parse_material(&t));
+                if file.as_ref().is_some_and(|p| !self.may_read(p)) {
+                    self.rescan_owed = true;
+                }
+
+                let readable = file.as_ref().filter(|p| self.may_read(p));
+                let parsed = readable.and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| self.parse_material(&t));
                 if let Some([w, h]) = parsed.as_ref().and_then(|m| m.texture_size) {
                     self.world_sizes.insert(f.name.to_ascii_lowercase(), [w as f64, h as f64]);
                 }
@@ -400,7 +438,7 @@ impl MaterialLibrary {
 
     /// The watcher saw texture or material files change since the last rescan, and they stopped changing.
     pub fn changed_on_disk(&self) -> bool {
-        self.watch.as_ref().is_some_and(|w| w.settled.load(Ordering::Relaxed) != self.scanned)
+        (self.rescan_owed && self.fence.is_none()) || self.watch.as_ref().is_some_and(|w| w.settled.load(Ordering::Relaxed) != self.scanned)
     }
 
     /// Rescans when one of `names` is unknown and the files on disk changed since the last scan, so a material
@@ -460,11 +498,11 @@ impl MaterialLibrary {
 
     pub fn load_image(&self, name: &str) -> Option<image::RgbaImage> {
         if name.starts_with("res://") {
-            return image::open(self.resolve_res(name)?).ok().map(|img| img.to_rgba8());
+            return image::open(self.resolve_res(name).filter(|p| self.may_read(p))?).ok().map(|img| img.to_rgba8());
         }
 
         if let Some(path) = self.find(name).and_then(|e| e.path.as_ref()) {
-            return image::open(path).ok().map(|img| img.to_rgba8());
+            return self.may_read(path).then(|| image::open(path).ok()).flatten().map(|img| img.to_rgba8());
         }
 
         if self.is_color_only(name) {
@@ -478,6 +516,10 @@ impl MaterialLibrary {
 
     /// Godot material settings for a face material, from its `.tres` file. Cached.
     pub fn info(&mut self, name: &str) -> Option<GodotMaterial> {
+        if self.fence.is_some() {
+            return self.read_info(name);
+        }
+
         if let Some(i) = self.infos.get(name) {
             return i.clone();
         }
@@ -496,11 +538,15 @@ impl MaterialLibrary {
                 [self.material_ext.as_str(), "material"].iter().filter_map(file).find(|p| p.is_file())?
             }
         };
+        if !self.may_read(&file) {
+            return None;
+        }
+
         self.parse_material(&std::fs::read_to_string(file).ok()?)
     }
 
     fn parse_material(&self, text: &str) -> Option<GodotMaterial> {
-        godot_material::parse_with(text, |res| std::fs::read_to_string(self.resolve_res(res)?).ok())
+        godot_material::parse_with(text, |res| std::fs::read_to_string(self.resolve_res(res).filter(|p| self.may_read(p))?).ok())
     }
 
     /// Companion map such as `wall_normal.png` next to the albedo image. When the albedo is itself a
@@ -513,7 +559,7 @@ impl MaterialLibrary {
             None => stem,
         };
         let dir = albedo.parent()?;
-        self.image_exts.iter().map(|ext| dir.join(format!("{base}{suffix}.{ext}"))).find(|p| p.is_file())
+        self.image_exts.iter().map(|ext| dir.join(format!("{base}{suffix}.{ext}"))).find(|p| self.may_read(p) && p.is_file())
     }
 
     /// The first normal-map companion next to the albedo, trying every supported suffix.
@@ -526,7 +572,7 @@ impl MaterialLibrary {
         let open = |p: &Path| image::open(p).ok().map(|i| i.to_rgba8());
         // Like FuncGodot, a material resource is used as is, companion maps only apply to generated materials.
         if let Some(info) = self.info(name) {
-            let res = |r: &Option<String>| r.as_deref().and_then(|r| self.resolve_res(r)).and_then(|p| open(&p));
+            let res = |r: &Option<String>| r.as_deref().and_then(|r| self.resolve_res(r)).filter(|p| self.may_read(p)).and_then(|p| open(&p));
             // The renderer tints the albedo with albedo_color, so a material without a texture draws on white.
             let albedo = match res(&info.albedo_texture) {
                 Some(a) => a,
@@ -604,16 +650,24 @@ impl MaterialLibrary {
             return None;
         }
 
+        let path = self.find(name).and_then(|e| e.path.as_ref());
+        if path.is_some_and(|p| !self.may_read(p)) {
+            return None;
+        }
+
         if let Some(s) = self.sizes.get(name) {
             return Some(*s);
         }
 
-        let path = self.find(name)?.path.as_ref()?;
-        image::image_dimensions(path).ok().map(|(w, h)| [w, h])
+        image::image_dimensions(path?).ok().map(|(w, h)| [w, h])
     }
 
     /// The `metadata/texture_size` world size of a material, when its material file sets one.
     pub fn world_size(&self, name: &str) -> Option<[f64; 2]> {
+        if self.find(name).and_then(|e| e.material_file.as_ref()).is_some_and(|p| !self.may_read(p)) {
+            return None;
+        }
+
         self.world_sizes.get(&name.to_ascii_lowercase()).copied()
     }
 

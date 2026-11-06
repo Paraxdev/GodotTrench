@@ -751,11 +751,13 @@ impl EditorState {
         self.prefabs.refresh_extents(&mut self.doc.map, self.doc.path.as_deref());
     }
 
-    /// Keeps the files the editor reads and writes inside `fence` while a run_script runs, prefabs and model files
-    /// included. None lifts it.
+    /// Keeps the files the editor reads and writes inside `fence` while a run_script runs, prefabs, models and
+    /// materials included. None lifts it.
     pub fn fence_script(&mut self, fence: Option<crate::mcp::script::Fence>) {
         self.prefabs.set_fence(fence.clone());
+        self.prefab_library.set_fence(fence.clone());
         self.models.set_fence(fence.clone());
+        self.materials.set_fence(fence.clone());
         self.script_fence = fence;
     }
 

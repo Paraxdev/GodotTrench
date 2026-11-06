@@ -74,6 +74,10 @@ exports and the prefab library write. Prefabs, model files, textures and Hammer 
 elsewhere are left out, network paths are refused before the editor looks at them, and a save without a path writes back
 only to the map that was open when the script started.
 
+The rule also holds for material files, their images and hotspot files, the prefab library and nature presets. A
+texture whose files lie outside those folders reads as missing inside a script, so fitting or aligning it falls back to
+the default texture size. The summary then lists the files it could not read in `unread_textures`.
+
 A refused step shows up in the summary's `errors` with the reason. The summary counts tool calls as `steps` and comments
 as `notes`.
 

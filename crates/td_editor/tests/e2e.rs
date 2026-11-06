@@ -1122,6 +1122,100 @@ fn shared_scripts_only_edit_the_map() {
     let _ = std::fs::remove_dir_all(&links);
 }
 
+/// A fresh project whose folder `link` links to a fresh folder outside it, which is returned second.
+fn project_with_link(name: &str, link: &str) -> (PathBuf, PathBuf) {
+    let (project, away) = (artifacts().join(name), artifacts().join(format!("{name}_away")));
+    for dir in [&project, &away] {
+        let _ = std::fs::remove_dir_all(dir);
+        std::fs::create_dir_all(dir).unwrap();
+    }
+
+    std::fs::write(project.join("project.godot"), "config_version=5\n").unwrap();
+    let link = project.join(link);
+    std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+    assert!(link_dir(&link, &away), "link {} out of the project", link.display());
+    (project, away)
+}
+
+/// Runs `steps` as a script saved in `project`, going on past errors.
+fn run_steps(ed: &Editor, project: &std::path::Path, steps: Value) -> Value {
+    std::fs::write(project.join("steps.json"), json!({ "steps": steps }).to_string()).unwrap();
+    ed.call("run_script", json!({ "path": project.join("steps.json"), "continue_on_error": true }))
+}
+
+#[test]
+#[ignore]
+fn script_random_fill_takes_no_pieces_through_a_link() {
+    let (project, away) = project_with_link("script_fill_linked", "prefab_library");
+    std::fs::create_dir_all(away.join("kit")).unwrap();
+    let mut piece = td_doc::Map::new();
+    let layer = piece.default_layer();
+    let cube = td_geom::Brush::from_aabb(&td_core::Aabb::new(td_core::DVec3::ZERO, td_core::DVec3::splat(64.0)), "brick").unwrap();
+    piece.insert(layer, td_doc::NodeKind::Brush(cube));
+    td_doc::format::save(&piece, &away.join("kit/block.tdm")).unwrap();
+    let ed = Editor::launch("script_fill_linked");
+    ed.call("open_project", json!({ "path": project }));
+    let fill = json!({ "pieces": [{ "name": "Kit/Block" }], "cells": [2, 2], "cell": 64 });
+    let summary = run_steps(&ed, &project, json!([{ "tool": "random_fill", "args": fill }]));
+    let errors = summary["errors"].to_string();
+    assert!(errors.contains("outside the folders the running script may read"), "{errors}");
+    assert_eq!(ed.brushes(), 0);
+    ed.call("random_fill", fill);
+    assert!(ed.brushes() > 0, "outside a script the linked library fills");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+#[ignore]
+fn script_scatter_preset_writes_no_models_through_a_link() {
+    let (project, away) = project_with_link("script_preset_linked", "trenchdot/nature");
+    let ed = Editor::launch("script_preset_linked");
+    ed.call("open_project", json!({ "path": project }));
+    let preset = json!({ "op": "preset", "preset": "low-poly trees" });
+    let summary = run_steps(&ed, &project, json!([{ "tool": "scatter", "args": preset }]));
+    let errors = summary["errors"].to_string();
+    assert!(errors.contains("scripts cannot write"), "{errors}");
+    assert!(files_below(&away).is_empty(), "no model was written through the link");
+    ed.call("scatter", preset);
+    assert!(away.join("pine.bbmodel").is_file(), "outside a script the preset adds its models");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
+#[test]
+#[ignore]
+fn script_material_reads_stay_out_of_linked_textures() {
+    let (project, away) = project_with_link("script_material_linked", "textures");
+    image::RgbaImage::from_pixel(8, 8, image::Rgba([1, 2, 3, 255])).save(away.join("wall.png")).unwrap();
+    std::fs::write(away.join("wall.hotspots.json"), r#"{"rects": [[0, 0, 4, 4]]}"#).unwrap();
+    std::fs::write(
+        away.join("wall.tres"),
+        "[gd_resource type=\"StandardMaterial3D\" format=3]\n[resource]\ntransparency = 1\nmetadata/texture_size = Vector2(128, 64)\n",
+    )
+    .unwrap();
+    let ed = Editor::launch("script_material_linked");
+    ed.call("open_project", json!({ "path": project }));
+    let info = json!({ "op": "material_info", "material": "wall" });
+    let direct = ed.call("texture", info.clone());
+    assert_eq!((&direct["size"], &direct["hotspots"]), (&json!([8, 8]), &json!([[0.0, 0.0, 4.0, 4.0]])), "{direct}");
+    assert_eq!((&direct["transparent"], &direct["world_size"]), (&json!(true), &json!([128.0, 64.0])), "{direct}");
+    let summary = run_steps(
+        &ed,
+        &project,
+        json!([
+            { "tool": "texture", "args": info, "save": "info" },
+            { "tool": "command", "args": { "action": "reload_materials" } },
+            { "tool": "texture", "args": info, "save": "rescanned" },
+        ]),
+    );
+    let fenced = &summary["vars"]["info"];
+    assert_eq!((&fenced["size"], &fenced["hotspots"]), (&Value::Null, &json!([])), "{summary}");
+    assert_eq!((&fenced["transparent"], &fenced["world_size"]), (&json!(false), &Value::Null), "the material file is not read either");
+    assert_eq!(summary["vars"]["rescanned"]["world_size"], Value::Null, "a rescan inside the script reads no linked material");
+    assert!(summary["unread_textures"].as_array().is_some_and(|u| !u.is_empty()), "the summary names what went unread: {summary}");
+    assert_eq!(ed.call("texture", info)["world_size"], json!([128.0, 64.0]), "the library reads the linked folder again after the script");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
 /// Replays the showcase maps in examples/mcp against the demo project, the same way a user or an LLM would build them.
 #[test]
 #[ignore]

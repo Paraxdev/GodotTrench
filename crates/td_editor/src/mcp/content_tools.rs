@@ -303,10 +303,6 @@ impl App {
 
         let Some(key) = args["name"].as_str() else { return err(format!("{op} needs name, category/name from op list")) };
         let Some(entry) = self.state.prefab_library.find(key).cloned() else { return err(format!("no prefab {key}, op list shows what there is")) };
-        if let Some(path) = entry.path.as_deref().filter(|p| !self.state.may_read(p)) {
-            return err(format!("{} is outside the folders the running script may read", super::tools::path_text(path)));
-        }
-
         let text = match self.state.prefab_library.text(&entry) {
             Ok(t) => t,
             Err(e) => return err(e),
@@ -1645,6 +1641,7 @@ impl App {
             }
         }
 
+        let unread = self.state.materials.unread();
         self.state.fence_script(None);
         if let Some(bounds) = self.state.focus_request.take() {
             for v in &mut self.viewports {
@@ -1662,8 +1659,12 @@ impl App {
 
         let undo = rewinds.mark(&self.state.doc).and_then(|mark| self.state.doc.squash_since(mark, name));
         let saved: serde_json::Map<String, Value> = vars.into_iter().filter(|(k, _)| k != "last").collect();
-        let summary =
+        let mut summary =
             json!({ "steps": steps.len(), "notes": notes, "ran": ran, "errors": errors, "undo": undo, "vars": saved, "state": self.state_summary()["map"] });
+        if !unread.is_empty() {
+            summary["unread_textures"] = json!(unread);
+        }
+
         if errors.is_empty() || continue_on_error { ok(summary) } else { ToolResult::Error(serde_json::to_string_pretty(&summary).unwrap_or_default()) }
     }
 

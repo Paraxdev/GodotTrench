@@ -177,6 +177,10 @@ pub fn prepare_preset(state: &mut EditorState, preset: &str) -> Result<usize, Pr
         return Ok(0);
     }
 
+    for name in &names {
+        state.may_write(&nature.join(format!("{name}.bbmodel"))).map_err(PresetProblem::Write)?;
+    }
+
     let written = td_formats::nature::install(&nature, &names, false).map_err(|e| PresetProblem::Write(e.to_string()))?;
     refresh_models(state);
     Ok(written.len())

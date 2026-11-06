@@ -2328,7 +2328,7 @@ pub fn write_hotspots(state: &EditorState, material: &str, rects: &[[f64; 4]]) -
 
 /// Hotspot rectangles of a material from `<texture>.hotspots.json` (`{"rects": [[x, y, w, h], ...]}` in pixels).
 pub fn hotspot_rects(state: &EditorState, material: &str) -> Vec<[f64; 4]> {
-    let Some(file) = hotspot_path(state, material) else { return Vec::new() };
+    let Some(file) = hotspot_path(state, material).filter(|f| state.may_read(f)) else { return Vec::new() };
     let Ok(text) = std::fs::read_to_string(file) else { return Vec::new() };
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else { return Vec::new() };
     value["rects"]

@@ -72,6 +72,8 @@ pub struct PrefabLibrary {
     pub entries: Vec<Entry>,
     /// res://prefab_library of the open project.
     pub folder: Option<PathBuf>,
+    /// The entries a running run_script may read, see [`Self::set_fence`].
+    fence: Option<crate::mcp::script::Fence>,
 }
 
 impl PrefabLibrary {
@@ -114,10 +116,16 @@ impl PrefabLibrary {
     pub fn text(&self, entry: &Entry) -> Result<String, String> {
         let loaded = match (entry.builtin, &entry.path) {
             (Some(bytes), _) => format::from_bytes(bytes),
+            (None, Some(path)) if self.fence.as_ref().is_some_and(|f| !f.may_read(path)) => return Err(crate::mcp::script::read_refused(path)),
             (None, Some(path)) => format::load(path),
             (None, None) => return Err("the entry has no file".into()),
         };
         loaded.map(|l| clipboard_of(&l.map)).map_err(|e| e.to_string())
+    }
+
+    /// Only hands out the text of entries `fence` allows while a run_script runs, None allows all again.
+    pub fn set_fence(&mut self, fence: Option<crate::mcp::script::Fence>) {
+        self.fence = fence;
     }
 
     /// Saves `roots` of `map` as a new project entry in `category` and rescans. It is moved so its bottom center sits
