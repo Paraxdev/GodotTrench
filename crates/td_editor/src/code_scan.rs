@@ -251,28 +251,100 @@ impl Drop for Kept {
     }
 }
 
+/// The change time on Unix, which every write moves and no copy or unzip can set back.
+#[cfg(unix)]
+fn changed(meta: &std::fs::Metadata) -> Option<(i64, i64)> {
+    use std::os::unix::fs::MetadataExt;
+    Some((meta.ctime(), meta.ctime_nsec()))
+}
+
+#[cfg(not(unix))]
+fn changed(_: &std::fs::Metadata) -> Option<(i64, i64)> {
+    None
+}
+
+/// The entries of a folder, with whether the walk goes into each and a hash of its size and times.
+fn listing(dir: &Path) -> Vec<(std::ffi::OsString, bool, u64)> {
+    #[cfg(windows)]
+    if let Some(listed) = windows_listing(dir) {
+        return listed;
+    }
+
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let facts = |meta: &std::fs::Metadata| (meta.is_dir(), meta.len(), meta.modified().ok(), changed(meta));
+    entries
+        .flatten()
+        .map(|entry| {
+            let meta = entry.metadata().ok();
+            (entry.file_name(), meta.as_ref().is_some_and(|m| m.is_dir()), hashed(meta.as_ref().map(facts)))
+        })
+        .collect()
+}
+
+/// The folder as Windows lists it, with the change time std leaves out. None where the file system cannot list it so.
+#[cfg(windows)]
+fn windows_listing(dir: &Path) -> Option<Vec<(std::ffi::OsString, bool, u64)>> {
+    use std::os::windows::{ffi::OsStringExt, fs::OpenOptionsExt, io::AsRawHandle};
+
+    use windows_sys::Win32::Foundation::ERROR_NO_MORE_FILES;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FULL_DIR_INFO, FileFullDirectoryInfo,
+        FileFullDirectoryRestartInfo, GetFileInformationByHandleEx,
+    };
+
+    let folder = std::fs::OpenOptions::new().read(true).custom_flags(FILE_FLAG_BACKUP_SEMANTICS).open(dir).ok()?;
+    // u64s keep the entries aligned.
+    let (mut listed, mut buf, mut class) = (Vec::new(), vec![0u64; 8192], FileFullDirectoryRestartInfo);
+    while unsafe { GetFileInformationByHandleEx(folder.as_raw_handle(), class, buf.as_mut_ptr().cast(), (buf.len() * 8) as u32) } != 0 {
+        class = FileFullDirectoryInfo;
+        let mut at = 0;
+        loop {
+            let entry = unsafe { buf.as_ptr().cast::<u8>().add(at).cast::<FILE_FULL_DIR_INFO>() };
+            let (info, name) =
+                unsafe { (&*entry, std::slice::from_raw_parts((&raw const (*entry).FileName).cast::<u16>(), (*entry).FileNameLength as usize / 2)) };
+            let name = std::ffi::OsString::from_wide(name);
+            if name != "." && name != ".." {
+                // EaSize holds the tag of a reparse point. A name surrogate, a link or junction, is no folder to std.
+                let link = info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0 && info.EaSize & 0x2000_0000 != 0;
+                let into = info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0 && !link;
+                listed.push((name, into, hashed((into, info.EndOfFile, info.LastWriteTime, info.ChangeTime))));
+            }
+
+            if info.NextEntryOffset == 0 {
+                break;
+            }
+
+            at += info.NextEntryOffset as usize;
+        }
+    }
+
+    (std::io::Error::last_os_error().raw_os_error() == Some(ERROR_NO_MORE_FILES as i32)).then_some(listed)
+}
+
+fn hashed(value: impl Hash) -> u64 {
+    let mut h = std::hash::DefaultHasher::new();
+    value.hash(&mut h);
+    h.finish()
+}
+
 /// The names, sizes and times of everything the scan looks through, to tell when one of them changed.
 fn stamp(root: &Path) -> u64 {
     let (mut sum, mut seen, mut dirs) = (0u64, 0, vec![root.to_path_buf()]);
     while let Some(dir) = dirs.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
-        for entry in entries.flatten() {
+        for (name, into, facts) in listing(&dir) {
             seen += 1;
             if seen > LIMITS.entries {
                 return sum;
             }
 
-            if entry.file_name() == ".git" {
+            if name == ".git" {
                 continue;
             }
 
-            let meta = entry.metadata().ok();
-            let mut h = std::hash::DefaultHasher::new();
-            entry.path().hash(&mut h);
-            meta.as_ref().map(|m| (m.is_dir(), m.len(), m.modified().ok())).hash(&mut h);
-            sum = sum.wrapping_add(h.finish());
-            if meta.is_some_and(|m| m.is_dir()) {
-                dirs.push(entry.path());
+            let path = dir.join(name);
+            sum = sum.wrapping_add(hashed((&path, facts)));
+            if into {
+                dirs.push(path);
             }
         }
     }
@@ -1069,20 +1141,25 @@ mod tests {
         assert_eq!(find_within(root, &none), Some(code("", TOO_BIG)));
     }
 
+    /// Making a symbolic link needs Developer Mode on Windows, a junction does not.
+    #[cfg(windows)]
+    fn make_link(target: &Path, link: &Path) -> std::io::Result<()> {
+        std::os::windows::fs::symlink_dir(target, link).or_else(|_| {
+            let status = std::process::Command::new("cmd").arg("/C").arg("mklink").arg("/J").arg(link).arg(target).output()?.status;
+            if status.success() { Ok(()) } else { Err(std::io::Error::other("mklink failed")) }
+        })
+    }
+
+    #[cfg(unix)]
+    fn make_link(target: &Path, link: &Path) -> std::io::Result<()> {
+        std::os::unix::fs::symlink(target, link)
+    }
+
     #[test]
     fn links_count() {
         let dir = fresh();
         let outside = tempfile::tempdir().unwrap();
-        let link = dir.path().join("addons");
-        // Making a symbolic link needs Developer Mode on Windows, a junction does not.
-        #[cfg(windows)]
-        let made = std::os::windows::fs::symlink_dir(outside.path(), &link).or_else(|_| {
-            let status = std::process::Command::new("cmd").arg("/C").arg("mklink").arg("/J").arg(&link).arg(outside.path()).output()?.status;
-            if status.success() { Ok(()) } else { Err(std::io::Error::other("mklink failed")) }
-        });
-        #[cfg(unix)]
-        let made = std::os::unix::fs::symlink(outside.path(), &link);
-        if made.is_err() {
+        if make_link(outside.path(), &dir.path().join("addons")).is_err() {
             eprintln!("skipped, this account cannot make links");
             return;
         }
@@ -1201,5 +1278,109 @@ mod tests {
         );
         scans.wait_for_change(quiet.path());
         assert_eq!(scans.wait(quiet.path()).map(|c| c.path), Some("late.gd".into()));
+    }
+
+    /// NTFS lists a file's size and times in its folder a moment after the write, so this waits for two looks to agree.
+    fn settled(root: &Path) -> u64 {
+        let mut last = stamp(root);
+        for _ in 0..100 {
+            std::thread::sleep(Duration::from_millis(20));
+            let now = stamp(root);
+            if now == last {
+                break;
+            }
+
+            last = now;
+        }
+
+        last
+    }
+
+    fn set_modified(path: &Path, modified: std::time::SystemTime) {
+        std::fs::File::options().write(true).open(path).unwrap().set_modified(modified).unwrap();
+    }
+
+    #[test]
+    fn a_file_rewritten_with_the_same_size_and_time_changes_the_stamp() {
+        let (dir, outside) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let root = dir.path();
+        write(root, "project.godot", "first");
+        write(root, "a/one.txt", "first");
+        write(root, "a/two.txt", "other");
+        let (godot, one) = (root.join("project.godot"), root.join("a/one.txt"));
+        let modified = std::fs::metadata(&one).unwrap().modified().unwrap();
+        set_modified(&godot, modified);
+        let mut last = settled(root);
+        let mut rewritten = |how: &str, path: &Path, text: &[u8]| {
+            let meta = std::fs::metadata(path).unwrap();
+            assert_eq!((meta.len(), meta.modified().unwrap()), (5, modified), "{how} keeps the size and modified time");
+            assert_eq!(std::fs::read(path).unwrap(), text);
+            let now = settled(root);
+            assert_ne!(now, last, "{how} shows");
+            last = now;
+        };
+
+        let mut file = std::fs::OpenOptions::new().write(true).open(&one).unwrap();
+        std::io::Write::write_all(&mut file, b"WORLD").unwrap();
+        file.set_modified(modified).unwrap();
+        drop(file);
+        rewritten("a write in place", &one, b"WORLD");
+
+        std::fs::write(&godot, "WORLD").unwrap();
+        set_modified(&godot, modified);
+        rewritten("a truncating write", &godot, b"WORLD");
+
+        let source = outside.path().join("one.txt");
+        std::fs::write(&source, "AGAIN").unwrap();
+        set_modified(&source, modified);
+        std::fs::copy(&source, &one).unwrap();
+        // A copy takes the modified time of its source on Windows, and keeps the creation time of the file it replaces.
+        #[cfg(not(windows))]
+        set_modified(&one, modified);
+        rewritten("a copy over the file", &one, b"AGAIN");
+
+        assert_eq!(settled(root), last, "untouched files keep the stamp");
+    }
+
+    #[test]
+    fn a_listing_holds_each_entry_once_and_leaves_links_alone() {
+        let (dir, outside) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let root = dir.path();
+        let names = |dir: &Path| {
+            let mut names: Vec<(String, bool)> = listing(dir).into_iter().map(|(name, into, _)| (name.to_string_lossy().into_owned(), into)).collect();
+            names.sort();
+            names
+        };
+
+        assert_eq!(names(&root.join("missing")), []);
+        std::fs::create_dir(root.join("empty")).unwrap();
+        assert_eq!(names(&root.join("empty")), []);
+        write(root, "one/only.gd", "x");
+        assert_eq!(names(&root.join("one")), [("only.gd".to_string(), false)]);
+
+        // Enough long names to fill more than one buffer of the Windows listing.
+        let many = root.join("many");
+        for i in 0..1500 {
+            write(&many, &format!("a file with a name long enough to fill a listing {i:04}.txt"), "x");
+        }
+
+        std::fs::create_dir(many.join("sub")).unwrap();
+        let linked = make_link(outside.path(), &many.join("link")).is_ok();
+        let listed = names(&many);
+        let mut by_std: Vec<(String, bool)> =
+            std::fs::read_dir(&many).unwrap().flatten().map(|e| (e.file_name().to_string_lossy().into_owned(), e.file_type().unwrap().is_dir())).collect();
+        by_std.sort();
+        assert_eq!(listed, by_std);
+        assert_eq!(listed.len(), 1501 + usize::from(linked));
+        assert!(listed.contains(&("sub".to_string(), true)));
+        assert_eq!(listed.contains(&("link".to_string(), false)), linked);
+        #[cfg(windows)]
+        assert_eq!([&many, &root.join("empty"), &root.join("missing")].map(|dir| windows_listing(dir).map(|l| l.len())), [Some(listed.len()), Some(0), None]);
+
+        let before = settled(root);
+        write(outside.path(), "far.gd", "x");
+        assert_eq!(settled(root), before, "a link is not followed");
+        write(root, "one/only.gd", "y");
+        assert_ne!(settled(root), before);
     }
 }
