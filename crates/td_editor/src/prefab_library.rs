@@ -74,6 +74,8 @@ pub struct PrefabLibrary {
     pub folder: Option<PathBuf>,
     /// The entries a running run_script may read, see [`Self::set_fence`].
     fence: Option<crate::mcp::script::Fence>,
+    /// A rescan inside the fence left entries out, so the library scans again once the fence lifts.
+    rescan_owed: bool,
 }
 
 impl PrefabLibrary {
@@ -85,6 +87,7 @@ impl PrefabLibrary {
 
     pub fn rescan(&mut self, project_root: Option<&Path>) {
         self.entries.clear();
+        self.rescan_owed = false;
         for (category, name, bytes) in BUILTIN {
             if let Ok(loaded) = format::from_bytes(bytes) {
                 self.entries.push(entry(name, category, Source::BuiltIn, None, Some(bytes), &loaded.map));
@@ -93,7 +96,9 @@ impl PrefabLibrary {
 
         self.folder = project_root.map(|r| r.join(FOLDER));
         if let Some(folder) = self.folder.clone() {
-            scan(&folder, &folder, &mut self.entries);
+            let fence = self.fence.clone();
+            let refused = |p: &Path| fence.as_ref().is_some_and(|f| !f.may_read(p));
+            self.rescan_owed = scan(&folder, &folder, &refused, &mut self.entries);
         }
 
         self.entries.sort_by(|a, b| (a.source == Source::BuiltIn, &a.category, &a.name).cmp(&(b.source == Source::BuiltIn, &b.category, &b.name)));
@@ -104,6 +109,11 @@ impl PrefabLibrary {
         out.sort();
         out.dedup();
         out
+    }
+
+    /// The entries a running run_script may read, every entry outside one.
+    pub fn readable(&self) -> impl Iterator<Item = &Entry> {
+        self.entries.iter().filter(|e| e.path.as_ref().is_none_or(|p| self.fence.as_ref().is_none_or(|f| f.may_read(p))))
     }
 
     /// The entry named by `key`, category/name or just the name, ignoring case.
@@ -123,9 +133,13 @@ impl PrefabLibrary {
         loaded.map(|l| clipboard_of(&l.map)).map_err(|e| e.to_string())
     }
 
-    /// Only hands out the text of entries `fence` allows while a run_script runs, None allows all again.
+    /// Only lists and hands out the text of entries `fence` allows while a run_script runs, None allows all again.
     pub fn set_fence(&mut self, fence: Option<crate::mcp::script::Fence>) {
         self.fence = fence;
+        if self.fence.is_none() && self.rescan_owed {
+            let root = self.folder.as_ref().and_then(|f| f.parent()).map(Path::to_path_buf);
+            self.rescan(root.as_deref());
+        }
     }
 
     /// Saves `roots` of `map` as a new project entry in `category` and rescans. It is moved so its bottom center sits
@@ -190,17 +204,25 @@ fn display_name(stem: &str) -> String {
     chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
 }
 
-fn scan(root: &Path, dir: &Path, out: &mut Vec<Entry>) {
-    let Ok(read) = std::fs::read_dir(dir) else { return };
+/// Adds the entries below `dir`, all but those `refused`, and tells whether it refused any.
+fn scan(root: &Path, dir: &Path, refused: &dyn Fn(&Path) -> bool, out: &mut Vec<Entry>) -> bool {
+    let Ok(read) = std::fs::read_dir(dir) else { return false };
     let mut paths: Vec<PathBuf> = read.flatten().map(|e| e.path()).collect();
     paths.sort();
+    let mut left_out = false;
     for path in paths {
-        if path.is_dir() {
-            scan(root, &path, out);
+        let is_dir = path.is_dir();
+        if !is_dir && !td_doc::legacy::is_map_path(&path) {
             continue;
         }
 
-        if !td_doc::legacy::is_map_path(&path) {
+        if refused(&path) {
+            left_out = true;
+            continue;
+        }
+
+        if is_dir {
+            left_out |= scan(root, &path, refused, out);
             continue;
         }
 
@@ -210,6 +232,8 @@ fn scan(root: &Path, dir: &Path, out: &mut Vec<Entry>) {
         let category = if category.is_empty() { "Misc".to_string() } else { category.split('/').map(display_name).collect::<Vec<_>>().join("/") };
         out.push(entry(&name, &category, Source::Project, Some(path.clone()), None, &loaded.map));
     }
+
+    left_out
 }
 
 fn entry(name: &str, category: &str, source: Source, path: Option<PathBuf>, builtin: Option<&'static [u8]>, map: &Map) -> Entry {
@@ -311,6 +335,44 @@ mod tests {
         std::fs::create_dir_all(&folder).unwrap();
         state.save_map(&folder.join("level_0_to_1.tdm")).unwrap();
         assert!(state.prefab_library.find("connectors/level 0 to 1").is_some(), "Save As into the folder rescans the library");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_fence_keeps_entries_outside_it_unlisted_and_unloaded() {
+        let root = std::env::temp_dir().join(format!("td_prefab_library_fence_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        map.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::new(8.0, 0.0, -24.0), DVec3::new(72.0, 40.0, 16.0)), "dev/grey").unwrap()));
+        let folder = root.join(FOLDER);
+        let save = |file: &str| {
+            std::fs::create_dir_all(folder.join(file).parent().unwrap()).unwrap();
+            format::save(&map, &folder.join(file)).unwrap();
+        };
+        for file in ["kept/arch.tdm", "kept/door.tdm", "away/secret.tdm", "loose.tdm"] {
+            save(file);
+        }
+
+        let keys = |entries: Vec<&Entry>| -> Vec<String> { entries.iter().filter(|e| e.source == Source::Project).map(|e| e.key()).collect() };
+        let everything = ["Away/Secret", "Kept/Arch", "Kept/Door", "Misc/Loose"];
+        let mut library = PrefabLibrary::new(Some(&root));
+        assert_eq!(keys(library.readable().collect()), everything);
+        let fence = crate::mcp::script::Fence::new(vec![folder.join("kept")]);
+        library.set_fence(Some(fence.clone()));
+        assert_eq!(keys(library.readable().collect()), ["Kept/Arch", "Kept/Door"]);
+        assert_eq!(library.readable().filter(|e| e.source == Source::BuiltIn).count(), BUILTIN.len());
+        assert_eq!(keys(library.entries.iter().collect()), everything, "listed again once the fence lifts");
+
+        library.rescan(Some(&root));
+        assert_eq!(keys(library.entries.iter().collect()), ["Kept/Arch", "Kept/Door"], "a rescan inside the fence loads nothing outside it");
+        library.set_fence(None);
+        assert_eq!(keys(library.entries.iter().collect()), everything, "and scans again once it lifts");
+
+        save("kept/late.tdm");
+        library.set_fence(Some(fence));
+        library.set_fence(None);
+        assert!(library.find("kept/late").is_none(), "a fence that left nothing out costs no rescan");
         std::fs::remove_dir_all(&root).unwrap();
     }
 }

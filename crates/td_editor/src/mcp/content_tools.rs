@@ -265,8 +265,7 @@ impl App {
             let entries: Vec<Value> = self
                 .state
                 .prefab_library
-                .entries
-                .iter()
+                .readable()
                 .filter(|e| query.is_empty() || e.key().to_lowercase().contains(&query))
                 .map(|e| {
                     let source = if e.source == crate::prefab_library::Source::BuiltIn { "builtin" } else { "project" };

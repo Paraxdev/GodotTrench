@@ -1270,6 +1270,42 @@ fn script_material_reads_stay_out_of_linked_textures() {
     let _ = std::fs::remove_dir_all(&project);
 }
 
+#[test]
+#[ignore]
+fn script_prefab_library_lists_no_linked_entries() {
+    let (project, away) = project_with_link("script_library_linked", "prefab_library/kit");
+    let mut piece = td_doc::Map::new();
+    let layer = piece.default_layer();
+    let slab = td_core::Aabb::new(td_core::DVec3::new(-48.0, 0.0, -16.0), td_core::DVec3::new(48.0, 24.0, 40.0));
+    piece.insert(layer, td_doc::NodeKind::Brush(td_geom::Brush::from_aabb(&slab, "brick").unwrap()));
+    td_doc::format::save(&piece, &away.join("block.tdm")).unwrap();
+    std::fs::create_dir_all(project.join("prefab_library/kept")).unwrap();
+    td_doc::format::save(&piece, &project.join("prefab_library/kept/arch.tdm")).unwrap();
+    let ed = Editor::launch("script_library_linked");
+    ed.call("open_project", json!({ "path": project }));
+    let list = json!({ "op": "list" });
+    let names = |reply: &Value| -> Vec<String> {
+        let entries = reply["entries"].as_array().unwrap_or_else(|| panic!("{reply}"));
+        entries.iter().filter(|e| e["source"] == "project").map(|e| e["name"].as_str().unwrap().to_string()).collect()
+    };
+    assert_eq!(names(&ed.call("prefab_library", list.clone())), ["Kept/Arch", "Kit/Block"]);
+    let summary = run_steps(
+        &ed,
+        &project,
+        json!([
+            { "tool": "prefab_library", "args": list, "save": "before" },
+            { "tool": "create_brush", "args": { "min": [32, 0, 72], "max": [104, 40, 88] }, "save": "ledge" },
+            { "tool": "prefab_library", "args": { "op": "add", "ids": "$ledge.ids", "category": "kept", "name": "ledge" } },
+            { "tool": "prefab_library", "args": list, "save": "after" },
+        ]),
+    );
+    assert_eq!(summary["errors"], json!([]), "{summary}");
+    assert_eq!(names(&summary["vars"]["before"]), ["Kept/Arch"], "{summary}");
+    assert_eq!(names(&summary["vars"]["after"]), ["Kept/Arch", "Kept/Ledge"], "the rescan after the add loads no linked entry");
+    assert_eq!(names(&ed.call("prefab_library", list)), ["Kept/Arch", "Kept/Ledge", "Kit/Block"], "the library scans the link again after the script");
+    let _ = std::fs::remove_dir_all(&project);
+}
+
 /// Replays the showcase maps in examples/mcp against the demo project, the same way a user or an LLM would build them.
 #[test]
 #[ignore]
