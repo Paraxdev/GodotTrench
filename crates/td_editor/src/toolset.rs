@@ -838,7 +838,10 @@ impl ToolSet {
         }
 
         if let Some(drag) = &self.rotate.drag {
-            if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
+            // Every visible view runs this with the one global pointer, only the view being dragged may compute the angle.
+            if response.dragged_by(PointerButton::Primary)
+                && let Some(pos) = ui.input(|i| i.pointer.interact_pos())
+            {
                 if let Some(p) = ring_plane_point(cam, rect, pos, drag.center, drag.axis) {
                     let cur = (p - drag.center).normalize_or_zero();
                     let mut angle = drag.start_vec.cross(cur).dot(drag.axis).atan2(drag.start_vec.dot(cur)).to_degrees();

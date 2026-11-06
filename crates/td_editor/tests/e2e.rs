@@ -329,6 +329,51 @@ fn a_held_drag_keeps_its_modifiers_until_the_release() {
 
 #[test]
 #[ignore]
+fn a_held_rotate_drag_shows_its_angle_and_keeps_it_on_release() {
+    let ed = Editor::launch("held_rotate_drag");
+    let brush = ed.box_brush([32.0, 0.0, 0.0], [160.0, 64.0, 64.0]);
+    ed.call("select", json!({ "ids": [brush] }));
+    ed.call("set_camera", json!({ "view": "top", "center": [96, 0, 32], "zoom": 1.5 }));
+    ed.call("run_action", json!({ "action": "set_tool", "args": { "tool": "rotate" } }));
+    let drag = json!({ "type": "drag", "world": [160, 0, 32], "to_world": [96, 0, 96], "release": false });
+    assert_eq!(ed.call("simulate_input", json!({ "target": "top", "events": [drag] }))["held"], true);
+    std::thread::sleep(Duration::from_millis(500));
+    let status = ed.state()["status"].as_str().unwrap().to_string();
+    assert!(status.contains("-90.0"), "the held status shows the live angle, got {status}");
+    let (min, max) = ed.selection_bounds();
+    assert!(approx(&[min[0], max[0], min[2], max[2]], &[64.0, 128.0, -32.0, 96.0]), "the held drag already turned the brush {min:?} {max:?}");
+
+    let reply = ed.call("simulate_input", json!({ "target": "top", "events": [{ "type": "release" }] }));
+    assert_eq!(reply["held"], false);
+    let (min, max) = ed.selection_bounds();
+    assert!(approx(&[min[0], max[0], min[2], max[2]], &[64.0, 128.0, -32.0, 96.0]), "the release keeps the angle under the pointer {min:?} {max:?}");
+    assert!(approx(&[min[1], max[1]], &[0.0, 64.0]), "a turn about the up axis keeps the height {min:?} {max:?}");
+    ed.call("run_action", json!({ "action": "undo" }));
+    let (min, max) = ed.selection_bounds();
+    assert!(approx(&[min[0], max[0], min[2], max[2]], &[32.0, 160.0, 0.0, 64.0]), "one undo reverts the whole drag {min:?} {max:?}");
+}
+
+#[test]
+#[ignore]
+fn a_one_shot_rotate_drag_commits_the_angle_it_ended_on() {
+    let ed = Editor::launch("one_shot_rotate_drag");
+    let brush = ed.box_brush([32.0, 0.0, 0.0], [160.0, 64.0, 64.0]);
+    ed.call("select", json!({ "ids": [brush] }));
+    ed.call("set_camera", json!({ "view": "top", "center": [96, 0, 32], "zoom": 1.5 }));
+    ed.call("run_action", json!({ "action": "set_tool", "args": { "tool": "rotate" } }));
+    ed.input("top", json!([{ "type": "drag", "world": [160, 0, 32], "to_world": [160, 0, 96] }]));
+    let status = ed.state()["status"].as_str().unwrap().to_string();
+    assert!(status.contains("-45.0"), "the status shows the angle, got {status}");
+    let (min, max) = ed.selection_bounds();
+    let half = 96.0 / 2f64.sqrt();
+    assert!(
+        approx(&[min[0], max[0], min[2], max[2]], &[96.0 - half, 96.0 + half, 32.0 - half, 32.0 + half]),
+        "the brush turned 45 degrees about its center {min:?} {max:?}"
+    );
+}
+
+#[test]
+#[ignore]
 fn a_release_with_only_one_axis_is_refused_and_keeps_the_drag() {
     let ed = Editor::launch("held_half_release");
     let drag = json!({ "type": "drag", "world": [-96, 0, -32], "to_world": [32, 0, 64], "release": false });
