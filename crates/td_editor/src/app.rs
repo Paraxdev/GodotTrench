@@ -652,7 +652,7 @@ fn prefix(word: &str) -> String {
 }
 
 /// `Falloff::label` words the curve "smooth", which needs its own translation next to the blend mode of that name.
-fn falloff_name(falloff: td_doc::blend::Falloff) -> &'static str {
+pub(crate) fn falloff_name(falloff: td_doc::blend::Falloff) -> &'static str {
     match falloff {
         td_doc::blend::Falloff::Smooth => en!("smooth#falloff"),
         other => other.label(),

@@ -16,22 +16,26 @@ struct Fixture {
 
 /// A flat 2x2 grid mesh projected from above, so its middle vertex is one corner stitched across four faces.
 fn grid_fixture() -> (Fixture, NodeId, UvCorner) {
+    grid_of(2)
+}
+
+fn grid_of(cells: usize) -> (Fixture, NodeId, UvCorner) {
     let mut state = EditorState::new(Prefs::default());
     let layer = state.doc.map.default_layer();
-    let grid = td_geom::mesh_shapes::grid(&Aabb::new(DVec3::ZERO, DVec3::new(128.0, 0.0, 128.0)), 2, 2, "dev/grey");
+    let grid = td_geom::mesh_shapes::grid(&Aabb::new(DVec3::ZERO, DVec3::new(128.0, 0.0, 128.0)), cells, cells, "dev/grey");
     let id = state.doc.edit("add", |m, s| {
         let id = m.insert(layer, td_doc::NodeKind::Mesh(grid));
-        for f in 0..4 {
+        for f in 0..cells * cells {
             s.select_face(id, f);
         }
 
         id
     });
-    let faces: Vec<(NodeId, usize)> = (0..4).map(|f| (id, f)).collect();
+    let faces: Vec<(NodeId, usize)> = (0..cells * cells).map(|f| (id, f)).collect();
     texture_ops::mesh_uv(&mut state, &faces, MeshUvKind::PlanarAxis(1), (DVec3::X, DVec3::Y));
     let mesh = state.doc.map.mesh(id).unwrap();
-    let middle = mesh.vertices.iter().position(|v| (*v - DVec3::new(64.0, 0.0, 64.0)).length() < 1e-6).unwrap() as u32;
-    let corner = (0..4).find_map(|f| mesh.faces[f].indices.iter().position(|v| *v == middle).map(|k| (id, f, k))).unwrap();
+    let middle = mesh.vertices.iter().position(|v| (*v - DVec3::new(64.0, 0.0, 64.0)).length() < 1e-6).unwrap_or(0) as u32;
+    let corner = (0..mesh.faces.len()).find_map(|f| mesh.faces[f].indices.iter().position(|v| *v == middle).map(|k| (id, f, k))).unwrap();
     (Fixture { state, panels: PanelState::default(), actions: Vec::new() }, id, corner)
 }
 
@@ -221,4 +225,56 @@ fn toolbar_menus_and_chips_reach_every_action() {
     h.get_by_label("UV Lock").click();
     h.run();
     assert_eq!(h.state().actions.last(), Some(&Action::ToggleUvLock));
+}
+
+#[test]
+fn the_footer_counts_corners_with_russian_plurals() {
+    use egui_kittest::kittest::Queryable;
+    let _russian = td_editor::i18n::scope(td_editor::i18n::Lang::Ru);
+    for (n, text) in [(1, "1 угол"), (2, "2 угла"), (5, "5 углов"), (11, "11 углов"), (21, "21 угол")] {
+        let (mut f, id, _) = grid_of(3);
+        let mesh = f.state.doc.map.mesh(id).unwrap();
+        let all: Vec<UvCorner> = (0..mesh.faces.len()).flat_map(|face| (0..4).map(move |k| (id, face, k))).collect();
+        f.panels.uv.selected = all.into_iter().take(n).collect();
+        let h = harness(f);
+        h.get_by_label(text);
+    }
+}
+
+#[test]
+fn the_footer_counts_corners_in_english_and_asks_for_a_selection_at_zero() {
+    use egui_kittest::kittest::Queryable;
+    for (n, text) in [(1, "1 corner"), (2, "2 corners")] {
+        let (mut f, id, _) = grid_of(2);
+        f.panels.uv.selected = (0..n).map(|k| (id, 0, k)).collect();
+        harness(f).get_by_label(text);
+    }
+
+    let (f, _, _) = grid_of(2);
+    harness(f).get_by_label("Click a corner to select it, double click for a gizmo");
+}
+
+#[test]
+fn the_face_count_line_follows_russian_plurals() {
+    use egui_kittest::kittest::Queryable;
+    let _russian = td_editor::i18n::scope(td_editor::i18n::Lang::Ru);
+    for (cells, text) in [(1, "1 грань"), (2, "4 грани"), (3, "9 граней")] {
+        let (f, _, _) = grid_of(cells);
+        harness(f).get_by_label_contains(text);
+    }
+}
+
+#[test]
+fn toolbar_labels_follow_the_language_while_actions_keep_their_english_undo_label() {
+    use egui_kittest::kittest::Queryable;
+    let _german = td_editor::i18n::scope(td_editor::i18n::Lang::De);
+    let (f, _, _) = grid_fixture();
+    let mut h = harness(f);
+    h.get_by_label("Projektion").click();
+    h.run();
+    h.get_by_label("UV").click();
+    h.run();
+    h.get_by_label("U spiegeln").click();
+    h.run();
+    assert_eq!(h.state().state.doc.history.undo_labels().next(), Some("Flip U"));
 }

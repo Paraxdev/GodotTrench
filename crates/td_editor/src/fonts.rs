@@ -47,7 +47,7 @@ mod tests {
 
     fn missing(fonts: &mut Fonts, family: FontFamily, text: &str) -> Vec<char> {
         let id = FontId::new(14.0, family);
-        let mut out: Vec<char> = text.chars().filter(|c| !fonts.has_glyph(&id, *c)).collect();
+        let mut out: Vec<char> = text.chars().filter(|c| *c != '\n' && !fonts.has_glyph(&id, *c)).collect();
         out.sort_unstable();
         out.dedup();
         out

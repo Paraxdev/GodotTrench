@@ -14,6 +14,7 @@ use egui::{Color32, CursorIcon, PointerButton, Pos2, Rect, RichText, Sense, Shap
 use td_core::{DVec2, NodeId};
 
 use crate::commands::Action;
+use crate::i18n::{en, tr, tr_n, trf};
 use crate::icons;
 use crate::panels::PanelState;
 use crate::state::EditorState;
@@ -230,13 +231,13 @@ fn select_corner(uv_state: &mut UvEditorState, state: &EditorState, faces: &[(No
 /// Toolbar icon size.
 const CHIP: f32 = 16.0;
 const FOOTER_HEIGHT: f32 = 24.0;
-const CONTROLS: &str = "Faces: drag empty space moves the texture, wheel scales, right drag rotates.\n\
+const CONTROLS: &str = en!("Faces: drag empty space moves the texture, wheel scales, right drag rotates.\n\
 Corners: click selects one, Shift+click adds, Ctrl+click removes, drag moves the selection.\n\
-Double click a corner for a move gizmo. Middle drag pans, Ctrl+wheel zooms.";
+Double click a corner for a move gizmo. Middle drag pans, Ctrl+wheel zooms.");
 
 fn projection_menu(ui: &mut Ui, state: &EditorState, faces: &[FaceInfo], uv_state: &mut UvEditorState, actions: &mut Vec<Action>) {
     let mut item = |ui: &mut Ui, k: MeshUvKind| {
-        if ui.button(crate::i18n::tr(k.label())).on_hover_text(crate::i18n::tr(k.hint())).clicked() {
+        if ui.button(tr(k.label())).on_hover_text(tr(k.hint())).clicked() {
             actions.push(Action::MeshUv(k));
             uv_state.refit = 2;
             ui.close();
@@ -268,39 +269,39 @@ fn adjust_menu(
 ) {
     let uvs: Vec<DVec2> = corner_positions(state, targets.iter().copied()).into_iter().map(|(_, u)| u).collect();
     let fit = match hotspot_for(hotspots, &uvs, tex) {
-        Some(r) => ([r[0] / tex.x, r[1] / tex.y, r[2] / tex.x, r[3] / tex.y], "Stretch onto the hotspot under the corners"),
-        None => ([0.0, 0.0, 1.0, 1.0], "Stretch onto the whole texture, 0 to 1"),
+        Some(r) => ([r[0] / tex.x, r[1] / tex.y, r[2] / tex.x, r[3] / tex.y], en!("Stretch onto the hotspot under the corners")),
+        None => ([0.0, 0.0, 1.0, 1.0], en!("Stretch onto the whole texture, 0 to 1")),
     };
     let mut run = |ui: &mut Ui, enabled: bool, icon: Option<icons::Icon>, label: &str, hint: &str, op: UvAdjust| {
-        let button = egui::Button::new((icons::atom(icon, icons::SMALL), label)).image_tint_follows_text_color(true);
-        if ui.add_enabled(enabled, button).on_hover_text(hint).clicked() {
+        let button = egui::Button::new((icons::atom(icon, icons::SMALL), tr(label))).image_tint_follows_text_color(true);
+        if ui.add_enabled(enabled, button).on_hover_text(tr(hint)).clicked() {
             texture_ops::adjust_corners(state, targets, op, false);
         }
     };
-    run(ui, true, Some(icons::FLIP_U), "Flip U", "Mirror left to right around the center", UvAdjust::FlipU);
-    run(ui, true, Some(icons::FLIP_V), "Flip V", "Mirror top to bottom around the center", UvAdjust::FlipV);
-    run(ui, true, Some(icons::ROTATE_CCW), "Rotate -90", "Quarter turn counterclockwise", UvAdjust::Rotate(-90.0));
-    run(ui, true, Some(icons::ROTATE_CW), "Rotate +90", "Quarter turn clockwise", UvAdjust::Rotate(90.0));
+    run(ui, true, Some(icons::FLIP_U), en!("Flip U"), en!("Mirror left to right around the center"), UvAdjust::FlipU);
+    run(ui, true, Some(icons::FLIP_V), en!("Flip V"), en!("Mirror top to bottom around the center"), UvAdjust::FlipV);
+    run(ui, true, Some(icons::ROTATE_CCW), en!("Rotate -90"), en!("Quarter turn counterclockwise"), UvAdjust::Rotate(-90.0));
+    run(ui, true, Some(icons::ROTATE_CW), en!("Rotate +90"), en!("Quarter turn clockwise"), UvAdjust::Rotate(90.0));
     ui.separator();
-    run(ui, true, None, "Fit", fit.1, UvAdjust::Fit(fit.0));
-    run(ui, has_selection, None, "Align Horizontally", "Line the selected corners up on one v", UvAdjust::AlignHorizontal);
-    run(ui, has_selection, None, "Align Vertically", "Line the selected corners up on one u", UvAdjust::AlignVertical);
-    run(ui, has_selection, None, "Straighten", "Put the selected corners on the line between the two farthest apart", UvAdjust::Straighten);
-    run(ui, true, None, "Snap to Pixels", "Round to whole texture pixels", UvAdjust::Snap(px));
+    run(ui, true, None, en!("Fit"), fit.1, UvAdjust::Fit(fit.0));
+    run(ui, has_selection, None, en!("Align Horizontally"), en!("Line the selected corners up on one v"), UvAdjust::AlignHorizontal);
+    run(ui, has_selection, None, en!("Align Vertically"), en!("Line the selected corners up on one u"), UvAdjust::AlignVertical);
+    run(ui, has_selection, None, en!("Straighten"), en!("Put the selected corners on the line between the two farthest apart"), UvAdjust::Straighten);
+    run(ui, true, None, en!("Snap to Pixels"), en!("Round to whole texture pixels"), UvAdjust::Snap(px));
     ui.separator();
     ui.horizontal(|ui| {
-        ui.add(egui::DragValue::new(&mut uv_state.rotate_step).speed(1.0).range(0.0..=360.0).prefix("Rotate ").suffix("°"));
-        for (icon, label, sign) in [(icons::ROTATE_CCW, "Rotate Step Counterclockwise", -1.0), (icons::ROTATE_CW, "Rotate Step Clockwise", 1.0)] {
-            if icons::button(ui, icon, icons::SMALL, label, label).clicked() {
+        ui.add(egui::DragValue::new(&mut uv_state.rotate_step).speed(1.0).range(0.0..=360.0).prefix(tr("Rotate ")).suffix("°"));
+        for (icon, label, sign) in [(icons::ROTATE_CCW, en!("Rotate Step Counterclockwise"), -1.0), (icons::ROTATE_CW, en!("Rotate Step Clockwise"), 1.0)] {
+            if icons::button(ui, icon, icons::SMALL, tr(label), tr(label)).clicked() {
                 texture_ops::adjust_corners(state, targets, UvAdjust::Rotate(uv_state.rotate_step * sign), false);
             }
         }
     });
     ui.horizontal(|ui| {
-        ui.add(egui::DragValue::new(&mut uv_state.scale_step).speed(0.01).range(0.01..=100.0).prefix("Scale "));
+        ui.add(egui::DragValue::new(&mut uv_state.scale_step).speed(0.01).range(0.01..=100.0).prefix(tr("Scale ")));
         let step = uv_state.scale_step.max(0.01);
-        for (label, hint, f) in [("÷", "Shrink by the step", 1.0 / step), ("×", "Grow by the step", step)] {
-            if ui.small_button(label).on_hover_text(hint).clicked() {
+        for (label, hint, f) in [("÷", en!("Shrink by the step"), 1.0 / step), ("×", en!("Grow by the step"), step)] {
+            if ui.small_button(label).on_hover_text(tr(hint)).clicked() {
                 texture_ops::adjust_corners(state, targets, UvAdjust::Scale(DVec2::splat(f)), false);
             }
         }
@@ -313,17 +314,17 @@ fn footer(ui: &mut Ui, state: &mut EditorState, selection: &[UvCorner], px: DVec
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(egui::Layout::left_to_right(egui::Align::Center)));
     let ui = &mut child;
     if selection.is_empty() {
-        ui.label(RichText::new("Click a corner to select it, double click for a gizmo").weak());
+        ui.label(RichText::new(tr("Click a corner to select it, double click for a gizmo")).weak());
         return;
     }
 
     let uvs: Vec<DVec2> = corner_positions(state, selection.iter().copied()).into_iter().map(|(_, u)| u).collect();
     let center = texture_ops::uv_center(&uvs) * px;
-    ui.label(RichText::new(if selection.len() == 1 { "1 corner".to_string() } else { format!("{} corners", selection.len()) }).weak());
+    ui.label(RichText::new(tr_n!(selection.len(), "{n} corner", "{n} corners")).weak());
     let (mut u, mut v) = (center.x, center.y);
     let du = ui
         .add_sized([88.0, 18.0], egui::DragValue::new(&mut u).speed(0.25).max_decimals(2).prefix("U ").suffix(" px"))
-        .on_hover_text("Center of the selected corners in texture pixels");
+        .on_hover_text(tr("Center of the selected corners in texture pixels"));
     let dv = ui.add_sized([88.0, 18.0], egui::DragValue::new(&mut v).speed(0.25).max_decimals(2).prefix("V ").suffix(" px"));
     if (du.changed() || dv.changed()) && (u != center.x || v != center.y) {
         texture_ops::adjust_corners(state, selection, UvAdjust::Center(DVec2::new(u, v) / px), true);
@@ -340,7 +341,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
 
         uv_state.gizmo = false;
         uv_state.hovered = false;
-        ui.label(RichText::new("Select faces to edit their UVs: Shift+click a face, or Ctrl+click an object.").weak());
+        ui.label(RichText::new(tr("Select faces to edit their UVs: Shift+click a face, or Ctrl+click an object.")).weak());
         return;
     };
     let material = first.material.clone();
@@ -368,12 +369,12 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
     let hotspots = if uv_state.show_hotspots { crate::commands::hotspot_rects_uv(state, &material) } else { Vec::new() };
     let size = state.materials.size_label(&material).unwrap_or_else(|| format!("{} x {} px", tex.x, tex.y));
     ui.horizontal(|ui| {
-        let info = format!("{material}  ·  {size}  ·  {} faces", faces.len());
+        let info = tr_n!(faces.len(), "{material}  ·  {size}  ·  {n} face", "{material}  ·  {size}  ·  {n} faces", material, size);
         let width = (ui.available_width() - CHIP - 16.0).max(40.0);
         ui.allocate_ui_with_layout(Vec2::new(width, ui.spacing().interact_size.y), egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.add(egui::Label::new(RichText::new(&info).weak()).truncate()).on_hover_text(&info);
         });
-        icons::button(ui, icons::HELP, CHIP, "Controls", CONTROLS);
+        icons::button(ui, icons::HELP, CHIP, tr("Controls"), tr(CONTROLS));
     });
 
     let selection: Vec<UvCorner> = uv_state.selected.iter().copied().collect();
@@ -383,26 +384,26 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         if has_mesh {
-            ui.menu_button("Projection", |ui| projection_menu(ui, state, &faces, uv_state, actions))
+            ui.menu_button(tr("Projection"), |ui| projection_menu(ui, state, &faces, uv_state, actions))
                 .response
-                .on_hover_text("Lay out explicit UVs on the selected mesh faces, or every face of the selected meshes");
+                .on_hover_text(tr("Lay out explicit UVs on the selected mesh faces, or every face of the selected meshes"));
         }
 
-        ui.menu_button("UV", |ui| {
+        ui.menu_button(tr("UV"), |ui| {
             if has_explicit {
                 adjust_menu(ui, state, uv_state, &targets, has_selection, &hotspots, tex, px);
                 ui.separator();
             }
 
-            if ui.button("Reset UVs").on_hover_text("Drop any custom UVs on the selected faces back to a clean face-aligned projection").clicked() {
+            if ui.button(tr("Reset UVs")).on_hover_text(tr("Drop any custom UVs on the selected faces back to a clean face-aligned projection")).clicked() {
                 actions.push(Action::ResetTexture);
                 ui.close();
             }
         })
         .response
-        .on_hover_text("Flips, turns, fits, aligns and snaps the selected corners, or all when none are selected");
-        ui.menu_button("Hotspot", |ui| {
-            if ui.button("Hotspot Fit").on_hover_text("Fit the faces to the best rectangle of <texture>.hotspots.json").clicked() {
+        .on_hover_text(tr("Flips, turns, fits, aligns and snaps the selected corners, or all when none are selected"));
+        ui.menu_button(tr("Hotspot"), |ui| {
+            if ui.button(tr("Hotspot Fit")).on_hover_text(tr("Fit the faces to the best rectangle of <texture>.hotspots.json")).clicked() {
                 actions.push(Action::HotspotTexture);
                 ui.close();
             }
@@ -412,8 +413,8 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
                 let uvs: Vec<DVec2> = corner_positions(state, targets.iter().copied()).into_iter().map(|(_, u)| u).collect();
                 let rect = hotspot_for(&rects, &uvs, tex);
                 if ui
-                    .add_enabled(rect.is_some(), egui::Button::new("Fit Corners to Hotspot"))
-                    .on_hover_text("Stretch the corners onto the hotspot under them")
+                    .add_enabled(rect.is_some(), egui::Button::new(tr("Fit Corners to Hotspot")))
+                    .on_hover_text(tr("Stretch the corners onto the hotspot under them"))
                     .clicked()
                     && let Some(r) = rect
                 {
@@ -422,31 +423,37 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
                 }
             }
 
-            ui.checkbox(&mut uv_state.show_hotspots, "Show Hotspots");
-            if ui.button("Hotspot Editor").clicked() {
+            ui.checkbox(&mut uv_state.show_hotspots, tr("Show Hotspots"));
+            if ui.button(tr("Hotspot Editor")).clicked() {
                 actions.push(Action::ShowHotspotEditor);
                 ui.close();
             }
         });
 
         ui.add_space(4.0);
-        let chip = |ui: &mut Ui, icon: icons::Icon, on: bool, label: &str, tip: &str| icons::toggle(ui, icon, CHIP, on, label, tip).clicked();
-        if chip(ui, icons::SNAP, uv_state.pixel_snap, "Pixel Snap", "Pixel snap: dragged corners land on whole texture pixels") {
+        let chip = |ui: &mut Ui, icon: icons::Icon, on: bool, label: &str, tip: &str| icons::toggle(ui, icon, CHIP, on, tr(label), tr(tip)).clicked();
+        if chip(ui, icons::SNAP, uv_state.pixel_snap, en!("Pixel Snap"), en!("Pixel snap: dragged corners land on whole texture pixels")) {
             uv_state.pixel_snap = !uv_state.pixel_snap;
         }
 
-        if chip(ui, icons::GRID, uv_state.show_hotspots, "Show Hotspots", "Show the hotspot rectangles of the texture") {
+        if chip(ui, icons::GRID, uv_state.show_hotspots, en!("Show Hotspots"), en!("Show the hotspot rectangles of the texture")) {
             uv_state.show_hotspots = !uv_state.show_hotspots;
         }
 
-        if chip(ui, icons::VOLUME, uv_state.box_select, "Box Select", "Box select: a plain drag on empty space selects corners instead of moving the faces") {
+        if chip(
+            ui,
+            icons::VOLUME,
+            uv_state.box_select,
+            en!("Box Select"),
+            en!("Box select: a plain drag on empty space selects corners instead of moving the faces"),
+        ) {
             uv_state.box_select = !uv_state.box_select;
         }
 
         if has_explicit
             && ui
                 .add_enabled_ui(has_selection, |ui| {
-                    chip(ui, icons::MOVE, uv_state.gizmo, "Gizmo", "Move gizmo on the selected corners, a double click on a corner shows it too")
+                    chip(ui, icons::MOVE, uv_state.gizmo, en!("Gizmo"), en!("Move gizmo on the selected corners, a double click on a corner shows it too"))
                 })
                 .inner
         {
@@ -454,11 +461,13 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
         }
 
         let keys = crate::commands::shortcut_text(ui.ctx(), &state.prefs, &Action::ToggleUvLock).map(|k| format!(" ({k})")).unwrap_or_default();
-        if chip(ui, icons::UV_LOCK, state.uv_lock, "UV Lock", &format!("UV lock: textures stay attached while objects move{keys}")) {
+        if icons::toggle(ui, icons::UV_LOCK, CHIP, state.uv_lock, tr("UV Lock"), trf!("UV lock: textures stay attached while objects move{keys}", keys))
+            .clicked()
+        {
             actions.push(Action::ToggleUvLock);
         }
 
-        if icons::button(ui, icons::FOCUS, CHIP, "Frame", "Frame: fit the view to the faces again").clicked() {
+        if icons::button(ui, icons::FOCUS, CHIP, tr("Frame"), tr("Frame: fit the view to the faces again")).clicked() {
             uv_state.refit = 1;
         }
     });
@@ -667,7 +676,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
                 }
 
                 let moved: Vec<(UvCorner, DVec2)> = start.iter().map(|(c, u)| (*c, *u + offset)).collect();
-                texture_ops::set_corner_uvs(state, "Move UV Corners", false, &moved);
+                texture_ops::set_corner_uvs(state, en!("Move UV Corners"), false, &moved);
                 ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
             }
         }
@@ -695,7 +704,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
                         (*k, center + DVec2::new(d.x * c - d.y * s, d.x * s + d.y * c))
                     })
                     .collect();
-                texture_ops::set_corner_uvs(state, "Rotate UVs", false, &moved);
+                texture_ops::set_corner_uvs(state, en!("Rotate UVs"), false, &moved);
             }
         }
         Some(UvDrag::RotateFaces) => {

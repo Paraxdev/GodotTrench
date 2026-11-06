@@ -1,13 +1,15 @@
 //! Volume tool: drag out gameplay volumes (triggers, spawn areas, hurt, teleport and push zones) as brush entities.
 
-use egui::{Align2, Color32, FontId, PointerButton, Rect, Response, Ui, Vec2};
+use egui::{Color32, PointerButton, Rect, Response, Ui};
 use td_core::{Aabb, DVec3, Plane};
 use td_render::LineVertex;
 
 use crate::camera::Camera;
+use crate::i18n::{msg, trf};
 use crate::picking;
 use crate::scene::v3;
 use crate::state::EditorState;
+use crate::widgets::corner_hint;
 
 /// Brush entity classes offered by the tool, in menu order.
 pub const VOLUME_CLASSES: [&str; 8] =
@@ -83,7 +85,7 @@ impl VolumeTool {
                     let props = default_props(&class);
                     let made = crate::entity_pack::with_pack(state, &[&class], |state| {
                         crate::entity_wizards::make_volume(state, &class, &bounds, &props, Vec::new())?;
-                        state.set_status(format!("{class} created. Set its outputs in the Inspector"));
+                        state.set_status(msg!("{class} created. Set its outputs in the Inspector", class));
                         Ok(())
                     });
                     if let Err(e) = made {
@@ -107,17 +109,12 @@ impl VolumeTool {
     }
 
     pub fn paint_overlay(&self, ui: &Ui, rect: Rect, state: &EditorState) {
-        let text = format!(
-            "Volume: drag to draw a {} volume ({} units tall in 3D). Pick the class in the toolbar",
-            state.prefs.volume_class, state.prefs.volume_height
+        let text = trf!(
+            "Volume: drag to draw a {class} volume ({height} units tall in 3D). Pick the class in the toolbar",
+            class = state.prefs.volume_class,
+            height = state.prefs.volume_height
         );
-        ui.painter_at(rect).text(
-            rect.left_bottom() + Vec2::new(8.0, -8.0),
-            Align2::LEFT_BOTTOM,
-            text,
-            FontId::proportional(12.0),
-            Color32::from_rgb(255, 190, 110),
-        );
+        corner_hint(&ui.painter_at(rect), rect, text, Color32::from_rgb(255, 190, 110));
     }
 }
 

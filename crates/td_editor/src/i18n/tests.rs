@@ -542,29 +542,23 @@ fn source_keys() -> Vec<(Key, String)> {
     out
 }
 
-/// Keys the scan cannot see because the code builds them at run time.
+/// Keys the scan cannot see because they are spelled in td_geom, td_doc and td_formats and translated where they are drawn.
 fn foreign_keys() -> Vec<Key> {
-    // td_geom::Justify::label, the Texture menu draws them through tr
-    let justify = ["Left", "Right", "Top", "Bottom", "Center", "Fit", "Fit W", "Fit H"];
-    // td_doc::terrain::SculptMode::label and td_doc::blend::{BlendMode, Falloff}::label, the tool options bar draws them through tr
-    let sculpt = ["Raise", "Lower", "Smooth", "Flatten", "Noise", "Paint Alpha", "Erase Alpha", "Terrace", "Paint Layer", "Hole", "Unhole"];
-    let blend = ["paint", "erase", "smooth", "sharpen", "noise", "slope", "height", "linear", "constant", "spray"];
-    // td_doc::scatter::{ScatterKind, ScatterCollision}::{label, tooltip}, the Inspector of a scatter set draws them through tr
-    let scatter = [
-        "props",
-        "foliage",
-        "none",
-        "box",
-        "convex",
-        "decomposition",
-        "trimesh",
-        "No collision",
-        "One box around each instance",
-        "One convex hull around each instance",
-        "Several convex hulls per instance that follow concave models, slower to build",
-        "Every face of the model, exact but the most expensive",
-    ];
-    justify.into_iter().chain(sculpt).chain(blend).chain(scatter).chain(td_doc::issues::TEMPLATES).map(|k| Key::Text(k.into())).collect()
+    use td_doc::blend::{BlendMode, Falloff};
+    use td_doc::scatter::{ScatterCollision, ScatterKind};
+    use td_doc::terrain::SculptMode;
+    use td_geom::Justify;
+
+    let mut texts: Vec<&str> = Vec::new();
+    texts.extend(Justify::ALL.iter().map(Justify::label));
+    texts.extend(SculptMode::ALL.iter().map(SculptMode::label));
+    texts.extend(BlendMode::ALL.iter().map(BlendMode::label));
+    texts.extend(Falloff::ALL.iter().map(Falloff::label));
+    texts.extend(ScatterKind::ALL.iter().map(ScatterKind::label));
+    texts.extend(ScatterCollision::ALL.iter().flat_map(|c| [c.label(), c.tooltip()]));
+    texts.extend(td_doc::issues::TEMPLATES);
+    let mut seen = HashSet::new();
+    texts.into_iter().filter(|k| seen.insert(*k)).map(|k| Key::Text(k.into())).collect()
 }
 
 #[test]
@@ -1006,6 +1000,15 @@ const CONVERTED: &[&str] = &[
     "extra_tools.rs",
     "walkable.rs",
     "overlays.rs",
+    "texture_ops.rs",
+    "texture_tool.rs",
+    "blend_tool.rs",
+    "volume_tool.rs",
+    "scatter_tool.rs",
+    "uv_editor.rs",
+    "hotspot_editor.rs",
+    "trim.rs",
+    "texture_convert.rs",
 ];
 
 /// Functions of a file that is still being converted, as (file, function name).

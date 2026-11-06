@@ -10,6 +10,8 @@ use td_core::{DVec3, NodeId};
 use td_doc::{Map, NodeKind, Selection};
 use td_geom::Brush;
 
+use crate::i18n::{en, msg_n, tr, tr_n, trf};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TrimEdges {
     Bottom,
@@ -20,6 +22,15 @@ pub enum TrimEdges {
 
 impl TrimEdges {
     pub const ALL: [TrimEdges; 4] = [TrimEdges::Bottom, TrimEdges::Top, TrimEdges::Sides, TrimEdges::All];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            TrimEdges::Bottom => en!("Bottom"),
+            TrimEdges::Top => en!("Top"),
+            TrimEdges::Sides => en!("Sides"),
+            TrimEdges::All => en!("All"),
+        }
+    }
 
     pub fn name(self) -> &'static str {
         match self {
@@ -216,7 +227,7 @@ pub fn apply(state: &mut crate::state::EditorState, faces: &[(NodeId, usize)], o
         s.select_node(holder);
         holder
     });
-    state.set_status(format!("Added {count} trim strips"));
+    state.set_status(msg_n!(count, "Added {n} trim strip", "Added {n} trim strips"));
     Ok((id, count))
 }
 
@@ -237,41 +248,47 @@ impl TrimDialog {
         let mut open = self.open;
         let selected = faces_for(&state.doc.map, &state.doc.selection);
         let faces = selected.len();
-        egui::Window::new("Add Trim").open(&mut open).resizable(false).show(ctx, |ui| {
-            ui.label("Strips along face edges: baseboards on the bottom, crown molding on top, borders around floors.");
+        crate::widgets::window(en!("Add Trim")).open(&mut open).resizable(false).show(ctx, |ui| {
+            ui.label(tr("Strips along face edges: baseboards on the bottom, crown molding on top, borders around floors."));
             egui::Grid::new("trim_options").num_columns(2).show(ui, |ui| {
-                ui.label("Edges");
+                ui.label(tr("Edges"));
                 ui.horizontal(|ui| {
                     for e in TrimEdges::ALL {
-                        ui.selectable_value(&mut opts.edges, e, e.name());
+                        ui.selectable_value(&mut opts.edges, e, tr(e.label()));
                     }
                 });
                 ui.end_row();
-                ui.label("Height");
-                ui.add(egui::DragValue::new(&mut opts.height).range(0.25..=4096.0).suffix(" u")).on_hover_text("How far the strip runs over the face");
+                ui.label(tr("Height"));
+                ui.add(egui::DragValue::new(&mut opts.height).range(0.25..=4096.0).suffix(" u")).on_hover_text(tr("How far the strip runs over the face"));
                 ui.end_row();
-                ui.label("Depth");
-                ui.add(egui::DragValue::new(&mut opts.depth).range(0.25..=512.0).suffix(" u")).on_hover_text("How far it stands out from the face");
+                ui.label(tr("Depth"));
+                ui.add(egui::DragValue::new(&mut opts.depth).range(0.25..=512.0).suffix(" u")).on_hover_text(tr("How far it stands out from the face"));
                 ui.end_row();
-                ui.label("Inset");
-                ui.add(egui::DragValue::new(&mut opts.inset).range(0.0..=4096.0).suffix(" u")).on_hover_text("Gap between the edge and the strip");
+                ui.label(tr("Inset"));
+                ui.add(egui::DragValue::new(&mut opts.inset).range(0.0..=4096.0).suffix(" u")).on_hover_text(tr("Gap between the edge and the strip"));
                 ui.end_row();
-                ui.label("Material");
+                ui.label(tr("Material"));
                 ui.horizontal(|ui| {
                     ui.label(&opts.material);
-                    if ui.small_button("Use Current").on_hover_text(format!("Use {}", state.current_material)).clicked() {
+                    if ui.small_button(tr("Use Current")).on_hover_text(trf!("Use {material}", material = state.current_material)).clicked() {
                         opts.material = state.current_material.clone();
                     }
                 });
                 ui.end_row();
             });
             if opts.edges == TrimEdges::Bottom {
-                ui.checkbox(&mut opts.on_floor, "Only where a floor lies under the edge").on_hover_text("Leaves out the underside of lintels over doorways");
+                ui.checkbox(&mut opts.on_floor, tr("Only where a floor lies under the edge"))
+                    .on_hover_text(tr("Leaves out the underside of lintels over doorways"));
             }
 
-            ui.checkbox(&mut opts.collision, "Collision").on_hover_text("Off wraps the strips in func_detail_illusionary, so players do not snag on them");
-            ui.label(if faces == 0 { "Select faces, or brushes whose upright faces get the trim".to_string() } else { format!("{faces} faces selected") });
-            if ui.add_enabled(faces > 0, egui::Button::new("Add Trim")).clicked()
+            ui.checkbox(&mut opts.collision, tr("Collision"))
+                .on_hover_text(tr("Off wraps the strips in func_detail_illusionary, so players do not snag on them"));
+            ui.label(if faces == 0 {
+                tr("Select faces, or brushes whose upright faces get the trim").to_string()
+            } else {
+                tr_n!(faces, "{n} face selected", "{n} faces selected")
+            });
+            if ui.add_enabled(faces > 0, egui::Button::new(tr("Add Trim"))).clicked()
                 && let Err(e) = apply(state, &selected, opts)
             {
                 state.set_status(e);

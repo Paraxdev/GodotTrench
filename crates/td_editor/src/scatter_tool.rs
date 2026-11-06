@@ -2,16 +2,18 @@
 //! paints the set's enabled models onto the set's target surfaces, which can be brushes, meshes, terrains or the
 //! instances of other sets. Instances live in the set on its own layer, or become point entities.
 
-use egui::{Align2, Color32, FontId, PointerButton, Pos2, Rect, Response, Ui, Vec2};
+use egui::{Color32, PointerButton, Pos2, Rect, Response, Ui};
 use td_core::{Aabb, DVec3, NodeId, Ray};
 use td_doc::scatter::{Rng, ScatterRules, SurfaceHit};
 use td_doc::{Entity, NodeKind, Scatter, ScatterItem, ScatterKind};
 use td_render::LineVertex;
 
 use crate::camera::Camera;
+use crate::i18n::{Msg, msg, msg_n, tr, trf};
 use crate::picking::SurfaceCaster;
 use crate::scene::v3;
 use crate::state::{EditorState, ScatterOutput};
+use crate::widgets::corner_hint;
 
 fn rgba(c: Color32, a: f32) -> [f32; 4] {
     [c.r() as f32 / 255.0, c.g() as f32 / 255.0, c.b() as f32 / 255.0, a]
@@ -96,13 +98,15 @@ pub fn active_or_new_set(state: &mut EditorState) -> Option<NodeId> {
             Ok(_) | Err(PresetProblem::Unknown) => {}
             Err(PresetProblem::NeedsPack) => {
                 let id = new_set_from_preset(state, FALLBACK_PRESET)?;
-                state.set_status(format!(
-                    "The {preset} preset needs the nature pack, so the set uses {FALLBACK_PRESET}. Godot > Add Content to Project adds the pack"
+                state.set_status(msg!(
+                    "The {preset} preset needs the nature pack, so the set uses {fallback}. Godot > Add Content to Project adds the pack",
+                    preset,
+                    fallback = FALLBACK_PRESET
                 ));
                 return Some(id);
             }
             Err(PresetProblem::Write(e)) => {
-                state.set_status(format!("Could not add the models of the {preset} preset to the project: {e}"));
+                state.set_status(msg!("Could not add the models of the {preset} preset to the project: {e}", preset, e));
                 return None;
             }
         }
@@ -129,7 +133,7 @@ pub fn new_set_from_preset(state: &mut EditorState, preset: &str) -> Option<Node
         }
         Err(PresetProblem::Unknown) => return None,
         Err(PresetProblem::Write(e)) => {
-            state.set_status(format!("Could not add the models of the {preset} preset to the project: {e}"));
+            state.set_status(msg!("Could not add the models of the {preset} preset to the project: {e}", preset, e));
             return None;
         }
     };
@@ -138,8 +142,14 @@ pub fn new_set_from_preset(state: &mut EditorState, preset: &str) -> Option<Node
     let id = new_set(state, Some(&name));
     let dir = td_doc::scatter::NATURE_DIR;
     state.set_status(match installed {
-        0 => format!("New scatter set from the {preset} preset on its own layer"),
-        n => format!("New scatter set from the {preset} preset on its own layer, its {n} missing models were added to {dir}"),
+        0 => msg!("New scatter set from the {preset} preset on its own layer", preset),
+        n => msg_n!(
+            n,
+            "New scatter set from the {preset} preset on its own layer, its {n} missing model was added to {dir}",
+            "New scatter set from the {preset} preset on its own layer, its {n} missing models were added to {dir}",
+            preset,
+            dir
+        ),
     });
     Some(id)
 }
@@ -148,7 +158,13 @@ pub fn new_set_from_preset(state: &mut EditorState, preset: &str) -> Option<Node
 /// in a session.
 fn ask_for_pack(state: &mut EditorState, preset: &str) {
     let why = format!("The {preset} preset uses the glTF trees and bushes of the nature pack, which this project does not have yet.");
-    state.set_status(format!("{why} Godot > Add Content to Project adds it, the other presets work without it"));
+    state.set_status(Msg {
+        en: format!("{why} Godot > Add Content to Project adds it, the other presets work without it"),
+        shown: trf!(
+            "The {preset} preset uses the glTF trees and bushes of the nature pack, which this project does not have yet. Godot > Add Content to Project adds it, the other presets work without it",
+            preset
+        ),
+    });
     state.content_request = Some(crate::state::ContentRequest::NaturePack(why));
 }
 
@@ -295,18 +311,18 @@ pub fn target_hit(state: &EditorState, ray: &Ray) -> Option<SurfaceHit> {
 
 /// Adds or removes `node` as a target of the active set, creating a set when there is none. Returns whether it was
 /// added, or an error for nodes that cannot carry instances.
-pub fn eyedrop_target(state: &mut EditorState, node: NodeId) -> Result<bool, String> {
+pub fn eyedrop_target(state: &mut EditorState, node: NodeId) -> Result<bool, Msg> {
     let is_ground = state.doc.map.get(node).is_some_and(|n| n.kind.is_geometry() || matches!(n.kind, NodeKind::Scatter(_)));
     if !is_ground {
-        return Err(format!("{node} is not a surface, targets are brushes, meshes, terrains and scatter sets"));
+        return Err(msg!("{node} is not a surface, targets are brushes, meshes, terrains and scatter sets", node));
     }
 
     if active_or_new_set(state).is_none() {
-        return Err(state.status.clone());
+        return Err(state.status_msg());
     }
 
     if Some(node) == active_set(state) {
-        return Err("A scatter set cannot be painted onto itself".into());
+        return Err(msg!("A scatter set cannot be painted onto itself"));
     }
 
     Ok(toggle_target(state, node))
@@ -344,7 +360,7 @@ pub fn paint(state: &mut EditorState, center: DVec3, normal: DVec3, under: Optio
     if settings.output == ScatterOutput::Entities {
         let items = brush_items(state);
         if items.is_empty() {
-            state.set_status("Nothing to scatter, add models to the set in the Scatter panel");
+            state.set_status(msg!("Nothing to scatter, add models to the set in the Scatter panel"));
             return 0;
         }
 
@@ -355,8 +371,12 @@ pub fn paint(state: &mut EditorState, center: DVec3, normal: DVec3, under: Optio
     let Some(mut set) = state.doc.map.scatter(id).cloned() else { return 0 };
     let enabled = set.enabled_items();
     if enabled.is_empty() {
-        let why = if set.items.is_empty() { "has no models, drop some into it" } else { "has every model switched off" };
-        state.set_status(format!("Scatter set '{}' {why} in the Scatter panel", set.name));
+        let name = &set.name;
+        state.set_status(if set.items.is_empty() {
+            msg!("Scatter set '{name}' has no models, drop some into it in the Scatter panel", name)
+        } else {
+            msg!("Scatter set '{name}' has every model switched off in the Scatter panel", name)
+        });
         return 0;
     }
 
@@ -396,7 +416,7 @@ pub fn erase(state: &mut EditorState, center: DVec3, rng: &mut Rng) -> usize {
     }
 
     let Some(id) = active_set(state) else {
-        state.set_status("No active scatter set to erase from, pick one in the Scatter panel");
+        state.set_status(msg!("No active scatter set to erase from, pick one in the Scatter panel"));
         return 0;
     };
     let Some(mut set) = state.doc.map.scatter(id).cloned() else { return 0 };
@@ -414,9 +434,9 @@ pub fn erase(state: &mut EditorState, center: DVec3, rng: &mut Rng) -> usize {
 }
 
 /// Fills the whole area of the active set's targets (or the selected surfaces and sets) with its enabled models.
-pub fn fill(state: &mut EditorState, rng: &mut Rng) -> Result<usize, String> {
+pub fn fill(state: &mut EditorState, rng: &mut Rng) -> Result<usize, Msg> {
     let settings = state.prefs.scatter.clone();
-    let Some(id) = active_or_new_set(state) else { return Err(state.status.clone()) };
+    let Some(id) = active_or_new_set(state) else { return Err(state.status_msg()) };
     let Some(mut set) = state.doc.map.scatter(id).cloned() else { return Err("scatter set vanished".into()) };
     if set.targets.is_empty() {
         let map = &state.doc.map;
@@ -425,12 +445,12 @@ pub fn fill(state: &mut EditorState, rng: &mut Rng) -> Result<usize, String> {
     }
 
     if set.targets.is_empty() {
-        return Err("Select the surfaces to fill, or pick targets with the eyedropper in the Scatter panel".into());
+        return Err(msg!("Select the surfaces to fill, or pick targets with the eyedropper in the Scatter panel"));
     }
 
     let enabled = set.enabled_items();
     if enabled.is_empty() {
-        return Err(format!("Scatter set '{}' has no enabled models to fill with", set.name));
+        return Err(msg!("Scatter set '{name}' has no enabled models to fill with", name = set.name));
     }
 
     load_models(state, &set.targets);
@@ -696,14 +716,14 @@ impl ScatterTool {
                     Ok(added) => {
                         let name = target_label(state, node);
                         state.set_status(if added {
-                            format!("{name} is now a target of the scatter set")
+                            msg!("{name} is now a target of the scatter set", name)
                         } else {
-                            format!("{name} is no longer a scatter target")
+                            msg!("{name} is no longer a scatter target", name)
                         });
                     }
                     Err(e) => state.set_status(e),
                 },
-                None => state.set_status("Nothing under the cursor to target"),
+                None => state.set_status(msg!("Nothing under the cursor to target")),
             }
 
             return;
@@ -800,22 +820,29 @@ impl ScatterTool {
     }
 
     pub fn paint_overlay(&self, ui: &Ui, rect: Rect, state: &EditorState) {
-        let painter = ui.painter_at(rect);
         let s = &state.prefs.scatter;
         let text = if state.scatter_eyedropper {
-            "Scatter target: click a surface or scattered object to add it, click a target to remove it".to_string()
+            tr("Scatter target: click a surface or scattered object to add it, click a target to remove it").to_string()
         } else {
             let target = match s.output {
-                ScatterOutput::Entities => "entities".to_string(),
+                ScatterOutput::Entities => tr("entities").to_string(),
                 ScatterOutput::Set => match active_set(state).and_then(|id| state.doc.map.scatter(id)) {
-                    Some(set) => format!("'{}' ({} instances, {} targets)", set.name, set.instances.len(), set.targets.len()),
-                    None => "a new set".to_string(),
+                    Some(set) => trf!(
+                        "'{name}' ({instances} instances, {targets} targets)",
+                        name = set.name,
+                        instances = set.instances.len(),
+                        targets = set.targets.len()
+                    ),
+                    None => tr("a new set").to_string(),
                 },
             };
-            let (drag, shift) = if state.scatter_erase { ("erases", "paints") } else { ("paints", "erases") };
-            format!("Scatter into {target}: drag {drag}, Shift+drag {shift}, Alt+click toggles a target")
+            if state.scatter_erase {
+                trf!("Scatter into {target}: drag erases, Shift+drag paints, Alt+click toggles a target", target)
+            } else {
+                trf!("Scatter into {target}: drag paints, Shift+drag erases, Alt+click toggles a target", target)
+            }
         };
-        painter.text(rect.left_bottom() + Vec2::new(8.0, -8.0), Align2::LEFT_BOTTOM, text, FontId::proportional(12.0), Color32::from_rgb(160, 255, 140));
+        corner_hint(&ui.painter_at(rect), rect, text, Color32::from_rgb(160, 255, 140));
     }
 }
 
@@ -1070,12 +1097,31 @@ mod tests {
         assert_eq!(state.doc.map.scatter(moss).unwrap().targets, vec![rocks]);
         assert_eq!(target_label(&state, rocks), "rock (set)");
         assert_eq!(eyedrop_target(&mut state, rocks), Ok(false), "a second pick removes it");
-        assert!(eyedrop_target(&mut state, moss).is_err());
+        let _de = crate::i18n::scope(crate::i18n::Lang::De);
+        let refused = eyedrop_target(&mut state, moss).unwrap_err();
+        assert_eq!(
+            (refused.en.as_str(), refused.shown.as_str()),
+            ("A scatter set cannot be painted onto itself", "Ein Scatter-Set kann nicht auf sich selbst gemalt werden")
+        );
         assert_eq!(eyedrop_target(&mut state, floor), Ok(true));
 
         let layer = state.doc.map.default_layer();
         let lamp = state.doc.edit("lamp", |m, _| m.insert(layer, NodeKind::Entity(Entity::new("light"))));
-        assert!(eyedrop_target(&mut state, lamp).is_err(), "an entity is not a surface");
+        let refused = eyedrop_target(&mut state, lamp).unwrap_err();
+        assert!(refused.en == format!("{lamp} is not a surface, targets are brushes, meshes, terrains and scatter sets"), "{refused:?}");
+        assert!(refused.shown.starts_with(&format!("{lamp} ist keine Oberfläche")), "an entity is not a surface: {refused:?}");
+    }
+
+    #[test]
+    fn fill_without_targets_says_so_in_both_languages() {
+        let (mut state, _floor, _rocks) = floor_with_rocks();
+        template(&mut state, "res://moss.glb", 10.0, ScatterKind::Foliage);
+        new_set(&mut state, Some("moss"));
+        state.doc.select(|_, s| s.clear());
+        let _de = crate::i18n::scope(crate::i18n::Lang::De);
+        let refused = fill(&mut state, &mut Rng::new(7)).unwrap_err();
+        assert!(refused.en.starts_with("Select the surfaces to fill"), "{refused:?}");
+        assert!(refused.shown.starts_with("Die zu füllenden Oberflächen auswählen"), "{refused:?}");
     }
 
     #[test]

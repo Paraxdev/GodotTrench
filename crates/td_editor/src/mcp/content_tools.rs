@@ -619,7 +619,7 @@ impl App {
                         let id = crate::scatter_tool::active_set(&self.state);
                         ok(json!({ "placed": n, "set": id.map(|id| self.scatter_summary(id)) }))
                     }
-                    Err(e) => err(e),
+                    Err(e) => err(e.en),
                 }
             }
             "toggle_target" => match uint(&args["target"]).map(NodeId) {

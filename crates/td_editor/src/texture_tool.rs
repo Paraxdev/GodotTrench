@@ -2,15 +2,17 @@
 //! click applies it wrapped from the selected face, Alt+click picks a material and alignment, dragging a selected
 //! face slides its texture, Ctrl+wheel scales and Alt+wheel rotates.
 
-use egui::{Align2, Color32, FontId, Key, PointerButton, Pos2, Rect, Response, Ui, Vec2};
+use egui::{Color32, Key, PointerButton, Pos2, Rect, Response, Ui};
 use td_core::{DMat3, DVec2, DVec3, NodeId, Plane};
 use td_render::LineVertex;
 
 use crate::camera::Camera;
+use crate::i18n::{msg, trf};
 use crate::picking;
 use crate::scene::v3;
 use crate::state::EditorState;
 use crate::texture_ops::{self, FaceInfo};
+use crate::widgets::corner_hint;
 
 #[derive(Default)]
 pub struct TextureTool {
@@ -113,13 +115,13 @@ impl TextureTool {
                 match Self::primary_face(state).filter(|p| *p != face) {
                     Some(src) => {
                         texture_ops::wrap_from(state, src, &[face], Some(&material));
-                        state.set_status(format!("Wrapped {material} from the selected face"));
+                        state.set_status(msg!("Wrapped {material} from the selected face", material));
                     }
-                    None => state.set_status("Select a source face first, then Alt+right click the faces to wrap onto"),
+                    None => state.set_status(msg!("Select a source face first, then Alt+right click the faces to wrap onto")),
                 }
             } else if modifiers.shift {
                 if texture_ops::paste_alignment(state, &[face], true) == 0 {
-                    state.set_status("Pick a face with Alt+click first");
+                    state.set_status(msg!("Pick a face with Alt+click first"));
                 }
             } else {
                 texture_ops::apply_material(state, &[face], &material, modifiers.command);
@@ -238,10 +240,13 @@ impl TextureTool {
     }
 
     pub fn paint(&self, ui: &Ui, rect: Rect, state: &EditorState) {
-        let painter = ui.painter_at(rect);
-        let clip = state.uv_clipboard.as_ref().map(|c| format!("   picked: {}", c.material)).unwrap_or_default();
-        let text = format!("Texture: click selects, right click applies {}, Alt+click picks, drag slides, Ctrl+wheel scales{clip}", state.current_material);
-        painter.text(rect.left_bottom() + Vec2::new(8.0, -8.0), Align2::LEFT_BOTTOM, text, FontId::proportional(12.0), Color32::from_rgb(170, 220, 255));
+        let clip = state.uv_clipboard.as_ref().map(|c| trf!("   picked: {material}", material = c.material)).unwrap_or_default();
+        let text = trf!(
+            "Texture: click selects, right click applies {material}, Alt+click picks, drag slides, Ctrl+wheel scales{picked}",
+            material = state.current_material,
+            picked = clip
+        );
+        corner_hint(&ui.painter_at(rect), rect, text, Color32::from_rgb(170, 220, 255));
     }
 }
 

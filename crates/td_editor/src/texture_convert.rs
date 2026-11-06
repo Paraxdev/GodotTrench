@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use td_core::NodeId;
 use td_formats::texture_import::{self, Library, Report, Target};
 
+use crate::i18n::{msg, tr, trf};
 use crate::state::EditorState;
 
 /// Where converted textures go in the open project.
@@ -169,11 +170,12 @@ pub fn offer_for_map(state: &mut EditorState, map_file: &Path) {
     let missing = missing_materials(state).len();
     let places: Vec<String> = sources.iter().take(3).map(|p| p.display().to_string()).collect();
     let answer = rfd::MessageDialog::new()
-        .set_title("Convert the map's textures?")
-        .set_description(format!(
-            "Found {} of the {missing} missing materials in {}. Convert them into the project's texture folder?",
-            wanted.len(),
-            places.join(", ")
+        .set_title(tr("Convert the map's textures?"))
+        .set_description(trf!(
+            "Found {found} of the {missing} missing materials in {places}. Convert them into the project's texture folder?",
+            found = wanted.len(),
+            missing,
+            places = places.join(", ")
         ))
         .set_buttons(rfd::MessageButtons::YesNo)
         .show();
@@ -182,7 +184,7 @@ pub fn offer_for_map(state: &mut EditorState, map_file: &Path) {
     }
 
     match convert(state, &lib, Some(&wanted), false) {
-        Ok(report) => state.set_status(format!("Textures: {}", report.summary())),
+        Ok(report) => state.set_status(msg!("Textures: {summary}", summary = report.summary())),
         Err(e) => state.set_status(e),
     }
 }
@@ -194,10 +196,10 @@ pub fn convert_folder_dialog(state: &mut EditorState) {
         return;
     }
 
-    let Some(folder) = crate::commands::file_dialog(state, |d| d.set_title("Folder with .vmt/.vtf, .wad or .wal textures").pick_folder()) else { return };
+    let Some(folder) = crate::commands::file_dialog(state, |d| d.set_title(tr("Folder with .vmt/.vtf, .wad or .wal textures")).pick_folder()) else { return };
     let lib = texture_import::scan(std::slice::from_ref(&folder));
     if lib.is_empty() {
-        state.set_status(format!("No .vmt, .wad or .wal textures in {}", folder.display()));
+        state.set_status(msg!("No .vmt, .wad or .wal textures in {folder}", folder = folder.display()));
         return;
     }
 
@@ -205,24 +207,24 @@ pub fn convert_folder_dialog(state: &mut EditorState) {
     let only = if wanted.is_empty() {
         None
     } else {
+        let (own, all) = (tr("The map's").to_string(), tr("All").to_string());
         let answer = rfd::MessageDialog::new()
-            .set_title("Convert textures")
-            .set_description(format!(
-                "{} textures found. The open map is missing {} of them. Convert only those, or all {}?",
-                lib.len(),
-                wanted.len(),
-                lib.len()
+            .set_title(tr("Convert textures"))
+            .set_description(trf!(
+                "{total} textures found. The open map is missing {missing} of them. Convert only those, or all {total}?",
+                total = lib.len(),
+                missing = wanted.len()
             ))
-            .set_buttons(rfd::MessageButtons::YesNoCancelCustom("The map's".into(), "All".into(), "Cancel".into()))
+            .set_buttons(rfd::MessageButtons::YesNoCancelCustom(own.clone(), all.clone(), tr("Cancel").into()))
             .show();
         match answer {
-            rfd::MessageDialogResult::Custom(c) if c == "The map's" => Some(wanted),
-            rfd::MessageDialogResult::Custom(c) if c == "All" => None,
+            rfd::MessageDialogResult::Custom(c) if c == own => Some(wanted),
+            rfd::MessageDialogResult::Custom(c) if c == all => None,
             _ => return,
         }
     };
     match convert(state, &lib, only.as_ref(), false) {
-        Ok(report) => state.set_status(format!("Textures: {}", report.summary())),
+        Ok(report) => state.set_status(msg!("Textures: {summary}", summary = report.summary())),
         Err(e) => state.set_status(e),
     }
 }

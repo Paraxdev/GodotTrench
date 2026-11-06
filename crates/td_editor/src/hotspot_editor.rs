@@ -3,6 +3,7 @@
 use egui::{Color32, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Vec2};
 
 use crate::commands::{self, Action};
+use crate::i18n::{msg, tr, tr_n, trf};
 use crate::state::EditorState;
 
 #[derive(Clone, Copy)]
@@ -90,60 +91,60 @@ impl HotspotEditor {
         }
 
         let mut open = self.open;
-        egui::Window::new("Hotspot Editor").open(&mut open).default_size([640.0, 560.0]).resizable(true).show(ctx, |ui| {
+        crate::widgets::window(crate::i18n::en!("Hotspot Editor")).open(&mut open).default_size([640.0, 560.0]).resizable(true).show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.label(RichText::new(&self.material).strong());
-                if ui.button("Use Current Material").clicked() && self.material != state.current_material {
+                if ui.button(tr("Use Current Material")).clicked() && self.material != state.current_material {
                     self.material = state.current_material.clone();
                     return;
                 }
 
-                ui.label("snap");
-                egui::ComboBox::from_id_salt("hotspot_snap").selected_text(format!("{} px", self.snap)).width(60.0).show_ui(ui, |ui| {
+                ui.label(tr("snap"));
+                egui::ComboBox::from_id_salt("hotspot_snap").selected_text(trf!("{s} px", s = self.snap)).width(60.0).show_ui(ui, |ui| {
                     for s in [1, 2, 4, 8, 16, 32, 64] {
-                        ui.selectable_value(&mut self.snap, s, format!("{s} px"));
+                        ui.selectable_value(&mut self.snap, s, trf!("{s} px", s));
                     }
                 });
-                ui.add(egui::Slider::new(&mut self.zoom, 0.5..=16.0).logarithmic(true).text("zoom"));
+                ui.add(egui::Slider::new(&mut self.zoom, 0.5..=16.0).logarithmic(true).text(tr("zoom")));
             });
             let Some(tex) = state.materials.full_texture(ctx, &self.material) else {
-                ui.label("This material has no texture image.");
+                ui.label(tr("This material has no texture image."));
                 return;
             };
             let size = state.materials.pixel_size(&self.material).map(|s| [s[0] as f64, s[1] as f64]).unwrap_or([64.0, 64.0]);
             ui.horizontal_wrapped(|ui| {
-                ui.add(egui::DragValue::new(&mut self.split[0]).range(1..=64).prefix("grid "));
+                ui.add(egui::DragValue::new(&mut self.split[0]).range(1..=64).prefix(tr("grid ")));
                 ui.add(egui::DragValue::new(&mut self.split[1]).range(1..=64).prefix("x "));
-                if ui.button("Split into grid").clicked() {
+                if ui.button(tr("Split into grid")).clicked() {
                     self.rects = grid_rects(size, self.split[0], self.split[1]);
                     self.dirty = true;
                 }
 
-                if ui.add_enabled(self.selected.is_some(), egui::Button::new("Delete")).clicked()
+                if ui.add_enabled(self.selected.is_some(), egui::Button::new(tr("Delete"))).clicked()
                     && let Some(i) = self.selected.take()
                 {
                     self.rects.remove(i);
                     self.dirty = true;
                 }
 
-                if ui.button("Clear").clicked() {
+                if ui.button(tr("Clear")).clicked() {
                     self.rects.clear();
                     self.selected = None;
                     self.dirty = true;
                 }
 
-                let save = ui.add_enabled(self.dirty, egui::Button::new("Save"));
+                let save = ui.add_enabled(self.dirty, egui::Button::new(tr("Save")));
                 if save.clicked() {
                     match commands::write_hotspots(state, &self.material, &self.rects) {
                         Ok(path) => {
                             self.dirty = false;
-                            state.set_status(format!("Saved {}", path.display()));
+                            state.set_status(msg!("Saved {path}", path = path.display()));
                         }
                         Err(e) => state.set_status(e),
                     }
                 }
 
-                if ui.button("Apply to selection").on_hover_text("Saves, then fits the selected faces to their best rectangle").clicked() {
+                if ui.button(tr("Apply to selection")).on_hover_text(tr("Saves, then fits the selected faces to their best rectangle")).clicked() {
                     if self.dirty && commands::write_hotspots(state, &self.material, &self.rects).is_ok() {
                         self.dirty = false;
                     }
@@ -151,9 +152,10 @@ impl HotspotEditor {
                     actions.push(Action::HotspotTexture);
                 }
 
-                ui.label(RichText::new(format!("{} rectangles{}", self.rects.len(), if self.dirty { ", unsaved" } else { "" })).weak());
+                let count = tr_n!(self.rects.len(), "{n} rectangle", "{n} rectangles");
+                ui.label(RichText::new(if self.dirty { trf!("{count}, unsaved", count) } else { count }).weak());
             });
-            ui.label(RichText::new("Drag to draw a rectangle, drag one to move it, drag its corner to resize, right click deletes.").weak());
+            ui.label(RichText::new(tr("Drag to draw a rectangle, drag one to move it, drag its corner to resize, right click deletes.")).weak());
             egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
                 let zoom = self.zoom as f64;
                 let (rect, response) = ui.allocate_exact_size(Vec2::new((size[0] * zoom) as f32, (size[1] * zoom) as f32), Sense::click_and_drag());
@@ -272,7 +274,7 @@ impl HotspotEditor {
                 && let Some(r) = self.rects.get_mut(i)
             {
                 ui.horizontal(|ui| {
-                    ui.label(format!("rect {i}"));
+                    ui.label(trf!("rect {i}", i));
                     for (label, v) in ["x", "y", "w", "h"].iter().zip(r.iter_mut()) {
                         if ui.add(egui::DragValue::new(v).speed(1.0).range(0.0..=size[0].max(size[1])).prefix(format!("{label} "))).changed() {
                             self.dirty = true;

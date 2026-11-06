@@ -1,14 +1,16 @@
 //! Blend tool: paints material blends on terrain layers, displacement alpha and faces that have a blend material.
 
-use egui::{Align2, Color32, FontId, PointerButton, Pos2, Rect, Response, Ui, Vec2};
+use egui::{Color32, PointerButton, Pos2, Rect, Response, Ui};
 use td_core::{DVec3, NodeId, Plane};
 use td_doc::blend::{self, BlendMode};
 use td_render::LineVertex;
 
 use crate::camera::Camera;
+use crate::i18n::{msg, tr, trf};
 use crate::picking;
 use crate::scene::v3;
 use crate::state::EditorState;
+use crate::widgets::corner_hint;
 
 /// What one dab edits: terrains, displacement faces and blend faces, from the selection or the whole map.
 pub struct BlendTargets {
@@ -155,14 +157,14 @@ impl BlendTool {
         let modifiers = ui.input(|i| i.modifiers);
         if (response.drag_started_by(PointerButton::Primary) || response.clicked_by(PointerButton::Primary)) && !self.stroking && self.hover.is_some() {
             if targets(state).is_empty() {
-                state.set_status("Nothing to blend: add terrain layers or displacements, or use Terrain > Blend > Set Blend Material on faces");
+                state.set_status(msg!("Nothing to blend: add terrain layers or displacements, or use Terrain > Blend > Set Blend Material on faces"));
                 return;
             }
 
             let layer = state.blend.layer;
             let short = targets(state).terrains.iter().filter_map(|id| state.doc.map.terrain(*id)).map(|t| t.layer_slot(layer)).find(|slot| *slot != layer);
             if let Some(slot) = short.filter(|_| !matches!(state.blend.mode, BlendMode::Erase | BlendMode::Smooth | BlendMode::Sharpen)) {
-                state.set_status(format!("The terrain has no layer {layer}, painting its last layer, {slot}"));
+                state.set_status(msg!("The terrain has no layer {layer}, painting its last layer, {slot}", layer, slot));
             }
 
             self.stroking = true;
@@ -229,14 +231,13 @@ impl BlendTool {
 
     pub fn paint_overlay(&self, ui: &Ui, rect: Rect, state: &EditorState) {
         let b = &state.blend;
-        let text = format!("Blend {} layer {} ({} falloff): drag paints, Shift inverts, Ctrl smooths", b.mode.label(), b.layer, b.falloff.label());
-        ui.painter_at(rect).text(
-            rect.left_bottom() + Vec2::new(8.0, -8.0),
-            Align2::LEFT_BOTTOM,
-            text,
-            FontId::proportional(12.0),
-            Color32::from_rgb(240, 170, 255),
+        let text = trf!(
+            "Blend {mode} layer {layer} ({falloff} falloff): drag paints, Shift inverts, Ctrl smooths",
+            mode = tr(b.mode.label()),
+            layer = b.layer,
+            falloff = tr(crate::app::falloff_name(b.falloff))
         );
+        corner_hint(&ui.painter_at(rect), rect, text, Color32::from_rgb(240, 170, 255));
     }
 }
 

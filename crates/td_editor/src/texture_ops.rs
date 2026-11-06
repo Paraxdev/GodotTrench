@@ -5,7 +5,7 @@ use td_core::{DVec2, DVec3, NodeId, Plane};
 use td_doc::Map;
 use td_geom::{FaceUv, Justify, UvProjection};
 
-use crate::i18n::en;
+use crate::i18n::{en, msg};
 use crate::state::EditorState;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -379,13 +379,13 @@ pub fn align_to_view(state: &mut EditorState, faces: &[(NodeId, usize)], right: 
             (i.id, i.face, Plan::Planar(if uv.is_degenerate_for(i.plane.normal) { FaceUv::face_aligned(i.plane.normal, i.uv.scale) } else { uv }))
         })
         .collect();
-    commit(state, "Align to View", false, plans)
+    commit(state, en!("Align to View"), false, plans)
 }
 
 /// Resets faces to a face aligned projection with the given scale.
 pub fn reset(state: &mut EditorState, faces: &[(NodeId, usize)], scale: DVec2) -> usize {
     let plans = infos(state, faces).into_iter().map(|i| (i.id, i.face, Plan::Planar(FaceUv::face_aligned(i.plane.normal, scale)))).collect();
-    commit(state, "Reset Texture", false, plans)
+    commit(state, en!("Reset Texture"), false, plans)
 }
 
 /// Adds `texels` (texture pixels) to the texture coordinates of faces. Consecutive calls merge into one undo step.
@@ -405,7 +405,7 @@ pub fn shift(state: &mut EditorState, faces: &[(NodeId, usize)], texels: DVec2) 
             }
         })
         .collect();
-    commit(state, "Slide Texture", true, plans)
+    commit(state, en!("Slide Texture"), true, plans)
 }
 
 /// Multiplies the texture scale (world units per texel), keeping the texel at each face center in place.
@@ -428,7 +428,7 @@ pub fn scale(state: &mut EditorState, faces: &[(NodeId, usize)], factor: DVec2) 
             }
         })
         .collect();
-    commit(state, "Scale Texture", true, plans)
+    commit(state, en!("Scale Texture"), true, plans)
 }
 
 /// Rotates textures around each face center.
@@ -459,7 +459,7 @@ pub fn rotate(state: &mut EditorState, faces: &[(NodeId, usize)], degrees: f64) 
             }
         })
         .collect();
-    commit(state, "Rotate Texture", true, plans)
+    commit(state, en!("Rotate Texture"), true, plans)
 }
 
 /// Sets the texel density: world units covered by one texture pixel.
@@ -476,7 +476,7 @@ pub fn set_density(state: &mut EditorState, faces: &[(NodeId, usize)], units_per
             (i.id, i.face, Plan::Planar(uv))
         })
         .collect();
-    commit(state, "Texel Density", false, plans)
+    commit(state, en!("Texel Density"), false, plans)
 }
 
 /// Applies `material` to faces, continuing the alignment of `source` across edges (Hammer's apply with wrap).
@@ -499,7 +499,7 @@ pub fn eyedropper(state: &mut EditorState, face: (NodeId, usize)) -> bool {
     let Some(info) = face_info(&state.doc.map, face.0, face.1) else { return false };
     state.current_material = info.material.clone();
     state.note_material(&info.material);
-    state.set_status(format!("Picked {}", info.material));
+    state.set_status(msg!("Picked {material}", material = info.material));
     state.uv_clipboard = Some(UvClipboard { material: info.material, uv: info.uv, plane: info.plane });
     true
 }
@@ -651,16 +651,16 @@ pub enum UvAdjust {
 impl UvAdjust {
     pub fn label(&self) -> &'static str {
         match self {
-            UvAdjust::FlipU => "Flip U",
-            UvAdjust::FlipV => "Flip V",
-            UvAdjust::Rotate(_) => "Rotate UVs",
-            UvAdjust::Scale(_) => "Scale UVs",
-            UvAdjust::Move(_) | UvAdjust::Center(_) => "Move UV Corners",
-            UvAdjust::AlignHorizontal => "Align UVs Horizontally",
-            UvAdjust::AlignVertical => "Align UVs Vertically",
-            UvAdjust::Straighten => "Straighten UVs",
-            UvAdjust::Fit(_) => "Fit UVs",
-            UvAdjust::Snap(_) => "Snap UVs to Pixels",
+            UvAdjust::FlipU => en!("Flip U"),
+            UvAdjust::FlipV => en!("Flip V"),
+            UvAdjust::Rotate(_) => en!("Rotate UVs"),
+            UvAdjust::Scale(_) => en!("Scale UVs"),
+            UvAdjust::Move(_) | UvAdjust::Center(_) => en!("Move UV Corners"),
+            UvAdjust::AlignHorizontal => en!("Align UVs Horizontally"),
+            UvAdjust::AlignVertical => en!("Align UVs Vertically"),
+            UvAdjust::Straighten => en!("Straighten UVs"),
+            UvAdjust::Fit(_) => en!("Fit UVs"),
+            UvAdjust::Snap(_) => en!("Snap UVs to Pixels"),
         }
     }
 }
