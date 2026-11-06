@@ -34,7 +34,7 @@ const MAX_TREE_DEPTH: usize = 60;
 
 /// What a node of a NODE chunk takes in the editor once the map is built from it, on top of its values. Measured by
 /// opening maps of 200 000 of the smallest brushes, groups, entities and scatter sets. Scatter instances are left to
-/// their values, which take half of what a built instance takes, as charging more would refuse big foliage maps.
+/// their values, which come to more than a built instance takes since instances share their model on the GPU.
 fn node_cost(kind: Option<&str>) -> usize {
     match kind {
         Some("entity") => 5 << 10,

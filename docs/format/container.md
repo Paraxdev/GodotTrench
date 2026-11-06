@@ -179,8 +179,9 @@ value:
 The node costs are an upper bound on what the smallest nodes of each type take in the editor once it opens the map
 (a group or brush comes to about 650 bytes and is charged 1 KiB), so a small file of many tiny nodes can't take more
 memory than the budget. Nodes nested under `children` inside a `NODE` chunk are dropped and the reader reports how many
-of the chunk's nodes held some, as the editor never writes them there. Scatter instances are only counted by their values, which come to
-about half of what a built instance takes, so that big foliage sets keep opening.
+of the chunk's nodes held some, as the editor never writes them there. Scatter instances are only counted by their values,
+which come to more than the 400 bytes or so the editor holds for a built instance, as every instance of a set shares its
+model on the GPU.
 
 The biggest showcase map takes 79 MiB, a scatter instance 640 to 720 bytes, and the light, shadow and occlusion of a
 bake at the largest atlas size 299 MiB. The editor refuses to save a map past either limit, so every file it writes
