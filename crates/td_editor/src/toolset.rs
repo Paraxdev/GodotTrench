@@ -927,7 +927,10 @@ impl ToolSet {
         }
 
         if let Some(drag) = &self.scale.drag {
-            if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
+            // Every visible view runs this with the one global pointer, only the view being dragged may compute the scale.
+            if response.dragged_by(PointerButton::Primary)
+                && let Some(pos) = ui.input(|i| i.pointer.interact_pos())
+            {
                 let ray = cam.ray(rect, pos);
                 if let Some(t) = ray.intersect_plane(&drag.plane) {
                     let delta = ray.at(t) - drag.start;
