@@ -2,6 +2,8 @@ use egui::{Pos2, Rect, Vec2};
 use serde::{Deserialize, Serialize};
 use td_core::{Aabb, DMat4, DVec3, Ray};
 
+use crate::i18n::en;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ViewKind {
     Perspective,
@@ -16,10 +18,10 @@ pub enum ViewKind {
 impl ViewKind {
     pub fn label(&self) -> &'static str {
         match self {
-            ViewKind::Perspective => "3D",
-            ViewKind::Top => "Top (X/Z)",
-            ViewKind::Front => "Front (X/Y)",
-            ViewKind::Side => "Side (Z/Y)",
+            ViewKind::Perspective => en!("3D"),
+            ViewKind::Top => en!("Top (X/Z)"),
+            ViewKind::Front => en!("Front (X/Y)"),
+            ViewKind::Side => en!("Side (Z/Y)"),
         }
     }
 

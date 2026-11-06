@@ -6,6 +6,7 @@ use td_doc::{Entity, IoConnection, NodeKind, ops};
 use td_geom::Brush;
 
 use crate::gizmos::fmt_vec3;
+use crate::i18n::en;
 use crate::state::EditorState;
 
 pub const TRIGGER_MATERIAL: &str = "special/trigger";
@@ -62,12 +63,12 @@ impl DoorKind {
     /// The name the Gameplay menu, the Inspector and the palette show.
     pub fn label(&self) -> &'static str {
         match self {
-            DoorKind::Hinged { side: HingeSide::Left, .. } => "Hinged Door, left hinge",
-            DoorKind::Hinged { side: HingeSide::Right, .. } => "Hinged Door, right hinge",
-            DoorKind::Sliding { direction: SlideDirection::Up, .. } => "Sliding Door, up",
-            DoorKind::Sliding { direction: SlideDirection::Down, .. } => "Sliding Door, down",
-            DoorKind::Sliding { direction: SlideDirection::Left, .. } => "Sliding Door, sideways",
-            DoorKind::Sliding { direction: SlideDirection::Right, .. } => "Sliding Door, sideways right",
+            DoorKind::Hinged { side: HingeSide::Left, .. } => en!("Hinged Door, left hinge"),
+            DoorKind::Hinged { side: HingeSide::Right, .. } => en!("Hinged Door, right hinge"),
+            DoorKind::Sliding { direction: SlideDirection::Up, .. } => en!("Sliding Door, up"),
+            DoorKind::Sliding { direction: SlideDirection::Down, .. } => en!("Sliding Door, down"),
+            DoorKind::Sliding { direction: SlideDirection::Left, .. } => en!("Sliding Door, sideways"),
+            DoorKind::Sliding { direction: SlideDirection::Right, .. } => en!("Sliding Door, sideways right"),
         }
     }
 }

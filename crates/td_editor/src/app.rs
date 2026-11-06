@@ -7,6 +7,7 @@ use crate::camera::ViewKind;
 use crate::commands::{self, Action, ModelImport};
 use crate::dialogs::{CommandPalette, KeymapWindow, LinkDialog, ShapeDialog, TerrainDialog};
 use crate::help::{self, Topic};
+use crate::i18n::{Msg, en, msg, msg_n, tr, trf};
 use crate::icons;
 use crate::mcp::tools::{Deferred, HeldDrag, InputScript};
 use crate::mcp::{McpHost, ToolExecutor, switch, token, transport};
@@ -248,19 +249,19 @@ const PANEL_TABS: [Tab; 12] = [
 
 fn tab_title(tab: Tab) -> &'static str {
     match tab {
-        Tab::View(_) => "View",
-        Tab::Outliner => "Outliner",
-        Tab::Inspector => "Inspector",
-        Tab::Materials => "Materials",
-        Tab::Models => "Models",
-        Tab::Entities => "Entities",
-        Tab::History => "History",
-        Tab::Issues => "Issues",
-        Tab::Logic => "Logic",
-        Tab::Uv => "UV Editor",
-        Tab::Reference => "Reference",
-        Tab::Scatter => "Scatter",
-        Tab::Prefabs => "Prefabs",
+        Tab::View(_) => en!("View"),
+        Tab::Outliner => en!("Outliner"),
+        Tab::Inspector => en!("Inspector"),
+        Tab::Materials => en!("Materials"),
+        Tab::Models => en!("Models"),
+        Tab::Entities => en!("Entities"),
+        Tab::History => en!("History"),
+        Tab::Issues => en!("Issues"),
+        Tab::Logic => en!("Logic"),
+        Tab::Uv => en!("UV Editor"),
+        Tab::Reference => en!("Reference"),
+        Tab::Scatter => en!("Scatter"),
+        Tab::Prefabs => en!("Prefabs"),
     }
 }
 
@@ -442,13 +443,30 @@ fn show_tab(dock: &mut DockState<Tab>, tab: Tab) {
 
 /// Mesh operations grouped for the Mesh menu.
 const MESH_OP_GROUPS: [(&str, &[MeshOp]); 4] = [
-    ("Topology", &[MeshOp::Subdivide, MeshOp::Triangulate, MeshOp::Solidify, MeshOp::Fill, MeshOp::MergeCenter, MeshOp::MergeByDistance]),
-    ("Components", &[MeshOp::SelectLinked, MeshOp::Duplicate, MeshOp::Separate, MeshOp::Dissolve, MeshOp::Delete]),
-    ("Normals and Shading", &[MeshOp::ShadeSmooth, MeshOp::ShadeFlat, MeshOp::Flip]),
-    ("Transform", &[MeshOp::Mirror(0), MeshOp::Mirror(1), MeshOp::Mirror(2), MeshOp::Smooth, MeshOp::SnapToGrid]),
+    (en!("Topology"), &[MeshOp::Subdivide, MeshOp::Triangulate, MeshOp::Solidify, MeshOp::Fill, MeshOp::MergeCenter, MeshOp::MergeByDistance]),
+    (en!("Components"), &[MeshOp::SelectLinked, MeshOp::Duplicate, MeshOp::Separate, MeshOp::Dissolve, MeshOp::Delete]),
+    (en!("Normals and Shading"), &[MeshOp::ShadeSmooth, MeshOp::ShadeFlat, MeshOp::Flip]),
+    (en!("Transform"), &[MeshOp::Mirror(0), MeshOp::Mirror(1), MeshOp::Mirror(2), MeshOp::Smooth, MeshOp::SnapToGrid]),
 ];
 
 const MENU_WIDTH: f32 = 230.0;
+
+/// A menu label, the English text that names its manual page and the text drawn.
+trait MenuLabel {
+    fn parts(&self) -> (&str, &str);
+}
+
+impl MenuLabel for &str {
+    fn parts(&self) -> (&str, &str) {
+        (self, tr(self))
+    }
+}
+
+impl MenuLabel for &Msg {
+    fn parts(&self) -> (&str, &str) {
+        (&self.en, &self.shown)
+    }
+}
 
 struct MenuCx<'a> {
     ctx: egui::Context,
@@ -461,22 +479,24 @@ impl MenuCx<'_> {
         self.shortcuts.iter().find(|(_, a)| a == action).map(|(s, _)| self.ctx.format_shortcut(s))
     }
 
-    fn push_if_clicked(&mut self, ui: &mut Ui, label: &str, button: egui::Button, action: Action) {
-        if with_help(ui.add(button), &action, label).clicked() {
+    fn push_if_clicked(&mut self, ui: &mut Ui, en: &str, button: egui::Button, action: Action) {
+        if with_help(ui.add(button), &action, en).clicked() {
             self.actions.push(action);
             ui.close();
         }
     }
 
-    fn item(&mut self, ui: &mut Ui, icon: Option<icons::Icon>, label: &str, action: Action) {
+    fn item(&mut self, ui: &mut Ui, icon: Option<icons::Icon>, label: impl MenuLabel, action: Action) {
+        let (en, shown) = label.parts();
         let shortcut = self.shortcut(&action);
-        self.push_if_clicked(ui, label, menu_button(icon, label, shortcut), action);
+        self.push_if_clicked(ui, en, menu_button(icon, shown, shortcut), action);
     }
 
     /// Menu item that is greyed out with `why` on hover when `enabled` is false.
-    fn item_enabled(&mut self, ui: &mut Ui, icon: Option<icons::Icon>, label: &str, action: Action, enabled: bool, why: &str) {
+    fn item_enabled(&mut self, ui: &mut Ui, icon: Option<icons::Icon>, label: impl MenuLabel, action: Action, enabled: bool, why: &str) {
+        let (en, shown) = label.parts();
         let shortcut = self.shortcut(&action);
-        let response = with_help(ui.add_enabled(enabled, menu_button(icon, label, shortcut)), &action, label).on_disabled_hover_text(why);
+        let response = with_help(ui.add_enabled(enabled, menu_button(icon, shown, shortcut)), &action, en).on_disabled_hover_text(why);
         if response.clicked() {
             self.actions.push(action);
             ui.close();
@@ -484,18 +504,21 @@ impl MenuCx<'_> {
     }
 
     /// Menu item for actions driven by OS clipboard events instead of key bindings.
-    fn item_keys(&mut self, ui: &mut Ui, icon: Option<icons::Icon>, label: &str, keys: &str, action: Action) {
-        self.push_if_clicked(ui, label, menu_button(icon, label, Some(keys.to_string())), action);
+    fn item_keys(&mut self, ui: &mut Ui, icon: Option<icons::Icon>, label: impl MenuLabel, keys: &str, action: Action) {
+        let (en, shown) = label.parts();
+        self.push_if_clicked(ui, en, menu_button(icon, shown, Some(keys.to_string())), action);
     }
 
-    fn toggle(&mut self, ui: &mut Ui, label: &str, on: bool, action: Action) {
+    fn toggle(&mut self, ui: &mut Ui, label: impl MenuLabel, on: bool, action: Action) {
+        let (en, shown) = label.parts();
         let shortcut = self.shortcut(&action);
-        self.push_if_clicked(ui, label, menu_button(on.then_some(icons::CHECK), label, shortcut), action);
+        self.push_if_clicked(ui, en, menu_button(on.then_some(icons::CHECK), shown, shortcut), action);
     }
 
-    fn toggle_enabled(&mut self, ui: &mut Ui, label: &str, on: bool, action: Action, enabled: bool, why: &str) {
+    fn toggle_enabled(&mut self, ui: &mut Ui, label: impl MenuLabel, on: bool, action: Action, enabled: bool, why: &str) {
+        let (en, shown) = label.parts();
         let shortcut = self.shortcut(&action);
-        if with_help(ui.add_enabled(enabled, menu_button(on.then_some(icons::CHECK), label, shortcut)), &action, label).on_disabled_hover_text(why).clicked() {
+        if with_help(ui.add_enabled(enabled, menu_button(on.then_some(icons::CHECK), shown, shortcut)), &action, en).on_disabled_hover_text(why).clicked() {
             self.actions.push(action);
             ui.close();
         }
@@ -503,22 +526,22 @@ impl MenuCx<'_> {
 
     fn point_entities(&mut self, ui: &mut Ui, game: &td_formats::game::GameConfig, classes: &[&str]) {
         let mut any = false;
-        for class in classes.iter().filter(|c| game.entity(c).is_some()) {
+        for class in classes.iter().copied().filter(|c| game.entity(c).is_some()) {
             any = true;
             self.item(ui, None, class, Action::CreatePointEntity { classname: class.to_string(), at: None });
         }
 
         if !any {
-            empty_hint(ui, "Not defined by this game config");
+            empty_hint(ui, tr("Not defined by this game config"));
         }
     }
 }
 
-/// The action's explanation on hover, and F1 for the manual page of `label` when it has one.
+/// The action's explanation on hover, and F1 for the manual page of the English `label` when it has one.
 fn with_help(response: egui::Response, action: &Action, label: &str) -> egui::Response {
     let topic = Topic::Menu(label);
     help::register(&response, topic);
-    match action.help() {
+    match action.help().map(tr) {
         Some(text) if help::page(topic).is_some() => response.on_hover_ui(|ui| {
             ui.label(text);
             help::hint(ui, help::F1_HINT);
@@ -551,19 +574,20 @@ fn menu_choice<'a>(ui: &Ui, icon: Option<icons::Icon>, label: &str, shortcut: Op
 }
 
 fn menu<R>(ui: &mut Ui, title: &'static str, add_contents: impl FnOnce(&mut Ui) -> R) {
-    let response = ui.menu_button(title, add_contents).response;
+    let response = ui.menu_button(tr(title), add_contents).response;
     help::register(&response, Topic::Menu(title));
 }
 
-fn sub_menu<R>(ui: &mut Ui, icon: Option<icons::Icon>, label: &str, add_contents: impl FnOnce(&mut Ui) -> R) {
+fn sub_menu<R>(ui: &mut Ui, icon: Option<icons::Icon>, label: impl MenuLabel, add_contents: impl FnOnce(&mut Ui) -> R) {
     use egui::containers::menu::SubMenuButton;
+    let (en, shown) = label.parts();
     let button =
-        egui::Button::new((icons::atom(icon, icons::SMALL), label.to_string())).right_text(SubMenuButton::RIGHT_ARROW).image_tint_follows_text_color(true);
+        egui::Button::new((icons::atom(icon, icons::SMALL), shown.to_string())).right_text(SubMenuButton::RIGHT_ARROW).image_tint_follows_text_color(true);
     let (response, _) = SubMenuButton::from_button(button).ui(ui, |ui| {
         ui.set_min_width(MENU_WIDTH * 0.8);
         add_contents(ui)
     });
-    help::register(&response, Topic::Menu(label));
+    help::register(&response, Topic::Menu(en));
 }
 
 fn empty_hint(ui: &mut Ui, text: &str) {
@@ -585,24 +609,27 @@ fn stats_text(s: &crate::scene::SceneStats) -> String {
 /// Help menu entries that open the manual in the browser.
 fn help_menu_links(ui: &mut Ui) {
     let mouse = [
-        "3D: right drag looks, WASD flies, Q and E go down and up, middle drag pans, Alt+left drag orbits",
-        "2D: right or middle drag pans, the wheel zooms, drag a selection edge to resize",
-        "Click selects, double click selects the group. Drag empty space to draw a brush",
-        "3D gizmo: arrows and squares move, rings rotate, boxes scale",
-        "Shift+click selects faces, Shift+drag a face pushes it, Ctrl+Shift+drag extrudes",
-        "Tab edits meshes Blender style: 1/2/3 modes, G/R/S, E extrude, I inset, Ctrl+R loop cut, K knife",
+        tr("3D: right drag looks, WASD flies, Q and E go down and up, middle drag pans, Alt+left drag orbits"),
+        tr("2D: right or middle drag pans, the wheel zooms, drag a selection edge to resize"),
+        tr("Click selects, double click selects the group. Drag empty space to draw a brush"),
+        tr("3D gizmo: arrows and squares move, rings rotate, boxes scale"),
+        tr("Shift+click selects faces, Shift+drag a face pushes it, Ctrl+Shift+drag extrudes"),
+        tr("Tab edits meshes Blender style: 1/2/3 modes, G/R/S, E extrude, I inset, Ctrl+R loop cut, K knife"),
     ]
-    .join("\n");
-    let manual = format!("F1 over a tool, panel tab, menu or Inspector section opens its manual page, so does {} on a tool", help::MANUAL_CLICK);
+    .join(
+        "
+",
+    );
+    let manual = trf!("F1 over a tool, panel tab, menu or Inspector section opens its manual page, so does {click} on a tool", click = help::MANUAL_CLICK);
     let link = |ui: &mut Ui, label: &str, tip: &str| {
-        if ui.add(menu_button(None, label, None)).on_hover_text(tip).clicked() {
+        if ui.add(menu_button(None, tr(label), None)).on_hover_text(tip).clicked() {
             help::open(ui.ctx(), Topic::Menu(label));
             ui.close();
         }
     };
-    link(ui, "Getting Started Guide", crate::welcome::GETTING_STARTED_URL);
-    link(ui, "Manual", &manual);
-    link(ui, "Mouse and Keys", &mouse);
+    link(ui, en!("Getting Started Guide"), crate::welcome::GETTING_STARTED_URL);
+    link(ui, en!("Manual"), &manual);
+    link(ui, en!("Mouse and Keys"), &mouse);
 }
 
 fn capitalize(text: &str) -> String {
@@ -1133,16 +1160,16 @@ impl App {
             // jam against the window edge and read as off-centre.
             ui.add_space(6.0);
             let logo_size = egui::Vec2::splat(icons::SMALL + 6.0);
-            ui.add(egui::Image::new(&logo).fit_to_exact_size(logo_size)).on_hover_text("TrenchDot");
+            ui.add(egui::Image::new(&logo).fit_to_exact_size(logo_size)).on_hover_text(tr("TrenchDot"));
             ui.add_space(6.0);
-            menu(ui, "File", |ui| {
+            menu(ui, en!("File"), |ui| {
                 ui.set_min_width(MENU_WIDTH);
-                m.item(ui, Some(icons::NEW), "New Map", Action::NewMap);
-                m.item(ui, Some(icons::OPEN), "Open Map…", Action::OpenMap);
-                sub_menu(ui, Some(icons::RECENT), "Open Recent", |ui| {
+                m.item(ui, Some(icons::NEW), en!("New Map"), Action::NewMap);
+                m.item(ui, Some(icons::OPEN), en!("Open Map…"), Action::OpenMap);
+                sub_menu(ui, Some(icons::RECENT), en!("Open Recent"), |ui| {
                     let recent = self.state.prefs.recent_files.clone();
                     if recent.is_empty() {
-                        empty_hint(ui, "No recent maps");
+                        empty_hint(ui, tr("No recent maps"));
                     }
 
                     let autosaves: Vec<std::path::PathBuf> = self.state.recoverable_autosaves().into_iter().take(8).collect();
@@ -1150,12 +1177,12 @@ impl App {
                     for (i, path) in recent.into_iter().chain(autosaves).enumerate() {
                         if i == first_autosave {
                             ui.separator();
-                            empty_hint(ui, "Autosaved untitled maps");
+                            empty_hint(ui, tr("Autosaved untitled maps"));
                         }
 
                         if ui.button(path.display().to_string()).clicked() {
                             if let Err(e) = commands::open_map_in_tab(&mut self.state, &path) {
-                                self.state.set_status(format!("Open failed: {e}"));
+                                self.state.set_status(msg!("Open failed: {e}", e));
                             }
 
                             self.project_generation += 1;
@@ -1163,173 +1190,174 @@ impl App {
                         }
                     }
                 });
-                sub_menu(ui, None, "Maps in Project", |ui| {
+                sub_menu(ui, None, en!("Maps in Project"), |ui| {
                     let root = self.state.game.project_root.clone();
                     let maps = self.project_maps.get(ui.ctx(), root.as_deref());
                     crate::welcome::maps_menu(ui, root.as_deref(), maps, m.actions);
                 });
                 ui.separator();
-                m.item(ui, Some(icons::SAVE), "Save", Action::Save);
-                m.item(ui, None, "Save As…", Action::SaveAs);
+                m.item(ui, Some(icons::SAVE), en!("Save"), Action::Save);
+                m.item(ui, None, en!("Save As…"), Action::SaveAs);
                 ui.separator();
-                sub_menu(ui, None, "Tabs", |ui| {
-                    m.item(ui, Some(icons::PLUS), "New Tab", Action::NewTab);
-                    m.item(ui, None, "Next Tab", Action::NextTab);
-                    m.item(ui, None, "Close Tab", Action::CloseTab);
+                sub_menu(ui, None, en!("Tabs"), |ui| {
+                    m.item(ui, Some(icons::PLUS), en!("New Tab"), Action::NewTab);
+                    m.item(ui, None, en!("Next Tab"), Action::NextTab);
+                    m.item(ui, None, en!("Close Tab"), Action::CloseTab);
                 });
-                sub_menu(ui, Some(icons::IMPORT), "Import", |ui| {
-                    m.item(ui, None, ".map (TrenchBroom, Quake)…", Action::ImportQuakeMap);
-                    m.item(ui, None, ".vmf (Hammer)…", Action::ImportVmf);
-                    m.item(ui, None, "Convert Textures (VTF/VMT, WAD, WAL)…", Action::ConvertTextures);
+                sub_menu(ui, Some(icons::IMPORT), en!("Import"), |ui| {
+                    m.item(ui, None, en!(".map (TrenchBroom, Quake)…"), Action::ImportQuakeMap);
+                    m.item(ui, None, en!(".vmf (Hammer)…"), Action::ImportVmf);
+                    m.item(ui, None, en!("Convert Textures (VTF/VMT, WAD, WAL)…"), Action::ConvertTextures);
                     ui.separator();
-                    m.item(ui, None, "Model Prop (.bbmodel, .glb)…", Action::ImportModel(ModelImport::Prop));
-                    m.item(ui, None, "Blockbench Model as Mesh…", Action::ImportModel(ModelImport::Mesh));
-                    m.item(ui, None, "Blockbench Model as Brushes…", Action::ImportModel(ModelImport::Brushes));
+                    m.item(ui, None, en!("Model Prop (.bbmodel, .glb)…"), Action::ImportModel(ModelImport::Prop));
+                    m.item(ui, None, en!("Blockbench Model as Mesh…"), Action::ImportModel(ModelImport::Mesh));
+                    m.item(ui, None, en!("Blockbench Model as Brushes…"), Action::ImportModel(ModelImport::Brushes));
                 });
-                sub_menu(ui, Some(icons::EXPORT), "Export", |ui| {
-                    m.item(ui, None, ".map (Valve 220)…", Action::ExportQuakeMap);
-                    m.item(ui, None, ".map, cordon only…", Action::ExportQuakeMapCordon);
+                sub_menu(ui, Some(icons::EXPORT), en!("Export"), |ui| {
+                    m.item(ui, None, en!(".map (Valve 220)…"), Action::ExportQuakeMap);
+                    m.item(ui, None, en!(".map, cordon only…"), Action::ExportQuakeMapCordon);
                     ui.separator();
-                    m.item(ui, None, "glTF Binary (.glb) for Blender and other 3D tools…", Action::ExportGlb);
-                    m.item(ui, None, "Wavefront OBJ (.obj)…", Action::ExportObj);
+                    m.item(ui, None, en!("glTF Binary (.glb) for Blender and other 3D tools…"), Action::ExportGlb);
+                    m.item(ui, None, en!("Wavefront OBJ (.obj)…"), Action::ExportObj);
                 });
                 ui.separator();
-                m.item(ui, Some(icons::SETTINGS), "Preferences…", Action::ShowPreferences);
+                m.item(ui, Some(icons::SETTINGS), en!("Preferences…"), Action::ShowPreferences);
             });
-            menu(ui, "Edit", |ui| {
+            menu(ui, en!("Edit"), |ui| {
                 ui.set_min_width(MENU_WIDTH);
-                m.item(ui, Some(icons::UNDO), "Undo", Action::Undo);
-                m.item(ui, Some(icons::REDO), "Redo", Action::Redo);
+                m.item(ui, Some(icons::UNDO), en!("Undo"), Action::Undo);
+                m.item(ui, Some(icons::REDO), en!("Redo"), Action::Redo);
                 ui.separator();
-                m.item_keys(ui, None, "Cut", "Ctrl+X", Action::Cut);
-                m.item_keys(ui, Some(icons::COPY), "Copy", "Ctrl+C", Action::Copy);
-                if ui.add(menu_button(Some(icons::PASTE), "Paste", Some("Ctrl+V".into()))).clicked() {
+                m.item_keys(ui, None, en!("Cut"), "Ctrl+X", Action::Cut);
+                m.item_keys(ui, Some(icons::COPY), en!("Copy"), "Ctrl+C", Action::Copy);
+                if ui.add(menu_button(Some(icons::PASTE), tr("Paste"), Some("Ctrl+V".into()))).clicked() {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste);
                     ui.close();
                 }
 
-                m.item(ui, None, "Duplicate", Action::Duplicate);
-                m.item(ui, None, "Rename", Action::Rename);
-                m.item(ui, Some(icons::DELETE), "Delete", Action::Delete);
+                m.item(ui, None, en!("Duplicate"), Action::Duplicate);
+                m.item(ui, None, en!("Rename"), Action::Rename);
+                m.item(ui, Some(icons::DELETE), en!("Delete"), Action::Delete);
                 ui.separator();
-                sub_menu(ui, Some(icons::SELECT), "Select", |ui| {
-                    m.item(ui, None, "All", Action::SelectAll);
-                    m.item(ui, None, "None", Action::SelectNone);
-                    m.item(ui, None, "Inverse", Action::SelectInverse);
+                sub_menu(ui, Some(icons::SELECT), en!("Select"), |ui| {
+                    m.item(ui, None, en!("All"), Action::SelectAll);
+                    m.item(ui, None, en!("None"), Action::SelectNone);
+                    m.item(ui, None, en!("Inverse"), Action::SelectInverse);
                     ui.separator();
-                    m.item(ui, None, "Touching", Action::SelectTouching);
-                    m.item(ui, None, "Inside", Action::SelectInside);
-                    m.item(ui, None, "Siblings", Action::SelectSiblings);
-                    m.item(ui, None, "Same Material", Action::SelectSameMaterial);
+                    m.item(ui, None, en!("Touching"), Action::SelectTouching);
+                    m.item(ui, None, en!("Inside"), Action::SelectInside);
+                    m.item(ui, None, en!("Siblings"), Action::SelectSiblings);
+                    m.item(ui, None, en!("Same Material"), Action::SelectSameMaterial);
                 });
-                sub_menu(ui, Some(icons::GROUP), "Groups", |ui| {
-                    m.item(ui, None, "Group", Action::Group);
-                    m.item(ui, None, "Ungroup", Action::Ungroup);
+                sub_menu(ui, Some(icons::GROUP), en!("Groups"), |ui| {
+                    m.item(ui, None, en!("Group"), Action::Group);
+                    m.item(ui, None, en!("Ungroup"), Action::Ungroup);
                     ui.separator();
-                    m.item(ui, None, "Open Group", Action::OpenGroup);
-                    m.item(ui, None, "Close Group", Action::CloseGroup);
+                    m.item(ui, None, en!("Open Group"), Action::OpenGroup);
+                    m.item(ui, None, en!("Close Group"), Action::CloseGroup);
                     ui.separator();
-                    m.item(ui, None, "Duplicate Linked", Action::DuplicateLinked);
-                    m.item(ui, None, "Unlink Groups", Action::UnlinkGroups);
+                    m.item(ui, None, en!("Duplicate Linked"), Action::DuplicateLinked);
+                    m.item(ui, None, en!("Unlink Groups"), Action::UnlinkGroups);
                 });
-                sub_menu(ui, Some(icons::INSTANCE), "Prefabs", |ui| {
-                    m.item(ui, None, "Create from Selection…", Action::CreatePrefab);
-                    m.item(ui, None, "Insert Prefab…", Action::InsertPrefab);
+                sub_menu(ui, Some(icons::INSTANCE), en!("Prefabs"), |ui| {
+                    m.item(ui, None, en!("Create from Selection…"), Action::CreatePrefab);
+                    m.item(ui, None, en!("Insert Prefab…"), Action::InsertPrefab);
                     ui.separator();
-                    m.item(ui, None, "Open Prefab", Action::OpenPrefab);
-                    m.item(ui, None, "Explode Instance", Action::ExplodeInstances);
+                    m.item(ui, None, en!("Open Prefab"), Action::OpenPrefab);
+                    m.item(ui, None, en!("Explode Instance"), Action::ExplodeInstances);
                 });
-                sub_menu(ui, Some(icons::LAYER), "Layers", |ui| {
-                    m.item(ui, Some(icons::PLUS), "Add Layer", Action::AddLayer);
+                sub_menu(ui, Some(icons::LAYER), en!("Layers"), |ui| {
+                    m.item(ui, Some(icons::PLUS), en!("Add Layer"), Action::AddLayer);
                     ui.separator();
                     for layer in self.state.doc.map.layers.clone() {
                         if let Some(name) = self.state.doc.map.get(layer).map(|n| n.name()) {
-                            m.item(ui, None, &format!("Move Selection to {name}"), Action::MoveToLayer(layer));
+                            m.item(ui, None, &msg!("Move Selection to {name}", name), Action::MoveToLayer(layer));
                         }
                     }
                 });
                 ui.separator();
-                sub_menu(ui, Some(icons::EYE), "Hide and Lock", |ui| {
-                    m.item(ui, Some(icons::EYE_OFF), "Hide Selected", Action::HideSelected);
-                    m.item(ui, None, "Isolate Selected", Action::IsolateSelected);
-                    m.item(ui, Some(icons::EYE), "Show All", Action::UnhideAll);
+                sub_menu(ui, Some(icons::EYE), en!("Hide and Lock"), |ui| {
+                    m.item(ui, Some(icons::EYE_OFF), en!("Hide Selected"), Action::HideSelected);
+                    m.item(ui, None, en!("Isolate Selected"), Action::IsolateSelected);
+                    m.item(ui, Some(icons::EYE), en!("Show All"), Action::UnhideAll);
                     ui.separator();
-                    m.item(ui, Some(icons::LOCK), "Lock Selected", Action::LockSelected);
-                    m.item(ui, Some(icons::UNLOCK), "Unlock All", Action::UnlockAll);
+                    m.item(ui, Some(icons::LOCK), en!("Lock Selected"), Action::LockSelected);
+                    m.item(ui, Some(icons::UNLOCK), en!("Unlock All"), Action::UnlockAll);
                 });
-                m.item(ui, None, "Repeat Last", Action::RepeatLast);
+                m.item(ui, None, en!("Repeat Last"), Action::RepeatLast);
             });
-            menu(ui, "Brush", |ui| {
+            menu(ui, en!("Brush"), |ui| {
                 ui.set_min_width(MENU_WIDTH);
-                m.item(ui, Some(icons::SHAPES), "Shape Generator…", Action::ShowShapeDialog);
-                m.item(ui, None, "Add Trim…", Action::ShowTrimDialog);
-                m.item(ui, None, "Random Fill…", Action::ShowRandomFillDialog);
-                m.item(ui, Some(icons::BRUSH), "Box from Last Bounds", Action::CreateBrushFromBounds);
+                m.item(ui, Some(icons::SHAPES), en!("Shape Generator…"), Action::ShowShapeDialog);
+                m.item(ui, None, en!("Add Trim…"), Action::ShowTrimDialog);
+                m.item(ui, None, en!("Random Fill…"), Action::ShowRandomFillDialog);
+                m.item(ui, Some(icons::BRUSH), en!("Box from Last Bounds"), Action::CreateBrushFromBounds);
                 ui.separator();
-                sub_menu(ui, Some(icons::CSG_SUBTRACT), "CSG", |ui| {
-                    m.item(ui, Some(icons::CSG_SUBTRACT), "Subtract", Action::CsgSubtract);
+                sub_menu(ui, Some(icons::CSG_SUBTRACT), en!("CSG"), |ui| {
+                    m.item(ui, Some(icons::CSG_SUBTRACT), en!("Subtract"), Action::CsgSubtract);
                     ui.horizontal(|ui| {
                         ui.add_space(icons::SMALL + ui.spacing().item_spacing.x);
                         let mut keep = self.state.carve_material == td_geom::csg::CarveMaterial::Target;
                         if ui
-                            .checkbox(&mut keep, "Carved faces keep the target's material")
-                            .on_hover_text("Off: the cut faces take the cutter's material")
+                            .checkbox(&mut keep, tr("Carved faces keep the target's material"))
+                            .on_hover_text(tr("Off: the cut faces take the cutter's material"))
                             .changed()
                         {
                             self.state.carve_material = if keep { td_geom::csg::CarveMaterial::Target } else { td_geom::csg::CarveMaterial::Cutter };
                         }
                     });
-                    m.item(ui, Some(icons::CSG_MERGE), "Convex Merge", Action::CsgMerge);
-                    m.item(ui, Some(icons::CSG_INTERSECT), "Intersect", Action::CsgIntersect);
+                    m.item(ui, Some(icons::CSG_MERGE), en!("Convex Merge"), Action::CsgMerge);
+                    m.item(ui, Some(icons::CSG_INTERSECT), en!("Intersect"), Action::CsgIntersect);
                     ui.separator();
-                    m.item(ui, Some(icons::CSG_HOLLOW), "Hollow", Action::CsgHollow);
+                    m.item(ui, Some(icons::CSG_HOLLOW), en!("Hollow"), Action::CsgHollow);
                     ui.horizontal(|ui| {
                         ui.add_space(icons::SMALL + ui.spacing().item_spacing.x);
-                        ui.label("Wall thickness");
+                        ui.label(tr("Wall thickness"));
                         ui.add(egui::DragValue::new(&mut self.state.hollow_thickness).range(0.125..=1024.0).suffix(" u"));
                     });
                 });
-                sub_menu(ui, Some(icons::ROTATE), "Transform", |ui| {
+                sub_menu(ui, Some(icons::ROTATE), en!("Transform"), |ui| {
                     for axis in 0..3 {
                         let a = commands::axis_name(axis);
-                        m.item(ui, None, &format!("Rotate {a} +90°"), Action::Rotate { axis, degrees: 90.0 });
-                        m.item(ui, None, &format!("Rotate {a} -90°"), Action::Rotate { axis, degrees: -90.0 });
+                        m.item(ui, None, &msg!("Rotate {a} +90°", a), Action::Rotate { axis, degrees: 90.0 });
+                        m.item(ui, None, &msg!("Rotate {a} -90°", a), Action::Rotate { axis, degrees: -90.0 });
                     }
 
                     ui.separator();
                     for axis in 0..3 {
-                        m.item(ui, None, &format!("Flip {}", commands::axis_name(axis)), Action::Flip { axis });
+                        m.item(ui, None, &msg!("Flip {axis}", axis = commands::axis_name(axis)), Action::Flip { axis });
                     }
 
                     ui.separator();
-                    sub_menu(ui, None, "Nudge by Grid", |ui| {
+                    sub_menu(ui, None, en!("Nudge by Grid"), |ui| {
                         for axis in 0..3 {
                             for sign in [1.0, -1.0] {
                                 let mut offset = td_core::DVec3::ZERO;
                                 offset[axis] = sign * self.state.grid;
                                 let label = format!("{}{}", if sign > 0.0 { "+" } else { "-" }, commands::axis_name(axis));
-                                m.item(ui, None, &label, Action::Nudge(offset));
+                                m.item(ui, None, &Msg::from(label), Action::Nudge(offset));
                             }
                         }
                     });
-                    m.item(ui, Some(icons::GRID), "Snap Vertices to Grid", Action::SnapVertices);
+                    m.item(ui, Some(icons::GRID), en!("Snap Vertices to Grid"), Action::SnapVertices);
                 });
-                sub_menu(ui, Some(icons::TERRAIN), "Displacement", |ui| {
+                sub_menu(ui, Some(icons::TERRAIN), en!("Displacement"), |ui| {
                     for power in [2u8, 3, 4] {
-                        m.item(ui, None, &format!("Create, Power {power} ({0}x{0})", (1 << power) + 1), Action::CreateDisplacement(power));
+                        let size = (1 << power) + 1;
+                        m.item(ui, None, &msg!("Create, Power {power} ({size}x{size})", power, size), Action::CreateDisplacement(power));
                     }
 
                     ui.separator();
-                    m.item(ui, None, "Sew Displacements", Action::SewDisplacements);
-                    m.item(ui, None, "Remove Displacement", Action::RemoveDisplacement);
+                    m.item(ui, None, en!("Sew Displacements"), Action::SewDisplacements);
+                    m.item(ui, None, en!("Remove Displacement"), Action::RemoveDisplacement);
                 });
                 ui.separator();
                 let has_brushes = !td_doc::ops::brush_entity_geometry(&self.state.doc.map, &self.state.doc.selection).is_empty();
                 ui.add_enabled_ui(has_brushes, |ui| {
-                    sub_menu(ui, Some(icons::ENTITY), "Brush Entity", |ui| {
+                    sub_menu(ui, Some(icons::ENTITY), en!("Brush Entity"), |ui| {
                         let defs: Vec<(String, String)> = self.state.game.solid_entities().map(|d| (d.classname.clone(), d.description.clone())).collect();
                         if defs.is_empty() {
-                            empty_hint(ui, "No brush entities, open a Godot project");
+                            empty_hint(ui, tr("No brush entities, open a Godot project"));
                         }
 
                         for (class, description) in defs {
@@ -1343,15 +1371,15 @@ impl App {
                         }
                     });
                 });
-                m.item(ui, None, "Move Brushes to World", Action::MoveToWorld);
+                m.item(ui, None, en!("Move Brushes to World"), Action::MoveToWorld);
             });
-            menu(ui, "Mesh", |ui| {
+            menu(ui, en!("Mesh"), |ui| {
                 ui.set_min_width(MENU_WIDTH);
-                m.item(ui, Some(icons::MESH), "Edit Mesh", Action::EditMesh);
+                m.item(ui, Some(icons::MESH), en!("Edit Mesh"), Action::EditMesh);
                 ui.separator();
-                m.item(ui, None, "Convert Brushes to Mesh", Action::ConvertToMesh);
-                m.item(ui, None, "Convert Meshes to Brushes", Action::ConvertToBrushes);
-                m.item(ui, None, "Join Meshes", Action::JoinMeshes);
+                m.item(ui, None, en!("Convert Brushes to Mesh"), Action::ConvertToMesh);
+                m.item(ui, None, en!("Convert Meshes to Brushes"), Action::ConvertToBrushes);
+                m.item(ui, None, en!("Join Meshes"), Action::JoinMeshes);
                 ui.separator();
                 for (label, ops) in MESH_OP_GROUPS {
                     sub_menu(ui, None, label, |ui| {
@@ -1361,112 +1389,118 @@ impl App {
                     });
                 }
             });
-            menu(ui, "Texture", |ui| {
+            menu(ui, en!("Texture"), |ui| {
                 ui.set_min_width(MENU_WIDTH);
-                m.item(ui, Some(icons::TEXTURE), "Texture Tool", Action::SetTool(ToolKind::Texture));
-                m.item(ui, None, "UV Editor", Action::ShowUvEditor);
-                m.item(ui, None, "Hotspot Editor…", Action::ShowHotspotEditor);
+                m.item(ui, Some(icons::TEXTURE), en!("Texture Tool"), Action::SetTool(ToolKind::Texture));
+                m.item(ui, None, en!("UV Editor"), Action::ShowUvEditor);
+                m.item(ui, None, en!("Hotspot Editor…"), Action::ShowHotspotEditor);
                 ui.separator();
-                m.toggle(ui, "UV Lock", self.state.uv_lock, Action::ToggleUvLock);
+                m.toggle(ui, en!("UV Lock"), self.state.uv_lock, Action::ToggleUvLock);
                 ui.separator();
-                sub_menu(ui, None, "Justify", |ui| {
+                sub_menu(ui, None, en!("Justify"), |ui| {
                     for j in td_geom::Justify::ALL {
                         m.item(ui, None, j.label(), Action::Justify(j));
                     }
 
                     ui.separator();
-                    m.toggle(ui, "Treat as One", self.state.treat_as_one, Action::ToggleTreatAsOne);
+                    m.toggle(ui, en!("Treat as One"), self.state.treat_as_one, Action::ToggleTreatAsOne);
                 });
-                sub_menu(ui, None, "Alignment", |ui| {
-                    m.item(ui, Some(icons::FOCUS), "Align to 3D View", Action::AlignTextureToView);
-                    m.item(ui, None, "Reset Alignment", Action::ResetTexture);
+                sub_menu(ui, None, en!("Alignment"), |ui| {
+                    m.item(ui, Some(icons::FOCUS), en!("Align to 3D View"), Action::AlignTextureToView);
+                    m.item(ui, None, en!("Reset Alignment"), Action::ResetTexture);
                     ui.separator();
-                    m.item(ui, Some(icons::COPY), "Copy Material and Alignment", Action::CopyAlignment);
-                    m.item(ui, Some(icons::PASTE), "Paste Alignment", Action::PasteAlignment);
+                    m.item(ui, Some(icons::COPY), en!("Copy Material and Alignment"), Action::CopyAlignment);
+                    m.item(ui, Some(icons::PASTE), en!("Paste Alignment"), Action::PasteAlignment);
                 });
-                sub_menu(ui, None, "Texel Density", |ui| {
+                sub_menu(ui, None, en!("Texel Density"), |ui| {
                     for d in [0.125, 0.25, 0.5, 1.0, 2.0, 4.0] {
-                        m.item(ui, None, &format!("{d} units per pixel"), Action::TexelDensity(d));
+                        m.item(ui, None, &msg!("{d} units per pixel", d), Action::TexelDensity(d));
                     }
                 });
-                sub_menu(ui, None, "Mesh UVs", |ui| {
+                sub_menu(ui, None, en!("Mesh UVs"), |ui| {
                     for k in crate::texture_ops::MeshUvKind::ALL {
                         m.item(ui, None, k.label(), Action::MeshUv(k));
                     }
                 });
-                m.item(ui, None, "Hotspot Fit", Action::HotspotTexture);
+                m.item(ui, None, en!("Hotspot Fit"), Action::HotspotTexture);
             });
-            menu(ui, "Terrain", |ui| {
+            menu(ui, en!("Terrain"), |ui| {
                 ui.set_min_width(MENU_WIDTH);
-                m.item(ui, Some(icons::TERRAIN), "Create Terrain…", Action::ShowTerrainDialog);
+                m.item(ui, Some(icons::TERRAIN), en!("Create Terrain…"), Action::ShowTerrainDialog);
                 ui.separator();
-                sub_menu(ui, Some(icons::SCULPT), "Sculpt", |ui| {
-                    m.item(ui, Some(icons::SCULPT), "Sculpt Tool", Action::SetTool(ToolKind::Sculpt));
+                sub_menu(ui, Some(icons::SCULPT), en!("Sculpt"), |ui| {
+                    m.item(ui, Some(icons::SCULPT), en!("Sculpt Tool"), Action::SetTool(ToolKind::Sculpt));
                     ui.separator();
-                    m.item(ui, None, "Flatten", Action::TerrainFlatten);
+                    m.item(ui, None, en!("Flatten"), Action::TerrainFlatten);
                 });
-                sub_menu(ui, Some(icons::BLEND), "Blend", |ui| {
-                    m.item(ui, Some(icons::BLEND), "Blend Tool", Action::SetTool(ToolKind::Blend));
+                sub_menu(ui, Some(icons::BLEND), en!("Blend"), |ui| {
+                    m.item(ui, Some(icons::BLEND), en!("Blend Tool"), Action::SetTool(ToolKind::Blend));
                     ui.separator();
-                    m.item(ui, None, "Auto Paint Layers", Action::TerrainAutoPaint);
+                    m.item(ui, None, en!("Auto Paint Layers"), Action::TerrainAutoPaint);
                     crate::dialogs::auto_paint_base_ui(ui, &mut self.state.auto_paint_base);
                     ui.separator();
-                    m.item(ui, None, "Set Blend Material (current)", Action::SetBlendMaterial);
-                    m.item(ui, None, "Clear Blend Material", Action::ClearBlendMaterial);
+                    m.item(ui, None, en!("Set Blend Material (current)"), Action::SetBlendMaterial);
+                    m.item(ui, None, en!("Clear Blend Material"), Action::ClearBlendMaterial);
                 });
-                sub_menu(ui, Some(icons::SCATTER), "Scatter", |ui| {
-                    m.item(ui, Some(icons::SCATTER), "Scatter Tool", Action::SetTool(ToolKind::Scatter));
-                    m.item(ui, None, "Scatter Panel", Action::ShowScatterPanel);
+                sub_menu(ui, Some(icons::SCATTER), en!("Scatter"), |ui| {
+                    m.item(ui, Some(icons::SCATTER), en!("Scatter Tool"), Action::SetTool(ToolKind::Scatter));
+                    m.item(ui, None, en!("Scatter Panel"), Action::ShowScatterPanel);
                     ui.separator();
-                    m.item(ui, Some(icons::PLUS), "New Empty Scatter Set", Action::NewScatterSet);
-                    sub_menu(ui, None, "New Set from Preset", |ui| {
+                    m.item(ui, Some(icons::PLUS), en!("New Empty Scatter Set"), Action::NewScatterSet);
+                    sub_menu(ui, None, en!("New Set from Preset"), |ui| {
                         for preset in td_doc::scatter::PRESETS {
                             m.item(ui, None, preset, Action::ScatterPreset(preset.to_string()));
                         }
                     });
-                    m.item(ui, None, "Fill Scatter Targets", Action::ScatterFill);
-                    m.item(ui, None, "Scatter Sets to Entities", Action::ScatterToEntities);
+                    m.item(ui, None, en!("Fill Scatter Targets"), Action::ScatterFill);
+                    m.item(ui, None, en!("Scatter Sets to Entities"), Action::ScatterToEntities);
                     ui.separator();
-                    m.item(ui, None, "Install Nature Models…", Action::InstallNatureModels);
+                    m.item(ui, None, en!("Install Nature Models…"), Action::InstallNatureModels);
                 });
             });
-            menu(ui, "Gameplay", |ui| {
+            menu(ui, en!("Gameplay"), |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 let game = &self.state.game;
                 let pack = &self.state.gameplay_pack;
                 if !pack.installed && game.entity("func_door").is_none() {
-                    empty_hint(ui, "Doors, triggers and logic need the pack");
-                    m.item(ui, Some(icons::PLUS), "Install Gameplay Entities", Action::InstallGameplayEntities);
+                    empty_hint(ui, tr("Doors, triggers and logic need the pack"));
+                    m.item(ui, Some(icons::PLUS), en!("Install Gameplay Entities"), Action::InstallGameplayEntities);
                     ui.separator();
                 } else if pack.update() {
-                    m.item(ui, None, &format!("Update Gameplay Entities ({} files)", pack.changes), Action::InstallGameplayEntities);
+                    let files = pack.changes;
+                    m.item(
+                        ui,
+                        None,
+                        &msg_n!(files, "Update Gameplay Entities ({n} file)", "Update Gameplay Entities ({n} files)"),
+                        Action::InstallGameplayEntities,
+                    );
                     ui.separator();
                 }
 
-                sub_menu(ui, Some(icons::DOOR), "Doors and Movers", |ui| {
-                    empty_hint(ui, "From the selected brushes");
+                sub_menu(ui, Some(icons::DOOR), en!("Doors and Movers"), |ui| {
+                    empty_hint(ui, tr("From the selected brushes"));
                     let hinged = |side| DoorKind::Hinged { side, angle: 95.0 };
                     let sliding = |direction| DoorKind::Sliding { direction, lip: 4.0 };
-                    m.item(ui, None, "Hinged Door, left hinge", Action::MakeDoor { kind: hinged(HingeSide::Left), trigger: true });
-                    m.item(ui, None, "Hinged Door, right hinge", Action::MakeDoor { kind: hinged(HingeSide::Right), trigger: true });
-                    m.item(ui, None, "Sliding Door, up", Action::MakeDoor { kind: sliding(SlideDirection::Up), trigger: true });
-                    m.item(ui, None, "Sliding Door, sideways", Action::MakeDoor { kind: sliding(SlideDirection::Left), trigger: true });
+                    m.item(ui, None, en!("Hinged Door, left hinge"), Action::MakeDoor { kind: hinged(HingeSide::Left), trigger: true });
+                    m.item(ui, None, en!("Hinged Door, right hinge"), Action::MakeDoor { kind: hinged(HingeSide::Right), trigger: true });
+                    m.item(ui, None, en!("Sliding Door, up"), Action::MakeDoor { kind: sliding(SlideDirection::Up), trigger: true });
+                    m.item(ui, None, en!("Sliding Door, sideways"), Action::MakeDoor { kind: sliding(SlideDirection::Left), trigger: true });
                     ui.separator();
-                    m.item(ui, None, "Lift, Moving Platform", Action::MakePlatform);
+                    m.item(ui, None, en!("Lift, Moving Platform"), Action::MakePlatform);
                 });
-                sub_menu(ui, Some(icons::VOLUME), "Triggers", |ui| {
-                    m.item(ui, Some(icons::VOLUME), "Volume Tool", Action::SetTool(ToolKind::Volume));
+                sub_menu(ui, Some(icons::VOLUME), en!("Triggers"), |ui| {
+                    m.item(ui, Some(icons::VOLUME), en!("Volume Tool"), Action::SetTool(ToolKind::Volume));
                     ui.separator();
-                    empty_hint(ui, "Around the selection");
+                    empty_hint(ui, tr("Around the selection"));
                     for class in crate::volume_tool::VOLUME_CLASSES {
                         m.item(ui, None, class, Action::VolumeAroundSelection(class.to_string()));
                     }
                 });
-                sub_menu(ui, Some(icons::LINK), "Logic", |ui| {
-                    m.item(ui, Some(icons::LINK), "Link Two Selected Entities…", Action::ShowLinkDialog);
-                    m.item(ui, None, "Logic Graph", Action::ShowLogicGraph);
+                sub_menu(ui, Some(icons::LINK), en!("Logic"), |ui| {
+                    m.item(ui, Some(icons::LINK), en!("Link Two Selected Entities…"), Action::ShowLinkDialog);
+                    m.item(ui, None, en!("Logic Graph"), Action::ShowLogicGraph);
                     ui.separator();
-                    empty_hint(ui, "Place at the cursor");
+                    empty_hint(ui, tr("Place at the cursor"));
                     m.point_entities(
                         ui,
                         game,
@@ -1491,18 +1525,18 @@ impl App {
                         ],
                     );
                 });
-                sub_menu(ui, Some(icons::ENTITY), "Spawning", |ui| {
-                    empty_hint(ui, "Place at the cursor");
+                sub_menu(ui, Some(icons::ENTITY), en!("Spawning"), |ui| {
+                    empty_hint(ui, tr("Place at the cursor"));
                     m.point_entities(ui, game, &["info_spawner", "info_teleport_destination"]);
                 });
-                sub_menu(ui, Some(icons::PATH), "Paths", |ui| {
-                    m.item(ui, Some(icons::PATH), "Path Tool", Action::SetTool(ToolKind::Path));
+                sub_menu(ui, Some(icons::PATH), en!("Paths"), |ui| {
+                    m.item(ui, Some(icons::PATH), en!("Path Tool"), Action::SetTool(ToolKind::Path));
                     ui.separator();
-                    empty_hint(ui, "Place at the cursor");
+                    empty_hint(ui, tr("Place at the cursor"));
                     m.point_entities(ui, game, &["path_corner"]);
                 });
             });
-            menu(ui, "Tools", |ui| {
+            menu(ui, en!("Tools"), |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 for (i, group) in ToolKind::GROUPS.iter().enumerate() {
                     if i > 0 {
@@ -1511,7 +1545,7 @@ impl App {
 
                     for t in group.iter().copied() {
                         let shortcut = m.shortcut(&Action::SetTool(t));
-                        let button = menu_choice(ui, Some(icons::tool(t)), &format!("{} Tool", t.label()), shortcut, self.state.tool == t);
+                        let button = menu_choice(ui, Some(icons::tool(t)), &trf!("{tool} Tool", tool = tr(t.label())), shortcut, self.state.tool == t);
                         let response = ui.add(button);
                         help::register(&response, Topic::Tool(t));
                         if response.on_hover_text(help::tooltip(ui, panels::tool_help(t), help::F1_HINT)).clicked() {
@@ -1521,23 +1555,23 @@ impl App {
                     }
                 }
             });
-            menu(ui, "View", |ui| {
+            menu(ui, en!("View"), |ui| {
                 ui.set_min_width(MENU_WIDTH);
-                m.item(ui, Some(icons::FOCUS), "Focus Selection", Action::FocusSelection);
-                m.toggle(ui, "Transform Gizmo", self.state.prefs.transform_gizmo, Action::ToggleTransformGizmo);
-                m.toggle(ui, "Godot Overlays", self.state.prefs.godot_overlays, Action::ToggleGodotOverlays);
-                sub_menu(ui, None, "Walkable Area", |ui| {
-                    m.toggle(ui, "Show Walkable Area", self.state.walkable.on, Action::ToggleWalkable);
+                m.item(ui, Some(icons::FOCUS), en!("Focus Selection"), Action::FocusSelection);
+                m.toggle(ui, en!("Transform Gizmo"), self.state.prefs.transform_gizmo, Action::ToggleTransformGizmo);
+                m.toggle(ui, en!("Godot Overlays"), self.state.prefs.godot_overlays, Action::ToggleGodotOverlays);
+                sub_menu(ui, None, en!("Walkable Area"), |ui| {
+                    m.toggle(ui, en!("Show Walkable Area"), self.state.walkable.on, Action::ToggleWalkable);
                     ui.separator();
                     let a = &mut self.state.prefs.walk_agent;
                     egui::Grid::new("walk_agent").num_columns(2).show(ui, |ui| {
                         for (label, value, range, unit) in [
-                            ("Radius", &mut a.radius, 0.05..=10.0, " m"),
-                            ("Height", &mut a.height, 0.2..=20.0, " m"),
-                            ("Max climb", &mut a.max_climb, 0.0..=10.0, " m"),
-                            ("Max slope", &mut a.max_slope, 0.0..=89.0, "°"),
+                            (en!("Radius"), &mut a.radius, 0.05..=10.0, " m"),
+                            (en!("Height"), &mut a.height, 0.2..=20.0, " m"),
+                            (en!("Max climb"), &mut a.max_climb, 0.0..=10.0, " m"),
+                            (en!("Max slope"), &mut a.max_slope, 0.0..=89.0, "°"),
                         ] {
-                            ui.label(label);
+                            ui.label(tr(label));
                             ui.add(egui::DragValue::new(value).range(range).speed(0.05).suffix(unit));
                             ui.end_row();
                         }
@@ -1546,55 +1580,55 @@ impl App {
                     empty_hint(ui, &self.state.walkable.describe());
                 });
                 ui.separator();
-                sub_menu(ui, None, "Views", |ui| {
+                sub_menu(ui, None, en!("Views"), |ui| {
                     let open = open_views(&self.dock);
                     for (i, vp) in self.viewports.iter().enumerate() {
                         m.toggle(ui, vp.kind().label(), open.contains(&i), Action::ToggleView(i));
                     }
 
                     ui.separator();
-                    for (n, label) in [(1u8, "Single View"), (2, "Two Views"), (4, "Four Views")] {
+                    for (n, label) in [(1u8, en!("Single View")), (2, en!("Two Views")), (4, en!("Four Views"))] {
                         let current = self.maximized.is_none() && open.len() == n as usize;
-                        if ui.add(menu_button(current.then_some(icons::CHECK), label, m.shortcut(&Action::ViewLayout(n)))).clicked() {
+                        if ui.add(menu_button(current.then_some(icons::CHECK), tr(label), m.shortcut(&Action::ViewLayout(n)))).clicked() {
                             m.actions.push(Action::ViewLayout(n));
                             ui.close();
                         }
                     }
 
                     ui.separator();
-                    m.toggle(ui, "Maximize View", self.maximized.is_some(), Action::ToggleMaximizeView);
+                    m.toggle(ui, en!("Maximize View"), self.maximized.is_some(), Action::ToggleMaximizeView);
                 });
-                sub_menu(ui, Some(icons::shade(self.state.prefs.shade)), "Shading", |ui| {
+                sub_menu(ui, Some(icons::shade(self.state.prefs.shade)), en!("Shading"), |ui| {
                     for s in Shade::ALL {
                         let shortcut = m.shortcut(&Action::SetShade(s));
-                        if ui.add(menu_choice(ui, Some(icons::shade(s)), s.title(), shortcut, self.state.prefs.shade == s)).clicked() {
+                        if ui.add(menu_choice(ui, Some(icons::shade(s)), tr(s.title()), shortcut, self.state.prefs.shade == s)).clicked() {
                             m.actions.push(Action::SetShade(s));
                             ui.close();
                         }
                     }
 
                     ui.separator();
-                    m.item(ui, None, "Cycle Shading", Action::ToggleTextured);
-                    sub_menu(ui, None, "Baked View", |ui| {
+                    m.item(ui, None, en!("Cycle Shading"), Action::ToggleTextured);
+                    sub_menu(ui, None, en!("Baked View"), |ui| {
                         for v in crate::bake::View::ALL {
                             let current = self.state.prefs.shade == Shade::Baked && self.state.prefs.bake_view == v;
-                            if ui.add(menu_button(current.then_some(icons::CHECK), v.label(), m.shortcut(&Action::SetBakeView(v)))).clicked() {
+                            if ui.add(menu_button(current.then_some(icons::CHECK), tr(v.label()), m.shortcut(&Action::SetBakeView(v)))).clicked() {
                                 m.actions.push(Action::SetBakeView(v));
                                 ui.close();
                             }
                         }
                     });
                 });
-                sub_menu(ui, Some(icons::GRID), "Grid", |ui| {
-                    m.item(ui, None, "Larger Grid", Action::GridUp);
-                    m.item(ui, None, "Smaller Grid", Action::GridDown);
+                sub_menu(ui, Some(icons::GRID), en!("Grid"), |ui| {
+                    m.item(ui, None, en!("Larger Grid"), Action::GridUp);
+                    m.item(ui, None, en!("Smaller Grid"), Action::GridDown);
                     ui.separator();
-                    m.toggle(ui, "Snap to Grid", self.state.snap, Action::ToggleSnap);
+                    m.toggle(ui, en!("Snap to Grid"), self.state.snap, Action::ToggleSnap);
                 });
-                sub_menu(ui, None, "Interface Scale", |ui| {
-                    m.item(ui, None, "Increase", Action::UiScaleUp);
-                    m.item(ui, None, "Decrease", Action::UiScaleDown);
-                    m.item(ui, None, "Reset", Action::UiScaleReset);
+                sub_menu(ui, None, en!("Interface Scale"), |ui| {
+                    m.item(ui, None, en!("Increase"), Action::UiScaleUp);
+                    m.item(ui, None, en!("Decrease"), Action::UiScaleDown);
+                    m.item(ui, None, en!("Reset"), Action::UiScaleReset);
                     ui.separator();
                     for scale in UI_SCALE_PRESETS {
                         let current = (self.state.prefs.ui_scale - scale).abs() < 0.001;
@@ -1604,31 +1638,31 @@ impl App {
                         }
                     }
                 });
-                sub_menu(ui, None, "Theme", |ui| {
+                sub_menu(ui, None, en!("Theme"), |ui| {
                     for t in crate::state::UiTheme::ALL {
-                        let button = menu_choice(ui, None, t.label(), m.shortcut(&Action::SetTheme(t)), self.state.prefs.theme == t);
+                        let button = menu_choice(ui, None, tr(t.label()), m.shortcut(&Action::SetTheme(t)), self.state.prefs.theme == t);
                         if ui.add(button).clicked() {
                             m.actions.push(Action::SetTheme(t));
                             ui.close();
                         }
                     }
                 });
-                sub_menu(ui, None, "Cordon", |ui| {
-                    m.item(ui, None, "Set Cordon from Selection", Action::SetCordonFromSelection);
-                    m.toggle(ui, "Cordon Enabled", self.state.doc.map.editor.cordon_enabled, Action::ToggleCordon);
-                    m.item(ui, None, "Clear Cordon", Action::ClearCordon);
+                sub_menu(ui, None, en!("Cordon"), |ui| {
+                    m.item(ui, None, en!("Set Cordon from Selection"), Action::SetCordonFromSelection);
+                    m.toggle(ui, en!("Cordon Enabled"), self.state.doc.map.editor.cordon_enabled, Action::ToggleCordon);
+                    m.item(ui, None, en!("Clear Cordon"), Action::ClearCordon);
                 });
-                sub_menu(ui, None, "Camera Bookmarks", |ui| {
+                sub_menu(ui, None, en!("Camera Bookmarks"), |ui| {
                     egui::Grid::new("camera_bookmarks").num_columns(2).show(ui, |ui| {
                         for n in 1..=9u8 {
                             let stored = self.state.doc.map.editor.cameras.contains_key(&n);
-                            let recall = menu_button(None, &format!("Go to {n}"), m.shortcut(&Action::RecallCamera(n)));
+                            let recall = menu_button(None, &trf!("Go to {n}", n), m.shortcut(&Action::RecallCamera(n)));
                             if ui.add_enabled(stored, recall).clicked() {
                                 m.actions.push(Action::RecallCamera(n));
                                 ui.close();
                             }
 
-                            if ui.add(egui::Button::new(format!("Store {n}")).shortcut_text(m.shortcut(&Action::StoreCamera(n)).unwrap_or_default())).clicked()
+                            if ui.add(egui::Button::new(trf!("Store {n}", n)).shortcut_text(m.shortcut(&Action::StoreCamera(n)).unwrap_or_default())).clicked()
                             {
                                 m.actions.push(Action::StoreCamera(n));
                                 ui.close();
@@ -1639,39 +1673,39 @@ impl App {
                     });
                 });
                 ui.separator();
-                sub_menu(ui, None, "Panels", |ui| {
+                sub_menu(ui, None, en!("Panels"), |ui| {
                     for tab in PANEL_TABS {
                         let open = self.dock.find_tab(&tab).is_some();
-                        if ui.add(menu_button(open.then_some(icons::CHECK), tab_title(tab), None)).clicked() {
+                        if ui.add(menu_button(open.then_some(icons::CHECK), tr(tab_title(tab)), None)).clicked() {
                             toggle_panel(&mut self.dock, tab);
                             ui.close();
                         }
                     }
 
                     ui.separator();
-                    if ui.add(menu_button(None, "Reset Layout", None)).clicked() {
+                    if ui.add(menu_button(None, tr("Reset Layout"), None)).clicked() {
                         self.dock = default_dock();
                         ui.close();
                     }
                 });
             });
-            menu(ui, "Godot", |ui| {
+            menu(ui, en!("Godot"), |ui| {
                 ui.set_min_width(MENU_WIDTH);
                 let found = self.state.godot.found();
                 let runs = found || self.state.godot_has_project();
-                m.item_enabled(ui, Some(icons::PLAY), "Run Project", Action::RunGodotProject, runs, commands::GODOT_NOT_FOUND);
-                m.item_enabled(ui, Some(icons::GODOT), "Open Project in Godot Editor", Action::OpenGodotEditor, found, commands::GODOT_NOT_FOUND);
+                m.item_enabled(ui, Some(icons::PLAY), en!("Run Project"), Action::RunGodotProject, runs, tr(commands::GODOT_NOT_FOUND));
+                m.item_enabled(ui, Some(icons::GODOT), en!("Open Project in Godot Editor"), Action::OpenGodotEditor, found, tr(commands::GODOT_NOT_FOUND));
                 let open = self.state.godot_has_project();
-                m.item_enabled(ui, None, "Build in Godot", Action::BuildInGodot, open, "Needs the Godot editor with this project open");
-                m.item(ui, Some(icons::SHADE_BAKED), "Bake Lighting…", Action::BakeLighting);
+                m.item_enabled(ui, None, en!("Build in Godot"), Action::BuildInGodot, open, tr("Needs the Godot editor with this project open"));
+                m.item(ui, Some(icons::SHADE_BAKED), en!("Bake Lighting…"), Action::BakeLighting);
                 let live = self.state.prefs.live_mode;
-                m.toggle_enabled(ui, "Live Mode", live, Action::ToggleLiveMode, live || self.state.prefs.live_link, commands::LIVE_LINK_OFF);
+                m.toggle_enabled(ui, en!("Live Mode"), live, Action::ToggleLiveMode, live || self.state.prefs.live_link, tr(commands::LIVE_LINK_OFF));
                 ui.separator();
-                m.item(ui, Some(icons::OPEN), "Open Godot Project…", Action::OpenProject);
-                sub_menu(ui, Some(icons::RECENT), "Recent Projects", |ui| {
+                m.item(ui, Some(icons::OPEN), en!("Open Godot Project…"), Action::OpenProject);
+                sub_menu(ui, Some(icons::RECENT), en!("Recent Projects"), |ui| {
                     let recent = self.state.prefs.recent_projects.clone();
                     if recent.is_empty() {
-                        empty_hint(ui, "No recent projects");
+                        empty_hint(ui, tr("No recent projects"));
                     }
 
                     for path in recent {
@@ -1683,23 +1717,30 @@ impl App {
                     }
                 });
                 let has_project = self.state.game.project_root.is_some();
-                m.item_enabled(ui, Some(icons::IMPORT), "Add Content to Project…", Action::ShowProjectContent, has_project, "Open a Godot project first");
-                m.item_enabled(ui, None, "Install or Update Addon…", Action::ShowAddonSetup, has_project, "Open a Godot project first");
+                m.item_enabled(
+                    ui,
+                    Some(icons::IMPORT),
+                    en!("Add Content to Project…"),
+                    Action::ShowProjectContent,
+                    has_project,
+                    tr("Open a Godot project first"),
+                );
+                m.item_enabled(ui, None, en!("Install or Update Addon…"), Action::ShowAddonSetup, has_project, tr("Open a Godot project first"));
                 ui.separator();
-                sub_menu(ui, None, "Reload", |ui| {
-                    m.item(ui, None, "Game Config", Action::ReloadProject);
-                    m.item(ui, None, "Materials", Action::ReloadMaterials);
-                    m.item(ui, None, "Models", Action::ReloadModels);
+                sub_menu(ui, None, en!("Reload"), |ui| {
+                    m.item(ui, None, en!("Game Config"), Action::ReloadProject);
+                    m.item(ui, None, en!("Materials"), Action::ReloadMaterials);
+                    m.item(ui, None, en!("Models"), Action::ReloadModels);
                 });
             });
-            menu(ui, "Help", |ui| {
+            menu(ui, en!("Help"), |ui| {
                 ui.set_min_width(MENU_WIDTH);
-                m.item(ui, Some(icons::COMMAND), "Command Palette", Action::ShowCommandPalette);
-                m.item(ui, Some(icons::KEYBOARD), "Keyboard Shortcuts…", Action::ShowKeymap);
-                m.item(ui, None, "Entity and Code Reference", Action::ShowReference);
+                m.item(ui, Some(icons::COMMAND), en!("Command Palette"), Action::ShowCommandPalette);
+                m.item(ui, Some(icons::KEYBOARD), en!("Keyboard Shortcuts…"), Action::ShowKeymap);
+                m.item(ui, None, en!("Entity and Code Reference"), Action::ShowReference);
                 help_menu_links(ui);
                 ui.separator();
-                ui.label(RichText::new("TrenchDot, a level editor for Godot").weak());
+                ui.label(RichText::new(tr("TrenchDot, a level editor for Godot")).weak());
             });
         });
     }
@@ -2742,7 +2783,7 @@ fn sync_language(ctx: &egui::Context, lang: crate::i18n::Lang, japanese_first: &
 /// The Language rows of Preferences. A language other than English adds the English word to the label, so someone who
 /// picked a language they cannot read can find the way back.
 fn language_pref(ui: &mut Ui, prefs: &mut Prefs) {
-    use crate::i18n::{Lang, tr};
+    use crate::i18n::Lang;
     let lang = prefs.lang();
     let mut label = egui::text::LayoutJob::default();
     let font = egui::TextStyle::Body.resolve(ui.style());
@@ -3510,5 +3551,49 @@ mod tests {
         frame(vec![button(true)]);
         assert_eq!(frame(vec![button(false), ctrl_a]).0, KeyScope::Ui, "not Select All");
         assert!(ctx.egui_wants_keyboard_input(), "the field took the focus");
+    }
+
+    #[derive(Default)]
+    struct MenuProbe {
+        actions: Vec<Action>,
+        under_pointer: Option<String>,
+    }
+
+    #[test]
+    fn a_translated_menu_item_draws_german_and_keeps_the_english_manual_page() {
+        use crate::i18n::{Lang, scope, test_catalogue};
+        let _cat = test_catalogue(
+            Lang::De,
+            r#"{ "Convert Textures (VTF/VMT, WAD, WAL)…": "Texturen konvertieren (VTF/VMT, WAD, WAL)…",
+                 "Flip {axis}": "{axis} spiegeln", "Cut": "Ausschneiden" }"#,
+        );
+        let _de = scope(Lang::De);
+        let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(500.0, 300.0)).build_ui_state(
+            |ui, p: &mut MenuProbe| {
+                let mut m = MenuCx { ctx: ui.ctx().clone(), shortcuts: Vec::new(), actions: &mut p.actions };
+                m.item(ui, None, en!("Convert Textures (VTF/VMT, WAD, WAL)…"), Action::ConvertTextures);
+                m.item(ui, None, &msg!("Flip {axis}", axis = "Y"), Action::Flip { axis: 1 });
+                m.item_keys(ui, None, en!("Cut"), "Ctrl+X", Action::Cut);
+                p.under_pointer = help::take_hovered(ui.ctx());
+            },
+            MenuProbe::default(),
+        );
+        harness.run();
+        assert!(harness.query_by_label("Convert Textures (VTF/VMT, WAD, WAL)…").is_none());
+        assert!(harness.query_by_label_contains("Cut").is_none());
+        assert!(harness.query_by_label("Y spiegeln").is_some());
+        assert!(harness.query_by_label_contains("Ausschneiden").is_some());
+
+        harness.get_by_label("Texturen konvertieren (VTF/VMT, WAD, WAL)…").hover();
+        harness.run();
+        let page = help::url(Topic::Menu("Convert Textures (VTF/VMT, WAD, WAL)…")).unwrap();
+        assert_eq!(harness.state().under_pointer.as_deref(), Some(page.as_str()), "F1 opens the English page");
+
+        harness.get_by_label("Y spiegeln").hover();
+        harness.run();
+        assert_eq!(harness.state().under_pointer, None, "a dynamic label has no page");
+        harness.get_by_label("Y spiegeln").click();
+        harness.run();
+        assert_eq!(harness.state().actions, [Action::Flip { axis: 1 }]);
     }
 }

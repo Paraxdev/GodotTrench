@@ -1,5 +1,7 @@
 use td_core::{DVec3, NodeId, Plane};
 
+use crate::i18n::en;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ToolKind {
     /// Selection, moving, brush drawing, face dragging and entity gizmo handles (TrenchBroom default tool).
@@ -31,20 +33,20 @@ pub enum ToolKind {
 impl ToolKind {
     pub fn label(&self) -> &'static str {
         match self {
-            ToolKind::Select => "Select",
-            ToolKind::Clip => "Clip",
-            ToolKind::Vertex => "Vertex",
-            ToolKind::Rotate => "Rotate",
-            ToolKind::Scale => "Scale",
-            ToolKind::Sculpt => "Sculpt",
-            ToolKind::Blend => "Blend",
-            ToolKind::Paint => "Paint",
-            ToolKind::Mesh => "Mesh",
-            ToolKind::Scatter => "Scatter",
-            ToolKind::Volume => "Volume",
-            ToolKind::Path => "Path",
-            ToolKind::Measure => "Measure",
-            ToolKind::Texture => "Texture",
+            ToolKind::Select => en!("Select"),
+            ToolKind::Clip => en!("Clip"),
+            ToolKind::Vertex => en!("Vertex"),
+            ToolKind::Rotate => en!("Rotate"),
+            ToolKind::Scale => en!("Scale"),
+            ToolKind::Sculpt => en!("Sculpt"),
+            ToolKind::Blend => en!("Blend"),
+            ToolKind::Paint => en!("Paint"),
+            ToolKind::Mesh => en!("Mesh"),
+            ToolKind::Scatter => en!("Scatter"),
+            ToolKind::Volume => en!("Volume"),
+            ToolKind::Path => en!("Path"),
+            ToolKind::Measure => en!("Measure"),
+            ToolKind::Texture => en!("Texture"),
         }
     }
 

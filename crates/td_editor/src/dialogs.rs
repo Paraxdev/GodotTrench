@@ -1159,12 +1159,17 @@ mod tests {
 
     #[test]
     fn command_help_stays_short() {
-        const LIMIT: usize = 100;
+        use crate::i18n::{Lang, scope, tr};
         let state = EditorState::new(crate::state::Prefs::default());
         let helps: Vec<_> = palette_entries(&state).into_iter().filter_map(|(label, action)| action.help().map(|h| (label, h))).collect();
         assert!(helps.len() > 30, "{} commands explain themselves", helps.len());
-        for (label, help) in helps {
-            assert!(help.chars().count() <= LIMIT, "{label}: {} characters", help.chars().count());
+        for lang in Lang::ALL {
+            let _scope = scope(lang);
+            let limit = if matches!(lang, Lang::ZhHans | Lang::Ja) { 60 } else { 100 };
+            for (label, help) in &helps {
+                let shown = tr(help);
+                assert!(shown.chars().count() <= limit, "{} {label}: {} characters", lang.code(), shown.chars().count());
+            }
         }
     }
 
@@ -1195,12 +1200,17 @@ mod tests {
 
     #[test]
     fn jargon_commands_explain_themselves() {
+        use crate::i18n::{Lang, scope, tr};
         let state = EditorState::new(crate::state::Prefs::default());
         for (label, action) in palette_entries(&state) {
             let jargon = ["CSG", "Hollow", "UV Lock", "Displacement", "Cordon", "Prefab", "Duplicate Linked", "Convex"].iter().any(|j| label.contains(j));
             let help = action.help();
             assert!(!jargon || help.is_some(), "{label} needs a help line");
-            assert!(help.is_none_or(|h| !h.contains(['\u{2013}', '\u{2014}']) && !h.contains(" - ")), "{label}: no dashes as punctuation");
+            for lang in Lang::ALL {
+                let _scope = scope(lang);
+                let shown = help.map(tr);
+                assert!(shown.is_none_or(|h| !h.contains(['\u{2013}', '\u{2014}']) && !h.contains(" - ")), "{} {label}: no dashes as punctuation", lang.code());
+            }
         }
     }
 

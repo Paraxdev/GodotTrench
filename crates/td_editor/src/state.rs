@@ -10,7 +10,7 @@ use td_doc::{Document, format};
 use td_formats::GameConfig;
 use td_render::ShadeMode;
 
-use crate::i18n::Msg;
+use crate::i18n::{Msg, en};
 use crate::materials::MaterialLibrary;
 use crate::tools::ToolKind;
 
@@ -39,9 +39,9 @@ impl UiTheme {
 
     pub fn label(self) -> &'static str {
         match self {
-            UiTheme::Dark => "Dark",
-            UiTheme::Light => "Light",
-            UiTheme::System => "System",
+            UiTheme::Dark => en!("Dark"),
+            UiTheme::Light => en!("Light"),
+            UiTheme::System => en!("System"),
         }
     }
 
@@ -107,11 +107,11 @@ impl Shade {
     /// The name the View > Shading menu, the toolbar, the palette and the keymap show.
     pub fn title(&self) -> &'static str {
         match self {
-            Shade::Textured => "Textured",
-            Shade::Flat => "Flat",
-            Shade::Lit => "Lit Preview",
-            Shade::Wireframe => "Wireframe",
-            Shade::Baked => "Baked Lighting",
+            Shade::Textured => en!("Textured"),
+            Shade::Flat => en!("Flat"),
+            Shade::Lit => en!("Lit Preview"),
+            Shade::Wireframe => en!("Wireframe"),
+            Shade::Baked => en!("Baked Lighting"),
         }
     }
 

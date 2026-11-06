@@ -12,6 +12,7 @@ use td_bake::{Backend, Progress, Settings};
 use td_doc::lightmap::{self, BakeOptions, Lightmap};
 use td_doc::{Map, NodeId};
 
+use crate::i18n::en;
 use crate::state::EditorState;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -290,10 +291,10 @@ impl View {
 
     pub fn label(self) -> &'static str {
         match self {
-            View::Lit => "Textures with Baked Light",
-            View::Light => "Light Map Only",
-            View::Shadow => "Sun Shadow Mask",
-            View::Occlusion => "Ambient Occlusion",
+            View::Lit => en!("Textures with Baked Light"),
+            View::Light => en!("Light Map Only"),
+            View::Shadow => en!("Sun Shadow Mask"),
+            View::Occlusion => en!("Ambient Occlusion"),
         }
     }
 }

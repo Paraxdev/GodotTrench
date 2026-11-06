@@ -5,6 +5,7 @@ use td_core::{DVec2, DVec3, NodeId, Plane};
 use td_doc::Map;
 use td_geom::{FaceUv, Justify, UvProjection};
 
+use crate::i18n::en;
 use crate::state::EditorState;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,22 +64,22 @@ impl MeshUvKind {
 
     pub fn label(&self) -> &'static str {
         match self {
-            MeshUvKind::Planar => "Planar",
-            MeshUvKind::PlanarAxis(0) => "Planar X",
-            MeshUvKind::PlanarAxis(1) => "Planar Y",
-            MeshUvKind::PlanarAxis(_) => "Planar Z",
-            MeshUvKind::Box => "Box",
-            MeshUvKind::Cylinder(0) => "Cylinder X",
-            MeshUvKind::Cylinder(1) => "Cylinder Y",
-            MeshUvKind::Cylinder(_) => "Cylinder Z",
-            MeshUvKind::Sphere => "Sphere",
-            MeshUvKind::View => "View",
-            MeshUvKind::Unfold => "Unfold",
-            MeshUvKind::World => "Reset to World",
-            MeshUvKind::Bake => "Bake Planar",
-            MeshUvKind::Clear => "Clear UVs",
-            MeshUvKind::Normalize => "Normalize",
-            MeshUvKind::Pack => "Pack",
+            MeshUvKind::Planar => en!("Planar"),
+            MeshUvKind::PlanarAxis(0) => en!("Planar X"),
+            MeshUvKind::PlanarAxis(1) => en!("Planar Y"),
+            MeshUvKind::PlanarAxis(_) => en!("Planar Z"),
+            MeshUvKind::Box => en!("Box"),
+            MeshUvKind::Cylinder(0) => en!("Cylinder X"),
+            MeshUvKind::Cylinder(1) => en!("Cylinder Y"),
+            MeshUvKind::Cylinder(_) => en!("Cylinder Z"),
+            MeshUvKind::Sphere => en!("Sphere"),
+            MeshUvKind::View => en!("View"),
+            MeshUvKind::Unfold => en!("Unfold"),
+            MeshUvKind::World => en!("Reset to World"),
+            MeshUvKind::Bake => en!("Bake Planar"),
+            MeshUvKind::Clear => en!("Clear UVs"),
+            MeshUvKind::Normalize => en!("Normalize"),
+            MeshUvKind::Pack => en!("Pack"),
         }
     }
 

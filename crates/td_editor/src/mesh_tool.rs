@@ -10,6 +10,7 @@ use td_geom::Mesh;
 use td_render::LineVertex;
 
 use crate::camera::{Camera, ViewKind};
+use crate::i18n::en;
 use crate::scene::v3;
 use crate::state::EditorState;
 
@@ -1300,25 +1301,25 @@ pub enum MeshOp {
 impl MeshOp {
     pub fn label(&self) -> &'static str {
         match self {
-            MeshOp::MergeCenter => "Merge at Center",
-            MeshOp::MergeByDistance => "Merge by Distance",
-            MeshOp::Fill => "Fill",
-            MeshOp::Delete => "Delete",
-            MeshOp::Dissolve => "Dissolve Vertices",
-            MeshOp::Subdivide => "Subdivide",
-            MeshOp::Triangulate => "Triangulate",
-            MeshOp::Flip => "Flip Normals",
-            MeshOp::Smooth => "Smooth Vertices",
-            MeshOp::Solidify => "Solidify",
-            MeshOp::Duplicate => "Duplicate",
-            MeshOp::Separate => "Separate",
-            MeshOp::SelectLinked => "Select Linked",
-            MeshOp::ShadeSmooth => "Shade Smooth",
-            MeshOp::ShadeFlat => "Shade Flat",
-            MeshOp::Mirror(0) => "Mirror X",
-            MeshOp::Mirror(1) => "Mirror Y",
-            MeshOp::Mirror(_) => "Mirror Z",
-            MeshOp::SnapToGrid => "Snap Vertices to Grid",
+            MeshOp::MergeCenter => en!("Merge at Center"),
+            MeshOp::MergeByDistance => en!("Merge by Distance"),
+            MeshOp::Fill => en!("Fill"),
+            MeshOp::Delete => en!("Delete"),
+            MeshOp::Dissolve => en!("Dissolve Vertices"),
+            MeshOp::Subdivide => en!("Subdivide"),
+            MeshOp::Triangulate => en!("Triangulate"),
+            MeshOp::Flip => en!("Flip Normals"),
+            MeshOp::Smooth => en!("Smooth Vertices"),
+            MeshOp::Solidify => en!("Solidify"),
+            MeshOp::Duplicate => en!("Duplicate"),
+            MeshOp::Separate => en!("Separate"),
+            MeshOp::SelectLinked => en!("Select Linked"),
+            MeshOp::ShadeSmooth => en!("Shade Smooth"),
+            MeshOp::ShadeFlat => en!("Shade Flat"),
+            MeshOp::Mirror(0) => en!("Mirror X"),
+            MeshOp::Mirror(1) => en!("Mirror Y"),
+            MeshOp::Mirror(_) => en!("Mirror Z"),
+            MeshOp::SnapToGrid => en!("Snap Vertices to Grid"),
         }
     }
 

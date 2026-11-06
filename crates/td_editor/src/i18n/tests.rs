@@ -503,7 +503,8 @@ fn source_keys() -> Vec<(Key, String)> {
 
 /// Keys the scan cannot see because the code builds them at run time.
 fn foreign_keys() -> Vec<Key> {
-    Vec::new()
+    // td_geom::Justify::label, the Texture menu draws them through tr
+    ["Left", "Right", "Top", "Bottom", "Center", "Fit", "Fit W", "Fit H"].into_iter().map(|k| Key::Text(k.into())).collect()
 }
 
 #[test]
@@ -926,6 +927,19 @@ fn mcp_code_stays_english() {
 /// Files whose UI text all goes through the lookup, so a raw literal there is text someone forgot to translate.
 const CONVERTED: &[&str] = &[];
 
+/// Functions of a file that is still being converted, as (file, function name).
+const CONVERTED_FNS: &[(&str, &str)] = &[("app.rs", "menu_bar"), ("app.rs", "help_menu_links")];
+
+/// The lines of function `name`, rustfmt closes it with a brace at the indent of its `fn`, and the number of the line
+/// before the first one.
+fn fn_lines<'a>(src: &'a str, name: &str) -> Option<(usize, Vec<&'a str>)> {
+    let lines: Vec<&str> = src.lines().collect();
+    let start = lines.iter().position(|l| l.trim_start().starts_with(&format!("fn {name}(")))?;
+    let indent = &lines[start][..lines[start].len() - lines[start].trim_start().len()];
+    let end = lines[start..].iter().position(|l| l.strip_prefix(indent) == Some("}"))? + start;
+    Some((start, lines[start..=end].to_vec()))
+}
+
 const TEXT_METHODS: [&str; 20] = [
     "button",
     "small_button",
@@ -1027,6 +1041,18 @@ fn converted_files_have_no_raw_ui_text() {
     for file in CONVERTED {
         let src = std::fs::read_to_string(src_dir().join(file)).unwrap();
         found.extend(raw_ui_text(without_tests(&src)).into_iter().map(|(line, s)| format!("{file}:{line} {s:?}")));
+    }
+
+    let src = "fn a() {\n    ui.label(\"Outside\");\n}\n\nimpl X {\n    fn menu_bar(&mut self) {\n        ui.label(\"Inside\");\n        ui.label(tr(\"Done\"));\n    }\n\n    fn b() {\n        ui.label(\"After\");\n    }\n}\n";
+    let (start, body) = fn_lines(src, "menu_bar").unwrap();
+    assert_eq!((start, body.len()), (5, 4));
+    assert!(fn_lines(src, "missing").is_none());
+    assert_eq!(raw_ui_text(&body.join("\n")), [(2, "Inside".to_string())]);
+
+    for (file, name) in CONVERTED_FNS {
+        let src = std::fs::read_to_string(src_dir().join(file)).unwrap();
+        let (start, body) = fn_lines(without_tests(&src), name).unwrap_or_else(|| panic!("{file} has no fn {name}"));
+        found.extend(raw_ui_text(&body.join("\n")).into_iter().map(|(line, s)| format!("{file}:{} {s:?}", start + line)));
     }
 
     assert!(found.is_empty(), "wrap UI text in tr, trf!, tr_n! or en!:\n{}", found.join("\n"));
