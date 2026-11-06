@@ -40,7 +40,7 @@ physics body. TrenchDot and Godot both tell you when this happens, and this page
 | The message says | Why | Do this |
 | --- | --- | --- |
 | Install the Gameplay entities pack | Doors, buttons, triggers, props and spawners come with the pack, and the project does not have it | Choose *Gameplay > Install Gameplay Entities* in TrenchDot, see [Project setup](project-setup.md#installing-and-updating-the-pack) |
-| The pack is installed, but the FGD does not include `trenchdot_default_fgd.tres` | Your FGD has no *Base Fgd Files* | Add `res://addons/func_godot/fgd/trenchdot_default_fgd.tres` to *Base Fgd Files* of the FGD that the map settings name in *Entity Fgd* |
+| Your FGD lacks the Gameplay entities pack, add `trenchdot_default_fgd.tres` to its Base Fgd Files | Your FGD has no *Base Fgd Files* | Add `res://addons/func_godot/fgd/trenchdot_default_fgd.tres` to *Base Fgd Files* of the FGD that the map settings name in *Entity Fgd* |
 | The pack is installed, but the *Entity Fgd* is an FGD of the addon | The map settings use FuncGodot's own FGD or another file of the addon, which an addon update replaces | Set *Entity Fgd* of those map settings to the FGD your game config uses |
 | A class of your own has no definition | It is in the FGD of your game config, but not in the *Entity Fgd* of the map settings Godot builds with | Set *Entity Fgd* of those map settings to the FGD your game config uses, see [Your own resources](project-setup.md#your-own-resources) |
 | The map node uses the addon's default map settings, not the ones from Project Settings | The node was added with an older addon, which stored the default map settings in the scene | Select the map node in Godot and clear *Map Settings* in the Inspector |

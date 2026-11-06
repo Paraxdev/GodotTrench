@@ -15,8 +15,8 @@ should say "Godot saved its open scenes and runs the main scene". If the project
 one in Godot under *Project > Project Settings > Application > Run*.
 
 Without a Godot editor, *Run Project* starts the game with the Godot executable. It then runs the scenes as they were
-last saved in Godot. The same happens with an older addon, and the status bar adds that Godot may have map changes it
-has not saved. Save them in Godot, or press Play there.
+last saved in Godot. The same happens with an older addon, and the status bar adds that the game may lack your latest
+map changes. Save them in Godot, or press Play there.
 
 ## Finding the executable
 
