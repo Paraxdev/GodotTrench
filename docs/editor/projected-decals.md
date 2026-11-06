@@ -7,6 +7,12 @@ bumpy ground. Props and models inside the box get it too.
 It is a Godot `Decal` node in the built scene, and it costs more to draw than a regular decal. Use it where a flat
 sheet will not do.
 
+> [!WARNING]
+> Projected decals are harder on the GPU than [regular decals](decals.md). Godot works out the decal for every pixel
+> its box covers on screen, so many boxes, or large ones, slow the game down, most of all on weaker graphics cards. Use
+> a regular decal on a flat surface, keep the box as small as the job allows, and save projected decals for places that
+> need the wrap.
+
 ## Adding it to your project
 
 The projected decal comes with the
@@ -70,6 +76,11 @@ Otherwise the class is defined twice, and the editor warns about it.)
 
     The material shows on every surface inside the box once Godot builds the map, see
     [Building maps](../godot/building.md).
+
+    The editor only shows a flat preview of the material inside the box, Godot draws the real projection, bending the
+    sign over the edge of the step and down its front.
+
+    ![The same sign in a running Godot game, bent over the edge of the brick step and onto its front face](../assets/projected-decals/decal-in-game.png)
 
 ## Keys
 
