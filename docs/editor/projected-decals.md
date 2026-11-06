@@ -59,7 +59,7 @@ setting it up is installing the pack.
     In the Inspector, type a material name into `material`, the same name a face uses, like `base/stain`. Its color,
     normal map and glow carry over.
 
-    ![The Inspector with the infodecal selected, night/shop_sign in material and 128 48 64 in size](../assets/projected-decals/decal-inspector-material.png)
+    ![The Inspector with the infodecal selected, night/shop_sign in material and 128 64 64 in size](../assets/projected-decals/decal-inspector-material.png)
 
 3. Size it
 
