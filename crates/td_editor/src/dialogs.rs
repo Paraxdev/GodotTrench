@@ -314,7 +314,7 @@ impl CommandPalette {
             offset: [0, 8],
             blur: 24,
             spread: 0,
-            color: egui::Color32::from_black_alpha(160),
+            color: egui::Color32::from_black_alpha(crate::theme::colors().modal_shadow_alpha),
         });
         // Modal, so a click outside closes the palette instead of reaching the view under it.
         let area = egui::Modal::default_area(egui::Id::new("command_palette")).anchor(egui::Align2::CENTER_TOP, [0.0, 80.0]);

@@ -3329,6 +3329,27 @@ fn preferences_switch_the_theme() {
     assert_eq!((ui_state("theme"), ui_state("theme_active")), ("dark".into(), "dark".into()));
 }
 
+/// The palette and the dialogs it opens work with the light colors, and the palette frame is light too.
+#[test]
+#[ignore]
+fn command_palette_and_dialogs_open_in_light() {
+    let ed = Editor::launch("light_palette");
+    ed.call("set_editor", json!({ "theme": "light" }));
+    std::thread::sleep(Duration::from_millis(300));
+    ed.input("window", json!([{ "type": "move", "x": 900, "y": 946 }, { "type": "key", "key": "F1" }, { "type": "text", "text": "shape gen" }]));
+    std::thread::sleep(Duration::from_millis(300));
+    let (w, h, _) = ed.screenshot("window", "light_palette");
+    let shot = image::open(artifacts().join(format!("{}_light_palette.png", ed.name))).unwrap().to_rgba8();
+    // The palette sits top center and its text field is the lightest fill of the theme.
+    let px = shot.get_pixel(w / 2, (h as f64 * 0.1) as u32);
+    assert!(px.0[..3].iter().all(|c| *c > 200), "palette fill in light: {px:?}");
+
+    ed.input("window", json!([{ "type": "key", "key": "Enter" }]));
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(window_titles(&ed).contains(&"Shape Generator".to_string()), "{:?}", window_titles(&ed));
+    assert_eq!(ed.state()["ui"]["theme_active"], "light");
+}
+
 fn open_preferences(ed: &Editor) {
     ed.input("window", json!([{ "type": "key", "key": "F1" }, { "type": "text", "text": "preferences" }, { "type": "key", "key": "Enter" }]));
     assert!(window_titles(ed).contains(&"Preferences".to_string()), "{:?}", window_titles(ed));

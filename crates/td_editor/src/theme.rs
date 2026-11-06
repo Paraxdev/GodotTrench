@@ -51,6 +51,8 @@ pub struct Palette {
     /// Weak text, or egui's translucent gray-out of the text color when `None`.
     pub weak_text: Option<Color32>,
     pub shadow_alpha: u8,
+    /// The shadow of the command palette, which floats higher than a window.
+    pub modal_shadow_alpha: u8,
 }
 
 // Accents use a colorblind-safe palette derived from Okabe & Ito, so meaning carried by hue (axes,
@@ -87,6 +89,7 @@ pub const DARK: Palette = Palette {
     selection_mix: 0.6,
     weak_text: None,
     shadow_alpha: 90,
+    modal_shadow_alpha: 160,
 };
 
 /// Accents are the darker family of the same hues, 4.7 or more on panels so they read as text, with the CVD order
@@ -121,6 +124,7 @@ pub const LIGHT: Palette = Palette {
     selection_mix: 1.0,
     weak_text: Some(Color32::from_rgb(0x55, 0x5c, 0x6b)),
     shadow_alpha: 40,
+    modal_shadow_alpha: 80,
 };
 
 /// The palette of the 3D view, the texture canvases and what is drawn over a thumbnail. They sit on a render or
@@ -231,6 +235,29 @@ impl Palette {
         blend(self.gray_1, self.accent, self.selected_mix)
     }
 
+    /// A tint from outside the theme, such as a layer or FGD entity color, made legible on `bg`. Dark keeps it as it
+    /// is, light darkens it in OKLab until it reaches 3:1, keeping hue and as much chroma as still fits sRGB.
+    pub fn readable(&self, c: Color32, bg: Color32) -> Color32 {
+        const MIN: f64 = 3.0;
+        if self.dark || contrast_ratio(c, bg) >= MIN {
+            return c;
+        }
+
+        let [l0, a0, b0] = to_oklab(c);
+        let at = |l: f64| from_oklab_fitted(l, a0, b0);
+        let (mut lo, mut hi) = (0.0, l0);
+        for _ in 0..24 {
+            let mid = (lo + hi) / 2.0;
+            if contrast_ratio(at(mid), bg) >= MIN {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+
+        at(lo)
+    }
+
     pub fn visuals(&self) -> Visuals {
         let mut v = if self.dark { Visuals::dark() } else { Visuals::light() };
         let radius = CornerRadius::same(RADIUS);
@@ -300,6 +327,67 @@ pub fn selected_fill() -> Color32 {
 pub fn blend(a: Color32, b: Color32, t: f32) -> Color32 {
     let mix = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
     Color32::from_rgb(mix(a.r(), b.r()), mix(a.g(), b.g()), mix(a.b(), b.b()))
+}
+
+/// WCAG contrast ratio of two opaque colors.
+pub fn contrast_ratio(a: Color32, b: Color32) -> f64 {
+    let luminance = |c: Color32| {
+        let [r, g, b, _] = linear(c);
+        0.2126 * r + 0.7152 * g + 0.0722 * b
+    };
+    let (hi, lo) = (luminance(a).max(luminance(b)), luminance(a).min(luminance(b)));
+    (hi + 0.05) / (lo + 0.05)
+}
+
+fn to_oklab(c: Color32) -> [f64; 3] {
+    let [r, g, b, _] = linear(c);
+    let l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b).cbrt();
+    let m = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b).cbrt();
+    let s = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b).cbrt();
+    [
+        0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+        1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+        0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+    ]
+}
+
+fn oklab_to_linear(l: f64, a: f64, b: f64) -> [f64; 3] {
+    let l_ = l + 0.3963377774 * a + 0.2158037573 * b;
+    let m_ = l - 0.1055613458 * a - 0.0638541728 * b;
+    let s_ = l - 0.0894841775 * a - 1.2914855480 * b;
+    let (l3, m3, s3) = (l_ * l_ * l_, m_ * m_ * m_, s_ * s_ * s_);
+    [
+        4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3,
+        -1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3,
+        -0.0041960863 * l3 - 0.7034186147 * m3 + 1.7076147010 * s3,
+    ]
+}
+
+/// The OKLab color at lightness `l` with the hue of (`a`, `b`) and the most chroma that stays inside sRGB.
+fn from_oklab_fitted(l: f64, a: f64, b: f64) -> Color32 {
+    let fits = |k: f64| oklab_to_linear(l, a * k, b * k).iter().all(|v| (-0.0005..=1.0005).contains(v));
+    let k = if fits(1.0) {
+        1.0
+    } else {
+        let (mut lo, mut hi) = (0.0, 1.0);
+        for _ in 0..24 {
+            let mid = (lo + hi) / 2.0;
+            if fits(mid) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+
+        lo
+    };
+    let encode = |v: f64| {
+        let v = v.clamp(0.0, 1.0);
+        let s = if v <= 0.0031308 { v * 12.92 } else { 1.055 * v.powf(1.0 / 2.4) - 0.055 };
+        (s * 255.0).round() as u8
+    };
+    let [r, g, b] = oklab_to_linear(l, a * k, b * k);
+    Color32::from_rgb(encode(r), encode(g), encode(b))
 }
 
 /// Linear RGBA for GPU clear colors.
@@ -615,12 +703,7 @@ mod tests {
 
     /// WCAG 2 contrast ratio. AA asks 4.5 for text and 3 for the parts of a control.
     fn contrast(a: Color32, b: Color32) -> f64 {
-        let luminance = |c: Color32| {
-            let [r, g, b, _] = linear(c);
-            0.2126 * r + 0.7152 * g + 0.0722 * b
-        };
-        let (hi, lo) = (luminance(a).max(luminance(b)), luminance(a).min(luminance(b)));
-        (hi + 0.05) / (lo + 0.05)
+        contrast_ratio(a, b)
     }
 
     const PALETTES: [(&str, Palette); 2] = [("dark", DARK), ("light", LIGHT)];
@@ -771,6 +854,84 @@ mod tests {
         assert_eq!(theme_in(Some(egui::Theme::Dark)), (egui::Theme::Dark, DARK.gray_1));
         assert_eq!(theme_in(Some(egui::Theme::Light)), (egui::Theme::Light, LIGHT.gray_1));
         assert_eq!(theme_in(None), (egui::Theme::Dark, DARK.gray_1), "an OS that stops reporting falls back to dark");
+    }
+
+    fn hue(c: Color32) -> f64 {
+        let [_, a, b] = to_oklab(c);
+        b.atan2(a)
+    }
+
+    fn chroma(c: Color32) -> f64 {
+        let [_, a, b] = to_oklab(c);
+        a.hypot(b)
+    }
+
+    const TINTS: [u32; 9] = [0xecc531, 0xffffff, 0xf2e6a0, 0x9bd0f5, 0xd9f2c4, 0xffb0c8, 0xe8e8e8, 0xf5a742, 0x66d9cc];
+
+    #[test]
+    fn readable_keeps_every_tint_in_dark() {
+        for bg in [DARK.gray_0, DARK.gray_1, DARK.gray_2, LIGHT.gray_1] {
+            for rgb in TINTS.into_iter().chain([0x000000, 0x010203, 0x7f8091]) {
+                assert_eq!(DARK.readable(hex(rgb), bg), hex(rgb));
+            }
+        }
+    }
+
+    #[test]
+    fn readable_darkens_light_tints_to_just_over_three() {
+        let bg = LIGHT.gray_1;
+        for rgb in TINTS {
+            let c = hex(rgb);
+            let out = LIGHT.readable(c, bg);
+            let ratio = contrast(out, bg);
+            assert!(ratio >= 3.0, "{rgb:06x}: {ratio:.3} < 3");
+            assert!(ratio < 3.1, "{rgb:06x}: {ratio:.3} darkened more than needed");
+            assert!(to_oklab(out)[0] < to_oklab(c)[0], "{rgb:06x} did not get darker");
+        }
+    }
+
+    #[test]
+    fn readable_keeps_the_hue_of_a_light_yellow() {
+        let yellow = hex(0xecc531);
+        let out = LIGHT.readable(yellow, LIGHT.gray_1);
+        assert!((hue(out) - hue(yellow)).abs() < 0.03, "{} vs {}", hue(out), hue(yellow));
+        assert!(chroma(out) > 0.08, "chroma {}", chroma(out));
+        assert!(out.r() > out.b() && out.g() > out.b(), "{out:?} is no longer yellow");
+    }
+
+    #[test]
+    fn readable_leaves_tints_that_already_read_in_light() {
+        let p = LIGHT;
+        for c in [p.blue, p.red, p.green, p.gray_5, p.gray_7, hex(0x000000), hex(0x7a5c1e)] {
+            assert!(contrast(c, p.gray_1) >= 3.0);
+            assert_eq!(p.readable(c, p.gray_1), c);
+        }
+
+        // Just under the line, so the guard has to trigger and darken.
+        let (under, over) = (hex(0x8e8e8e), hex(0x8d8d8d));
+        assert!(contrast(under, p.gray_1) < 3.0 && contrast(over, p.gray_1) >= 3.0);
+        assert_ne!(p.readable(under, p.gray_1), under);
+        assert_eq!(p.readable(over, p.gray_1), over);
+    }
+
+    #[test]
+    fn readable_depends_on_the_background() {
+        let c = hex(0xc9a227);
+        let on_panel = LIGHT.readable(c, LIGHT.gray_1);
+        let on_field = LIGHT.readable(c, LIGHT.gray_0);
+        let on_backdrop = LIGHT.readable(c, LIGHT.backdrop);
+        assert!(contrast(on_panel, LIGHT.gray_1) >= 3.0);
+        assert!(contrast(on_field, LIGHT.gray_0) >= 3.0);
+        assert!(contrast(on_backdrop, LIGHT.backdrop) >= 3.0);
+        assert!(to_oklab(on_backdrop)[0] < to_oklab(on_field)[0]);
+    }
+
+    #[test]
+    fn command_palette_shadow_follows_the_palette() {
+        assert_eq!((DARK.modal_shadow_alpha, LIGHT.modal_shadow_alpha), (160, 80));
+        for p in [DARK, LIGHT] {
+            assert!(p.modal_shadow_alpha > p.shadow_alpha, "the palette floats higher than a window");
+        }
     }
 
     #[test]

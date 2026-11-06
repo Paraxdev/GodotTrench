@@ -208,23 +208,17 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
 
                 let selected = state.doc.selection.nodes.contains(id);
                 let (icon, color) = match &node.kind {
-                    NodeKind::Layer(l) => (icons::LAYER, Color32::from_rgb((l.color.r * 255.0) as u8, (l.color.g * 255.0) as u8, (l.color.b * 255.0) as u8)),
+                    NodeKind::Layer(l) => (icons::LAYER, color32(l.color)),
                     NodeKind::Group(_) => (icons::GROUP, theme::colors().cyan),
-                    NodeKind::Entity(e) => (
-                        icons::ENTITY,
-                        state
-                            .game
-                            .entity(&e.classname)
-                            .map(|d| Color32::from_rgb((d.color.r * 255.0) as u8, (d.color.g * 255.0) as u8, (d.color.b * 255.0) as u8))
-                            .unwrap_or(theme::colors().gray_6),
-                    ),
+                    NodeKind::Entity(e) => (icons::ENTITY, state.game.entity(&e.classname).map(|d| color32(d.color)).unwrap_or(theme::colors().gray_6)),
                     NodeKind::Brush(_) => (icons::BRUSH, theme::colors().gray_5),
                     NodeKind::Instance(_) => (icons::INSTANCE, theme::colors().yellow),
                     NodeKind::Mesh(_) => (icons::MESH, theme::colors().pink),
                     NodeKind::Terrain(_) => (icons::TERRAIN, theme::colors().green),
                     NodeKind::Scatter(_) => (icons::SCATTER, theme::colors().teal),
                 };
-                ui.add(icon.image(icons::SMALL).tint(color));
+                let panel = theme::colors();
+                ui.add(icon.image(icons::SMALL).tint(panel.readable(color, panel.gray_1)));
                 let mut label = node.name();
                 if let NodeKind::Layer(_) = node.kind {
                     if state.current_layer == *id {
@@ -2549,9 +2543,13 @@ pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
 
 // ------------------------------------------------------------------ entities
 
-fn entity_color(def: &EntityDef) -> Color32 {
-    let c = def.color;
+fn color32(c: td_core::Color) -> Color32 {
     Color32::from_rgb((c.r * 255.0) as u8, (c.g * 255.0) as u8, (c.b * 255.0) as u8)
+}
+
+fn entity_color(def: &EntityDef) -> Color32 {
+    let panel = theme::colors();
+    panel.readable(color32(def.color), panel.gray_1)
 }
 
 fn entity_icon(def: &EntityDef) -> icons::Icon {
