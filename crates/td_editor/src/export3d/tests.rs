@@ -523,11 +523,11 @@ fn dialog_counts_follow_the_selection() {
         (dialog, state),
     );
     harness.run();
-    harness.get_by_label_contains("Exports 1 brushes, 0 meshes");
+    harness.get_by_label_contains("Exports 1 brush and 0 meshes");
     harness.state_mut().1.doc.select(|_, s| {
         s.clear();
         s.select_node(light);
     });
     harness.run();
-    harness.get_by_label_contains("Exports 0 brushes, 0 meshes");
+    harness.get_by_label_contains("Exports 0 brushes and 0 meshes");
 }

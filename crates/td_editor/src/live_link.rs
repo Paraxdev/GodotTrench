@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
+use crate::i18n::{self, Lang, Msg, en, tr, tr_n, trf};
 use crate::live_sync::{Frame, LiveSession};
 
 pub const DEFAULT_PORT: u16 = 7842;
@@ -27,6 +28,10 @@ const SCAN_REPLY: Duration = Duration::from_secs(3);
 /// Called with Godot's reply to a capture or walkable request, on the live link thread.
 pub type Done = Box<dyn FnOnce(Result<Value, String>) + Send>;
 
+// Status messages show these errors translated, MCP gets the English.
+const NOT_RUNNING: &str = en!("Godot is not running with the TrenchDot addon");
+const CLOSED: &str = en!("Godot closed the connection");
+
 pub fn send(port: u16, message: &Value) -> Result<Value, String> {
     send_timeout(port, message, Duration::from_secs(30))
 }
@@ -34,7 +39,7 @@ pub fn send(port: u16, message: &Value) -> Result<Value, String> {
 /// One message on its own connection.
 pub fn send_timeout(port: u16, message: &Value, timeout: Duration) -> Result<Value, String> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let mut stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT).map_err(|_| "Godot is not running with the TrenchDot addon".to_string())?;
+    let mut stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT).map_err(|_| NOT_RUNNING.to_string())?;
     stream.set_read_timeout(Some(timeout)).map_err(|e| e.to_string())?;
     writeln!(stream, "{message}").map_err(|e| e.to_string())?;
     let mut line = String::new();
@@ -61,11 +66,24 @@ fn saved_message(path: &str) -> Value {
     json!({ "event": "map_saved", "path": path })
 }
 
+fn live_link_says(text: String) -> String {
+    trf!("Live link: {text}", text)
+}
+
+/// An error from the link or Godot's own words, the link's own errors translated.
+fn reason(error: &str) -> String {
+    if error == NOT_RUNNING || error == CLOSED { tr(error).to_string() } else { error.to_string() }
+}
+
+fn reply_error(reply: &Value) -> String {
+    reply["error"].as_str().map_or_else(|| tr("unexpected reply").to_string(), str::to_string)
+}
+
 fn rebuilt_status(reply: &Value, path: &str) -> String {
     match reply["rebuilt"].as_u64() {
-        Some(0) => format!("Live link: {}", nothing_built(reply, path, true)),
-        Some(n) => format!("Live link: Godot rebuilt {n} map node(s){}", build_report(reply).map(|r| r.note()).unwrap_or_default()),
-        None => format!("Live link: {}", reply["error"].as_str().unwrap_or("unexpected reply")),
+        Some(0) => live_link_says(nothing_built(reply, path, true)),
+        Some(n) => live_link_says(trf!("Godot rebuilt {n} map node(s)", n) + &build_report(reply).map(|r| r.note()).unwrap_or_default()),
+        None => live_link_says(reply_error(reply)),
     }
 }
 
@@ -89,14 +107,14 @@ fn names_missing_classes(warning: &str) -> bool {
     })
 }
 
-/// "a", "a and b", "a, b and c" or "a, b, c and 2 more".
+/// "a", "a and b", "a, b and c" or "a, b, c and 2 more", worded in the current language.
 pub fn name_list<S: AsRef<str>>(names: &[S]) -> String {
-    let names: Vec<&str> = names.iter().map(AsRef::as_ref).collect();
-    match &names[..] {
-        [] => String::new(),
-        [one] => one.to_string(),
-        [first @ .., last] if names.len() <= 3 => format!("{} and {last}", first.join(", ")),
-        more => format!("{} and {} more", more[..3].join(", "), more.len() - 3),
+    match names.len() {
+        0..=3 => i18n::list(names),
+        n => {
+            let first = names[..3].iter().map(AsRef::as_ref).collect::<Vec<&str>>().join(i18n::list_separator());
+            trf!("{names} and {n} more", names = first, n = n - 3)
+        }
     }
 }
 
@@ -114,9 +132,8 @@ impl GodotReport {
     /// The map settings by name with the verb that follows, "res://a.tres has" or "res://a.tres and res://b.tres have".
     pub fn settings_have(&self) -> String {
         match self.settings.len() {
-            0 => "the FGD Godot builds with has".to_string(),
-            1 => format!("{} has", self.settings[0]),
-            _ => format!("{} have", name_list(&self.settings)),
+            0 => tr("the FGD Godot builds with has").to_string(),
+            n => tr_n!(n, "{settings} has", "{settings} have", settings = name_list(&self.settings)),
         }
     }
 
@@ -134,33 +151,41 @@ impl GodotReport {
     /// What a status line about the build adds.
     fn note(&self) -> String {
         let missing: Vec<&String> = self.missing.iter().collect();
+        let have = self.settings_have();
         match (missing.len(), self.warnings.len()) {
             (0, 0) => String::new(),
-            (0, 1) => " with a warning, see the Issues panel".to_string(),
-            (0, n) => format!(" with {n} warnings, see the Issues panel"),
-            (1, _) => format!(", but {} no definition for {}, so it builds as a plain node. See the Issues panel", self.settings_have(), missing[0]),
-            _ => format!(", but {} no definition for {}, so they build as plain nodes. See the Issues panel", self.settings_have(), name_list(&missing)),
+            (0, 1) => tr(" with a warning, see the Issues panel").to_string(),
+            (0, n) => trf!(" with {n} warnings, see the Issues panel", n),
+            (1, _) => trf!(", but {have} no definition for {class}, so it builds as a plain node. See the Issues panel", have, class = missing[0]),
+            _ => trf!(", but {have} no definition for {classes}, so they build as plain nodes. See the Issues panel", have, classes = name_list(&missing)),
         }
     }
 }
 
 /// What the status bar and the live mode tooltip say while Godot shows `classes` without their definition.
 pub fn unresolved_text<S: AsRef<str>>(classes: &[S], report: &GodotReport) -> String {
-    let (shows, them) = if classes.len() == 1 { ("it shows a plain node", "the class") } else { ("they show as plain nodes", "the classes") };
-    let fgd = if report.settings.is_empty() { "the map settings FGD".to_string() } else { format!("the FGD of {}", name_list(&report.settings)) };
+    let n = classes.len();
+    let fgd =
+        if report.settings.is_empty() { tr("the map settings FGD").to_string() } else { trf!("the FGD of {settings}", settings = name_list(&report.settings)) };
     let what = if classes.iter().any(|c| crate::entity_pack::in_pack(c.as_ref())) {
-        format!("Install the Gameplay entities pack or add {them} to {fgd}")
+        tr_n!(n, "Install the Gameplay entities pack or add the class to {fgd}", "Install the Gameplay entities pack or add the classes to {fgd}", fgd)
     } else {
-        format!("Add {them} to {fgd}")
+        tr_n!(n, "Add the class to {fgd}", "Add the classes to {fgd}", fgd)
     };
-    format!("Godot has no definition for {}, {shows}. {what}", name_list(classes))
+    let problem = tr_n!(
+        n,
+        "Godot has no definition for {classes}, it shows a plain node",
+        "Godot has no definition for {classes}, they show as plain nodes",
+        classes = name_list(classes)
+    );
+    format!("{problem}. {what}")
 }
 
 /// What the status bar says when Godot shows scenes built from the maps at `paths` with other entity definitions than
 /// their map settings hold now.
 pub fn stale_text<S: AsRef<str>>(paths: &[S]) -> String {
     let files: Vec<&str> = paths.iter().map(|p| p.as_ref().rsplit(['/', '\\']).next().unwrap_or(p.as_ref())).collect();
-    format!("Godot shows {} built with other entity definitions than its map settings hold now, use Godot > Build in Godot", name_list(&files))
+    trf!("Godot shows {files} built with other entity definitions than its map settings hold now, use Godot > Build in Godot", files = name_list(&files))
 }
 
 /// Classnames of the entities whose definitions the `reply` to a live message tells about again. The start of a
@@ -190,35 +215,45 @@ fn nothing_built(reply: &Value, path: &str, saved: bool) -> String {
     let waiting: Vec<String> = reply["waiting"].as_array().into_iter().flatten().filter_map(Value::as_str).map(file).collect();
     match &waiting[..] {
         [] => {}
-        [scene] => {
-            let then = if saved { "it rebuilds when you switch to it" } else { "switch to it and build again" };
-            return format!("{scene} uses {map} but is not the current scene tab in Godot, {then}");
+        [scene] if saved => {
+            return trf!("{scene} uses {map} but is not the current scene tab in Godot, it rebuilds when you switch to it", scene, map);
         }
-        [first @ .., last] => {
-            let then = if saved { "each rebuilds when you switch to it" } else { "switch to one and build again" };
-            return format!("{} and {last} use {map} but are not the current scene tab in Godot, {then}", first.join(", "));
+        [scene] => {
+            return trf!("{scene} uses {map} but is not the current scene tab in Godot, switch to it and build again", scene, map);
+        }
+        scenes if saved => {
+            return trf!(
+                "{scenes} use {map} but are not the current scene tab in Godot, each rebuilds when you switch to it",
+                scenes = i18n::list(scenes),
+                map
+            );
+        }
+        scenes => {
+            return trf!("{scenes} use {map} but are not the current scene tab in Godot, switch to one and build again", scenes = i18n::list(scenes), map);
         }
     }
 
     match reply["scene"].as_str() {
-        Some("") => {
-            format!("Godot has no scene open. Open the scene with the FuncGodotMap for {map}, or close a second Godot editor of this project")
-        }
-        Some(scene) => {
-            format!(
-                "{} is the current scene tab in Godot but has no FuncGodotMap for {map} with Auto Rebuild On Save on, open the scene that builds it",
-                file(scene)
-            )
-        }
-        None => format!("Godot has no open scene using {map}, open the scene with its FuncGodotMap in Godot"),
+        Some("") => trf!("Godot has no scene open. Open the scene with the FuncGodotMap for {map}, or close a second Godot editor of this project", map),
+        Some(scene) => trf!(
+            "{scene} is the current scene tab in Godot but has no FuncGodotMap for {map} with Auto Rebuild On Save on, open the scene that builds it",
+            scene = file(scene),
+            map
+        ),
+        None => trf!("Godot has no open scene using {map}, open the scene with its FuncGodotMap in Godot", map),
     }
 }
 
-fn game_status(game_port: Option<u16>, message: &Value) -> String {
+/// How many maps the running game on `game_port` reloaded, None without a game or from one that does not say.
+fn game_reloaded(game_port: Option<u16>, message: &Value) -> Option<u64> {
     match game_port.map(|port| send(port, message)) {
-        Some(Ok(reply)) if reply["rebuilt"].as_u64().is_some() => format!(", running game reloaded {} map(s)", reply["rebuilt"]),
-        _ => String::new(),
+        Some(Ok(reply)) => reply["rebuilt"].as_u64(),
+        _ => None,
     }
+}
+
+fn game_status(reloaded: Option<u64>) -> String {
+    reloaded.map(|n| trf!(", running game reloaded {n} map(s)", n)).unwrap_or_default()
 }
 
 /// Has the Godot editor on `port` look for new files, so its live sessions rebuild what their definitions changed.
@@ -230,20 +265,26 @@ pub fn scan(port: u16) -> Option<u64> {
 }
 
 /// Sends `map_saved` on a background thread. The receiver yields a status message.
-pub fn notify_saved(port: u16, path: &Path) -> Receiver<String> {
+pub fn notify_saved(port: u16, path: &Path) -> Receiver<Msg> {
     notify_saved_all(port, None, path)
 }
 
 /// Like `notify_saved`, also telling a running game on `game_port` to hot reload the map.
-pub fn notify_saved_all(port: u16, game_port: Option<u16>, path: &Path) -> Receiver<String> {
+pub fn notify_saved_all(port: u16, game_port: Option<u16>, path: &Path) -> Receiver<Msg> {
     let (tx, rx) = mpsc::channel();
     let message = saved_message(&godot_path(path));
+    let lang = i18n::current();
     std::thread::spawn(move || {
-        let status = match send(port, &message) {
-            Ok(reply) => rebuilt_status(&reply, message["path"].as_str().unwrap_or_default()),
-            Err(e) => format!("Live link: {e}"),
-        };
-        let _ = tx.send(status + &game_status(game_port, &message));
+        let reply = send(port, &message);
+        let game = game_reloaded(game_port, &message);
+        let status = Msg::in_both(lang, || {
+            let status = match &reply {
+                Ok(reply) => rebuilt_status(reply, message["path"].as_str().unwrap_or_default()),
+                Err(e) => live_link_says(reason(e)),
+            };
+            status + &game_status(game)
+        });
+        let _ = tx.send(status);
     });
     rx
 }
@@ -354,6 +395,7 @@ struct LiveJob {
 struct Shared {
     port: u16,
     enabled: bool,
+    lang: Lang,
     shutdown: bool,
     state: LinkState,
     requests: VecDeque<Request>,
@@ -365,7 +407,7 @@ type SharedLock = Arc<(Mutex<Shared>, Condvar)>;
 /// Background worker owning one connection to the Godot editor.
 pub struct LiveLink {
     shared: SharedLock,
-    statuses: Receiver<String>,
+    statuses: Receiver<Msg>,
 }
 
 impl LiveLink {
@@ -395,6 +437,12 @@ impl LiveLink {
         }
     }
 
+    /// The language the worker words its status messages in.
+    pub fn set_language(&self, lang: Lang) {
+        let mut s = self.shared.0.lock().unwrap_or_else(|e| e.into_inner());
+        s.lang = lang;
+    }
+
     pub fn state(&self) -> LinkState {
         self.shared.0.lock().unwrap_or_else(|e| e.into_inner()).state.clone()
     }
@@ -408,7 +456,7 @@ impl LiveLink {
         self.with(|s| s.live = Some(LiveJob { path: godot_path(path), frame }));
     }
 
-    pub fn poll_status(&self) -> Option<String> {
+    pub fn poll_status(&self) -> Option<Msg> {
         self.statuses.try_recv().ok()
     }
 
@@ -449,7 +497,7 @@ enum Work {
 
 struct Worker {
     shared: SharedLock,
-    status: Sender<String>,
+    status: Sender<Msg>,
     repaint: Option<egui::Context>,
     conn: Option<Connection>,
     port: u16,
@@ -460,7 +508,7 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(shared: SharedLock, status: Sender<String>, repaint: Option<egui::Context>) -> Self {
+    fn new(shared: SharedLock, status: Sender<Msg>, repaint: Option<egui::Context>) -> Self {
         Self { shared, status, repaint, conn: None, port: 0, sessions: HashMap::new(), last_attempt: None, last_heartbeat: None, seq: 0 }
     }
 
@@ -476,8 +524,9 @@ impl Worker {
         }
     }
 
-    fn say(&self, message: String) {
-        let _ = self.status.send(message);
+    fn say(&self, words: impl Fn() -> String) {
+        let lang = self.shared.0.lock().unwrap_or_else(|e| e.into_inner()).lang;
+        let _ = self.status.send(Msg::in_both(lang, words));
         if let Some(ctx) = &self.repaint {
             ctx.request_repaint();
         }
@@ -565,7 +614,7 @@ impl Worker {
     }
 
     fn call(&mut self, mut message: Value, timeout: Duration) -> Result<Value, String> {
-        let Some(conn) = self.conn.as_mut() else { return Err("Godot is not running with the TrenchDot addon".into()) };
+        let Some(conn) = self.conn.as_mut() else { return Err(NOT_RUNNING.into()) };
         self.seq += 1;
         let seq = self.seq;
         message["seq"] = json!(seq);
@@ -575,7 +624,7 @@ impl Worker {
             loop {
                 let mut line = String::new();
                 if conn.reader.read_line(&mut line).map_err(|e| e.to_string())? == 0 {
-                    return Err("Godot closed the connection".to_string());
+                    return Err(CLOSED.to_string());
                 }
 
                 let Ok(reply) = serde_json::from_str::<Value>(&line) else { continue };
@@ -623,7 +672,7 @@ impl Worker {
             .filter(|p| stale.contains(&path_key(p)) && !known.contains(&path_key(p)))
             .collect();
         if !files.is_empty() {
-            self.say(stale_text(&files));
+            self.say(|| stale_text(&files));
         }
 
         let before = self.sessions.len();
@@ -678,13 +727,14 @@ impl Worker {
             match request {
                 Request::MapSaved { path, game_port, .. } => {
                     let message = saved_message(&path);
-                    self.say(format!("Live link: Godot is not running with the TrenchDot addon{}", game_status(game_port, &message)));
+                    let game = game_reloaded(game_port, &message);
+                    self.say(|| live_link_says(reason(NOT_RUNNING)) + &game_status(game));
                 }
                 Request::Capture { done, .. } | Request::Walkable { done, .. } | Request::Play { done } => {
                     done(Err(format!("Godot is not running with the TrenchDot addon on port {}, open the project in the Godot editor", self.port)))
                 }
                 Request::LiveEnd { .. } => {}
-                _ => self.say("Godot is not running with the TrenchDot addon".into()),
+                _ => self.say(|| reason(NOT_RUNNING)),
             }
 
             return;
@@ -698,18 +748,24 @@ impl Worker {
                 let reply = self.long_call(message.clone());
                 // An addon that builds the maps using a saved prefab itself counts them in rebuilt.
                 let users = if matches!(&reply, Ok(r) if r["rebuilt"].as_u64().is_some_and(|n| n > 0)) { Vec::new() } else { users };
-                let game = game_status(game_port, &message);
-                let status = match reply {
+                let game = game_reloaded(game_port, &message);
+                let reply = match reply {
                     // A prefab no scene builds itself reaches Godot through the maps that use it.
-                    Ok(reply) if reply["rebuilt"].as_u64() == Some(0) && !users.is_empty() && game.is_empty() => None,
+                    Ok(reply) if reply["rebuilt"].as_u64() == Some(0) && !users.is_empty() && game.is_none() => None,
                     Ok(reply) => {
                         self.keep_report(&key, &reply);
-                        Some(rebuilt_status(&reply, &path))
+                        Some(Ok(reply))
                     }
-                    Err(e) => Some(format!("Live link: {e}")),
+                    Err(e) => Some(Err(e)),
                 };
-                if let Some(status) = status {
-                    self.say(status + &game);
+                if let Some(reply) = reply {
+                    self.say(|| {
+                        let status = match &reply {
+                            Ok(reply) => rebuilt_status(reply, &path),
+                            Err(e) => live_link_says(reason(e)),
+                        };
+                        status + &game_status(game)
+                    });
                 }
 
                 if let Some(map) = live {
@@ -720,30 +776,33 @@ impl Worker {
                 // A live session in Godot already builds again when a prefab of its map is saved.
                 let users: Vec<_> = users.into_iter().filter(|(user, _)| !self.sessions.contains_key(&path_key(user))).collect();
                 for (user, map) in users {
-                    let status = match self.build(&user, &map) {
-                        Ok(reply) if reply["ok"].as_bool() != Some(true) => {
-                            format!("Live link: Godot could not build {}: {}", file(&user), reply["error"].as_str().unwrap_or("unexpected reply"))
-                        }
-                        Ok(reply) => match build_report(&reply) {
-                            Some(report) => format!("Live link: Godot rebuilt {}, which uses {}{}", file(&user), file(&path), report.note()),
-                            None => format!("Live link: {}", nothing_built(&reply, &user, false)),
-                        },
-                        Err(e) => format!("Live link: {e}"),
-                    };
-                    self.say(status);
+                    let result = self.build(&user, &map);
+                    let (user_file, path_file) = (file(&user), file(&path));
+                    self.say(|| {
+                        live_link_says(match &result {
+                            Ok(reply) if reply["ok"].as_bool() != Some(true) => {
+                                trf!("Godot could not build {file}: {error}", file = user_file, error = reply_error(reply))
+                            }
+                            Ok(reply) => match build_report(reply) {
+                                Some(report) => trf!("Godot rebuilt {file}, which uses {map}", file = user_file, map = path_file) + &report.note(),
+                                None => nothing_built(reply, &user, false),
+                            },
+                            Err(e) => reason(e),
+                        })
+                    });
                 }
             }
             Request::Build { path, map, live } => {
                 let key = path_key(&path);
-                let status = match self.build(&path, &map) {
-                    Ok(reply) if reply["ok"].as_bool() == Some(true) => match (reply["rebuilt"].as_u64(), build_report(&reply)) {
-                        (Some(n), Some(report)) => format!("Godot built {n} map node(s) from the map as shown here{}", report.note()),
-                        _ => nothing_built(&reply, &path, false),
+                let result = self.build(&path, &map);
+                self.say(|| match &result {
+                    Ok(reply) if reply["ok"].as_bool() == Some(true) => match (reply["rebuilt"].as_u64(), build_report(reply)) {
+                        (Some(n), Some(report)) => trf!("Godot built {n} map node(s) from the map as shown here", n) + &report.note(),
+                        _ => nothing_built(reply, &path, false),
                     },
-                    Ok(reply) => format!("Build in Godot failed: {}", reply["error"].as_str().unwrap_or("unexpected reply")),
-                    Err(e) => format!("Build in Godot failed: {e}"),
-                };
-                self.say(status);
+                    Ok(reply) => trf!("Build in Godot failed: {error}", error = reply_error(reply)),
+                    Err(e) => trf!("Build in Godot failed: {error}", error = reason(e)),
+                });
                 if live {
                     self.restart(&key, &path, map);
                 }
@@ -754,7 +813,7 @@ impl Worker {
                 }
 
                 if let Err(e) = self.call(json!({ "event": "focus" }), QUICK_REPLY) {
-                    self.say(format!("Could not reach Godot: {e}"));
+                    self.say(|| trf!("Could not reach Godot: {error}", error = reason(&e)));
                 }
             }
             Request::Capture { path, camera, size, build, live, done } => {
@@ -864,7 +923,7 @@ impl Worker {
         }
 
         if !new.is_empty() {
-            self.say(unresolved_text(&new, &report));
+            self.say(|| unresolved_text(&new, &report));
         }
 
         self.update(|s| {
@@ -927,7 +986,7 @@ mod tests {
             writeln!(&stream, "{}", json!({ "ok": true, "rebuilt": 2 })).unwrap();
         });
         let rx = notify_saved(port, Path::new("maps/level.tdm"));
-        let status = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let status = rx.recv_timeout(Duration::from_secs(5)).unwrap().en;
         assert!(status.contains("rebuilt 2"), "{status}");
     }
 
@@ -1088,7 +1147,7 @@ mod tests {
         assert!(deltas < 25, "{deltas} deltas for 50 quick edits, they should coalesce");
 
         link.request(Request::Build { path: godot_path(&map_path), map: map.clone(), live: true });
-        wait_for("build status", || link.poll_status().is_some_and(|s| s.contains("built 1")));
+        wait_for("build status", || link.poll_status().is_some_and(|s| s.en.contains("built 1")));
         wait_for("session restarted from the built map", || events(&log, "live_begin") == 2);
         map.insert(layer, td_doc::NodeKind::Entity(td_doc::Entity::new("light")));
         link.sync(&map_path, Frame { map: map.clone(), dragging: false, idle: false });
@@ -1111,7 +1170,7 @@ mod tests {
         wait_for("heartbeat", || link.state().connected);
         link.request(Request::Build { path: godot_path(&map_path), map: td_doc::Map::new(), live: false });
         let named = "Godot built 1 map node(s) from the map as shown here, but res://my_settings.tres has no definition for func_door";
-        wait_for("build status", || link.poll_status().is_some_and(|s| s.starts_with(named)));
+        wait_for("build status", || link.poll_status().is_some_and(|s| s.en.starts_with(named)));
         let state = link.state();
         let report = state.report(&map_path).expect("a report for the map");
         assert_eq!(report.missing.iter().collect::<Vec<_>>(), ["func_door"]);
@@ -1165,7 +1224,7 @@ mod tests {
         link.configure(port, true);
         wait_for("heartbeat", || link.state().connected);
         link.sync(&map_path, Frame { map: td_doc::Map::new(), dragging: false, idle: true });
-        wait_for("the status", || link.poll_status().is_some_and(|s| s.starts_with("Godot has no definition for func_door, it shows a plain node")));
+        wait_for("the status", || link.poll_status().is_some_and(|s| s.en.starts_with("Godot has no definition for func_door, it shows a plain node")));
         assert_eq!(link.state().report(&map_path).map(|r| r.missing.iter().cloned().collect::<Vec<_>>()), Some(vec!["func_door".to_string()]));
         assert!(link.state().report(&map_path).is_some_and(|r| r.settings.is_empty()), "a reply that names no map settings names no file");
     }
@@ -1201,9 +1260,9 @@ mod tests {
         let mut said = Vec::new();
         wait_for("the build status", || {
             said.extend(std::iter::from_fn(|| link.poll_status()));
-            said.iter().any(|s| s.starts_with("Live link: Godot rebuilt level.tdm, which uses crate.tdm"))
+            said.iter().any(|s| s.en.starts_with("Live link: Godot rebuilt level.tdm, which uses crate.tdm"))
         });
-        assert!(said.iter().all(|s| !s.contains("no open scene")), "the prefab itself builds in no scene, which is fine: {said:?}");
+        assert!(said.iter().all(|s| !s.en.contains("no open scene")), "the prefab itself builds in no scene, which is fine: {said:?}");
         let builds: Vec<Value> = log.lock().unwrap().iter().filter(|m| m["event"] == "build").cloned().collect();
         assert_eq!((builds.len(), builds[0]["path"].as_str()), (1, Some(godot_path(&level).as_str())));
         assert!(builds[0]["text"].as_str().unwrap().contains("trenchdot-map"));
@@ -1231,7 +1290,7 @@ mod tests {
         link.request(Request::Focus);
         wait_for("the save", || events(&log, "focus") == 1);
         assert_eq!(events(&log, "build"), 0);
-        assert!(link.poll_status().is_some_and(|s| s.starts_with("Live link: Godot rebuilt 1 map node(s)")));
+        assert!(link.poll_status().is_some_and(|s| s.en.starts_with("Live link: Godot rebuilt 1 map node(s)")));
     }
 
     fn capture(link: &LiveLink, path: &Path, build: Option<td_doc::Map>) -> Result<Value, String> {
@@ -1295,7 +1354,7 @@ mod tests {
         let link = LiveLink::start(None);
         link.configure(port, true);
         wait_for("the stale map", || link.state().is_stale(&map_path));
-        wait_for("the status", || link.poll_status().is_some_and(|s| s.starts_with("Godot shows stale.tdm built with other entity definitions")));
+        wait_for("the status", || link.poll_status().is_some_and(|s| s.en.starts_with("Godot shows stale.tdm built with other entity definitions")));
         std::thread::sleep(HEARTBEAT * 2);
         assert!(link.poll_status().is_none(), "told once");
     }
@@ -1325,5 +1384,161 @@ mod tests {
         let heartbeats = events(&log, "status");
         std::thread::sleep(Duration::from_millis(1500));
         assert_eq!(events(&log, "status"), heartbeats);
+    }
+
+    #[test]
+    fn names_are_listed_the_way_the_language_lists_them() {
+        use crate::i18n::test_catalogue;
+        let _de = test_catalogue(Lang::De, r#"{ "{names} and {n} more": "{names} und {n} weitere" }"#);
+        let _ja = test_catalogue(Lang::Ja, r#"{ "{names} and {n} more": "{names}、ほか{n}件" }"#);
+        let names = ["func_door", "light", "my_lamp", "x_spawn", "b_lift"];
+        let list = |lang, n: usize| {
+            let _lang = i18n::scope(lang);
+            name_list(&names[..n])
+        };
+        let en: Vec<String> = (0..=5).map(|n| list(Lang::En, n)).collect();
+        assert_eq!(
+            en,
+            [
+                "",
+                "func_door",
+                "func_door and light",
+                "func_door, light and my_lamp",
+                "func_door, light, my_lamp and 1 more",
+                "func_door, light, my_lamp and 2 more"
+            ]
+        );
+        let de: Vec<String> = (0..=5).map(|n| list(Lang::De, n)).collect();
+        assert_eq!(
+            de,
+            [
+                "",
+                "func_door",
+                "func_door und light",
+                "func_door, light und my_lamp",
+                "func_door, light, my_lamp und 1 weitere",
+                "func_door, light, my_lamp und 2 weitere"
+            ]
+        );
+        let ja: Vec<String> = (0..=5).map(|n| list(Lang::Ja, n)).collect();
+        assert_eq!(
+            ja,
+            ["", "func_door", "func_door、light", "func_door、light、my_lamp", "func_door、light、my_lamp、ほか1件", "func_door、light、my_lamp、ほか2件"]
+        );
+    }
+
+    #[test]
+    fn the_settings_verb_agrees_with_how_many_there_are() {
+        use crate::i18n::test_catalogue;
+        let _de = test_catalogue(
+            Lang::De,
+            r#"{ "{settings} has": { "one": "{settings} hat", "other": "{settings} haben" }, "the FGD Godot builds with has": "das FGD hat",
+                 "{names} and {n} more": "{names} und {n} weitere" }"#,
+        );
+        let have = |settings: &[&str]| {
+            let report = GodotReport { settings: settings.iter().map(|s| s.to_string()).collect(), ..Default::default() };
+            let en = report.settings_have();
+            let _de = i18n::scope(Lang::De);
+            (en, report.settings_have())
+        };
+        let (a, b, c, d) = ("res://a.tres", "res://b.tres", "res://c.tres", "res://d.tres");
+        assert_eq!(have(&[]), ("the FGD Godot builds with has".to_string(), "das FGD hat".to_string()));
+        assert_eq!(have(&[b]), ("res://b.tres has".to_string(), "res://b.tres hat".to_string()));
+        assert_eq!(have(&[b, a]), ("res://b.tres and res://a.tres have".to_string(), "res://b.tres und res://a.tres haben".to_string()));
+        assert_eq!(
+            have(&[a, b, c, d]),
+            (
+                "res://a.tres, res://b.tres, res://c.tres and 1 more have".to_string(),
+                "res://a.tres, res://b.tres, res://c.tres und 1 weitere haben".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn the_unresolved_text_agrees_with_the_count_and_names_where_to_add_the_class() {
+        let report = |settings: &[&str]| GodotReport { settings: settings.iter().map(|s| s.to_string()).collect(), ..Default::default() };
+        assert_eq!(
+            unresolved_text(&["func_door"], &report(&[])),
+            "Godot has no definition for func_door, it shows a plain node. Install the Gameplay entities pack or add the class to the map settings FGD"
+        );
+        assert_eq!(
+            unresolved_text(&["my_lamp", "x_spawn"], &report(&["res://s.tres"])),
+            "Godot has no definition for my_lamp and x_spawn, they show as plain nodes. Add the classes to the FGD of res://s.tres"
+        );
+        assert_eq!(
+            unresolved_text(&["my_lamp", "func_door"], &report(&["res://s.tres", "res://t.tres"])),
+            "Godot has no definition for my_lamp and func_door, they show as plain nodes. Install the Gameplay entities pack or add the classes to the FGD of res://s.tres and res://t.tres"
+        );
+        assert_eq!(
+            unresolved_text(&["my_lamp"], &report(&["res://s.tres"])),
+            "Godot has no definition for my_lamp, it shows a plain node. Add the class to the FGD of res://s.tres"
+        );
+    }
+
+    #[test]
+    fn why_nothing_built_depends_on_the_save_and_the_scene_count() {
+        let path = "C:/game/maps/shop.tdm";
+        let waiting = |scenes: &[&str]| json!({ "waiting": scenes });
+        let one = ["res://levels/b.tscn"];
+        let two = ["res://levels/b.tscn", "res://a.tscn"];
+        assert_eq!(
+            nothing_built(&waiting(&one), path, true),
+            "b.tscn uses shop.tdm but is not the current scene tab in Godot, it rebuilds when you switch to it"
+        );
+        assert_eq!(nothing_built(&waiting(&one), path, false), "b.tscn uses shop.tdm but is not the current scene tab in Godot, switch to it and build again");
+        assert_eq!(
+            nothing_built(&waiting(&two), path, true),
+            "b.tscn and a.tscn use shop.tdm but are not the current scene tab in Godot, each rebuilds when you switch to it"
+        );
+        assert_eq!(
+            nothing_built(&waiting(&two), path, false),
+            "b.tscn and a.tscn use shop.tdm but are not the current scene tab in Godot, switch to one and build again"
+        );
+        assert_eq!(
+            nothing_built(&json!({ "scene": "res://menu/start.tscn" }), path, true),
+            "start.tscn is the current scene tab in Godot but has no FuncGodotMap for shop.tdm with Auto Rebuild On Save on, open the scene that builds it"
+        );
+    }
+
+    #[test]
+    fn link_errors_are_translated_and_godots_own_words_are_not() {
+        use crate::i18n::test_catalogue;
+        let _de = test_catalogue(
+            Lang::De,
+            r#"{ "Godot is not running with the TrenchDot addon": "Godot läuft ohne das TrenchDot-Addon", "Live link: {text}": "Live-Link: {text}" }"#,
+        );
+        let _lang = i18n::scope(Lang::De);
+        assert_eq!(live_link_says(reason(NOT_RUNNING)), "Live-Link: Godot läuft ohne das TrenchDot-Addon");
+        assert_eq!(reason("Godot closed the connection"), "Godot closed the connection", "no translation yet falls back to English");
+        assert_eq!(reason("os error 10061"), "os error 10061");
+        assert_eq!(reply_error(&json!({ "error": "no such map" })), "no such map");
+        assert_eq!(reply_error(&json!({})), "unexpected reply");
+    }
+
+    #[test]
+    fn worker_statuses_keep_english_and_follow_the_editor_language() {
+        let dead = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let link = LiveLink::start(None);
+        link.configure(dead, true);
+        link.set_language(Lang::De);
+        link.request(Request::Focus);
+        let mut first = None;
+        wait_for("the status", || {
+            first = link.poll_status();
+            first.is_some()
+        });
+        let first = first.unwrap();
+        assert_eq!(first.en, NOT_RUNNING);
+        assert_ne!(first.shown, first.en, "the German editor is told in German");
+
+        link.set_language(Lang::En);
+        link.request(Request::Focus);
+        let mut second = None;
+        wait_for("the status", || {
+            second = link.poll_status();
+            second.is_some()
+        });
+        let said = second.unwrap();
+        assert_eq!((said.shown.as_str(), said.en.as_str()), (NOT_RUNNING, NOT_RUNNING));
     }
 }

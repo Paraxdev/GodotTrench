@@ -390,7 +390,7 @@ fn view_grid_corner(ui: &mut Ui, dock: &mut DockState<Tab>) {
     let response = ui
         .interact(egui::Rect::from_center_size(corner, egui::Vec2::splat(GRID_CORNER_GRAB)), ui.id().with("view_grid_corner"), egui::Sense::drag())
         .on_hover_and_drag_cursor(egui::CursorIcon::Move)
-        .on_hover_text("Drag to resize all four views");
+        .on_hover_text(tr("Drag to resize all four views"));
     if response.hovered() || response.dragged() {
         ui.painter().circle_filled(corner, 4.0, ui.visuals().selection.bg_fill);
     }

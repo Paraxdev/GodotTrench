@@ -10,6 +10,7 @@ use td_doc::{IoConnection, Map, NodeKind, ops};
 
 use super::model::{ConnectionId, NodeKey};
 use crate::entity_wizards::{name_base, name_from_label, unique_name_in};
+use crate::i18n::{Msg, en, msg};
 use crate::state::EditorState;
 
 /// The layer new logic entities go into.
@@ -49,17 +50,17 @@ fn pin_positions(m: &mut Map, pin: &[(NodeId, Pos2)]) {
 
 /// Adds an output on `from` that calls `input` on `to`, and names `to` when it has no targetname. `pin` stores graph
 /// positions along with it, so the picture holds still instead of being laid out again.
-pub fn connect(state: &mut EditorState, from: NodeId, output: &str, to: &NodeKey, input: &str, pin: &[(NodeId, Pos2)]) -> Result<IoConnection, String> {
+pub fn connect(state: &mut EditorState, from: NodeId, output: &str, to: &NodeKey, input: &str, pin: &[(NodeId, Pos2)]) -> Result<IoConnection, Msg> {
     let map = &state.doc.map;
-    let source = map.entity(from).ok_or("The source is no longer an entity")?;
+    let source = map.entity(from).ok_or_else(|| msg!("The source is no longer an entity"))?;
     let unnamed = match to {
-        NodeKey::Entity(id) => map.entity(*id).ok_or("The target is no longer an entity")?.targetname().is_none(),
+        NodeKey::Entity(id) => map.entity(*id).ok_or_else(|| msg!("The target is no longer an entity"))?.targetname().is_none(),
         _ => false,
     };
     if let Some(target) = to.target(map)
         && source.outputs.iter().any(|c| c.output == output && c.target == target && c.input == input)
     {
-        return Err(format!("{output} already calls {input} on {target}"));
+        return Err(msg!("{output} already calls {input} on {target}", output, input, target));
     }
 
     let conn = state.doc.edit(&format!("Connect {output} to {input}"), |m, _| {
@@ -68,9 +69,13 @@ pub fn connect(state: &mut EditorState, from: NodeId, output: &str, to: &NodeKey
         pin_positions(m, pin);
         Some(conn)
     });
-    let conn = conn.ok_or("Could not connect")?;
-    let named = if unnamed { format!(", the target is now named {}", conn.target) } else { String::new() };
-    state.set_status(format!("Connected {output} to {}.{input}{named}", conn.target));
+    let conn = conn.ok_or_else(|| msg!("Could not connect"))?;
+    let mut status = msg!("Connected {output} to {target}.{input}", output, input, target = conn.target);
+    if unnamed {
+        status = status.then(", ", msg!("the target is now named {name}", name = conn.target));
+    }
+
+    state.set_status(status);
     Ok(conn)
 }
 
@@ -95,7 +100,7 @@ pub fn disconnect(state: &mut EditorState, ids: &[ConnectionId]) -> usize {
         return 0;
     }
 
-    let label = if count == 1 { "Delete Connection".to_string() } else { format!("Delete {count} Connections") };
+    let label = if count == 1 { en!("Delete Connection").to_string() } else { format!("Delete {count} Connections") };
     state.doc.edit(&label, |m, _| {
         for (id, indices) in &by_entity {
             if let Some(e) = m.entity_mut(*id) {
@@ -114,7 +119,7 @@ pub fn update(state: &mut EditorState, (id, i): ConnectionId, conn: IoConnection
         return;
     }
 
-    state.doc.edit_coalesced("Edit Connection", |m, _| {
+    state.doc.edit_coalesced(en!("Edit Connection"), |m, _| {
         if let Some(slot) = m.entity_mut(id).and_then(|e| e.outputs.get_mut(i)) {
             *slot = conn;
         }
@@ -178,7 +183,7 @@ pub struct Placement<'a> {
 }
 
 /// Places a point entity for the graph on the Logic layer, wires it and selects it.
-pub fn create(state: &mut EditorState, classname: &str, place: Placement, link: Option<NewLink>) -> Result<NodeId, String> {
+pub fn create(state: &mut EditorState, classname: &str, place: Placement, link: Option<NewLink>) -> Result<NodeId, Msg> {
     let Placement { at, near, fallback, pin } = place;
     let game = &state.game;
     let input = super::model::default_input(game, classname);
@@ -221,7 +226,7 @@ pub fn create(state: &mut EditorState, classname: &str, place: Placement, link: 
         s.select_node(id);
         Some(id)
     });
-    id.ok_or_else(|| "Could not add the entity".to_string())
+    id.ok_or_else(|| msg!("Could not add the entity"))
 }
 
 #[cfg(test)]

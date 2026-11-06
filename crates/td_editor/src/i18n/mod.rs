@@ -347,9 +347,8 @@ const fn names_hold(names: &[&str], k: &[u8], start: usize, end: usize) -> bool 
     false
 }
 
-/// Joins names the way the current language lists them, "A, B and C".
-pub fn list(items: &[impl AsRef<str>]) -> String {
-    let (sep, and) = match current() {
+fn list_words(lang: Lang) -> (&'static str, &'static str) {
+    match lang {
         Lang::En => (", ", " and "),
         Lang::De => (", ", " und "),
         Lang::Fr => (", ", " et "),
@@ -358,7 +357,17 @@ pub fn list(items: &[impl AsRef<str>]) -> String {
         Lang::Ru => (", ", " и "),
         Lang::ZhHans => ("、", "和"),
         Lang::Ja => ("、", "、"),
-    };
+    }
+}
+
+/// What the current language puts between names that are not the last two.
+pub fn list_separator() -> &'static str {
+    list_words(current()).0
+}
+
+/// Joins names the way the current language lists them, "A, B and C".
+pub fn list(items: &[impl AsRef<str>]) -> String {
+    let (sep, and) = list_words(current());
     match items {
         [] => String::new(),
         [one] => one.as_ref().to_string(),
@@ -399,6 +408,19 @@ impl Msg {
             std::iter::once(("n", &count as &dyn Display)).chain(words.iter().map(|(name, _, shown)| (*name, shown as &dyn Display))).collect();
         let n = self::count(n);
         Msg { en: fill(english_plural(one, other, n), &en), shown: fill(tr_plural(one, other, n), &shown) }
+    }
+
+    /// The text `words` makes, once in English and once in `lang`, for a worker thread that has no language of its own.
+    pub fn in_both(lang: Lang, words: impl Fn() -> String) -> Msg {
+        let en = {
+            let _english = scope(Lang::En);
+            words()
+        };
+        let shown = {
+            let _lang = scope(lang);
+            words()
+        };
+        Msg { en, shown }
     }
 
     /// This message followed by `sep` and `next`, in both texts.

@@ -12,9 +12,11 @@ use td_doc::map::GraphFrame;
 use super::edit::{self, NewLink, Placement};
 use super::model::{ConnectionId, EdgeKind, GraphEdge, GraphModel, GraphNode, HEADER, Inputs, NodeKey, PIN_ROW, PinType, SETTING_ROW, node_title, pin_label};
 use crate::commands::Action;
+use crate::i18n::{Lang, tr, tr_n, trf};
 use crate::logic_sim::{self, SimResult};
 use crate::state::EditorState;
 use crate::theme;
+use crate::{en, msg_n};
 
 const MIN_ZOOM: f32 = 0.2;
 const MAX_ZOOM: f32 = 2.0;
@@ -35,9 +37,9 @@ const MIN_TEXT: f32 = 0.7;
 const FRAME_FILL: f32 = 0.08;
 const FRAME_TITLE_FILL: f32 = 0.35;
 
-const CONTROLS: &str = "Drag from an output pin to an input pin to connect, or drop on empty space to add an entity.\n\
+const CONTROLS: &str = en!("Drag from an output pin to an input pin to connect, or drop on empty space to add an entity.\n\
 Click a node to select its entity, double click to frame it. Click a wire to edit it, Delete removes it.\n\
-Wheel zooms, middle or right drag pans, F frames the selection.";
+Wheel zooms, middle or right drag pans, F frames the selection.");
 
 /// One pin of a node, by name so it survives the model being built again.
 #[derive(Clone, Debug, PartialEq)]
@@ -124,6 +126,7 @@ pub struct GraphState {
     revision: u64,
     game: (usize, usize),
     overlay: u64,
+    lang: Lang,
     doc: Option<td_doc::document::HistoryMark>,
     pub model: GraphModel,
     pan: Vec2,
@@ -156,6 +159,7 @@ impl Default for GraphState {
             revision: 0,
             game: (0, 0),
             overlay: 0,
+            lang: Lang::En,
             doc: None,
             model: GraphModel::default(),
             pan: vec2(24.0, 24.0),
@@ -223,7 +227,8 @@ impl GraphState {
             && same_doc
             && self.revision == state.doc.revision
             && self.game == game
-            && self.overlay == state.overlay_ghosts.generation;
+            && self.overlay == state.overlay_ghosts.generation
+            && self.lang == crate::i18n::current();
         if current {
             return;
         }
@@ -242,6 +247,7 @@ impl GraphState {
         self.revision = state.doc.revision;
         self.game = game;
         self.overlay = state.overlay_ghosts.generation;
+        self.lang = crate::i18n::current();
         let selected = selected_entities(state);
         let external = state.overlay_ghosts.targetnames();
         self.model = GraphModel::build(&state.doc.map, &Inputs { game: &state.game, selected: &selected, external: &external });
@@ -334,7 +340,7 @@ impl GraphState {
         let color = theme::FRAME_COLORS.into_iter().find(|c| !used.contains(c)).unwrap_or(theme::FRAME_COLORS[self.frames.len() % theme::FRAME_COLORS.len()]);
         let frame = GraphFrame { title: "Frame".into(), rect: [bounds.min.x, bounds.min.y, bounds.width(), bounds.height()], color: doc_color(color) };
         let index = self.frames.len();
-        edit::edit_frames(state, "Add Frame", &[], &self.unpinned(), |frames| frames.push(frame));
+        edit::edit_frames(state, en!("Add Frame"), &[], &self.unpinned(), |frames| frames.push(frame));
         self.selected_frame = Some(index);
         self.selected_edge = None;
         self.renaming = Some((index, "Frame".into()));
@@ -524,7 +530,7 @@ impl GraphState {
             let delete =
                 ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete) || i.consume_key(egui::Modifiers::NONE, egui::Key::Backspace));
             if delete {
-                edit::edit_frames(state, "Delete Frame", &[], &[], |frames| {
+                edit::edit_frames(state, en!("Delete Frame"), &[], &[], |frames| {
                     frames.remove(i);
                 });
                 self.selected_frame = None;
@@ -702,8 +708,8 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
         && let Some(n) = gs.model.node(&p.key)
         && let Some(pin) = if p.output { n.output(&p.name).map(|i| &n.outputs[i]) } else { n.input(&p.name).map(|i| &n.inputs[i]) }
     {
-        let kind = if p.output { "output" } else { "input" };
-        let mut tip = format!("{} {kind}, {}", pin_label(&pin.name), pin.ty.name());
+        let (name, ty) = (pin_label(&pin.name), pin.ty.name());
+        let mut tip = if p.output { trf!("{name} output, {ty}", name, ty) } else { trf!("{name} input, {ty}", name, ty) };
         if !pin.values.is_empty() {
             tip.push_str(&format!(" ({})", pin.values));
         }
@@ -711,7 +717,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
         if !pin.description.is_empty() {
             tip.push_str(&format!("\n{}", pin.description));
         } else if !pin.declared {
-            tip.push_str("\nNot in the entity definition, used by the map");
+            tip.push_str(&format!("\n{}", tr("Not in the entity definition, used by the map")));
         }
 
         response.clone().on_hover_text_at_pointer(tip);
@@ -733,26 +739,26 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
 
 fn toolbar(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: &mut Vec<Action>) {
     ui.horizontal_wrapped(|ui| {
-        ui.menu_button("Add", |ui| {
+        ui.menu_button(tr("Add"), |ui| {
             let at = gs.free_spot(gs.to_graph(gs.canvas.center()) - vec2(100.0, HEADER));
             let near = selected_entities(state).into_iter().next();
             create_list(ui, state, gs, at, None, near, actions);
         })
         .response
-        .on_hover_text("Adds a logic entity on the Logic layer, next to the selected entity in the map");
+        .on_hover_text(tr("Adds a logic entity on the Logic layer, next to the selected entity in the map"));
 
         let selected: Vec<NodeId> = selected_entities(state).into_iter().filter(|id| gs.model.node(&NodeKey::Entity(*id)).is_some()).collect();
-        let arrange_tip = "Lays out the selected nodes left to right by signal flow, all nodes when fewer than two are selected";
-        if ui.button("Arrange").on_hover_text(arrange_tip).clicked() {
+        let arrange_tip = tr("Lays out the selected nodes left to right by signal flow, all nodes when fewer than two are selected");
+        if ui.button(tr("Arrange")).on_hover_text(arrange_tip).clicked() {
             arrange(state, gs, &selected);
         }
 
-        if ui.button("Fit").on_hover_text("Zooms to show every node, Home over the graph does the same. F frames the selected nodes").clicked() {
+        if ui.button(tr("Fit")).on_hover_text(tr("Zooms to show every node, Home over the graph does the same. F frames the selected nodes")).clicked() {
             gs.fit(MIN_ZOOM);
         }
 
-        let tip = "Puts a titled box behind the selected nodes, C over the graph does the same";
-        let framed = ui.add_enabled(!gs.selected_nodes(state).is_empty(), egui::Button::new("Frame")).on_hover_text(tip).on_disabled_hover_text(tip);
+        let tip = tr("Puts a titled box behind the selected nodes, C over the graph does the same");
+        let framed = ui.add_enabled(!gs.selected_nodes(state).is_empty(), egui::Button::new(tr("Frame"))).on_hover_text(tip).on_disabled_hover_text(tip);
         if framed.clicked() {
             gs.frame_selection(state);
         }
@@ -761,9 +767,9 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: &
             [id] => state.doc.map.entity(*id).map(|e| (*id, logic_sim::start_outputs(state.game.entity(&e.classname), e))),
             _ => None,
         };
-        let tip = "Fires an output of the selected entity on paper and highlights every connection that would follow";
+        let tip = tr("Fires an output of the selected entity on paper and highlights every connection that would follow");
         ui.add_enabled_ui(start.as_ref().is_some_and(|(_, o)| !o.is_empty()), |ui| {
-            ui.menu_button("Simulate", |ui| {
+            ui.menu_button(tr("Simulate"), |ui| {
                 for output in start.as_ref().map(|(_, o)| o.as_slice()).unwrap_or_default() {
                     if ui.button(output).clicked() {
                         gs.simulate(state, start.as_ref().expect("enabled with a start").0, output);
@@ -773,18 +779,18 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: &
             })
             .response
             .on_hover_text(tip)
-            .on_disabled_hover_text(format!("{tip}. Select one entity that has outputs first"));
+            .on_disabled_hover_text(tr("Select one entity that has outputs first"));
         });
 
-        ui.label(RichText::new(format!("{:.0}%", gs.zoom * 100.0)).weak()).on_hover_text("Wheel zooms, middle or right drag pans");
-        crate::help::line(ui, state.prefs.help_text, "Drag from an output pin to an input pin to connect", CONTROLS);
+        ui.label(RichText::new(format!("{:.0}%", gs.zoom * 100.0)).weak()).on_hover_text(tr("Wheel zooms, middle or right drag pans"));
+        crate::help::line(ui, state.prefs.help_text, tr("Drag from an output pin to an input pin to connect"), tr(CONTROLS));
     });
 }
 
 fn arrange(state: &mut EditorState, gs: &mut GraphState, selected: &[NodeId]) {
     if selected.len() < 2 {
         let stored: Vec<(NodeId, Option<Pos2>)> = gs.model.nodes.iter().filter(|n| n.stored.is_some()).filter_map(|n| Some((n.key.entity()?, None))).collect();
-        edit::set_positions(state, "Arrange Logic Graph", &stored);
+        edit::set_positions(state, en!("Arrange Logic Graph"), &stored);
         gs.refit = true;
         return;
     }
@@ -803,7 +809,7 @@ fn arrange(state: &mut EditorState, gs: &mut GraphState, selected: &[NodeId]) {
         }
     }
 
-    edit::set_positions(state, "Arrange Logic Nodes", &positions);
+    edit::set_positions(state, en!("Arrange Logic Nodes"), &positions);
 }
 
 fn navigate(ui: &Ui, response: &egui::Response, gs: &mut GraphState) {
@@ -885,14 +891,14 @@ fn interact(ui: &Ui, response: &egui::Response, state: &mut EditorState, gs: &mu
                     }
                 }
 
-                let label = if keys.len() == 1 { "Move Logic Node".to_string() } else { format!("Move {} Logic Nodes", keys.len()) };
+                let label = if keys.len() == 1 { en!("Move Logic Node").to_string() } else { format!("Move {} Logic Nodes", keys.len()) };
                 edit::set_positions(state, &label, &positions);
             }
             Drag::Wire { from, at } => finish_wire(&ctx, state, gs, from, at, visible),
             Drag::Frame { index, keys, offset } if offset.length() >= 0.5 => {
                 let moved: Vec<(NodeId, Pos2)> =
                     gs.model.nodes.iter().filter(|n| keys.contains(&n.key)).filter_map(|n| Some((n.key.entity()?, n.pos + offset))).collect();
-                edit::edit_frames(state, "Move Frame", &moved, &gs.unpinned(), |frames| {
+                edit::edit_frames(state, en!("Move Frame"), &moved, &gs.unpinned(), |frames| {
                     if let Some(f) = frames.get_mut(index) {
                         f.rect[0] += offset.x;
                         f.rect[1] += offset.y;
@@ -901,7 +907,7 @@ fn interact(ui: &Ui, response: &egui::Response, state: &mut EditorState, gs: &mu
             }
             Drag::FrameSize { index, size } => {
                 let size = size.max(FRAME_MIN);
-                edit::edit_frames(state, "Resize Frame", &[], &gs.unpinned(), |frames| {
+                edit::edit_frames(state, en!("Resize Frame"), &[], &gs.unpinned(), |frames| {
                     if let Some(f) = frames.get_mut(index) {
                         (f.rect[2], f.rect[3]) = (size.x, size.y);
                     }
@@ -1235,8 +1241,8 @@ fn overlays(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
     if gs.model.nodes.is_empty() {
         egui::Area::new(Id::new("logic_graph_empty")).order(Order::Middle).fixed_pos(canvas.min + vec2(16.0, 16.0)).constrain_to(canvas).show(&ctx, |ui| {
             ui.set_max_width((canvas.width() - 32.0).max(120.0));
-            ui.label(RichText::new("No wiring yet").strong());
-            ui.label(RichText::new("Select an entity to show it here, or right click to add a logic entity such as a relay.").weak());
+            ui.label(RichText::new(tr("No wiring yet")).strong());
+            ui.label(RichText::new(tr("Select an entity to show it here, or right click to add a logic entity such as a relay.")).weak());
             if pack_missing(state) {
                 install_hint(ui, actions);
             }
@@ -1278,9 +1284,9 @@ fn overlays(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
 }
 
 fn install_hint(ui: &mut Ui, actions: &mut Vec<Action>) {
-    ui.label(RichText::new("Relays, timers, counters and the other logic entities come with the Gameplay entities pack.").weak());
+    ui.label(RichText::new(tr("Relays, timers, counters and the other logic entities come with the Gameplay entities pack.")).weak());
     let tip = Action::InstallGameplayEntities.help().unwrap_or_default();
-    if ui.button("Install Gameplay Entities").on_hover_text(tip).clicked() {
+    if ui.button(tr("Install Gameplay Entities")).on_hover_text(tip).clicked() {
         actions.push(Action::InstallGameplayEntities);
     }
 }
@@ -1335,7 +1341,7 @@ fn create_list(
     actions: &mut Vec<Action>,
 ) -> bool {
     ui.set_min_width(220.0);
-    let field = ui.add(egui::TextEdit::singleline(&mut gs.menu_filter).hint_text("Search entities").desired_width(220.0));
+    let field = ui.add(egui::TextEdit::singleline(&mut gs.menu_filter).hint_text(tr("Search entities")).desired_width(220.0));
     if !field.has_focus() && ui.ctx().cumulative_pass_nr() <= gs.menu_opened + 1 {
         field.request_focus();
     }
@@ -1405,7 +1411,7 @@ fn create_list(
         }
 
         if entries.is_empty() {
-            ui.label(RichText::new("No entity matches").weak());
+            ui.label(RichText::new(tr("No entity matches")).weak());
         }
     });
 
@@ -1433,8 +1439,9 @@ fn pin_list(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, from: &Pi
         }
     }
 
-    ui.label(RichText::new(format!("Connect to {}", node.title)).strong());
-    let field = ui.add(egui::TextEdit::singleline(&mut gs.menu_filter).hint_text(if from.output { "Input name" } else { "Output name" }).desired_width(200.0));
+    ui.label(RichText::new(trf!("Connect to {name}", name = node.title)).strong());
+    let field =
+        ui.add(egui::TextEdit::singleline(&mut gs.menu_filter).hint_text(if from.output { tr("Input name") } else { tr("Output name") }).desired_width(200.0));
     if !field.has_focus() && ui.ctx().cumulative_pass_nr() <= gs.menu_opened + 1 {
         field.request_focus();
     }
@@ -1487,7 +1494,7 @@ fn rename_frame(ctx: &egui::Context, state: &mut EditorState, gs: &mut GraphStat
         Some(true) => {
             let title = text.trim().to_string();
             if !title.is_empty() && gs.frames.get(i).is_some_and(|f| f.title != title) {
-                edit::edit_frames(state, "Rename Frame", &[], &[], |frames| frames[i].title = title);
+                edit::edit_frames(state, en!("Rename Frame"), &[], &[], |frames| frames[i].title = title);
             }
         }
         Some(false) => {}
@@ -1500,7 +1507,7 @@ fn frame_menu(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, i: usiz
         return true;
     }
 
-    if ui.button("Rename Frame").clicked() {
+    if ui.button(tr("Rename Frame")).clicked() {
         gs.renaming = Some((i, gs.frames[i].title.clone()));
         return true;
     }
@@ -1514,18 +1521,18 @@ fn frame_menu(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, i: usiz
                 ui.painter().rect_stroke(rect, 3.0, Stroke::new(2.0, theme::colors().gray_7), StrokeKind::Outside);
             }
 
-            if response.on_hover_text("Frame color").clicked() {
+            if response.on_hover_text(tr("Frame color")).clicked() {
                 picked = Some(c);
             }
         }
     });
     if let Some(c) = picked {
-        edit::edit_frames(state, "Recolor Frame", &[], &[], |frames| frames[i].color = doc_color(c));
+        edit::edit_frames(state, en!("Recolor Frame"), &[], &[], |frames| frames[i].color = doc_color(c));
         return true;
     }
 
-    if ui.button("Delete Frame").on_hover_text("Removes the frame, the nodes stay").clicked() {
-        edit::edit_frames(state, "Delete Frame", &[], &[], |frames| {
+    if ui.button(tr("Delete Frame")).on_hover_text(tr("Removes the frame, the nodes stay")).clicked() {
+        edit::edit_frames(state, en!("Delete Frame"), &[], &[], |frames| {
             frames.remove(i);
         });
         gs.selected_frame = None;
@@ -1541,13 +1548,13 @@ fn context_menu(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, hit: 
         Hit::Edge(i) => {
             let Some(e) = gs.model.edges.get(*i) else { return true };
             let id = e.id();
-            if ui.button("Edit Connection").clicked() {
+            if ui.button(tr("Edit Connection")).clicked() {
                 gs.selected_edge = Some(id);
                 select(state, &[id.0], false);
                 return true;
             }
 
-            if ui.button("Delete Connection").clicked() {
+            if ui.button(tr("Delete Connection")).clicked() {
                 edit::disconnect(state, &[id]);
                 gs.selected_edge = None;
                 return true;
@@ -1561,7 +1568,7 @@ fn context_menu(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, hit: 
     };
     let entity = key.entity();
     if let Some(id) = entity {
-        if ui.button("Frame in Views").clicked() {
+        if ui.button(tr("Frame in Views")).clicked() {
             select(state, &[id], false);
             actions.push(Action::FocusSelection);
             return true;
@@ -1573,20 +1580,20 @@ fn context_menu(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, hit: 
                 select(state, &[id], false);
             }
         };
-        let tip = "Renames the entity in the Outliner";
-        if ui.button("Rename").on_hover_text(tip).clicked() {
+        let tip = tr("Renames the entity in the Outliner");
+        if ui.button(tr("Rename")).on_hover_text(tip).clicked() {
             select(state, &[id], false);
             actions.push(Action::Rename);
             return true;
         }
 
-        if ui.button("Duplicate").clicked() {
+        if ui.button(tr("Duplicate")).clicked() {
             act_on(state);
             actions.push(Action::Duplicate);
             return true;
         }
     } else {
-        ui.label(RichText::new("Found when the map runs, or not at all").weak());
+        ui.label(RichText::new(tr("Found when the map runs, or not at all")).weak());
     }
 
     let touching: Vec<&GraphEdge> = gs.model.edges.iter().filter(|e| gs.model.nodes[e.from].key == key || gs.model.nodes[e.to].key == key).collect();
@@ -1596,25 +1603,26 @@ fn context_menu(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, hit: 
     linked.dedup();
     let wires: Vec<ConnectionId> = touching.iter().map(|e| e.id()).collect();
     ui.separator();
-    let tip = "Selects this node and every node a wire joins it to";
-    if ui.add_enabled(linked.len() > 1, egui::Button::new("Select Connected")).on_hover_text(tip).on_disabled_hover_text("No wires to follow").clicked() {
+    let tip = tr("Selects this node and every node a wire joins it to");
+    if ui.add_enabled(linked.len() > 1, egui::Button::new(tr("Select Connected"))).on_hover_text(tip).on_disabled_hover_text(tr("No wires to follow")).clicked()
+    {
         select(state, &linked, false);
         return true;
     }
 
-    let tip = "Deletes every wire going into or out of this node, the entities stay";
-    if ui.add_enabled(!wires.is_empty(), egui::Button::new("Disconnect All")).on_hover_text(tip).on_disabled_hover_text("No wires").clicked() {
+    let tip = tr("Deletes every wire going into or out of this node, the entities stay");
+    if ui.add_enabled(!wires.is_empty(), egui::Button::new(tr("Disconnect All"))).on_hover_text(tip).on_disabled_hover_text(tr("No wires")).clicked() {
         let count = edit::disconnect(state, &wires);
         gs.selected_edge = None;
-        state.set_status(format!("Deleted {count} connection(s)"));
+        state.set_status(msg_n!(count, "Deleted {n} connection", "Deleted {n} connections"));
         return true;
     }
 
     if let Some(id) = entity {
         let picked = selected_entities(state);
         let many = if picked.contains(&id) { picked.len() } else { 1 };
-        let label = if many > 1 { format!("Delete {many} Entities") } else { "Delete Entity".to_string() };
-        let tip = "Removes the entity from the map, not only from the graph. Undo brings it back";
+        let label = if many > 1 { trf!("Delete {n} Entities", n = many) } else { tr("Delete Entity").to_string() };
+        let tip = tr("Removes the entity from the map, not only from the graph. Undo brings it back");
         if ui.button(label).on_hover_text(tip).clicked() {
             if !picked.contains(&id) {
                 select(state, &[id], false);
@@ -1627,7 +1635,7 @@ fn context_menu(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, hit: 
         let outputs = state.doc.map.entity(id).map(|e| logic_sim::start_outputs(state.game.entity(&e.classname), e)).unwrap_or_default();
         if !outputs.is_empty() {
             ui.separator();
-            ui.label(RichText::new("Simulate").weak());
+            ui.label(RichText::new(tr("Simulate")).weak());
             for output in outputs {
                 if ui.button(&output).clicked() {
                     gs.simulate(state, id, &output);
@@ -1654,7 +1662,7 @@ fn edge_editor(ctx: &egui::Context, state: &mut EditorState, gs: &mut GraphState
         .filter_map(|(_, e)| state.game.entity(&e.classname))
         .flat_map(|d| d.inputs.iter().map(|i| (i.name.clone(), "")))
         .collect();
-    inputs.extend(BUILTIN_INPUTS.iter().map(|b| (b.to_string(), "any node")));
+    inputs.extend(BUILTIN_INPUTS.iter().map(|b| (b.to_string(), tr("any node"))));
     inputs.dedup_by(|a, b| a.0 == b.0);
     let targets = crate::panels::target_options(state);
     let canvas = gs.canvas;
@@ -1667,36 +1675,38 @@ fn edge_editor(ctx: &egui::Context, state: &mut EditorState, gs: &mut GraphState
             egui::Frame::popup(ui.style()).show(ui, |ui| {
                 ui.set_width(270.0);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("Connection from {source_name}")).strong());
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| close = ui.small_button("\u{d7}").on_hover_text("Close").clicked());
+                    ui.label(RichText::new(trf!("Connection from {source_name}", source_name)).strong());
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        close = ui.small_button("\u{d7}").on_hover_text(tr("Close")).clicked()
+                    });
                 });
                 egui::Grid::new("logic_edge_fields").num_columns(2).show(ui, |ui| {
-                    ui.label("output");
+                    ui.label(tr("output"));
                     crate::panels::combo_or_text(ui, Id::new("logic_edge_output"), &mut conn.output, outputs, 150.0);
                     ui.end_row();
-                    ui.label("target");
+                    ui.label(tr("target"));
                     crate::panels::combo_or_text(ui, Id::new("logic_edge_target"), &mut conn.target, targets, 150.0);
                     ui.end_row();
-                    ui.label("input");
+                    ui.label(tr("input"));
                     crate::panels::combo_or_text(ui, Id::new("logic_edge_input"), &mut conn.input, inputs, 150.0);
                     ui.end_row();
-                    ui.label("parameter");
+                    ui.label(tr("parameter"));
                     ui.add(egui::TextEdit::singleline(&mut conn.parameter).desired_width(176.0));
                     ui.end_row();
-                    ui.label("delay").on_hover_text("Seconds before the input is called");
+                    ui.label(tr("delay")).on_hover_text(tr("Seconds before the input is called"));
                     ui.add(egui::DragValue::new(&mut conn.delay).speed(0.05).range(0.0..=3600.0).suffix(" s"));
                     ui.end_row();
-                    ui.label("times").on_hover_text("How often it may fire, -1 is every time");
+                    ui.label(tr("times")).on_hover_text(tr("How often it may fire, -1 is every time"));
                     ui.add(
                         egui::DragValue::new(&mut conn.times)
                             .speed(0.1)
                             .range(-1..=9999)
-                            .custom_formatter(|v, _| if v < 0.0 { "every time".into() } else { format!("{v}") }),
+                            .custom_formatter(|v, _| if v < 0.0 { tr("every time").into() } else { format!("{v}") }),
                     );
                     ui.end_row();
                 });
                 ui.horizontal(|ui| {
-                    delete = ui.button("Delete").on_hover_text("Removes this connection, Delete over the graph does the same").clicked();
+                    delete = ui.button(tr("Delete")).on_hover_text(tr("Removes this connection, Delete over the graph does the same")).clicked();
                 });
             });
         },
@@ -1723,30 +1733,30 @@ fn sim_list(ui: &mut Ui, rect: Rect, state: &mut EditorState, gs: &mut GraphStat
         ui.horizontal_wrapped(|ui| {
             ui.label(RichText::new(format!("{name}.{}", sim.output)).strong());
             let r = &sim.result;
-            ui.label(format!("{} steps", r.events.len()));
+            ui.label(tr_n!(r.events.len(), "{n} step", "{n} steps"));
             if r.broken() > 0 {
-                ui.label(RichText::new(format!("{} broken", r.broken())).color(theme::colors().error()));
+                ui.label(RichText::new(trf!("{n} broken", n = r.broken())).color(theme::colors().error()));
             }
 
             if r.truncated {
-                ui.label(RichText::new("truncated, feedback loop").weak());
+                ui.label(RichText::new(tr("truncated, feedback loop")).weak());
             }
 
-            clear = ui.small_button("Clear").clicked();
+            clear = ui.small_button(tr("Clear")).clicked();
         });
         if sim.result.events.is_empty() {
-            ui.label(RichText::new("That output is not wired to anything.").weak());
+            ui.label(RichText::new(tr("That output is not wired to anything.")).weak());
         }
 
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             for (i, ev) in sim.result.events.iter().enumerate() {
                 let mut text = format!("{}. {}.{} -> {}.{}", i + 1, ev.source_name, ev.output, ev.target, ev.input);
                 if ev.time > 0.0 {
-                    text.push_str(&format!("  at {}s", crate::widgets::format_number(ev.time)));
+                    text.push_str(&format!("  {}", trf!("at {time}s", time = crate::widgets::format_number(ev.time))));
                 }
 
                 if ev.possible() {
-                    text.push_str("  (maybe)");
+                    text.push_str(&format!("  {}", tr("(maybe)")));
                 }
 
                 let color = if ev.broken() {
@@ -1759,11 +1769,11 @@ fn sim_list(ui: &mut Ui, rect: Rect, state: &mut EditorState, gs: &mut GraphStat
                     ui.visuals().text_color()
                 };
                 let mut hint = if ev.dynamic {
-                    "Found when the map runs, not followed further".to_string()
+                    tr("Found when the map runs, not followed further").to_string()
                 } else if ev.broken() {
-                    "No entity has this targetname".to_string()
+                    tr("No entity has this targetname").to_string()
                 } else {
-                    "Selects this connection".to_string()
+                    tr("Selects this connection").to_string()
                 };
                 if let Some(why) = &ev.condition {
                     hint = format!("{why}. {hint}");

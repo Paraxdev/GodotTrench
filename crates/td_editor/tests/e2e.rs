@@ -2855,6 +2855,38 @@ fn godot_names_the_classes_it_built_without_a_definition() {
     assert_eq!(godot_issues[1]["message"], format!("Godot: {warning}"));
 }
 
+/// With the editor in German the live link status and the Godot issues still read in English over MCP, and the shown
+/// words are German once the language is set.
+#[test]
+#[ignore]
+fn godot_statuses_stay_english_for_mcp_in_german() {
+    let dir = linked_project("godot_missing_de", json!([{ "classname": "func_door", "type": "solid" }]));
+    let map = dir.join("maps/hall.tdm");
+    let answers = json!({ "map_saved": { "rebuilt": 1, "missing_classes": ["func_door"], "settings": ["res://a.tres", "res://b.tres"], "warnings": [] } });
+    let (godot, _sent) = fake_godot_editor_with(&dir, &[&map], answers);
+    let ed = Editor::launch_with("godot_missing_de", &["--project", dir.to_str().unwrap()]);
+    ed.call("set_editor", json!({ "live_link_port": godot, "language": "de" }));
+    wait_state(&ed, "the live link", |s| s["godot"]["project_open"] == true);
+
+    let leaf = ed.box_brush([0.0, 0.0, 0.0], [8.0, 96.0, 64.0]);
+    ed.call("gameplay", json!({ "op": "brush_entity", "ids": [leaf], "classname": "func_door" }));
+    ed.call("map_file", json!({ "op": "save", "path": map }));
+    let state = wait_state(&ed, "the save reply", |s| s["status"].as_str().is_some_and(|t| t.contains("no definition")));
+    assert_eq!(
+        state["status"],
+        "Live link: Godot rebuilt 1 map node(s), but res://a.tres and res://b.tres have no definition for func_door, so it builds as a plain node. See the Issues panel"
+    );
+    let issues = ed.call("validate_map", json!({}));
+    assert!(
+        issues["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["message"].as_str().unwrap().contains("there is no definition for it in res://a.tres, res://b.tres")),
+        "{issues}"
+    );
+}
+
 /// In live mode Godot names the classes an edit built without a definition, and the status bar says so.
 #[test]
 #[ignore]

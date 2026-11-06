@@ -3170,7 +3170,7 @@ pub fn open_link(state: &mut EditorState, ctx: &egui::Context, url: &str) {
 pub fn open_link_with(state: &mut EditorState, ctx: &egui::Context, url: &str, open: impl FnOnce(&str) -> std::io::Result<()> + Send + 'static) {
     let lower = url.to_ascii_lowercase();
     if lower.starts_with("https://") || lower.starts_with("http://") {
-        state.set_status(format!("Opening {url} in your browser"));
+        state.set_status(msg!("Opening {url} in your browser", url));
         let (url, ctx, unopened) = (url.to_string(), ctx.clone(), state.unopened_links.0.clone());
         std::thread::spawn(move || {
             let started = std::time::Instant::now();
@@ -3181,7 +3181,7 @@ pub fn open_link_with(state: &mut EditorState, ctx: &egui::Context, url: &str, o
         });
     } else {
         ctx.copy_text(url.to_string());
-        state.set_status(format!("Only web links open in the browser, {url} is copied to the clipboard"));
+        state.set_status(msg!("Only web links open in the browser, {url} is copied to the clipboard", url));
     }
 
     // The status bar is drawn before the links are handled.
@@ -3197,7 +3197,7 @@ fn is_script(path: &std::path::Path) -> bool {
 pub fn copy_unopened_links(state: &mut EditorState, ctx: &egui::Context) {
     while let Ok(url) = state.unopened_links.1.try_recv() {
         ctx.copy_text(url.clone());
-        state.set_status(format!("No browser opened {url}, the link is copied to the clipboard"));
+        state.set_status(msg!("No browser opened {url}, the link is copied to the clipboard", url));
     }
 }
 

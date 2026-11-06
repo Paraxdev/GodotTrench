@@ -533,7 +533,7 @@ pub struct EditorState {
     pub code_scans: crate::code_scan::Scans,
     /// The Gameplay entities pack in the open project, checked when it loads and after an install.
     pub gameplay_pack: crate::entity_pack::Status,
-    live_link_status: Option<std::sync::mpsc::Receiver<String>>,
+    live_link_status: Option<std::sync::mpsc::Receiver<Msg>>,
     /// The scan Godot runs for an installed Gameplay pack, until it is done, see [`crate::live_link::scan`].
     pub godot_scan: Option<u64>,
     /// Godot's answer to Run Project, see [`crate::commands::poll_play`].
@@ -1223,9 +1223,12 @@ impl EditorState {
 
     /// Shows a live link message. Until Godot is done scanning for an installed pack it keeps saying so, the next live
     /// reply would hide it otherwise.
-    fn link_status(&mut self, msg: String) {
+    fn link_status(&mut self, msg: Msg) {
         match self.godot_scan {
-            Some(_) => self.set_status(format!("{}. {}", msg.trim_end_matches('.'), crate::entity_pack::SCAN_NOTE)),
+            Some(_) => {
+                let head = Msg { en: msg.en.trim_end_matches('.').to_string(), shown: msg.shown.trim_end_matches('.').to_string() };
+                self.set_status(head.then(". ", Msg::key(crate::entity_pack::SCAN_NOTE)));
+            }
             None => self.set_status(msg),
         }
     }
@@ -1244,6 +1247,7 @@ impl EditorState {
         self.godot.refresh(&self.prefs.godot_path, self.game.project_root.as_deref());
         let Some(link) = &self.link else { return };
         link.configure(self.prefs.live_link_port, self.prefs.live_link && self.game.project_root.is_some());
+        link.set_language(crate::i18n::current());
         let state = link.state();
         let mut messages = Vec::new();
         while let Some(msg) = link.poll_status() {
@@ -2273,6 +2277,22 @@ importer=\"texture\"
         state.note_scan_done();
         state.link_status("Live link: Godot rebuilt 1 map node(s)".into());
         assert_eq!((state.status.as_str(), state.godot_scan), ("Live link: Godot rebuilt 1 map node(s)", None));
+    }
+
+    #[test]
+    fn the_scan_note_joins_both_texts_of_a_live_link_message() {
+        use crate::i18n::{Lang, scope, tr};
+        let mut state = EditorState::new(Prefs::default());
+        state.godot_scan = Some(3);
+        let _de = scope(Lang::De);
+        let said = Msg { en: "Live link: Godot rebuilt 1 map node(s).".into(), shown: "Live-Link: Godot hat 1 Karte gebaut.".into() };
+        state.link_status(said.clone());
+        assert_eq!(state.status, format!("Live link: Godot rebuilt 1 map node(s). {}", crate::entity_pack::SCAN_NOTE));
+        assert_eq!(state.status_shown(), format!("Live-Link: Godot hat 1 Karte gebaut. {}", tr(crate::entity_pack::SCAN_NOTE)));
+
+        state.godot_scan = None;
+        state.link_status(said);
+        assert_eq!((state.status.as_str(), state.status_shown()), ("Live link: Godot rebuilt 1 map node(s).", "Live-Link: Godot hat 1 Karte gebaut."));
     }
 
     #[test]

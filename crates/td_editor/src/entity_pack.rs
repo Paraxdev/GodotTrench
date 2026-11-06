@@ -312,7 +312,7 @@ pub fn install_in_project(state: &mut crate::state::EditorState) -> Result<Repor
 
 /// Installs the pack before a gameplay wizard places `classes` of it that the open project does not define. Returns the
 /// install, or why the pack cannot be installed. Without a project nothing is installed.
-pub fn install_for_wizard(state: &mut crate::state::EditorState, classes: &[&str]) -> Result<Option<Report>, String> {
+pub fn install_for_wizard(state: &mut crate::state::EditorState, classes: &[&str]) -> Result<Option<Report>, Msg> {
     if state.game.project_root.is_none() || state.gameplay_pack.installed {
         return Ok(None);
     }
@@ -322,16 +322,30 @@ pub fn install_for_wizard(state: &mut crate::state::EditorState, classes: &[&str
         return Ok(None);
     }
 
-    let named = format!("{} {}", crate::live_link::name_list(&lacking), if lacking.len() == 1 { "comes" } else { "come" });
+    let english = {
+        let _english = crate::i18n::scope(crate::i18n::Lang::En);
+        crate::live_link::name_list(&lacking)
+    };
+    let names = crate::live_link::name_list(&lacking);
+    let n = lacking.len();
+    let name = tr(NAME);
     if !state.gameplay_pack.available {
-        return Err(format!(
-            "{named} with the {NAME} pack, which the addon in this project does not have. Update the addon, then use Gameplay > Install Gameplay Entities"
+        return Err(Msg::filled_n(
+            "{names} comes with the {name} pack, which the addon in this project does not have. Update the addon, then use Gameplay > Install Gameplay Entities",
+            "{names} come with the {name} pack, which the addon in this project does not have. Update the addon, then use Gameplay > Install Gameplay Entities",
+            n,
+            &[("names", &english, &names), ("name", NAME, name)],
         ));
     }
 
-    install_in_project(state)
-        .map(Some)
-        .map_err(|e| format!("{named} with the {NAME} pack, which could not be installed: {e} Gameplay > Install Gameplay Entities tries again"))
+    install_in_project(state).map(Some).map_err(|e| {
+        Msg::filled_n(
+            "{names} comes with the {name} pack, which could not be installed: {error} Gameplay > Install Gameplay Entities tries again",
+            "{names} come with the {name} pack, which could not be installed: {error} Gameplay > Install Gameplay Entities tries again",
+            n,
+            &[("names", &english, &names), ("name", NAME, name), ("error", &e, &e)],
+        )
+    })
 }
 
 /// Runs a gameplay wizard that places `classes`, see [`install_for_wizard`]. What the install did follows the status the
@@ -340,9 +354,9 @@ pub fn with_pack<T>(
     state: &mut crate::state::EditorState,
     classes: &[&str],
     wizard: impl FnOnce(&mut crate::state::EditorState) -> Result<T, String>,
-) -> Result<T, String> {
+) -> Result<T, Msg> {
     let installed = install_for_wizard(state, classes)?;
-    let result = wizard(state);
+    let result = wizard(state).map_err(Msg::from);
     if let (Ok(_), Some(report)) = (&result, installed) {
         let trimmed = |s: &str| s.trim_end_matches(['.', '。']).to_string();
         let status = Msg { en: trimmed(&state.status), shown: trimmed(state.status_shown()) };
@@ -616,7 +630,7 @@ mod tests {
         let bare = tempfile::tempdir().unwrap();
         std::fs::write(bare.path().join("project.godot"), "config_version=5\n").unwrap();
         state.load_project(bare.path());
-        let e = with_pack(&mut state, &["func_door", "trigger_multiple"], |_| Ok(())).unwrap_err();
+        let e = with_pack(&mut state, &["func_door", "trigger_multiple"], |_| Ok(())).unwrap_err().en;
         assert!(e.starts_with("func_door and trigger_multiple come with the Gameplay entities pack, which the addon in this project does not have"), "{e}");
         assert!(e.ends_with("Gameplay > Install Gameplay Entities"), "{e}");
         state.game.project_root = None;

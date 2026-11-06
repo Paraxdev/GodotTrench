@@ -9,6 +9,8 @@ use td_doc::issues::{BUILTIN_INPUTS, io_name_matches, is_dynamic_target};
 use td_doc::{IoConnection, Map};
 use td_formats::GameConfig;
 
+use crate::i18n::{tr, tr_n, trf};
+
 /// What a graph node stands for.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum NodeKey {
@@ -345,10 +347,10 @@ impl GraphModel {
         for (key, used) in &incoming {
             let subtitle = match key {
                 NodeKey::Entity(_) => continue,
-                NodeKey::Dynamic(t) => dynamic_kind(t),
-                NodeKey::Overlay(_) => "Godot overlay node",
-                NodeKey::Missing(t) if t.is_empty() => "output without a target",
-                NodeKey::Missing(_) => "no entity has this name",
+                NodeKey::Dynamic(t) => dynamic_kind(t).to_string(),
+                NodeKey::Overlay(_) => tr("Godot overlay node").to_string(),
+                NodeKey::Missing(t) if t.is_empty() => tr("output without a target").to_string(),
+                NodeKey::Missing(_) => tr("no entity has this name").to_string(),
             };
             let mut inputs: Vec<Pin> = Vec::new();
             for (name, ty) in used {
@@ -358,7 +360,7 @@ impl GraphModel {
             }
 
             let title = match key.target(map) {
-                Some("") | None => "(no target)".to_string(),
+                Some("") | None => tr("(no target)").to_string(),
                 Some(t) => t.to_string(),
             };
             model.push(GraphNode {
@@ -510,13 +512,13 @@ fn target_keys(target: &str, resolved: &[NodeId], external: &BTreeSet<String>) -
 
 fn dynamic_kind(target: &str) -> &'static str {
     if target.contains('*') {
-        "every name that matches"
+        tr("every name that matches")
     } else if target.starts_with('@') {
-        "every node in the group"
+        tr("every node in the group")
     } else if target.starts_with('!') {
-        "found when the map runs"
+        tr("found when the map runs")
     } else {
-        "node path"
+        tr("node path")
     }
 }
 
@@ -524,12 +526,12 @@ fn dynamic_kind(target: &str) -> &'static str {
 pub fn edge_label(conn: &IoConnection) -> String {
     let mut parts: Vec<String> = Vec::new();
     if conn.delay > 0.0 {
-        parts.push(format!("{}s", crate::widgets::format_number(conn.delay)));
+        parts.push(trf!("{seconds}s", seconds = crate::widgets::format_number(conn.delay)));
     }
 
     match conn.times {
         -1 => {}
-        1 => parts.push("once".into()),
+        1 => parts.push(tr("once").into()),
         n => parts.push(format!("{n}\u{d7}")),
     }
 
@@ -547,25 +549,27 @@ pub fn edge_label(conn: &IoConnection) -> String {
 
 /// What hovering a wire tells: the ends of the connection and the delay, with the times and parameter when set.
 pub fn edge_tip(conn: &IoConnection) -> String {
-    let mut tip = format!("output: {}\ntarget: {}\ninput: {}\ndelay: ", pin_label(&conn.output), conn.target, pin_label(&conn.input));
-    tip.push_str(&if conn.delay > 0.0 { format!("{} s", crate::widgets::format_number(conn.delay)) } else { "none".into() });
+    let (output, input) = (pin_label(&conn.output), pin_label(&conn.input));
+    let delay = if conn.delay > 0.0 { trf!("{seconds} s", seconds = crate::widgets::format_number(conn.delay)) } else { tr("none").to_string() };
+    let mut lines =
+        vec![trf!("output: {output}", output), trf!("target: {target}", target = conn.target), trf!("input: {input}", input), trf!("delay: {delay}", delay)];
     match conn.times {
         -1 => {}
-        1 => tip.push_str("\nfires: once"),
-        n => tip.push_str(&format!("\nfires: {n} times")),
+        1 => lines.push(tr("fires: once").to_string()),
+        n => lines.push(tr_n!(n, "fires: {n} time", "fires: {n} times")),
     }
 
     if !conn.parameter.is_empty() {
-        tip.push_str(&format!("\nparameter: {}", conn.parameter));
+        lines.push(trf!("parameter: {value}", value = conn.parameter));
     }
 
-    tip
+    lines.join("\n")
 }
 
 /// Sets a node's size and packs its settings into the lines that fit.
 fn node_size(node: &mut GraphNode) {
     let rows = node.inputs.len().max(node.outputs.len()).max(1);
-    let text = |s: &str| s.chars().count() as f32 * CHAR;
+    let text = |s: &str| cells(s) as f32 * CHAR;
     let mut width = text(&node.title).max(text(&node.subtitle)) + 28.0;
     for row in 0..rows {
         let left = node.inputs.get(row).map(|p| text(pin_label(&p.name))).unwrap_or(0.0);
@@ -594,10 +598,10 @@ fn setting_tokens(e: &td_doc::Entity, def: &td_formats::EntityDef) -> Vec<String
         let truthy = |v: &str| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on");
         let name = &p.name;
         let token = match p.ty {
-            T::Bool if truthy(value) != truthy(default) => Some(if truthy(value) { name.clone() } else { format!("{name} off") }),
+            T::Bool if truthy(value) != truthy(default) => Some(if truthy(value) { name.clone() } else { trf!("{name} off", name) }),
             T::Int | T::Float if number(value).is_some() && number(value) != number(default) => {
-                let unit = if p.description.to_lowercase().starts_with("seconds") { " s" } else { "" };
-                Some(format!("{name} {}{unit}", crate::widgets::format_number(number(value).unwrap_or_default())))
+                let amount = crate::widgets::format_number(number(value).unwrap_or_default());
+                Some(if p.description.to_lowercase().starts_with("seconds") { trf!("{name} {amount} s", name, amount) } else { format!("{name} {amount}") })
             }
             T::Choices if value != default => {
                 let label = p.options.iter().find(|(_, v)| v == value).map_or(value, |(l, _)| l.as_str());
@@ -612,20 +616,39 @@ fn setting_tokens(e: &td_doc::Entity, def: &td_formats::EntityDef) -> Vec<String
     tokens
 }
 
-/// Fills lines of at most `width` characters with the settings, `\u{b7}` between them, and ends the last line with an
+/// Whether `c` takes two cells of text, as Chinese, Japanese and Korean characters and full width forms do.
+fn wide(c: char) -> bool {
+    matches!(c as u32, 0x1100..=0x115F | 0x2E80..=0xA4CF | 0xAC00..=0xD7A3 | 0xF900..=0xFAFF | 0xFE30..=0xFE6F | 0xFF00..=0xFF60 | 0xFFE0..=0xFFE6)
+}
+
+/// The width of `s` in cells, a Latin letter is one and a wide character two.
+fn cells(s: &str) -> usize {
+    s.chars().map(|c| if wide(c) { 2 } else { 1 }).sum()
+}
+
+/// The longest start of `s` that fits `max` cells.
+fn take_cells(s: &str, max: usize) -> String {
+    let mut used = 0;
+    s.chars()
+        .take_while(|c| {
+            used += if wide(*c) { 2 } else { 1 };
+            used <= max
+        })
+        .collect()
+}
+
+/// Fills lines of at most `width` cells with the settings, `\u{b7}` between them, and ends the last line with an
 /// ellipsis when some do not fit.
 fn pack_settings(tokens: &[String], width: usize) -> Vec<String> {
     let width = width.max(8);
-    let clip = |s: &str, at: usize| -> String {
-        if s.chars().count() <= at { s.to_string() } else { s.chars().take(at.saturating_sub(1)).collect::<String>() + "\u{2026}" }
-    };
+    let clip = |s: &str, at: usize| -> String { if cells(s) <= at { s.to_string() } else { take_cells(s, at.saturating_sub(1)) + "\u{2026}" } };
     let mut lines: Vec<String> = Vec::new();
     let mut left = tokens.iter().peekable();
     while lines.len() < SETTING_LINES && left.peek().is_some() {
         let mut line = String::new();
         while let Some(t) = left.peek() {
             let joined = if line.is_empty() { (*t).clone() } else { format!("{line} \u{b7} {t}") };
-            if joined.chars().count() > width && !line.is_empty() {
+            if cells(&joined) > width && !line.is_empty() {
                 break;
             }
 
@@ -640,7 +663,7 @@ fn pack_settings(tokens: &[String], width: usize) -> Vec<String> {
         && let Some(last) = lines.last_mut()
         && !last.ends_with('\u{2026}')
     {
-        let keep: String = last.chars().take(width - 2).collect();
+        let keep = take_cells(last, width - 2);
         *last = format!("{} \u{2026}", keep.trim_end());
     }
 
@@ -649,7 +672,7 @@ fn pack_settings(tokens: &[String], width: usize) -> Vec<String> {
 
 /// How a pin name is shown, an empty one being a connection without an output or input.
 pub fn pin_label(name: &str) -> &str {
-    if name.is_empty() { "(none)" } else { name }
+    if name.is_empty() { tr("(none)") } else { name }
 }
 
 /// The input a new connection into a node of `classname` uses: the first that makes it fire, else its first input.
@@ -893,6 +916,44 @@ mod tests {
         assert_eq!(long.len(), 1);
         assert!(long[0].chars().count() <= 20 && long[0].ends_with('\u{2026}'), "{long:?}");
         assert!(pack_settings(&[], 20).is_empty());
+    }
+
+    #[test]
+    fn wide_characters_count_two_cells_when_packing_settings() {
+        assert_eq!((cells("max 3"), cells("最大 3"), cells("ステップ"), cells("\u{2026}")), (5, 6, 8, 1));
+        let tokens: Vec<String> = ["最大 3", "最小 -1", "開始値 2", "ステップ 5", "間隔 1.5 秒", "ループ"].map(String::from).to_vec();
+        assert_eq!(pack_settings(&tokens, 24), ["最大 3 \u{b7} 最小 -1", "開始値 2 \u{b7} ステップ 5 \u{2026}"]);
+        assert_eq!(pack_settings(&tokens[..2], 24), ["最大 3 \u{b7} 最小 -1"]);
+        let long = pack_settings(&["メッセージ これはとても長い文章です".to_string()], 20);
+        assert_eq!(long, ["メッセージ これはと\u{2026}"]);
+        assert_eq!(cells(&long[0]), 20, "the clipped line fills its width");
+        assert_eq!(take_cells("ab最c", 3), "ab", "a wide character that does not fit is left out");
+        assert_eq!(take_cells("ab最c", 4), "ab最");
+    }
+
+    #[test]
+    fn packed_settings_fit_in_every_language() {
+        use crate::i18n::Lang;
+        let (one, other) = (tr("{name} off"), tr("{name} {amount} s"));
+        for lang in Lang::ALL {
+            let _lang = crate::i18n::scope(lang);
+            let tokens: Vec<String> = ["max", "min", "start_value", "steps", "interval", "loop", "speed", "wait"]
+                .iter()
+                .enumerate()
+                .map(|(i, name)| if i % 2 == 0 { trf!("{name} off", name) } else { trf!("{name} {amount} s", name, amount = i as f64 * 1.5) })
+                .collect();
+            for width in [8, 12, 24, 30] {
+                let lines = pack_settings(&tokens, width);
+                let all: Vec<&str> = lines.iter().map(String::as_str).collect();
+                assert_eq!(lines.len(), SETTING_LINES, "{lang:?} {width} {all:?} from {one:?} {other:?}");
+                assert!(lines.iter().all(|l| cells(l) <= width.max(8)), "{lang:?} {width}: {all:?}");
+                assert!(lines[1].ends_with('\u{2026}'), "{lang:?} {width}: what does not fit is marked {all:?}");
+            }
+
+            let fits = pack_settings(&tokens[..1], 30);
+            assert_eq!(fits.len(), 1, "{lang:?}");
+            assert!(!fits[0].ends_with('\u{2026}'), "{lang:?}: {fits:?}");
+        }
     }
 
     #[test]

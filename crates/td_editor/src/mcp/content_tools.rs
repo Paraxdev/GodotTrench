@@ -858,7 +858,7 @@ impl App {
         };
         let installed = match crate::entity_pack::install_for_wizard(&mut self.state, &pack_classes) {
             Ok(installed) => installed,
-            Err(e) => return err(e),
+            Err(e) => return err(e.en),
         };
         let result: Result<Value, String> = match op {
             "make_door" => {

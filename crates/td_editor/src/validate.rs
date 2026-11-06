@@ -177,18 +177,35 @@ fn godot_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Issue> {
     let mut list = Vec::new();
     for class in &report.missing {
         let Some((id, _)) = map.entities().find(|(_, e)| e.classname == *class).filter(|_| game.entity(class).is_some()) else { continue };
-        let hint = match (crate::entity_pack::in_pack(class), context.pack_installed) {
-            (true, false) => "Gameplay > Install Gameplay Entities adds it".to_string(),
-            (true, true) if builds_with_addon_fgd(game, report) => "Set its Entity Fgd to your game config's FGD".to_string(),
-            (true, true) => format!("Add {} to the Base Fgd Files of its Entity Fgd", crate::entity_pack::DEFAULT_FGD),
-            _ => "Add the definition to its Entity Fgd".to_string(),
+        let settings = report.settings.join(", ");
+        let fgd = crate::entity_pack::DEFAULT_FGD;
+        let template = match (crate::entity_pack::in_pack(class), context.pack_installed, report.settings.is_empty()) {
+            (true, false, false) => en!(
+                "Godot built {class} as a plain node without script or collision, there is no definition for it in {settings}. Gameplay > Install Gameplay Entities adds it"
+            ),
+            (true, false, true) => en!(
+                "Godot built {class} as a plain node without script or collision, there is no definition for it in the FGD Godot builds with. Gameplay > Install Gameplay Entities adds it"
+            ),
+            (true, true, false) if builds_with_addon_fgd(game, report) => en!(
+                "Godot built {class} as a plain node without script or collision, there is no definition for it in {settings}. Set its Entity Fgd to your game config's FGD"
+            ),
+            (true, true, true) if builds_with_addon_fgd(game, report) => en!(
+                "Godot built {class} as a plain node without script or collision, there is no definition for it in the FGD Godot builds with. Set its Entity Fgd to your game config's FGD"
+            ),
+            (true, true, false) => en!(
+                "Godot built {class} as a plain node without script or collision, there is no definition for it in {settings}. Add {fgd} to the Base Fgd Files of its Entity Fgd"
+            ),
+            (true, true, true) => en!(
+                "Godot built {class} as a plain node without script or collision, there is no definition for it in the FGD Godot builds with. Add {fgd} to the Base Fgd Files of its Entity Fgd"
+            ),
+            (false, _, false) => en!(
+                "Godot built {class} as a plain node without script or collision, there is no definition for it in {settings}. Add the definition to its Entity Fgd"
+            ),
+            (false, _, true) => en!(
+                "Godot built {class} as a plain node without script or collision, there is no definition for it in the FGD Godot builds with. Add the definition to its Entity Fgd"
+            ),
         };
-        list.push(Issue::plain(
-            Some(id),
-            Severity::Warning,
-            "godot_missing_class",
-            format!("Godot built {class} as a plain node without script or collision, {} no definition for it. {hint}", report.settings_have()),
-        ));
+        list.push(Issue::new(Some(id), Severity::Warning, "godot_missing_class", template, &[("class", class), ("settings", &settings), ("fgd", &fgd)]));
     }
 
     list.extend(report.warnings.iter().map(|w| Issue::new(None, Severity::Warning, "godot_warning", en!("Godot: {warning}"), &[("warning", w)])));
@@ -197,8 +214,9 @@ fn godot_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Issue> {
 
 fn stale_issue(path: Option<&Path>, context: &Context) -> Option<Issue> {
     let path = path.filter(|_| context.godot_stale)?;
-    let message = crate::live_link::stale_text(&[path.to_string_lossy()]);
-    Some(Issue::plain(None, Severity::Warning, "godot_stale_scene", message))
+    let file = path.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default();
+    let template = en!("Godot shows {files} built with other entity definitions than its map settings hold now, use Godot > Build in Godot");
+    Some(Issue::new(None, Severity::Warning, "godot_stale_scene", template, &[("files", &file)]))
 }
 
 /// The export names an FGD of the addon as the Entity Fgd Godot built the map with, which an edit to its Base Fgd Files
@@ -665,7 +683,7 @@ mod tests {
             let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &context);
             found.into_iter().filter(|i| i.code.starts_with("godot_") || i.code == "build_lacks_class").map(|i| (i.node, i.code, i.message)).collect::<Vec<_>>()
         };
-        let plain = "as a plain node without script or collision, res://my_settings.tres has no definition for it";
+        let plain = "as a plain node without script or collision, there is no definition for it in res://my_settings.tres";
         assert_eq!(
             check(Some(report.clone()), true),
             [
@@ -726,6 +744,54 @@ mod tests {
             game.build = Some(td_formats::BuildConfig { map_settings: "res://s.tres".into(), entity_fgd: fgd.into(), ..Default::default() });
             assert!(hint(&game).ends_with("Set its Entity Fgd to your game config's FGD"), "{fgd}: {}", hint(&game));
         }
+    }
+
+    #[test]
+    fn the_godot_warnings_are_shown_in_the_editor_language_and_stay_english_for_mcp() {
+        use crate::i18n::{Lang, scope, test_catalogue};
+        let _de = test_catalogue(
+            Lang::De,
+            r#"{ "Godot built {class} as a plain node without script or collision, there is no definition for it in {settings}. Gameplay > Install Gameplay Entities adds it":
+                   "Godot hat {class} als einfachen Node gebaut, in {settings} fehlt die Definition. Gameplay > Install Gameplay Entities ergänzt sie",
+                 "Godot shows {files} built with other entity definitions than its map settings hold now, use Godot > Build in Godot":
+                   "Godot zeigt {files} mit anderen Entitätsdefinitionen, als die Karteneinstellungen jetzt haben, Godot > Build in Godot nutzen" }"#,
+        );
+        let game = GameConfig::with_gameplay_pack();
+        let mut map = Map::new();
+        map.insert(map.default_layer(), NodeKind::Entity(Entity::new("func_door")));
+        let path = Path::new("C:/game/maps/crypt.tdm");
+        let found = |settings: &[&str], stale: bool| {
+            let godot = crate::live_link::GodotReport {
+                missing: ["func_door".to_string()].into(),
+                settings: settings.iter().map(|s| s.to_string()).collect(),
+                ..Default::default()
+            };
+            let context = Context { godot: Some(godot), godot_stale: stale, ..Default::default() };
+            map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), Some(path), &context)
+        };
+        let issues = found(&["res://a.tres", "res://b.tres"], true);
+        let missing = issues.iter().find(|i| i.code == "godot_missing_class").unwrap();
+        let stale = issues.iter().find(|i| i.code == "godot_stale_scene").unwrap();
+        assert!(
+            missing.message.starts_with("Godot built func_door as a plain node") && missing.message.contains("in res://a.tres, res://b.tres. Gameplay"),
+            "{}",
+            missing.message
+        );
+        assert_eq!(shown(missing), missing.message, "English without a language");
+        let _de = scope(Lang::De);
+        assert_eq!(
+            shown(missing),
+            "Godot hat func_door als einfachen Node gebaut, in res://a.tres, res://b.tres fehlt die Definition. Gameplay > Install Gameplay Entities ergänzt sie"
+        );
+        assert_eq!(
+            shown(stale),
+            "Godot zeigt crypt.tdm mit anderen Entitätsdefinitionen, als die Karteneinstellungen jetzt haben, Godot > Build in Godot nutzen"
+        );
+        assert!(stale.message.starts_with("Godot shows crypt.tdm built with"), "{}", stale.message);
+
+        let old_addon = found(&[], false);
+        let message = &old_addon.iter().find(|i| i.code == "godot_missing_class").unwrap().message;
+        assert!(message.contains("no definition for it in the FGD Godot builds with. "), "an addon that names no settings: {message}");
     }
 
     #[test]

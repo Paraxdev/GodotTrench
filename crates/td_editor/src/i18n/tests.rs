@@ -869,7 +869,9 @@ fn style_problems(lang: Lang, en: &str, value: &str) -> Vec<&'static str> {
 
     let lead = |s: &str| s.len() - s.trim_start().len();
     let trail = |s: &str| s.len() - s.trim_end().len();
-    if en[..lead(en)] != value[..lead(value)] || en[en.len() - trail(en)..] != value[value.len() - trail(value)..] {
+    // A clause that joins on in English takes the separator of its own language in Chinese and Japanese.
+    let own_separator = is_cjk(lang) && value.starts_with(['，', '、']);
+    if (!own_separator && en[..lead(en)] != value[..lead(value)]) || en[en.len() - trail(en)..] != value[value.len() - trail(value)..] {
         out.push("leading or trailing space unlike English");
     }
 
@@ -927,9 +929,15 @@ fn translation_problems(lang: Lang, cat: &Catalogue) -> Vec<String> {
             Entry::Text(value) => check(None, en_text, &placeholders(en_text), value),
             Entry::Plural(forms) => {
                 let mut names = placeholders(en_text);
+                let counts_in_text = names.contains("n");
                 names.insert("n".into());
                 for (form, value) in forms {
-                    check(Some(*form), en_text, &names, value);
+                    let mut want = names.clone();
+                    if !counts_in_text && !placeholders(value).contains("n") {
+                        want.remove("n");
+                    }
+
+                    check(Some(*form), en_text, &want, value);
                 }
             }
         }
@@ -953,6 +961,11 @@ fn translations_keep_placeholders_and_house_style() {
     assert_eq!(bad(Lang::De, "Done \u{2705}", "Fertig \u{2705}"), Vec::<&str>::new(), "an icon English has");
     assert_eq!(bad(Lang::De, "Name: ", "Name:"), ["leading or trailing space unlike English"]);
     assert_eq!(bad(Lang::De, "  Name", "Name"), ["leading or trailing space unlike English"]);
+    assert_eq!(bad(Lang::Ja, " with a warning", "、警告あり"), Vec::<&str>::new(), "a joined clause may start with its own separator");
+    assert_eq!(bad(Lang::ZhHans, " with a warning", "，有警告"), Vec::<&str>::new());
+    assert_eq!(bad(Lang::ZhHans, " with a warning", "有警告"), ["leading or trailing space unlike English"]);
+    assert_eq!(bad(Lang::De, " with a warning", "，mit Warnung"), ["leading or trailing space unlike English"]);
+    assert_eq!(bad(Lang::Ja, " with a warning", "、警告あり "), ["leading or trailing space unlike English"]);
     assert_eq!(bad(Lang::De, "Save As…", "Speichern unter"), ["the trailing … is gone"]);
     assert_eq!(bad(Lang::De, "Press Ctrl+S to save", "Strg+S drücken zum Speichern"), ["a key or product name is translated"]);
     assert_eq!(bad(Lang::Ja, "Build the map in Godot", "ゴドーでビルド"), ["a key or product name is translated"]);
@@ -986,6 +999,17 @@ fn translations_keep_placeholders_and_house_style() {
     assert_eq!(
         translation_problems(Lang::De, &cat),
         ["de \"Deleted {n} objects\": has {}, English {\"n\"}", "de \"{n} brush\" other: has {}, English {\"n\"}",]
+    );
+
+    let cat = catalogue::parse(
+        Lang::Fr,
+        r#"{ "Add the class to {fgd}": { "one": "Ajoutez la classe à {fgd}", "other": "Ajoutez les {n} classes à {fgd}" }, "Add the classes to {fgd}": { "one": "Ajoutez à {x}", "other": "Ajoutez à {fgd}" } }"#,
+    )
+    .unwrap();
+    assert_eq!(
+        translation_problems(Lang::Fr, &cat),
+        ["fr \"Add the classes to {fgd}\" one: has {\"x\"}, English {\"fgd\"}"],
+        "the count may be left out of a text that does not hold it"
     );
 }
 

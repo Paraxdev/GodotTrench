@@ -1,12 +1,14 @@
 //! The Bake Lighting window: what gets baked, the quality and detail, and the progress of a running bake.
 
-use td_bake::Backend;
+use td_bake::{Backend, Stage};
 
 use super::{Job, Options, Quality, TEXEL_RANGE, collect};
+use crate::i18n::{list, tr, tr_n, trf};
 use crate::state::{EditorState, Shade};
+use crate::{en, msg};
 
-pub const TITLE: &str = "Bake Lighting";
-pub const PROGRESS_TITLE: &str = "Baking Lighting";
+pub const TITLE: &str = en!("Bake Lighting");
+pub const PROGRESS_TITLE: &str = en!("Baking Lighting");
 
 #[derive(Default)]
 pub struct BakeDialog {
@@ -27,7 +29,7 @@ impl BakeDialog {
         self.show_progress(ctx, state);
         let mut open = self.open;
         let mut bake = false;
-        egui::Window::new(TITLE)
+        crate::widgets::window(TITLE)
             .open(&mut open)
             .resizable(false)
             .collapsible(false)
@@ -42,13 +44,13 @@ impl BakeDialog {
 
     pub fn start(&mut self, state: &mut EditorState) {
         if self.job.is_some() {
-            state.set_status("A bake is already running, wait for it or cancel it first");
+            state.set_status(msg!("A bake is already running, wait for it or cancel it first"));
             return;
         }
 
         let options = *self.options.get_or_insert_with(|| Options::of(&state.doc.map));
         self.job = Some(Job::start(state, options));
-        state.set_status("Baking lighting…");
+        state.set_status(msg!("Baking lighting…"));
     }
 
     fn show_progress(&mut self, ctx: &egui::Context, state: &mut EditorState) {
@@ -63,8 +65,8 @@ impl BakeDialog {
                         state.prefs.shade = Shade::Baked;
                     }
                 }
-                Err(e) if e == td_bake::BakeError::Cancelled.to_string() => state.set_status("Bake cancelled, the map keeps its previous lighting"),
-                Err(e) => state.set_status(format!("Bake failed: {e}")),
+                Err(e) if e == td_bake::BakeError::Cancelled.to_string() => state.set_status(msg!("Bake cancelled, the map keeps its previous lighting")),
+                Err(e) => state.set_status(msg!("Bake failed: {e}", e)),
             }
 
             return;
@@ -73,21 +75,21 @@ impl BakeDialog {
         let progress = &job.progress;
         let cancelling = progress.is_cancelled();
         let elapsed = job.started.elapsed().as_secs();
-        egui::Window::new(PROGRESS_TITLE).resizable(false).collapsible(false).pivot(egui::Align2::CENTER_CENTER).default_pos(ctx.content_rect().center()).show(
-            ctx,
-            |ui| {
-                ui.label(progress.stage().label());
+        crate::widgets::window(PROGRESS_TITLE)
+            .resizable(false)
+            .collapsible(false)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.content_rect().center())
+            .show(ctx, |ui| {
+                ui.label(stage_text(progress.stage()));
                 ui.add(egui::ProgressBar::new(progress.fraction()).show_percentage().desired_width(300.0));
-                ui.label(
-                    egui::RichText::new(format!("{}:{:02} elapsed. You can keep editing, changes made now are not in this bake.", elapsed / 60, elapsed % 60))
-                        .weak(),
-                );
-                let label = if cancelling { "Cancelling…" } else { "Cancel" };
-                if ui.add_enabled(!cancelling, egui::Button::new(label)).on_hover_text("Stops the bake, the map keeps the lighting it has").clicked() {
+                let time = format!("{}:{:02}", elapsed / 60, elapsed % 60);
+                ui.label(egui::RichText::new(trf!("{time} elapsed. You can keep editing, changes made now are not in this bake.", time)).weak());
+                let label = if cancelling { tr("Cancelling…") } else { tr("Cancel") };
+                if ui.add_enabled(!cancelling, egui::Button::new(label)).on_hover_text(tr("Stops the bake, the map keeps the lighting it has")).clicked() {
                     progress.cancel();
                 }
-            },
-        );
+            });
         ctx.request_repaint_after(std::time::Duration::from_millis(100));
     }
 
@@ -111,42 +113,43 @@ impl BakeDialog {
         let o = self.options.get_or_insert_with(|| Options::of(&state.doc.map));
         ui.label(summary(&counts));
         ui.label(
-            egui::RichText::new(
+            egui::RichText::new(tr(
                 "Moving brush entities, triggers, tool textures and textures with Bake off are left out. A light's bake_mode key sets how it is baked.",
-            )
+            ))
             .weak(),
         );
         if stale {
-            ui.colored_label(ui.visuals().warn_fg_color, "The map changed since the last bake. Bake again to update the lighting.");
+            ui.colored_label(ui.visuals().warn_fg_color, tr("The map changed since the last bake. Bake again to update the lighting."));
         }
 
         ui.add_space(6.0);
         egui::Grid::new("bake options").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
-            ui.label("Quality");
+            ui.label(tr("Quality"));
             ui.horizontal(|ui| {
                 for q in Quality::ALL {
-                    ui.selectable_value(&mut o.quality, q, q.label()).on_hover_text(q.hint());
+                    ui.selectable_value(&mut o.quality, q, tr(q.label())).on_hover_text(tr(q.hint()));
                 }
             });
             ui.end_row();
 
-            ui.label("Texel size").on_hover_text("Map units one light map texel covers");
+            ui.label(tr("Texel size")).on_hover_text(tr("Map units one light map texel covers"));
             ui.horizontal(|ui| {
                 ui.add(egui::DragValue::new(&mut o.texel_size).range(TEXEL_RANGE).speed(0.25).suffix(" u"));
                 let meters = o.texel_size / state.game.units_per_meter.max(1.0) as f32;
-                ui.label(egui::RichText::new(format!("{:.0} cm, smaller is sharper and slower", meters * 100.0)).weak());
+                let cm = format!("{:.0}", meters * 100.0);
+                ui.label(egui::RichText::new(trf!("{cm} cm, smaller is sharper and slower", cm)).weak());
             });
             ui.end_row();
 
-            ui.label("Shadow softness");
+            ui.label(tr("Shadow softness"));
             ui.add(egui::Slider::new(&mut o.softness, 0.0..=1.0).fixed_decimals(2))
-                .on_hover_text("Spreads lights without a light_size of their own, so shadows get soft edges. 0 keeps them hard");
+                .on_hover_text(tr("Spreads lights without a light_size of their own, so shadows get soft edges. 0 keeps them hard"));
             ui.end_row();
 
-            ui.label("Runs on");
+            ui.label(tr("Runs on"));
             ui.horizontal(|ui| {
                 for b in Backend::ALL {
-                    ui.radio_value(&mut o.backend, b, b.label()).on_hover_text(backend_hint(b));
+                    ui.radio_value(&mut o.backend, b, b.label()).on_hover_text(tr(backend_hint(b)));
                 }
             });
             ui.end_row();
@@ -155,12 +158,12 @@ impl BakeDialog {
         let mut bake = false;
         ui.horizontal(|ui| {
             let nothing = counts.surfaces == 0;
-            bake = ui.add_enabled(!nothing, egui::Button::new("Bake")).on_disabled_hover_text("The map has no static geometry to bake").clicked();
+            bake = ui.add_enabled(!nothing, egui::Button::new(tr("Bake"))).on_disabled_hover_text(tr("The map has no static geometry to bake")).clicked();
             if state.doc.map.lightmap.is_some()
-                && ui.button("Remove Bake").on_hover_text("Drops the baked lighting from the map, Godot then lights it in real time").clicked()
+                && ui.button(tr("Remove Bake")).on_hover_text(tr("Drops the baked lighting from the map, Godot then lights it in real time")).clicked()
             {
                 state.doc.edit("Remove Baked Lighting", |m, _| m.lightmap = None);
-                state.set_status("Removed the baked lighting");
+                state.set_status(msg!("Removed the baked lighting"));
             }
         });
         bake
@@ -169,9 +172,20 @@ impl BakeDialog {
 
 fn backend_hint(b: Backend) -> &'static str {
     match b {
-        Backend::Cpu => "Traces on every core. Works on every machine",
-        Backend::Gpu => "Traces on the graphics card, much faster on a dedicated one. Uses the CPU without a usable GPU",
-        Backend::Hybrid => "The graphics card and every core share the work. Fastest when both are strong",
+        Backend::Cpu => en!("Traces on every core. Works on every machine"),
+        Backend::Gpu => en!("Traces on the graphics card, much faster on a dedicated one. Uses the CPU without a usable GPU"),
+        Backend::Hybrid => en!("The graphics card and every core share the work. Fastest when both are strong"),
+    }
+}
+
+fn stage_text(stage: Stage) -> String {
+    match stage {
+        Stage::Preparing => tr("Laying out the light map").into(),
+        Stage::Direct => tr("Tracing direct light and shadows").into(),
+        Stage::Bounce(0) => tr("Tracing sky light and ambient occlusion").into(),
+        Stage::Bounce(k) => trf!("Tracing bounce {k}", k),
+        Stage::Probes => tr("Tracing the light probes").into(),
+        Stage::Finishing => tr("Smoothing and filling the gutters").into(),
     }
 }
 
@@ -179,30 +193,30 @@ fn summary(c: &collect::Counts) -> String {
     let mut parts = Vec::new();
     match c.sun {
         Some(collect::BakeMode::Realtime) => {}
-        Some(collect::BakeMode::Bounce) => parts.push("the sun's bounce".to_string()),
-        Some(_) => parts.push("the sun".to_string()),
+        Some(collect::BakeMode::Bounce) => parts.push(tr("the sun's bounce").to_string()),
+        Some(_) => parts.push(tr("the sun").to_string()),
         None => {}
     }
 
-    let plural = |n: usize, one: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {one}s") };
     if c.baked_lights > 0 {
-        parts.push(plural(c.baked_lights, "light"));
+        parts.push(tr_n!(c.baked_lights, "{n} light", "{n} lights"));
     }
 
     if c.bounce_lights > 0 {
-        parts.push(format!("the bounce of {}", plural(c.bounce_lights, "real time light")));
+        parts.push(trf!("the bounce of {lights}", lights = tr_n!(c.bounce_lights, "{n} real time light", "{n} real time lights")));
     }
 
-    let lights = if parts.is_empty() { "the sky and glowing materials".to_string() } else { format!("{}, the sky and glowing materials", parts.join(", ")) };
-    let mut text = format!("Bakes {} into {}.", lights, plural(c.surfaces, "surface"));
+    parts.push(tr("the sky").to_string());
+    parts.push(tr("glowing materials").to_string());
+    let mut text = trf!("Bakes {lights} into {surfaces}.", lights = list(&parts), surfaces = tr_n!(c.surfaces, "{n} surface", "{n} surfaces"));
     if c.sun == Some(collect::BakeMode::Realtime) {
-        text += " The sun stays real time.";
+        text += " ";
+        text += tr("The sun stays real time.");
     }
 
-    match c.realtime_lights {
-        0 => {}
-        1 => text += " 1 light stays real time.",
-        n => text += &format!(" {n} lights stay real time."),
+    if c.realtime_lights > 0 {
+        text += " ";
+        text += &tr_n!(c.realtime_lights, "{n} light stays real time.", "{n} lights stay real time.");
     }
 
     text

@@ -11,6 +11,8 @@ use td_doc::issues::is_dynamic_target;
 use td_doc::{Entity, Map};
 use td_formats::{EntityDef, GameConfig};
 
+use crate::i18n::trf;
+
 /// One delivered input in a simulated cascade.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimEvent {
@@ -175,9 +177,9 @@ fn fires(entity: &Entity, def: Option<&EntityDef>, input: &str) -> Vec<Fire> {
 /// What a branch waits for, shown when the step is hovered.
 fn branch_condition(entity: &Entity, def: Option<&EntityDef>, name: &str, output: &str) -> String {
     match (entity.classname.as_str(), output) {
-        ("logic_counter", "hit_max") => format!("Only when {name} reaches its max of {}", number(entity, def, "max").map_or(3, |n| n as i64)),
-        ("logic_counter", "hit_min") => format!("Only when {name} reaches its min of {}", number(entity, def, "min").map_or(0, |n| n as i64)),
-        _ => format!("Only when {name} takes its {output} branch"),
+        ("logic_counter", "hit_max") => trf!("Only when {name} reaches its max of {max}", name, max = number(entity, def, "max").map_or(3, |n| n as i64)),
+        ("logic_counter", "hit_min") => trf!("Only when {name} reaches its min of {min}", name, min = number(entity, def, "min").map_or(0, |n| n as i64)),
+        _ => trf!("Only when {name} takes its {output} branch", name, output),
     }
 }
 

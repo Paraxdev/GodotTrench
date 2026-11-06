@@ -24,9 +24,9 @@ pub fn env_var(name: &str) -> Option<String> {
 }
 
 /// What the status line says about a map that was updated while it was read.
-pub fn migrated_status(path: &Path) -> String {
+pub fn migrated_status(path: &Path) -> crate::i18n::Msg {
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
-    format!("Updated {name} from the {} format, save to keep it", td_doc::legacy::NAME)
+    crate::i18n::msg!("Updated {name} from the {format} format, save to keep it", name, format = td_doc::legacy::NAME)
 }
 
 /// Brings the settings of an install made under the old name into the settings folder of this one, once. The old folder
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn the_status_names_the_file_and_the_old_format() {
-        assert_eq!(migrated_status(Path::new("maps/room.gtm")), "Updated room.gtm from the GodotTrench format, save to keep it");
+        assert_eq!(migrated_status(Path::new("maps/room.gtm")).en, "Updated room.gtm from the GodotTrench format, save to keep it");
     }
 
     fn put(dir: &Path, file: &str, text: &str) {

@@ -12,7 +12,7 @@ use td_bake::{Backend, Progress, Settings};
 use td_doc::lightmap::{self, BakeOptions, Lightmap};
 use td_doc::{Map, NodeId};
 
-use crate::i18n::en;
+use crate::i18n::{Msg, en, msg, msg_n};
 use crate::state::EditorState;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -31,10 +31,10 @@ impl Quality {
 
     pub fn label(self) -> &'static str {
         match self {
-            Quality::Preview => "Preview",
-            Quality::Medium => "Medium",
-            Quality::High => "High",
-            Quality::Final => "Final",
+            Quality::Preview => en!("Preview"),
+            Quality::Medium => en!("Medium"),
+            Quality::High => en!("High"),
+            Quality::Final => en!("Final"),
         }
     }
 
@@ -53,10 +53,10 @@ impl Quality {
 
     pub fn hint(self) -> &'static str {
         match self {
-            Quality::Preview => "Few rays and one bounce: noisy, but done in moments while you place lights",
-            Quality::Medium => "Two bounces with enough rays for smooth indirect light",
-            Quality::High => "Three bounces and more rays, for a clean result",
-            Quality::Final => "Four bounces with many rays, for the build you ship. Slow on big maps",
+            Quality::Preview => en!("Few rays and one bounce: noisy, but done in moments while you place lights"),
+            Quality::Medium => en!("Two bounces with enough rays for smooth indirect light"),
+            Quality::High => en!("Three bounces and more rays, for a clean result"),
+            Quality::Final => en!("Four bounces with many rays, for the build you ship. Slow on big maps"),
         }
     }
 
@@ -146,26 +146,41 @@ pub struct Baked {
 }
 
 impl Baked {
-    pub fn summary(&self) -> String {
+    pub fn message(&self) -> Msg {
         let lm = &self.lightmap;
-        let mut text = format!("Baked lighting in {:.1} s: {} surfaces in a {}×{} light map", self.seconds, self.counts.surfaces, lm.width, lm.height);
+        let seconds = format!("{:.1}", self.seconds);
+        let (width, height) = (lm.width, lm.height);
+        let mut text = msg_n!(
+            self.counts.surfaces,
+            "Baked lighting in {seconds} s: {n} surface in a {width}×{height} light map",
+            "Baked lighting in {seconds} s: {n} surfaces in a {width}×{height} light map",
+            seconds,
+            width,
+            height
+        );
         if let Some(gpu) = &self.gpu {
-            text += &format!(" on {gpu}");
+            text = text.then(" ", msg!("on {gpu}", gpu));
         }
 
         if !lm.probes.is_empty() {
-            text += &format!(" and {} light probes", lm.probes.len());
+            text = text.then(" ", msg_n!(lm.probes.len(), "and {n} light probe", "and {n} light probes"));
         }
 
         if let Some(asked) = self.coarsened_from {
-            text += &format!(", at {:.0} units per texel instead of {asked:.0} so it fits", lm.texel_size);
+            let (texel, asked) = (format!("{:.0}", lm.texel_size), format!("{asked:.0}"));
+            text = text.then(", ", msg!("at {texel} units per texel instead of {asked} so it fits", texel, asked));
         }
 
         if let Some(e) = &self.gpu_error {
-            text += &format!(". The GPU was not used, {e}, so the CPU baked it");
+            text = text.then(". ", msg!("The GPU was not used, {e}, so the CPU baked it", e));
         }
 
         text
+    }
+
+    /// [`Baked::message`] in English, for MCP and tests.
+    pub fn summary(&self) -> String {
+        self.message().en
     }
 }
 
@@ -248,7 +263,7 @@ fn stored(map: td_bake::Lightmap, nodes: std::collections::BTreeMap<u64, u64>, s
 
 /// Stores a finished bake in the map as one undo step, with the options it was made with.
 pub fn apply(state: &mut EditorState, baked: Baked, options: Options) {
-    let summary = baked.summary();
+    let summary = baked.message();
     let lightmap = Arc::new(baked.lightmap);
     state.doc.edit("Bake Lighting", |m, _| {
         m.lightmap = Some(lightmap);

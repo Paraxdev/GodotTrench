@@ -17,6 +17,7 @@ use td_core::NodeId;
 use td_doc::{Map, NodeKind};
 use td_formats::GameConfig;
 
+use crate::i18n::{Msg, msg};
 use crate::materials::MaterialLibrary;
 use crate::models::ModelCache;
 use crate::prefabs::PrefabCache;
@@ -87,20 +88,20 @@ pub struct Report {
 
 impl Report {
     /// One line for the status bar.
-    pub fn summary(&self, path: &Path) -> String {
-        let mut s = format!(
-            "Exported {} objects, {} materials and {} triangles to {} ({})",
-            self.objects,
-            self.materials,
-            self.triangles,
-            path.display(),
-            size_text(self.bytes)
-        );
+    pub fn message(&self, path: &Path) -> Msg {
+        let (objects, materials, triangles, path, size) = (self.objects, self.materials, self.triangles, path.display(), size_text(self.bytes));
+        let mut s =
+            msg!("Exported {objects} objects, {materials} materials and {triangles} triangles to {path} ({size})", objects, materials, triangles, path, size);
         if !self.missing.is_empty() {
-            s += &format!(". No image found for {}", self.missing.join(", "));
+            s = s.then(". ", msg!("No image found for {names}", names = self.missing.join(", ")));
         }
 
         s
+    }
+
+    /// [`Report::message`] in English, for MCP and tests.
+    pub fn summary(&self, path: &Path) -> String {
+        self.message(path).en
     }
 }
 
