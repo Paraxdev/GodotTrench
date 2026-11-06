@@ -158,6 +158,7 @@ See [Reviewing changes](editor/reviewing.md) for keeping maps in git.
 | `map_file` exports | `path` is the written file, kept for older callers, `exported` names it too and `map_path` is the open map |
 | `terrain_edit` | `probe [x, z]` without `op` only reads the height. `clear_layer` needs `layer` |
 | `validate_map` | Accepts any method or property of the target's Godot class or script as an input. `coplanar_faces` flags faces that will flicker. Every issue has `bounds`. `path` checks a saved map without opening it, `project: true` checks every map in the project |
+| `run_action` `place_entities` | Takes `args.classnames`, and `at` and `normal` to rest the entities on a surface the way a drag from the Entities tab does. No classnames is an error |
 | `run_action` `reload_materials` | Rescans the texture folder now, though new files are found on their own anyway |
 | `set_editor` `live_link_port` | Talks to a Godot editor whose project sets another `trenchdot/live_link_port` |
 | `scatter` `preset` | Adds the embedded Blockbench models a preset needs. A glTF preset in a project without the nature pack is an error that names `project_content` |

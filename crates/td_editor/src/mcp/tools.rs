@@ -29,6 +29,15 @@ pub struct InputScript {
     pub steps: VecDeque<InputStep>,
     pub reply: Sender<ToolResult>,
     pub frames: usize,
+    /// The drag still held once the script has played, see `release: false`.
+    pub held: Option<HeldDrag>,
+}
+
+#[derive(Clone, Copy)]
+pub struct HeldDrag {
+    pub button: PointerButton,
+    pub pos: Pos2,
+    pub modifiers: Modifiers,
 }
 
 /// A tool call that finishes in a later frame.
@@ -510,6 +519,8 @@ impl App {
             let _ = script.reply.send(err(message));
         }
 
+        self.held_drag = None;
+
         for Deferred::WindowScreenshot { reply, .. } in self.deferred.drain(..) {
             let _ = reply.send(err(message));
         }
@@ -533,7 +544,9 @@ impl App {
         if let Some(script) = &self.input_script {
             if script.steps.is_empty() {
                 let script = self.input_script.take().unwrap();
-                let _ = script.reply.send(ToolResult::Json(json!({ "ok": true, "frames": script.frames, "state": self.state_summary() })));
+                self.held_drag = script.held;
+                let reply = json!({ "ok": true, "frames": script.frames, "held": script.held.is_some(), "state": self.state_summary() });
+                let _ = script.reply.send(ToolResult::Json(reply));
             } else {
                 ctx.request_repaint();
             }
@@ -545,7 +558,15 @@ impl App {
     }
 
     pub(crate) fn feed_input_script(&mut self, raw: &mut egui::RawInput) {
-        let Some(script) = &mut self.input_script else { return };
+        let Some(script) = &mut self.input_script else {
+            // Between calls the real keyboard would let go of the held drag's modifiers.
+            if let Some(held) = self.held_drag {
+                raw.events.push(Event::ModifiersChanged(held.modifiers));
+                raw.focused = true;
+            }
+
+            return;
+        };
         if let Some(step) = script.steps.pop_front() {
             raw.events.push(Event::ModifiersChanged(step.modifiers));
             raw.events.extend(step.events);
@@ -1154,12 +1175,15 @@ impl App {
             }
             "focus_selection" => Action::FocusSelection,
             "create_brush_entity" => Action::CreateBrushEntity(a["classname"].as_str().unwrap_or("func_detail").to_string()),
-            "place_entities" => Action::PlaceEntities {
-                classnames: a["classnames"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).map(str::to_string).collect(),
-                at: vec3(&a["at"]),
-                normal: vec3(&a["normal"]),
-                row: vec3(&a["row"]).unwrap_or(DVec3::X),
-            },
+            "place_entities" => {
+                let classnames: Vec<String> = a["classnames"].as_array().into_iter().flatten().filter_map(|c| c.as_str()).map(str::to_string).collect();
+                if classnames.is_empty() {
+                    let hint = if args["classnames"].is_null() { "" } else { ", inside args rather than next to action" };
+                    return err(format!("place_entities needs args.classnames, a list of entity classnames{hint}"));
+                }
+
+                Action::PlaceEntities { classnames, at: vec3(&a["at"]), normal: vec3(&a["normal"]), row: vec3(&a["row"]).unwrap_or(DVec3::X) }
+            }
             "move_to_world" => Action::MoveToWorld,
             "add_layer" => Action::AddLayer,
             "snap_vertices" => Action::SnapVertices,
@@ -2289,8 +2313,9 @@ impl App {
         let target = args["target"].as_str().unwrap_or("window");
         let mut steps = VecDeque::new();
         let events = args["events"].as_array().ok_or("events must be an array")?;
+        let mut held = self.held_drag;
         for ev in events {
-            let mut modifiers = Modifiers::NONE;
+            let mut modifiers = held.map_or(Modifiers::NONE, |h| h.modifiers);
             for m in ev["modifiers"].as_array().into_iter().flatten() {
                 match m.as_str() {
                     Some("ctrl") => {
@@ -2314,10 +2339,25 @@ impl App {
             };
             let step = |events: Vec<Event>| InputStep { events, modifiers };
             let press = |pos: Pos2, pressed: bool| Event::PointerButton { pos, button, pressed, modifiers };
-            match ev["type"].as_str().unwrap_or_default() {
+            let kind = ev["type"].as_str().unwrap_or_default();
+            if held.is_some() && matches!(kind, "click" | "double_click" | "drag") {
+                return Err(format!("a drag is still held, end it with a release event before the {kind}"));
+            }
+
+            match kind {
                 "move" => {
                     let p = self.resolve_pos(target, ev, "x", "world")?;
                     steps.push_back(step(vec![Event::PointerMoved(p)]));
+                    if let Some(h) = &mut held {
+                        h.pos = p;
+                    }
+                }
+                "release" => {
+                    let h = held.take().ok_or("release ends a drag held with release: false, and no drag is held")?;
+                    let p = if ev["x"].is_null() && ev["world"].is_null() { h.pos } else { self.resolve_pos(target, ev, "x", "world")? };
+                    steps.push_back(step(vec![Event::PointerMoved(p)]));
+                    steps.push_back(step(vec![Event::PointerButton { pos: p, button: h.button, pressed: false, modifiers }]));
+                    steps.push_back(step(vec![]));
                 }
                 t @ ("click" | "double_click") => {
                     let p = self.resolve_pos(target, ev, "x", "world")?;
@@ -2340,7 +2380,12 @@ impl App {
                         steps.push_back(step(vec![Event::PointerMoved(from.lerp(to, i as f32 / n as f32))]));
                     }
 
-                    steps.push_back(step(vec![press(to, false)]));
+                    if ev["release"] == false {
+                        held = Some(HeldDrag { button, pos: to, modifiers });
+                    } else {
+                        steps.push_back(step(vec![press(to, false)]));
+                    }
+
                     steps.push_back(step(vec![]));
                 }
                 "key" => {
@@ -2366,8 +2411,8 @@ impl App {
             }
         }
 
-        steps.push_back(InputStep { events: vec![], modifiers: Modifiers::NONE });
-        Ok(InputScript { steps, reply, frames: 0 })
+        steps.push_back(InputStep { events: vec![], modifiers: held.map_or(Modifiers::NONE, |h| h.modifiers) });
+        Ok(InputScript { steps, reply, frames: 0, held })
     }
 }
 

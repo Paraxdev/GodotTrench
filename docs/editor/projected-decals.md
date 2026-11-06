@@ -108,7 +108,8 @@ Otherwise the class is defined twice, and the editor warns about it.)
 
 ## MCP
 
-Over the [MCP server](../mcp.md), `run_action` `place_entities` with `classnames: ["infodecal"]`, `at` and `normal`
-places it turned to the surface, like a drag does. Set its keys afterwards with `update_entity` `properties`.
+Over the [MCP server](../mcp.md), `run_action` with `action: "place_entities"` and
+`args: {"classnames": ["infodecal"], "at": [x, y, z], "normal": [x, y, z]}` places it turned to the surface, like a drag
+does. Set its keys afterwards with `update_entity` `properties`.
 
 </div>

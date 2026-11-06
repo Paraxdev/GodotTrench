@@ -223,6 +223,39 @@ fn gameplay_place_refuses_unknown_classnames() {
 
 #[test]
 #[ignore]
+fn place_entities_wants_its_classnames_in_args() {
+    let ed = Editor::launch("place_entities");
+    let e = ed.call_err("run_action", json!({ "action": "place_entities", "classnames": ["infodecal"], "at": [0, 0, 0] }));
+    assert!(e.contains("args.classnames") && e.contains("inside args"), "{e}");
+    ed.call("run_action", json!({ "action": "place_entities", "args": { "classnames": ["info_null"], "at": [64, 0, 0], "normal": [0, 1, 0] } }));
+    assert_eq!(ed.call("list_nodes", json!({ "type": "entity" }))["total"], 1);
+}
+
+#[test]
+#[ignore]
+fn a_drag_held_open_ends_with_a_later_release() {
+    let ed = Editor::launch("held_drag");
+    let reply =
+        ed.call("simulate_input", json!({ "target": "top", "events": [{ "type": "drag", "world": [-64, 0, -64], "to_world": [0, 0, 0], "release": false }] }));
+    assert_eq!(reply["held"], true);
+    ed.screenshot("window", "held_drag");
+    // The brush being drawn follows a move in a later call, so the button stayed down in between.
+    ed.input("top", json!([{ "type": "move", "world": [64, 0, 32] }]));
+    let (min, max) = ed.selection_bounds();
+    assert!(approx(&min, &[-64.0, 0.0, -64.0]) && approx(&max, &[64.0, 128.0, 32.0]), "{min:?} {max:?}");
+    let e = ed.call_err("simulate_input", json!({ "target": "top", "events": [{ "type": "click", "world": [0, 0, 0] }] }));
+    assert!(e.contains("release"), "{e}");
+
+    let reply = ed.call("simulate_input", json!({ "target": "top", "events": [{ "type": "release" }] }));
+    assert_eq!(reply["held"], false);
+    ed.input("top", json!([{ "type": "move", "world": [128, 0, 96] }]));
+    let (_, max) = ed.selection_bounds();
+    assert!(approx(&max, &[64.0, 128.0, 32.0]) && ed.brushes() == 1, "moves after the release draw nothing, {max:?}");
+    assert!(ed.call_err("simulate_input", json!({ "events": [{ "type": "release" }] })).contains("no drag is held"));
+}
+
+#[test]
+#[ignore]
 fn draw_select_move_delete_undo() {
     let ed = Editor::launch("basic");
     // Draw a brush by dragging in the top view. The first brush is 128 units tall, a room once hollowed.
