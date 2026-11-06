@@ -32,6 +32,8 @@ const MIN_TITLE: f32 = 10.0;
 const SIM_STRIP: f32 = 140.0;
 /// Other text shrinks with the zoom only down to this share of its size.
 const MIN_TEXT: f32 = 0.7;
+const FRAME_FILL: f32 = 0.08;
+const FRAME_TITLE_FILL: f32 = 0.35;
 
 const CONTROLS: &str = "Drag from an output pin to an input pin to connect, or drop on empty space to add an entity.\n\
 Click a node to select its entity, double click to frame it. Click a wire to edit it, Delete removes it.\n\
@@ -595,12 +597,27 @@ fn distance_to_curve(points: &[Pos2; 4], p: Pos2) -> f32 {
     best
 }
 
-fn edge_color(kind: EdgeKind) -> Color32 {
+fn edge_color(p: &theme::Palette, kind: EdgeKind) -> Color32 {
     match kind {
-        EdgeKind::Resolved => theme::colors().gray_6,
-        EdgeKind::Dynamic | EdgeKind::Overlay => theme::colors().info(),
-        EdgeKind::Broken => theme::colors().error(),
+        EdgeKind::Resolved => p.gray_6,
+        EdgeKind::Dynamic | EdgeKind::Overlay => p.info(),
+        EdgeKind::Broken => p.error(),
     }
+}
+
+/// Dynamic and missing nodes, which carry a marker color, sink into the canvas a little more than the others.
+fn node_body(p: &theme::Palette, marked: bool) -> Color32 {
+    if marked { p.gray_1 } else { p.gray_2 }
+}
+
+/// The subtitle names the category in its color, small text on the node body.
+fn subtitle_color(p: &theme::Palette, color: Color32, body: Color32) -> Color32 {
+    p.readable_at(color, body, 4.5)
+}
+
+/// The pill that numbers the steps of a simulated wire: fill and text.
+fn step_badge(p: &theme::Palette) -> (Color32, Color32) {
+    (p.yellow, p.on_accent)
 }
 
 fn marker_color(key: &NodeKey) -> Option<Color32> {
@@ -1001,9 +1018,9 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
 
         let color = color32(gs.frames[i].color);
         let chosen = gs.selected_frame == Some(i);
-        painter.rect_filled(r, 6.0, color.gamma_multiply(0.08));
+        painter.rect_filled(r, 6.0, color.gamma_multiply(FRAME_FILL));
         let title = Rect::from_min_size(r.min, vec2(r.width(), gs.frame_title_height()));
-        painter.rect_filled(title, egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, color.gamma_multiply(0.35));
+        painter.rect_filled(title, egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, color.gamma_multiply(FRAME_TITLE_FILL));
         painter.rect_stroke(r, 6.0, Stroke::new(if chosen { 2.5 } else { 1.5 }, if chosen { color } else { color.gamma_multiply(0.7) }), StrokeKind::Inside);
         let font = FontId::proportional((15.0 * gs.zoom).max(MIN_TITLE));
         painter.with_clip_rect(title.intersect(canvas)).text(
@@ -1065,7 +1082,7 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
             let pin = gs.model.nodes[e.from].outputs.get(e.from_pin).map_or(PinType::Pulse, |p| p.ty);
             (1.6, theme::pin_type_color(pin.name()))
         } else {
-            (1.6, edge_color(e.kind))
+            (1.6, edge_color(theme::colors(), e.kind))
         };
         let stroke = Stroke::new(width, color);
         if e.kind == EdgeKind::Broken && !chosen {
@@ -1091,7 +1108,8 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
         let r = gs.node_rect(n);
         let rounding = 6.0 * gs.zoom;
         let marker = marker_color(&n.key);
-        painter.rect_filled(r, rounding, if marker.is_some() { theme::colors().gray_1 } else { theme::colors().gray_2 });
+        let body = node_body(theme::colors(), marker.is_some());
+        painter.rect_filled(r, rounding, body);
         let header = Rect::from_min_size(r.min, vec2(r.width(), HEADER * gs.zoom));
         let category = (!n.category.is_empty()).then(|| theme::category_color(&n.category));
         if let Some(c) = category {
@@ -1106,7 +1124,13 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
         let title = FontId::proportional((14.0 * gs.zoom).max(MIN_TITLE));
         clip.text(header.min + vec2(10.0, 7.0) * gs.zoom.max(0.4), Align2::LEFT_TOP, &n.title, title, theme::colors().gray_7);
         if detail {
-            text(header.min + vec2(10.0, 25.0) * gs.zoom, Align2::LEFT_TOP, &n.subtitle, 11.0, marker.or(category).unwrap_or(theme::colors().gray_5));
+            text(
+                header.min + vec2(10.0, 25.0) * gs.zoom,
+                Align2::LEFT_TOP,
+                &n.subtitle,
+                11.0,
+                marker.or(category).map_or(theme::colors().gray_5, |c| subtitle_color(theme::colors(), c, body)),
+            );
             for (row, line) in n.settings.iter().enumerate() {
                 text(header.min + vec2(10.0, HEADER + SETTING_ROW * row as f32 + 1.0) * gs.zoom, Align2::LEFT_TOP, line, 11.0, theme::colors().gray_6);
             }
@@ -1168,10 +1192,11 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
     }
 
     for (at, label) in badges {
-        let galley = painter.layout_no_wrap(label, FontId::proportional(11.0), theme::colors().gray_0);
+        let (fill, ink) = step_badge(theme::colors());
+        let galley = painter.layout_no_wrap(label, FontId::proportional(11.0), ink);
         let r = Rect::from_center_size(at, galley.size() + vec2(10.0, 4.0));
-        painter.rect_filled(r, r.height() * 0.5, theme::colors().yellow);
-        painter.galley(r.min + vec2(5.0, 2.0), galley, theme::colors().gray_0);
+        painter.rect_filled(r, r.height() * 0.5, fill);
+        painter.galley(r.min + vec2(5.0, 2.0), galley, ink);
     }
 
     match &gs.drag {
@@ -1745,5 +1770,87 @@ fn sim_list(ui: &mut Ui, rect: Rect, state: &mut EditorState, gs: &mut GraphStat
     if let Some(id) = pick {
         gs.selected_edge = Some(id);
         select(state, &[id.0], false);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::{DARK, FRAME_COLORS, LIGHT, Palette, blend, contrast_ratio};
+
+    const PALETTES: [(&str, Palette); 2] = [("dark", DARK), ("light", LIGHT)];
+    const CATEGORIES: [&str; 13] = ["logic", "math", "trigger", "func", "light", "env", "game", "prop", "npc", "info", "", "zone", "weather"];
+    const PIN_TYPES: [&str; 10] = ["pulse", "bool", "int", "float", "string", "vector3", "color", "node", "variant", "unknown"];
+
+    #[test]
+    fn node_bodies_stand_off_the_canvas() {
+        for (name, p) in PALETTES {
+            let ratio = contrast_ratio(node_body(&p, false), p.gray_0);
+            assert!(ratio >= 1.2, "{name} node body on the canvas: {ratio:.3} < 1.2");
+        }
+
+        assert_eq!(node_body(&LIGHT, true), LIGHT.gray_1);
+        assert_eq!(node_body(&LIGHT, false), LIGHT.gray_2);
+    }
+
+    #[test]
+    fn subtitles_read_on_the_node_body() {
+        let marked = [("dynamic", LIGHT.info()), ("missing", LIGHT.error())];
+        for (name, p) in PALETTES {
+            let tinted = CATEGORIES.iter().map(|c| (c.to_string(), p.category_color(c), node_body(&p, false)));
+            let marks = marked.iter().map(|(n, _)| (n.to_string(), if n == &"dynamic" { p.info() } else { p.error() }, node_body(&p, true)));
+            for (what, color, body) in tinted.chain(marks) {
+                let ink = subtitle_color(&p, color, body);
+                let ratio = contrast_ratio(ink, body);
+                if p.dark {
+                    assert_eq!(ink, color, "{name} {what}: dark keeps the category color");
+                } else {
+                    assert!(ratio >= 4.5, "{name} {what}: subtitle {ratio:.2} < 4.5");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn pins_and_wires_read_on_the_canvas_and_the_body() {
+        for (name, p) in PALETTES {
+            for ty in PIN_TYPES {
+                let color = p.pin_type_color(ty);
+                for (what, bg) in [("canvas", p.gray_0), ("body", node_body(&p, false))] {
+                    let ratio = contrast_ratio(color, bg);
+                    assert!(ratio >= 3.0, "{name} {ty} pin on the {what}: {ratio:.2} < 3");
+                }
+            }
+
+            for kind in [EdgeKind::Resolved, EdgeKind::Dynamic, EdgeKind::Overlay, EdgeKind::Broken] {
+                let ratio = contrast_ratio(edge_color(&p, kind), p.gray_0);
+                assert!(ratio >= 3.0, "{name} {kind:?} wire: {ratio:.2} < 3");
+            }
+        }
+
+        assert_eq!(LIGHT.pin_type_color("pulse"), LIGHT.gray_7);
+    }
+
+    #[test]
+    fn frame_titles_read_over_every_stored_frame_color() {
+        for (name, p) in PALETTES {
+            for color in FRAME_COLORS {
+                let title = blend(blend(p.gray_0, color, FRAME_FILL), color, FRAME_TITLE_FILL);
+                let ratio = contrast_ratio(p.gray_7, title);
+                assert!(ratio >= 4.5, "{name} title over {color:?}: {ratio:.2} < 4.5");
+                let band = contrast_ratio(title, p.gray_0);
+                assert!(band >= 1.2, "{name} title band over {color:?} stands off the canvas by {band:.2} < 1.2");
+            }
+        }
+    }
+
+    #[test]
+    fn step_badges_carry_the_text_color_for_accent_fills() {
+        for (name, p) in PALETTES {
+            let (fill, ink) = step_badge(&p);
+            assert_eq!((fill, ink), (p.yellow, p.on_accent), "{name}");
+            let ratio = contrast_ratio(ink, fill);
+            assert!(ratio >= 4.5, "{name} badge text: {ratio:.2} < 4.5");
+        }
     }
 }

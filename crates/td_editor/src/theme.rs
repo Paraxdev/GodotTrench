@@ -238,24 +238,23 @@ impl Palette {
     /// A tint from outside the theme, such as a layer or FGD entity color, made legible on `bg`. Dark keeps it as it
     /// is, light darkens it in OKLab until it reaches 3:1, keeping hue and as much chroma as still fits sRGB.
     pub fn readable(&self, c: Color32, bg: Color32) -> Color32 {
-        const MIN: f64 = 3.0;
-        if self.dark || contrast_ratio(c, bg) >= MIN {
+        self.readable_at(c, bg, 3.0)
+    }
+
+    /// [`Self::readable`] for a contrast of `min`, 4.5 for small text.
+    pub fn readable_at(&self, c: Color32, bg: Color32, min: f64) -> Color32 {
+        if self.dark || contrast_ratio(c, bg) >= min {
             return c;
         }
 
-        let [l0, a0, b0] = to_oklab(c);
-        let at = |l: f64| from_oklab_fitted(l, a0, b0);
-        let (mut lo, mut hi) = (0.0, l0);
-        for _ in 0..24 {
-            let mid = (lo + hi) / 2.0;
-            if contrast_ratio(at(mid), bg) >= MIN {
-                lo = mid;
-            } else {
-                hi = mid;
+        // Runs for every visible Outliner row and Logic graph node each frame, from a handful of distinct tints.
+        FITTED.with_borrow_mut(|fitted| {
+            if fitted.len() >= FITTED_CAP {
+                fitted.clear();
             }
-        }
 
-        at(lo)
+            *fitted.entry((c, bg, min.to_bits())).or_insert_with(|| darken_to(c, bg, min))
+        })
     }
 
     pub fn visuals(&self) -> Visuals {
@@ -322,6 +321,28 @@ pub fn pin_type_color(name: &str) -> Color32 {
 
 pub fn selected_fill() -> Color32 {
     colors().selected_fill()
+}
+
+const FITTED_CAP: usize = 256;
+
+thread_local! {
+    static FITTED: std::cell::RefCell<std::collections::HashMap<(Color32, Color32, u64), Color32>> = Default::default();
+}
+
+fn darken_to(c: Color32, bg: Color32, min: f64) -> Color32 {
+    let [l0, a0, b0] = to_oklab(c);
+    let at = |l: f64| from_oklab_fitted(l, a0, b0);
+    let (mut lo, mut hi) = (0.0, l0);
+    for _ in 0..24 {
+        let mid = (lo + hi) / 2.0;
+        if contrast_ratio(at(mid), bg) >= min {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+
+    at(lo)
 }
 
 pub fn blend(a: Color32, b: Color32, t: f32) -> Color32 {
@@ -912,6 +933,48 @@ mod tests {
         assert!(contrast(under, p.gray_1) < 3.0 && contrast(over, p.gray_1) >= 3.0);
         assert_ne!(p.readable(under, p.gray_1), under);
         assert_eq!(p.readable(over, p.gray_1), over);
+    }
+
+    #[test]
+    fn readable_at_darkens_to_the_asked_contrast() {
+        let p = LIGHT;
+        let c = p.cyan;
+        let bg = p.gray_2;
+        assert!(contrast(c, bg) < 4.5 && contrast(c, bg) >= 3.0);
+        assert_eq!(p.readable(c, bg), c, "3:1 is already met");
+        let out = p.readable_at(c, bg, 4.5);
+        let ratio = contrast(out, bg);
+        assert!((4.5..4.6).contains(&ratio), "{ratio:.3}");
+        assert!((hue(out) - hue(c)).abs() < 0.05, "{} vs {}", hue(out), hue(c));
+        assert_eq!(p.readable_at(p.blue, bg, 4.5), p.blue, "a tint that meets the contrast stays");
+        assert_eq!(DARK.readable_at(DARK.red, DARK.gray_2, 12.0), DARK.red, "dark never changes a tint");
+    }
+
+    #[test]
+    fn readable_at_remembers_each_fit_apart() {
+        let p = LIGHT;
+        let fitted = || FITTED.with_borrow(|f| f.len());
+        FITTED.with_borrow_mut(|f| f.clear());
+        assert_eq!(p.readable_at(p.blue, p.gray_2, 4.5), p.blue);
+        assert_eq!(fitted(), 0, "a tint that already reads is not stored");
+
+        let cyan = p.readable_at(p.cyan, p.gray_2, 4.5);
+        let yellow = p.readable_at(hex(0xc9a227), p.gray_1, 3.0);
+        assert_eq!((cyan, yellow), (darken_to(p.cyan, p.gray_2, 4.5), darken_to(hex(0xc9a227), p.gray_1, 3.0)));
+        assert_ne!(cyan, yellow);
+        assert_eq!(fitted(), 2);
+        assert_eq!(p.readable_at(p.cyan, p.gray_2, 4.5), cyan);
+        let yellow_2 = p.readable_at(hex(0xc9a227), p.gray_2, 3.0);
+        assert_eq!(yellow_2, darken_to(hex(0xc9a227), p.gray_2, 3.0));
+        assert_ne!(yellow_2, yellow, "another background is its own fit");
+        assert_eq!(fitted(), 3);
+
+        for g in 0..FITTED_CAP as u8 {
+            p.readable_at(Color32::from_rgb(250, 250, g), p.gray_1, 3.0);
+        }
+
+        assert!(fitted() < FITTED_CAP, "{}", fitted());
+        assert_eq!(p.readable_at(p.cyan, p.gray_2, 4.5), cyan, "a cleared cache fits again");
     }
 
     #[test]
