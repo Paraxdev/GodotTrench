@@ -550,6 +550,20 @@ fn menu_button<'a>(icon: Option<icons::Icon>, label: &str, shortcut: Option<Stri
     }
 }
 
+/// A menu item for one of several choices, highlighted while it is the current one. egui draws a shortcut in the weak
+/// text color, which fades into the selection fill, so the current one draws it like its label.
+fn menu_choice<'a>(ui: &Ui, icon: Option<icons::Icon>, label: &str, shortcut: Option<String>, selected: bool) -> egui::Button<'a> {
+    if !selected {
+        return menu_button(icon, label, shortcut);
+    }
+
+    let button = menu_button(icon, label, None).selected(true);
+    match shortcut {
+        Some(s) => button.shortcut_text(RichText::new(s).color(ui.visuals().selection.stroke.color)),
+        None => button,
+    }
+}
+
 fn menu<R>(ui: &mut Ui, title: &'static str, add_contents: impl FnOnce(&mut Ui) -> R) {
     let response = ui.menu_button(title, add_contents).response;
     help::register(&response, Topic::Menu(title));
@@ -1498,7 +1512,7 @@ impl App {
 
                     for t in group.iter().copied() {
                         let shortcut = m.shortcut(&Action::SetTool(t));
-                        let button = menu_button(Some(icons::tool(t)), &format!("{} Tool", t.label()), shortcut).selected(self.state.tool == t);
+                        let button = menu_choice(ui, Some(icons::tool(t)), &format!("{} Tool", t.label()), shortcut, self.state.tool == t);
                         let response = ui.add(button);
                         help::register(&response, Topic::Tool(t));
                         if response.on_hover_text(help::tooltip(ui, panels::tool_help(t), help::F1_HINT)).clicked() {
@@ -1554,7 +1568,7 @@ impl App {
                 sub_menu(ui, Some(icons::shade(self.state.prefs.shade)), "Shading", |ui| {
                     for s in Shade::ALL {
                         let shortcut = m.shortcut(&Action::SetShade(s));
-                        if ui.add(menu_button(Some(icons::shade(s)), s.title(), shortcut).selected(self.state.prefs.shade == s)).clicked() {
+                        if ui.add(menu_choice(ui, Some(icons::shade(s)), s.title(), shortcut, self.state.prefs.shade == s)).clicked() {
                             m.actions.push(Action::SetShade(s));
                             ui.close();
                         }
@@ -3253,6 +3267,31 @@ mod tests {
         d.frame(vec![egui::Event::PointerButton { pos: field, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE }]);
         d.frame(vec![egui::Event::PointerMoved(egui::pos2(60.0, 60.0))]);
         assert_eq!(d.frame(vec![egui::Event::PointerMoved(egui::pos2(70.0, 60.0))]), KeyScope::WindowHovered, "dragging a number field over the map");
+    }
+
+    #[test]
+    fn a_selected_menu_choice_draws_its_shortcut_like_its_label() {
+        let ctx = egui::Context::default();
+        ctx.global_style_mut(crate::theme::style);
+        let frame = || {
+            ctx.begin_pass(egui::RawInput::default());
+            egui::Area::new(egui::Id::new("menu")).show(&ctx, |ui| ui.add(menu_choice(ui, None, "Select Tool", Some("Q".into()), true)));
+            let mut out = ctx.end_pass();
+            let shapes = std::mem::take(&mut out.shapes);
+            out.drop_without_applying_deltas();
+            shapes
+        };
+        // An area stays hidden on its first pass while it measures itself.
+        frame();
+        let shapes = frame();
+        let shortcut = shapes.iter().find_map(|clipped| match &clipped.shape {
+            egui::Shape::Text(t) if t.galley.text() == "Q" => {
+                let color = t.galley.job.sections[0].format.color;
+                Some(t.override_text_color.unwrap_or(if color == egui::Color32::PLACEHOLDER { t.fallback_color } else { color }))
+            }
+            _ => None,
+        });
+        assert_eq!(shortcut, Some(ctx.global_style().visuals.selection.stroke.color));
     }
 
     #[test]
