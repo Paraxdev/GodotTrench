@@ -2855,7 +2855,7 @@ fn language_pref(ui: &mut Ui, prefs: &mut Prefs) {
 
     ui.label(label);
     let mut picked = None;
-    let combo = egui::ComboBox::from_id_salt("prefs_language").selected_text(lang.name()).show_ui(ui, |ui| {
+    let combo = egui::ComboBox::from_id_salt("prefs_language").selected_text(lang.name()).height(f32::INFINITY).show_ui(ui, |ui| {
         for l in Lang::ALL {
             if ui.selectable_label(l == lang, l.name()).clicked() {
                 picked = Some(l);
@@ -3199,6 +3199,29 @@ mod tests {
         harness.run();
         assert_eq!(harness.state().language, "ja");
         assert!(harness.query_by_label("言語 (Language)").is_some());
+    }
+
+    #[test]
+    fn the_language_list_shows_every_language_at_the_editor_spacing() {
+        let _reset = crate::i18n::scope(crate::i18n::Lang::En);
+        let prefs = Prefs { language: "en".into(), ..Prefs::default() };
+        let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(700.0, 500.0)).build_ui_state(
+            |ui, prefs: &mut Prefs| {
+                crate::theme::install(ui.ctx());
+                egui::Grid::new("language_rows").num_columns(2).show(ui, |ui| language_pref(ui, prefs));
+            },
+            prefs,
+        );
+        harness.run();
+        harness.get_by_role(Role::ComboBox).click();
+        harness.run();
+        harness.run();
+        let list = harness.get_by_label("English").rect();
+        let last = harness.get_by_label("日本語").rect();
+        harness.get_by_label("日本語").click();
+        harness.run();
+        harness.run();
+        assert_eq!(harness.state().language, "ja", "the last entry sits {} points below the first, scrolled out of the popup", last.min.y - list.min.y);
     }
 
     #[test]
