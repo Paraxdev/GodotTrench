@@ -25,6 +25,14 @@ struct VIn {
     @location(4) uv2: vec2<f32>,
 };
 
+// Rows of the affine transform of one placement and the tint its vertex colors are multiplied with.
+struct Instance {
+    @location(5) row0: vec4<f32>,
+    @location(6) row1: vec4<f32>,
+    @location(7) row2: vec4<f32>,
+    @location(8) tint: vec4<f32>,
+};
+
 struct VOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) world: vec3<f32>,
@@ -35,13 +43,15 @@ struct VOut {
 };
 
 @vertex
-fn vs_main(v: VIn) -> VOut {
+fn vs_main(v: VIn, i: Instance) -> VOut {
     var o: VOut;
-    o.clip = cam.view_proj * vec4<f32>(v.pos, 1.0);
-    o.world = v.pos;
-    o.normal = v.normal;
+    let p = vec4<f32>(v.pos, 1.0);
+    let world = vec3<f32>(dot(i.row0, p), dot(i.row1, p), dot(i.row2, p));
+    o.clip = cam.view_proj * vec4<f32>(world, 1.0);
+    o.world = world;
+    o.normal = vec3<f32>(dot(i.row0.xyz, v.normal), dot(i.row1.xyz, v.normal), dot(i.row2.xyz, v.normal));
     o.uv = v.uv;
-    o.color = v.color;
+    o.color = v.color * i.tint;
     o.uv2 = v.uv2;
     return o;
 }

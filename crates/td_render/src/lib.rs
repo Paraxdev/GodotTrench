@@ -35,6 +35,24 @@ pub struct LineVertex {
     pub color: [f32; 4],
 }
 
+/// One placement of an instanced [`GpuMesh`]: the rows of an affine transform and a tint the vertex colors are
+/// multiplied with.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct MeshInstance {
+    pub rows: [[f32; 4]; 3],
+    pub tint: [f32; 4],
+}
+
+impl MeshInstance {
+    pub const IDENTITY: MeshInstance = MeshInstance { rows: [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0]], tint: [1.0; 4] };
+
+    pub fn new(transform: Mat4, tint: [f32; 4]) -> Self {
+        let t = transform.transpose();
+        MeshInstance { rows: [t.x_axis.to_array(), t.y_axis.to_array(), t.z_axis.to_array()], tint }
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct CameraUniform {
@@ -368,6 +386,20 @@ pub struct GpuMesh {
     vertex: wgpu::Buffer,
     index: wgpu::Buffer,
     draws: Vec<(String, std::ops::Range<u32>)>,
+    /// Records of a [`GpuInstances`] buffer this mesh is drawn at, once in place when there are none.
+    instances: Option<(wgpu::Buffer, std::ops::Range<u32>)>,
+}
+
+impl GpuMesh {
+    /// The same geometry drawn once per record in `range` of `instances`. Shares the buffers, so a model placed
+    /// thousands of times is uploaded once.
+    pub fn instanced(&self, instances: &GpuInstances, range: std::ops::Range<u32>) -> GpuMesh {
+        GpuMesh { vertex: self.vertex.clone(), index: self.index.clone(), draws: self.draws.clone(), instances: Some((instances.buffer.clone(), range)) }
+    }
+}
+
+pub struct GpuInstances {
+    buffer: wgpu::Buffer,
 }
 
 pub struct GpuLines {
@@ -479,6 +511,8 @@ pub struct Renderer {
     line_overlay: wgpu::RenderPipeline,
     terrain_pipeline: wgpu::RenderPipeline,
     shadow_pipeline: wgpu::RenderPipeline,
+    /// The one record a mesh without instances is drawn with.
+    identity_instance: wgpu::Buffer,
     shadow_uniform: wgpu::Buffer,
     shadow_bg: wgpu::BindGroup,
     shadow_view: wgpu::TextureView,
@@ -686,15 +720,27 @@ impl Renderer {
         });
 
         let mesh_attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Float32x4, 4 => Float32x2];
+        let instance_attrs = wgpu::vertex_attr_array![5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4];
+        let mesh_buffer = wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<MeshVertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &mesh_attrs,
+        };
+        let mesh_buffers = [
+            Some(mesh_buffer.clone()),
+            Some(wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<MeshInstance>() as u64,
+                step_mode: wgpu::VertexStepMode::Instance,
+                attributes: &instance_attrs,
+            }),
+        ];
         // One instance per segment, reading both endpoints of the line vertex pair.
         let line_attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x4, 2 => Float32x3, 3 => Float32x4];
 
         let make = |label: &str,
                     shader: &wgpu::ShaderModule,
                     layout: &wgpu::PipelineLayout,
-                    attrs: &[wgpu::VertexAttribute],
-                    stride: usize,
-                    step_mode: wgpu::VertexStepMode,
+                    buffers: &[Option<wgpu::VertexBufferLayout>],
                     topology: wgpu::PrimitiveTopology,
                     cull: bool,
                     blend: bool,
@@ -703,12 +749,7 @@ impl Renderer {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(label),
                 layout: Some(layout),
-                vertex: wgpu::VertexState {
-                    module: shader,
-                    entry_point: Some("vs_main"),
-                    compilation_options: Default::default(),
-                    buffers: &[Some(wgpu::VertexBufferLayout { array_stride: stride as u64, step_mode, attributes: attrs })],
-                },
+                vertex: wgpu::VertexState { module: shader, entry_point: Some("vs_main"), compilation_options: Default::default(), buffers },
                 primitive: wgpu::PrimitiveState {
                     topology,
                     front_face: wgpu::FrontFace::Ccw,
@@ -738,14 +779,15 @@ impl Renderer {
             })
         };
 
-        let mesh_stride = std::mem::size_of::<MeshVertex>();
-        let line_stride = std::mem::size_of::<LineVertex>() * 2;
+        let line_buffers = [Some(wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<LineVertex>() as u64 * 2,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &line_attrs,
+        })];
         let tri = wgpu::PrimitiveTopology::TriangleList;
         use wgpu::CompareFunction::{Always, Greater, GreaterEqual};
-        let mesh_opaque =
-            make("mesh opaque", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, wgpu::VertexStepMode::Vertex, tri, true, false, true, Greater);
-        let mesh_double =
-            make("mesh double sided", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, wgpu::VertexStepMode::Vertex, tri, false, false, true, Greater);
+        let mesh_opaque = make("mesh opaque", &mesh_shader, &mesh_layout, &mesh_buffers, tri, true, false, true, Greater);
+        let mesh_double = make("mesh double sided", &mesh_shader, &mesh_layout, &mesh_buffers, tri, false, false, true, Greater);
         let sky_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("sky"),
             layout: Some(&line_layout),
@@ -790,42 +832,16 @@ impl Renderer {
         let white = solid_texture("white", wgpu::TextureFormat::Rgba8UnormSrgb, [255, 255, 255, 255]);
         // Back faces are culled like Godot does unless the material is double sided, so a camera inside a
         // translucent trigger or tool brush sees out of it instead of through a screen filling back face.
-        let mesh_transparent =
-            make("mesh transparent", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, wgpu::VertexStepMode::Vertex, tri, true, true, false, GreaterEqual);
-        let mesh_transparent_double = make(
-            "mesh transparent double sided",
-            &mesh_shader,
-            &mesh_layout,
-            &mesh_attrs,
-            mesh_stride,
-            wgpu::VertexStepMode::Vertex,
-            tri,
-            false,
-            true,
-            false,
-            GreaterEqual,
-        );
-        let mesh_overlay =
-            make("mesh overlay", &mesh_shader, &mesh_layout, &mesh_attrs, mesh_stride, wgpu::VertexStepMode::Vertex, tri, false, true, false, Always);
-        let line_depth =
-            make("line depth", &line_shader, &line_layout, &line_attrs, line_stride, wgpu::VertexStepMode::Instance, tri, false, true, false, GreaterEqual);
-        let line_overlay =
-            make("line overlay", &line_shader, &line_layout, &line_attrs, line_stride, wgpu::VertexStepMode::Instance, tri, false, true, false, Always);
-        let terrain_pipeline =
-            make("terrain", &terrain_shader, &terrain_layout, &mesh_attrs, mesh_stride, wgpu::VertexStepMode::Vertex, tri, true, false, true, Greater);
+        let mesh_transparent = make("mesh transparent", &mesh_shader, &mesh_layout, &mesh_buffers, tri, true, true, false, GreaterEqual);
+        let mesh_transparent_double = make("mesh transparent double sided", &mesh_shader, &mesh_layout, &mesh_buffers, tri, false, true, false, GreaterEqual);
+        let mesh_overlay = make("mesh overlay", &mesh_shader, &mesh_layout, &mesh_buffers, tri, false, true, false, Always);
+        let line_depth = make("line depth", &line_shader, &line_layout, &line_buffers, tri, false, true, false, GreaterEqual);
+        let line_overlay = make("line overlay", &line_shader, &line_layout, &line_buffers, tri, false, true, false, Always);
+        let terrain_pipeline = make("terrain", &terrain_shader, &terrain_layout, &[Some(mesh_buffer)], tri, true, false, true, Greater);
         let shadow_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("shadow"),
             layout: Some(&shadow_layout),
-            vertex: wgpu::VertexState {
-                module: &shadow_shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: mesh_stride as u64,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &mesh_attrs,
-                })],
-            },
+            vertex: wgpu::VertexState { module: &shadow_shader, entry_point: Some("vs_main"), compilation_options: Default::default(), buffers: &mesh_buffers },
             // Both sides cast shadows so open meshes and single sided decals still block the sun.
             primitive: wgpu::PrimitiveState { topology: tri, cull_mode: None, ..Default::default() },
             depth_stencil: Some(wgpu::DepthStencilState {
@@ -843,7 +859,13 @@ impl Renderer {
 
         let lightmap_bg =
             Self::lightmap_bind_group(&device, &lightmap_bgl, &lightmap_buffer, &solid_texture("no light map", wgpu::TextureFormat::Rgba8Unorm, [0; 4]));
+        let identity_instance = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("identity instance"),
+            contents: bytemuck::bytes_of(&MeshInstance::IDENTITY),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
         let mut r = Self {
+            identity_instance,
             device,
             queue,
             egui_renderer: state.renderer.clone(),
@@ -1246,9 +1268,10 @@ impl Renderer {
             pass.set_bind_group(0, &self.shadow_bg, &[]);
             for mesh in meshes {
                 pass.set_vertex_buffer(0, mesh.vertex.slice(..));
+                let instances = self.bind_instances(&mut pass, mesh);
                 pass.set_index_buffer(mesh.index.slice(..), wgpu::IndexFormat::Uint32);
                 for (_, range) in &mesh.draws {
-                    pass.draw_indexed(range.clone(), 0, 0..1);
+                    pass.draw_indexed(range.clone(), 0, instances.clone());
                 }
             }
         }
@@ -1290,7 +1313,35 @@ impl Renderer {
             contents: bytemuck::cast_slice(&indices),
             usage: wgpu::BufferUsages::INDEX,
         });
-        Some(GpuMesh { vertex, index, draws })
+        Some(GpuMesh { vertex, index, draws, instances: None })
+    }
+
+    pub fn upload_instances(&self, instances: &[MeshInstance]) -> Option<GpuInstances> {
+        if instances.is_empty() {
+            return None;
+        }
+
+        let buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("mesh instances"),
+            contents: bytemuck::cast_slice(instances),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        Some(GpuInstances { buffer })
+    }
+
+    /// Binds the records `mesh` is drawn at and returns the instance range to draw.
+    fn bind_instances(&self, pass: &mut wgpu::RenderPass, mesh: &GpuMesh) -> std::ops::Range<u32> {
+        match &mesh.instances {
+            Some((buffer, range)) => {
+                let size = std::mem::size_of::<MeshInstance>() as u64;
+                pass.set_vertex_buffer(1, buffer.slice(range.start as u64 * size..range.end as u64 * size));
+                0..range.len() as u32
+            }
+            None => {
+                pass.set_vertex_buffer(1, self.identity_instance.slice(..));
+                0..1
+            }
+        }
     }
 
     pub fn upload_lines(&self, lines: &[LineVertex]) -> Option<GpuLines> {
@@ -1447,11 +1498,12 @@ impl Renderer {
                 pass.set_pipeline(pipeline);
                 for mesh in meshes {
                     pass.set_vertex_buffer(0, mesh.vertex.slice(..));
+                    let instances = self.bind_instances(pass, mesh);
                     pass.set_index_buffer(mesh.index.slice(..), wgpu::IndexFormat::Uint32);
                     for (material, range) in &mesh.draws {
                         let mat = self.draw_material(material);
                         pass.set_bind_group(1, &mat.bind_group, &[]);
-                        pass.draw_indexed(range.clone(), 0, 0..1);
+                        pass.draw_indexed(range.clone(), 0, instances.clone());
                     }
                 }
             };
@@ -1502,6 +1554,7 @@ impl Renderer {
             let mut double_sided: Option<bool> = None;
             for mesh in &frame.transparent {
                 pass.set_vertex_buffer(0, mesh.vertex.slice(..));
+                let instances = self.bind_instances(&mut pass, mesh);
                 pass.set_index_buffer(mesh.index.slice(..), wgpu::IndexFormat::Uint32);
                 for (material, range) in &mesh.draws {
                     let mat = self.draw_material(material);
@@ -1511,7 +1564,7 @@ impl Renderer {
                     }
 
                     pass.set_bind_group(1, &mat.bind_group, &[]);
-                    pass.draw_indexed(range.clone(), 0, 0..1);
+                    pass.draw_indexed(range.clone(), 0, instances.clone());
                 }
             }
 
@@ -1653,6 +1706,33 @@ mod tests {
         naga::valid::Validator::new(naga::valid::ValidationFlags::all(), naga::valid::Capabilities::empty())
             .validate(&module)
             .unwrap_or_else(|e| panic!("{label}: {e:?}"));
+    }
+
+    /// What the mesh and shadow shaders do with a record.
+    fn place(i: &super::MeshInstance, p: glam::Vec3, n: glam::Vec3) -> (glam::Vec3, glam::Vec3) {
+        let row = |k: usize| glam::Vec4::from_array(i.rows[k]);
+        let p = p.extend(1.0);
+        let world = glam::Vec3::new(row(0).dot(p), row(1).dot(p), row(2).dot(p));
+        let normal = glam::Vec3::new(row(0).truncate().dot(n), row(1).truncate().dot(n), row(2).truncate().dot(n));
+        (world, normal)
+    }
+
+    #[test]
+    fn instance_records_place_like_their_transform() {
+        use glam::{EulerRot, Mat4, Quat, Vec3};
+        let transform =
+            Mat4::from_scale_rotation_translation(Vec3::splat(1.7), Quat::from_euler(EulerRot::YXZ, 0.9, -0.25, 0.4), Vec3::new(3000.5, 40.25, -2000.75));
+        let record = super::MeshInstance::new(transform, [0.5, 0.6, 1.0, 0.9]);
+        assert_eq!(record.tint, [0.5, 0.6, 1.0, 0.9]);
+        for (p, n) in [(Vec3::ZERO, Vec3::Y), (Vec3::new(5.0, -3.0, 12.5), Vec3::new(0.6, 0.0, -0.8)), (Vec3::new(-40.0, 96.0, 7.0), Vec3::X)] {
+            let (world, normal) = place(&record, p, n);
+            assert!(world.abs_diff_eq(transform.transform_point3(p), 1e-3), "{p} went to {world}");
+            assert!(normal.normalize().abs_diff_eq(transform.transform_vector3(n).normalize(), 1e-5), "{n} turned to {normal}");
+        }
+
+        let p = Vec3::new(5.0, -3.0, 12.5);
+        let n = Vec3::new(0.6, 0.0, -0.8);
+        assert_eq!(place(&super::MeshInstance::IDENTITY, p, n), (p, n), "a mesh without instances must draw exactly where it was");
     }
 
     #[test]

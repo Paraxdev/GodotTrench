@@ -6,7 +6,7 @@ use td_core::{Aabb, Color, DMat4, DVec2, DVec3, NodeId};
 use td_doc::{Entity, Map, NodeKind, Selection};
 use td_formats::{EntityDef, GameConfig};
 use td_geom::{Brush, Mesh, Terrain};
-use td_render::{Frame, GpuLines, GpuMesh, Lighting, LineVertex, MeshBatch, MeshVertex, PointLight, Renderer};
+use td_render::{Frame, GpuLines, GpuMesh, Lighting, LineVertex, MeshBatch, MeshInstance, MeshVertex, PointLight, Renderer};
 
 use crate::face_cull::{FaceCull, FacePieces};
 use crate::prefabs::{self, PrefabCache};
@@ -159,6 +159,7 @@ pub struct SceneCache {
     buckets: Vec<Bucket>,
     terrains: HashMap<NodeId, TerrainGpu>,
     scatters: HashMap<NodeId, ScatterGpu>,
+    scatter_models: ScatterModels,
     links: Option<GpuLines>,
     cordon: Option<GpuLines>,
     /// Dashed boxes of the Godot overlay content on top of the map, see `crate::overlays`.
@@ -422,10 +423,63 @@ const SCATTER_CHUNK: f64 = 1024.0;
 /// GPU data of one scatter set, split into spatial chunks so painting only rebuilds the chunks it touched.
 #[derive(Default)]
 struct ScatterGpu {
-    chunks: HashMap<(i64, i64), (u64, Option<GpuMesh>)>,
+    chunks: HashMap<(i64, i64), ScatterChunk>,
     lines_2d: Option<GpuLines>,
     sel_lines: Option<GpuLines>,
     triangles: usize,
+    models: Vec<ModelKey>,
+}
+
+/// The instances of one chunk as records in one buffer, drawn with a range of it per item.
+struct ScatterChunk {
+    hash: u64,
+    triangles: usize,
+    meshes: Vec<GpuMesh>,
+}
+
+/// A model's address and the override material of the item placing it.
+type ModelKey = (usize, Option<String>);
+
+/// Item models uploaded once and shared by every scatter set that places them.
+#[derive(Default)]
+struct ScatterModels {
+    /// Holding the model keeps its address from being reused by a reloaded model while the key is cached.
+    meshes: HashMap<ModelKey, (Arc<crate::models::Model>, Option<GpuMesh>)>,
+    missing: Option<GpuMesh>,
+}
+
+impl ScatterModels {
+    fn key(model: &Arc<crate::models::Model>, material: Option<&str>) -> ModelKey {
+        (Arc::as_ptr(model) as usize, material.map(str::to_string))
+    }
+
+    fn model(&mut self, renderer: &Renderer, model: &Arc<crate::models::Model>, material: Option<&str>) -> Option<&GpuMesh> {
+        let entry = self.meshes.entry(Self::key(model, material)).or_insert_with(|| {
+            let mut batch = MeshBatch::default();
+            for part in &model.parts {
+                let verts: Vec<MeshVertex> = part
+                    .vertices
+                    .iter()
+                    .map(|v| MeshVertex { pos: v.pos.to_array(), normal: v.normal.to_array(), uv: v.uv, color: [1.0; 4], uv2: td_render::NO_UV2 })
+                    .collect();
+                batch.add_triangles(material.unwrap_or(&part.material), &verts, &part.indices);
+            }
+
+            (model.clone(), renderer.upload_mesh(&batch))
+        });
+        entry.1.as_ref()
+    }
+
+    /// The box drawn where an item's model is missing, 12 units wide and 24 tall at scale 1.
+    fn missing(&mut self, renderer: &Renderer) -> Option<&GpuMesh> {
+        if self.missing.is_none() {
+            let mut batch = MeshBatch::default();
+            batch.add_box(Vec3::new(-6.0, 0.0, -6.0), Vec3::new(6.0, 24.0, 6.0), [0.45, 0.85, 0.4, 1.0]);
+            self.missing = renderer.upload_mesh(&batch);
+        }
+
+        self.missing.as_ref()
+    }
 }
 
 fn instance_hash(set: &td_doc::Scatter, instances: &[&td_doc::scatter::ScatterInstance], selected: bool) -> u64 {
@@ -452,6 +506,7 @@ fn build_scatter(
     renderer: &mut Renderer,
     game: &GameConfig,
     models: &mut crate::models::ModelCache,
+    shared: &mut ScatterModels,
     set: &td_doc::Scatter,
     selected: bool,
     previous: Option<ScatterGpu>,
@@ -467,49 +522,51 @@ fn build_scatter(
     }
 
     let mut old = previous.map(|p| p.chunks).unwrap_or_default();
-    let mut out = ScatterGpu::default();
+    let models = (0..set.items.len()).filter_map(|i| Some(ScatterModels::key(item_models[i].as_ref()?, set.item_material(i)))).collect();
+    let mut out = ScatterGpu { models, ..Default::default() };
     let tint = if selected { SELECTED_TINT } else { [1.0; 4] };
     for (key, instances) in by_chunk {
         let hash = instance_hash(set, &instances, selected);
-        if let Some((old_hash, mesh)) = old.remove(&key)
-            && old_hash == hash
+        if let Some(chunk) = old.remove(&key)
+            && chunk.hash == hash
         {
-            out.chunks.insert(key, (hash, mesh));
+            out.triangles += chunk.triangles;
+            out.chunks.insert(key, chunk);
             continue;
         }
 
-        let mut batch = MeshBatch::default();
+        let mut by_item: BTreeMap<u32, Vec<MeshInstance>> = BTreeMap::new();
         for inst in instances {
-            let xform = inst.transform().as_mat4();
-            match item_models.get(inst.item as usize).and_then(|m| m.as_ref()) {
-                Some(model) => {
-                    let normal_m = glam::Mat3::from_mat4(xform);
-                    let override_material = set.item_material(inst.item as usize);
-                    for part in &model.parts {
-                        let verts: Vec<MeshVertex> = part
-                            .vertices
-                            .iter()
-                            .map(|v| MeshVertex {
-                                pos: xform.transform_point3(v.pos).to_array(),
-                                normal: (normal_m * v.normal).normalize_or_zero().to_array(),
-                                uv: v.uv,
-                                color: tint,
-                                uv2: td_render::NO_UV2,
-                            })
-                            .collect();
-                        out.triangles += part.indices.len() / 3;
-                        batch.add_triangles(override_material.unwrap_or(&part.material), &verts, &part.indices);
+            let record = match item_models.get(inst.item as usize).and_then(|m| m.as_ref()) {
+                Some(_) => MeshInstance::new(inst.transform().as_mat4(), tint),
+                None => MeshInstance::new(
+                    glam::Mat4::from_scale_rotation_translation(Vec3::splat(inst.scale as f32), glam::Quat::IDENTITY, Vec3::from_array(v3(inst.position))),
+                    [1.0; 4],
+                ),
+            };
+            by_item.entry(inst.item).or_default().push(record);
+        }
+
+        let records: Vec<MeshInstance> = by_item.values().flatten().copied().collect();
+        let mut chunk = ScatterChunk { hash, triangles: 0, meshes: Vec::new() };
+        if let Some(buffer) = renderer.upload_instances(&records) {
+            let mut start = 0;
+            for (item, list) in &by_item {
+                let range = start..start + list.len() as u32;
+                start = range.end;
+                let mesh = match item_models.get(*item as usize).and_then(|m| m.as_ref()) {
+                    Some(model) => {
+                        chunk.triangles += list.len() * model.parts.iter().map(|p| p.indices.len() / 3).sum::<usize>();
+                        shared.model(renderer, model, set.item_material(*item as usize))
                     }
-                }
-                None => {
-                    let s = (12.0 * inst.scale) as f32;
-                    let p = glam::Vec3::from_array(v3(inst.position));
-                    batch.add_box(p - glam::Vec3::new(s * 0.5, 0.0, s * 0.5), p + glam::Vec3::new(s * 0.5, s * 2.0, s * 0.5), [0.45, 0.85, 0.4, 1.0]);
-                }
+                    None => shared.missing(renderer),
+                };
+                chunk.meshes.extend(mesh.map(|m| m.instanced(&buffer, range)));
             }
         }
 
-        out.chunks.insert(key, (hash, renderer.upload_mesh(&batch)));
+        out.triangles += chunk.triangles;
+        out.chunks.insert(key, chunk);
     }
 
     let bounds = set.bounds();
@@ -1585,6 +1642,7 @@ impl SceneCache {
             if self.prev_map.is_none() {
                 self.terrains.clear();
                 self.scatters.clear();
+                self.scatter_models = ScatterModels::default();
                 for b in &mut self.buckets {
                     *b = Bucket::default();
                 }
@@ -1795,18 +1853,25 @@ impl SceneCache {
             }
         }
 
+        let mut scatters_changed = false;
         for id in dirty.iter().copied() {
             match map.scatter(id) {
                 Some(set) if !map.is_hidden(id) && map.in_cordon(id) => {
                     let selected = is_selected(id);
                     let previous = self.scatters.remove(&id);
-                    let gpu = build_scatter(renderer, &game, &mut state.models, set, selected, previous);
+                    let gpu = build_scatter(renderer, &game, &mut state.models, &mut self.scatter_models, set, selected, previous);
                     self.scatters.insert(id, gpu);
+                    scatters_changed = true;
                 }
                 _ => {
-                    self.scatters.remove(&id);
+                    scatters_changed |= self.scatters.remove(&id).is_some();
                 }
             }
+        }
+
+        if scatters_changed {
+            let used: std::collections::HashSet<&ModelKey> = self.scatters.values().flat_map(|s| &s.models).collect();
+            self.scatter_models.meshes.retain(|k, _| used.contains(k));
         }
 
         let dirty_buckets: BTreeSet<usize> = dirty.iter().map(|id| Self::bucket_of(*id)).collect();
@@ -2060,7 +2125,7 @@ impl SceneCache {
             let vp = Renderer::sun_view_proj(self.lighting.sun_direction, lo.as_vec3(), hi.as_vec3());
             let mut meshes: Vec<&GpuMesh> = self.buckets.iter().flat_map(|b| [b.opaque.as_ref(), b.double.as_ref()]).flatten().collect();
             meshes.extend(self.terrains.values().flat_map(|t| t.chunks.iter().flatten()));
-            meshes.extend(self.scatters.values().flat_map(|s| s.chunks.values().filter_map(|(_, m)| m.as_ref())));
+            meshes.extend(self.scatters.values().flat_map(|s| s.chunks.values().flat_map(|c| &c.meshes)));
             renderer.render_shadow(&meshes, vp);
             Some(vp)
         };
@@ -2089,7 +2154,7 @@ impl SceneCache {
             if is_2d {
                 frame.overlay_lines.extend(s.lines_2d.as_ref());
             } else {
-                frame.opaque.extend(s.chunks.values().filter_map(|(_, m)| m.as_ref()));
+                frame.opaque.extend(s.chunks.values().flat_map(|c| &c.meshes));
                 if overlays {
                     frame.overlay_lines.extend(s.sel_lines.as_ref());
                 }
