@@ -1410,6 +1410,51 @@ fn vertex_gizmo_moves_a_vertex_along_one_axis() {
 
 #[test]
 #[ignore]
+fn vertex_tool_pulls_a_face_dot_up_to_add_a_vertex() {
+    let ed = Editor::launch("vertex_face_dot");
+    let id = ed.box_brush([-32.0, -32.0, -32.0], [32.0, 32.0, 32.0]);
+    ed.call("select", json!({ "ids": [id] }));
+    ed.call("set_editor", json!({ "tool": "vertex" }));
+    ed.call("set_camera", json!({ "view": "3d", "position": [190.0, 150.0, 210.0], "look_at": [0.0, 0.0, 0.0] }));
+    let corners = |ed: &Editor| ed.call("get_node", json!({ "id": id }))["vertices"].as_array().unwrap().len();
+    assert_eq!(corners(&ed), 8);
+
+    // The top face center sits on a horizontal face, a drag in the horizontal plane could never leave it.
+    ed.input("3d", json!([{ "type": "drag", "world": [0.0, 32.0, 0.0], "to_world": [0.0, 80.0, 0.0], "steps": 10 }]));
+    let (_, after) = ed.selection_bounds();
+    assert_eq!(corners(&ed), 9, "the pulled dot became a vertex");
+    assert!((after[1] - 80.0).abs() < 1.0, "the new vertex sits 48 above the old top, got {after:?}");
+    assert_eq!(ed.state()["selection"]["nodes"], json!([id]), "the brush stays selected");
+}
+
+#[test]
+#[ignore]
+fn vertex_tool_click_selects_a_dot_and_an_inward_pull_says_why() {
+    let ed = Editor::launch("vertex_dot_click");
+    ed.box_brush([-512.0, -32.0, -512.0], [512.0, 0.0, 512.0]);
+    let id = ed.box_brush([-32.0, 0.0, -32.0], [32.0, 64.0, 32.0]);
+    ed.call("select", json!({ "ids": [id] }));
+    ed.call("set_editor", json!({ "tool": "vertex" }));
+    ed.call("set_camera", json!({ "view": "3d", "position": [190.0, 150.0, 210.0], "look_at": [0.0, 32.0, 0.0] }));
+
+    // The midpoint of a bottom edge lies on the floor behind it. The click selects the dot instead of picking the floor.
+    ed.input("3d", json!([{ "type": "click", "world": [32.0, 0.0, 0.0] }]));
+    let state = ed.state();
+    assert_eq!(state["selection"]["nodes"], json!([id]), "the click kept the brush selected");
+    assert!(state["status"].as_str().unwrap().contains("away"), "the click on a dot says what to do, got {}", state["status"]);
+
+    // Pulling the top face center down is a dent: the brush stays as it was and the status says why.
+    let (_, before) = ed.selection_bounds();
+    ed.input("3d", json!([{ "type": "drag", "world": [0.0, 64.0, 0.0], "to_world": [0.0, 16.0, 0.0], "steps": 10 }]));
+    let (_, after) = ed.selection_bounds();
+    assert_eq!(before, after, "a refused pull changes nothing");
+    assert_eq!(ed.call("get_node", json!({ "id": id }))["vertices"].as_array().unwrap().len(), 8);
+    let status = ed.state()["status"].as_str().unwrap().to_string();
+    assert!(status.contains("dents"), "the status says why, got {status}");
+}
+
+#[test]
+#[ignore]
 fn scatter_materials_and_scattering_onto_a_scatter() {
     let ed = Editor::launch("scatter_materials");
     ed.box_brush([-512.0, -32.0, -512.0], [512.0, 0.0, 512.0]);

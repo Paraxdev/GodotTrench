@@ -64,13 +64,59 @@ pub struct VertexTool {
     /// Vertex (or edge/face point) that has a precise-move gizmo, set by double clicking it.
     gizmo: Option<DVec3>,
     gizmo_drag: Option<VGizmoDrag>,
+    /// Where the running drag started and where the refused move would have put it, drawn as a red ghost.
+    refused: Option<(DVec3, DVec3)>,
 }
 
 struct VertexDrag {
     start: DVec3,
     plane: Plane,
     base: Vec<DVec3>,
+    /// Alt only moves a vertex vertically, a dot keeps its own plane.
+    is_dot: bool,
 }
+
+/// An edge midpoint or face center of a selected brush. Pulling it away from the brush adds a vertex there.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct VertexDot {
+    pub pos: DVec3,
+    /// Normals of the faces it lies on, the same one twice for a face center.
+    normals: [DVec3; 2],
+}
+
+impl VertexDot {
+    /// Direction that leaves the brush: the face normal, or the normalized sum of both normals on an edge.
+    pub fn out(&self) -> DVec3 {
+        (self.normals[0] + self.normals[1]).try_normalize().unwrap_or(self.normals[0])
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Handle {
+    Vertex(DVec3),
+    Dot(VertexDot),
+}
+
+impl Handle {
+    fn pos(&self) -> DVec3 {
+        match self {
+            Handle::Vertex(v) => *v,
+            Handle::Dot(d) => d.pos,
+        }
+    }
+}
+
+/// Half the side of a vertex square in pixels, the size it draws at when hot.
+const VERTEX_SQUARE: f32 = 5.0;
+
+/// A dot whose outward direction has less than this length in the view plane is hidden in a 2D view, it can only move
+/// along its face there.
+const DOT_MIN_SIDEWAYS: f64 = 0.2;
+
+const SELECTED_RED: Color32 = Color32::from_rgb(255, 60, 40);
+
+const DENT_REASON: &str = "Pull it outward, brushes cannot have dents.";
+const REFUSED_REASON: &str = "That move would break the brush, try another spot.";
 
 struct VGizmoDrag {
     axis: usize,
@@ -534,9 +580,9 @@ impl ToolSet {
 
     // -------------------------------------------------------------- vertex
 
-    fn vertex_handles(state: &EditorState) -> (Vec<DVec3>, Vec<DVec3>) {
+    fn vertex_handles(state: &EditorState) -> (Vec<DVec3>, Vec<VertexDot>) {
         let mut verts: Vec<DVec3> = Vec::new();
-        let mut extra: Vec<DVec3> = Vec::new();
+        let mut dots: Vec<VertexDot> = Vec::new();
         for id in state.doc.selection.brushes(&state.doc.map) {
             let Some(b) = state.doc.map.brush(id) else { continue };
             for v in &b.vertices {
@@ -546,33 +592,30 @@ impl ToolSet {
             }
 
             for (a, c) in b.edges() {
-                extra.push((b.vertices[a as usize] + b.vertices[c as usize]) * 0.5);
+                let mut on_edge = b.faces.iter().filter(|f| f.indices.contains(&a) && f.indices.contains(&c)).map(|f| f.plane.normal);
+                let Some(first) = on_edge.next() else { continue };
+                let second = on_edge.next().unwrap_or(first);
+                dots.push(VertexDot { pos: (b.vertices[a as usize] + b.vertices[c as usize]) * 0.5, normals: [first, second] });
             }
 
-            for f in 0..b.faces.len() {
-                extra.push(b.face_center(f));
+            for (f, face) in b.faces.iter().enumerate() {
+                dots.push(VertexDot { pos: b.face_center(f), normals: [face.plane.normal; 2] });
             }
         }
 
-        (verts, extra)
+        (verts, dots)
     }
 
     fn vertex_input(&mut self, ui: &Ui, response: &Response, cam: &Camera, rect: Rect, state: &mut EditorState) {
         let modifiers = ui.input(|i| i.modifiers);
-        let (verts, extra) = Self::vertex_handles(state);
-        let nearest = |pos: Pos2, list: &[DVec3]| {
-            list.iter()
-                .copied()
-                .map(|v| (screen_dist(cam, rect, v, pos), v))
-                .filter(|(d, _)| *d < HANDLE_RADIUS)
-                .min_by(|a, b| a.0.total_cmp(&b.0))
-                .map(|(_, v)| v)
-        };
+        let (verts, dots) = Self::vertex_handles(state);
+        let handle_at = |pos: Pos2| handle_at(cam, rect, &verts, &dots, pos);
 
         if response.clicked() {
             let Some(pos) = response.interact_pointer_pos() else { return };
-            match nearest(pos, &verts) {
-                Some(v) => {
+            match handle_at(pos) {
+                Some(h) => {
+                    let v = h.pos();
                     if modifiers.command {
                         if let Some(i) = self.vertex.selected.iter().position(|q| (*q - v).length() < 1e-6) {
                             self.vertex.selected.remove(i);
@@ -581,6 +624,10 @@ impl ToolSet {
                         }
                     } else {
                         self.vertex.selected = vec![v];
+                    }
+
+                    if matches!(h, Handle::Dot(_)) {
+                        state.set_status("Drag the dot away from the brush to add a vertex.");
                     }
                 }
                 None => {
@@ -604,11 +651,10 @@ impl ToolSet {
         // Double clicking a vertex (or an edge/face point, which creates a vertex) puts a precise-move
         // gizmo on it. Double clicking elsewhere clears it.
         if response.double_clicked() {
-            let hit = response.interact_pointer_pos().and_then(|pos| nearest(pos, &verts).or_else(|| nearest(pos, &extra)));
-            match hit {
-                Some(v) => {
-                    self.vertex.selected = vec![v];
-                    self.vertex.gizmo = Some(v);
+            match response.interact_pointer_pos().and_then(handle_at) {
+                Some(h) => {
+                    self.vertex.selected = vec![h.pos()];
+                    self.vertex.gizmo = Some(h.pos());
                 }
                 None => self.vertex.gizmo = None,
             }
@@ -620,7 +666,7 @@ impl ToolSet {
             if let Some(g) = self.vertex.gizmo.filter(|_| cam.kind == ViewKind::Perspective)
                 && let Some(i) = vgizmo_axis_at(cam, rect, g, origin)
             {
-                let plane = axis_drag_plane(cam, i, g);
+                let plane = axis_drag_plane(cam, unit_axis(i), g);
                 let ray = cam.ray(rect, origin);
                 if let Some(t) = ray.intersect_plane(&plane) {
                     self.vertex.selected = vec![g];
@@ -631,50 +677,38 @@ impl ToolSet {
                 return;
             }
 
-            let grabbed = nearest(origin, &verts).map(|v| (v, false)).or_else(|| nearest(origin, &extra).map(|v| (v, true)));
-            if let Some((v, is_new)) = grabbed {
+            if let Some(h) = handle_at(origin) {
+                let v = h.pos();
+                let is_dot = matches!(h, Handle::Dot(_));
                 // Grabbing an unselected handle (or an edge/face point) drags just that one.
-                if is_new || !self.vertex.selected.iter().any(|q| (*q - v).length() < 1e-6) {
+                if is_dot || !self.vertex.selected.iter().any(|q| (*q - v).length() < 1e-6) {
                     self.vertex.selected = vec![v];
                 }
 
-                let plane = match cam.kind {
-                    ViewKind::Perspective if modifiers.alt => {
-                        let f = cam.forward();
-                        Plane::from_point_normal(v, DVec3::new(f.x, 0.0, f.z).normalize_or(DVec3::Z))
-                    }
-                    ViewKind::Perspective => Plane::from_point_normal(v, DVec3::Y),
-                    k => Plane::from_point_normal(v, -k.axes().2),
-                };
+                let plane = vertex_drag_plane(cam, &h, modifiers.alt);
                 state.doc.begin("Move Vertices");
-                self.vertex.drag = Some(VertexDrag { start: v, plane, base: self.vertex.selected.clone() });
+                self.vertex.drag = Some(VertexDrag { start: v, plane, base: self.vertex.selected.clone(), is_dot });
             }
         }
 
         if let Some(drag) = &self.vertex.drag {
             if response.dragged_by(PointerButton::Primary)
                 && let Some(pos) = ui.input(|i| i.pointer.interact_pos())
+                && let Some(delta) = vertex_drag_delta(state, cam, rect, drag, pos, modifiers.alt)
             {
-                let ray = cam.ray(rect, pos);
-                if let Some(t) = ray.intersect_plane(&drag.plane) {
-                    let mut delta = ray.at(t) - drag.start;
-                    if cam.kind == ViewKind::Perspective && modifiers.alt {
-                        delta = DVec3::new(0.0, delta.y, 0.0);
-                    }
-
-                    // Snaps the offset like the Move tool, so an off grid vertex keeps its position on the other axes.
-                    let delta = state.snap(delta);
-                    state.doc.reset_transaction();
-                    let base = drag.base.clone();
-                    let moved = move_vertices(state, &base, delta);
-                    if moved {
-                        self.vertex.selected = base.iter().map(|b| *b + delta).collect();
-                    }
+                state.doc.reset_transaction();
+                let base = drag.base.clone();
+                if move_vertices(state, &base, delta) {
+                    self.vertex.selected = base.iter().map(|b| *b + delta).collect();
+                    self.clear_refusal(state);
+                } else {
+                    self.refuse(state, &base, drag.start, delta);
                 }
             }
 
             if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
                 self.vertex.drag = None;
+                self.vertex.refused = None;
                 state.doc.commit();
             }
         }
@@ -692,15 +726,36 @@ impl ToolSet {
                     if move_vertices(state, &[base], delta) {
                         self.vertex.selected = vec![base + delta];
                         self.vertex.gizmo = Some(base + delta);
+                        self.vertex.refused = None;
                         state.set_status(format!("Vertex {:.3} {:.3} {:.3}", (base + delta).x, (base + delta).y, (base + delta).z));
+                    } else {
+                        self.refuse(state, &[base], base, delta);
                     }
                 }
             }
 
             if response.drag_stopped() || !ui.input(|i| i.pointer.primary_down()) {
                 self.vertex.gizmo_drag = None;
+                self.vertex.refused = None;
                 state.doc.commit();
             }
+        }
+    }
+
+    /// Shows why a drag by `delta` was refused, nothing when it did not move at all.
+    fn refuse(&mut self, state: &mut EditorState, base: &[DVec3], from: DVec3, delta: DVec3) {
+        if delta.length() < 1e-9 {
+            self.clear_refusal(state);
+            return;
+        }
+
+        self.vertex.refused = Some((from, from + delta));
+        state.set_status(refusal_reason(state, base, delta));
+    }
+
+    fn clear_refusal(&mut self, state: &mut EditorState) {
+        if self.vertex.refused.take().is_some() {
+            state.set_status("");
         }
     }
 
@@ -1042,19 +1097,31 @@ impl ToolSet {
                 );
             }
             ToolKind::Vertex => {
-                let (verts, extra) = Self::vertex_handles(state);
-                for v in extra {
-                    if let Some(sp) = cam.project(rect, v) {
-                        painter.circle_filled(sp, 2.5, Color32::from_rgb(120, 200, 255));
+                let (verts, dots) = Self::vertex_handles(state);
+                let hot = hover.and_then(|p| handle_at(cam, rect, &verts, &dots, p));
+                let is_selected = |v: DVec3| self.vertex.selected.iter().any(|s| (*s - v).length() < 1e-6);
+                for d in dots.iter().filter(|d| dot_visible(cam, d)) {
+                    if let Some(sp) = cam.project(rect, d.pos) {
+                        let color = match (is_selected(d.pos), hot == Some(Handle::Dot(*d))) {
+                            (true, _) => SELECTED_RED,
+                            (false, true) => Color32::from_rgb(190, 230, 255),
+                            (false, false) => Color32::from_rgb(120, 200, 255),
+                        };
+                        painter.circle_filled(sp, if hot == Some(Handle::Dot(*d)) { 4.0 } else { 2.5 }, color);
                     }
                 }
 
                 for v in verts {
                     if let Some(sp) = cam.project(rect, v) {
-                        let selected = self.vertex.selected.iter().any(|s| (*s - v).length() < 1e-6);
-                        let hot = hover.is_some_and(|h| (h - sp).length() < HANDLE_RADIUS);
-                        handle(sp, if selected { Color32::from_rgb(255, 60, 40) } else { Color32::from_rgb(255, 220, 80) }, hot);
+                        handle(sp, if is_selected(v) { SELECTED_RED } else { Color32::from_rgb(255, 220, 80) }, hot == Some(Handle::Vertex(v)));
                     }
+                }
+
+                if let Some((from, to)) = self.vertex.refused
+                    && let (Some(a), Some(b)) = (cam.project(rect, from), cam.project(rect, to))
+                {
+                    painter.line_segment([a, b], Stroke::new(1.0, SELECTED_RED));
+                    painter.circle_stroke(b, 6.0, Stroke::new(2.0, SELECTED_RED));
                 }
 
                 if let Some(g) = self.vertex.gizmo.filter(|_| cam.kind == ViewKind::Perspective) {
@@ -1084,7 +1151,7 @@ impl ToolSet {
                 painter.text(
                     rect.left_bottom() + Vec2::new(8.0, -8.0),
                     Align2::LEFT_BOTTOM,
-                    "Vertex: drag handles, double click a vertex for a precise gizmo, edge/face dots add vertices, Del removes",
+                    "Vertex: drag a corner or a blue dot, double click a corner for a gizmo, Del removes",
                     FontId::proportional(12.0),
                     Color32::from_rgb(255, 220, 120),
                 );
@@ -1201,12 +1268,76 @@ fn vgizmo_axis_at(cam: &Camera, rect: Rect, center: DVec3, pos: Pos2) -> Option<
         .map(|(_, i)| i)
 }
 
-/// Plane holding the gizmo axis and facing the camera, so pointer motion maps cleanly to the axis.
-fn axis_drag_plane(cam: &Camera, i: usize, center: DVec3) -> Plane {
+/// Plane holding `a` and facing the camera, so pointer motion maps cleanly to that direction.
+fn axis_drag_plane(cam: &Camera, a: DVec3, center: DVec3) -> Plane {
     let f = cam.forward();
-    let a = unit_axis(i);
     let n = a.cross(f).cross(a);
     Plane::from_point_normal(center, if n.length_squared() < 1e-9 { f } else { n.normalize() })
+}
+
+/// Whether a dot can be seen and grabbed. In 3D that needs one of its faces turned to the camera, in a 2D view its
+/// outward direction has to leave the view's depth axis.
+pub(crate) fn dot_visible(cam: &Camera, dot: &VertexDot) -> bool {
+    if cam.kind.is_2d() {
+        let depth = cam.forward();
+        let out = dot.out();
+        (out - depth * out.dot(depth)).length() >= DOT_MIN_SIDEWAYS
+    } else {
+        let view = cam.eye() - dot.pos;
+        dot.normals.iter().any(|n| n.dot(view) > 0.0)
+    }
+}
+
+/// The handle a press at `pos` takes: a vertex when the pointer is on its square, else the closest handle in reach.
+pub(crate) fn handle_at(cam: &Camera, rect: Rect, verts: &[DVec3], dots: &[VertexDot], pos: Pos2) -> Option<Handle> {
+    let on_square = verts
+        .iter()
+        .filter_map(|v| {
+            let d = cam.project(rect, *v)? - pos;
+            (d.x.abs() <= VERTEX_SQUARE && d.y.abs() <= VERTEX_SQUARE).then_some((d.length(), Handle::Vertex(*v)))
+        })
+        .min_by(|a, b| a.0.total_cmp(&b.0));
+    if let Some((_, h)) = on_square {
+        return Some(h);
+    }
+
+    let near_vertex = verts.iter().map(|v| (screen_dist(cam, rect, *v, pos), Handle::Vertex(*v)));
+    let near_dot = dots.iter().filter(|d| dot_visible(cam, d)).map(|d| (screen_dist(cam, rect, d.pos, pos), Handle::Dot(*d)));
+    near_vertex.chain(near_dot).filter(|(d, _)| *d < HANDLE_RADIUS).min_by(|a, b| a.0.total_cmp(&b.0)).map(|(_, h)| h)
+}
+
+pub(crate) fn vertex_drag_plane(cam: &Camera, handle: &Handle, alt: bool) -> Plane {
+    let v = handle.pos();
+    match (cam.kind, handle) {
+        (ViewKind::Perspective, Handle::Dot(d)) => axis_drag_plane(cam, d.out(), v),
+        (ViewKind::Perspective, _) if alt => {
+            let f = cam.forward();
+            Plane::from_point_normal(v, DVec3::new(f.x, 0.0, f.z).normalize_or(DVec3::Z))
+        }
+        (ViewKind::Perspective, _) => Plane::from_point_normal(v, DVec3::Y),
+        (k, _) => Plane::from_point_normal(v, -k.axes().2),
+    }
+}
+
+/// The snapped offset a drag at `pos` asks for, if the pointer ray meets the drag plane.
+fn vertex_drag_delta(state: &EditorState, cam: &Camera, rect: Rect, drag: &VertexDrag, pos: Pos2, alt: bool) -> Option<DVec3> {
+    let ray = cam.ray(rect, pos);
+    let t = ray.intersect_plane(&drag.plane)?;
+    let mut delta = ray.at(t) - drag.start;
+    if cam.kind == ViewKind::Perspective && alt && !drag.is_dot {
+        delta = DVec3::new(0.0, delta.y, 0.0);
+    }
+
+    // Snaps the offset like the Move tool, so an off grid vertex keeps its position on the other axes.
+    Some(state.snap(delta))
+}
+
+/// Why `move_vertices` refuses: a target inside or flat on a brush it moves is a dent, and brushes are convex.
+fn refusal_reason(state: &EditorState, base: &[DVec3], delta: DVec3) -> &'static str {
+    let brushes = state.doc.selection.brushes(&state.doc.map);
+    let dent =
+        brushes.into_iter().filter_map(|id| state.doc.map.brush(id)).any(|b| base.iter().any(|bp| b.contains_point(*bp) && b.contains_point(*bp + delta)));
+    if dent { DENT_REASON } else { REFUSED_REASON }
 }
 
 /// Moves the selected brushes' vertices at `base` (or new ones on an edge or face) by `delta`, like the vertex tool.
@@ -1302,6 +1433,292 @@ mod tests {
         let m = ops::rotation_about(DVec3::splat(32.0), DVec3::Y, 90.0);
         let opts = state.opts();
         state.doc.edit("Rotate", |map, s| ops::transform_selection(map, s, &m, opts));
+    }
+
+    /// A slanted, skewed wedge away from the origin, shaped like the one in the bug report: a sloped top over a
+    /// footprint that is not a rectangle.
+    fn wedge() -> Brush {
+        let pts = [
+            DVec3::new(100.0, 64.0, -150.0),
+            DVec3::new(260.0, 64.0, -150.0),
+            DVec3::new(280.0, 64.0, -30.0),
+            DVec3::new(110.0, 64.0, -20.0),
+            DVec3::new(100.0, 160.0, -150.0),
+            DVec3::new(260.0, 96.0, -150.0),
+            DVec3::new(280.0, 88.0, -30.0),
+            DVec3::new(110.0, 156.0, -20.0),
+        ];
+        Brush::from_points(&pts, &[], "dev/grey").unwrap()
+    }
+
+    fn state_with_wedge() -> (EditorState, NodeId) {
+        let mut state = EditorState::new(Default::default());
+        let layer = state.doc.map.default_layer();
+        let id = state.doc.edit("wedge", |m, s| {
+            let id = m.insert(layer, td_doc::NodeKind::Brush(wedge()));
+            s.select_node(id);
+            id
+        });
+        (state, id)
+    }
+
+    fn view_rect() -> Rect {
+        Rect::from_min_size(Pos2::ZERO, Vec2::new(900.0, 700.0))
+    }
+
+    fn perspective() -> Camera {
+        let mut cam = Camera::new(ViewKind::Perspective);
+        cam.position = DVec3::new(620.0, 520.0, -640.0);
+        cam.look_at(DVec3::new(190.0, 100.0, -85.0));
+        cam
+    }
+
+    fn view_2d(kind: ViewKind) -> Camera {
+        let mut cam = Camera::new(kind);
+        cam.center = DVec3::new(190.0, 100.0, -85.0);
+        cam.zoom = 1.5;
+        cam
+    }
+
+    fn brush_of(state: &EditorState, id: NodeId) -> &Brush {
+        state.doc.map.brush(id).unwrap()
+    }
+
+    fn top_normal() -> DVec3 {
+        DVec3::new(0.4, 1.0, 0.0).normalize()
+    }
+
+    #[test]
+    fn dots_carry_the_direction_that_leaves_the_brush() {
+        let (state, id) = state_with_wedge();
+        let (verts, dots) = ToolSet::vertex_handles(&state);
+        let b = brush_of(&state, id);
+        assert_eq!(verts.len(), 8);
+        assert_eq!(dots.len(), 6 + 12, "one dot per face and per edge");
+
+        let top = dots.iter().find(|d| (d.out() - top_normal()).length() < 1e-6).expect("the sloped top face has a dot");
+        let face = b.faces.iter().position(|f| (f.plane.normal - top_normal()).length() < 1e-6).unwrap();
+        assert!((top.pos - b.face_center(face)).length() < 1e-9);
+
+        // The edge between the sloped top and the z = -150 side leaves along the sum of both normals.
+        let edge_out = (top_normal() + DVec3::NEG_Z).normalize();
+        let edge = dots.iter().find(|d| (d.out() - edge_out).length() < 1e-6).expect("top front edge dot");
+        let mid = (DVec3::new(100.0, 160.0, -150.0) + DVec3::new(260.0, 96.0, -150.0)) * 0.5;
+        assert!((edge.pos - mid).length() < 1e-9, "edge dot sits at the midpoint, got {:?}", edge.pos);
+        assert!(dots.iter().all(|d| (d.out().length() - 1.0).abs() < 1e-9));
+    }
+
+    #[test]
+    fn dots_on_faces_turned_away_are_hidden_in_3d() {
+        let (state, _) = state_with_wedge();
+        let (_, dots) = ToolSet::vertex_handles(&state);
+        let cam = perspective();
+        let facing = |d: &VertexDot| d.normals.iter().any(|n| n.dot(cam.eye() - d.pos) > 0.0);
+        assert!(dots.iter().any(|d| dot_visible(&cam, d)) && dots.iter().any(|d| !dot_visible(&cam, d)));
+        for d in &dots {
+            assert_eq!(dot_visible(&cam, d), facing(d), "dot at {:?}", d.pos);
+        }
+
+        // From above, in front and to the right: the bottom face center is hidden, the top and front are not.
+        let face_dot = |n: DVec3| dots.iter().find(|d| d.normals[0] == d.normals[1] && (d.normals[0] - n).length() < 1e-6).unwrap();
+        assert!(dot_visible(&cam, face_dot(top_normal())));
+        assert!(dot_visible(&cam, face_dot(DVec3::NEG_Z)));
+        assert!(!dot_visible(&cam, face_dot(DVec3::NEG_Y)));
+
+        // A silhouette edge shows when only one of its two faces looks at the camera.
+        let silhouette = dots.iter().filter(|d| d.normals[0] != d.normals[1]).any(|d| {
+            let toward = d.normals.iter().filter(|n| n.dot(cam.eye() - d.pos) > 0.0).count();
+            toward == 1 && dot_visible(&cam, d)
+        });
+        assert!(silhouette, "the wedge has silhouette edges from this camera");
+    }
+
+    #[test]
+    fn dots_facing_along_a_2d_views_depth_are_hidden() {
+        let cam = view_2d(ViewKind::Top);
+        let at = |sideways: f64| {
+            let n = DVec3::new(sideways, (1.0 - sideways * sideways).sqrt(), 0.0);
+            VertexDot { pos: DVec3::new(100.0, 50.0, 0.0), normals: [n; 2] }
+        };
+        assert!(dot_visible(&cam, &at(0.21)), "tilted just enough to leave along the view plane");
+        assert!(!dot_visible(&cam, &at(0.19)), "nearly along the depth axis");
+        assert!(!dot_visible(&cam, &at(0.0)), "straight along the depth axis");
+        assert!(dot_visible(&cam, &at(1.0)));
+
+        let (state, _) = state_with_wedge();
+        let (_, dots) = ToolSet::vertex_handles(&state);
+        let bottom = dots.iter().find(|d| (d.out() - DVec3::NEG_Y).length() < 1e-6).unwrap();
+        assert!(!dot_visible(&cam, bottom), "the bottom face center can never leave its face in the top view");
+        assert!(dot_visible(&view_2d(ViewKind::Front), bottom));
+    }
+
+    #[test]
+    fn a_vertex_square_beats_a_nearby_dot_and_a_dot_beats_a_far_vertex() {
+        let cam = view_2d(ViewKind::Front);
+        let rect = view_rect();
+        let vert = DVec3::new(100.0, 80.0, 0.0);
+        let sp = cam.project(rect, vert).unwrap();
+        let px = |dx: f32, dy: f32| Pos2::new(sp.x + dx, sp.y + dy);
+        // One pixel on screen is 1 / zoom units.
+        let dot_at = |dx: f32, dy: f32| VertexDot { pos: vert + DVec3::new(dx as f64 / 1.5, -dy as f64 / 1.5, 0.0), normals: [DVec3::X; 2] };
+        let verts = [vert];
+
+        // The pointer is on the dot, 3 px from the vertex and so inside its square: the vertex wins.
+        let near = dot_at(3.0, 0.0);
+        assert_eq!(handle_at(&cam, rect, &verts, &[near], px(3.0, 0.0)), Some(Handle::Vertex(vert)));
+        // The dot is 6 px away, the pointer on it is outside the square, so the dot wins.
+        let far = dot_at(6.0, 0.0);
+        assert_eq!(handle_at(&cam, rect, &verts, &[far], px(6.0, 0.0)), Some(Handle::Dot(far)));
+        // The square edge is inclusive, half a pixel past it the closest handle wins.
+        assert_eq!(handle_at(&cam, rect, &verts, &[far], px(5.0, 0.0)), Some(Handle::Vertex(vert)));
+        assert_eq!(handle_at(&cam, rect, &verts, &[far], px(5.5, 0.0)), Some(Handle::Dot(far)));
+        // Outside the square but closer to the vertex than to the dot, the vertex still wins.
+        assert_eq!(handle_at(&cam, rect, &verts, &[far], px(-1.0, 6.5)), Some(Handle::Vertex(vert)));
+        // Reach ends at HANDLE_RADIUS for both kinds.
+        assert_eq!(handle_at(&cam, rect, &verts, &[], px(0.0, 6.9)), Some(Handle::Vertex(vert)));
+        assert_eq!(handle_at(&cam, rect, &verts, &[], px(0.0, 7.1)), None);
+        let lone = dot_at(0.0, 30.0);
+        assert_eq!(handle_at(&cam, rect, &[], &[lone], px(0.0, 36.9)), Some(Handle::Dot(lone)));
+        assert_eq!(handle_at(&cam, rect, &[], &[lone], px(0.0, 37.1)), None);
+    }
+
+    #[test]
+    fn a_hidden_dot_is_not_picked() {
+        let cam = perspective();
+        let rect = view_rect();
+        let (state, _) = state_with_wedge();
+        let (_, dots) = ToolSet::vertex_handles(&state);
+        let hidden = dots.iter().find(|d| !dot_visible(&cam, d)).unwrap();
+        let sp = cam.project(rect, hidden.pos).unwrap();
+        assert_eq!(handle_at(&cam, rect, &[], std::slice::from_ref(hidden), sp), None);
+        let shown = dots.iter().find(|d| dot_visible(&cam, d)).unwrap();
+        let sp = cam.project(rect, shown.pos).unwrap();
+        assert_eq!(handle_at(&cam, rect, &[], std::slice::from_ref(shown), sp), Some(Handle::Dot(*shown)));
+    }
+
+    #[test]
+    fn a_3d_dot_drags_in_a_camera_facing_plane_that_holds_its_direction() {
+        let (state, _) = state_with_wedge();
+        let (_, dots) = ToolSet::vertex_handles(&state);
+        let cam = perspective();
+        let mut checked = 0;
+        for d in dots.iter().filter(|d| dot_visible(&cam, d)) {
+            let plane = vertex_drag_plane(&cam, &Handle::Dot(*d), false);
+            assert!(plane.normal.dot(d.out()).abs() < 1e-9, "the plane holds the outward direction");
+            assert!(plane.distance(d.pos).abs() < 1e-9, "and passes through the dot");
+            assert!(plane.normal.dot(cam.forward()).abs() > 0.05, "and faces the camera");
+            checked += 1;
+        }
+
+        assert!(checked >= 9, "checked {checked} visible dots");
+        let top = dots.iter().find(|d| (d.out() - top_normal()).length() < 1e-6).unwrap();
+        let vertex_plane = vertex_drag_plane(&cam, &Handle::Vertex(top.pos), false);
+        assert_eq!(vertex_plane.normal, DVec3::Y, "a vertex still drags in the horizontal plane");
+        assert!(vertex_plane.normal.dot(top.out()).abs() > 0.5, "which a top dot could not leave");
+        assert_eq!(vertex_drag_plane(&view_2d(ViewKind::Front), &Handle::Dot(*top), false).normal, DVec3::Z);
+    }
+
+    /// Pulls every dot visible in `cam` outward with a pointer drag and checks that a vertex appears at the snapped
+    /// target. `pull` is how far the pointer goes from the dot along its outward direction.
+    fn pull_every_visible_dot(cam: &Camera, pull: f64) -> usize {
+        let rect = view_rect();
+        let (base_state, id) = state_with_wedge();
+        let before = brush_of(&base_state, id).vertices.clone();
+        let (_, dots) = ToolSet::vertex_handles(&base_state);
+        let mut pulled = 0;
+        for d in dots.iter().filter(|d| dot_visible(cam, d)) {
+            let mut state = state_with_wedge().0;
+            let handle = Handle::Dot(*d);
+            let drag = VertexDrag { start: d.pos, plane: vertex_drag_plane(cam, &handle, false), base: vec![d.pos], is_dot: true };
+            // The pointer travels in the drag plane: along the outward direction, or its part along the view plane in 2D.
+            let dir = if cam.kind.is_2d() { (d.out() - cam.forward() * d.out().dot(cam.forward())).normalize() } else { d.out() };
+            let pointer = cam.project(rect, d.pos + dir * pull).unwrap();
+            let delta = vertex_drag_delta(&state, cam, rect, &drag, pointer, false).unwrap();
+            assert!(delta.length() > 0.0, "dot at {:?} asks for no move", d.pos);
+            assert!(delta.dot(d.out()) > 0.0, "snapping kept the pull outward for the dot at {:?}", d.pos);
+
+            state.doc.begin("Move Vertices");
+            assert!(move_vertices(&mut state, &[d.pos], delta), "dot at {:?} pulled by {delta:?} was refused", d.pos);
+            state.doc.commit();
+            let grown = brush_of(&state, id);
+            assert!(grown.vertices.iter().any(|v| (*v - (d.pos + delta)).length() < 1e-3), "a vertex sits at the snapped target {:?}", d.pos + delta);
+            // The hull may swallow a corner next to a steep pull, but it never loses volume.
+            assert!(before.iter().all(|b| grown.contains_point(*b)), "the old corners stay inside for the dot at {:?}", d.pos);
+            assert!(grown.vertices.len() >= 5);
+            pulled += 1;
+        }
+
+        pulled
+    }
+
+    #[test]
+    fn pulling_any_visible_dot_outward_adds_a_vertex_in_every_view() {
+        let (state, _) = state_with_wedge();
+        let (_, dots) = ToolSet::vertex_handles(&state);
+        let persp = perspective();
+        let pulled = pull_every_visible_dot(&persp, 40.0);
+        assert_eq!(pulled, dots.iter().filter(|d| dot_visible(&persp, d)).count());
+        assert!(pulled >= 9);
+
+        for kind in [ViewKind::Top, ViewKind::Front] {
+            let cam = view_2d(kind);
+            let pulled = pull_every_visible_dot(&cam, 80.0);
+            assert_eq!(pulled, dots.iter().filter(|d| dot_visible(&cam, d)).count());
+            assert!(pulled >= 8, "{kind:?} reaches {pulled} dots");
+            assert!(pulled < dots.len(), "{kind:?} hides the dots that face along its depth");
+        }
+    }
+
+    #[test]
+    fn pulling_a_dot_inward_is_refused_with_a_reason() {
+        let (mut state, id) = state_with_wedge();
+        let (_, dots) = ToolSet::vertex_handles(&state);
+        let before = brush_of(&state, id).vertices.clone();
+        let mut tools = ToolSet::default();
+        for d in &dots {
+            let delta = d.out() * -48.0;
+            state.doc.begin("Move Vertices");
+            assert!(!move_vertices(&mut state, &[d.pos], delta), "dot at {:?} pulled inward moved", d.pos);
+            tools.refuse(&mut state, &[d.pos], d.pos, delta);
+            state.doc.commit();
+            assert_eq!(state.status, DENT_REASON);
+            assert_eq!(tools.vertex.refused, Some((d.pos, d.pos + delta)));
+            assert_eq!(brush_of(&state, id).vertices, before, "a refused move leaves the brush alone");
+        }
+
+        // Sliding along the face stays flat on it, which is a dent too.
+        let top = dots.iter().find(|d| (d.out() - top_normal()).length() < 1e-6).unwrap();
+        let slide = DVec3::new(16.0, -0.4 * 16.0, 0.0);
+        assert_eq!(refusal_reason(&state, &[top.pos], slide), DENT_REASON);
+        assert!(!move_vertices(&mut state, &[top.pos], slide), "sliding along the face adds nothing");
+    }
+
+    #[test]
+    fn a_refusal_outside_the_brush_gets_the_generic_reason_and_a_zero_move_none() {
+        let mut state = EditorState::new(Default::default());
+        let layer = state.doc.map.default_layer();
+        let tetra = [DVec3::new(50.0, 10.0, 70.0), DVec3::new(114.0, 10.0, 70.0), DVec3::new(50.0, 10.0, 134.0), DVec3::new(50.0, 74.0, 70.0)];
+        let brush = Brush::from_points(&tetra, &[], "dev/grey").unwrap();
+        state.doc.edit("tetra", |m, s| {
+            let id = m.insert(layer, td_doc::NodeKind::Brush(brush));
+            s.select_node(id);
+        });
+
+        // Dropping the apex onto the base plane outside the footprint flattens the brush, no dent involved.
+        let apex = tetra[3];
+        let delta = DVec3::new(64.0, -64.0, 64.0);
+        state.doc.begin("Move Vertices");
+        assert!(!move_vertices(&mut state, &[apex], delta));
+        let mut tools = ToolSet::default();
+        tools.refuse(&mut state, &[apex], apex, delta);
+        state.doc.commit();
+        assert_eq!(state.status, REFUSED_REASON);
+        assert!(tools.vertex.refused.is_some());
+
+        // A move that snaps to nothing is not a refusal, and clears an earlier one.
+        tools.refuse(&mut state, &[apex], apex, DVec3::ZERO);
+        assert_eq!(tools.vertex.refused, None);
+        assert_eq!(state.status, "");
     }
 
     #[test]
