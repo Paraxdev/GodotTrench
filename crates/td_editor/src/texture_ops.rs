@@ -85,18 +85,18 @@ impl MeshUvKind {
 
     pub fn hint(&self) -> &'static str {
         match self {
-            MeshUvKind::Planar => "One projection along the main axis of the faces' average normal, the faces stay one piece",
-            MeshUvKind::PlanarAxis(_) => "One projection straight along this world axis, the faces stay one piece",
-            MeshUvKind::Box => "Each face along its closest world axis, like a cube map",
-            MeshUvKind::Cylinder(_) => "Wraps around this world axis through the center of the faces, u runs around it",
-            MeshUvKind::Sphere => "Longitude and latitude around the center of the faces",
-            MeshUvKind::View => "Straight along the 3D view camera",
-            MeshUvKind::Unfold => "Lays the faces out flat edge by edge, so strips and grids stay continuous",
-            MeshUvKind::World => "Each face in its own plane at the texel density of a reset brush face",
-            MeshUvKind::Bake => "Writes the current planar look as explicit UVs, so the corners can be edited here",
-            MeshUvKind::Clear => "Drops the explicit UVs, back to the planar projection stored on each face",
-            MeshUvKind::Normalize => "Scales the UVs to fit the texture once, keeping their aspect",
-            MeshUvKind::Pack => "Packs the UV islands into the texture at one texel density, stacking identical islands",
+            MeshUvKind::Planar => en!("One projection along the main axis of the faces' average normal, the faces stay one piece"),
+            MeshUvKind::PlanarAxis(_) => en!("One projection straight along this world axis, the faces stay one piece"),
+            MeshUvKind::Box => en!("Each face along its closest world axis, like a cube map"),
+            MeshUvKind::Cylinder(_) => en!("Wraps around this world axis through the center of the faces, u runs around it"),
+            MeshUvKind::Sphere => en!("Longitude and latitude around the center of the faces"),
+            MeshUvKind::View => en!("Straight along the 3D view camera"),
+            MeshUvKind::Unfold => en!("Lays the faces out flat edge by edge, so strips and grids stay continuous"),
+            MeshUvKind::World => en!("Each face in its own plane at the texel density of a reset brush face"),
+            MeshUvKind::Bake => en!("Writes the current planar look as explicit UVs, so the corners can be edited here"),
+            MeshUvKind::Clear => en!("Drops the explicit UVs, back to the planar projection stored on each face"),
+            MeshUvKind::Normalize => en!("Scales the UVs to fit the texture once, keeping their aspect"),
+            MeshUvKind::Pack => en!("Packs the UV islands into the texture at one texel density, stacking identical islands"),
         }
     }
 

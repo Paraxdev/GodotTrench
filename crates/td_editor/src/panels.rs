@@ -8,7 +8,7 @@ use td_geom::FaceUv;
 use td_render::Renderer;
 
 use crate::commands::Action;
-use crate::i18n::{en, tr, tr_n, trf};
+use crate::i18n::{self, en, msg, msg_n, tr, tr_n, trf};
 use crate::icons;
 use crate::state::EditorState;
 pub use crate::uv_editor::uv_editor;
@@ -1291,7 +1291,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
 
 fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &td_doc::Entity, def: Option<&EntityDef>) {
     if entity.outputs.is_empty() {
-        ui.label(RichText::new("No outputs").weak()).on_hover_text("Outputs fire inputs on other entities, for example a trigger opening a door");
+        ui.label(RichText::new(tr("No outputs")).weak()).on_hover_text(tr("Outputs fire inputs on other entities, for example a trigger opening a door"));
     }
 
     let mut targetnames: Vec<(String, String)> =
@@ -1305,7 +1305,7 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &td_doc::
     for (i, conn) in outputs.iter_mut().enumerate() {
         egui::Frame::group(ui.style()).show(ui, |ui| {
             egui::Grid::new(("io", i)).num_columns(2).show(ui, |ui| {
-                ui.label("output");
+                ui.label(tr("output"));
                 changed |= combo_or_text(
                     ui,
                     egui::Id::new(("out", i)),
@@ -1314,7 +1314,7 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &td_doc::
                     110.0,
                 );
                 ui.end_row();
-                ui.label("target");
+                ui.label(tr("target"));
                 changed |= combo_or_text(ui, egui::Id::new(("target", i)), &mut conn.target, target_options.clone(), 110.0);
                 ui.end_row();
                 let target_inputs: Vec<(String, &str)> = targetnames
@@ -1323,16 +1323,16 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &td_doc::
                     .filter_map(|(_, c)| state.game.entity(c))
                     .flat_map(|d| d.inputs.iter().map(|i| (i.name.clone(), "")))
                     .collect();
-                ui.label("input");
+                ui.label(tr("input"));
                 changed |= combo_or_text(ui, egui::Id::new(("input", i)), &mut conn.input, target_inputs, 110.0);
                 ui.end_row();
-                ui.label("parameter");
+                ui.label(tr("parameter"));
                 changed |= ui.text_edit_singleline(&mut conn.parameter).changed();
                 ui.end_row();
-                ui.label("delay");
+                ui.label(tr("delay"));
                 changed |= ui.add(egui::DragValue::new(&mut conn.delay).speed(0.05).range(0.0..=3600.0).suffix(" s")).changed();
                 ui.end_row();
-                ui.label("fire once");
+                ui.label(tr("fire once"));
                 let mut once = conn.times == 1;
                 if ui.checkbox(&mut once, "").changed() {
                     conn.times = if once { 1 } else { -1 };
@@ -1344,10 +1344,10 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &td_doc::
             let valid_target = conn.target.is_empty() || targetnames.iter().any(|(n, _)| *n == conn.target) || td_doc::issues::is_dynamic_target(&conn.target);
             ui.horizontal(|ui| {
                 if !valid_target {
-                    ui.label(RichText::new("target not found").color(theme::colors().error()));
+                    ui.label(RichText::new(tr("target not found")).color(theme::colors().error()));
                 }
 
-                if ui.small_button("Remove").clicked() {
+                if ui.small_button(tr("Remove")).clicked() {
                     remove = Some(i);
                 }
             });
@@ -1359,7 +1359,7 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &td_doc::
         changed = true;
     }
 
-    if ui.button("+ Add Output").clicked() {
+    if ui.button(tr("+ Add Output")).clicked() {
         let output = def.and_then(|d| d.outputs.first()).map(|o| o.name.clone()).unwrap_or_default();
         outputs.push(IoConnection { output, target: String::new(), input: String::new(), parameter: String::new(), delay: 0.0, times: -1 });
         changed = true;
@@ -1377,7 +1377,7 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &td_doc::
 /// Every targetname an output or a target key can point at, sorted and listed once, with Godot overlay targets marked.
 pub(crate) fn target_options(state: &EditorState) -> Vec<(String, &'static str)> {
     let mut options: Vec<(String, &str)> = state.doc.map.entities().filter_map(|(_, e)| e.targetname().map(|n| (n.to_string(), ""))).collect();
-    options.extend(state.overlay_ghosts.targetnames().into_iter().map(|n| (n, "Godot overlay")));
+    options.extend(state.overlay_ghosts.targetnames().into_iter().map(|n| (n, en!("Godot overlay"))));
     options.sort_unstable();
     options.dedup_by(|a, b| a.0 == b.0);
     options
@@ -1396,7 +1396,7 @@ pub(crate) fn combo_or_text(ui: &mut Ui, salt: egui::Id, value: &mut String, opt
             let shown = if exact || matching.is_empty() { options.iter().collect() } else { matching };
             egui::ComboBox::from_id_salt(salt).selected_text("▾").width(24.0).show_ui(ui, |ui| {
                 for (o, note) in shown {
-                    let label = if note.is_empty() { o.clone() } else { format!("{o}   ({note})") };
+                    let label = if note.is_empty() { o.clone() } else { format!("{o}   ({})", tr(note)) };
                     if ui.selectable_label(*value == *o, label).clicked() {
                         *value = o.clone();
                         changed = true;
@@ -1534,34 +1534,34 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
     let Some((bid, fi)) = faces.first().copied() else { return };
     let Some(info) = crate::texture_ops::face_info(&state.doc.map, bid, fi) else { return };
     let is_mesh = state.doc.map.mesh(bid).is_some();
-    ui.heading(format!("{} {}faces", faces.len(), if is_mesh { "mesh " } else { "" }));
+    ui.heading(if is_mesh { tr_n!(faces.len(), "{n} mesh face", "{n} mesh faces") } else { tr_n!(faces.len(), "{n} face", "{n} faces") });
     let mut material = info.material.clone();
     ui.horizontal(|ui| {
-        ui.label("material");
+        ui.label(tr("material"));
         if ui.text_edit_singleline(&mut material).lost_focus() && material != info.material {
             actions.push(Action::ApplyMaterial(material.clone()));
         }
     });
     if let Some(size) = state.materials.size_label(&info.material) {
-        let details = state.materials.info(&info.material).map(|m| material_summary(&m)).unwrap_or_default();
+        let details = state.materials.info(&info.material).map(|m| material_summary_with(&m, tr)).unwrap_or_default();
         ui.label(RichText::new(format!("{size}{details}")).weak());
     }
 
     texture_settings(ui, state, &info.material);
-    section(ui, "Alignment", "", true, |ui| {
+    section(ui, en!("Alignment"), "", true, |ui| {
         if info.explicit.is_none() {
             let mut uv = info.uv.clone();
             let mut changed = false;
             egui::Grid::new("uv").num_columns(3).show(ui, |ui| {
-                ui.label("offset");
+                ui.label(tr("offset"));
                 changed |= ui.add(egui::DragValue::new(&mut uv.offset.x).speed(1.0)).changed();
                 changed |= ui.add(egui::DragValue::new(&mut uv.offset.y).speed(1.0)).changed();
                 ui.end_row();
-                ui.label("scale");
+                ui.label(tr("scale"));
                 changed |= ui.add(egui::DragValue::new(&mut uv.scale.x).speed(0.01)).changed();
                 changed |= ui.add(egui::DragValue::new(&mut uv.scale.y).speed(0.01)).changed();
                 ui.end_row();
-                ui.label("rotation");
+                ui.label(tr("rotation"));
                 let mut rot = uv.rotation;
                 if ui.add(egui::DragValue::new(&mut rot).speed(1.0).suffix("°")).changed() {
                     let delta = rot - uv.rotation;
@@ -1573,7 +1573,7 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
             });
             if changed {
                 let (offset, scale, rotation_delta) = (uv.offset, uv.scale, uv.rotation - info.uv.rotation);
-                edit_planar(state, &faces, "Set UV", true, |uv, _, _, _| {
+                edit_planar(state, &faces, en!("Set UV"), true, |uv, _, _, _| {
                     uv.offset = offset;
                     uv.scale = scale;
                     if rotation_delta.abs() > 1e-9 {
@@ -1582,39 +1582,39 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
                 });
             }
         } else {
-            ui.label(RichText::new("explicit UVs (edit them in the UV editor)").weak());
+            ui.label(RichText::new(tr("explicit UVs (edit them in the UV editor)")).weak());
         }
 
         ui.horizontal_wrapped(|ui| {
-            ui.label("Justify");
+            ui.label(tr("Justify"));
             for j in td_geom::Justify::ALL {
-                if ui.small_button(j.label()).clicked() {
+                if ui.small_button(tr(j.label())).clicked() {
                     actions.push(Action::Justify(j));
                 }
             }
 
-            ui.checkbox(&mut state.treat_as_one, "Treat as One");
+            ui.checkbox(&mut state.treat_as_one, tr("Treat as One"));
         });
         ui.horizontal_wrapped(|ui| {
             let mut op: Option<(&str, UvOp)> = None;
-            if ui.button("Reset").clicked() {
-                op = Some(("Reset UV", Box::new(|uv, n, _, _| *uv = FaceUv::paraxial(n, DVec2::ONE))));
+            if ui.button(tr("Reset")).clicked() {
+                op = Some((en!("Reset UV"), Box::new(|uv, n, _, _| *uv = FaceUv::paraxial(n, DVec2::ONE))));
             }
 
-            if ui.button("Align to Face").clicked() {
-                op = Some(("Align UV", Box::new(|uv, n, _, _| *uv = FaceUv::face_aligned(n, uv.scale))));
+            if ui.button(tr("Align to Face")).clicked() {
+                op = Some((en!("Align UV"), Box::new(|uv, n, _, _| *uv = FaceUv::face_aligned(n, uv.scale))));
             }
 
-            if ui.button("Align to View").clicked() {
+            if ui.button(tr("Align to View")).clicked() {
                 actions.push(Action::AlignTextureToView);
             }
 
-            if ui.button("Flip H").clicked() {
-                op = Some(("Flip UV", Box::new(|uv, _, _, _| uv.scale.x = -uv.scale.x)));
+            if ui.button(tr("Flip H")).clicked() {
+                op = Some((en!("Flip UV"), Box::new(|uv, _, _, _| uv.scale.x = -uv.scale.x)));
             }
 
-            if ui.button("Flip V").clicked() {
-                op = Some(("Flip UV", Box::new(|uv, _, _, _| uv.scale.y = -uv.scale.y)));
+            if ui.button(tr("Flip V")).clicked() {
+                op = Some((en!("Flip UV"), Box::new(|uv, _, _, _| uv.scale.y = -uv.scale.y)));
             }
 
             if ui.button("⟲ 90").clicked() {
@@ -1625,11 +1625,11 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
                 crate::texture_ops::rotate(state, &faces, 90.0);
             }
 
-            if ui.button("× 2").on_hover_text("Double the texture size").clicked() {
+            if ui.button("× 2").on_hover_text(tr("Double the texture size")).clicked() {
                 crate::texture_ops::scale(state, &faces, DVec2::splat(2.0));
             }
 
-            if ui.button("÷ 2").on_hover_text("Halve the texture size").clicked() {
+            if ui.button("÷ 2").on_hover_text(tr("Halve the texture size")).clicked() {
                 crate::texture_ops::scale(state, &faces, DVec2::splat(0.5));
             }
 
@@ -1638,42 +1638,42 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
             }
         });
     });
-    section(ui, "Texture Tools", "", true, |ui| {
+    section(ui, en!("Texture Tools"), "", true, |ui| {
         ui.horizontal_wrapped(|ui| {
-            ui.label("Texel Density");
+            ui.label(tr("Texel Density"));
             for d in [0.25, 0.5, 1.0, 2.0, 4.0] {
-                if ui.small_button(format!("{d}")).on_hover_text(format!("{d} world units per texture pixel")).clicked() {
+                if ui.small_button(format!("{d}")).on_hover_text(trf!("{d} world units per texture pixel", d)).clicked() {
                     actions.push(Action::TexelDensity(d));
                 }
             }
         });
         ui.horizontal_wrapped(|ui| {
-            if ui.button("Copy").on_hover_text("Copy material and alignment").clicked() {
+            if ui.button(tr("Copy")).on_hover_text(tr("Copy material and alignment")).clicked() {
                 actions.push(Action::CopyAlignment);
             }
 
             let can_paste = state.uv_clipboard.is_some();
-            if ui.add_enabled(can_paste, egui::Button::new("Paste Alignment")).clicked() {
+            if ui.add_enabled(can_paste, egui::Button::new(tr("Paste Alignment"))).clicked() {
                 actions.push(Action::PasteAlignment);
             }
 
-            if ui.button("Hotspot Fit").on_hover_text("Fit to the best rectangle of <texture>.hotspots.json").clicked() {
+            if ui.button(tr("Hotspot Fit")).on_hover_text(tr("Fit to the best rectangle of <texture>.hotspots.json")).clicked() {
                 actions.push(Action::HotspotTexture);
             }
 
-            if ui.button("Hotspot Editor").clicked() {
+            if ui.button(tr("Hotspot Editor")).clicked() {
                 actions.push(Action::ShowHotspotEditor);
             }
 
-            if ui.button("UV Editor").clicked() {
+            if ui.button(tr("UV Editor")).clicked() {
                 actions.push(Action::ShowUvEditor);
             }
         });
         if is_mesh {
             ui.horizontal_wrapped(|ui| {
-                ui.label("Mesh UVs");
+                ui.label(tr("Mesh UVs"));
                 for k in crate::texture_ops::MeshUvKind::COMMON {
-                    if ui.small_button(k.label()).on_hover_text(k.hint()).clicked() {
+                    if ui.small_button(tr(k.label())).on_hover_text(tr(k.hint())).clicked() {
                         actions.push(Action::MeshUv(k));
                     }
                 }
@@ -1685,11 +1685,11 @@ fn face_inspector(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action
         return;
     }
 
-    section(ui, "Surface Properties", "Keys Godot reads per face, such as a collision layer or no shadow", false, |ui| {
+    section(ui, en!("Surface Properties"), en!("Keys Godot reads per face, such as a collision layer or no shadow"), false, |ui| {
         let face = state.doc.map.brush(bid).and_then(|b| b.faces.get(fi)).cloned();
         let Some(face) = face else { return };
         if face.data.props.is_empty() {
-            ui.label(RichText::new("None yet, add one below").weak());
+            ui.label(RichText::new(tr("None yet, add one below")).weak());
         }
 
         let mut props = face.data.props.clone();
@@ -1736,23 +1736,24 @@ fn texture_settings(ui: &mut Ui, state: &mut EditorState, material: &str) {
     let current = state.doc.map.texture(material);
     let mut set = current.clone();
     let mut dragged = false;
-    let tip = "Shared by every face with this texture, in this map";
-    section(ui, "Texture Settings", tip, !current.is_default(), |ui| {
-        ui.label(RichText::new(format!("Applies to every face with {material}")).weak());
-        ui.checkbox(&mut set.bake, "Bake light onto it")
-            .on_hover_text("Off leaves these faces out of the light map, Godot then gives them the average baked light");
-        ui.checkbox(&mut set.casts, "Casts baked shadows").on_hover_text("Off lets light pass through these faces in the bake, for glass, grates and decals");
+    let tip = en!("Shared by every face with this texture, in this map");
+    section(ui, en!("Texture Settings"), tip, !current.is_default(), |ui| {
+        ui.label(RichText::new(trf!("Applies to every face with {material}", material)).weak());
+        ui.checkbox(&mut set.bake, tr("Bake light onto it"))
+            .on_hover_text(tr("Off leaves these faces out of the light map, Godot then gives them the average baked light"));
+        ui.checkbox(&mut set.casts, tr("Casts baked shadows"))
+            .on_hover_text(tr("Off lets light pass through these faces in the bake, for glass, grates and decals"));
         ui.horizontal(|ui| {
-            ui.label("Light map detail");
+            ui.label(tr("Light map detail"));
             let r = ui.add(egui::DragValue::new(&mut set.texel_scale).range(TEXEL_SCALE_RANGE).speed(0.01).prefix("× "));
             dragged |= r.dragged();
-            r.on_hover_text("Scales the light map texel size on these faces, below 1 is sharper");
+            r.on_hover_text(tr("Scales the light map texel size on these faces, below 1 is sharper"));
         });
         ui.horizontal(|ui| {
             let mut own = set.size.is_some();
             if ui
-                .checkbox(&mut own, "Repeat every")
-                .on_hover_text("Map units one repeat of the texture covers on every face, instead of its pixel size")
+                .checkbox(&mut own, tr("Repeat every"))
+                .on_hover_text(tr("Map units one repeat of the texture covers on every face, instead of its pixel size"))
                 .changed()
             {
                 set.size = own.then(|| state.materials.size(material).unwrap_or([128.0, 128.0]));
@@ -1765,13 +1766,15 @@ fn texture_settings(ui: &mut Ui, state: &mut EditorState, material: &str) {
             }
         });
         ui.horizontal(|ui| {
-            ui.label("Projection");
+            ui.label(tr("Projection"));
             for p in Projection::ALL {
                 let (label, hint) = match p {
-                    Projection::Face => ("Per face", "Each face keeps its own alignment"),
-                    Projection::World => ("World", "Every face projects from the world axis it faces, so the texture runs on seamlessly across brushes"),
+                    Projection::Face => (en!("Per face"), en!("Each face keeps its own alignment")),
+                    Projection::World => {
+                        (en!("World"), en!("Every face projects from the world axis it faces, so the texture runs on seamlessly across brushes"))
+                    }
                 };
-                ui.selectable_value(&mut set.projection, p, label).on_hover_text(hint);
+                ui.selectable_value(&mut set.projection, p, tr(label)).on_hover_text(tr(hint));
             }
         });
     });
@@ -1787,33 +1790,38 @@ fn texture_settings(ui: &mut Ui, state: &mut EditorState, material: &str) {
 
 /// Short description of a Godot material's preview relevant settings.
 pub fn material_summary(m: &td_formats::godot_material::GodotMaterial) -> String {
+    material_summary_with(m, crate::i18n::english)
+}
+
+/// [`material_summary`] with its words looked up by `word`, [`tr`] for the panels, [`crate::i18n::english`] for MCP.
+pub fn material_summary_with(m: &td_formats::godot_material::GodotMaterial, word: fn(&'static str) -> &'static str) -> String {
     use td_formats::godot_material::Transparency;
     let mut parts = Vec::new();
     match m.transparency {
-        Transparency::Alpha => parts.push("transparent".to_string()),
-        Transparency::Scissor(t) => parts.push(format!("alpha scissor {t}")),
-        Transparency::Hash => parts.push("alpha hash".into()),
+        Transparency::Alpha => parts.push(word(en!("transparent")).to_string()),
+        Transparency::Scissor(t) => parts.push(crate::i18n::fill(word(en!("alpha scissor {t}")), &[("t", &t)])),
+        Transparency::Hash => parts.push(word(en!("alpha hash")).into()),
         Transparency::Opaque => {}
     }
 
     if m.emission.is_some() {
-        parts.push(format!("emissive x{}", m.emission_energy));
+        parts.push(crate::i18n::fill(word(en!("emissive x{energy}")), &[("energy", &m.emission_energy)]));
     }
 
     if m.normal_texture.is_some() {
-        parts.push("normal map".into());
+        parts.push(word(en!("normal map")).into());
     }
 
     if m.double_sided {
-        parts.push("double sided".into());
+        parts.push(word(en!("double sided")).into());
     }
 
     if m.unshaded {
-        parts.push("unshaded".into());
+        parts.push(word(en!("unshaded")).into());
     }
 
     if m.nearest == Some(true) {
-        parts.push("pixel filter".into());
+        parts.push(word(en!("pixel filter")).into());
     }
 
     if parts.is_empty() { String::new() } else { format!(", {}", parts.join(", ")) }
@@ -1922,15 +1930,15 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
     if label {
         let corner = img_rect.left_top() + Vec2::new(2.0, 2.0);
         if missing_albedo {
-            badge(ui.painter(), corner, "no albedo", theme::VIEW.warning());
+            badge(ui.painter(), corner, tr("no albedo"), theme::VIEW.warning());
         } else if is_pbr {
             badge(ui.painter(), corner, "PBR", theme::VIEW.green);
         } else if has_normal {
-            badge(ui.painter(), corner, "normal", theme::VIEW.info());
+            badge(ui.painter(), corner, tr("normal"), theme::VIEW.info());
         }
 
         if is_emissive {
-            badge(ui.painter(), img_rect.left_bottom() + Vec2::new(2.0, -15.0), "glow", theme::VIEW.yellow);
+            badge(ui.painter(), img_rect.left_bottom() + Vec2::new(2.0, -15.0), tr("glow"), theme::VIEW.yellow);
         }
     }
 
@@ -1951,26 +1959,27 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
 fn material_interactions(resp: egui::Response, state: &mut EditorState, name: &str, actions: &mut Vec<Action>) {
     let tooltip = {
         let size = state.materials.size_label(name).map(|s| format!("\n{s}")).unwrap_or_default();
-        let info = state.materials.info(name).map(|m| material_summary(&m).trim_start_matches(", ").to_string()).filter(|s| !s.is_empty());
+        let info = state.materials.info(name).map(|m| material_summary_with(&m, tr).trim_start_matches(", ").to_string()).filter(|s| !s.is_empty());
         let note = state
             .materials
             .find(name)
-            .map(|e| {
+            .and_then(|e| {
                 if e.missing_albedo {
-                    "\nnormal map with no matching albedo/diffuse texture"
+                    Some(en!("normal map with no matching albedo/diffuse texture"))
                 } else if e.is_pbr {
-                    "\nPBR set: companion maps found and auto mapped, dropping it applies them"
+                    Some(en!("PBR set: companion maps found and auto mapped, dropping it applies them"))
                 } else if e.has_normal {
-                    "\nhas a normal map, dropping it applies valid normals"
+                    Some(en!("has a normal map, dropping it applies valid normals"))
                 } else {
-                    ""
+                    None
                 }
             })
-            .unwrap_or("");
+            .map(|text| format!("\n{}", tr(text)))
+            .unwrap_or_default();
         let glow = if state.materials.find(name).is_some_and(|e| e.is_emissive && e.material_file.is_none()) {
-            "\nemissive: its _emission map glows in Godot and in the lit view"
+            format!("\n{}", tr(en!("emissive: its _emission map glows in Godot and in the lit view")))
         } else {
-            ""
+            String::new()
         };
         format!("{name}{size}{}{note}{glow}", info.map(|i| format!("\n{i}")).unwrap_or_default())
     };
@@ -1984,13 +1993,13 @@ fn material_interactions(resp: egui::Response, state: &mut EditorState, name: &s
     }
 
     resp.context_menu(|ui| {
-        if ui.button("Apply to selection").clicked() {
+        if ui.button(tr("Apply to selection")).clicked() {
             actions.push(Action::ApplyMaterial(name.to_string()));
             ui.close();
         }
 
         let favorite = state.prefs.favorite_materials.iter().any(|f| f == name);
-        if ui.button(if favorite { "Remove from favourites" } else { "Add to favourites" }).clicked() {
+        if ui.button(if favorite { tr("Remove from favourites") } else { tr("Add to favourites") }).clicked() {
             if favorite {
                 state.prefs.favorite_materials.retain(|f| f != name);
             } else {
@@ -2000,31 +2009,31 @@ fn material_interactions(resp: egui::Response, state: &mut EditorState, name: &s
             ui.close();
         }
 
-        if ui.button("Select faces using it").clicked() {
+        if ui.button(tr("Select faces using it")).clicked() {
             let n = select_faces_with_material(state, name);
-            state.set_status(format!("Selected {n} faces using {name}"));
+            state.set_status(msg_n!(n, "Selected {n} face using {name}", "Selected {n} faces using {name}", name));
             ui.close();
         }
 
         let current = state.current_material.clone();
-        if current != name && ui.button(format!("Replace {current} with it in the map")).clicked() {
+        if current != name && ui.button(trf!("Replace {current} with it in the map", current)).clicked() {
             let n = replace_material(state, &current, name);
-            state.set_status(format!("Replaced {current} on {n} faces"));
+            state.set_status(msg_n!(n, "Replaced {current} on {n} face", "Replaced {current} on {n} faces", current));
             ui.close();
         }
 
-        if ui.button("Hotspot Editor").clicked() {
+        if ui.button(tr("Hotspot Editor")).clicked() {
             actions.push(Action::EditHotspots(name.to_string()));
             ui.close();
         }
 
-        if ui.button("Copy Name").clicked() {
+        if ui.button(tr("Copy Name")).clicked() {
             ui.ctx().copy_text(name.to_string());
             ui.close();
         }
 
         if let Some(file) = state.materials.find(name).and_then(|e| e.path.clone().or_else(|| e.material_file.clone()))
-            && ui.button("Show in File Manager").clicked()
+            && ui.button(tr("Show in File Manager")).clicked()
         {
             show_in_file_manager(&file);
             ui.close();
@@ -2037,30 +2046,30 @@ const RECENT_CELL: f32 = 28.0;
 
 pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
     ui.horizontal_wrapped(|ui| {
-        ui.add(egui::TextEdit::singleline(&mut ps.material_filter).hint_text("Search materials").desired_width(160.0));
+        ui.add(egui::TextEdit::singleline(&mut ps.material_filter).hint_text(tr("Search materials")).desired_width(160.0));
         let folders = state.materials.folders();
-        egui::ComboBox::from_id_salt("mat_folder").selected_text(ps.material_folder.clone().unwrap_or_else(|| "All folders".into())).show_ui(ui, |ui| {
-            ui.selectable_value(&mut ps.material_folder, None, "All folders");
+        egui::ComboBox::from_id_salt("mat_folder").selected_text(ps.material_folder.clone().unwrap_or_else(|| tr("All folders").into())).show_ui(ui, |ui| {
+            ui.selectable_value(&mut ps.material_folder, None, tr("All folders"));
             for f in folders {
-                ui.selectable_value(&mut ps.material_folder, Some(f.clone()), if f.is_empty() { "(root)".to_string() } else { f });
+                ui.selectable_value(&mut ps.material_folder, Some(f.clone()), if f.is_empty() { tr("(root)").to_string() } else { f });
             }
         });
-        ui.checkbox(&mut ps.material_used_only, "Used in map");
-        ui.checkbox(&mut ps.material_favorites_only, "★ Favorites");
+        ui.checkbox(&mut ps.material_used_only, tr("Used in map"));
+        ui.checkbox(&mut ps.material_favorites_only, tr("★ Favorites"));
         ui.add(egui::Slider::new(&mut ps.thumb_size, 40.0..=160.0).show_value(false));
-        if ui.small_button("⟳").on_hover_text("Reload materials and Godot material settings").clicked() {
+        if ui.small_button("⟳").on_hover_text(tr("Reload materials and Godot material settings")).clicked() {
             actions.push(Action::ReloadMaterials);
         }
 
-        ui.label(RichText::new(format!("current: {}", state.current_material)).weak());
+        ui.label(RichText::new(trf!("current: {material}", material = state.current_material)).weak());
     });
     let mut budget = 6;
     let recent: Vec<String> = state.prefs.recent_materials.iter().take(16).cloned().collect();
     // Shown while still empty, or the first material applied would push the grid down under the pointer.
     ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), RECENT_CELL + 4.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
-        ui.label(RichText::new("recent").weak());
+        ui.label(RichText::new(tr("recent")).weak());
         if recent.is_empty() {
-            ui.label(RichText::new("the materials you apply show up here").weak().italics());
+            ui.label(RichText::new(tr("the materials you apply show up here")).weak().italics());
         }
 
         for name in recent {
@@ -2086,9 +2095,9 @@ pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
         .collect();
 
     if state.materials.entries.is_empty() {
-        ui.label(RichText::new("No materials found. Open a Godot project with textures (Godot > Open Godot Project…).").weak());
+        ui.label(RichText::new(tr("No materials found. Open a Godot project with textures (Godot > Open Godot Project…).")).weak());
     } else if names.is_empty() {
-        ui.label(RichText::new("No materials match the search and filters").weak());
+        ui.label(RichText::new(tr("No materials match the search and filters")).weak());
     }
 
     let size = ps.thumb_size;
@@ -2210,13 +2219,13 @@ fn model_cell(ui: &mut Ui, selected: bool, entry: &crate::models::ModelEntry, si
 fn model_hover_text(entry: &crate::models::ModelEntry) -> String {
     let mut text = format!("{}\n{}", entry.name, entry.path.display());
     let src = &entry.source;
-    text.push_str(&format!("\n\nPack: {}", src.name));
+    text.push_str(&format!("\n\n{}", trf!("Pack: {name}", name = src.name)));
     if let Some(author) = &src.author {
-        text.push_str(&format!("\nAuthor: {author}"));
+        text.push_str(&format!("\n{}", trf!("Author: {author}", author)));
     }
 
     if let Some(license) = &src.license {
-        text.push_str(&format!("\nLicense: {license}"));
+        text.push_str(&format!("\n{}", trf!("License: {license}", license)));
     }
 
     if let Some(url) = &src.url {
@@ -2224,7 +2233,7 @@ fn model_hover_text(entry: &crate::models::ModelEntry) -> String {
     }
 
     if let Some(credit) = &entry.credit {
-        text.push_str("\n\nModel credit:");
+        text.push_str(&format!("\n\n{}", tr("Model credit:")));
         if let Some(author) = &credit.author {
             text.push_str(&format!(" {author}"));
         }
@@ -2234,7 +2243,7 @@ fn model_hover_text(entry: &crate::models::ModelEntry) -> String {
         }
     }
 
-    text.push_str("\n\nDrag into a view to place it as an editable mesh");
+    text.push_str(&format!("\n\n{}", tr("Drag into a view to place it as an editable mesh")));
     text
 }
 
@@ -2252,10 +2261,10 @@ impl ModelSort {
 
     fn label(self) -> &'static str {
         match self {
-            ModelSort::Name => "Name",
-            ModelSort::Source => "Source",
-            ModelSort::Folder => "Folder",
-            ModelSort::Recent => "Recent",
+            ModelSort::Name => en!("Name"),
+            ModelSort::Source => en!("Source"),
+            ModelSort::Folder => en!("Folder"),
+            ModelSort::Recent => en!("Recent"),
         }
     }
 }
@@ -2324,7 +2333,7 @@ fn model_rows(entries: &[crate::models::ModelEntry], sort: ModelSort, cols: usiz
 
         let compact = sort == ModelSort::Folder;
         let name = if group.is_empty() {
-            "(root)".to_string()
+            en!("(root)").to_string()
         } else if compact {
             format!("{group}/")
         } else {
@@ -2348,39 +2357,42 @@ fn model_rows(entries: &[crate::models::ModelEntry], sort: ModelSort, cols: usiz
 pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>, mut renderer: Option<&mut Renderer>) {
     let ctx = ui.ctx().clone();
     ui.horizontal_wrapped(|ui| {
-        ui.add(egui::TextEdit::singleline(&mut ps.model_filter).hint_text("Search models").desired_width(160.0));
+        ui.add(egui::TextEdit::singleline(&mut ps.model_filter).hint_text(tr("Search models")).desired_width(160.0));
         let folders = state.model_library.folders();
-        egui::ComboBox::from_id_salt("model_folder").selected_text(ps.model_folder.clone().unwrap_or_else(|| "All folders".into())).show_ui(ui, |ui| {
-            ui.selectable_value(&mut ps.model_folder, None, "All folders");
+        egui::ComboBox::from_id_salt("model_folder").selected_text(ps.model_folder.clone().unwrap_or_else(|| tr("All folders").into())).show_ui(ui, |ui| {
+            ui.selectable_value(&mut ps.model_folder, None, tr("All folders"));
             for f in folders {
-                ui.selectable_value(&mut ps.model_folder, Some(f.clone()), if f.is_empty() { "(root)".to_string() } else { f });
+                ui.selectable_value(&mut ps.model_folder, Some(f.clone()), if f.is_empty() { tr("(root)").to_string() } else { f });
             }
         });
         let sources = state.model_library.sources();
-        egui::ComboBox::from_id_salt("model_source").selected_text(ps.model_source_filter.clone().unwrap_or_else(|| "All sources".into())).show_ui(ui, |ui| {
-            ui.selectable_value(&mut ps.model_source_filter, None, "All sources");
-            for s in sources {
-                ui.selectable_value(&mut ps.model_source_filter, Some(s.clone()), s);
-            }
-        });
+        egui::ComboBox::from_id_salt("model_source").selected_text(ps.model_source_filter.clone().unwrap_or_else(|| tr("All sources").into())).show_ui(
+            ui,
+            |ui| {
+                ui.selectable_value(&mut ps.model_source_filter, None, tr("All sources"));
+                for s in sources {
+                    ui.selectable_value(&mut ps.model_source_filter, Some(s.clone()), s);
+                }
+            },
+        );
         ui.separator();
-        ui.label("Sort");
-        egui::ComboBox::from_id_salt("model_sort").selected_text(ps.model_sort.label()).show_ui(ui, |ui| {
+        ui.label(tr("Sort"));
+        egui::ComboBox::from_id_salt("model_sort").selected_text(tr(ps.model_sort.label())).show_ui(ui, |ui| {
             for s in ModelSort::ALL {
-                ui.selectable_value(&mut ps.model_sort, s, s.label());
+                ui.selectable_value(&mut ps.model_sort, s, tr(s.label()));
             }
         });
-        ui.checkbox(&mut ps.model_show_slugs, "Slugs").on_hover_text("Show a small pack label on each thumbnail");
+        ui.checkbox(&mut ps.model_show_slugs, tr("Slugs")).on_hover_text(tr("Show a small pack label on each thumbnail"));
         ui.separator();
         ui.add(egui::Slider::new(&mut ps.thumb_size, 40.0..=160.0).show_value(false));
-        ui.checkbox(&mut state.prefs.model_import.autofit, "Fit").on_hover_text("Scales tiny or huge models to a usable size when placed");
+        ui.checkbox(&mut state.prefs.model_import.autofit, tr("Fit")).on_hover_text(tr("Scales tiny or huge models to a usable size when placed"));
         ui.add(egui::DragValue::new(&mut state.prefs.model_import.scale).speed(0.05).range(0.01..=1000.0).prefix("×").fixed_decimals(2))
-            .on_hover_text("Size multiplier applied on top of Fit (or on the model's real size when Fit is off)");
-        if ui.small_button("⟳").on_hover_text("Rescan res://models for model files").clicked() {
+            .on_hover_text(tr("Size multiplier applied on top of Fit (or on the model's real size when Fit is off)"));
+        if ui.small_button("⟳").on_hover_text(tr("Rescan res://models for model files")).clicked() {
             actions.push(Action::ReloadModels);
         }
 
-        if ui.small_button("Import…").on_hover_text("Pick a model file to place, from anywhere on disk").clicked() {
+        if ui.small_button(tr("Import…")).on_hover_text(tr("Pick a model file to place, from anywhere on disk")).clicked() {
             actions.push(Action::ImportModel(crate::commands::ModelImport::Mesh));
         }
     });
@@ -2399,9 +2411,9 @@ pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, 
     sort_entries(&mut entries, ps.model_sort);
 
     if state.model_library.entries.is_empty() {
-        ui.label(RichText::new("No models found. Put model files under res://models, or use Import…").weak());
+        ui.label(RichText::new(tr("No models found. Put model files under res://models, or use Import…")).weak());
     } else if entries.is_empty() {
-        ui.label(RichText::new("No models match the search and filters").weak());
+        ui.label(RichText::new(tr("No models match the search and filters")).weak());
     }
 
     let size = ps.thumb_size;
@@ -2458,12 +2470,12 @@ pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, 
                         ui.add_space(4.0);
                         let dot = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover()).0;
                         ui.painter().circle_filled(dot.center(), 4.0, pack_color(theme::colors(), name));
-                        ui.label(RichText::new(name).strong());
+                        ui.label(RichText::new(if name == en!("(root)") { tr(en!("(root)")) } else { name }).strong());
                         if let Some(license) = license {
                             ui.label(RichText::new(license).weak());
                         }
 
-                        ui.label(RichText::new(format!("{count} model{}", if *count == 1 { "" } else { "s" })).weak());
+                        ui.label(RichText::new(tr_n!(*count, "{n} model", "{n} models")).weak());
                     });
                 }
                 ModelRow::Cells(range) => {
@@ -2478,24 +2490,24 @@ pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, 
                             }
 
                             resp.context_menu(|ui| {
-                                if ui.button("Place at cursor").clicked() {
+                                if ui.button(tr("Place at cursor")).clicked() {
                                     let at = state.snap(cursor.unwrap_or(DVec3::ZERO));
                                     actions.push(Action::PlaceModel { path: entry.path.clone(), at });
                                     ui.close();
                                 }
 
-                                if ui.button("Copy path").clicked() {
+                                if ui.button(tr("Copy path")).clicked() {
                                     ui.ctx().copy_text(entry.path.display().to_string());
                                     ui.close();
                                 }
 
-                                if ui.button("Show in File Manager").clicked() {
+                                if ui.button(tr("Show in File Manager")).clicked() {
                                     show_in_file_manager(&entry.path);
                                     ui.close();
                                 }
 
                                 if let Some(url) = &entry.source.url
-                                    && ui.button("Open pack page").clicked()
+                                    && ui.button(tr("Open pack page")).clicked()
                                 {
                                     ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                                     ui.close();
@@ -2533,7 +2545,7 @@ pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
 
                     ui.vertical(|ui| {
                         ui.label(RichText::new(name).strong());
-                        ui.label(RichText::new("Drop on a face, Shift covers the whole brush, Alt drops a decal").weak().small());
+                        ui.label(RichText::new(tr("Drop on a face, Shift covers the whole brush, Alt drops a decal")).weak().small());
                     });
                 }
                 DndPayload::Entities(classnames) => {
@@ -2546,11 +2558,11 @@ pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
                     ui.vertical(|ui| match classnames.as_slice() {
                         [one] => {
                             ui.label(RichText::new(one).strong());
-                            ui.label(RichText::new("Drop into a view to place it").weak().small());
+                            ui.label(RichText::new(tr("Drop into a view to place it")).weak().small());
                         }
                         many => {
-                            ui.label(RichText::new(format!("{} entities", many.len())).strong());
-                            ui.label(RichText::new("Drop into a view to place them in a row").weak().small());
+                            ui.label(RichText::new(tr_n!(many.len(), "{n} entity", "{n} entities")).strong());
+                            ui.label(RichText::new(tr("Drop into a view to place them in a row")).weak().small());
                         }
                     });
                 }
@@ -2561,7 +2573,7 @@ pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
                     let name = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
                     ui.vertical(|ui| {
                         ui.label(RichText::new(name).strong());
-                        ui.label(RichText::new("Drop into a view to place it as an editable mesh").weak().small());
+                        ui.label(RichText::new(tr("Drop into a view to place it as an editable mesh")).weak().small());
                     });
                 }
             });
@@ -2621,7 +2633,13 @@ fn entity_card(ui: &mut Ui, def: &EntityDef, size: f32, selected: bool) -> egui:
     let tile = egui::Rect::from_min_size(rect.min + Vec2::splat(4.0), Vec2::splat(size));
     paint_entity_tile(ui, tile, Some(def));
     if def.kind == td_formats::EntityKind::Solid {
-        ui.painter().text(tile.right_top() + Vec2::new(-3.0, 2.0), egui::Align2::RIGHT_TOP, "brush", egui::FontId::proportional(10.0), theme::colors().gray_5);
+        ui.painter().text(
+            tile.right_top() + Vec2::new(-3.0, 2.0),
+            egui::Align2::RIGHT_TOP,
+            tr("brush"),
+            egui::FontId::proportional(10.0),
+            theme::colors().gray_5,
+        );
     }
 
     let mut job = egui::text::LayoutJob::simple_singleline(def.classname.clone(), egui::FontId::proportional(11.0), theme::colors().gray_6);
@@ -2633,19 +2651,19 @@ fn entity_card(ui: &mut Ui, def: &EntityDef, size: f32, selected: bool) -> egui:
 
 pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
     ui.horizontal_wrapped(|ui| {
-        ui.add(egui::TextEdit::singleline(&mut ps.entity_filter).hint_text("Search entities").desired_width(160.0));
-        ui.add(egui::Slider::new(&mut ps.entity_card_size, 32.0..=128.0).show_value(false)).on_hover_text("Card size");
+        ui.add(egui::TextEdit::singleline(&mut ps.entity_filter).hint_text(tr("Search entities")).desired_width(160.0));
+        ui.add(egui::Slider::new(&mut ps.entity_card_size, 32.0..=128.0).show_value(false)).on_hover_text(tr("Card size"));
         if !ps.entity_selection.is_empty() {
             let n = ps.entity_selection.len();
             if ui
-                .button(if n == 1 { "Place".to_string() } else { format!("Place {n}") })
-                .on_hover_text("Place the selected entities at the 3D cursor")
+                .button(if n == 1 { tr("Place").to_string() } else { trf!("Place {n}", n) })
+                .on_hover_text(tr("Place the selected entities at the 3D cursor"))
                 .clicked()
             {
                 actions.push(place_action(state, ps.entity_selection.clone()));
             }
 
-            if ui.small_button("Clear").clicked() {
+            if ui.small_button(tr("Clear")).clicked() {
                 ps.entity_selection.clear();
             }
         }
@@ -2653,14 +2671,14 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
     crate::help::line(
         ui,
         state.prefs.help_text,
-        "Drag a card into a view, or double click it",
-        "Double click places at the cursor, Ctrl or Shift click selects several cards",
+        tr("Drag a card into a view, or double click it"),
+        tr("Double click places at the cursor, Ctrl or Shift click selects several cards"),
     );
     if !state.game.entities.iter().any(|d| crate::entity_pack::in_pack(&d.classname)) {
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("Doors, buttons, triggers, logic and props come with the Gameplay entities pack.").weak());
+            ui.label(RichText::new(tr("Doors, buttons, triggers, logic and props come with the Gameplay entities pack.")).weak());
             let tip = Action::InstallGameplayEntities.help().unwrap_or_default();
-            if ui.small_button("Install Gameplay Entities").on_hover_text(tip).clicked() {
+            if ui.small_button(tr("Install Gameplay Entities")).on_hover_text(tr(tip)).clicked() {
                 actions.push(Action::InstallGameplayEntities);
             }
         });
@@ -2682,9 +2700,9 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
     }
 
     if state.game.entities.is_empty() {
-        ui.label(RichText::new("No entity definitions. Open a Godot project with a game config (Godot > Open Godot Project…).").weak());
+        ui.label(RichText::new(tr("No entity definitions. Open a Godot project with a game config (Godot > Open Godot Project…).")).weak());
     } else if groups.is_empty() {
-        ui.label(RichText::new("No entities match the search").weak());
+        ui.label(RichText::new(tr("No entities match the search")).weak());
     }
 
     ps.entity_selection.retain(|c| state.game.entity(c).is_some());
@@ -2703,9 +2721,9 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
                     ui.horizontal(|ui| {
                         for def in chunk {
                             let selected = ps.entity_selection.contains(&def.classname);
-                            let kind = if def.kind == td_formats::EntityKind::Solid { "brush" } else { "point" };
+                            let kind = if def.kind == td_formats::EntityKind::Solid { tr("brush entity") } else { tr("point entity") };
                             let resp = entity_card(ui, def, size, selected);
-                            let resp = resp.on_hover_text(format!("{}\n{kind} entity\n{}", def.classname, def.description));
+                            let resp = resp.on_hover_text(format!("{}\n{kind}\n{}", def.classname, def.description));
                             if resp.double_clicked() {
                                 placed = Some(def.classname.clone());
                             } else if resp.clicked() {
@@ -2717,22 +2735,22 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
                             }
 
                             resp.context_menu(|ui| {
-                                if ui.button("Place at cursor").clicked() {
+                                if ui.button(tr("Place at cursor")).clicked() {
                                     actions.push(place_action(state, vec![def.classname.clone()]));
                                     ui.close();
                                 }
 
-                                if def.kind == td_formats::EntityKind::Solid && ui.button("Turn selected brushes into it").clicked() {
+                                if def.kind == td_formats::EntityKind::Solid && ui.button(tr("Turn selected brushes into it")).clicked() {
                                     actions.push(Action::CreateBrushEntity(def.classname.clone()));
                                     ui.close();
                                 }
 
-                                if ui.button("Show in Reference").clicked() {
+                                if ui.button(tr("Show in Reference")).clicked() {
                                     to_reference = Some(def.classname.clone());
                                     ui.close();
                                 }
 
-                                if ui.button("Copy classname").clicked() {
+                                if ui.button(tr("Copy classname")).clicked() {
                                     ui.ctx().copy_text(def.classname.clone());
                                     ui.close();
                                 }
@@ -2742,7 +2760,7 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
                 }
             });
             if let Some(hint) = entity_group_hint(group) {
-                section.header_response.on_hover_text(hint);
+                section.header_response.on_hover_text(tr(hint));
             }
         }
     });
@@ -2832,16 +2850,16 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
     let fixable = ps.issues.iter().filter(|i| issues::fixable(i.code)).count();
     let mut fix: Vec<td_doc::issues::Issue> = Vec::new();
     ui.horizontal(|ui| {
-        ui.label(RichText::new(format!("{errors} errors")).color(theme::colors().error()));
-        ui.label(RichText::new(format!("{warnings} warnings")).color(theme::colors().warning()));
-        ui.label(format!("{} total", ps.issues.len()));
-        if ui.add_enabled(fixable > 0, egui::Button::new(format!("Fix all ({fixable})"))).clicked() {
+        ui.label(RichText::new(tr_n!(errors, "{n} error", "{n} errors")).color(theme::colors().error()));
+        ui.label(RichText::new(tr_n!(warnings, "{n} warning", "{n} warnings")).color(theme::colors().warning()));
+        ui.label(trf!("{n} total", n = ps.issues.len()));
+        if ui.add_enabled(fixable > 0, egui::Button::new(trf!("Fix all ({fixable})", fixable))).clicked() {
             fix = ps.issues.iter().filter(|i| issues::fixable(i.code)).cloned().collect();
         }
     });
     ui.separator();
     if ps.issues.is_empty() {
-        ui.label(RichText::new("No problems found").color(theme::colors().success()));
+        ui.label(RichText::new(tr("No problems found")).color(theme::colors().success()));
     }
 
     let mut select: Option<NodeId> = None;
@@ -2849,12 +2867,12 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
         for issue in &ps.issues {
             ui.horizontal_top(|ui| {
                 let (tag, color) = match issue.severity {
-                    Severity::Error => ("Error", theme::colors().error()),
-                    Severity::Warning => ("Warning", theme::colors().warning()),
-                    Severity::Info => ("Info", theme::colors().info()),
+                    Severity::Error => (tr("Error"), theme::colors().error()),
+                    Severity::Warning => (tr("Warning"), theme::colors().warning()),
+                    Severity::Info => (tr("Info"), theme::colors().info()),
                 };
                 ui.label(RichText::new(tag).small().strong().color(color));
-                if issues::fixable(issue.code) && ui.small_button("Fix").clicked() {
+                if issues::fixable(issue.code) && ui.small_button(tr("Fix")).clicked() {
                     fix.push(issue.clone());
                 }
 
@@ -2914,15 +2932,15 @@ pub fn tool_help(tool: crate::tools::ToolKind) -> &'static str {
 pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
     use crate::code_refs;
     ui.horizontal(|ui| {
-        ui.add(egui::TextEdit::singleline(&mut ps.reference_filter).hint_text("Filter entities").desired_width(140.0));
+        ui.add(egui::TextEdit::singleline(&mut ps.reference_filter).hint_text(tr("Filter entities")).desired_width(140.0));
         if let Some(root) = state.game.project_root.clone()
-            && ui.small_button("Add C# helper to project").on_hover_text("Writes TrenchDot.cs, the bridge C# entities use").clicked()
+            && ui.small_button(tr("Add C# helper to project")).on_hover_text(tr("Writes TrenchDot.cs, the bridge C# entities use")).clicked()
         {
             let path = root.join("addons/func_godot/csharp/TrenchDot.cs");
             let result = std::fs::create_dir_all(path.parent().unwrap_or(&root)).and_then(|_| std::fs::write(&path, code_refs::CSHARP_HELPER));
             state.set_status(match result {
-                Ok(()) => format!("Wrote {}", path.display()),
-                Err(e) => format!("Could not write the C# helper: {e}"),
+                Ok(()) => msg!("Wrote {path}", path = path.display()),
+                Err(e) => msg!("Could not write the C# helper: {e}", e),
             });
         }
     });
@@ -2955,7 +2973,7 @@ pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
     let handle = ui
         .interact(egui::Rect::from_x_y_ranges(split - 4.0..=split + 4.0, area.y_range()), ui.id().with("reference_split"), Sense::click_and_drag())
         .on_hover_cursor(egui::CursorIcon::ResizeHorizontal)
-        .on_hover_text("Drag to resize, double click to fit the names");
+        .on_hover_text(tr("Drag to resize, double click to fit the names"));
     if handle.dragged()
         && let Some(pointer) = handle.interact_pointer_pos()
     {
@@ -2986,7 +3004,7 @@ pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
             }
 
             ui.separator();
-            ui.label(RichText::new("Tools").strong());
+            ui.label(RichText::new(tr("Tools")).strong());
             for (tool, help) in TOOL_HELP {
                 ui.label(RichText::new(tr(tool)).color(theme::colors().cyan)).on_hover_text(tr(help));
             }
@@ -3003,7 +3021,7 @@ pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
 fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
     use crate::code_refs::{self, CodeKind};
     let Some(def) = state.game.entity(&ps.reference_class).cloned() else {
-        ui.label("Pick an entity to see how to use it from GDScript or C#.");
+        ui.label(tr("Pick an entity to see how to use it from GDScript or C#."));
         for (tool, help) in TOOL_HELP {
             ui.label(RichText::new(tr(tool)).strong());
             ui.label(RichText::new(tr(help)).weak());
@@ -3013,25 +3031,22 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
     };
     ui.heading(&def.classname);
     ui.label(RichText::new(&def.description).weak());
-    ui.label(format!(
-        "{} entity, node {}",
-        if def.kind == td_formats::EntityKind::Solid { "brush" } else { "point" },
-        if def.node_class.is_empty() { "-" } else { &def.node_class }
-    ));
+    let node = if def.node_class.is_empty() { "-" } else { &def.node_class };
+    ui.label(if def.kind == td_formats::EntityKind::Solid { trf!("brush entity, node {node}", node) } else { trf!("point entity, node {node}", node) });
     if !def.script.is_empty() {
         ui.horizontal_wrapped(|ui| {
-            ui.label("script");
+            ui.label(tr("script"));
             ui.code(&def.script);
             // The game config comes with the project, so only a script is handed to the system opener, never a program.
             if let Some(path) = state.game.resolve_res(&def.script).filter(|p| is_script(p) && p.is_file())
-                && ui.small_button("Open").clicked()
+                && ui.small_button(tr("Open")).clicked()
             {
                 open_in_system(&path);
             }
         });
     }
 
-    crate::widgets::collapsing(format!("Properties ({})", def.properties.len())).default_open(true).show(ui, |ui| {
+    crate::widgets::collapsing(trf!("Properties ({n})", n = def.properties.len())).id_salt("reference_properties").default_open(true).show(ui, |ui| {
         for p in &def.properties {
             ui.horizontal_wrapped(|ui| {
                 ui.label(RichText::new(&p.name).strong());
@@ -3040,36 +3055,42 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
             });
         }
     });
-    crate::widgets::collapsing(format!("Inputs ({}) and outputs ({})", def.inputs.len(), def.outputs.len())).default_open(true).show(ui, |ui| {
-        for i in &def.inputs {
-            ui.label(format!("input  {}({})", i.name, i.parameter));
-        }
+    crate::widgets::collapsing(trf!("Inputs ({inputs}) and outputs ({outputs})", inputs = def.inputs.len(), outputs = def.outputs.len()))
+        .id_salt("reference_io")
+        .default_open(true)
+        .show(ui, |ui| {
+            for i in &def.inputs {
+                ui.label(trf!("input  {name}({parameter})", name = i.name, parameter = i.parameter));
+            }
 
-        for o in &def.outputs {
-            ui.label(format!("output {}({})", o.name, o.parameter));
-        }
-    });
+            for o in &def.outputs {
+                ui.label(trf!("output {name}({parameter})", name = o.name, parameter = o.parameter));
+            }
+        });
     ui.horizontal_wrapped(|ui| {
         for (k, kind) in CodeKind::ALL.iter().enumerate() {
-            ui.selectable_value(&mut ps.reference_kind, k, kind.label());
+            ui.selectable_value(&mut ps.reference_kind, k, tr(kind.label()));
         }
     });
     let kind = CodeKind::ALL[ps.reference_kind.min(CodeKind::ALL.len() - 1)];
     let code = code_refs::generate(&def, kind);
     ui.horizontal(|ui| {
-        if ui.button("Copy").clicked() {
+        if ui.button(tr("Copy")).clicked() {
             ui.ctx().copy_text(code.clone());
-            state.set_status("Copied to the clipboard");
+            state.set_status(msg!("Copied to the clipboard"));
         }
 
         let tip = if kind == CodeKind::FgdResource {
-            format!("Writes res://entities/my_{0}.tres and its script, unless they exist. Add the .tres to Entity Definitions of your FGD", def.classname)
+            trf!(
+                "Writes res://entities/my_{classname}.tres and its script, unless they exist. Add the .tres to Entity Definitions of your FGD",
+                classname = def.classname
+            )
         } else {
-            "Writes the file under res://entities/ unless it exists".to_string()
+            tr("Writes the file under res://entities/ unless it exists").to_string()
         };
         if matches!(kind, CodeKind::GdscriptClass | CodeKind::CsharpClass | CodeKind::FgdResource)
             && let Some(root) = state.game.project_root.clone()
-            && ui.button("Create in project").on_hover_text(tip).clicked()
+            && ui.button(tr("Create in project")).on_hover_text(tip).clicked()
         {
             let stem = if kind == CodeKind::CsharpClass { code_refs::pascal(&def.classname) } else { def.classname.clone() };
             let files = match kind {
@@ -3086,14 +3107,14 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
             state.set_status(match result {
                 Ok(()) if kind == CodeKind::FgdResource => {
                     let fgd = state.game.build.as_ref().filter(|b| !b.entity_fgd.is_empty()).map(|b| format!(", {}", b.entity_fgd)).unwrap_or_default();
-                    format!("Wrote {} and its script. Add it to Entity Definitions of your FGD{fgd}", path.display())
+                    msg!("Wrote {path} and its script. Add it to Entity Definitions of your FGD{fgd}", path = path.display(), fgd)
                 }
-                Ok(()) => format!("Wrote {}", path.display()),
-                Err(e) => format!("{}: {e}", path.display()),
+                Ok(()) => msg!("Wrote {path}", path = path.display()),
+                Err(e) => format!("{}: {e}", path.display()).into(),
             });
         }
 
-        if ui.button("Place").on_hover_text("Point entities at the cursor, brush entities from the selection").clicked() {
+        if ui.button(tr("Place")).on_hover_text(tr("Point entities at the cursor, brush entities from the selection")).clicked() {
             actions.push(if def.kind == td_formats::EntityKind::Point {
                 Action::CreatePointEntity { classname: def.classname.clone(), at: None }
             } else {
@@ -3108,17 +3129,17 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
 /// What the entities of a group are for, since a newcomer cannot tell a func_ from an info_ by the name alone.
 fn entity_group_hint(group: &str) -> Option<&'static str> {
     Some(match group {
-        "func" => "Brushes that do something, such as doors, buttons and lifts",
-        "info" => "Marker points such as the player start or a teleport arrival",
-        "trigger" => "Invisible volumes that fire outputs when a body enters or leaves them",
-        "logic" => "Invisible helpers that wire outputs together, such as relays and timers",
-        "math" => "Invisible helpers that calculate, compare and store numbers for the outputs they receive",
-        "path" => "Stops of a route that trains and walkers follow",
-        "light" => "Lights, placed as points",
-        "prop" => "Models placed in the level, static or with physics",
-        "env" => "Effects such as sounds, particles and explosions",
-        "game" => "Text shown to the player in the world or on the HUD",
-        "npc" => "Scripted characters that walk a path, for cutscenes",
+        "func" => en!("Brushes that do something, such as doors, buttons and lifts"),
+        "info" => en!("Marker points such as the player start or a teleport arrival"),
+        "trigger" => en!("Invisible volumes that fire outputs when a body enters or leaves them"),
+        "logic" => en!("Invisible helpers that wire outputs together, such as relays and timers"),
+        "math" => en!("Invisible helpers that calculate, compare and store numbers for the outputs they receive"),
+        "path" => en!("Stops of a route that trains and walkers follow"),
+        "light" => en!("Lights, placed as points"),
+        "prop" => en!("Models placed in the level, static or with physics"),
+        "env" => en!("Effects such as sounds, particles and explosions"),
+        "game" => en!("Text shown to the player in the world or on the HUD"),
+        "npc" => en!("Scripted characters that walk a path, for cutscenes"),
         _ => return None,
     })
 }
@@ -3302,20 +3323,20 @@ pub fn history(ui: &mut Ui, state: &mut EditorState) {
     let mut undo_steps = 0;
     let mut redo_steps = 0;
     if undo.is_empty() && redo.is_empty() {
-        ui.label(RichText::new("No edits yet. Every change shows up here, click one to undo back to it.").weak());
+        ui.label(RichText::new(tr("No edits yet. Every change shows up here, click one to undo back to it.")).weak());
         return;
     }
 
     ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         for (i, label) in redo.iter().enumerate().rev() {
-            if ui.selectable_label(false, RichText::new(label).weak()).clicked() {
+            if ui.selectable_label(false, RichText::new(i18n::tr_known(label)).weak()).clicked() {
                 redo_steps = i + 1;
             }
         }
 
-        ui.label(RichText::new("▶ current").strong());
+        ui.label(RichText::new(format!("▶ {}", tr("current"))).strong());
         for (i, label) in undo.iter().enumerate() {
-            if ui.selectable_label(false, label).clicked() {
+            if ui.selectable_label(false, i18n::tr_known(label)).clicked() {
                 undo_steps = i + 1;
             }
         }

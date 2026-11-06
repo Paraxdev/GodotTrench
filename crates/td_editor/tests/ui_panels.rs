@@ -1858,3 +1858,72 @@ fn the_terrain_inspector_fits_a_narrow_panel_in_every_language() {
         assert!(past.is_empty(), "{lang:?} draws past the {width} wide panel: {past:#?}");
     }
 }
+
+#[test]
+fn the_history_draws_labels_in_german_and_keeps_them_in_english() {
+    let _german = td_editor::i18n::scope(td_editor::i18n::Lang::De);
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    for label in ["Paste", "Set origin", "Connect a to b", "Add light_omni"] {
+        f.state.doc.edit(label, |m, _| {
+            m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::new(3.0, 5.0, 9.0), DVec3::new(70.0, 40.0, 33.0)), "dev/grey").unwrap()));
+        });
+    }
+
+    let mut harness = Harness::builder().with_size(egui::vec2(360.0, 400.0)).build_ui_state(|ui, f: &mut Fixture| panels::history(ui, &mut f.state), f);
+    harness.run();
+    harness.get_by_label("Einfügen");
+    assert!(harness.query_by_label("Paste").is_none());
+    for built in ["Set origin", "Connect a to b", "Add light_omni"] {
+        harness.get_by_label(built);
+    }
+
+    harness.get_by_label("▶ aktuell");
+    assert_eq!(harness.state().state.doc.history.undo_labels().collect::<Vec<_>>(), ["Add light_omni", "Connect a to b", "Set origin", "Paste"]);
+
+    harness.get_by_label("Einfügen").click();
+    harness.run();
+    assert_eq!(harness.state().state.doc.history.undo_labels().count(), 0, "a click undoes back to that row");
+    assert_eq!(harness.state().state.doc.history.redo_labels().next(), Some("Paste"), "the redo label is still English");
+    harness.get_by_label("Einfügen");
+}
+
+#[test]
+fn the_browsers_say_nothing_matches_in_german() {
+    let _german = td_editor::i18n::scope(td_editor::i18n::Lang::De);
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(700.0, 400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::entity_browser(ui, &mut f.state, &mut f.panels, &mut f.actions), Fixture::new());
+    harness.run();
+    let search = harness.get_all_by_role(egui::accesskit::Role::TextInput).next().unwrap();
+    search.click();
+    search.type_text("zzzz");
+    harness.run();
+    harness.get_by_label("Keine Entitäten passen zur Suche");
+    assert!(harness.query_by_label("No entities match the search").is_none());
+
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(700.0, 400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::model_browser(ui, &mut f.state, &mut f.panels, &mut f.actions, None), Fixture::new());
+    harness.run();
+    harness.get_by_label("Keine Modelle gefunden. Lege Modelldateien unter res://models ab oder nutze Importieren…");
+    assert!(harness.query_by_label("No models found. Put model files under res://models, or use Import…").is_none());
+}
+
+#[test]
+fn the_face_inspector_counts_faces_in_german() {
+    let _german = td_editor::i18n::scope(td_editor::i18n::Lang::De);
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    f.state.doc.edit("add", |m, s| {
+        let id = m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::new(5.0, 3.0, 7.0), DVec3::new(69.0, 35.0, 23.0)), "dev/grey").unwrap()));
+        s.select_face(id, 0);
+        s.select_face(id, 2);
+    });
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(420.0, 700.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    harness.get_by_label("2 Flächen");
+    assert!(harness.query_by_label("2 faces").is_none());
+}

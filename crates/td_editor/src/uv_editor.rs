@@ -236,7 +236,7 @@ Double click a corner for a move gizmo. Middle drag pans, Ctrl+wheel zooms.";
 
 fn projection_menu(ui: &mut Ui, state: &EditorState, faces: &[FaceInfo], uv_state: &mut UvEditorState, actions: &mut Vec<Action>) {
     let mut item = |ui: &mut Ui, k: MeshUvKind| {
-        if ui.button(k.label()).on_hover_text(k.hint()).clicked() {
+        if ui.button(crate::i18n::tr(k.label())).on_hover_text(crate::i18n::tr(k.hint())).clicked() {
             actions.push(Action::MeshUv(k));
             uv_state.refit = 2;
             ui.close();

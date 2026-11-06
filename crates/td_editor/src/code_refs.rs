@@ -1,6 +1,7 @@
 //! Code references for entity definitions: GDScript and C# classes that implement an entity, snippets for driving its
 //! inputs and outputs from game code, and the FuncGodot `.tres` resource that defines it.
 
+use crate::i18n::en;
 use td_formats::{EntityDef, EntityKind, PropertyDef, PropertyType};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,11 +18,11 @@ impl CodeKind {
 
     pub fn label(&self) -> &'static str {
         match self {
-            CodeKind::GdscriptClass => "GDScript class",
-            CodeKind::CsharpClass => "C# class",
-            CodeKind::GdscriptUsage => "Use from GDScript",
-            CodeKind::CsharpUsage => "Use from C#",
-            CodeKind::FgdResource => "FGD .tres",
+            CodeKind::GdscriptClass => en!("GDScript class"),
+            CodeKind::CsharpClass => en!("C# class"),
+            CodeKind::GdscriptUsage => en!("Use from GDScript"),
+            CodeKind::CsharpUsage => en!("Use from C#"),
+            CodeKind::FgdResource => en!("FGD .tres"),
         }
     }
 

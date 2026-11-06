@@ -436,6 +436,13 @@ fn keys(src: &str) -> Vec<(Key, usize)> {
                     out.push((Key::Text(k.into()), *line));
                 }
             }
+
+            // An undo label, the History panel looks it up
+            "edit" | "edit_coalesced" if is(&t, i.wrapping_sub(1), &Tok::Punct('.')) && is(&t, i + 1, &open) => {
+                if let Some(k) = str_at(&t, i + 2) {
+                    out.push((Key::Text(k.into()), *line));
+                }
+            }
             "trf" | "msg" | "en" if is(&t, i + 1, &bang) && is(&t, i + 2, &open) => {
                 if let Some(k) = str_at(&t, i + 3) {
                     out.push((Key::Text(k.into()), *line));
@@ -562,6 +569,7 @@ fn the_scanner_reads_every_literal_form() {
             /* tr("Block comment") */
             attr("Attribute"); str("Str"); x.tr_name("No");
             tr(label);
+            doc.edit("Undo label", |m| m); doc.edit_coalesced("Coalesced label", |m| m); doc.edit(&label, |m| m); edit("Free fn", 1);
         }
     "##;
     let found = keys(src);
@@ -578,6 +586,8 @@ fn the_scanner_reads_every_literal_form() {
         (text("Status {x}"), 14),
         (plural("{n} brush", "{n} brushes"), 15),
         (plural("{n} face", "{n} faces"), 16),
+        (text("Undo label"), 22),
+        (text("Coalesced label"), 22),
     ];
     assert_eq!(found, want);
     assert!(keys("").is_empty());
@@ -990,6 +1000,22 @@ const CONVERTED_FNS: &[(&str, &str)] = &[
     ("panels.rs", "worldspawn_inspector"),
     ("panels.rs", "add_property_row"),
     ("panels.rs", "entity_inspector"),
+    ("panels.rs", "io_editor"),
+    ("panels.rs", "face_inspector"),
+    ("panels.rs", "texture_settings"),
+    ("panels.rs", "material_summary_with"),
+    ("panels.rs", "material_cell"),
+    ("panels.rs", "material_interactions"),
+    ("panels.rs", "material_browser"),
+    ("panels.rs", "model_hover_text"),
+    ("panels.rs", "model_browser"),
+    ("panels.rs", "dnd_preview"),
+    ("panels.rs", "entity_card"),
+    ("panels.rs", "entity_browser"),
+    ("panels.rs", "issues"),
+    ("panels.rs", "reference"),
+    ("panels.rs", "reference_detail"),
+    ("panels.rs", "history"),
 ];
 
 /// The lines of function `name`, rustfmt closes it with a brace at the indent of its `fn`, and the number of the line
