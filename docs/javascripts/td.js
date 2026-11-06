@@ -42,17 +42,30 @@
     header.insertBefore(label, before);
   }
 
-  // Tags what the switch hides besides the blocks themselves: the nav's MCP part, the table of contents entries of
-  // headings inside a block, footer links into the MCP part and table rows holding a .td-mcp-row marker.
+  // The MCP pages are found by their URL, not by the title of the nav section that holds them, which is Advanced.
+  var MCP_PAGES = ["mcp", "mcp-scripts"];
+
+  function isMcpPage(href) {
+    var page = new URL(href, location.href).pathname.replace(/(\/|\.html|\/index\.html)$/, "").split("/").pop();
+    return MCP_PAGES.indexOf(page) >= 0;
+  }
+
+  // Tags what the switch hides besides the blocks themselves: the nav entries of the MCP pages and any section left
+  // empty without them, the table of contents entries of headings inside a block, footer links into the MCP pages and
+  // table rows holding a .td-mcp-row marker.
   function markMcp() {
     var pages = [];
-    document.querySelectorAll(".md-nav--primary .md-nav__item--section").forEach(function (item) {
-      var label = item.querySelector(":scope > .md-nav__link");
-      if (!label || label.textContent.trim().toUpperCase() !== "MCP") return;
-      item.classList.add("td-mcp");
-      item.querySelectorAll("a[href]").forEach(function (a) {
-        pages.push(a.href.split("#")[0]);
+    document.querySelectorAll(".md-nav--primary a.md-nav__link[href]").forEach(function (a) {
+      if (!isMcpPage(a.href)) return;
+      a.closest("li").classList.add("td-mcp");
+      pages.push(a.href.split("#")[0]);
+    });
+    document.querySelectorAll(".md-nav--primary .md-nav__item--nested").forEach(function (item) {
+      var pageItems = item.querySelectorAll("li.md-nav__item:not(.md-nav__item--nested)");
+      var allMcp = Array.prototype.every.call(pageItems, function (li) {
+        return li.classList.contains("td-mcp") || li.closest(".md-nav--secondary");
       });
+      if (pageItems.length && allMcp) item.classList.add("td-mcp");
     });
 
     var ids = {};
