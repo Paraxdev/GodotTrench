@@ -32,8 +32,9 @@ setting it up is installing the pack.
 
     ![The Entities tab searched for infodecal, the card hovered and its tooltip saying Projected decal](../assets/projected-decals/entities-infodecal-card.png)
 
-(Note: if you made your own `infodecal` definition before the pack had one, take it out of your FGD after updating.
-Otherwise the class is defined twice, and the editor warns about it.)
+> [!NOTE]
+> If you made your own `infodecal` definition before the pack had one, take it out of your FGD after updating.
+> Otherwise the class is defined twice, and the editor warns about it.
 
 > [!TIP]
 > Not using the pack? Copy its definition,
