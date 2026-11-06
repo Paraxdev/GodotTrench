@@ -2739,12 +2739,17 @@ mod tests {
         assert!(!s.status_failed(), "a later success clears the failure");
         // A message worded like a failure must not slip through set_status in commands.rs.
         let source = include_str!("../commands.rs");
+        let mut checked = 0;
         for (i, line) in source.lines().enumerate() {
             let Some(at) = line.find("set_status(") else { continue };
-            let arg = line[at + "set_status(".len()..].trim_start_matches("format!(");
+            let arg = line[at + "set_status(".len()..].trim_start_matches("format!(").trim_start_matches("msg!(");
+            let arg = arg.strip_prefix("msg_n!(").and_then(|a| a.find('"').map(|q| &a[q..])).unwrap_or(arg);
             let Some(text) = arg.strip_prefix('"') else { continue };
             assert!(!is_failure_status(text), "commands.rs:{} reports a failure with set_status, use fail_status", i + 1);
+            checked += 1;
         }
+
+        assert!(checked >= 40, "the scan reads {checked} messages, it no longer sees how commands.rs words them");
 
         let names = mesh_op_names();
         for n in ["merge_by_distance", "dissolve_vertices", "select_linked", "mirror_y", "mirror_z"] {

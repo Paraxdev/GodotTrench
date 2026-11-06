@@ -2184,7 +2184,7 @@ impl App {
                 // The message gets the width the counts leave, so a long one is cut short instead of running under them.
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     let alpha = if s.status_age() > 6.0 { 120 } else { 230 };
-                    ui.add(egui::Label::new(RichText::new(&s.status).color(crate::theme::colors().fg.gamma_multiply_u8(alpha))).truncate());
+                    ui.add(egui::Label::new(RichText::new(s.status_shown()).color(crate::theme::colors().fg.gamma_multiply_u8(alpha))).truncate());
                 });
             });
         });

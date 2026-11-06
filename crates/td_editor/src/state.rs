@@ -10,6 +10,7 @@ use td_doc::{Document, format};
 use td_formats::GameConfig;
 use td_render::ShadeMode;
 
+use crate::i18n::Msg;
 use crate::materials::MaterialLibrary;
 use crate::tools::ToolKind;
 
@@ -480,6 +481,8 @@ pub struct EditorState {
     pub current_layer: NodeId,
     pub open_groups: Vec<NodeId>,
     pub status: String,
+    /// The translation of `status` for the status bar, kept with the English it belongs to, see [`Self::status_shown`].
+    status_tr: Option<(String, String)>,
     status_time: Instant,
     /// The status line reports that the last command failed or had nothing to do, set by [`Self::fail_status`].
     status_failed: bool,
@@ -674,6 +677,7 @@ impl EditorState {
             current_layer: layer,
             open_groups: Vec::new(),
             status: "Welcome to TrenchDot".into(),
+            status_tr: None,
             status_time: Instant::now(),
             status_failed: false,
             last_bounds: Aabb::new(DVec3::ZERO, DVec3::splat(64.0)),
@@ -761,16 +765,27 @@ impl EditorState {
         found
     }
 
-    pub fn set_status(&mut self, msg: impl Into<String>) {
-        self.status = msg.into();
+    pub fn set_status(&mut self, msg: impl Into<Msg>) {
+        let msg = msg.into();
+        self.status_tr = (msg.shown != msg.en).then(|| (msg.en.clone(), msg.shown));
+        self.status = msg.en;
         self.status_time = Instant::now();
         self.status_failed = false;
     }
 
     /// Shows why a command failed or did nothing. MCP's run_action turns it into an error.
-    pub fn fail_status(&mut self, msg: impl Into<String>) {
+    pub fn fail_status(&mut self, msg: impl Into<Msg>) {
         self.set_status(msg);
         self.status_failed = true;
+    }
+
+    /// The status line in the user's language. MCP and tests read the English [`Self::status`], which code also sets
+    /// directly, so the translation only shows while it still belongs to that text.
+    pub fn status_shown(&self) -> &str {
+        match &self.status_tr {
+            Some((en, shown)) if *en == self.status => shown,
+            _ => &self.status,
+        }
     }
 
     pub fn status_failed(&self) -> bool {

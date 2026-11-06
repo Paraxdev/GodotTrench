@@ -20,6 +20,7 @@ pub mod gizmos;
 pub mod godot;
 pub mod help;
 pub mod hotspot_editor;
+pub mod i18n;
 pub mod icons;
 pub mod legacy;
 pub mod live_link;
