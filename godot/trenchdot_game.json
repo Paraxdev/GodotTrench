@@ -4654,6 +4654,61 @@
       ]
     },
     {
+      "classname": "infodecal",
+      "type": "point",
+      "description": "Projected decal. Projects along its local -Y axis, TrenchDot aligns it to the surface it is dropped on.",
+      "color": "#e64de6ff",
+      "node_class": "Decal",
+      "group": "infodecal",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "properties": [
+        {
+          "name": "material",
+          "type": "string",
+          "default": "",
+          "description": "Material to project, named like a face's (base/stain) or a res:// path. Its textures, color and texture_size are used"
+        },
+        {
+          "name": "texture",
+          "type": "resource",
+          "default": "",
+          "description": "res:// path of an albedo texture, used when material is empty"
+        },
+        {
+          "name": "normal_texture",
+          "type": "resource",
+          "default": "",
+          "description": "res:// path of a normal map. A material's own normal map replaces it"
+        },
+        {
+          "name": "size",
+          "type": "vector3",
+          "default": "64 32 64",
+          "description": "Width, depth and height in map units, depth being how far it reaches into the surface. Left at 64 32 64, a material's texture_size sets width and height"
+        },
+        {
+          "name": "modulate",
+          "type": "color",
+          "default": "255 255 255",
+          "description": "Tints the decal, white keeps its colors"
+        }
+      ],
+      "script": "res://addons/func_godot/src/trenchdot/runtime/trenchdot_decal.gd",
+      "outputs": [],
+      "inputs": []
+    },
+    {
       "classname": "logic_branch",
       "type": "point",
       "description": "Stores a boolean and, on test, fires on_true or on_false, for conditional wiring",
@@ -5372,55 +5427,6 @@
           "parameter": ""
         }
       ]
-    },
-    {
-      "classname": "infodecal",
-      "type": "point",
-      "description": "Projected decal. Projects along its local -Y axis, TrenchDot aligns it to the surface it is dropped on.",
-      "color": "#e64de6ff",
-      "node_class": "Decal",
-      "group": "infodecal",
-      "size": [
-        [
-          -8.0,
-          -8.0,
-          -8.0
-        ],
-        [
-          8.0,
-          8.0,
-          8.0
-        ]
-      ],
-      "properties": [
-        {
-          "name": "material",
-          "type": "string",
-          "default": "",
-          "description": "Material to project, like a face's (base/stain) or a res:// path. Its textures, color and texture_size are used"
-        },
-        {
-          "name": "texture",
-          "type": "string",
-          "default": "res://demo/textures/base/metal.png",
-          "description": "Albedo texture (res:// path), used without a material"
-        },
-        {
-          "name": "size",
-          "type": "vector3",
-          "default": "64.0 32.0 64.0",
-          "description": "Projector size in map units: width, depth, height"
-        },
-        {
-          "name": "modulate",
-          "type": "color",
-          "default": "255 255 255",
-          "description": ""
-        }
-      ],
-      "script": "res://addons/func_godot/src/trenchdot/runtime/trenchdot_decal.gd",
-      "outputs": [],
-      "inputs": []
     },
     {
       "classname": "func_rotating",

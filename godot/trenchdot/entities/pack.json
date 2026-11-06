@@ -3706,6 +3706,59 @@
       ]
     },
     {
+      "classname": "infodecal",
+      "type": "point",
+      "description": "Projected decal. Projects along its local -Y axis, TrenchDot aligns it to the surface it is dropped on.",
+      "color": "#e64de6ff",
+      "size": [
+        [
+          -8.0,
+          -8.0,
+          -8.0
+        ],
+        [
+          8.0,
+          8.0,
+          8.0
+        ]
+      ],
+      "node_class": "Decal",
+      "script": "res://addons/func_godot/src/trenchdot/runtime/trenchdot_decal.gd",
+      "group": "infodecal",
+      "properties": [
+        {
+          "name": "material",
+          "type": "string",
+          "default": "",
+          "description": "Material to project, named like a face's (base/stain) or a res:// path. Its textures, color and texture_size are used"
+        },
+        {
+          "name": "texture",
+          "type": "resource",
+          "default": "",
+          "description": "res:// path of an albedo texture, used when material is empty"
+        },
+        {
+          "name": "normal_texture",
+          "type": "resource",
+          "default": "",
+          "description": "res:// path of a normal map. A material's own normal map replaces it"
+        },
+        {
+          "name": "size",
+          "type": "vector3",
+          "default": "64 32 64",
+          "description": "Width, depth and height in map units, depth being how far it reaches into the surface. Left at 64 32 64, a material's texture_size sets width and height"
+        },
+        {
+          "name": "modulate",
+          "type": "color",
+          "default": "255 255 255",
+          "description": "Tints the decal, white keeps its colors"
+        }
+      ]
+    },
+    {
       "classname": "logic_branch",
       "type": "point",
       "description": "Stores a boolean and, on test, fires on_true or on_false, for conditional wiring",
@@ -4423,6 +4476,7 @@
     "definitions/info_landmark.tres": "aa1af05fe3935cf2a27a8746ddcca7eec41c29748a71c0e7ee3f5e28c61114f9",
     "definitions/info_spawner.tres": "6bcc017e3291c37d57650fb3a051ac016469bdb6e616966bfafca136dc179e85",
     "definitions/info_teleport_destination.tres": "edd3f0a451318aa29c807bb4c8d704f190c0096b2e31022acabe991934f047e8",
+    "definitions/infodecal.tres": "87486db00a8dfd8ddb720e0cf14c72f7b4a9dc74653508cd2c4939cceeb64073",
     "definitions/logic_animate.tres": "732ee8a35ffc48e0cd8367fa135baf185cca4192bfc26879b695ce859053a27f",
     "definitions/logic_auto.tres": "f85c27fe3e80e66e5749cf65cf0f373a97aa7885f7b5a2fd9bb621fbc434a25f",
     "definitions/logic_branch.tres": "c9195a1a7a5df6d44ea491bc7fe7c6e64fa6dbf597c93c27ef79211d1df28ee6",
@@ -4452,7 +4506,7 @@
     "definitions/trigger_push.tres": "669cee87ca7552211bb6ee9c456cfe21372536f0a16b68dca5e237085a713c09",
     "definitions/trigger_spawn_area.tres": "cb8d8cdb39f7940b4db3c3a4f3cf9f8acb68dba0eae4e35b3eb12743b97c6361",
     "definitions/trigger_teleport.tres": "e72ecaf52dfbe24831e0a762c5620e150eb018a9f36e4bcddde2d57b4db7b60d",
-    "gameplay_fgd.tres": "ab1403b701b26484d1cf2364f5a4ab7c44fd99852750ee8ca57433674e13dc2c",
+    "gameplay_fgd.tres": "b4b9f12b956d4a2df9ee2eef876938131d44524b0d954d454569a4c6c01ae93d",
     "scripts/td_animate.gd": "0b5444e4367ac8f09973f649b4983a08ca84f78b458f71ac1fc191c7ed54fe6e",
     "scripts/td_auto.gd": "11bc2fa75bb84511915624b76ab78180d47aac23d9e368e3a5df6ee3a5667878",
     "scripts/td_branch.gd": "24880478ec939ff10de75ade727e4b79425d428139d8a2df9d079158cda3ad3c",

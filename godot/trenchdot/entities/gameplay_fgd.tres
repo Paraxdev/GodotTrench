@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="FuncGodotFGDFile" load_steps=45 format=3]
+[gd_resource type="Resource" script_class="FuncGodotFGDFile" load_steps=46 format=3]
 
 [ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_file.gd" id="1_fgd"]
 [ext_resource type="Resource" path="res://trenchdot/entities/definitions/info_teleport_destination.tres" id="2_info_teleport_destination"]
@@ -36,15 +36,16 @@
 [ext_resource type="Resource" path="res://trenchdot/entities/definitions/npc_walker.tres" id="34_npc_walker"]
 [ext_resource type="Resource" path="res://trenchdot/entities/definitions/env_sound.tres" id="35_env_sound"]
 [ext_resource type="Resource" path="res://trenchdot/entities/definitions/env_particles.tres" id="36_env_particles"]
-[ext_resource type="Resource" path="res://trenchdot/entities/definitions/logic_branch.tres" id="37_logic_branch"]
-[ext_resource type="Resource" path="res://trenchdot/entities/definitions/math_calc.tres" id="38_math_calc"]
-[ext_resource type="Resource" path="res://trenchdot/entities/definitions/math_compare.tres" id="39_math_compare"]
-[ext_resource type="Resource" path="res://trenchdot/entities/definitions/math_value.tres" id="40_math_value"]
-[ext_resource type="Resource" path="res://trenchdot/entities/definitions/logic_gate.tres" id="41_logic_gate"]
-[ext_resource type="Resource" path="res://trenchdot/entities/definitions/logic_random.tres" id="42_logic_random"]
-[ext_resource type="Resource" path="res://trenchdot/entities/definitions/logic_case.tres" id="43_logic_case"]
-[ext_resource type="Resource" path="res://trenchdot/entities/definitions/logic_flipflop.tres" id="44_logic_flipflop"]
+[ext_resource type="Resource" path="res://trenchdot/entities/definitions/infodecal.tres" id="37_infodecal"]
+[ext_resource type="Resource" path="res://trenchdot/entities/definitions/logic_branch.tres" id="38_logic_branch"]
+[ext_resource type="Resource" path="res://trenchdot/entities/definitions/math_calc.tres" id="39_math_calc"]
+[ext_resource type="Resource" path="res://trenchdot/entities/definitions/math_compare.tres" id="40_math_compare"]
+[ext_resource type="Resource" path="res://trenchdot/entities/definitions/math_value.tres" id="41_math_value"]
+[ext_resource type="Resource" path="res://trenchdot/entities/definitions/logic_gate.tres" id="42_logic_gate"]
+[ext_resource type="Resource" path="res://trenchdot/entities/definitions/logic_random.tres" id="43_logic_random"]
+[ext_resource type="Resource" path="res://trenchdot/entities/definitions/logic_case.tres" id="44_logic_case"]
+[ext_resource type="Resource" path="res://trenchdot/entities/definitions/logic_flipflop.tres" id="45_logic_flipflop"]
 
 [resource]
 script = ExtResource("1_fgd")
-entity_definitions = Array[Resource]([ExtResource("2_info_teleport_destination"), ExtResource("3_info_landmark"), ExtResource("4_func_section_stream"), ExtResource("5_path_corner"), ExtResource("6_prop_model"), ExtResource("7_func_door"), ExtResource("8_func_door_rotating"), ExtResource("9_func_gate"), ExtResource("10_func_platform"), ExtResource("11_func_train"), ExtResource("12_func_button"), ExtResource("13_trigger_area"), ExtResource("14_trigger_once"), ExtResource("15_trigger_multiple"), ExtResource("16_trigger_call"), ExtResource("17_trigger_spawn_area"), ExtResource("18_trigger_hurt"), ExtResource("19_trigger_teleport"), ExtResource("20_trigger_push"), ExtResource("21_info_spawner"), ExtResource("22_logic_call"), ExtResource("23_logic_relay"), ExtResource("24_logic_timer"), ExtResource("25_logic_counter"), ExtResource("26_logic_auto"), ExtResource("27_logic_debug"), ExtResource("28_logic_script"), ExtResource("29_logic_sequence"), ExtResource("30_logic_animate"), ExtResource("31_game_text"), ExtResource("32_env_explosion"), ExtResource("33_prop_physics"), ExtResource("34_npc_walker"), ExtResource("35_env_sound"), ExtResource("36_env_particles"), ExtResource("37_logic_branch"), ExtResource("38_math_calc"), ExtResource("39_math_compare"), ExtResource("40_math_value"), ExtResource("41_logic_gate"), ExtResource("42_logic_random"), ExtResource("43_logic_case"), ExtResource("44_logic_flipflop")])
+entity_definitions = Array[Resource]([ExtResource("2_info_teleport_destination"), ExtResource("3_info_landmark"), ExtResource("4_func_section_stream"), ExtResource("5_path_corner"), ExtResource("6_prop_model"), ExtResource("7_func_door"), ExtResource("8_func_door_rotating"), ExtResource("9_func_gate"), ExtResource("10_func_platform"), ExtResource("11_func_train"), ExtResource("12_func_button"), ExtResource("13_trigger_area"), ExtResource("14_trigger_once"), ExtResource("15_trigger_multiple"), ExtResource("16_trigger_call"), ExtResource("17_trigger_spawn_area"), ExtResource("18_trigger_hurt"), ExtResource("19_trigger_teleport"), ExtResource("20_trigger_push"), ExtResource("21_info_spawner"), ExtResource("22_logic_call"), ExtResource("23_logic_relay"), ExtResource("24_logic_timer"), ExtResource("25_logic_counter"), ExtResource("26_logic_auto"), ExtResource("27_logic_debug"), ExtResource("28_logic_script"), ExtResource("29_logic_sequence"), ExtResource("30_logic_animate"), ExtResource("31_game_text"), ExtResource("32_env_explosion"), ExtResource("33_prop_physics"), ExtResource("34_npc_walker"), ExtResource("35_env_sound"), ExtResource("36_env_particles"), ExtResource("37_infodecal"), ExtResource("38_logic_branch"), ExtResource("39_math_calc"), ExtResource("40_math_compare"), ExtResource("41_math_value"), ExtResource("42_logic_gate"), ExtResource("43_logic_random"), ExtResource("44_logic_case"), ExtResource("45_logic_flipflop")])

@@ -941,6 +941,17 @@ mod tests {
     }
 
     #[test]
+    fn the_pack_carries_the_projected_decal() {
+        let pack = GameConfig::gameplay_pack();
+        let decal = pack.entity("infodecal").expect("the pack defines infodecal");
+        assert_eq!((decal.kind, decal.node_class.as_str()), (EntityKind::Point, "Decal"));
+        assert_eq!(decal.script, "res://addons/func_godot/src/trenchdot/runtime/trenchdot_decal.gd");
+        let keys: Vec<(&str, &str)> = decal.properties.iter().map(|p| (p.name.as_str(), p.default.as_str())).collect();
+        assert_eq!(keys, [("material", ""), ("texture", ""), ("normal_texture", ""), ("size", "64 32 64"), ("modulate", "255 255 255")]);
+        assert!(decal.properties.iter().all(|p| !p.description.is_empty()), "every key is described");
+    }
+
+    #[test]
     fn every_parameter_of_the_built_in_entities_has_a_type() {
         for cfg in [GameConfig::builtin(), GameConfig::gameplay_pack()] {
             for def in &cfg.entities {

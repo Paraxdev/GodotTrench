@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_class"]
+[ext_resource type="Script" path="res://addons/func_godot/src/trenchdot/runtime/trenchdot_decal.gd" id="2_script"]
+
+[resource]
+script = ExtResource("1_class")
+classname = "infodecal"
+description = "Projected decal. Projects along its local -Y axis, TrenchDot aligns it to the surface it is dropped on."
+script_class = ExtResource("2_script")
+class_properties = Dictionary[String, Variant]({
+"material": "",
+"texture": "",
+"normal_texture": "",
+"size": "64 32 64",
+"modulate": Color(1, 1, 1, 1)
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"material": "Material to project, named like a face's (base/stain) or a res:// path. Its textures, color and texture_size are used",
+"texture": "res:// path of an albedo texture, used when material is empty",
+"normal_texture": "res:// path of a normal map. A material's own normal map replaces it",
+"size": "Width, depth and height in map units, depth being how far it reaches into the surface. Left at 64 32 64, a material's texture_size sets width and height",
+"modulate": "Tints the decal, white keeps its colors"
+})
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.9019608, 0.3019608, 0.9019608, 1),
+"size": AABB(-8, -8, -8, 8, 8, 8),
+"property_types": {"texture": "resource", "normal_texture": "resource", "size": "vector3"}
+})
+node_class = "Decal"
