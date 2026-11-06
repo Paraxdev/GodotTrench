@@ -8,7 +8,7 @@ Sculpting pushes the generated ground into the shapes you want.
     the selected terrain, or on every terrain when nothing is selected. Then press **G**, or click the Sculpt button in
     the toolbar.
 
-    ![The toolbar with the Sculpt Tool button hovered and its tooltip: raise, lower, smooth, flatten, noise and terrace terrains and displacements, Shift inverts, Ctrl smooths, Ctrl+wheel radius](../assets/sea-island/toolbar-sculpt.png)
+    ![The toolbar with the Sculpt Tool button hovered and its tooltip: drag over a terrain or displacement to shape it with the chosen mode](../assets/sea-island/toolbar-sculpt.png)
 
 2. Find its settings
 

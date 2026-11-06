@@ -2865,28 +2865,23 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
 
 // ----------------------------------------------------------------- reference
 
-/// Short usage notes for every tool, shown in the reference panel.
+/// One short line per tool, shown in the toolbar tooltip, the Tools menu, the tool options and the reference panel.
+/// Modifiers and the rest live in the manual.
 pub const TOOL_HELP: [(&str, &str); 14] = [
-    (
-        "Select",
-        "Click selects the object, double click its whole group. In 2D click again or Alt+click for the object behind it. Drag empty space draws a brush, drag the selection moves it (Alt vertical, Ctrl duplicates) and in 2D a yellow edge resizes it. Alt+drag elsewhere in 3D orbits. In 3D the gizmo arrows, squares, rings and boxes move, rotate and scale. Entity gizmo handles (hinges, travel, radius) drag here.",
-    ),
+    ("Select", "Click to select, double click for the whole group. Drag empty space to draw a brush, drag the selection to move it."),
     ("Clip", "Click two or three points, Tab picks the side to keep, Enter clips."),
-    ("Vertex", "Drag brush vertices, edge and face midpoints split. Del removes vertices."),
-    ("Rotate", "Drag a ring, snaps to 15 degrees, Shift for 1 degree."),
-    ("Scale", "Drag bounds handles, Alt scales symmetrically."),
-    ("Mesh", "Blender style: 1/2/3 component modes, G/R/S, E extrude, I inset, Ctrl+R loop cut, K knife, double click a vertex for the gizmo."),
-    ("Sculpt", "Raise, lower, smooth, flatten, noise and terrace terrains and displacements. Shift inverts, Ctrl smooths, Ctrl+wheel radius."),
-    ("Blend", "Paint, erase, smooth, sharpen, noise, slope and height blends on terrain layers, displacement alpha and faces with a blend material."),
-    ("Paint", "Vertex colors on brush faces."),
-    (
-        "Scatter",
-        "Paints the enabled models of the active scatter set, listed in the Scatter panel. Shift erases, Alt+click or the eyedropper toggles a target, Ctrl+wheel radius.",
-    ),
-    ("Volume", "Drag out trigger, spawn, hurt, teleport and push volumes as brush entities."),
+    ("Vertex", "Drag brush vertices, drag an edge or face midpoint to split it."),
+    ("Rotate", "Drag a ring to rotate the selection."),
+    ("Scale", "Drag a handle on the selection's bounds to scale it."),
+    ("Mesh", "Edit a mesh Blender style, 1/2/3 pick vertices, edges or faces and G/R/S move, rotate or scale them."),
+    ("Sculpt", "Drag over a terrain or displacement to shape it with the chosen mode."),
+    ("Blend", "Drag to paint blends on terrain layers, displacements and faces with a blend material."),
+    ("Paint", "Drag over brush faces to paint vertex colors."),
+    ("Scatter", "Drag to paint the models of the active scatter set."),
+    ("Volume", "Drag out a trigger, spawn, hurt, teleport or push volume."),
     ("Path", "Click to chain path_corner entities, Enter finishes."),
     ("Measure", "Drag or click two points."),
-    ("Texture", "Right click applies, Alt+right wraps, Alt+click picks, drag slides, Ctrl+wheel scales, Alt+wheel rotates."),
+    ("Texture", "Click a face, drag to slide its texture, right click to apply the current material."),
 ];
 
 pub fn tool_help(tool: crate::tools::ToolKind) -> &'static str {

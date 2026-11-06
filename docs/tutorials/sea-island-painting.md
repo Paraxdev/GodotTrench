@@ -4,7 +4,7 @@ Switch to the Blend tool with **Shift+G**, or the Blend button right next to Scu
 works on the selected terrain or on everything when nothing is selected. Its settings are in the tool options bar at
 the top left.
 
-![The toolbar with the Blend Tool button hovered and its tooltip: paint, erase, smooth, sharpen, noise, slope and height blends on terrain layers, displacement alpha and faces with a blend material](../assets/sea-island/toolbar-blend.png)
+![The toolbar with the Blend Tool button hovered and its tooltip: drag to paint blends on terrain layers, displacements and faces with a blend material](../assets/sea-island/toolbar-blend.png)
 
 The **slope** and **height** modes only paint where the ground is within a range of steepness or height. A radius of
 12000 covers the whole island, so one click in these modes paints every shore or cliff at once.

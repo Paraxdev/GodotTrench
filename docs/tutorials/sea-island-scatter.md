@@ -12,7 +12,7 @@ Every set on this page starts the same way.
     Press **B**, or click the Scatter button in the toolbar. The Scatter tab opens on the right, next to the Inspector.
     (If you close it, **Scatter Panel** in the tool options bar brings it back.)
 
-    ![The toolbar with the Scatter Tool button hovered and its tooltip: paints the enabled models of the active scatter set, Shift erases, Alt+click or the eyedropper toggles a target](../assets/sea-island/toolbar-scatter.png)
+    ![The toolbar with the Scatter Tool button hovered and its tooltip: drag to paint the models of the active scatter set](../assets/sea-island/toolbar-scatter.png)
 
 2. Start it from a preset
 

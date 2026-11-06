@@ -17,7 +17,7 @@ its list. Escape or a click outside closes it without running anything.
 ![The command palette with hollow typed in, Brush: Hollow picked with its shortcut, and the line explaining it beneath](../assets/interface/command-palette.png)
 
 Right under the toolbar is the **tool options bar**. It holds the settings of the active tool, or one line on how to
-use a tool that has none. Hover the tool's name there, or its button in the toolbar, for the full description.
+use a tool that has none. Hover the tool's name there, or its button in the toolbar, for a short description.
 
 ![The tool options bar with Select Tool hovered, its tooltip describing the tool and ending in F1: manual](../assets/interface/tool-options-tooltip.png)
 
@@ -39,7 +39,7 @@ The card goes away once the map has something in it. **Hide tips** turns the tip
 | --- | --- | --- |
 | Outliner | Left | The map as a tree of [layers, groups](organizing.md) and objects |
 | History | Left | Every edit. Clicking one undoes it and everything after it, clicking a dimmed one redoes up to it |
-| Issues | Left | Problems found as you work, like faces with no material |
+| Issues | Left | Problems found as you work, like faces with no material. Click one to select the object, most offer a fix |
 | Inspector | Right | The selection's properties, such as an entity's keys or a brush's exact position and size |
 | Entities | Right | Entity classes to drag into a view |
 | UV Editor | Right | [Exact texture placement](uv-editor.md) |

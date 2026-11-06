@@ -8,7 +8,8 @@ there, grouped by category. Hover a card to see what it does.
 ![The Entities panel with the func_door card hovered, its tooltip says brush entity, sliding door](../assets/placing/entities-panel.png)
 
 Drag a card into any view to place it, or double click it to drop it at the 3D cursor. (Ctrl or Shift click picks
-several cards, drag them in together and they land in a row.)
+several cards, drag them in together and they land in a row.) A brush entity card comes with a box. With brushes
+selected, double click it to wrap those brushes in the entity instead.
 
 The entity lands on the first solid surface under the pointer. Trigger volumes, brushes made only of tool textures and
 other entities are passed. While you drag, a cyan marker shows where it will land. A 2D view cannot show depth, so there
@@ -36,7 +37,7 @@ The common ones have quicker routes:
 
 ![The Gameplay menu with Doors and Movers open: hinged doors, sliding doors and Lift, Moving Platform](../assets/placing/gameplay-doors-menu.png)
 
-![The toolbar with the Volume tool hovered and its tooltip, Volume Tool (Shift+E)](../assets/placing/toolbar-volume-tool.png)
+![The toolbar with the Volume tool hovered and its tooltip, Volume Tool (Shift+E), drag out a trigger, spawn, hurt, teleport or push volume](../assets/placing/toolbar-volume-tool.png)
 
 ### Handles
 
@@ -83,7 +84,8 @@ further.
 The **Reference** panel shows GDScript and C# for any entity class. It comes in handy when game code has to talk to a
 map entity, for example to open a door or listen for a button. Open it with *View > Panels > Reference*, with
 *Help > Entity and Code Reference*, or with **Code Reference** in the Inspector, which jumps straight to the selected
-entity's class.
+entity's class. Drag the divider between the class list and the details to resize the list, double click it to fit the
+names.
 
 ![The Reference panel with func_button picked: its inputs and outputs, and the Use from GDScript code](../assets/placing/reference-panel.png)
 

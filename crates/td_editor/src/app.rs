@@ -74,38 +74,20 @@ impl Panel {
         }
     }
 
-    /// One or two sentences on what the panel is for.
+    /// One short sentence on what the panel is for.
     pub fn help(self) -> &'static str {
         match self {
-            Panel::Outliner => {
-                "Every layer, group, brush, mesh and entity in the map as a tree. Click to select, the eye hides and the lock locks. Clicking a layer makes it the current layer new objects go into, right click a row to rename it or, for a layer, omit it from the build."
-            }
-            Panel::Inspector => {
-                "Edits whatever is selected: entity properties and outputs, face materials and UVs, scatter sets and terrains. With nothing selected it shows the map's own settings (worldspawn), like sun, sky and fog."
-            }
-            Panel::Materials => {
-                "The textures and materials of the Godot project. Click one to apply it to the selection, drag it onto a face, right click for favourites. Search and folders help in big projects."
-            }
-            Panel::Entities => {
-                "Entity classes from the game config as cards. Drag one into a view or double click to place it at the cursor, Ctrl or Shift click selects several to drag in together. Brush entities come with a box, or wrap the selected brushes on double click."
-            }
-            Panel::History => "Every edit in order. Click an older entry to undo back to it, click a later one to redo.",
-            Panel::Issues => {
-                "Problems found in the map, like invalid brushes, missing materials or outputs pointing at nothing. Click one to select the object, most offer a fix."
-            }
-            Panel::Logic => {
-                "The map's entity I/O as a graph. Each wired entity is a node, each output connection a wire. Drag from an output pin to an input pin to connect, click a wire to edit it, Simulate previews what an output sets off."
-            }
-            Panel::Uv => "Edits the UVs of selected mesh faces directly, like the UV editor of a 3D modelling program.",
-            Panel::Scatter => {
-                "The active scatter set as model cards: drag models in from the Models panel, switch them on or off and weigh them. Below are the surfaces the set paints onto, with an eyedropper, and the brush."
-            }
-            Panel::Prefabs => {
-                "Ready made pieces to paste, drawn from above: stairs, doorways, pillars and more that come with the editor, and the project's own from res://prefab_library. Click one to paste it at the pointer, right click to copy or open it, and add the selection as a new one."
-            }
-            Panel::Reference => {
-                "How to use the selected entity from code: GDScript and C# snippets, the FGD resource, and buttons that create the script in your project. Drag the divider to resize the class list, double click it to fit the names."
-            }
+            Panel::Outliner => "Every layer, group, brush, mesh and entity in the map as a tree.",
+            Panel::Inspector => "Edits what is selected, or the map's own settings when nothing is.",
+            Panel::Materials => "The textures and materials of the Godot project, click one to apply it to the selection.",
+            Panel::Entities => "Entity classes from the game config, drag one into a view or double click to place it.",
+            Panel::History => "Every edit in order, click an older entry to undo back to it.",
+            Panel::Issues => "Problems found in the map, click one to select the object.",
+            Panel::Logic => "The map's entity I/O as a graph, drag from an output pin to an input pin to connect.",
+            Panel::Uv => "Edits the UVs of selected mesh faces directly.",
+            Panel::Scatter => "The active scatter set as model cards, with the surfaces it paints onto and the brush.",
+            Panel::Prefabs => "Ready made pieces to paste, click one to paste it at the pointer.",
+            Panel::Reference => "How to use the selected entity from GDScript and C#.",
         }
     }
 }
@@ -601,7 +583,7 @@ fn help_menu_links(ui: &mut Ui) {
     let mouse = [
         "3D: right drag looks, WASD flies while it is held, Q and E go down and up, middle drag pans, Alt+left drag orbits",
         "2D: right or middle drag pans, the wheel zooms, drag a selection edge to resize",
-        "Click selects an object, double click its group. Drag empty space to draw a brush, drag the selection to move it (Alt vertical, Ctrl copies)",
+        "Click selects an object, double click its group. Drag empty space to draw a brush, drag the selection to move it",
         "3D gizmo: arrows and squares move, rings rotate, boxes scale",
         "Shift+click selects faces, Shift+drag a face pushes it, Ctrl+Shift+drag extrudes",
         "Tab edits meshes Blender style: 1/2/3 modes, G/R/S, E extrude, I inset, Ctrl+R loop cut, K knife",
@@ -3107,6 +3089,21 @@ mod tests {
 
         prefs.key_overrides.insert(Action::Rename.binding_id(), String::new());
         assert_eq!(Panel::Outliner.tooltip(&ctx, &prefs), Panel::Outliner.help(), "no key once it is unbound");
+    }
+
+    #[test]
+    fn tool_and_dock_help_stay_short() {
+        const LIMIT: usize = 140;
+        for (tool, help) in crate::panels::TOOL_HELP {
+            assert!(help.chars().count() < LIMIT, "{tool}: {} characters", help.chars().count());
+        }
+
+        let ctx = egui::Context::default();
+        let prefs = Prefs::default();
+        for panel in Panel::ALL {
+            let tip = panel.tooltip(&ctx, &prefs);
+            assert!(tip.chars().count() < LIMIT, "{panel:?}: {} characters", tip.chars().count());
+        }
     }
 
     #[test]
