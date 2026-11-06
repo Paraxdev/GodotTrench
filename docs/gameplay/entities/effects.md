@@ -124,6 +124,18 @@ wide, high and deep). `color` tints it, and white keeps the effect's own colors.
 meters, 0 uses the effect's own. `blend` is `add` for glow or `mix` for smoke. The defaults of each effect look right
 on their own, so start with only `effect`.
 
+## infodecal
+
+A projected decal, a box that shines a material onto everything inside it, for stains that wrap over steps, pipes or
+bumpy ground. [Projected decals](../../editor/projected-decals.md) shows you how to place one and what to watch out for.
+
+* **Keys:** `material` (a name like `base/stain` or a `res://` path), `texture`, `normal_texture`, `size` 64 32 64,
+  `modulate` 255 255 255
+
+`material` brings its textures and color along, `texture` and `normal_texture` are `res://` images used without one.
+`size` is the width, depth and height of the box in map units. Left at 64 32 64, the material's
+[texture size](../../godot/materials.md#texture-size) sets the width and height instead. `modulate` tints the decal.
+
 ## light_probe, env_reflection_probe and env_voxel_gi
 
 Probes that light and reflect moving objects, see [Baked lighting in Godot](../../godot/baked-lighting.md). None has

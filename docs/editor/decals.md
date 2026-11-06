@@ -58,8 +58,8 @@ A regular decal is flat. For a stain that wraps over a step, a pipe or bumpy gro
 is an entity that shines a material onto everything inside its box, props included. It costs more to draw, so stick to
 regular decals on flat surfaces.
 
-Your project needs an entity class for it first. [Projected decals](projected-decals.md) shows you how to set one up,
-place it and what to watch out for.
+It comes with the Gameplay entities pack as `infodecal`. [Projected decals](projected-decals.md) shows you how to set
+it up, place it and what to watch out for.
 
 <div class="td-mcp" markdown>
 

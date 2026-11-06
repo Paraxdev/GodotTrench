@@ -9,50 +9,29 @@ sheet will not do.
 
 ## Adding it to your project
 
-TrenchDot ships the script, `trenchdot_decal.gd`, but no entity class that uses it, so you add one once per project.
-(The demo project has one already, called `infodecal`.)
+The projected decal comes with the
+[Gameplay entities pack](../godot/project-setup.md#core-entities-and-the-gameplay-entities-pack) as `infodecal`, so
+setting it up is installing the pack.
 
-1. Save this definition as `res://entities/infodecal.tres`
+1. Install or update the pack
 
-    ```
-    [gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+    Click **Install Gameplay Entities** in the *Set up this project* window, or **Update Gameplay Entities** in the
+    Gameplay menu when the pack is already in your project.
+    [Installing and updating the pack](../godot/project-setup.md#installing-and-updating-the-pack) walks you through it.
 
-    [ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
-    [ext_resource type="Script" path="res://addons/func_godot/src/trenchdot/runtime/trenchdot_decal.gd" id="2_decal"]
+2. Check that the editor sees it
 
-    [resource]
-    script = ExtResource("1_point")
-    classname = "infodecal"
-    description = "Projected decal, shines a material onto everything inside its box"
-    script_class = ExtResource("2_decal")
-    class_properties = Dictionary[String, Variant]({
-    "material": "",
-    "texture": "",
-    "normal_texture": "",
-    "size": Vector3(64, 32, 64),
-    "modulate": Color(1, 1, 1, 1)
-    })
-    meta_properties = Dictionary[String, Variant]({
-    "size": AABB(-8, -8, -8, 8, 8, 8),
-    "color": Color(0.9, 0.3, 0.9, 1)
-    })
-    node_class = "Decal"
-    ```
+    You should see an `infodecal` card in the **Entities** tab, next to the Inspector.
 
-    Any classname works. Keep *Node Class* at `Decal`, the script needs it and it is how the editor knows to treat the
-    entity as a decal.
+(Note: if you made your own `infodecal` definition before the pack had one, take it out of your FGD after updating.
+Otherwise the class is defined twice, and the editor warns about it.)
 
-2. Add it to your FGD
-
-    Add the `.tres` to *Entity Definitions* of your own FGD file, the one your map settings and game config both use.
-    The addon's default FGD gets replaced on every update, so if you do not have your own yet, set one up as shown in
-    [Project setup](../godot/project-setup.md#your-own-resources). More on definitions is in
-    [Custom entities](../gameplay/custom-entities.md#making-it-placeable).
-
-3. Check that the editor sees it
-
-    Godot exports the game config again when it notices the new file, and the editor reloads it within a second. You
-    should see an `infodecal` card in the **Entities** tab.
+> [!TIP]
+> Not using the pack? Copy its definition,
+> [`infodecal.tres`](https://github.com/Paraxdev/trenchdot_func/blob/main/gameplay_pack/definitions/infodecal.tres),
+> into your project and add it to *Entity Definitions* of your own FGD file, see
+> [Custom entities](../gameplay/custom-entities.md#making-it-placeable). Keep *Node Class* at `Decal`, the script
+> needs it and it is how the editor knows to treat the entity as a decal.
 
 ## Placing one
 
@@ -72,9 +51,8 @@ TrenchDot ships the script, `trenchdot_decal.gd`, but no entity class that uses 
 
     `size` takes three numbers in map units: width, depth and height. Width and height are the patch it covers on the
     surface, depth is how far the box reaches into and out of it. The default is 64 32 64, a two meter square that
-    reaches half a meter each way. Leave it at the default and Godot sizes the patch by the material's
-    [texture size](../godot/materials.md#texture-size) instead, if it has one. (Note: the editor still draws the
-    default box then.)
+    reaches half a meter each way. Leave it at the default and the patch takes the material's
+    [texture size](../godot/materials.md#texture-size) instead, if it has one, in the editor and in Godot.
 
 4. (Optionally) aim it
 
@@ -92,8 +70,8 @@ TrenchDot ships the script, `trenchdot_decal.gd`, but no entity class that uses 
 | --- | --- |
 | `material` | The material to project, a name like `base/stain` or a `res://` path. Its albedo, normal, ORM and emission textures and its albedo color are used |
 | `texture` | A `res://` path to an image, projected when `material` is empty |
-| `normal_texture` | A `res://` path to a normal map, for use with `texture` |
-| `size` | Width, depth and height of the box in map units |
+| `normal_texture` | A `res://` path to a normal map, for use with `texture`. A material's own normal map replaces it |
+| `size` | Width, depth and height of the box in map units, 64 32 64 unless you change it |
 | `modulate` | A color the projected image is multiplied by |
 
 ## Things to watch out for
