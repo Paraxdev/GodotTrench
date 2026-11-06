@@ -2646,8 +2646,10 @@ fn saves_stay_off_the_default_godot_ports() {
     let map = dir.join("maps/hall.tdm");
     let sent: Sent = Default::default();
     // A port a running Godot already holds cannot be listened on, and that Godot then shows nothing here either.
+    let mut listened = 0;
     for port in [7842, 7843] {
         let Ok(listener) = std::net::TcpListener::bind(("127.0.0.1", port)) else { continue };
+        listened += 1;
         let log = sent.clone();
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
@@ -2659,6 +2661,11 @@ fn saves_stay_off_the_default_godot_ports() {
                 }
             }
         });
+    }
+
+    if listened == 0 {
+        eprintln!("skipped: both default Godot ports are in use, nothing here could see a save reach them");
+        return;
     }
 
     let ed = Editor::launch_with("default_godot_ports", &["--project", dir.to_str().unwrap()]);
