@@ -24,7 +24,7 @@ meshes over it.
     *Prop models* and *Scatter instances* tell you how many objects each adds. You can switch the format to OBJ at the
     top.
 
-    ![The Export for 3D Tools window with glTF Binary picked, Whole map, Prop models (8) ticked and Scatter instances (797) unticked](../assets/exporting/export-dialog.png)
+    ![The Export for 3D Tools window with glTF Binary picked, Whole map, Prop models (5) ticked and Scatter instances (4081) unticked](../assets/exporting/export-dialog.png)
 
 3. Save it
 
