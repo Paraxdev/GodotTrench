@@ -22,6 +22,9 @@ overrides/
 extra_css = ["stylesheets/td.css"]
 extra_javascript = ["javascripts/td.js"]
 
+[project.extra]
+mcp_switch = "Show the parts of these docs about driving the editor over MCP, for AI agents and scripts"
+
 # One entry per language, the language button of every build lists them. The folder after /TrenchDot/ is the editor's
 # language code, the last value is the hreflang. tools/build_site.py builds each language into that folder.
 [[project.extra.alternate]]

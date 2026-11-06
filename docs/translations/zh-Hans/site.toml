@@ -1,2 +1,11 @@
-# Strings of the zh-Hans site. The nav, the labels and the notices are added with the translations.
+# Strings of the Simplified Chinese site that are not pages. The nav and the translated pages are added with the content.
 theme_language = "zh"
+description = "基于笔刷的 Godot 关卡编辑器"
+light_toggle = "切换到深色模式"
+dark_toggle = "切换到浅色模式"
+mcp_switch = "显示文档中介绍如何通过 MCP 驱动编辑器的部分，面向 AI 代理和脚本"
+notice = "本译文由 AI 撰写，尚未经过母语者校对。如果有读起来奇怪的地方，请以英文页面为准，欢迎在 GitHub 上提出修改。"
+fallback = "这个页面还没有翻译成中文，或者英文页面在翻译之后有更新。你现在看到的是英文版。"
+note = "说明"
+tip = "提示"
+warning = "警告"

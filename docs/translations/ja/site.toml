@@ -1,2 +1,11 @@
-# Strings of the ja site. The nav, the labels and the notices are added with the translations.
+# Strings of the Japanese site that are not pages. The nav and the translated pages are added with the content.
 theme_language = "ja"
+description = "Godot向けのブラシベースのレベルエディタ"
+light_toggle = "ダークモードに切り替える"
+dark_toggle = "ライトモードに切り替える"
+mcp_switch = "MCPでエディタを操作する方法についての部分を表示します。AIエージェントやスクリプト向けです"
+notice = "この翻訳はAIが書いたもので、ネイティブの方による確認はまだ行われていません。不自然な箇所があれば英語のページを基準にしてください。修正はGitHubで歓迎します。"
+fallback = "このページはまだ日本語に翻訳されていないか、翻訳後に英語のページが更新されました。英語版を表示しています。"
+note = "メモ"
+tip = "ヒント"
+warning = "警告"

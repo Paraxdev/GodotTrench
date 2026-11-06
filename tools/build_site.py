@@ -35,7 +35,11 @@ DEFAULTS = {
     "warning": "Warning",
     "fallback": "This page is not translated into this language yet, or the English page changed since it was. "
     "You are reading the English version.",
+    "notice": "This translation was written by an AI and no native speaker has checked it yet. If something reads "
+    "oddly, the English page is the reference, and corrections are welcome on GitHub.",
 }
+# The scheme of each palette entry and the site.toml key holding the name of the button that switches away from it.
+TOGGLES = {"default": "light_toggle", "slate": "dark_toggle"}
 
 ALERT = re.compile(r"^(?P<quote>[ \t]*(?:>[ \t]?)+)\[!(?P<kind>NOTE|TIP|WARNING)\][ \t]*$")
 FENCE = re.compile(r"(?P<mark>`{3,}|~{3,})(?P<rest>.*)$")
@@ -204,8 +208,17 @@ def language_config(config, code, strings):
     project["site_dir"] = "site"
     project.pop("edit_uri", None)
     # The social image lives in the English root, a language site does not keep a copy of the page images.
-    project.setdefault("extra", {})["root_url"] = site_url
+    extra = project.setdefault("extra", {})
+    extra["root_url"] = site_url
+    strings = {**DEFAULTS, **strings}
+    project["site_description"] = strings.get("description", project.get("site_description"))
+    extra["mcp_switch"] = strings.get("mcp_switch", extra.get("mcp_switch"))
+    extra["notice"] = strings["notice"]
     theme = project["theme"]
+    for palette in theme.get("palette", []):
+        name = strings.get(TOGGLES.get(palette.get("scheme")))
+        if name:
+            palette["toggle"]["name"] = name
     theme["custom_dir"] = "docs/overrides"
     theme["language"] = strings.get("theme_language", code)
     theme["features"] = [f for f in theme.get("features", []) if f != "content.action.edit"]

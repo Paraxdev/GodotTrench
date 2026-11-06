@@ -12,7 +12,7 @@
       <ul class="md-select__list">
         {% for alt in config.extra.alternate %}
           <li class="md-select__item">
-            <a href="{{ alt.link ~ (page.url if page else '') }}" hreflang="{{ alt.lang }}" class="md-select__link">
+            <a href="{{ alt.link ~ (page.url if page else '') }}" hreflang="{{ alt.lang }}" data-root="{{ alt.link }}" class="md-select__link">
               {{ alt.name }}
             </a>
           </li>

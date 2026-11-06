@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
 """Tests of the docs tools, `python3 tools/test_docs.py`. The tests that look at a built site are skipped until
 `python3 tools/build_site.py` has produced _site."""
+import contextlib
 import copy
+import html as htmllib
+import importlib.util
 import io
+import json
 import pathlib
+import re
+import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
 import tomllib
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
@@ -18,6 +25,14 @@ import check_site  # noqa: E402
 
 CONFIG = bs.load_config()
 ZH = {"theme_language": "zh"}
+DE = {
+    "theme_language": "de",
+    "description": "Ein Level-Editor mit Brushes",
+    "light_toggle": "Zum dunklen Modus",
+    "dark_toggle": "Zum hellen Modus",
+    "mcp_switch": "MCP zeigen",
+    "notice": "Von einer KI übersetzt",
+}
 
 
 def write(path, text):
@@ -269,7 +284,39 @@ class LanguageConfigTest(unittest.TestCase):
             for key in keys:
                 table.pop(key)
         project["extra"].pop("root_url")
+        self.assertEqual(project["extra"].pop("notice"), bs.DEFAULTS["notice"])
         self.assertEqual(project, expected)
+
+    def test_strings_reach_the_config(self):
+        out = bs.language_config(CONFIG, "de", DE)["project"]
+        expected = copy.deepcopy(CONFIG["project"])
+        expected["site_url"] = "https://paraxdev.github.io/TrenchDot/de/"
+        expected["docs_dir"], expected["site_dir"] = "docs", "site"
+        del expected["edit_uri"]
+        expected["site_description"] = "Ein Level-Editor mit Brushes"
+        expected["extra"].update(root_url="https://paraxdev.github.io/TrenchDot/", mcp_switch="MCP zeigen",
+                                 notice="Von einer KI übersetzt")
+        theme = expected["theme"]
+        theme["language"] = "de"
+        theme["features"].remove("content.action.edit")
+        palette = {p["scheme"]: p for p in theme["palette"]}
+        palette["default"]["toggle"]["name"] = "Zum dunklen Modus"
+        palette["slate"]["toggle"]["name"] = "Zum hellen Modus"
+        self.assertEqual(out, expected)
+        self.assertEqual([p["scheme"] for p in out["theme"]["palette"]], ["default", "slate"])
+
+    def test_missing_strings_keep_the_english_ones(self):
+        out = bs.language_config(CONFIG, "de", {"theme_language": "de", "description": "Nur das"})["project"]
+        base = CONFIG["project"]
+        self.assertEqual(out["site_description"], "Nur das")
+        self.assertEqual([p["toggle"]["name"] for p in out["theme"]["palette"]],
+                         [p["toggle"]["name"] for p in base["theme"]["palette"]])
+        self.assertEqual(out["extra"]["mcp_switch"], base["extra"]["mcp_switch"])
+        self.assertEqual(out["extra"]["notice"], bs.DEFAULTS["notice"])
+
+    def test_english_config_has_the_tooltip_and_no_notice(self):
+        self.assertTrue(CONFIG["project"]["extra"]["mcp_switch"].startswith("Show the parts"))
+        self.assertNotIn("notice", CONFIG["project"]["extra"])
 
     def test_default_theme_language_is_the_code(self):
         self.assertEqual(bs.language_config(CONFIG, "de", {})["project"]["theme"]["language"], "de")
@@ -288,6 +335,27 @@ class LanguageConfigTest(unittest.TestCase):
         for code, _, _ in bs.languages(CONFIG):
             strings = bs.load_strings(bs.ROOT / "docs", code)
             self.assertTrue(strings["theme_language"], code)
+            for key in ("description", "light_toggle", "dark_toggle", "mcp_switch", "notice", "fallback", "note", "tip",
+                        "warning"):
+                self.assertIn(key, tomllib.loads((bs.ROOT / "docs" / "translations" / code / "site.toml")
+                                                 .read_text(encoding="utf-8")), f"{code} {key}")
+
+    def test_site_strings_are_translated_and_follow_the_style(self):
+        english = {**bs.DEFAULTS, "description": CONFIG["project"]["site_description"],
+                   "mcp_switch": CONFIG["project"]["extra"]["mcp_switch"],
+                   "light_toggle": CONFIG["project"]["theme"]["palette"][0]["toggle"]["name"],
+                   "dark_toggle": CONFIG["project"]["theme"]["palette"][1]["toggle"]["name"]}
+        titles = set()
+        for code, _, _ in bs.languages(CONFIG):
+            strings = bs.load_strings(bs.ROOT / "docs", code)
+            for key, value in english.items():
+                self.assertNotEqual(strings[key], value, f"{code} {key} is still English")
+            for key, value in strings.items():
+                if isinstance(value, str):
+                    self.assertNotRegex(value, r"[\u2013\u2014\u2015]| - ", f"{code} {key}")
+            self.assertEqual(len({strings["note"], strings["tip"], strings["warning"]}), 3, code)
+            titles.add(strings["warning"])
+        self.assertGreater(len(titles), 4)
 
     def test_strings_fall_back_to_the_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -523,10 +591,33 @@ class BuiltSiteTest(unittest.TestCase):
         index = (self.SITE / "ja" / "index.html").read_text(encoding="utf-8")
         self.assertIn('src="../screenshots/editor.png"', index)
 
-    def test_fallback_page_has_the_note_and_the_english_ids(self):
-        html = (self.SITE / "de" / "editor" / "brushes.html").read_text(encoding="utf-8")
-        self.assertIn(bs.DEFAULTS["fallback"], html)
-        self.assertIn('id="reshape"', html)
+    def test_german_page_has_the_banner_and_the_german_strings(self):
+        strings = bs.load_strings(bs.ROOT / "docs", "de")
+        html = htmllib.unescape((self.SITE / "de" / "editor" / "brushes.html").read_text(encoding="utf-8"))
+        self.assertIn('class="md-banner"', html)
+        self.assertIn(strings["notice"], html)
+        self.assertIn(f'<meta name="td-mcp-switch" content="{strings["mcp_switch"]}">', html)
+        self.assertIn(f'<meta name="description" content="{strings["description"]}">', html)
+        self.assertIn(f'title="{strings["light_toggle"]}"', html)
+        self.assertIn(f'title="{strings["dark_toggle"]}"', html)
+        self.assertIn(f'<p class="admonition-title">{strings["note"]}</p>', html)
+
+    def test_english_page_has_no_banner_and_the_english_tooltip(self):
+        html = (self.SITE / "editor" / "brushes.html").read_text(encoding="utf-8")
+        self.assertNotIn("md-banner", html)
+        self.assertIn(f'<meta name="td-mcp-switch" content="{CONFIG["project"]["extra"]["mcp_switch"]}">', html)
+
+    def test_every_language_page_has_its_own_notice(self):
+        for code, _, _ in bs.languages(CONFIG):
+            strings = bs.load_strings(bs.ROOT / "docs", code)
+            html = htmllib.unescape((self.SITE / code / "index.html").read_text(encoding="utf-8"))
+            self.assertEqual(html.count('class="md-banner"'), 1, code)
+            self.assertIn(strings["notice"], html, code)
+
+    def test_heading_ids_stay_english(self):
+        for code, _, _ in bs.languages(CONFIG):
+            self.assertIn('id="reshape"', (self.SITE / code / "editor" / "brushes.html").read_text(encoding="utf-8"),
+                          code)
 
     def test_language_button_keeps_the_page(self):
         html = (self.SITE / "ru" / "editor" / "brushes.html").read_text(encoding="utf-8")
@@ -545,6 +636,106 @@ class BuiltSiteTest(unittest.TestCase):
     def test_language_sites_stay_small(self):
         for code, _, _ in bs.languages(CONFIG):
             self.assertLess(bs.compressed_size(self.SITE / code), bs.LANGUAGE_SIZE_LIMIT, code)
+
+
+@unittest.skipUnless(importlib.util.find_spec("zensical"), "needs zensical, pip install -r docs/requirements.txt")
+class FallbackBuildTest(unittest.TestCase):
+    """Builds a small German site, so the fallback page is checked whatever the real translations have reached."""
+
+    BRUSHES = "# Brushes\n\nDraw one.\n\n## Reshape { #reshape }\n\nDrag a face.\n"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = pathlib.Path(tmp.name)
+        self.docs = self.root / "docs"
+        real = bs.ROOT / "docs"
+        for folder in ("overrides", "javascripts", "stylesheets"):
+            shutil.copytree(real / folder, self.docs / folder)
+        de = self.docs / "translations" / "de"
+        for file in ("assets/logo.png", "translations/de/site.toml"):
+            (self.docs / file).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(real / file, self.docs / file)
+        toml = de / "site.toml"
+        toml.write_bytes(re.sub(r'(?m)^mcp_switch = .*$', r'mcp_switch = "MCP \\"zeigen\\""',
+                                toml.read_text(encoding="utf-8")).encode("utf-8"))
+        write(self.docs / "SUMMARY.md", "* [Introduction](README.md)\n* Editor\n    * [Brushes](editor/brushes.md)\n"
+              "    * [Faces](editor/faces.md)\n")
+        write(self.docs / "README.md", "# Intro\n\nHello.\n")
+        write(self.docs / "editor" / "brushes.md", self.BRUSHES + "\nA sentence added later.\n")
+        write(self.docs / "editor" / "faces.md", "# Faces\n\n## Pick { #pick }\n")
+        write(de / "README.md", stamped("# Intro\n\nHello.\n", "# Einführung\n\nHallo.\n"))
+        write(de / "editor" / "brushes.md", stamped(self.BRUSHES, "# Brushes\n\n## Umformen { #reshape }\n"))
+        self.strings = bs.load_strings(self.docs, "de")
+        with mock.patch.object(bs, "ROOT", self.root), contextlib.redirect_stdout(io.StringIO()):
+            bs.build_language(CONFIG, self.docs, "de", self.root / "_site")
+        self.site = self.root / "_site" / "de"
+
+    def page(self, name):
+        return htmllib.unescape((self.site / name).read_text(encoding="utf-8"))
+
+    def test_outdated_and_missing_pages_show_the_english_text_with_the_note(self):
+        for name, english, heading in [("editor/brushes.html", "A sentence added later.", 'id="reshape"'),
+                                       ("editor/faces.html", "Pick", 'id="pick"')]:
+            html = self.page(name)
+            self.assertIn(self.strings["fallback"], html, name)
+            self.assertIn(f'<p class="admonition-title">{self.strings["note"]}</p>', html, name)
+            self.assertIn(english, html, name)
+            self.assertIn(heading, html, name)
+            self.assertNotIn("Umformen", html, name)
+
+    def test_a_language_site_over_the_limit_stops_the_build(self):
+        def build(size):
+            with mock.patch.object(bs, "ROOT", self.root), mock.patch.object(bs, "compressed_size", return_value=size),                     contextlib.redirect_stdout(io.StringIO()) as out:
+                bs.build_language(CONFIG, self.docs, "de", self.root / "_site")
+            return out.getvalue()
+
+        self.assertIn("de: 1 of 3 pages translated, 6.0 MB compressed", build(bs.LANGUAGE_SIZE_LIMIT))
+        with self.assertRaises(SystemExit) as stop:
+            build(bs.LANGUAGE_SIZE_LIMIT + 1)
+        self.assertIn("The de site is over 6 MB compressed", str(stop.exception))
+
+    def test_a_quote_in_the_mcp_switch_text_stays_inside_the_meta(self):
+        html = (self.site / "index.html").read_text(encoding="utf-8")
+        meta = re.search(r'<meta name="td-mcp-switch" content="([^"]*)">', html)
+        self.assertEqual(htmllib.unescape(meta[1]), 'MCP "zeigen"')
+
+    def test_current_page_is_the_translation_without_the_note(self):
+        html = self.page("index.html")
+        self.assertIn("Hallo.", html)
+        self.assertNotIn(self.strings["fallback"], html)
+        self.assertNotIn("Hello.", html)
+
+
+@unittest.skipUnless(shutil.which("node"), "needs node")
+class GlossaryPatternTest(unittest.TestCase):
+    """Runs the term pattern of docs/javascripts/td.js, the hover cards link what it matches."""
+
+    def matches(self, names, texts):
+        source = (bs.ROOT / "docs" / "javascripts" / "td.js").read_text(encoding="utf-8")
+        start = source.index("  var WORD =")
+        end = source.index("\n  }\n", source.index("function termPattern")) + 4
+        script = source[start:end] + """
+var names = %s.sort(function (a, b) { return b.length - a.length; });
+var re = new RegExp(names.map(termPattern).join("|"), "giu");
+console.log(JSON.stringify(%s.map(function (t) { return t.match(re) || []; })));
+""" % (json.dumps(names), json.dumps(texts))
+        run = subprocess.run(["node", "-e", script], capture_output=True, encoding="utf-8", check=True)
+        return json.loads(run.stdout)
+
+    def test_latin_terms_against_kana_and_kanji(self):
+        texts = ["MCPサーバーを起動", "このUVを固定", "用MCP", "ブラシのUV lockを", "FGDファイルとUV"]
+        self.assertEqual(self.matches(["MCP", "UV", "UV lock", "FGD", "ブラシ"], texts),
+                         [["MCP"], ["UV"], ["MCP"], ["ブラシ", "UV lock"], ["FGD", "UV"]])
+
+    def test_latin_terms_stay_whole_words_next_to_latin_letters_and_digits(self):
+        texts = ["The MCP server", "MCPs and EMCP", "FGD2 or _UV", "UV lock, UV", "nothing here"]
+        self.assertEqual(self.matches(["MCP", "UV", "UV lock", "FGD"], texts),
+                         [["MCP"], [], [], ["UV lock", "UV"], []])
+
+    def test_cjk_terms_match_inside_cjk_text_and_against_latin(self):
+        self.assertEqual(self.matches(["ブラシ", "笔刷"], ["大ブラシ箱", "Xブラシ", "这个笔刷很好"]),
+                         [["ブラシ"], ["ブラシ"], ["笔刷"]])
 
 
 if __name__ == "__main__":

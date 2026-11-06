@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 
+{#- The AI translation notice, set per language by tools/build_site.py. English has none and shows no banner. -#}
+{% block announce -%}
+  {%- if config.extra.notice %}{{ config.extra.notice }}{% endif -%}
+{%- endblock %}
+
 {% block extrahead %}
+  <meta name="td-mcp-switch" content="{{ config.extra.mcp_switch | e }}">
   {% set image = (config.extra.root_url or config.site_url) ~ "assets/brand/meta-og-1200x630.png" %}
   <meta property="og:type" content="website">
   <meta property="og:title" content="{{ page.title ~ ' - ' ~ config.site_name if page and page.title and page.url not in ['', 'index.html'] else config.site_name }}">

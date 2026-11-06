@@ -1,2 +1,11 @@
-# Strings of the ru site. The nav, the labels and the notices are added with the translations.
+# Strings of the Russian site that are not pages. The nav and the translated pages are added with the content.
 theme_language = "ru"
+description = "Редактор уровней для Godot на основе брашей"
+light_toggle = "Переключиться на тёмную тему"
+dark_toggle = "Переключиться на светлую тему"
+mcp_switch = "Показать части документации об управлении редактором через MCP, для ИИ-агентов и скриптов"
+notice = "Этот перевод написан ИИ, и носитель языка его пока не проверял. Если что-то звучит странно, ориентируйтесь на английскую страницу, а исправления приветствуются на GitHub."
+fallback = "Эта страница ещё не переведена на русский, или английская страница изменилась с тех пор. Вы читаете английскую версию."
+note = "Примечание"
+tip = "Совет"
+warning = "Предупреждение"

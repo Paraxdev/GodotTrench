@@ -33,7 +33,8 @@
     if (!header || header.querySelector(".td-mcp-switch")) return;
     var label = document.createElement("label");
     label.className = "td-mcp-switch";
-    label.title = "Show the parts of these docs about driving the editor over MCP, for AI agents and scripts";
+    var tip = document.querySelector('meta[name="td-mcp-switch"]');
+    if (tip) label.title = tip.content;
     label.innerHTML = '<input type="checkbox"><span class="td-mcp-track"><span class="td-mcp-knob"></span></span>MCP';
     label.querySelector("input").addEventListener("change", function () {
       setMcpShown(this.checked);
@@ -87,6 +88,18 @@
     });
   }
 
+  // A term edge next to a letter or digit is part of a longer word, except next to scripts that write no spaces, where
+  // a term sits right against the text around it, Latin ones too (MCPサーバー).
+  var WORD = "(?![\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}])[\\p{L}\\p{N}_]";
+  function termPattern(name) {
+    var escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    var guarded = function (ch) {
+      return new RegExp("^" + WORD, "u").test(ch);
+    };
+    return (guarded(name[0]) ? "(?<!" + WORD + ")" : "") + escaped +
+      (guarded(name[name.length - 1]) ? "(?!" + WORD + ")" : "");
+  }
+
   // The glossary page is the single source: its h2 headings are the terms and the paragraph under each the card text.
   var glossary = null;
   function loadGlossary() {
@@ -110,18 +123,21 @@
           });
           name = name.trim();
           var text = def.textContent.replace(/\s+/g, " ").trim();
-          entries[name.toLowerCase()] = { href: url.href + "#" + h.id, text: text };
-          names.push(name);
+          var entry = { href: url.href + "#" + h.id, text: text };
+          // Inflected forms of the term, for languages where the word changes with the sentence.
+          var forms = (h.getAttribute("data-forms") || "").split("|");
+          [name].concat(forms).forEach(function (form) {
+            form = form.trim();
+            if (!form) return;
+            entries[form.toLowerCase()] = entry;
+            names.push(form);
+          });
         });
         // Longest first, so "UV lock" wins over "UV" and "brush entity" over "brush".
         names.sort(function (a, b) {
           return b.length - a.length;
         });
-        var parts = names.map(function (name) {
-          var escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          return (/^\w/.test(name) ? "(?<!\\w)" : "") + escaped + (/\w$/.test(name) ? "(?!\\w)" : "");
-        });
-        return { entries: entries, re: new RegExp(parts.join("|"), "gi") };
+        return { entries: entries, re: new RegExp(names.map(termPattern).join("|"), "giu") };
       })
       .catch(function () {
         glossary = null;
@@ -156,10 +172,10 @@
       var m;
       g.re.lastIndex = 0;
       while ((m = g.re.exec(node.nodeValue))) {
-        var key = m[0].toLowerCase();
-        if (seen[key] || !g.entries[key]) continue;
-        seen[key] = true;
-        found.push({ at: m.index, text: m[0], entry: g.entries[key] });
+        var entry = g.entries[m[0].toLowerCase()];
+        if (!entry || seen[entry.href]) continue;
+        seen[entry.href] = true;
+        found.push({ at: m.index, text: m[0], entry: entry });
       }
       // From the back, so the earlier offsets stay valid while the node is split.
       for (var i = found.length - 1; i >= 0; i--) {
@@ -275,6 +291,23 @@
       });
     });
   }
+
+  // The theme renders the language links once, but instant navigation changes the page under them. So a click builds the
+  // link from where the reader is now, the same page and heading in the other language. It runs in the capture phase,
+  // before the instant navigation reads the link. The 404 page has no canonical link and keeps the language home.
+  document.addEventListener(
+    "click",
+    function (e) {
+      var link = e.target.closest && e.target.closest(".md-select__link");
+      if (!link) return;
+      var target = link.dataset.root;
+      if (document.querySelector("link[rel=canonical]")) {
+        target += location.pathname.slice(__md_scope.pathname.length);
+      }
+      link.href = target + location.hash;
+    },
+    true
+  );
 
   window.addEventListener("hashchange", followOldAnchor);
 

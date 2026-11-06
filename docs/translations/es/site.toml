@@ -1,2 +1,11 @@
-# Strings of the es site. The nav, the labels and the notices are added with the translations.
+# Strings of the Spanish site that are not pages. The nav and the translated pages are added with the content.
 theme_language = "es"
+description = "Un editor de niveles basado en brushes para Godot"
+light_toggle = "Cambiar al modo oscuro"
+dark_toggle = "Cambiar al modo claro"
+mcp_switch = "Mostrar las partes de esta documentación sobre cómo controlar el editor por MCP, para agentes de IA y scripts"
+notice = "Esta traducción la escribió una IA y todavía ningún hablante nativo la ha revisado. Si algo suena raro, la página en inglés es la referencia, y las correcciones son bienvenidas en GitHub."
+fallback = "Esta página todavía no está traducida al español, o la página en inglés ha cambiado desde entonces. Estás leyendo la versión en inglés."
+note = "Nota"
+tip = "Consejo"
+warning = "Advertencia"

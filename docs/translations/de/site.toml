@@ -1,2 +1,11 @@
-# Strings of the de site. The nav, the labels and the notices are added with the translations.
+# Strings of the German site that are not pages. The nav and the translated pages are added with the content.
 theme_language = "de"
+description = "Ein Level-Editor für Godot, der mit Brushes arbeitet"
+light_toggle = "Zum dunklen Modus wechseln"
+dark_toggle = "Zum hellen Modus wechseln"
+mcp_switch = "Die Teile dieser Doku anzeigen, in denen es um die Steuerung des Editors per MCP geht, für KI-Agenten und Skripte"
+notice = "Diese Übersetzung stammt von einer KI und noch hat keine Muttersprachlerin und kein Muttersprachler sie geprüft. Wenn etwas komisch klingt, gilt die englische Seite, und Korrekturen sind auf GitHub willkommen."
+fallback = "Diese Seite ist noch nicht ins Deutsche übersetzt, oder die englische Seite hat sich seitdem geändert. Du liest die englische Fassung."
+note = "Hinweis"
+tip = "Tipp"
+warning = "Warnung"
