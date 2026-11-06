@@ -3296,6 +3296,39 @@ fn the_token_checkbox_takes_effect_at_once() {
     assert_eq!(status(&ed, ""), "HTTP/1.1 200 OK");
 }
 
+/// The Theme row in Preferences opens a list whose entries switch the interface, System included, and the closed row
+/// names the theme System resolves to.
+#[test]
+#[ignore]
+fn preferences_switch_the_theme() {
+    let ed = Editor::launch("prefs_theme");
+    open_preferences(&ed);
+    let click = |name: &str| {
+        let rect = ed.state()["ui"]["mcp_prefs"][name].clone();
+        let r: Vec<f64> = rect.as_array().unwrap_or_else(|| panic!("no {name} in Preferences: {rect}")).iter().map(|v| v.as_f64().unwrap()).collect();
+        ed.input("window", json!([{ "type": "click", "x": (r[0] + r[2]) / 2.0, "y": (r[1] + r[3]) / 2.0 }]));
+        std::thread::sleep(Duration::from_millis(300));
+    };
+    let ui_state = |key: &str| ed.state()["ui"][key].as_str().unwrap_or_default().to_string();
+    assert!(ed.state()["ui"]["mcp_prefs"]["theme_light"].is_null(), "the list starts closed");
+    assert_eq!((ui_state("theme"), ui_state("theme_active")), ("dark".into(), "dark".into()));
+
+    click("theme");
+    click("theme_light");
+    assert_eq!((ui_state("theme"), ui_state("theme_active")), ("light".into(), "light".into()));
+    assert!(ed.state()["ui"]["mcp_prefs"]["theme_light"].is_null(), "picking an entry closes the list");
+
+    click("theme");
+    click("theme_system");
+    assert_eq!(ui_state("theme"), "system");
+    let active = ui_state("theme_active");
+    assert!(["dark", "light"].contains(&active.as_str()), "{active}");
+
+    click("theme");
+    click("theme_dark");
+    assert_eq!((ui_state("theme"), ui_state("theme_active")), ("dark".into(), "dark".into()));
+}
+
 fn open_preferences(ed: &Editor) {
     ed.input("window", json!([{ "type": "key", "key": "F1" }, { "type": "text", "text": "preferences" }, { "type": "key", "key": "Enter" }]));
     assert!(window_titles(ed).contains(&"Preferences".to_string()), "{:?}", window_titles(ed));

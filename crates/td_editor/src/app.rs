@@ -1591,6 +1591,15 @@ impl App {
                         }
                     }
                 });
+                sub_menu(ui, None, "Theme", |ui| {
+                    for t in crate::state::UiTheme::ALL {
+                        let button = menu_choice(ui, None, t.label(), m.shortcut(&Action::SetTheme(t)), self.state.prefs.theme == t);
+                        if ui.add(button).clicked() {
+                            m.actions.push(Action::SetTheme(t));
+                            ui.close();
+                        }
+                    }
+                });
                 sub_menu(ui, None, "Cordon", |ui| {
                     m.item(ui, None, "Set Cordon from Selection", Action::SetCordonFromSelection);
                     m.toggle(ui, "Cordon Enabled", self.state.doc.map.editor.cordon_enabled, Action::ToggleCordon);
@@ -2212,7 +2221,32 @@ impl App {
         }
     }
 
+    fn theme_pref(&mut self, ui: &mut Ui) {
+        use crate::state::UiTheme;
+        let p = &mut self.state.prefs;
+        let selected = match p.theme {
+            UiTheme::System => format!("System ({})", if ui.visuals().dark_mode { "Dark" } else { "Light" }),
+            theme => theme.label().to_string(),
+        };
+        ui.label("Theme");
+        let combo = egui::ComboBox::from_id_salt("prefs_theme").selected_text(selected).show_ui(ui, |ui| {
+            for theme in UiTheme::ALL {
+                let item = ui.selectable_value(&mut p.theme, theme, theme.label());
+                let name = match theme {
+                    UiTheme::Dark => "theme_dark",
+                    UiTheme::Light => "theme_light",
+                    UiTheme::System => "theme_system",
+                };
+                self.mcp_pref_rects.push((name, item.rect));
+            }
+        });
+        self.mcp_pref_rects.push(("theme", combo.response.rect));
+        combo.response.on_hover_text("Dark or light interface. System follows the operating system and changes with it. The 3D view stays dark either way");
+        ui.end_row();
+    }
+
     fn ui_scale_prefs(&mut self, ui: &mut Ui) {
+        self.theme_pref(ui);
         let native = ui.ctx().native_pixels_per_point().unwrap_or(1.0);
         let p = &mut self.state.prefs;
         ui.label("Interface scale");
