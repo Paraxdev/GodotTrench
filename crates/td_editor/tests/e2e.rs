@@ -306,6 +306,7 @@ fn a_held_drag_keeps_its_modifiers_until_the_release() {
     std::thread::sleep(Duration::from_millis(500));
     let (min, max) = ed.selection_bounds();
     assert!(approx(&[min[0], max[0]], &[-48.0, 48.0]), "Alt stays down between calls {min:?} {max:?}");
+    assert_eq!(ed.state()["ui"]["modifiers"], json!(["alt"]));
     ed.input("top", json!([{ "type": "move", "world": [64, 0, 0] }]));
     let (min, max) = ed.selection_bounds();
     assert!(approx(&[min[0], max[0]], &[-64.0, 64.0]), "a later move still scales from the center {min:?} {max:?}");
@@ -313,6 +314,8 @@ fn a_held_drag_keeps_its_modifiers_until_the_release() {
     assert_eq!(reply["held"], false);
     let (min, max) = ed.selection_bounds();
     assert!(approx(&[min[0], max[0]], &[-64.0, 64.0]), "the release keeps the scale under the pointer {min:?} {max:?}");
+    // Every simulate_input step sets its own modifiers, so only a call between scripts sees what the release left down.
+    assert_eq!(ed.state()["ui"]["modifiers"], json!([]), "Alt was let go with the release");
 
     let drag = json!({ "type": "drag", "world": [64, 0, 0], "to_world": [80, 0, 0], "release": false });
     assert_eq!(ed.call("simulate_input", json!({ "target": "top", "events": [drag] }))["held"], true);

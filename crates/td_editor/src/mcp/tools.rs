@@ -753,7 +753,13 @@ impl App {
         }
 
         match name {
-            "get_state" => ok(self.state_summary()),
+            "get_state" => {
+                let mut state = self.state_summary();
+                let m = ctx.input(|i| i.modifiers);
+                state["ui"]["modifiers"] =
+                    json!([("ctrl", m.ctrl), ("shift", m.shift), ("alt", m.alt)].into_iter().filter(|k| k.1).map(|k| k.0).collect::<Vec<_>>());
+                ok(state)
+            }
             "project_content" if args["install"] == "gameplay" => match crate::entity_pack::install_in_project(&mut self.state) {
                 Ok(report) => ok(json!({ "added": report.added.len(), "updated": report.updated.len(), "kept": report.kept, "summary": report.summary() })),
                 Err(e) => err(e),

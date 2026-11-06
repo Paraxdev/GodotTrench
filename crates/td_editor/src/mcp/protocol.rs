@@ -128,7 +128,7 @@ pub fn tool_definitions() -> Vec<Value> {
     vec![
         json!({
             "name": "get_state",
-            "description": "Editor state: open map, modified flag, counts, selection, grid, tool, cameras, game config.",
+            "description": "Editor state: open map, modified flag, counts, selection, grid, tool, cameras, held modifier keys, game config.",
             "inputSchema": { "type": "object", "properties": {} }
         }),
         json!({
