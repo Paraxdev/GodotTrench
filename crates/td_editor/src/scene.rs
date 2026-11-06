@@ -401,7 +401,7 @@ fn register_model_textures(renderer: &mut Renderer, model: &crate::models::Model
     }
 }
 
-fn node_materials(node: &td_doc::Node, needed: &mut BTreeSet<String>) {
+fn node_materials(node: &td_doc::Node, game: &GameConfig, needed: &mut BTreeSet<String>) {
     match &node.kind {
         NodeKind::Brush(b) => needed.extend(b.faces.iter().map(|f| f.data.material.clone())),
         NodeKind::Mesh(m) => {
@@ -411,7 +411,7 @@ fn node_materials(node: &td_doc::Node, needed: &mut BTreeSet<String>) {
             }
         }
         NodeKind::Terrain(t) => needed.extend(t.layers.iter().map(|l| l.material.clone())),
-        NodeKind::Entity(e) => needed.extend(decal_sources(e)),
+        NodeKind::Entity(e) if is_decal(game.entity(&e.classname)) => needed.extend(decal_sources(e)),
         NodeKind::Scatter(s) => needed.extend((0..s.items.len()).filter_map(|i| s.item_material(i)).map(str::to_string)),
         _ => {}
     }
@@ -1651,7 +1651,7 @@ impl SceneCache {
         needed.extend(blend_pairs.iter().map(|(_, b)| b.clone()));
         for id in &dirty {
             let Some(node) = map.get(*id) else { continue };
-            node_materials(node, &mut needed);
+            node_materials(node, &state.game, &mut needed);
             if let NodeKind::Instance(i) = &node.kind
                 && let Some(p) = prefabs::resolve(&i.path, state.doc.path.as_deref(), state.game.project_root.as_deref())
             {
@@ -1669,7 +1669,7 @@ impl SceneCache {
 
             if let Some(prefab) = state.prefabs.get(&path).map.clone() {
                 for (_, n) in prefabs::exported_nodes(&prefab) {
-                    node_materials(n, &mut needed);
+                    node_materials(n, &state.game, &mut needed);
                     match &n.kind {
                         NodeKind::Instance(i) => {
                             if let Some(p) = prefabs::resolve(&i.path, Some(&path), state.game.project_root.as_deref()) {
@@ -2248,7 +2248,7 @@ mod tests {
         let layer = map.default_layer();
         let id = map.insert(layer, NodeKind::Scatter(set));
         let mut needed = BTreeSet::new();
-        node_materials(map.get(id).unwrap(), &mut needed);
+        node_materials(map.get(id).unwrap(), &GameConfig::builtin(), &mut needed);
         assert_eq!(needed, BTreeSet::from(["psx/bark".to_string(), "psx/leaves".to_string()]));
     }
 
@@ -2263,9 +2263,17 @@ mod tests {
         let mut map = Map::new();
         let layer = map.default_layer();
         let id = map.insert(layer, NodeKind::Entity(decal.clone()));
+        let game = GameConfig::with_gameplay_pack();
         let mut needed = BTreeSet::new();
-        node_materials(map.get(id).unwrap(), &mut needed);
+        node_materials(map.get(id).unwrap(), &game, &mut needed);
         assert_eq!(needed, BTreeSet::from([decal_key("base/stain"), "res://decals/crack.png".into()]));
+
+        let mut other = td_doc::entity::Entity::new("prop_model");
+        other.properties.insert("material".into(), "base/stain".into());
+        let other = map.insert(layer, NodeKind::Entity(other));
+        let mut needed = BTreeSet::new();
+        node_materials(map.get(other).unwrap(), &game, &mut needed);
+        assert!(needed.is_empty(), "only decal classes look up decal materials, {needed:?}");
 
         let footprint = Some([128.0, 96.0]);
         assert_eq!(decal_size(&decal, None), DVec3::new(64.0, 32.0, 64.0));
