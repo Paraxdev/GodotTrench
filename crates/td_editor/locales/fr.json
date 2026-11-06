@@ -1,1 +1,6 @@
-{}
+{
+  "Language": "Langue",
+  "Translations are written by AI and not checked by native speakers.": "Les traductions sont écrites par une IA et ne sont pas relues par des locuteurs natifs.",
+  "Language of menus, panels and messages. The manual stays in English.": "Langue des menus, panneaux et messages. Le manuel reste en anglais.",
+  "Language: {name}": "Langue : {name}"
+}

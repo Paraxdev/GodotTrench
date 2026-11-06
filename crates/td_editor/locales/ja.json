@@ -1,1 +1,6 @@
-{}
+{
+  "Language": "言語",
+  "Translations are written by AI and not checked by native speakers.": "翻訳はAIが作成したもので、ネイティブスピーカーの確認は受けていません。",
+  "Language of menus, panels and messages. The manual stays in English.": "メニュー、パネル、メッセージの言語です。マニュアルは英語のままです。",
+  "Language: {name}": "言語：{name}"
+}

@@ -119,6 +119,8 @@ pub struct App {
     pub(crate) mcp_off_at: Option<std::time::Instant>,
     /// Where the MCP settings in Preferences are, reported by get_state like `open_windows`.
     pub(crate) mcp_pref_rects: Vec<(&'static str, egui::Rect)>,
+    /// Whether the fonts the context holds put the Japanese Han forms first, see [`crate::fonts::cjk_order`].
+    japanese_first: bool,
     pub(crate) input_script: Option<InputScript>,
     pub(crate) held_drag: Option<HeldDrag>,
     /// A held drag that was dropped, egui hears its button and modifiers go up on the next frame.
@@ -737,6 +739,8 @@ impl App {
         let mcp_saved = crate::mcp::Saved::new(crate::mcp_saved_dir(args.default_prefs));
         prefs.mcp_require_token = mcp_saved.get(token::REQUIRE_FILE);
         prefs.mcp_enabled = !mcp_saved.get(switch::OFF_FILE);
+        let lang = prefs.lang();
+        crate::i18n::set(lang);
         let mut state = EditorState::new(prefs);
         state.stdio_mcp = args.mcp_stdio;
         let project = args.project.clone().or_else(|| state.prefs.recent_projects.first().cloned());
@@ -816,7 +820,7 @@ impl App {
         let dock: Option<DockState<Tab>> = if keep_prefs { cc.storage.and_then(|s| eframe::get_value(s, DOCK_KEY)).filter(valid_dock) } else { None };
         crate::theme::install(&cc.egui_ctx);
         cc.egui_ctx.set_theme(egui::Theme::Dark);
-        cc.egui_ctx.set_fonts(crate::fonts::definitions(crate::i18n::current()));
+        cc.egui_ctx.set_fonts(crate::fonts::definitions(lang));
         // UI scale shortcuts go through the keymap so they are rebindable and saved in the preferences.
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
         icons::install(&cc.egui_ctx);
@@ -853,6 +857,7 @@ impl App {
             mcp_env_off: startup.off == Some(switch::OffBy::Env),
             mcp_off_at: None,
             mcp_pref_rects: Vec::new(),
+            japanese_first: crate::fonts::cjk_order(lang),
             input_script: None,
             held_drag: None,
             dropped_drag: None,
@@ -2255,6 +2260,7 @@ impl App {
 
     fn ui_scale_prefs(&mut self, ui: &mut Ui) {
         self.theme_pref(ui);
+        language_pref(ui, &mut self.state.prefs);
         let native = ui.ctx().native_pixels_per_point().unwrap_or(1.0);
         let p = &mut self.state.prefs;
         ui.label("Interface scale");
@@ -2723,6 +2729,52 @@ impl TabViewer for Tabs<'_> {
     }
 }
 
+/// Makes `lang` the language this frame draws in, and reloads the fonts when the Han forms to prefer changed.
+fn sync_language(ctx: &egui::Context, lang: crate::i18n::Lang, japanese_first: &mut bool) {
+    crate::i18n::set(lang);
+    let want = crate::fonts::cjk_order(lang);
+    if want != *japanese_first {
+        *japanese_first = want;
+        ctx.set_fonts(crate::fonts::definitions(lang));
+    }
+}
+
+/// The Language rows of Preferences. A language other than English adds the English word to the label, so someone who
+/// picked a language they cannot read can find the way back.
+fn language_pref(ui: &mut Ui, prefs: &mut Prefs) {
+    use crate::i18n::{Lang, tr};
+    let lang = prefs.lang();
+    let mut label = egui::text::LayoutJob::default();
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    label.append(tr("Language"), 0.0, egui::TextFormat::simple(font.clone(), ui.visuals().text_color()));
+    if lang != Lang::En {
+        label.append(" (Language)", 0.0, egui::TextFormat::simple(font, ui.visuals().weak_text_color()));
+    }
+
+    ui.label(label);
+    let mut picked = None;
+    let combo = egui::ComboBox::from_id_salt("prefs_language").selected_text(lang.name()).show_ui(ui, |ui| {
+        for l in Lang::ALL {
+            if ui.selectable_label(l == lang, l.name()).clicked() {
+                picked = Some(l);
+            }
+        }
+    });
+    combo.response.on_hover_text(tr("Language of menus, panels and messages. The manual stays in English."));
+    if let Some(picked) = picked {
+        prefs.language = picked.code().into();
+        ui.ctx().request_repaint();
+    }
+
+    ui.end_row();
+    ui.label("");
+    ui.scope(|ui| {
+        ui.set_max_width(260.0);
+        ui.add(egui::Label::new(RichText::new(tr("Translations are written by AI and not checked by native speakers.")).small().weak()).wrap());
+    });
+    ui.end_row();
+}
+
 impl eframe::App for App {
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         self.feed_input_script(raw_input);
@@ -2732,6 +2784,7 @@ impl eframe::App for App {
         let ctx = ui.ctx().clone();
         self.apply_ui_scale(&ctx);
         self.apply_theme(&ctx);
+        sync_language(&ctx, self.state.prefs.lang(), &mut self.japanese_first);
         self.fit_window_to_monitor(&ctx);
         self.tools.sync(&self.state);
         self.state.tick_godot(&ctx);
@@ -2995,6 +3048,93 @@ fn stored_prefs(prefs: &Prefs, run_ports: [Option<(u16, u16)>; 2]) -> Prefs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use egui::accesskit::Role;
+    use egui_kittest::kittest::Queryable;
+
+    fn language_harness(language: &str) -> egui_kittest::Harness<'static, Prefs> {
+        let prefs = Prefs { language: language.into(), fly_speed: 77.0, ..Prefs::default() };
+        egui_kittest::Harness::builder().with_size(egui::vec2(700.0, 500.0)).build_ui_state(
+            |ui, prefs: &mut Prefs| {
+                crate::i18n::set(prefs.lang());
+                egui::Grid::new("language_rows").num_columns(2).show(ui, |ui| language_pref(ui, prefs));
+            },
+            prefs,
+        )
+    }
+
+    #[test]
+    fn the_language_row_picks_a_language_and_switches_its_own_words() {
+        let _reset = crate::i18n::scope(crate::i18n::Lang::En);
+        let mut harness = language_harness("en");
+        harness.run();
+        assert!(harness.query_by_label("Language").is_some());
+        assert!(harness.query_by_label("Translations are written by AI and not checked by native speakers.").is_some());
+        assert!(harness.query_by_label_contains("(Language)").is_none(), "English needs no pointer back");
+
+        assert_eq!(harness.get_by_role(Role::ComboBox).value().as_deref(), Some("English"));
+        harness.get_by_role(Role::ComboBox).click();
+        harness.run();
+        for name in ["Deutsch", "Français", "Español", "Português", "Русский", "简体中文", "日本語"] {
+            assert!(harness.query_by_label(name).is_some(), "{name} is not in the list");
+        }
+
+        assert!(harness.query_by_label("English").is_some(), "the entry for the current language");
+
+        harness.get_by_label("Deutsch").click();
+        harness.run();
+        harness.run();
+        assert_eq!(harness.state().language, "de");
+        assert_eq!(harness.state().fly_speed, 77.0, "the other preferences stay");
+        assert!(harness.query_by_label("Sprache (Language)").is_some());
+        assert!(harness.query_by_label("Language").is_none());
+        assert!(harness.query_by_label_contains("Muttersprachlern").is_some());
+        assert_eq!(harness.get_by_role(Role::ComboBox).value().as_deref(), Some("Deutsch"));
+
+        harness.get_by_role(Role::ComboBox).click();
+        harness.run();
+        harness.get_by_label("日本語").click();
+        harness.run();
+        harness.run();
+        assert_eq!(harness.state().language, "ja");
+        assert!(harness.query_by_label("言語 (Language)").is_some());
+    }
+
+    #[test]
+    fn an_unknown_saved_language_shows_english_and_is_kept_until_one_is_picked() {
+        let _reset = crate::i18n::scope(crate::i18n::Lang::En);
+        let mut harness = language_harness("xx");
+        harness.run();
+        harness.run();
+        assert_eq!(harness.state().language, "xx", "drawing the row does not rewrite it");
+        assert!(harness.query_by_label("Language").is_some());
+        assert_eq!(harness.get_by_role(Role::ComboBox).value().as_deref(), Some("English"));
+
+        harness.get_by_role(Role::ComboBox).click();
+        harness.run();
+        harness.get_by_label("English").click();
+        harness.run();
+        assert_eq!(harness.state().language, "en", "picking English replaces the unknown code");
+    }
+
+    #[test]
+    fn the_fonts_reload_only_when_the_han_order_changes() {
+        use crate::i18n::Lang;
+        let _reset = crate::i18n::scope(Lang::En);
+        let ctx = egui::Context::default();
+        let mut japanese_first = false;
+        let mut sync = |lang| {
+            let before = japanese_first;
+            sync_language(&ctx, lang, &mut japanese_first);
+            assert_eq!(crate::i18n::current(), lang);
+            before != japanese_first
+        };
+        assert!(!sync(Lang::De));
+        assert!(!sync(Lang::ZhHans));
+        assert!(sync(Lang::Ja));
+        assert!(!sync(Lang::Ja));
+        assert!(sync(Lang::Ru), "leaving Japanese puts the Chinese forms first again");
+        assert!(!sync(Lang::En));
+    }
 
     #[test]
     fn ports_from_the_command_line_are_never_saved() {

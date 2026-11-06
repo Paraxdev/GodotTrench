@@ -3500,6 +3500,39 @@ fn preferences_switch_the_theme() {
     assert_eq!((ui_state("theme"), ui_state("theme_active")), ("dark".into(), "dark".into()));
 }
 
+/// The palette lists a command per language. Running one redraws Preferences in that language while MCP keeps reading
+/// English, and "english" in the palette brings the English window back exactly.
+#[test]
+#[ignore]
+fn the_palette_switches_the_language_and_english_comes_back() {
+    let ed = Editor::launch("palette_language");
+    open_preferences(&ed);
+    let run = |query: &str| {
+        ed.input(
+            "window",
+            json!([{ "type": "move", "x": 10, "y": 10 }, { "type": "key", "key": "F1" }, { "type": "text", "text": query }, { "type": "key", "key": "Enter" }]),
+        );
+        std::thread::sleep(Duration::from_millis(500));
+    };
+    let body = |img: &image::RgbaImage| image::imageops::crop_imm(img, 0, 0, img.width(), img.height() - 40).to_image();
+    let window = |label: &str| body(&shot(&ed, json!({ "target": "window" }), label));
+    let english = window("english");
+
+    run("language: deutsch");
+    assert_eq!(ed.state()["status"], "Language: Deutsch");
+    assert_eq!(window_titles(&ed).iter().filter(|t| *t == "Preferences").count(), 1, "{:?}", window_titles(&ed));
+    let german = window("german");
+    assert!(image_difference(&english, &german) > 0.01, "Preferences did not change");
+
+    run("language: 日本語");
+    assert_eq!(ed.state()["status"], "Language: 日本語");
+    assert!(image_difference(&german, &window("japanese")) > 0.01);
+
+    run("language: english");
+    assert_eq!(ed.state()["status"], "Language: English");
+    assert_eq!(image_difference(&english, &window("english_again")), 0.0);
+}
+
 /// The palette and the dialogs it opens work with the light colors, and the palette frame is light too.
 #[test]
 #[ignore]

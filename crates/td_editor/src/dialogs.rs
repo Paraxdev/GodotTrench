@@ -186,6 +186,10 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         out.push((format!("View: Theme: {}", t.label()), Action::SetTheme(t)));
     }
 
+    for l in crate::i18n::Lang::ALL {
+        out.push((format!("View: Language: {}", l.name()), Action::SetLanguage(l)));
+    }
+
     for j in td_geom::Justify::ALL {
         out.push((format!("Texture: Justify {}", j.label()), Action::Justify(j)));
     }
@@ -1127,6 +1131,21 @@ mod tests {
         dialog.text.text = "Ö".into();
         assert!(dialog.generate(&corner, "m").is_empty(), "unsupported letters create nothing");
         assert!(dialog.text.brushes(DVec3::ZERO, "m").unwrap_err().contains("no block letter"));
+    }
+
+    #[test]
+    fn the_palette_lists_every_language() {
+        let state = EditorState::new(crate::state::Prefs::default());
+        let entries = palette_entries(&state);
+        let languages: Vec<_> = entries.iter().filter(|(_, a)| matches!(a, Action::SetLanguage(_))).collect();
+        assert_eq!(languages.len(), crate::i18n::Lang::ALL.len());
+        for l in crate::i18n::Lang::ALL {
+            assert!(languages.iter().any(|(label, a)| *a == Action::SetLanguage(l) && *label == format!("View: Language: {}", l.name())));
+        }
+
+        let hits = |q: &str| entries.iter().filter(|(label, _)| fuzzy_score(q, label).is_some() && label.starts_with("View: Language")).count();
+        assert_eq!(hits("language deutsch"), 1);
+        assert_eq!(hits("language"), 8);
     }
 
     #[test]

@@ -346,6 +346,8 @@ pub struct Prefs {
     /// How crisp the de-tiled blend material stays, 0 softest and 1 crispest.
     pub blend_detile_sharpen: f64,
     pub theme: UiTheme,
+    /// Language code of the interface. Kept as text so an unknown code from a newer release survives a save, see [`Self::lang`].
+    pub language: String,
     /// Size of the whole interface, 1.0 is 100%.
     pub ui_scale: f32,
     /// Multiply `ui_scale` by the monitor's scaling. When off, `ui_scale` is the exact pixels per point.
@@ -380,6 +382,11 @@ pub const UI_SCALE_MIN: f32 = 0.5;
 pub const UI_SCALE_MAX: f32 = 3.0;
 
 impl Prefs {
+    /// The language the interface draws in, English for a code this release does not know.
+    pub fn lang(&self) -> crate::i18n::Lang {
+        crate::i18n::Lang::from_code(&self.language).unwrap_or(crate::i18n::Lang::En)
+    }
+
     pub fn ui_zoom_factor(&self, native_pixels_per_point: f32) -> f32 {
         let scale = self.ui_scale.clamp(UI_SCALE_MIN, UI_SCALE_MAX);
         if self.follow_display_scaling { scale } else { scale / native_pixels_per_point.max(0.25) }
@@ -449,6 +456,7 @@ impl Default for Prefs {
             blend_detile: 0.6,
             blend_detile_sharpen: 0.5,
             theme: UiTheme::Dark,
+            language: crate::i18n::Lang::En.code().into(),
             ui_scale: 1.0,
             follow_display_scaling: true,
             help_text: true,
@@ -1943,6 +1951,29 @@ mod tests {
             assert!(saved.contains(&format!(r#""theme":"{}""#, t.id())), "{saved}");
             assert_eq!(load(&saved).theme, t);
         }
+    }
+
+    #[test]
+    fn the_language_pref_loads_and_saves_by_code() {
+        use crate::i18n::Lang;
+        let load = |json: &str| serde_json::from_str::<Prefs>(json).unwrap();
+        assert_eq!(Prefs::default().language, "en");
+        let missing = load(r#"{"fly_speed": 100.0}"#);
+        assert_eq!((missing.language.as_str(), missing.lang(), missing.fly_speed), ("en", Lang::En, 100.0));
+        let de = load(r#"{"language": "de", "fly_speed": 100.0}"#);
+        assert_eq!((de.lang(), de.fly_speed), (Lang::De, 100.0));
+        let unknown = load(r#"{"language": "xx", "fly_speed": 100.0, "grid_alpha": 0.25}"#);
+        assert_eq!((unknown.lang(), unknown.fly_speed, unknown.grid_alpha), (Lang::En, 100.0, 0.25));
+        let saved = serde_json::to_string(&unknown).unwrap();
+        assert!(saved.contains(r#""language":"xx""#), "{saved}");
+        assert_eq!(load(&saved).fly_speed, 100.0);
+        for lang in Lang::ALL {
+            let saved = serde_json::to_string(&Prefs { language: lang.code().into(), ..Prefs::default() }).unwrap();
+            assert!(saved.contains(&format!(r#""language":"{}""#, lang.code())), "{saved}");
+            assert_eq!(load(&saved).lang(), lang);
+        }
+
+        assert_eq!(load(r#"{"language": "ZH-hans"}"#).lang(), Lang::ZhHans);
     }
 
     #[test]

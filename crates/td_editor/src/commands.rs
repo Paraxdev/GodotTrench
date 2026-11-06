@@ -62,6 +62,7 @@ pub enum Action {
     /// Which of the baked maps the Baked view shows.
     SetBakeView(crate::bake::View),
     SetTheme(crate::state::UiTheme),
+    SetLanguage(crate::i18n::Lang),
     CsgSubtract,
     CsgMerge,
     CsgIntersect,
@@ -277,6 +278,7 @@ impl Action {
             Action::BakeLighting => "Bake Lighting",
             Action::SetBakeView(v) => return format!("Baked View: {}", v.label()),
             Action::SetTheme(t) => return format!("Theme: {}", t.label()),
+            Action::SetLanguage(l) => return format!("Language: {}", l.name()),
             Action::CsgSubtract => "CSG Subtract",
             Action::CsgMerge => "CSG Convex Merge",
             Action::CsgIntersect => "CSG Intersect",
@@ -744,6 +746,10 @@ pub fn bindable_actions() -> Vec<Action> {
         out.push(Action::SetTheme(t));
     }
 
+    for l in crate::i18n::Lang::ALL {
+        out.push(Action::SetLanguage(l));
+    }
+
     let mut seen = std::collections::BTreeSet::new();
     out.retain(|a| seen.insert(a.binding_id()));
     out
@@ -1139,6 +1145,12 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::SetTheme(t) => {
             state.prefs.theme = t;
             state.set_status(format!("Theme: {}", t.label()));
+        }
+        Action::SetLanguage(l) => {
+            state.prefs.language = l.code().into();
+            // Switch now so the status below is worded in the new language, App::ui sets it again every frame.
+            crate::i18n::set(l);
+            state.set_status(crate::msg!("Language: {name}", name = l.name()));
         }
         Action::CsgSubtract => {
             let cutters = state.doc.selection.brushes(&state.doc.map);
@@ -2672,6 +2684,44 @@ mod tests {
         assert_eq!(shortcut_hint(&state.prefs, &light).as_deref(), Some("Alt+F7"));
         assert_eq!(shortcut_hint(&state.prefs, &Action::SetTheme(UiTheme::Dark)).as_deref(), Some("Alt+F8"));
         assert_eq!(shortcut_hint(&state.prefs, &Action::SetTheme(UiTheme::System)), None);
+    }
+
+    #[test]
+    fn each_language_takes_its_own_key() {
+        use crate::i18n::Lang;
+        let mut state = EditorState::new(Default::default());
+        let ids: Vec<String> = Lang::ALL.iter().map(|l| Action::SetLanguage(*l).binding_id()).collect();
+        assert_eq!(
+            ids,
+            ["SetLanguageEn", "SetLanguageDe", "SetLanguageFr", "SetLanguageEs", "SetLanguagePt", "SetLanguageRu", "SetLanguageZhHans", "SetLanguageJa"]
+        );
+        let all = bindable_actions();
+        for l in Lang::ALL {
+            assert!(all.contains(&Action::SetLanguage(l)), "{l:?} is missing from the action list");
+            assert_eq!(shortcut_hint(&state.prefs, &Action::SetLanguage(l)), None);
+        }
+
+        state.prefs.key_overrides.insert(Action::SetLanguage(Lang::Ja).binding_id(), "Alt+F7".into());
+        assert_eq!(shortcut_hint(&state.prefs, &Action::SetLanguage(Lang::Ja)).as_deref(), Some("Alt+F7"));
+        assert_eq!(shortcut_hint(&state.prefs, &Action::SetLanguage(Lang::De)), None);
+        assert_eq!(shortcut_hint(&state.prefs, &Action::SetLanguage(Lang::ZhHans)), None);
+    }
+
+    #[test]
+    fn setting_the_language_words_its_status_in_it_and_keeps_the_english_one() {
+        use crate::i18n::Lang;
+        let _reset = crate::i18n::scope(Lang::En);
+        let ctx = egui::Context::default();
+        let mut state = EditorState::new(Default::default());
+        for (lang, shown) in [(Lang::Ru, "Язык: Русский"), (Lang::ZhHans, "语言：简体中文"), (Lang::De, "Sprache: Deutsch"), (Lang::En, "Language: English")]
+        {
+            execute(&mut state, Action::SetLanguage(lang), &ctx);
+            assert_eq!(state.prefs.language, lang.code());
+            assert_eq!(state.prefs.lang(), lang);
+            assert_eq!(crate::i18n::current(), lang);
+            assert_eq!(state.status, format!("Language: {}", lang.name()));
+            assert_eq!(state.status_shown(), shown);
+        }
     }
 
     #[test]
