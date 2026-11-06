@@ -1045,110 +1045,16 @@ fn mcp_code_stays_english() {
     assert!(found.is_empty(), "MCP replies stay English, use en!, msg! or the English text:\n{}", found.join("\n"));
 }
 
-/// Files whose UI text all goes through the lookup, so a raw literal there is text someone forgot to translate.
-const CONVERTED: &[&str] = &[
-    "dialogs.rs",
-    "help.rs",
-    "tools.rs",
-    "welcome.rs",
-    "icons.rs",
-    "toolset.rs",
-    "mesh_tool.rs",
-    "viewport.rs",
-    "gizmos.rs",
-    "transform_gizmo.rs",
-    "extra_tools.rs",
-    "walkable.rs",
-    "overlays.rs",
-    "texture_ops.rs",
-    "texture_tool.rs",
-    "blend_tool.rs",
-    "volume_tool.rs",
-    "scatter_tool.rs",
-    "uv_editor.rs",
-    "hotspot_editor.rs",
-    "trim.rs",
-    "texture_convert.rs",
-    "prefab_panel.rs",
-    "prefab_library.rs",
-    "random_fill.rs",
-    "scatter_panel.rs",
-    "content_wizard.rs",
-    "addon_wizard.rs",
-    "addon_install.rs",
-    "entity_pack.rs",
-    "entity_wizards.rs",
-    "trust.rs",
-    "content.rs",
-    "models.rs",
-    "materials.rs",
-    "model_thumbs.rs",
-    "code_scan.rs",
-];
+/// Code that keeps English on purpose: MCP replies, the code reference generator and command line text.
+const ENGLISH_ONLY: &[&str] = &["mcp/", "i18n/", "code_refs.rs", "main.rs"];
 
-/// Functions of a file that is still being converted, as (file, function name).
-const CONVERTED_FNS: &[(&str, &str)] = &[
-    ("app.rs", "menu_bar"),
-    ("app.rs", "help_menu_links"),
-    ("app.rs", "toolbar"),
-    ("app.rs", "godot_buttons"),
-    ("app.rs", "tool_options"),
-    ("app.rs", "tab_bar"),
-    ("app.rs", "status_bar"),
-    ("app.rs", "stats_text"),
-    ("app.rs", "theme_pref"),
-    ("app.rs", "ui_scale_prefs"),
-    ("app.rs", "prefs_window"),
-    ("app.rs", "mcp_prefs"),
-    ("app.rs", "close_dialog"),
-    ("app.rs", "close_tab_dialog"),
-    ("app.rs", "tab_title"),
-    ("panels.rs", "outliner"),
-    ("panels.rs", "outliner_tooltip"),
-    ("panels.rs", "inspector"),
-    ("panels.rs", "mesh_inspector"),
-    ("panels.rs", "section_help"),
-    ("panels.rs", "sub_heading"),
-    ("panels.rs", "bounds_rows"),
-    ("panels.rs", "brush_entity_section"),
-    ("panels.rs", "scatter_inspector"),
-    ("panels.rs", "terrain_inspector"),
-    ("panels.rs", "selection_summary"),
-    ("panels.rs", "worldspawn_inspector"),
-    ("panels.rs", "add_property_row"),
-    ("panels.rs", "entity_inspector"),
-    ("panels.rs", "io_editor"),
-    ("panels.rs", "face_inspector"),
-    ("panels.rs", "texture_settings"),
-    ("panels.rs", "material_summary_with"),
-    ("panels.rs", "material_cell"),
-    ("panels.rs", "material_interactions"),
-    ("panels.rs", "material_browser"),
-    ("panels.rs", "model_hover_text"),
-    ("panels.rs", "model_browser"),
-    ("panels.rs", "dnd_preview"),
-    ("panels.rs", "entity_card"),
-    ("panels.rs", "entity_browser"),
-    ("panels.rs", "issues"),
-    ("panels.rs", "reference"),
-    ("panels.rs", "reference_detail"),
-    ("panels.rs", "history"),
-];
-
-/// The lines of function `name`, rustfmt closes it with a brace at the indent of its `fn`, and the number of the line
-/// before the first one.
-fn fn_lines<'a>(src: &'a str, name: &str) -> Option<(usize, Vec<&'a str>)> {
-    let lines: Vec<&str> = src.lines().collect();
-    let start = lines.iter().position(|l| {
-        let l = l.trim_start();
-        l.strip_prefix("pub ").unwrap_or(l).starts_with(&format!("fn {name}("))
-    })?;
-    let indent = &lines[start][..lines[start].len() - lines[start].trim_start().len()];
-    let end = lines[start..].iter().position(|l| l.strip_prefix(indent) == Some("}"))? + start;
-    Some((start, lines[start..=end].to_vec()))
+/// Every source file whose UI text goes through the lookup, so a raw literal there is text someone forgot to translate.
+fn translated_files() -> Vec<String> {
+    let all = rust_files(&src_dir()).iter().map(|p| rel(p)).collect::<Vec<_>>();
+    all.into_iter().filter(|f| !f.ends_with("/tests.rs") && !ENGLISH_ONLY.iter().any(|e| f.starts_with(e))).collect()
 }
 
-const TEXT_METHODS: [&str; 20] = [
+const TEXT_METHODS: [&str; 22] = [
     "button",
     "small_button",
     "label",
@@ -1169,6 +1075,8 @@ const TEXT_METHODS: [&str; 20] = [
     "collapsing",
     "colored_label",
     "hyperlink_to",
+    "set_status",
+    "fail_status",
 ];
 
 const TEXT_TYPES: [(&str, &str); 8] = [
@@ -1244,28 +1152,29 @@ fn converted_files_have_no_raw_ui_text() {
     );
     assert_eq!(lines("ui.selectable_value(&mut v, Mode::A, \"Alpha\"); x.label_width(\"Wide\"); Foo::new(\"Text\");"), ["1 Alpha"]);
     assert_eq!(lines("ui.label(trf!(\"{n} brushes\", n)); ui.label(fmt(\"ab\", \"cd\"));"), Vec::<String>::new());
+    assert_eq!(lines("state.set_status(\"Saved the map\"); state.fail_status(format!(\"Failed {e}\"));"), ["1 Saved the map", "1 Failed {e}"]);
+    assert_eq!(lines("state.set_status(msg!(\"Saved the map\")); state.set_status(e); state.set_status(\"\");"), Vec::<String>::new());
 
     let mut found = Vec::new();
-    for file in CONVERTED {
+    for file in translated_files() {
+        let file = file.as_str();
         let src = std::fs::read_to_string(src_dir().join(file)).unwrap();
         found.extend(raw_ui_text(without_tests(&src)).into_iter().map(|(line, s)| format!("{file}:{line} {s:?}")));
     }
 
-    let src = "fn a() {\n    ui.label(\"Outside\");\n}\n\nimpl X {\n    fn menu_bar(&mut self) {\n        ui.label(\"Inside\");\n        ui.label(tr(\"Done\"));\n    }\n\n    fn b() {\n        ui.label(\"After\");\n    }\n}\n\npub fn shown(ui: &mut Ui) {\n    ui.label(\"Pub\");\n}\n";
-    let (start, body) = fn_lines(src, "menu_bar").unwrap();
-    assert_eq!((start, body.len()), (5, 4));
-    assert!(fn_lines(src, "missing").is_none());
-    assert_eq!(raw_ui_text(&body.join("\n")), [(2, "Inside".to_string())]);
-    let (_, body) = fn_lines(src, "shown").unwrap();
-    assert_eq!(raw_ui_text(&body.join("\n")), [(2, "Pub".to_string())], "a pub fn is found too");
+    assert!(found.is_empty(), "wrap UI text in tr, trf!, tr_n! or en!:\n{}", found.join("\n"));
+}
 
-    for (file, name) in CONVERTED_FNS {
-        let src = std::fs::read_to_string(src_dir().join(file)).unwrap();
-        let (start, body) = fn_lines(without_tests(&src), name).unwrap_or_else(|| panic!("{file} has no fn {name}"));
-        found.extend(raw_ui_text(&body.join("\n")).into_iter().map(|(line, s)| format!("{file}:{} {s:?}", start + line)));
+#[test]
+fn the_raw_text_lint_covers_every_file_but_the_english_ones() {
+    let files = translated_files();
+    for covered in ["live_link.rs", "state.rs", "logic_graph/panel.rs", "export3d/dialog.rs", "bake/dialog.rs", "legacy.rs", "panels.rs"] {
+        assert!(files.iter().any(|f| f == covered), "{covered} is linted");
     }
 
-    assert!(found.is_empty(), "wrap UI text in tr, trf!, tr_n! or en!:\n{}", found.join("\n"));
+    for english in ["mcp/tools.rs", "code_refs.rs", "main.rs", "i18n/mod.rs", "i18n/tests.rs"] {
+        assert!(!files.iter().any(|f| f == english), "{english} is not linted");
+    }
 }
 
 #[test]
