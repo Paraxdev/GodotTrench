@@ -23,6 +23,7 @@ static func run(t) -> void:
 	_test_buried_faces_keep_their_triangles(t)
 	_test_buried_brush_faces_clip_from_the_cull_budget(t)
 	_test_smoothing_a_vertex_of_thousands_of_faces_shades_flat(t)
+	_test_a_face_of_collinear_corners_does_not_count_toward_smoothing(t)
 	_test_terrain_splat_shader_defaults_to_first_layer(t)
 	_test_terrain_missing_layer_slots_use_first_layer(t)
 	_test_terrain_emissive_layers_glow(t)
@@ -400,6 +401,18 @@ static func _test_smoothing_a_vertex_of_thousands_of_faces_shades_flat(t) -> voi
 	var brush := TrenchDotMesh.parse(_cone(8192), Transform3D.IDENTITY, 1.0, "")
 	var took := Time.get_ticks_msec() - started
 	t.check(flat.call(brush) and took < 3000, "an 8192 sided cone is not smoothed corner by corner, parsed in %d ms" % took)
+
+## The 650 sided cone again with a face of collinear corners on its tip. The build drops that face, and counting it
+## would take the cone past the budget, so it stays smoothed as in td_geom's
+## a_face_of_collinear_corners_does_not_count_toward_smoothing.
+static func _test_a_face_of_collinear_corners_does_not_count_toward_smoothing(t) -> void:
+	print("- a face of collinear corners does not count toward smoothing")
+	var node := _cone(650)
+	node["vertices"].append_array([[0.0, 32.0, 0.0], [0.0, 0.0, 0.0]])
+	node["faces"].append({ "indices": [650, 651, 652], "material": "showcase/cobble" })
+	var brush := TrenchDotMesh.parse(node, Transform3D.IDENTITY, 1.0, "")
+	var smoothed := brush.faces.any(func(f): return Array(f.disp_normals).any(func(n): return n.distance_to(f.plane.normal) > 1e-5))
+	t.check(brush.faces.size() == 651 and smoothed, "the cone keeps its 651 faces and stays smoothed")
 
 ## Finding 8: an all zero splat weight must render as the first layer, matching Terrain::weights and
 ## docs/format/terrain-scatter.md, not black. Not practically capturable headlessly, so this pins the fixed GLSL

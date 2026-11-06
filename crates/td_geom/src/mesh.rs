@@ -362,9 +362,16 @@ impl Mesh {
         }
 
         let cos = (self.smooth_angle as f64).to_radians().cos() - 1e-6;
-        let vertex_faces = self.vertex_faces();
-        let corners: usize = self.faces.iter().map(|f| f.indices.len()).sum();
-        let pairs: usize = self.faces.iter().flat_map(|f| &f.indices).map(|v| vertex_faces[*v as usize].len()).sum();
+        // The Godot build drops faces of collinear corners, so they neither smooth their neighbours nor count here.
+        let shaded: Vec<bool> = raw.iter().map(|n| n.length_squared() >= 1e-12).collect();
+        let mut vertex_faces = self.vertex_faces();
+        for list in &mut vertex_faces {
+            list.retain(|g| shaded[*g]);
+        }
+
+        let kept = || self.faces.iter().zip(&shaded).filter(|(_, s)| **s).map(|(f, _)| f);
+        let corners: usize = kept().map(|f| f.indices.len()).sum();
+        let pairs: usize = kept().flat_map(|f| &f.indices).map(|v| vertex_faces[*v as usize].len()).sum();
         if pairs > SMOOTH_PAIRS_PER_CORNER * corners + SMOOTH_PAIRS_FREE {
             return flat();
         }
@@ -373,6 +380,10 @@ impl Mesh {
             .iter()
             .enumerate()
             .map(|(fi, f)| {
+                if !shaded[fi] {
+                    return vec![unit[fi]; f.indices.len()];
+                }
+
                 f.indices
                     .iter()
                     .map(|v| {
@@ -1753,6 +1764,22 @@ mod tests {
         let m = cone(651);
         assert!(!smooth(&m), "a 651 sided cone compares one face too many");
         assert_eq!(m.corner_normals().iter().map(Vec::len).collect::<Vec<_>>(), m.faces.iter().map(|f| f.indices.len()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn a_face_of_collinear_corners_does_not_count_toward_smoothing() {
+        let mut m = crate::mesh_shapes::cone(&Aabb::new(DVec3::splat(-64.0), DVec3::splat(64.0)), 650, "m");
+        m.smooth_angle = 89.0;
+        let tip = m.vertices.iter().position(|v| *v == DVec3::new(0.0, 64.0, 0.0)).unwrap() as u32;
+        let below = m.vertices.len() as u32;
+        m.vertices.extend([DVec3::new(0.0, 32.0, 0.0), DVec3::ZERO]);
+        m.faces.push(MeshFace::new(vec![tip, below, below + 1], m.faces[0].data.clone()));
+        // The Godot build drops this face, so counted it would shade the cone flat in the editor alone.
+        // godot/tests/td_editor_parity_test.gd checks the same cone.
+        let normals = m.corner_normals();
+        let last = m.faces.len() - 1;
+        assert!((0..last).any(|fi| normals[fi].iter().any(|c| c.distance(m.face_normal(fi)) > 1e-6)), "the cone is still smoothed");
+        assert_eq!(normals[last], vec![m.face_normal(last); 3]);
     }
 
     #[test]
