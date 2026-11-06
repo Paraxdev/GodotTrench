@@ -28,7 +28,7 @@ room before and after one click:
     Pick which **Edges** get it: bottom, top, sides or all. **Height** is how far the strip runs over the face,
     **Depth** how far it stands out, and **Inset** leaves a gap between the edge and the strip.
 
-    ![The Add Trim dialog with Edges set to bottom, Height 6 u, Depth 2 u, Inset 0 u, showcase/planks_dark as the material, Only where a floor lies under the edge ticked, Collision off and 24 faces selected](../assets/trim/add-trim-dialog.png)
+    ![The Add Trim dialog with Edges set to bottom, Height 6 u, Depth 2 u, Inset 0 u, showcase/planks_dark as the material, Only where a floor lies under the edge ticked, Collision off and 20 faces selected](../assets/trim/add-trim-dialog.png)
 
 5. Click **Add Trim**
 
