@@ -170,6 +170,7 @@ fn render_model(renderer: &mut Renderer, scratch: &mut Option<ViewTarget>, model
         orthographic: false,
         clear: [0.0, 0.0, 0.0, 0.0],
         line_width: 1.0,
+        line_flip: None,
     };
     let mut frame = Frame::default();
     frame.opaque.push(&mesh);

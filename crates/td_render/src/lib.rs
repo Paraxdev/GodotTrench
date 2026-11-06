@@ -4,6 +4,8 @@ pub use egui_wgpu::wgpu;
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
+pub mod ink;
+
 pub const MSAA_SAMPLES: u32 = 4;
 const COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -41,6 +43,32 @@ struct CameraUniform {
     eye: [f32; 4],
     params: [f32; 4],
     viewport: [f32; 4],
+}
+
+impl CameraUniform {
+    fn new(size: [u32; 2], params: &FrameParams) -> Self {
+        Self {
+            view_proj: params.view_proj.to_cols_array_2d(),
+            inv_view_proj: params.view_proj.inverse().to_cols_array_2d(),
+            eye: params.eye.extend(1.0).to_array(),
+            params: [
+                params.grid_size,
+                params.grid_alpha,
+                match params.shade {
+                    ShadeMode::Textured => 0.0,
+                    ShadeMode::Flat | ShadeMode::Wireframe => 1.0,
+                    ShadeMode::Lit => 2.0,
+                    ShadeMode::Baked => 3.0,
+                },
+                if params.orthographic { 1.0 } else { 0.0 },
+            ],
+            viewport: [size[0] as f32, size[1] as f32, params.line_width.max(1.0), params.line_flip.unwrap_or(0.0)],
+        }
+    }
+}
+
+fn line_shader() -> String {
+    format!("{}{}", ink::wgsl_consts(), include_str!("line.wgsl"))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -401,6 +429,8 @@ pub struct FrameParams {
     pub clear: [f64; 4],
     /// Line thickness in physical pixels, usually the UI pixels per point.
     pub line_width: f32,
+    /// Pivot from [`ink::flip_pivot`] to flip the lightness of every line, `None` draws lines in their own colors.
+    pub line_flip: Option<f32>,
 }
 
 #[derive(Default)]
@@ -628,8 +658,8 @@ impl Renderer {
         });
         let shadow_shader = device
             .create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("shadow"), source: wgpu::ShaderSource::Wgsl(include_str!("shadow.wgsl").into()) });
-        let line_shader = device
-            .create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("line"), source: wgpu::ShaderSource::Wgsl(include_str!("line.wgsl").into()) });
+        let line_shader =
+            device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("line"), source: wgpu::ShaderSource::Wgsl(line_shader().into()) });
         let sky_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("sky"),
             source: wgpu::ShaderSource::Wgsl(format!("{common}\n{}", include_str!("sky.wgsl")).into()),
@@ -1381,23 +1411,7 @@ impl Renderer {
     }
 
     pub fn render(&self, target: &ViewTarget, params: &FrameParams, frame: &Frame) {
-        let uniform = CameraUniform {
-            view_proj: params.view_proj.to_cols_array_2d(),
-            inv_view_proj: params.view_proj.inverse().to_cols_array_2d(),
-            eye: params.eye.extend(1.0).to_array(),
-            params: [
-                params.grid_size,
-                params.grid_alpha,
-                match params.shade {
-                    ShadeMode::Textured => 0.0,
-                    ShadeMode::Flat | ShadeMode::Wireframe => 1.0,
-                    ShadeMode::Lit => 2.0,
-                    ShadeMode::Baked => 3.0,
-                },
-                if params.orthographic { 1.0 } else { 0.0 },
-            ],
-            viewport: [target.size[0] as f32, target.size[1] as f32, params.line_width.max(1.0), 0.0],
-        };
+        let uniform = CameraUniform::new(target.size, params);
         self.queue.write_buffer(&target.camera, 0, bytemuck::bytes_of(&uniform));
 
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("viewport") });
@@ -1649,7 +1663,7 @@ mod tests {
 
         validate("sky", &format!("{common}\n{}", include_str!("sky.wgsl")));
 
-        validate("line", include_str!("line.wgsl"));
+        validate("line", &super::line_shader());
         validate("shadow", include_str!("shadow.wgsl"));
     }
 
@@ -1741,6 +1755,28 @@ mod tests {
         let u = TerrainUniform::new([1.0; 4], [0.0; 4], [0.5; 4], [Some(&plain), Some(&bumpy), None, Some(&bumpy)]);
         assert_eq!(u.normal_mapped, [0.0, 1.0, 0.0, 1.0], "only layers whose material has a normal map sample one");
         assert_eq!(u.normal_scales, [1.0, 0.5, 1.0, 0.5], "with the material's normal scale");
+    }
+
+    #[test]
+    fn camera_uniform_carries_the_line_flip() {
+        let mut params = super::FrameParams {
+            view_proj: glam::Mat4::from_translation(glam::Vec3::new(3.0, -2.0, 0.5)),
+            eye: glam::Vec3::new(64.0, -96.0, 160.0),
+            grid_size: 16.0,
+            grid_alpha: 0.4,
+            shade: super::ShadeMode::Wireframe,
+            orthographic: true,
+            clear: [0.0; 4],
+            line_width: 0.5,
+            line_flip: None,
+        };
+        let off = super::CameraUniform::new([640, 360], &params);
+        assert_eq!(off.viewport, [640.0, 360.0, 1.0, 0.0], "no flip leaves the slot at 0, which the shader reads as off");
+        assert_eq!(off.params, [16.0, 0.4, 1.0, 1.0]);
+
+        params.line_flip = Some(1.1);
+        params.line_width = 2.5;
+        assert_eq!(super::CameraUniform::new([300, 700], &params).viewport, [300.0, 700.0, 2.5, 1.1]);
     }
 
     #[test]

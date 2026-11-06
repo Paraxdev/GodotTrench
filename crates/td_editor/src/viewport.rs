@@ -998,6 +998,7 @@ impl Viewport {
                 crate::theme::linear(crate::theme::VIEW.gray_1)
             },
             line_width,
+            line_flip: None,
         }
     }
 
