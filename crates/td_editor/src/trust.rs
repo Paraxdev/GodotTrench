@@ -13,14 +13,15 @@ use crate::state::{EditorState, TrustRequest};
 pub const QUESTION: &str = "Do you trust the authors of the files in this project?";
 pub const CHIP: &str = "Restricted Mode";
 pub const SCANNING: &str = "Looking for code";
-pub const SCANNING_TIP: &str = "TrenchDot looks through the project for code Godot would run. Until it is done, it does not start Godot on the project";
+pub const SCANNING_TIP: &str = "Looking through the project for code Godot would run. Godot is not started until it is done";
 pub const TRUST: &str = "Trust Project";
 pub const RESTRICT: &str = "Open in Restricted Mode";
 pub const KEEP: &str = "Keep Current Project";
-const BLOCKS: &str = "Godot runs a project's scripts when it opens, plays or builds it. In Restricted Mode you can view and edit the maps here, but TrenchDot does not start Godot on the project, build in Godot or send live edits until you trust it.";
+const BLOCKS: &str =
+    "Godot runs a project's scripts. In Restricted Mode you can edit maps, but TrenchDot does not start Godot on the project until you trust it.";
 pub const CHIP_TIP: &str = "TrenchDot does not run this project in Godot until you trust it. Click to choose";
 /// Why an action that has Godot run the project did nothing. MCP returns it as the error.
-pub const BLOCKED: &str = "This project is in Restricted Mode, so Godot does not run or build it. Click Restricted Mode in the status bar to trust it";
+pub const BLOCKED: &str = "This project is in Restricted Mode, so Godot is not run on it. Click Restricted Mode in the status bar to trust it";
 /// [`BLOCKED`] as the reason in a longer message.
 pub const RESTRICTED: &str = "the project is in Restricted Mode, click Restricted Mode in the status bar to trust it";
 
@@ -71,8 +72,7 @@ pub fn parent_folder(root: &Path) -> Option<&Path> {
 }
 
 pub const TRUSTED_TITLE: &str = "Trusted projects";
-const TRUSTED_NOTE: &str =
-    "Godot runs the scripts of these projects when TrenchDot starts it on them or has it build their maps. Other projects with code open in Restricted Mode.";
+const TRUSTED_NOTE: &str = "TrenchDot runs Godot on these projects. Other projects with code open in Restricted Mode.";
 pub const REMOVE: &str = "Remove";
 /// Follows a folder in the list.
 const FOLDER: &str = "and every project in it";
@@ -95,7 +95,7 @@ pub fn trusted_list(ui: &mut egui::Ui, state: &mut EditorState) {
     let entries: Vec<(PathBuf, bool)> =
         state.prefs.trusted_projects.iter().map(|p| (p.clone(), false)).chain(state.prefs.trusted_folders.iter().map(|p| (p.clone(), true))).collect();
     if entries.is_empty() {
-        ui.label(RichText::new("None yet. Trust Project in the trust prompt adds one, and so does saving a map into a project without code.").weak());
+        ui.label(RichText::new("None yet. Trust Project in the trust prompt adds one.").weak());
         return;
     }
 

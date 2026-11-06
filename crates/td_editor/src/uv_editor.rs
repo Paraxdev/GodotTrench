@@ -231,11 +231,8 @@ fn select_corner(uv_state: &mut UvEditorState, state: &EditorState, faces: &[(No
 const CHIP: f32 = 16.0;
 const FOOTER_HEIGHT: f32 = 24.0;
 const CONTROLS: &str = "Faces: drag empty space moves the texture, wheel scales, right drag rotates.\n\
-Corners: click selects one with its stitched corners, Shift+click adds, Ctrl+click removes, Alt+click splits a stitch.\n\
-Shift or Ctrl+drag on empty space box selects, adding or removing.\n\
-Dragging a selected corner moves the whole selection, wheel and right drag scale and rotate it.\n\
-Double click a corner for a move gizmo, its arrows move along U or V only, Esc hides it.\n\
-Middle drag pans, Ctrl+wheel zooms.";
+Corners: click selects one, Shift+click adds, Ctrl+click removes, drag moves the selection.\n\
+Double click a corner for a move gizmo. Middle drag pans, Ctrl+wheel zooms.";
 
 fn projection_menu(ui: &mut Ui, state: &EditorState, faces: &[FaceInfo], uv_state: &mut UvEditorState, actions: &mut Vec<Action>) {
     let mut item = |ui: &mut Ui, k: MeshUvKind| {
@@ -343,9 +340,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
 
         uv_state.gizmo = false;
         uv_state.hovered = false;
-        ui.label(
-            RichText::new("Select faces to edit their UVs: Shift+click a face, or Ctrl+click an object to grab all its sides, or use the Texture tool.").weak(),
-        );
+        ui.label(RichText::new("Select faces to edit their UVs: Shift+click a face, or Ctrl+click an object.").weak());
         return;
     };
     let material = first.material.clone();
@@ -405,7 +400,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
             }
         })
         .response
-        .on_hover_text("Flip, turn, fit, align, straighten and snap the selected corners, or all of them when none are selected");
+        .on_hover_text("Flips, turns, fits, aligns and snaps the selected corners, or all when none are selected");
         ui.menu_button("Hotspot", |ui| {
             if ui.button("Hotspot Fit").on_hover_text("Fit the faces to the best rectangle of <texture>.hotspots.json").clicked() {
                 actions.push(Action::HotspotTexture);

@@ -96,8 +96,7 @@ const MAX_FILE: u64 = u32::MAX as u64;
 
 fn too_big(bytes: u64) -> String {
     format!(
-        "the .glb would be {}, more than the 4 GB a .glb file can hold. Export part of the map with Selection only, or leave \
-         out the prop models or scatter instances",
+        "the .glb would be {}, more than the 4 GB a .glb file can hold. Export part of the map with Selection only, or leave out props or scatter",
         size_text(bytes)
     )
 }

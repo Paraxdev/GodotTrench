@@ -13,8 +13,7 @@ pub const TITLE: &str = "Export for 3D Tools";
 pub const PROGRESS_TITLE: &str = "Exporting";
 
 /// Said in the dialog and the docs, so nobody expects a round trip.
-pub const WHAT_IS_LEFT_OUT: &str = "Only geometry and materials are exported. Entity logic, I/O wiring, triggers, scripts and gameplay behaviour are left \
-     out, and the file cannot be opened in TrenchDot as a map again.";
+pub const WHAT_IS_LEFT_OUT: &str = "Only geometry and materials are exported, not entity logic, I/O or scripts. The file cannot be opened as a map again.";
 
 /// Scatter instances past this many triangles make an OBJ big enough to say so before exporting.
 const WARN_TRIANGLES: usize = 1_000_000;
@@ -165,11 +164,11 @@ impl ExportDialog {
         ui.checkbox(&mut o.models, format!("Prop models ({})", c.models))
             .on_hover_text("The models that props and other point entities show, placed where they stand");
         ui.checkbox(&mut o.scatter, format!("Scatter instances ({})", c.scatter))
-            .on_hover_text("Every tree, rock and tuft of the scatter sets as its own object. Thousands of them make a big file that is slow to open");
+            .on_hover_text("Exports every scattered prop as its own object. Thousands make a big file");
         ui.checkbox(&mut o.markers, "Point entities as empty markers")
             .on_hover_text("An empty object where each point entity without a model stands, named like it, for lining things up");
         ui.checkbox(&mut o.merge_brushes, "Merge unnamed brushes")
-            .on_hover_text("Brushes you have not renamed join into one object per layer, group or entity, which keeps the object list short");
+            .on_hover_text("Joins brushes you have not renamed into one object per layer, group or entity");
         ui.add_space(4.0);
         let mut parts = vec![format!("{} brushes", c.brushes), format!("{} meshes", c.meshes)];
         if c.terrains > 0 {
@@ -182,10 +181,7 @@ impl ExportDialog {
         let too_big = obj_scatter > OBJ_TRIANGLE_LIMIT;
         if obj_scatter >= WARN_TRIANGLES {
             let size = size_text(obj_bytes(c.scatter_vertices, c.scatter_triangles));
-            let mut text = format!(
-                "OBJ writes every scatter instance as a full copy of its model: {} triangles, about {size}. glTF shares one mesh per model.",
-                triangles_text(obj_scatter)
-            );
+            let mut text = format!("OBJ writes every scatter instance as a full copy of its model: {} triangles, about {size}.", triangles_text(obj_scatter));
             if too_big {
                 text += &format!(" That is past the {} million triangles an OBJ export takes.", OBJ_TRIANGLE_LIMIT / 1_000_000);
             }

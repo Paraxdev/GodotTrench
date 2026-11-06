@@ -156,8 +156,7 @@ fn models_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>, 
             None => {
                 ui.add_space(12.0);
                 ui.vertical_centered(|ui| {
-                    ui.label(RichText::new("No scatter set is active").strong())
-                        .on_hover_text("Drop models here to start one, or use + and Preset above. Painting without a set starts one from the last preset");
+                    ui.label(RichText::new("No scatter set is active").strong()).on_hover_text("Drop models here to start one, or use + and Preset above");
                 });
                 ui.add_space(12.0);
             }
@@ -365,7 +364,7 @@ fn targets_section(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Actio
                     16.0,
                     picking,
                     "Pick target",
-                    "Click a surface or a scattered object in a view to add it as a target, or a target to remove it. Alt+click does the same.",
+                    "Click a surface or scattered object in a view to add it as a target, or a target to remove it",
                 )
             });
             if resp.clicked() {
@@ -411,9 +410,7 @@ fn targets_section(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Actio
     }
 
     let mut follow_edit = follow;
-    ui.checkbox(&mut follow_edit, "Follow cursor").on_hover_text(
-        "Paint on any surface or scattered prop under the brush. Off keeps each stroke on the set's targets, and a set without targets takes the surface its first stroke starts on",
-    );
+    ui.checkbox(&mut follow_edit, "Follow cursor").on_hover_text("Paint on any surface under the brush. Off keeps each stroke on the set's targets");
     state.prefs.scatter.rules.only_targets = !follow_edit;
     if follow && !set.targets.is_empty() {
         ui.label(RichText::new("The targets above are ignored while following the cursor").small().color(theme::WARNING));

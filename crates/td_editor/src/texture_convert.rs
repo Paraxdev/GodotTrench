@@ -67,7 +67,7 @@ pub fn missing_material_issues(map: &td_doc::Map, game: &td_formats::GameConfig,
             let (code, message) = if inside_project(game, &name) {
                 ("missing_material", format!("Material '{name}' is not in the project ({faces} faces), convert or add its texture"))
             } else {
-                ("material_outside_project", format!("Material '{name}' is a path out of the project ({faces} faces), neither the editor nor Godot loads it"))
+                ("material_outside_project", format!("Material '{name}' is a path out of the project ({faces} faces), it will not load"))
             };
             td_doc::issues::Issue { node: Some(node), severity: td_doc::issues::Severity::Warning, code, message }
         })
@@ -171,7 +171,7 @@ pub fn offer_for_map(state: &mut EditorState, map_file: &Path) {
     let answer = rfd::MessageDialog::new()
         .set_title("Convert the map's textures?")
         .set_description(format!(
-            "{} of the {missing} materials this map uses but the project lacks were found in {}. Convert them into the project's texture folder?",
+            "Found {} of the {missing} missing materials in {}. Convert them into the project's texture folder?",
             wanted.len(),
             places.join(", ")
         ))

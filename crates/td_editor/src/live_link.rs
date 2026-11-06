@@ -160,10 +160,7 @@ pub fn unresolved_text<S: AsRef<str>>(classes: &[S], report: &GodotReport) -> St
 /// their map settings hold now.
 pub fn stale_text<S: AsRef<str>>(paths: &[S]) -> String {
     let files: Vec<&str> = paths.iter().map(|p| p.as_ref().rsplit(['/', '\\']).next().unwrap_or(p.as_ref())).collect();
-    format!(
-        "Godot shows {} built with other entity definitions than its map settings hold now, so entities may be plain nodes or out of date. Use Godot > Build in Godot, or press Build Map in Godot and save",
-        name_list(&files)
-    )
+    format!("Godot shows {} built with other entity definitions than its map settings hold now, use Godot > Build in Godot", name_list(&files))
 }
 
 /// Classnames of the entities whose definitions the `reply` to a live message tells about again. The start of a
@@ -205,7 +202,7 @@ fn nothing_built(reply: &Value, path: &str, saved: bool) -> String {
 
     match reply["scene"].as_str() {
         Some("") => {
-            format!("Godot has no scene open. Open the scene with the FuncGodotMap for {map}, or if it is open, close any second Godot editor of this project")
+            format!("Godot has no scene open. Open the scene with the FuncGodotMap for {map}, or close a second Godot editor of this project")
         }
         Some(scene) => {
             format!(

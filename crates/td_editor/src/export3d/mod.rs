@@ -89,7 +89,7 @@ impl Report {
     /// One line for the status bar.
     pub fn summary(&self, path: &Path) -> String {
         let mut s = format!(
-            "Exported {} objects, {} materials and {} triangles to {} ({}). Entity logic, triggers and scripts are not included",
+            "Exported {} objects, {} materials and {} triangles to {} ({})",
             self.objects,
             self.materials,
             self.triangles,
@@ -204,9 +204,7 @@ pub fn export_with(src: Sources, path: &Path, format: Format, options: &Options,
     let triangles = scene.triangles();
     if format == Format::Obj && triangles > OBJ_TRIANGLE_LIMIT {
         return Err(format!(
-            "the OBJ would hold {:.1} million triangles, about {}, more than the {} million an OBJ export takes. OBJ writes every \
-             scatter instance in full, glTF shares one mesh between them. Export as glTF, leave out the scatter instances, or \
-             export part of the map with Selection only",
+            "the OBJ would hold {:.1} million triangles, about {}, more than the {} million an OBJ export takes. Export as glTF, leave out the scatter instances, or export part of the map with Selection only",
             triangles as f64 / 1e6,
             size_text(obj_bytes(scene.vertices(), triangles)),
             OBJ_TRIANGLE_LIMIT / 1_000_000

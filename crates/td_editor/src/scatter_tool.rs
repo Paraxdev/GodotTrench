@@ -97,7 +97,7 @@ pub fn active_or_new_set(state: &mut EditorState) -> Option<NodeId> {
             Err(PresetProblem::NeedsPack) => {
                 let id = new_set_from_preset(state, FALLBACK_PRESET)?;
                 state.set_status(format!(
-                    "The {preset} preset needs the nature pack, which this project does not have, so the set uses the {FALLBACK_PRESET} preset. Godot > Add Content to Project adds the pack"
+                    "The {preset} preset needs the nature pack, so the set uses {FALLBACK_PRESET}. Godot > Add Content to Project adds the pack"
                 ));
                 return Some(id);
             }
@@ -803,7 +803,7 @@ impl ScatterTool {
         let painter = ui.painter_at(rect);
         let s = &state.prefs.scatter;
         let text = if state.scatter_eyedropper {
-            "Scatter target: click a surface or a scattered object to add it to the set's targets, click a target again to remove it".to_string()
+            "Scatter target: click a surface or scattered object to add it, click a target to remove it".to_string()
         } else {
             let target = match s.output {
                 ScatterOutput::Entities => "entities".to_string(),
@@ -813,7 +813,7 @@ impl ScatterTool {
                 },
             };
             let (drag, shift) = if state.scatter_erase { ("erases", "paints") } else { ("paints", "erases") };
-            format!("Scatter into {target}: drag {drag}, Shift+drag {shift}, Alt+click toggles a target, the Scatter panel holds the models")
+            format!("Scatter into {target}: drag {drag}, Shift+drag {shift}, Alt+click toggles a target")
         };
         painter.text(rect.left_bottom() + Vec2::new(8.0, -8.0), Align2::LEFT_BOTTOM, text, FontId::proportional(12.0), Color32::from_rgb(160, 255, 140));
     }

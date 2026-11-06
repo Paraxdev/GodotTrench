@@ -284,7 +284,7 @@ fn dialog_says_what_is_left_out_and_counts_scatter() {
         (dialog::ExportDialog::default(), state),
     );
     harness.run();
-    harness.get_by_label_contains("Entity logic, I/O wiring, triggers, scripts and gameplay behaviour are left out");
+    harness.get_by_label_contains("not entity logic, I/O or scripts");
     assert!(harness.get_by_label("Selection only").accesskit_node().is_disabled(), "nothing is selected");
     harness.get_by_label("Scatter instances (2)").click();
     harness.run();

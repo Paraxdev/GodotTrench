@@ -33,11 +33,9 @@ const SIM_STRIP: f32 = 140.0;
 /// Other text shrinks with the zoom only down to this share of its size.
 const MIN_TEXT: f32 = 0.7;
 
-const CONTROLS: &str = "Drag from an output pin on the right of a node to an input pin on the left of another to connect them. \
-Drop on empty space to add a logic entity there, or right click the canvas.\n\
-Click a node to select its entity, double click to frame it in the views. Drag empty space to box select.\n\
-Click a wire to edit its delay, parameter and times, Delete removes it.\n\
-Wheel zooms, middle or right drag pans. F frames the selected nodes and Home shows every node.";
+const CONTROLS: &str = "Drag from an output pin to an input pin to connect, or drop on empty space to add an entity.\n\
+Click a node to select its entity, double click to frame it. Click a wire to edit it, Delete removes it.\n\
+Wheel zooms, middle or right drag pans, F frames the selection.";
 
 /// One pin of a node, by name so it survives the model being built again.
 #[derive(Clone, Debug, PartialEq)]
@@ -715,8 +713,7 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: &
         .on_hover_text("Adds a logic entity on the Logic layer, next to the selected entity in the map");
 
         let selected: Vec<NodeId> = selected_entities(state).into_iter().filter(|id| gs.model.node(&NodeKey::Entity(*id)).is_some()).collect();
-        let arrange_tip =
-            "Lays out the selected nodes left to right by signal flow. With fewer than two selected, every node goes back to the automatic layout";
+        let arrange_tip = "Lays out the selected nodes left to right by signal flow, all nodes when fewer than two are selected";
         if ui.button("Arrange").on_hover_text(arrange_tip).clicked() {
             arrange(state, gs, &selected);
         }
@@ -725,7 +722,7 @@ fn toolbar(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: &
             gs.fit(MIN_ZOOM);
         }
 
-        let tip = "Puts a titled box behind the selected nodes, C over the graph does the same. Dragging its title moves everything inside";
+        let tip = "Puts a titled box behind the selected nodes, C over the graph does the same";
         let framed = ui.add_enabled(!gs.selected_nodes(state).is_empty(), egui::Button::new("Frame")).on_hover_text(tip).on_disabled_hover_text(tip);
         if framed.clicked() {
             gs.frame_selection(state);
@@ -1202,13 +1199,7 @@ fn overlays(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
         egui::Area::new(Id::new("logic_graph_empty")).order(Order::Middle).fixed_pos(canvas.min + vec2(16.0, 16.0)).constrain_to(canvas).show(&ctx, |ui| {
             ui.set_max_width((canvas.width() - 32.0).max(120.0));
             ui.label(RichText::new("No wiring yet").strong());
-            ui.label(
-                RichText::new(
-                    "Select an entity to show it here, then drag from an output pin on its right edge to an input pin of another. \
-                     Right click here to add a logic entity such as a relay or a timer.",
-                )
-                .weak(),
-            );
+            ui.label(RichText::new("Select an entity to show it here, or right click to add a logic entity such as a relay.").weak());
             if pack_missing(state) {
                 install_hint(ui, actions);
             }
@@ -1545,7 +1536,7 @@ fn context_menu(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, hit: 
                 select(state, &[id], false);
             }
         };
-        let tip = "Renames the entity in the Outliner. The node is titled by its targetname when it has one, else by this name";
+        let tip = "Renames the entity in the Outliner";
         if ui.button("Rename").on_hover_text(tip).clicked() {
             select(state, &[id], false);
             actions.push(Action::Rename);
@@ -1586,7 +1577,7 @@ fn context_menu(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, hit: 
         let picked = selected_entities(state);
         let many = if picked.contains(&id) { picked.len() } else { 1 };
         let label = if many > 1 { format!("Delete {many} Entities") } else { "Delete Entity".to_string() };
-        let tip = "Removes the entity from the map, not only from the graph. Wires from other entities to it turn red. Undo brings it back";
+        let tip = "Removes the entity from the map, not only from the graph. Undo brings it back";
         if ui.button(label).on_hover_text(tip).clicked() {
             if !picked.contains(&id) {
                 select(state, &[id], false);

@@ -196,7 +196,7 @@ impl RandomFillDialog {
 
         let mut open = self.open;
         egui::Window::new("Random Fill").open(&mut open).resizable(false).default_width(360.0).show(ctx, |ui| {
-            ui.label("Covers a grid with pieces from the prefab library, picked by weight. Build pieces one cell wide, centered on the origin.");
+            ui.label("Covers a grid with prefab pieces picked by weight. Build pieces one cell wide, centered on the origin.");
             ui.separator();
             let mut remove = None;
             egui::Grid::new("fill_pieces").num_columns(4).show(ui, |ui| {

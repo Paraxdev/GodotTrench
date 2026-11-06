@@ -237,10 +237,7 @@ impl TextureTool {
     pub fn paint(&self, ui: &Ui, rect: Rect, state: &EditorState) {
         let painter = ui.painter_at(rect);
         let clip = state.uv_clipboard.as_ref().map(|c| format!("   picked: {}", c.material)).unwrap_or_default();
-        let text = format!(
-            "Texture: click selects faces, right click applies {}, Alt+right wraps, Shift+right pastes, Alt+click picks, drag slides, Ctrl+wheel scales, Alt+wheel rotates{clip}",
-            state.current_material
-        );
+        let text = format!("Texture: click selects, right click applies {}, Alt+click picks, drag slides, Ctrl+wheel scales{clip}", state.current_material);
         painter.text(rect.left_bottom() + Vec2::new(8.0, -8.0), Align2::LEFT_BOTTOM, text, FontId::proportional(12.0), Color32::from_rgb(170, 220, 255));
     }
 }

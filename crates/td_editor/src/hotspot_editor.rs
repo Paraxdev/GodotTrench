@@ -153,9 +153,7 @@ impl HotspotEditor {
 
                 ui.label(RichText::new(format!("{} rectangles{}", self.rects.len(), if self.dirty { ", unsaved" } else { "" })).weak());
             });
-            ui.label(
-                RichText::new("Drag on empty texture to draw, drag a rectangle to move it, drag its corner handle to resize, right click deletes.").weak(),
-            );
+            ui.label(RichText::new("Drag to draw a rectangle, drag one to move it, drag its corner to resize, right click deletes.").weak());
             egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
                 let zoom = self.zoom as f64;
                 let (rect, response) = ui.allocate_exact_size(Vec2::new((size[0] * zoom) as f32, (size[1] * zoom) as f32), Sense::click_and_drag());

@@ -101,12 +101,9 @@ fn definition_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Iss
         let issue = |code, message| Issue { node: Some(id), severity: Severity::Warning, code, message };
         let Some(def) = game.entity(&e.classname) else {
             let message = match (crate::entity_pack::in_pack(&e.classname), context.pack_installed) {
-                (true, false) => format!(
-                    "No entity definition for '{}', it comes with the Gameplay entities pack. Gameplay > Install Gameplay Entities adds it",
-                    e.classname
-                ),
+                (true, false) => format!("No entity definition for '{}'. Gameplay > Install Gameplay Entities adds it", e.classname),
                 (true, true) => format!(
-                    "No entity definition for '{}'. The Gameplay entities pack is installed, but your FGD does not include it. Add {} to its Base Fgd Files",
+                    "No entity definition for '{}', your FGD lacks the Gameplay entities pack. Add {} to its Base Fgd Files",
                     e.classname,
                     crate::entity_pack::DEFAULT_FGD
                 ),
@@ -123,10 +120,8 @@ fn definition_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Iss
         };
         if let Some(build) = game.build.as_ref().filter(|b| !b.defines(&e.classname) && !reported(b)) {
             let fgd = if build.entity_fgd.is_empty() { String::new() } else { format!("{} ", build.entity_fgd) };
-            let message = format!(
-                "Godot builds with {}, whose FGD {fgd}has no '{}'. Set its Entity Fgd to the FGD your game config uses",
-                build.map_settings, e.classname
-            );
+            let message =
+                format!("Godot builds with {}, whose FGD {fgd}has no '{}'. Set its Entity Fgd to your game config's FGD", build.map_settings, e.classname);
             list.push(issue("build_lacks_class", message));
         }
 
@@ -135,7 +130,7 @@ fn definition_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Iss
         match (def.kind, brushes) {
             (td_formats::EntityKind::Point, true) => list.push(issue(
                 "point_class_brushes",
-                format!("{} is a point entity in its definition, so Godot drops its brushes. Make the definition a FuncGodotFGDSolidClass", e.classname),
+                format!("{} is a point entity in its definition, so Godot drops its brushes. Make it a FuncGodotFGDSolidClass", e.classname),
             )),
             (td_formats::EntityKind::Solid, false) => list
                 .push(issue("brush_entity_empty", format!("{} is a brush entity without brushes, so Godot builds it with no mesh or collision", e.classname))),
@@ -155,7 +150,7 @@ fn godot_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Issue> {
         let Some((id, _)) = map.entities().find(|(_, e)| e.classname == *class).filter(|_| game.entity(class).is_some()) else { continue };
         let hint = match (crate::entity_pack::in_pack(class), context.pack_installed) {
             (true, false) => "Gameplay > Install Gameplay Entities adds it".to_string(),
-            (true, true) if builds_with_addon_fgd(game, report) => "Set its Entity Fgd to the FGD your game config uses".to_string(),
+            (true, true) if builds_with_addon_fgd(game, report) => "Set its Entity Fgd to your game config's FGD".to_string(),
             (true, true) => format!("Add {} to the Base Fgd Files of its Entity Fgd", crate::entity_pack::DEFAULT_FGD),
             _ => "Add the definition to its Entity Fgd".to_string(),
         };
@@ -519,20 +514,14 @@ mod tests {
         let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &Context::default());
         let mut unknown: Vec<&str> = found.iter().filter(|i| i.code == "unknown_class").map(|i| i.message.as_str()).collect();
         unknown.sort();
-        assert_eq!(
-            unknown,
-            [
-                "No entity definition for 'func_door', it comes with the Gameplay entities pack. Gameplay > Install Gameplay Entities adds it",
-                "No entity definition for 'my_thing'"
-            ]
-        );
+        assert_eq!(unknown, ["No entity definition for 'func_door'. Gameplay > Install Gameplay Entities adds it", "No entity definition for 'my_thing'"]);
 
         let installed = Context { pack_installed: true, ..Default::default() };
         let found = map_issues(&map, &game, &mut MaterialLibrary::new(&game), &mut PrefabCache::default(), None, &installed);
         let door = found.iter().find(|i| i.code == "unknown_class" && i.message.contains("func_door")).unwrap();
         assert_eq!(
             door.message,
-            "No entity definition for 'func_door'. The Gameplay entities pack is installed, but your FGD does not include it. Add res://addons/func_godot/fgd/trenchdot_default_fgd.tres to its Base Fgd Files"
+            "No entity definition for 'func_door', your FGD lacks the Gameplay entities pack. Add res://addons/func_godot/fgd/trenchdot_default_fgd.tres to its Base Fgd Files"
         );
     }
 
@@ -554,11 +543,7 @@ mod tests {
         assert_eq!(
             shape,
             [
-                (
-                    Some(lamp),
-                    "point_class_brushes",
-                    "light is a point entity in its definition, so Godot drops its brushes. Make the definition a FuncGodotFGDSolidClass"
-                ),
+                (Some(lamp), "point_class_brushes", "light is a point entity in its definition, so Godot drops its brushes. Make it a FuncGodotFGDSolidClass"),
                 (Some(door), "brush_entity_empty", "func_door is a brush entity without brushes, so Godot builds it with no mesh or collision"),
             ]
         );
@@ -588,7 +573,7 @@ mod tests {
         assert_eq!(found[0].node, Some(door));
         assert_eq!(
             found[0].message,
-            "Godot builds with res://my_settings.tres, whose FGD res://addons/func_godot/fgd/func_godot_fgd.tres has no 'func_door'. Set its Entity Fgd to the FGD your game config uses"
+            "Godot builds with res://my_settings.tres, whose FGD res://addons/func_godot/fgd/func_godot_fgd.tres has no 'func_door'. Set its Entity Fgd to your game config's FGD"
         );
     }
 
@@ -672,7 +657,7 @@ mod tests {
         assert!(hint(&game).ends_with("Base Fgd Files of its Entity Fgd"), "{}", hint(&game));
         for fgd in ["res://addons/func_godot/fgd/func_godot_fgd.tres", crate::entity_pack::DEFAULT_FGD] {
             game.build = Some(td_formats::BuildConfig { map_settings: "res://s.tres".into(), entity_fgd: fgd.into(), ..Default::default() });
-            assert!(hint(&game).ends_with("Set its Entity Fgd to the FGD your game config uses"), "{fgd}: {}", hint(&game));
+            assert!(hint(&game).ends_with("Set its Entity Fgd to your game config's FGD"), "{fgd}: {}", hint(&game));
         }
     }
 

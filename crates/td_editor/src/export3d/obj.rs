@@ -118,12 +118,7 @@ pub fn write(scene: &Scene, path: &Path, progress: &Progress, may_write: &dyn Fn
 /// The objects in world space, a scatter instance as a full copy of its model. Returns the bytes written.
 fn geometry(scene: &Scene, mtl_name: &str, out: &mut impl std::io::Write, progress: &Progress) -> std::io::Result<u64> {
     let mut out = Counted { out, bytes: 0 };
-    writeln!(
-        out,
-        "# {} exported by TrenchDot {}. Geometry and materials only, entity logic is not included.\n# Meters, Y up.\nmtllib {mtl_name}",
-        scene.name,
-        crate::VERSION
-    )?;
+    writeln!(out, "# {} exported by TrenchDot {}. Geometry and materials only.\n# Meters, Y up.\nmtllib {mtl_name}", scene.name, crate::VERSION)?;
     let mut next = 1usize;
     let mut stack: Vec<(usize, DMat4)> = scene.roots.iter().rev().map(|r| (*r, DMat4::IDENTITY)).collect();
     while let Some((index, parent)) = stack.pop() {

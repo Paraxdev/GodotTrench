@@ -307,7 +307,7 @@ pub fn coplanar_overlaps(map: &Map, game: &GameConfig, look: &dyn Fn(&str) -> Lo
                 severity: Severity::Warning,
                 code: "coplanar_faces",
                 message: format!(
-                    "Face {} {how} face {} of {other} on the same plane around ({x:.0}, {y:.0}, {z:.0}), they z-fight in Godot{also}",
+                    "Face {} {how} face {} of {other} on the same plane around ({x:.0}, {y:.0}, {z:.0}), they z-fight{also}",
                     top.face, top.other_face
                 ),
             })

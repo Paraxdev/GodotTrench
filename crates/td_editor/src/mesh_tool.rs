@@ -720,7 +720,7 @@ impl MeshTool {
             }
 
             self.gizmo = true;
-            state.set_status("Gizmo: drag an arrow to move along one axis, a square for a plane, a ring rotates, a box scales. Esc hides it");
+            state.set_status("Gizmo: arrows and squares move, rings rotate, boxes scale. Esc hides it");
         }
 
         if response.drag_started_by(PointerButton::Primary)
@@ -805,7 +805,7 @@ impl MeshTool {
                 });
                 let (_, _, t) = m.to_scale_rotation_translation();
                 state.set_status(format!(
-                    "{kind:?} {}  {}  (X/Y/Z constrain, Shift+axis plane, type a value, Enter or click confirms, Esc cancels)",
+                    "{kind:?} {}  {}  (X/Y/Z constrain, type a value, Enter confirms, Esc cancels)",
                     constraint.map(|c| if c.exclude { format!("not {}", c.label) } else { c.label.to_string() }).unwrap_or_else(|| "free".into()),
                     if numeric.is_empty() { format!("{:.2} {:.2} {:.2}", t.x, t.y, t.z) } else { numeric.clone() }
                 ));
@@ -1261,10 +1261,9 @@ impl MeshTool {
             Some(Modal::LoopCut { cuts, .. }) => format!("Loop cut: hover an edge, wheel or +/- changes cuts ({cuts}), click to cut"),
             Some(Modal::Knife { .. }) => "Knife: click the start and end of the cut".to_string(),
             None if meshes.is_empty() => "Mesh edit: select a mesh (or brushes and press Tab to convert them)".to_string(),
-            None => format!(
-                "Mesh edit ({}): 1/2/3 mode, click/box select, double click for a gizmo, Alt+click loop, G/R/S transform, E extrude, I inset, Ctrl+B bevel, Ctrl+R loop cut, K knife, M merge, F fill, X delete, Shift+D duplicate, P separate",
-                self.component.label()
-            ),
+            None => {
+                format!("Mesh edit ({}): 1/2/3 mode, G/R/S transform, E extrude, I inset, Ctrl+R loop cut, double click for a gizmo", self.component.label())
+            }
         };
         painter.text(rect.left_bottom() + Vec2::new(8.0, -8.0), Align2::LEFT_BOTTOM, hint, FontId::proportional(12.0), Color32::from_rgb(255, 200, 120));
     }
