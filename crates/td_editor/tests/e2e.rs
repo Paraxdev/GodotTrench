@@ -2027,6 +2027,8 @@ fn theme_active(ed: &Editor, want: &str) {
 fn theme_switches_without_a_restart() {
     let ed = Editor::launch("theme_switch");
     ed.box_brush([-64.0, -64.0, 0.0], [64.0, 64.0, 64.0]);
+    // Xvfb starts the pointer over a 2D view, where it lights up a brush edge, so it waits where the palette leaves it.
+    ed.input("window", json!([{ "type": "move", "x": 10, "y": 10 }]));
     let window = |label: &str| shot(&ed, json!({ "target": "window" }), label);
     let dark = window("dark");
     assert_eq!(image_difference(&dark, &window("dark_twice")), 0.0, "a still editor draws the same picture twice");
