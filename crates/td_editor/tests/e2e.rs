@@ -1997,6 +1997,74 @@ fn view_panes_maximize_close_and_come_back() {
     palette(&ed, "four views");
 }
 
+/// Rounded rectangle of a 3D view in window pixels, shrunk so the dock card edge stays out of it.
+fn view_crop(ed: &Editor, window: &image::RgbaImage) -> image::RgbaImage {
+    let state = ed.state();
+    let ppp = state["ui"]["pixels_per_point"].as_f64().unwrap();
+    let rect = state["cameras"].as_array().unwrap().iter().find(|c| c["view"] == "3d").unwrap()["rect"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap() * ppp)
+        .collect::<Vec<_>>();
+    let (x0, y0) = (rect[0] as u32 + 4, rect[1] as u32 + 4);
+    let (x1, y1) = (rect[2] as u32 - 4, rect[3] as u32 - 4);
+    image::imageops::crop_imm(window, x0, y0, x1 - x0, y1 - y0).to_image()
+}
+
+fn theme_active(ed: &Editor, want: &str) {
+    for _ in 0..20 {
+        if ed.state()["ui"]["theme_active"] == want {
+            return;
+        }
+    }
+
+    panic!("the theme never became {want}: {}", ed.state()["ui"]);
+}
+
+#[test]
+#[ignore]
+fn theme_switches_without_a_restart() {
+    let ed = Editor::launch("theme_switch");
+    ed.box_brush([-64.0, -64.0, 0.0], [64.0, 64.0, 64.0]);
+    let window = |label: &str| shot(&ed, json!({ "target": "window" }), label);
+    let dark = window("dark");
+    assert_eq!(image_difference(&dark, &window("dark_twice")), 0.0, "a still editor draws the same picture twice");
+    let dark_view = shot(&ed, json!({ "target": "3d" }), "dark_3d");
+    let ui = ed.state()["ui"].clone();
+    assert_eq!((ui["theme"].as_str(), ui["theme_active"].as_str()), (Some("dark"), Some("dark")));
+
+    ed.call("set_editor", json!({ "theme": "light" }));
+    theme_active(&ed, "light");
+    assert_eq!(ed.state()["ui"]["theme"], "light");
+    let light = window("light");
+    let chrome = td_editor::theme::LIGHT.chrome;
+    let backdrop = td_editor::theme::LIGHT.backdrop;
+    assert_eq!(light.get_pixel(light.width() / 2, 2).0[..3], [chrome.r(), chrome.g(), chrome.b()], "menu bar");
+    assert_eq!(light.get_pixel(1, light.height() / 2).0[..3], [backdrop.r(), backdrop.g(), backdrop.b()], "dock gap");
+    assert!(image_difference(&dark, &light) > 20.0, "the window changes colors");
+    // egui anti-aliases text and round shapes with a different curve in light mode, which moves their edge pixels a little.
+    let (dark_crop, light_crop) = (view_crop(&ed, &dark), view_crop(&ed, &light));
+    let worst = dark_crop.as_raw().iter().zip(light_crop.as_raw()).map(|(a, b)| a.abs_diff(*b)).max().unwrap();
+    assert!(worst < 60 && image_difference(&dark_crop, &light_crop) < 0.5, "the 3D view stays dark, worst {worst}");
+    assert_eq!(image_difference(&dark_view, &shot(&ed, json!({ "target": "3d" }), "light_3d")), 0.0);
+
+    let before = ed.state()["ui"].clone();
+    assert!(ed.call_err("set_editor", json!({ "theme": "sepia" })).contains("dark, light or system"));
+    assert!(ed.call_err("set_editor", json!({ "theme": 3 })).contains("dark, light or system"));
+    assert_eq!(ed.state()["ui"]["theme"], before["theme"]);
+    assert_eq!(ed.state()["ui"]["theme_active"], "light");
+
+    ed.input("window", json!([{ "type": "move", "x": 10, "y": 10 }, { "type": "key", "key": "F1" }, { "type": "text", "text": "theme: dark" }, { "type": "key", "key": "Enter" }]));
+    theme_active(&ed, "dark");
+    assert_eq!(ed.state()["ui"]["theme"], "dark");
+    assert_eq!(ed.state()["status"], "Theme: Dark");
+    // The status line now names the command that ran, so it is left out.
+    let again = window("dark_again");
+    let body = |img: &image::RgbaImage| image::imageops::crop_imm(img, 0, 0, img.width(), img.height() - 40).to_image();
+    assert_eq!(image_difference(&body(&dark), &body(&again)), 0.0, "the palette command brings the dark window back exactly");
+}
+
 /// F1 over a toolbar tool and a Ctrl+click on it open the tool's page of the manual. The system opener is replaced by a
 /// script that writes down what it was asked to open, so no browser starts.
 #[test]

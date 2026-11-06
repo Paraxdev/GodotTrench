@@ -13,6 +13,54 @@ use td_render::ShadeMode;
 use crate::materials::MaterialLibrary;
 use crate::tools::ToolKind;
 
+/// Which colors the editor draws with. Saved as "dark", "light" or "system", and anything else loads as Dark so a
+/// value from a newer build does not reset every other preference.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "String", into = "String")]
+pub enum UiTheme {
+    #[default]
+    Dark,
+    Light,
+    /// Follows the OS app mode, Dark when the OS does not say.
+    System,
+}
+
+impl UiTheme {
+    pub const ALL: [UiTheme; 3] = [UiTheme::Dark, UiTheme::Light, UiTheme::System];
+
+    pub fn id(self) -> &'static str {
+        match self {
+            UiTheme::Dark => "dark",
+            UiTheme::Light => "light",
+            UiTheme::System => "system",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            UiTheme::Dark => "Dark",
+            UiTheme::Light => "Light",
+            UiTheme::System => "System",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<UiTheme> {
+        Self::ALL.into_iter().find(|t| t.id() == id)
+    }
+}
+
+impl From<String> for UiTheme {
+    fn from(id: String) -> Self {
+        Self::from_id(&id).unwrap_or_default()
+    }
+}
+
+impl From<UiTheme> for String {
+    fn from(theme: UiTheme) -> Self {
+        theme.id().into()
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Shade {
     #[default]
@@ -296,6 +344,7 @@ pub struct Prefs {
     pub blend_detile: f64,
     /// How crisp the de-tiled blend material stays, 0 softest and 1 crispest.
     pub blend_detile_sharpen: f64,
+    pub theme: UiTheme,
     /// Size of the whole interface, 1.0 is 100%.
     pub ui_scale: f32,
     /// Multiply `ui_scale` by the monitor's scaling. When off, `ui_scale` is the exact pixels per point.
@@ -398,6 +447,7 @@ impl Default for Prefs {
             blend_uv_scale: 1.0,
             blend_detile: 0.6,
             blend_detile_sharpen: 0.5,
+            theme: UiTheme::Dark,
             ui_scale: 1.0,
             follow_display_scaling: true,
             help_text: true,
@@ -1862,6 +1912,22 @@ mod tests {
         assert_eq!(p.ui_scale, 0.9);
         let old: Prefs = serde_json::from_str(r#"{"fly_speed": 100.0}"#).unwrap();
         assert_eq!((old.ui_scale, old.follow_display_scaling), (1.0, true));
+    }
+
+    #[test]
+    fn the_theme_pref_loads_and_saves_by_name() {
+        let load = |json: &str| serde_json::from_str::<Prefs>(json).unwrap();
+        assert_eq!(load(r#"{"fly_speed": 100.0}"#).theme, UiTheme::Dark);
+        assert_eq!(load(r#"{"theme": "light"}"#).theme, UiTheme::Light);
+        let again = load(r#"{"fly_speed": 1.0}"#);
+        assert_eq!((again.theme, again.fly_speed), (UiTheme::Dark, 1.0));
+        let unknown = load(r#"{"theme": "sepia", "fly_speed": 100.0}"#);
+        assert_eq!((unknown.theme, unknown.fly_speed), (UiTheme::Dark, 100.0));
+        for t in UiTheme::ALL {
+            let saved = serde_json::to_string(&Prefs { theme: t, ..Prefs::default() }).unwrap();
+            assert!(saved.contains(&format!(r#""theme":"{}""#, t.id())), "{saved}");
+            assert_eq!(load(&saved).theme, t);
+        }
     }
 
     #[test]

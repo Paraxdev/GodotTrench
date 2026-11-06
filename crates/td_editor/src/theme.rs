@@ -127,9 +127,24 @@ pub const LIGHT: Palette = Palette {
 /// a texture, so they stay dark in every theme.
 pub const VIEW: Palette = DARK;
 
+static LIGHT_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Picks the palette [`colors`] returns, once per frame before anything is drawn.
+pub fn set_active(theme: egui::Theme) {
+    LIGHT_ACTIVE.store(theme == egui::Theme::Light, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The theme the palette from [`colors`] belongs to.
+pub fn active() -> egui::Theme {
+    if LIGHT_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) { egui::Theme::Light } else { egui::Theme::Dark }
+}
+
 /// The palette the editor draws with.
 pub fn colors() -> &'static Palette {
-    &DARK
+    match active() {
+        egui::Theme::Light => &LIGHT,
+        egui::Theme::Dark => &DARK,
+    }
 }
 
 /// Colors a Logic graph frame can take, the first unused one goes to a new frame. They are saved in the map, so

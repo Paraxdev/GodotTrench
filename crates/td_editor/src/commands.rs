@@ -61,6 +61,7 @@ pub enum Action {
     BakeLighting,
     /// Which of the baked maps the Baked view shows.
     SetBakeView(crate::bake::View),
+    SetTheme(crate::state::UiTheme),
     CsgSubtract,
     CsgMerge,
     CsgIntersect,
@@ -274,6 +275,7 @@ impl Action {
             Action::SetShade(s) => return format!("Shading: {}", s.title()),
             Action::BakeLighting => "Bake Lighting",
             Action::SetBakeView(v) => return format!("Baked View: {}", v.label()),
+            Action::SetTheme(t) => return format!("Theme: {}", t.label()),
             Action::CsgSubtract => "CSG Subtract",
             Action::CsgMerge => "CSG Convex Merge",
             Action::CsgIntersect => "CSG Intersect",
@@ -735,6 +737,10 @@ pub fn bindable_actions() -> Vec<Action> {
         out.push(Action::MeshOp(op));
     }
 
+    for t in crate::state::UiTheme::ALL {
+        out.push(Action::SetTheme(t));
+    }
+
     let mut seen = std::collections::BTreeSet::new();
     out.retain(|a| seen.insert(a.binding_id()));
     out
@@ -1126,6 +1132,10 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             state.prefs.shade = Shade::Baked;
 
             state.set_status(format!("Baked view shows {}", v.label().to_lowercase()));
+        }
+        Action::SetTheme(t) => {
+            state.prefs.theme = t;
+            state.set_status(format!("Theme: {}", t.label()));
         }
         Action::CsgSubtract => {
             let cutters = state.doc.selection.brushes(&state.doc.map);
@@ -2644,6 +2654,20 @@ mod tests {
         assert_eq!(shortcut_hint(&state.prefs, &Action::StoreCamera(3)).as_deref(), Some("Ctrl+Shift+3"));
         state.prefs.key_overrides.insert(Action::StoreCamera(3).binding_id(), "Alt+F7".into());
         assert_eq!(shortcut_hint(&state.prefs, &Action::StoreCamera(3)).as_deref(), Some("Alt+F7"));
+    }
+
+    #[test]
+    fn each_theme_takes_its_own_key() {
+        use crate::state::UiTheme;
+        let mut state = EditorState::new(Default::default());
+        let light = Action::SetTheme(UiTheme::Light);
+        assert_eq!(shortcut_hint(&state.prefs, &light), None);
+        state.prefs.key_overrides.insert(light.binding_id(), "Alt+F7".into());
+        state.prefs.key_overrides.insert(Action::SetTheme(UiTheme::Dark).binding_id(), "Alt+F8".into());
+        assert_eq!(light.binding_id(), "SetThemeLight");
+        assert_eq!(shortcut_hint(&state.prefs, &light).as_deref(), Some("Alt+F7"));
+        assert_eq!(shortcut_hint(&state.prefs, &Action::SetTheme(UiTheme::Dark)).as_deref(), Some("Alt+F8"));
+        assert_eq!(shortcut_hint(&state.prefs, &Action::SetTheme(UiTheme::System)), None);
     }
 
     #[test]

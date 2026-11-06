@@ -364,6 +364,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "scatter_items": { "type": "array", "items": { "type": "string" }, "description": "model paths, sprinkle_items is an older alias" },
                 "brush_radius": { "type": "number" },
                 "sculpt_mode": { "type": "string" },
+                "theme": { "type": "string", "enum": ["dark", "light", "system"], "description": "Editor colors. system follows the OS app mode and falls back to dark." },
                 "ui_scale": { "type": "number", "description": "Interface scale, 1 is 100%" },
                 "follow_display_scaling": { "type": "boolean" },
                 "live_mode": { "type": "boolean", "description": "Send edits to a Godot editor that has the map open before saving" },

@@ -1003,6 +1003,7 @@ impl App {
             },
             "cameras": cameras,
             "ui": {
+                "theme": s.prefs.theme.id(), "theme_active": if crate::theme::active() == egui::Theme::Light { "light" } else { "dark" },
                 "scale": (s.prefs.ui_scale as f64 * 100.0).round() / 100.0, "follow_display_scaling": s.prefs.follow_display_scaling,
                 "pixels_per_point": self.viewports.first().map(|v| (v.pixels_per_point as f64 * 1000.0).round() / 1000.0),
                 "windows": self.open_windows.iter().map(|(title, r)| json!({ "title": title, "rect": [r.min.x, r.min.y, r.max.x, r.max.y] })).collect::<Vec<_>>(),
@@ -1792,6 +1793,13 @@ impl App {
             },
             None => None,
         };
+        let theme = match &args["theme"] {
+            Value::Null => None,
+            v => match v.as_str().and_then(crate::state::UiTheme::from_id) {
+                Some(t) => Some(t),
+                None => return err(format!("unknown theme {v}, use dark, light or system")),
+            },
+        };
         let component = match args["mesh_component"].as_str() {
             Some("vertex") => Some(crate::mesh_tool::Component::Vertex),
             Some("edge") => Some(crate::mesh_tool::Component::Edge),
@@ -1854,6 +1862,10 @@ impl App {
             self.state.sculpt.radius = r;
             self.state.blend.radius = r;
             self.state.prefs.scatter.radius = r;
+        }
+
+        if let Some(t) = theme {
+            self.state.prefs.theme = t;
         }
 
         if let Some(scale) = args["ui_scale"].as_f64() {

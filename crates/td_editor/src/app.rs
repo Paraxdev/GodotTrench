@@ -2184,6 +2184,20 @@ impl App {
         }
     }
 
+    fn apply_theme(&self, ctx: &egui::Context) {
+        use crate::state::UiTheme;
+        let want = match self.state.prefs.theme {
+            UiTheme::Dark => egui::ThemePreference::Dark,
+            UiTheme::Light => egui::ThemePreference::Light,
+            UiTheme::System => egui::ThemePreference::System,
+        };
+        if ctx.options(|o| o.theme_preference) != want {
+            ctx.set_theme(want);
+        }
+
+        crate::theme::set_active(ctx.theme());
+    }
+
     /// A saved or default window size can be larger than a scaled monitor, which pushes panels off screen.
     fn fit_window_to_monitor(&mut self, ctx: &egui::Context) {
         if self.window_fitted || !self.keep_prefs {
@@ -2675,6 +2689,7 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.apply_ui_scale(&ctx);
+        self.apply_theme(&ctx);
         self.fit_window_to_monitor(&ctx);
         self.tools.sync(&self.state);
         self.state.tick_godot(&ctx);

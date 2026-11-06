@@ -181,6 +181,10 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         out.push((format!("Shading: Baked View, {}", v.label()), Action::SetBakeView(v)));
     }
 
+    for t in crate::state::UiTheme::ALL {
+        out.push((format!("View: Theme: {}", t.label()), Action::SetTheme(t)));
+    }
+
     for j in td_geom::Justify::ALL {
         out.push((format!("Texture: Justify {}", j.label()), Action::Justify(j)));
     }
