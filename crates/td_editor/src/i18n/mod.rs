@@ -370,7 +370,7 @@ pub fn list(items: &[impl AsRef<str>]) -> String {
 }
 
 /// A message in English, for MCP, tests and logs, and in the user's language, for the status bar.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Msg {
     pub en: String,
     pub shown: String,

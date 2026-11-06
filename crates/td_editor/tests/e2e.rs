@@ -3582,6 +3582,30 @@ fn language_switches_without_a_restart() {
     assert_eq!(image_difference(&english, &window("english_again")), 0.0);
 }
 
+/// The panels name the bundled prefabs in the editor's language, while the prefab_library tool keeps listing,
+/// copying and pasting them by their English names.
+#[test]
+#[ignore]
+fn prefab_library_names_stay_english_in_german() {
+    let ed = Editor::launch("prefab_names_german");
+    let names = |reply: &Value| -> Vec<String> { reply["entries"].as_array().unwrap().iter().map(|e| e["name"].as_str().unwrap().to_string()).collect() };
+    let english = names(&ed.call("prefab_library", json!({ "op": "list" })));
+    assert!(english.contains(&"Doorways/Window".to_string()), "{english:?}");
+
+    ed.call("set_editor", json!({ "language": "de" }));
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(names(&ed.call("prefab_library", json!({ "op": "list" }))), english);
+    assert_eq!(names(&ed.call("prefab_library", json!({ "op": "list", "query": "window" }))), ["Doorways/Window"]);
+    assert!(
+        ed.call("prefab_library", json!({ "op": "list", "query": "fenster" }))["entries"].as_array().unwrap().is_empty(),
+        "the search is on the English names"
+    );
+    assert_eq!(ed.call("prefab_library", json!({ "op": "copy", "name": "doorways/window" }))["name"], "Doorways/Window");
+    assert!(ed.call_err("prefab_library", json!({ "op": "paste", "name": "Türöffnungen/Fenster" })).contains("no prefab"));
+    assert_eq!(ed.call("prefab_library", json!({ "op": "paste", "name": "Doorways/Window" }))["ok"], true);
+    assert!(ed.state()["status"].as_str().unwrap().starts_with("Pasted Window"), "{}", ed.state()["status"]);
+}
+
 /// The tool hint at the corner of a view is painted text, so it wraps to the view and follows the language while
 /// the tool, its status for MCP and the history labels stay English.
 #[test]

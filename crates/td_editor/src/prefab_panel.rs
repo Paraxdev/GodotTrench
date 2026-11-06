@@ -4,6 +4,7 @@
 use egui::{Color32, Pos2, RichText, ScrollArea, Sense, Stroke, Ui, Vec2};
 
 use crate::commands::Action;
+use crate::i18n::{msg, tr, trf};
 use crate::prefab_library::{Entry, Source};
 use crate::state::EditorState;
 
@@ -24,15 +25,15 @@ impl Default for PrefabPanel {
 
 pub fn show(ui: &mut Ui, state: &mut EditorState, ps: &mut PrefabPanel, actions: &mut Vec<Action>) {
     ui.horizontal_wrapped(|ui| {
-        ui.add(egui::TextEdit::singleline(&mut ps.filter).hint_text("Search prefabs").desired_width(140.0));
-        egui::ComboBox::from_id_salt("prefab_category").selected_text(ps.category.clone().unwrap_or_else(|| "All categories".into())).show_ui(ui, |ui| {
-            ui.selectable_value(&mut ps.category, None, "All categories");
+        ui.add(egui::TextEdit::singleline(&mut ps.filter).hint_text(tr("Search prefabs")).desired_width(140.0));
+        egui::ComboBox::from_id_salt("prefab_category").selected_text(ps.category.as_deref().map_or_else(|| tr("All categories"), tr)).show_ui(ui, |ui| {
+            ui.selectable_value(&mut ps.category, None, tr("All categories"));
             for c in state.prefab_library.categories() {
-                ui.selectable_value(&mut ps.category, Some(c.clone()), c);
+                ui.selectable_value(&mut ps.category, Some(c.clone()), tr(&c));
             }
         });
         ui.add(egui::Slider::new(&mut ps.size, 56.0..=180.0).show_value(false));
-        if ui.small_button("⟳").on_hover_text("Rescan res://prefab_library").clicked() {
+        if ui.small_button("⟳").on_hover_text(tr("Rescan res://prefab_library")).clicked() {
             let root = state.game.project_root.clone();
             state.prefab_library.rescan(root.as_deref());
         }
@@ -45,12 +46,12 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, ps: &mut PrefabPanel, actions:
         .prefab_library
         .entries
         .iter()
-        .filter(|e| filter.is_empty() || e.key().to_lowercase().contains(&filter))
+        .filter(|e| filter.is_empty() || e.key().to_lowercase().contains(&filter) || e.shown_key().to_lowercase().contains(&filter))
         .filter(|e| ps.category.as_ref().is_none_or(|c| &e.category == c))
         .cloned()
         .collect();
     if entries.is_empty() {
-        ui.label(RichText::new("No prefabs match the search").weak());
+        ui.label(RichText::new(tr("No prefabs match the search")).weak());
     }
 
     ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
@@ -62,27 +63,27 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, ps: &mut PrefabPanel, actions:
                 }
 
                 resp.context_menu(|ui| {
-                    if ui.button("Paste").clicked() {
+                    if ui.button(tr("Paste")).clicked() {
                         paste(state, entry, actions);
                         ui.close();
                     }
 
-                    if ui.button("Copy").on_hover_text("Put the pieces on the clipboard to paste anywhere").clicked() {
+                    if ui.button(tr("Copy")).on_hover_text(tr("Put the pieces on the clipboard to paste anywhere")).clicked() {
                         match state.prefab_library.text(entry) {
                             Ok(text) => ui.ctx().copy_text(text),
-                            Err(e) => state.set_status(format!("Could not read {}: {e}", entry.name)),
+                            Err(e) => state.set_status(msg!("Could not read {name}: {e}", name = entry.name, e)),
                         }
 
                         ui.close();
                     }
 
                     if let Some(path) = &entry.path {
-                        if ui.button("Open to edit").clicked() {
+                        if ui.button(tr("Open to edit")).clicked() {
                             actions.push(Action::OpenMapFile(path.clone()));
                             ui.close();
                         }
 
-                        if ui.button("Show in File Manager").clicked() {
+                        if ui.button(tr("Show in File Manager")).clicked() {
                             crate::panels::show_in_file_manager(path);
                             ui.close();
                         }
@@ -96,36 +97,36 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, ps: &mut PrefabPanel, actions:
 fn paste(state: &mut EditorState, entry: &Entry, actions: &mut Vec<Action>) {
     match state.prefab_library.text(entry) {
         Ok(text) => actions.push(Action::Paste(text)),
-        Err(e) => state.set_status(format!("Could not read {}: {e}", entry.name)),
+        Err(e) => state.set_status(msg!("Could not read {name}: {e}", name = entry.name, e)),
     }
 }
 
 fn add_row(ui: &mut Ui, state: &mut EditorState, ps: &mut PrefabPanel) {
-    crate::widgets::collapsing("Add the selection").id_salt("prefab_add").show(ui, |ui| {
+    crate::widgets::collapsing(tr("Add the selection")).id_salt("prefab_add").show(ui, |ui| {
         ui.horizontal_wrapped(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut ps.new_name).hint_text("Name").desired_width(120.0));
-            ui.add(egui::TextEdit::singleline(&mut ps.new_category).hint_text("Category").desired_width(100.0));
-            ui.checkbox(&mut ps.keep_position, "Keep position")
-                .on_hover_text("Keeps the map origin as the piece's origin, for pieces built around it, like a kit for Random Fill");
+            ui.add(egui::TextEdit::singleline(&mut ps.new_name).hint_text(tr("Name")).desired_width(120.0));
+            ui.add(egui::TextEdit::singleline(&mut ps.new_category).hint_text(tr("Category")).desired_width(100.0));
+            ui.checkbox(&mut ps.keep_position, tr("Keep position"))
+                .on_hover_text(tr("Keeps the map origin as the piece's origin, for pieces built around it, like a kit for Random Fill"));
             let roots = td_doc::ops::selection_roots(&state.doc.map, &state.doc.selection);
             let root = state.game.project_root.clone();
             let ready = !roots.is_empty() && root.is_some() && !ps.new_name.trim().is_empty();
             let why = if root.is_none() {
-                "Open a Godot project first, the entry is saved in its prefab_library folder"
+                tr("Open a Godot project first, the entry is saved in its prefab_library folder")
             } else if roots.is_empty() {
-                "Select the objects to add"
+                tr("Select the objects to add")
             } else {
-                "Saves the selection as a .tdm in res://prefab_library, its bottom center on the origin"
+                tr("Saves the selection as a .tdm in res://prefab_library, its bottom center on the origin")
             };
-            if ui.add_enabled(ready, egui::Button::new("Add")).on_hover_text(why).on_disabled_hover_text(why).clicked()
+            if ui.add_enabled(ready, egui::Button::new(tr("Add"))).on_hover_text(why).on_disabled_hover_text(why).clicked()
                 && let Some(root) = root
             {
                 match state.prefab_library.add(&state.doc.map, &roots, &ps.new_category, &ps.new_name, &root, ps.keep_position) {
                     Ok(path) => {
-                        state.set_status(format!("Added {} to the prefab library", path.display()));
+                        state.set_status(msg!("Added {path} to the prefab library", path = path.display()));
                         ps.new_name.clear();
                     }
-                    Err(e) => state.set_status(format!("Could not add the prefab: {e}")),
+                    Err(e) => state.set_status(msg!("Could not add the prefab: {e}", e)),
                 }
             }
         });
@@ -135,22 +136,23 @@ fn add_row(ui: &mut Ui, state: &mut EditorState, ps: &mut PrefabPanel) {
 fn hover_text(entry: &Entry) -> String {
     let size = entry.bounds.size();
     let source = match entry.source {
-        Source::BuiltIn => "Built in",
-        Source::Project => "Project",
+        Source::BuiltIn => tr("Built in"),
+        Source::Project => tr("Project"),
     };
-    format!(
-        "{}\n{} × {} × {} units, {source}\nClick to paste at the pointer, right click for more",
-        entry.key(),
-        size.x.round(),
-        size.y.round(),
-        size.z.round()
+    trf!(
+        "{key}\n{x} × {y} × {z} units, {source}\nClick to paste at the pointer, right click for more",
+        key = entry.shown_key(),
+        x = size.x.round(),
+        y = size.y.round(),
+        z = size.z.round(),
+        source
     )
 }
 
 /// A card: the entry's preview, faces shaded lighter the nearer they sit, point entities as dots.
 fn card(ui: &mut Ui, entry: &Entry, size: f32) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(size + 8.0, size + 24.0), Sense::click());
-    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &entry.name));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, entry.shown_name()));
     let painter = ui.painter_at(rect);
     let visuals = ui.visuals();
     let bg = if resp.hovered() { visuals.widgets.hovered.bg_fill } else { visuals.extreme_bg_color };
@@ -178,7 +180,7 @@ fn card(ui: &mut Ui, entry: &Entry, size: f32) -> egui::Response {
     painter.text(
         Pos2::new(rect.center().x, rect.max.y - 10.0),
         egui::Align2::CENTER_CENTER,
-        &entry.name,
+        entry.shown_name(),
         egui::FontId::proportional(11.0),
         visuals.text_color(),
     );

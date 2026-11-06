@@ -655,13 +655,13 @@ pub fn source_for_path(state: &EditorState, path: &std::path::Path) -> String {
 
 /// A status note naming the model files that are outside the project, which a set keeps but cannot show. Empty when
 /// there are none.
-pub fn outside_project_note(state: &EditorState, paths: &[std::path::PathBuf]) -> String {
+pub fn outside_project_note(state: &EditorState, paths: &[std::path::PathBuf]) -> Msg {
     let outside: Vec<String> = paths
         .iter()
         .filter(|p| !source_for_path(state, p).starts_with("res://"))
         .map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
         .collect();
-    if outside.is_empty() { String::new() } else { format!(". Models outside the project do not show: {}", outside.join(", ")) }
+    if outside.is_empty() { Msg::default() } else { msg!(". Models outside the project do not show: {names}", names = outside.join(", ")) }
 }
 
 /// Set entries for model files picked or dropped at once.
@@ -1080,9 +1080,9 @@ mod tests {
         assert!(state.doc.map.scatter(id).unwrap().items[0].enabled);
         assert_eq!(state.doc.map.scatter(id).unwrap().items.len(), 2);
 
-        assert_eq!(outside_project_note(&state, &paths), ". Models outside the project do not show: fir.glb, stone.bbmodel");
+        assert_eq!(outside_project_note(&state, &paths).en, ". Models outside the project do not show: fir.glb, stone.bbmodel");
         state.game.project_root = Some("C:/models".into());
-        assert_eq!(outside_project_note(&state, &paths), "");
+        assert_eq!(outside_project_note(&state, &paths), Msg::default());
     }
 
     #[test]

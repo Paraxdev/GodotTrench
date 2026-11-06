@@ -9,11 +9,13 @@ use std::sync::Arc;
 use td_core::{Aabb, DVec3, NodeId};
 use td_doc::{Map, NodeKind, Selection, format, ops};
 
+use crate::i18n::tr;
+
 /// Folder in the Godot project that holds the project's own entries.
 pub const FOLDER: &str = "prefab_library";
 
 /// Category, name and file of every built-in entry.
-const BUILTIN: &[(&str, &str, &[u8])] = &[
+pub(crate) const BUILTIN: &[(&str, &str, &[u8])] = &[
     ("Stairs", "Straight stair 8", include_bytes!("../assets/prefab_library/stairs/straight_8.tdm")),
     ("Stairs", "Straight stair 16", include_bytes!("../assets/prefab_library/stairs/straight_16.tdm")),
     ("Stairs", "Switchback stair", include_bytes!("../assets/prefab_library/stairs/switchback.tdm")),
@@ -52,6 +54,16 @@ impl Entry {
     /// category/name, how scripts and the MCP tool address an entry.
     pub fn key(&self) -> String {
         format!("{}/{}", self.category, self.name)
+    }
+
+    /// The name as the panels draw it, a built-in one in the editor's language and a project's own as its file says.
+    pub fn shown_name(&self) -> &str {
+        if self.source == Source::BuiltIn { tr(&self.name) } else { &self.name }
+    }
+
+    /// category/name for the panels, the category translated where it is a built-in one.
+    pub fn shown_key(&self) -> String {
+        format!("{}/{}", tr(&self.category), self.shown_name())
     }
 }
 
@@ -120,6 +132,11 @@ impl PrefabLibrary {
     pub fn find(&self, key: &str) -> Option<&Entry> {
         let key = key.trim().to_lowercase();
         self.entries.iter().find(|e| e.key().to_lowercase() == key).or_else(|| self.entries.iter().find(|e| e.name.to_lowercase() == key))
+    }
+
+    /// How the panels draw the entry named by `key`, the key itself when there is no such entry.
+    pub fn shown_key(&self, key: &str) -> String {
+        self.find(key).map_or_else(|| key.to_string(), Entry::shown_key)
     }
 
     /// Clipboard text holding every object of the entry.
@@ -321,6 +338,43 @@ mod tests {
         library.add(&map, &[brush], "Office Rooms", "Kept", &root, true).unwrap();
         assert_eq!(library.find("kept").unwrap().bounds, Aabb::new(DVec3::new(100.0, 32.0, 200.0), DVec3::new(164.0, 96.0, 232.0)), "keeps its position");
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn built_in_names_are_translated_for_the_panels_and_project_names_are_not() {
+        use crate::i18n::{Lang, scope};
+        let root = std::env::temp_dir().join(format!("td_prefab_library_names_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        let brush =
+            map.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::new(8.0, 0.0, 40.0), DVec3::new(72.0, 40.0, 72.0)), "dev/grey").unwrap()));
+        let mut library = PrefabLibrary::new(Some(&root));
+        library.add(&map, &[brush], "Rooms", "Window", &root, false).unwrap();
+
+        let de = scope(Lang::De);
+        let built_in = library.entries.iter().find(|e| e.source == Source::BuiltIn && e.name == "Window").unwrap();
+        assert_eq!((built_in.key().as_str(), built_in.shown_name(), built_in.shown_key().as_str()), ("Doorways/Window", "Fenster", "Türöffnungen/Fenster"));
+        assert_eq!(library.shown_key("doorways/window"), "Türöffnungen/Fenster", "found by its English key whatever the case");
+
+        let own = library.entries.iter().find(|e| e.source == Source::Project).unwrap();
+        assert_eq!((own.key().as_str(), own.shown_name(), own.shown_key().as_str()), ("Rooms/Window", "Window", "Räume/Window"));
+        assert_eq!(library.shown_key("no/such"), "no/such", "an unknown key is drawn as it is");
+        drop(de);
+        assert_eq!(library.shown_key("doorways/window"), "Doorways/Window");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn every_built_in_name_and_category_has_a_german_text() {
+        use crate::i18n::{Lang, scope};
+        let _de = scope(Lang::De);
+        let library = PrefabLibrary::new(None);
+        for e in &library.entries {
+            assert_ne!(e.shown_name(), e.name, "{} has no German name", e.key());
+            // Details is spelled the same in German.
+            assert!(e.category == "Details" || tr(&e.category) != e.category, "{} has no German category", e.key());
+        }
     }
 
     #[test]

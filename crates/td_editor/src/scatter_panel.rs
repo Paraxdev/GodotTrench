@@ -6,6 +6,7 @@ use td_doc::{ScatterItem, ScatterKind};
 use td_render::Renderer;
 
 use crate::commands::Action;
+use crate::i18n::{msg, msg_n, tr, tr_n, trf};
 use crate::panels::DndPayload;
 use crate::scatter_tool as tool;
 use crate::state::{EditorState, ScatterOutput};
@@ -37,7 +38,7 @@ fn set_row(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>) {
     let focus_id = rename_id.with("focus");
     let mut renaming: Option<String> = ui.data(|d| d.get_temp(rename_id));
     ui.horizontal_wrapped(|ui| {
-        ui.label("Set");
+        ui.label(tr("Set#scatter"));
         match (&mut renaming, active) {
             (Some(name), Some(id)) => {
                 let edit = ui.add(egui::TextEdit::singleline(name).desired_width(150.0));
@@ -57,11 +58,11 @@ fn set_row(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>) {
             _ => {
                 renaming = None;
                 let sets: Vec<(NodeId, String)> = state.doc.map.scatters().map(|(id, s)| (id, format!("{} ({})", s.name, s.instances.len()))).collect();
-                let current = active.and_then(|a| sets.iter().find(|(id, _)| *id == a)).map(|(_, n)| n.clone()).unwrap_or_else(|| "none".into());
+                let current = active.and_then(|a| sets.iter().find(|(id, _)| *id == a)).map(|(_, n)| n.clone()).unwrap_or_else(|| tr("none").into());
                 let width = (ui.available_width() - 240.0).clamp(80.0, 220.0);
                 egui::ComboBox::from_id_salt("scatter_panel_set").selected_text(current).width(width).show_ui(ui, |ui| {
                     if sets.is_empty() {
-                        ui.label(RichText::new("No sets in this map yet").weak());
+                        ui.label(RichText::new(tr("No sets in this map yet")).weak());
                     }
 
                     for (id, name) in &sets {
@@ -73,29 +74,29 @@ fn set_row(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>) {
             }
         }
 
-        if icons::button(ui, icons::PLUS, 16.0, "New set", "New empty set on its own layer, drop models into it").clicked() {
+        if icons::button(ui, icons::PLUS, 16.0, tr("New set"), tr("New empty set on its own layer, drop models into it")).clicked() {
             actions.push(Action::NewScatterSet);
         }
 
-        ui.menu_button("Preset", |ui| {
-            ui.label(RichText::new("New set from a built-in preset").weak());
+        ui.menu_button(tr("Preset"), |ui| {
+            ui.label(RichText::new(tr("New set from a built-in preset")).weak());
             for preset in td_doc::scatter::PRESETS {
-                if ui.button(preset).clicked() {
+                if ui.button(tr(preset)).clicked() {
                     actions.push(Action::ScatterPreset(preset.to_string()));
                     ui.close();
                 }
             }
         })
         .response
-        .on_hover_text("Start a new set holding one of the built-in nature presets");
+        .on_hover_text(tr("Start a new set holding one of the built-in nature presets"));
 
         if let Some(id) = active {
-            if renaming.is_none() && ui.small_button("Rename").clicked() {
+            if renaming.is_none() && ui.small_button(tr("Rename")).clicked() {
                 renaming = state.doc.map.scatter(id).map(|s| s.name.clone());
                 ui.data_mut(|d| d.insert_temp(focus_id, true));
             }
 
-            if icons::button(ui, icons::DELETE, 16.0, "Delete set", "Delete this set, its instances and its empty layer").clicked() {
+            if icons::button(ui, icons::DELETE, 16.0, tr("Delete set"), tr("Delete this set, its instances and its empty layer")).clicked() {
                 tool::delete_set(state, id);
             }
         }
@@ -141,10 +142,10 @@ fn thumbnail(ui: &mut Ui, item: &ScatterItem, image: Option<egui::TextureId>, mi
 
 fn models_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>, renderer: Option<&mut Renderer>) {
     ui.horizontal(|ui| {
-        ui.strong("Models");
+        ui.strong(tr("Models"));
         if let Some(set) = active.and_then(|id| state.doc.map.scatter(id)) {
             let on = set.items.iter().filter(|i| i.enabled).count();
-            ui.label(RichText::new(format!("{on} of {} painted, {} placed", set.items.len(), set.instances.len())).weak());
+            ui.label(RichText::new(trf!("{on} of {total} painted, {placed} placed", on, total = set.items.len(), placed = set.instances.len())).weak());
         }
     });
 
@@ -156,29 +157,30 @@ fn models_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>, 
             None => {
                 ui.add_space(12.0);
                 ui.vertical_centered(|ui| {
-                    ui.label(RichText::new("No scatter set is active").strong()).on_hover_text("Drop models here to start one, or use + and Preset above");
+                    ui.label(RichText::new(tr("No scatter set is active")).strong())
+                        .on_hover_text(tr("Drop models here to start one, or use + and Preset above"));
                 });
                 ui.add_space(12.0);
             }
         }
 
-        ui.vertical_centered(|ui| ui.label(RichText::new("Drop models here from the Models panel").small().color(theme::colors().gray_5)));
+        ui.vertical_centered(|ui| ui.label(RichText::new(tr("Drop models here from the Models panel")).small().color(theme::colors().gray_5)));
     });
     if let Some(payload) = dropped {
         drop_payload(state, &payload);
     }
 
     ui.horizontal_wrapped(|ui| {
-        if ui.small_button("Add models…").on_hover_text("Pick .bbmodel, .glb, .gltf or .tscn files").clicked()
+        if ui.small_button(tr("Add models…")).on_hover_text(tr("Pick .bbmodel, .glb, .gltf or .tscn files")).clicked()
             && let Some(paths) =
-                crate::commands::file_dialog(state, |d| d.add_filter("Models and scenes", &["bbmodel", "glb", "gltf", "tscn", "scn"]).pick_files())
+                crate::commands::file_dialog(state, |d| d.add_filter(tr("Models and scenes"), &["bbmodel", "glb", "gltf", "tscn", "scn"]).pick_files())
         {
             let (_, added) = tool::add_model_files(state, &paths);
             let note = tool::outside_project_note(state, &paths);
-            state.set_status(format!("Added {added} models to the scatter set{note}"));
+            state.set_status(msg_n!(added, "Added {n} model to the scatter set", "Added {n} models to the scatter set").then("", note));
         }
 
-        if ui.small_button("Add selected props").on_hover_text("The models (or classnames) of the selected entities").clicked() {
+        if ui.small_button(tr("Add selected props")).on_hover_text(tr("The models (or classnames) of the selected entities")).clicked() {
             let items: Vec<ScatterItem> = state
                 .doc
                 .selection
@@ -188,7 +190,7 @@ fn models_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>, 
                 .map(|e| ScatterItem::new(e.property("model").map(str::to_string).unwrap_or_else(|| e.classname.clone())))
                 .collect();
             if items.is_empty() {
-                state.set_status("Select prop entities to add their models");
+                state.set_status(msg!("Select prop entities to add their models"));
             } else {
                 let id = tool::active_set(state).unwrap_or_else(|| tool::new_empty_set(state));
                 tool::add_items(state, id, items);
@@ -204,21 +206,22 @@ pub fn drop_payload(state: &mut EditorState, payload: &DndPayload) {
             let (id, added) = tool::add_model_files(state, std::slice::from_ref(path));
             let name = state.doc.map.scatter(id).map(|s| s.name.clone()).unwrap_or_default();
             let file = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-            let status = if added > 0 { format!("{file} added to scatter set '{name}'") } else { format!("{file} is painted by '{name}' again") };
-            state.set_status(status + &tool::outside_project_note(state, std::slice::from_ref(path)));
+            let status =
+                if added > 0 { msg!("{file} added to scatter set '{name}'", file, name) } else { msg!("{file} is painted by '{name}' again", file, name) };
+            state.set_status(status.then("", tool::outside_project_note(state, std::slice::from_ref(path))));
         }
         DndPayload::Entities(classnames) => {
             let id = tool::active_set(state).unwrap_or_else(|| tool::new_empty_set(state));
             tool::add_items(state, id, classnames.iter().map(ScatterItem::new).collect());
         }
-        DndPayload::Material(_) => state.set_status("Drop models here, materials go onto a model's card in its details"),
+        DndPayload::Material(_) => state.set_status(msg!("Drop models here, materials go onto a model's card in its details")),
     }
 }
 
 fn item_cards(ui: &mut Ui, state: &mut EditorState, id: NodeId, set: td_doc::Scatter, mut renderer: Option<&mut Renderer>) {
     if set.items.is_empty() {
         ui.add_space(8.0);
-        ui.vertical_centered(|ui| ui.label(RichText::new(format!("'{}' has no models yet", set.name)).weak()));
+        ui.vertical_centered(|ui| ui.label(RichText::new(trf!("'{name}' has no models yet", name = set.name)).weak()));
         ui.add_space(8.0);
         return;
     }
@@ -240,7 +243,8 @@ fn item_cards(ui: &mut Ui, state: &mut EditorState, id: NodeId, set: td_doc::Sca
         egui::Frame::new().fill(theme::colors().gray_1).corner_radius(4.0).inner_margin(6.0).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
-                let hover = if missing { format!("{} is missing, install the nature models or fix the path", item.source) } else { item.source.clone() };
+                let hover =
+                    if missing { trf!("{source} is missing, install the nature models or fix the path", source = item.source) } else { item.source.clone() };
                 thumbnail(ui, item, image, missing).on_hover_text(hover);
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
@@ -257,23 +261,25 @@ fn item_cards(ui: &mut Ui, state: &mut EditorState, id: NodeId, set: td_doc::Sca
 
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             let arrow = if open { icons::COLLAPSE } else { icons::EXPAND };
-                            if icons::small(ui, arrow, "Details", None).on_hover_text("Scale, spacing, alignment and material").clicked() {
+                            if icons::small(ui, arrow, tr("Details"), None).on_hover_text(tr("Scale, spacing, alignment and material")).clicked() {
                                 open = !open;
                             }
 
                             changed |= ui
-                                .checkbox(&mut item.enabled, "paint")
-                                .on_hover_text("Off keeps the placed instances but the brush skips this model")
+                                .checkbox(&mut item.enabled, tr("paint"))
+                                .on_hover_text(tr("Off keeps the placed instances but the brush skips this model"))
                                 .changed();
                         });
                     });
                     ui.horizontal(|ui| {
                         ui.spacing_mut().slider_width = 80.0;
-                        ui.label(RichText::new("weight").color(theme::colors().gray_5));
-                        changed |=
-                            ui.add(egui::Slider::new(&mut item.weight, 0.0..=10.0).max_decimals(1)).on_hover_text("Relative chance of this model").changed();
+                        ui.label(RichText::new(tr("weight")).color(theme::colors().gray_5));
+                        changed |= ui
+                            .add(egui::Slider::new(&mut item.weight, 0.0..=10.0).max_decimals(1))
+                            .on_hover_text(tr("Relative chance of this model"))
+                            .changed();
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.label(RichText::new(format!("{} placed", counts.get(k).copied().unwrap_or(0))).weak());
+                            ui.label(RichText::new(trf!("{n} placed", n = counts.get(k).copied().unwrap_or(0))).weak());
                         });
                     });
                 });
@@ -281,50 +287,50 @@ fn item_cards(ui: &mut Ui, state: &mut EditorState, id: NodeId, set: td_doc::Sca
             if open {
                 ui.add_space(4.0);
                 egui::Grid::new(("scatter_item_details", id, k)).num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
-                    ui.label("Scale");
+                    ui.label(tr("Scale"));
                     ui.horizontal(|ui| {
                         changed |= ui.add(egui::DragValue::new(&mut item.scale[0]).range(0.01..=50.0).speed(0.01)).changed();
-                        ui.label("to");
+                        ui.label(tr("to"));
                         changed |= ui.add(egui::DragValue::new(&mut item.scale[1]).range(0.01..=50.0).speed(0.01)).changed();
                     });
                     ui.end_row();
-                    ui.label("Spacing");
+                    ui.label(tr("Spacing"));
                     changed |= ui
                         .add(egui::DragValue::new(&mut item.spacing).range(0.0..=4096.0).suffix(" u"))
-                        .on_hover_text("Minimum distance to other instances")
+                        .on_hover_text(tr("Minimum distance to other instances"))
                         .changed();
                     ui.end_row();
-                    ui.label("Align");
-                    changed |= ui.add(egui::Slider::new(&mut item.align, 0.0..=1.0)).on_hover_text("0 stands upright, 1 follows the surface").changed();
+                    ui.label(tr("Align"));
+                    changed |= ui.add(egui::Slider::new(&mut item.align, 0.0..=1.0)).on_hover_text(tr("0 stands upright, 1 follows the surface")).changed();
                     ui.end_row();
-                    ui.label("Tilt");
-                    changed |= ui.add(egui::DragValue::new(&mut item.tilt).range(0.0..=90.0).suffix("°")).on_hover_text("Largest random lean").changed();
+                    ui.label(tr("Tilt"));
+                    changed |= ui.add(egui::DragValue::new(&mut item.tilt).range(0.0..=90.0).suffix("°")).on_hover_text(tr("Largest random lean")).changed();
                     ui.end_row();
-                    ui.label("Sink");
+                    ui.label(tr("Sink"));
                     changed |=
-                        ui.add(egui::DragValue::new(&mut item.sink).range(-256.0..=256.0).suffix(" u")).on_hover_text("Pushed into the ground").changed();
+                        ui.add(egui::DragValue::new(&mut item.sink).range(-256.0..=256.0).suffix(" u")).on_hover_text(tr("Pushed into the ground")).changed();
                     ui.end_row();
-                    ui.label("Random yaw");
+                    ui.label(tr("Random yaw"));
                     changed |= ui.checkbox(&mut item.random_yaw, "").changed();
                     ui.end_row();
-                    ui.label("Material");
+                    ui.label(tr("Material"));
                     ui.horizontal(|ui| {
                         let mut material = item.material.clone().unwrap_or_default();
                         if ui
-                            .add(egui::TextEdit::singleline(&mut material).hint_text("set's or model's").desired_width(110.0))
-                            .on_hover_text("Drawn instead of the model's own materials, empty falls back to the set's material")
+                            .add(egui::TextEdit::singleline(&mut material).hint_text(tr("set's or model's")).desired_width(110.0))
+                            .on_hover_text(tr("Drawn instead of the model's own materials, empty falls back to the set's material"))
                             .changed()
                         {
                             item.material = (!material.trim().is_empty()).then(|| material.trim().to_string());
                             changed = true;
                         }
 
-                        if ui.small_button("Use Current").on_hover_text(current_material.clone()).clicked() {
+                        if ui.small_button(tr("Use Current")).on_hover_text(current_material.clone()).clicked() {
                             item.material = Some(current_material.clone());
                             changed = true;
                         }
 
-                        if item.material.is_some() && ui.small_button("×").on_hover_text("Back to the model's own materials").clicked() {
+                        if item.material.is_some() && ui.small_button("×").on_hover_text(tr("Back to the model's own materials")).clicked() {
                             item.material = None;
                             changed = true;
                         }
@@ -332,7 +338,11 @@ fn item_cards(ui: &mut Ui, state: &mut EditorState, id: NodeId, set: td_doc::Sca
                     ui.end_row();
                 });
                 let n = counts.get(k).copied().unwrap_or(0);
-                if ui.small_button(format!("Remove with {n} instances")).on_hover_text("Takes the model and everything it placed out of the set").clicked() {
+                if ui
+                    .small_button(tr_n!(n, "Remove with {n} instance", "Remove with {n} instances"))
+                    .on_hover_text(tr("Takes the model and everything it placed out of the set"))
+                    .clicked()
+                {
                     remove = Some(k);
                 }
             }
@@ -358,7 +368,7 @@ fn item_cards(ui: &mut Ui, state: &mut EditorState, id: NodeId, set: td_doc::Sca
 
 fn targets_section(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>, active: Option<NodeId>) {
     ui.horizontal(|ui| {
-        ui.strong("Targets");
+        ui.strong(tr("Targets"));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let picking = state.scatter_eyedropper;
             let resp = ui.add_enabled(active.is_some(), |ui: &mut Ui| {
@@ -367,8 +377,8 @@ fn targets_section(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Actio
                     icons::EYEDROPPER,
                     16.0,
                     picking,
-                    "Pick target",
-                    "Click a surface or scattered object in a view to add it as a target, or a target to remove it",
+                    tr("Pick target"),
+                    tr("Click a surface or scattered object in a view to add it as a target, or a target to remove it"),
                 )
             });
             if resp.clicked() {
@@ -380,13 +390,16 @@ fn targets_section(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Actio
         });
     });
     let Some(set) = active.and_then(|id| state.doc.map.scatter(id)).cloned() else {
-        ui.label(RichText::new("Targets belong to a set, start or pick one first").weak());
+        ui.label(RichText::new(tr("Targets belong to a set, start or pick one first")).weak());
         return;
     };
     let follow = !state.prefs.scatter.rules.only_targets;
     if set.targets.is_empty() {
-        let hint =
-            if follow { "None, the brush paints whatever is under it" } else { "None yet, the first stroke targets the surface or scattered set it starts on" };
+        let hint = if follow {
+            tr("None, the brush paints whatever is under it")
+        } else {
+            tr("None yet, the first stroke targets the surface or scattered set it starts on")
+        };
         ui.label(RichText::new(hint).weak());
     }
 
@@ -402,7 +415,7 @@ fn targets_section(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Actio
             ui.add(icon.image(14.0).tint(theme::colors().gray_6));
             ui.label(tool::target_label(state, *t));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if icons::small(ui, icons::DELETE, "Remove target", None).on_hover_text("Stop painting on this").clicked() {
+                if icons::small(ui, icons::DELETE, tr("Remove target"), None).on_hover_text(tr("Stop painting on this")).clicked() {
                     drop = Some(*t);
                 }
             });
@@ -414,91 +427,92 @@ fn targets_section(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Actio
     }
 
     let mut follow_edit = follow;
-    ui.checkbox(&mut follow_edit, "Follow cursor").on_hover_text("Paint on any surface under the brush. Off keeps each stroke on the set's targets");
+    ui.checkbox(&mut follow_edit, tr("Follow cursor")).on_hover_text(tr("Paint on any surface under the brush. Off keeps each stroke on the set's targets"));
     state.prefs.scatter.rules.only_targets = !follow_edit;
     if follow && !set.targets.is_empty() {
-        ui.label(RichText::new("The targets above are ignored while following the cursor").small().color(theme::colors().warning()));
+        ui.label(RichText::new(tr("The targets above are ignored while following the cursor")).small().color(theme::colors().warning()));
     }
 }
 
 fn brush_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>) {
-    ui.strong("Brush");
+    ui.strong(tr("Brush"));
     let s = &mut state.prefs.scatter;
     egui::Grid::new("scatter_panel_brush").num_columns(2).spacing([12.0, 5.0]).show(ui, |ui| {
-        ui.label("Radius");
-        ui.add(egui::DragValue::new(&mut s.radius).range(8.0..=16384.0).suffix(" u")).on_hover_text("Ctrl+wheel in a view");
+        ui.label(tr("Radius"));
+        ui.add(egui::DragValue::new(&mut s.radius).range(8.0..=16384.0).suffix(" u")).on_hover_text(tr("Ctrl+wheel in a view"));
         ui.end_row();
-        ui.label("Density");
+        ui.label(tr("Density"));
         ui.add(egui::DragValue::new(&mut s.rules.density).range(0.01..=64.0).speed(0.05))
-            .on_hover_text("Attempts per 64 x 64 units, spacing limits how many fit");
+            .on_hover_text(tr("Attempts per 64 x 64 units, spacing limits how many fit"));
         ui.end_row();
-        ui.label("Slope");
+        ui.label(tr("Slope"));
         ui.horizontal(|ui| {
             ui.add(egui::DragValue::new(&mut s.rules.slope[0]).range(0.0..=90.0).suffix("°"));
-            ui.label("to");
+            ui.label(tr("to"));
             ui.add(egui::DragValue::new(&mut s.rules.slope[1]).range(0.0..=90.0).suffix("°"));
         });
         ui.end_row();
-        ui.label("Height");
+        ui.label(tr("Height"));
         ui.horizontal(|ui| {
             let mut limited = s.rules.height.is_some();
-            if ui.checkbox(&mut limited, "").on_hover_text("Only place between two world heights").changed() {
+            if ui.checkbox(&mut limited, "").on_hover_text(tr("Only place between two world heights")).changed() {
                 s.rules.height = limited.then_some([-1024.0, 4096.0]);
             }
 
             match &mut s.rules.height {
                 Some(h) => {
                     ui.add(egui::DragValue::new(&mut h[0]));
-                    ui.label("to");
+                    ui.label(tr("to"));
                     ui.add(egui::DragValue::new(&mut h[1]));
                 }
                 None => {
-                    ui.label(RichText::new("any").weak());
+                    ui.label(RichText::new(tr("any")).weak());
                 }
             }
         });
         ui.end_row();
-        ui.label("Falloff");
-        ui.add(egui::Slider::new(&mut s.rules.falloff, 0.0..=1.0)).on_hover_text("Thins instances out towards the rim");
+        ui.label(tr("Falloff"));
+        ui.add(egui::Slider::new(&mut s.rules.falloff, 0.0..=1.0)).on_hover_text(tr("Thins instances out towards the rim"));
         ui.end_row();
-        ui.label("Exposed only");
+        ui.label(tr("Exposed only"));
         ui.horizontal(|ui| {
-            ui.checkbox(&mut s.rules.exposed_only, "").on_hover_text("Skips points with geometry above them, so nothing grows under slabs and roofs");
-            ui.add_enabled(s.rules.exposed_only, egui::DragValue::new(&mut s.rules.clearance).range(0.0..=65536.0).prefix("clear ").suffix(" u"))
-                .on_hover_text("Height above a point that must be free");
+            ui.checkbox(&mut s.rules.exposed_only, "").on_hover_text(tr("Skips points with geometry above them, so nothing grows under slabs and roofs"));
+            ui.add_enabled(s.rules.exposed_only, egui::DragValue::new(&mut s.rules.clearance).range(0.0..=65536.0).prefix(tr("clear ")).suffix(" u"))
+                .on_hover_text(tr("Height above a point that must be free"));
         });
         ui.end_row();
-        ui.label("Erase amount");
-        ui.add(egui::Slider::new(&mut s.erase_amount, 0.05..=1.0)).on_hover_text("Share of the instances under the brush one erase dab removes");
+        ui.label(tr("Erase amount"));
+        ui.add(egui::Slider::new(&mut s.erase_amount, 0.05..=1.0)).on_hover_text(tr("Share of the instances under the brush one erase dab removes"));
         ui.end_row();
-        ui.label("Seed");
-        ui.add(egui::DragValue::new(&mut s.seed).range(0..=u32::MAX as u64)).on_hover_text("0 gives a new pattern every stroke, any other value repeats it");
+        ui.label(tr("Seed"));
+        ui.add(egui::DragValue::new(&mut s.seed).range(0..=u32::MAX as u64))
+            .on_hover_text(tr("0 gives a new pattern every stroke, any other value repeats it"));
         ui.end_row();
-        ui.label("Output");
+        ui.label(tr("Output"));
         ui.horizontal(|ui| {
-            ui.selectable_value(&mut s.output, ScatterOutput::Set, "scatter set");
-            ui.selectable_value(&mut s.output, ScatterOutput::Entities, "entities");
+            ui.selectable_value(&mut s.output, ScatterOutput::Set, tr("scatter set"));
+            ui.selectable_value(&mut s.output, ScatterOutput::Entities, tr("entities"));
         });
         ui.end_row();
         if s.output == ScatterOutput::Entities {
-            ui.label("Prop class");
+            ui.label(tr("Prop class"));
             ui.add(egui::TextEdit::singleline(&mut s.prop_class).desired_width(120.0))
-                .on_hover_text("Entity class models are placed as, classnames stay themselves");
+                .on_hover_text(tr("Entity class models are placed as, classnames stay themselves"));
             ui.end_row();
         }
     });
-    ui.checkbox(&mut s.avoid_other_sets, "Keep spacing to other sets").on_hover_text("Sets this one is painted onto do not count");
-    ui.checkbox(&mut s.erase_palette_only, "Erase only the enabled models");
+    ui.checkbox(&mut s.avoid_other_sets, tr("Keep spacing to other sets")).on_hover_text(tr("Sets this one is painted onto do not count"));
+    ui.checkbox(&mut s.erase_palette_only, tr("Erase only the enabled models"));
 
     if let Some(id) = active
         && let Some(set) = state.doc.map.scatter(id)
     {
         let mut kind = set.kind;
         ui.horizontal(|ui| {
-            ui.label("Kind");
+            ui.label(tr("Kind"));
             for k in ScatterKind::ALL {
-                ui.selectable_value(&mut kind, k, k.label())
-                    .on_hover_text("Props keep their scenes and collision, foliage is drawn as MultiMesh without collision");
+                ui.selectable_value(&mut kind, k, tr(k.label()))
+                    .on_hover_text(tr("Props keep their scenes and collision, foliage is drawn as MultiMesh without collision"));
             }
         });
         if kind != set.kind {
@@ -510,10 +524,10 @@ fn brush_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>) {
         }
     }
 
-    crate::widgets::collapsing("New set defaults").id_salt("scatter_new_defaults").show(ui, |ui| {
+    crate::widgets::collapsing(tr("New set defaults")).id_salt("scatter_new_defaults").show(ui, |ui| {
         let s = &mut state.prefs.scatter;
         egui::Grid::new("scatter_panel_defaults").num_columns(2).show(ui, |ui| {
-            ui.label("Chunk size");
+            ui.label(tr("Chunk size"));
             ui.horizontal(|ui| {
                 let mut chunked = s.chunk_size > 0.0;
                 if ui.checkbox(&mut chunked, "").changed() {
@@ -525,9 +539,9 @@ fn brush_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>) {
                 }
             })
             .response
-            .on_hover_text("Splits a set into cells, each its own MultiMesh so Godot culls the ones off screen");
+            .on_hover_text(tr("Splits a set into cells, each its own MultiMesh so Godot culls the ones off screen"));
             ui.end_row();
-            ui.label("Visibility range");
+            ui.label(tr("Visibility range"));
             ui.horizontal(|ui| {
                 let mut limited = s.visibility_range.is_some();
                 if ui.checkbox(&mut limited, "").changed() {
@@ -539,38 +553,38 @@ fn brush_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>) {
                         ui.add(egui::DragValue::new(range).range(0.0..=100_000.0).suffix(" u"));
                     }
                     None => {
-                        ui.label(RichText::new("from the kind").weak());
+                        ui.label(RichText::new(tr("from the kind")).weak());
                     }
                 }
             });
             ui.end_row();
         });
-        ui.checkbox(&mut s.static_props_multimesh, "Draw prop scenes as MultiMesh")
-            .on_hover_text("Much cheaper for many props, but scripts on those scenes are dropped");
-        ui.label(RichText::new("Each set keeps its own values, edit them in the Inspector").weak());
+        ui.checkbox(&mut s.static_props_multimesh, tr("Draw prop scenes as MultiMesh"))
+            .on_hover_text(tr("Much cheaper for many props, but scripts on those scenes are dropped"));
+        ui.label(RichText::new(tr("Each set keeps its own values, edit them in the Inspector")).weak());
     });
 }
 
 fn action_row(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>, active: Option<NodeId>) {
     ui.horizontal_wrapped(|ui| {
         let tool_on = state.tool == ToolKind::Scatter;
-        if ui.selectable_label(tool_on && !state.scatter_erase, "Paint").on_hover_text("Drag in a view paints, Shift erases").clicked() {
+        if ui.selectable_label(tool_on && !state.scatter_erase, tr("Paint")).on_hover_text(tr("Drag in a view paints, Shift erases")).clicked() {
             state.scatter_erase = false;
             actions.push(Action::SetTool(ToolKind::Scatter));
         }
 
-        if ui.selectable_label(tool_on && state.scatter_erase, "Erase").on_hover_text("Drag in a view erases, Shift paints").clicked() {
+        if ui.selectable_label(tool_on && state.scatter_erase, tr("Erase")).on_hover_text(tr("Drag in a view erases, Shift paints")).clicked() {
             state.scatter_erase = true;
             actions.push(Action::SetTool(ToolKind::Scatter));
         }
 
         ui.separator();
-        if ui.button("Fill Targets").on_hover_text("Cover the set's targets, or the selected surfaces, in one go").clicked() {
+        if ui.button(tr("Fill Targets")).on_hover_text(tr("Cover the set's targets, or the selected surfaces, in one go")).clicked() {
             actions.push(Action::ScatterFill);
         }
 
         ui.add_enabled_ui(active.is_some(), |ui| {
-            if ui.button("Clear Instances").on_hover_text("Remove every placed instance, keep the models").clicked()
+            if ui.button(tr("Clear Instances")).on_hover_text(tr("Remove every placed instance, keep the models")).clicked()
                 && let Some(id) = active
             {
                 state.doc.edit("Clear Scatter", |m, _| {
@@ -580,15 +594,83 @@ fn action_row(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>, a
                 });
             }
 
-            if ui.button("To Entities").on_hover_text("Replace the set with one prop entity per instance").clicked()
+            if ui.button(tr("To Entities")).on_hover_text(tr("Replace the set with one prop entity per instance")).clicked()
                 && let Some(id) = active
             {
                 let n = tool::bake_to_entities(state, id);
-                state.set_status(format!("Converted {n} scatter instances to entities"));
+                state.set_status(msg_n!(n, "Converted {n} scatter instance to entities", "Converted {n} scatter instances to entities"));
             }
         });
     });
-    if ui.small_button("Install Nature Models…").on_hover_text(format!("Adds trees, bushes, rocks and grass to {}", td_doc::scatter::NATURE_DIR)).clicked() {
+    if ui
+        .small_button(tr("Install Nature Models…"))
+        .on_hover_text(trf!("Adds trees, bushes, rocks and grass to {dir}", dir = td_doc::scatter::NATURE_DIR))
+        .clicked()
+    {
         actions.push(Action::InstallNatureModels);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::i18n::{Lang, scope};
+    use egui_kittest::kittest::Queryable;
+
+    struct Fixture {
+        state: EditorState,
+        actions: Vec<Action>,
+    }
+
+    fn harness(lang: Lang) -> egui_kittest::Harness<'static, Fixture> {
+        let fixture = Fixture { state: EditorState::new(crate::state::Prefs::default()), actions: Vec::new() };
+        egui_kittest::Harness::builder().with_size(Vec2::new(500.0, 900.0)).build_ui_state(
+            move |ui, f: &mut Fixture| {
+                crate::i18n::set(lang);
+                scatter_panel(ui, &mut f.state, &mut f.actions, None);
+            },
+            fixture,
+        )
+    }
+
+    #[test]
+    fn the_panel_shows_german_buttons_and_they_still_run() {
+        let _reset = scope(Lang::En);
+        let mut h = harness(Lang::De);
+        h.run();
+        assert!(h.query_by_label("Fill Targets").is_none(), "the English label is gone");
+        assert!(h.query_by_label("Ziele füllen").is_some());
+        assert!(h.query_by_label("Neues Set").is_some());
+
+        h.get_by_label("Ziele füllen").click();
+        h.run();
+        assert_eq!(h.state().actions, [Action::ScatterFill]);
+
+        h.state_mut().actions.clear();
+        h.get_by_label("Natur-Modelle installieren…").click();
+        h.run();
+        assert_eq!(h.state().actions, [Action::InstallNatureModels]);
+
+        h.state_mut().actions.clear();
+        h.get_by_label("Malen").click();
+        h.run();
+        assert_eq!(h.state().actions, [Action::SetTool(ToolKind::Scatter)]);
+        assert!(!h.state().state.scatter_erase);
+
+        h.get_by_label("Löschen").click();
+        h.run();
+        assert!(h.state().state.scatter_erase);
+    }
+
+    #[test]
+    fn the_same_panel_in_english_keeps_its_labels() {
+        let _reset = scope(Lang::En);
+        let mut h = harness(Lang::En);
+        h.run();
+        assert!(h.query_by_label("Fill Targets").is_some());
+        assert!(h.query_by_label("Ziele füllen").is_none());
+        h.get_by_label("Fill Targets").click();
+        h.run();
+        assert_eq!(h.state().actions, [Action::ScatterFill]);
     }
 }

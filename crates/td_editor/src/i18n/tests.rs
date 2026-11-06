@@ -557,6 +557,8 @@ fn foreign_keys() -> Vec<Key> {
     texts.extend(ScatterKind::ALL.iter().map(ScatterKind::label));
     texts.extend(ScatterCollision::ALL.iter().flat_map(|c| [c.label(), c.tooltip()]));
     texts.extend(td_doc::issues::TEMPLATES);
+    texts.extend(td_doc::scatter::PRESETS);
+    texts.extend(crate::prefab_library::BUILTIN.iter().flat_map(|(category, name, _)| [*category, *name]));
     let mut seen = HashSet::new();
     texts.into_iter().filter(|k| seen.insert(*k)).map(|k| Key::Text(k.into())).collect()
 }
@@ -1009,6 +1011,10 @@ const CONVERTED: &[&str] = &[
     "hotspot_editor.rs",
     "trim.rs",
     "texture_convert.rs",
+    "prefab_panel.rs",
+    "prefab_library.rs",
+    "random_fill.rs",
+    "scatter_panel.rs",
 ];
 
 /// Functions of a file that is still being converted, as (file, function name).

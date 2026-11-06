@@ -11,6 +11,8 @@ use td_core::{DVec3, NodeId};
 use td_doc::NodeKind;
 use td_doc::scatter::Rng;
 
+use crate::i18n::{en, msg, tr};
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct FillPiece {
     /// A prefab library entry, category/name.
@@ -154,7 +156,7 @@ pub fn apply(state: &mut crate::state::EditorState, opts: &FillOptions, replace:
         s.select_node(group);
         group
     });
-    state.set_status(format!("Filled {} of {} cells", placements.len(), opts.cells[0] * opts.cells[1]));
+    state.set_status(msg!("Filled {n} of {total} cells", n = placements.len(), total = opts.cells[0] * opts.cells[1]));
     Ok(Filled { group, placements })
 }
 
@@ -195,19 +197,19 @@ impl RandomFillDialog {
         }
 
         let mut open = self.open;
-        egui::Window::new("Random Fill").open(&mut open).resizable(false).default_width(360.0).show(ctx, |ui| {
-            ui.label("Covers a grid with prefab pieces picked by weight. Build pieces one cell wide, centered on the origin.");
+        crate::widgets::window(en!("Random Fill")).open(&mut open).resizable(false).default_width(360.0).show(ctx, |ui| {
+            ui.label(tr("Covers a grid with prefab pieces picked by weight. Build pieces one cell wide, centered on the origin."));
             ui.separator();
             let mut remove = None;
             egui::Grid::new("fill_pieces").num_columns(4).show(ui, |ui| {
                 for (k, p) in self.opts.pieces.iter_mut().enumerate() {
                     let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
                     ui.painter().rect_filled(rect, 2.0, piece_color(k));
-                    ui.label(&p.name);
-                    ui.add(egui::DragValue::new(&mut p.weight).range(0.0..=1000.0).speed(0.1).prefix("weight "));
+                    ui.label(state.prefab_library.shown_key(&p.name));
+                    ui.add(egui::DragValue::new(&mut p.weight).range(0.0..=1000.0).speed(0.1).prefix(tr("weight ")));
                     ui.horizontal(|ui| {
-                        ui.checkbox(&mut p.rotate, "turn").on_hover_text("Turns the piece by a random multiple of 90 degrees");
-                        if ui.small_button("×").on_hover_text("Remove").clicked() {
+                        ui.checkbox(&mut p.rotate, tr("turn")).on_hover_text(tr("Turns the piece by a random multiple of 90 degrees"));
+                        if ui.small_button("×").on_hover_text(tr("Remove")).clicked() {
                             remove = Some(k);
                         }
                     });
@@ -218,50 +220,50 @@ impl RandomFillDialog {
                 self.opts.pieces.remove(k);
             }
 
-            egui::ComboBox::from_id_salt("fill_add").selected_text("Add piece…").show_ui(ui, |ui| {
+            egui::ComboBox::from_id_salt("fill_add").selected_text(tr("Add piece…")).show_ui(ui, |ui| {
                 for e in &state.prefab_library.entries {
-                    if ui.selectable_label(false, e.key()).clicked() {
+                    if ui.selectable_label(false, e.shown_key()).clicked() {
                         self.opts.pieces.push(FillPiece { name: e.key(), weight: 1.0, rotate: true });
                     }
                 }
             });
-            ui.add(egui::DragValue::new(&mut self.opts.empty).range(0.0..=1000.0).speed(0.1).prefix("empty weight "))
-                .on_hover_text("How likely a cell stays empty, against the pieces' weights");
+            ui.add(egui::DragValue::new(&mut self.opts.empty).range(0.0..=1000.0).speed(0.1).prefix(tr("empty weight ")))
+                .on_hover_text(tr("How likely a cell stays empty, against the pieces' weights"));
             ui.separator();
             egui::Grid::new("fill_grid").num_columns(2).show(ui, |ui| {
-                ui.label("Cell");
+                ui.label(tr("Cell"));
                 ui.add(egui::DragValue::new(&mut self.opts.cell).range(8.0..=4096.0).suffix(" u"));
                 ui.end_row();
-                ui.label("Cells");
+                ui.label(tr("Cells"));
                 ui.horizontal(|ui| {
                     ui.add(egui::DragValue::new(&mut self.opts.cells[0]).range(1..=256));
                     ui.label("×");
                     ui.add(egui::DragValue::new(&mut self.opts.cells[1]).range(1..=256));
                 });
                 ui.end_row();
-                ui.label("Corner");
+                ui.label(tr("Corner"));
                 ui.horizontal(|ui| {
                     for v in [&mut self.opts.min.x, &mut self.opts.min.y, &mut self.opts.min.z] {
                         ui.add(egui::DragValue::new(v).speed(1.0));
                     }
                 });
                 ui.end_row();
-                ui.label("Seed");
+                ui.label(tr("Seed"));
                 ui.horizontal(|ui| {
                     ui.add(egui::DragValue::new(&mut self.opts.seed).range(1..=u32::MAX as u64));
-                    if ui.small_button("Random").on_hover_text("A new random seed").clicked() {
+                    if ui.small_button(tr("Random")).on_hover_text(tr("A new random seed")).clicked() {
                         self.opts.seed = crate::commands::time_seed().max(1) % u32::MAX as u64;
                     }
                 });
                 ui.end_row();
-                ui.label("Clustering");
-                ui.add(egui::Slider::new(&mut self.opts.cluster, 0.0..=1.0)).on_hover_text("0 mixes the pieces evenly, 1 gathers each into patches");
+                ui.label(tr("Clustering"));
+                ui.add(egui::Slider::new(&mut self.opts.cluster, 0.0..=1.0)).on_hover_text(tr("0 mixes the pieces evenly, 1 gathers each into patches"));
                 ui.end_row();
-                ui.label("Patch size");
-                ui.add(egui::DragValue::new(&mut self.opts.cluster_size).range(1.0..=64.0).speed(0.1).suffix(" cells"));
+                ui.label(tr("Patch size"));
+                ui.add(egui::DragValue::new(&mut self.opts.cluster_size).range(1.0..=64.0).speed(0.1).suffix(tr(" cells")));
                 ui.end_row();
             });
-            if ui.button("Fit to selection").on_hover_text("The grid over the selection's footprint, as many whole cells as fit").clicked() {
+            if ui.button(tr("Fit to selection")).on_hover_text(tr("The grid over the selection's footprint, as many whole cells as fit")).clicked() {
                 self.fit_selection(state);
             }
 
@@ -278,14 +280,14 @@ impl RandomFillDialog {
             }
 
             ui.horizontal(|ui| {
-                if ui.button("Fill").on_hover_text("Adds a new fill").clicked() {
+                if ui.button(tr("Fill")).on_hover_text(tr("Adds a new fill")).clicked() {
                     match apply(state, &self.opts, None) {
                         Ok(filled) => self.last = Some(filled.group),
                         Err(e) => state.set_status(e),
                     }
                 }
 
-                let reroll = ui.add_enabled(self.last.is_some(), egui::Button::new("Reroll")).on_hover_text("A new seed, replacing the last fill");
+                let reroll = ui.add_enabled(self.last.is_some(), egui::Button::new(tr("Reroll"))).on_hover_text(tr("A new seed, replacing the last fill"));
                 if reroll.clicked() {
                     self.opts.seed = self.opts.seed % (u32::MAX as u64 - 1) + 1;
                     match apply(state, &self.opts, self.last) {
@@ -376,5 +378,39 @@ mod tests {
         let (mixed, patched) = (alike(0.0), alike(1.0));
         assert!((mixed - 0.5).abs() < 0.05, "two even pieces match their neighbour about half the time, {mixed}");
         assert!(patched > mixed + 0.08, "clustered layouts put like next to like, {patched} against {mixed}");
+    }
+
+    struct Fixture {
+        dialog: RandomFillDialog,
+        state: crate::state::EditorState,
+    }
+
+    #[test]
+    fn the_window_shows_german_piece_names_and_a_fill_still_finds_its_prefab() {
+        use crate::i18n::{Lang, scope};
+        use egui_kittest::kittest::Queryable;
+        let _reset = scope(Lang::En);
+        let opts = FillOptions { pieces: vec![FillPiece { name: "Doorways/Window".into(), weight: 1.0, rotate: false }], cells: [3, 2], ..Default::default() };
+        let fixture =
+            Fixture { dialog: RandomFillDialog { open: true, opts, last: None }, state: crate::state::EditorState::new(crate::state::Prefs::default()) };
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(700.0, 900.0)).build_ui_state(
+            |ui, f: &mut Fixture| {
+                crate::i18n::set(Lang::De);
+                f.dialog.show(ui.ctx(), &mut f.state);
+            },
+            fixture,
+        );
+        h.run();
+        assert!(h.query_by_label("Türöffnungen/Fenster").is_some(), "the bundled piece is named in German");
+        assert!(h.query_by_label("Doorways/Window").is_none());
+        assert!(h.query_by_label("Neu würfeln").is_some());
+        assert!(h.query_by_label("Zufällig füllen").is_some(), "the title is German");
+
+        h.get_by_label("Füllen").click();
+        h.run();
+        let state = &h.state().state;
+        assert_eq!(state.status, "Filled 6 of 6 cells", "MCP reads English");
+        assert_eq!(state.status_shown(), "6 von 6 Zellen gefüllt");
+        assert!(h.state().dialog.last.is_some());
     }
 }
