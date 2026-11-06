@@ -135,23 +135,17 @@ impl AddonWizard {
         let (text, button) = match &status.installed {
             Installed::Missing => {
                 let name = crate::content::project_name(root);
-                (
-                    format!("Godot needs the TrenchDot addon to turn maps into scenes, and {name} does not have it yet. It goes into res://addons/func_godot."),
-                    "Install the addon".to_string(),
-                )
+                (format!("Godot needs the TrenchDot addon to build maps, and {name} does not have it yet."), "Install the addon".to_string())
             }
-            Installed::Older(v) => (
-                format!("The addon in this project is {v}, older than this editor, {editor}. Update it, so Godot builds maps the way the editor shows them."),
-                format!("Update the addon to {editor}"),
-            ),
+            Installed::Older(v) => {
+                (format!("The addon in this project is {v}, older than this editor, {editor}. Update it."), format!("Update the addon to {editor}"))
+            }
             Installed::Newer(v) => (
-                format!(
-                    "The addon in this project is {v}, newer than this editor, {editor}. Get the editor that matches it from the releases, or go back to the addon {editor}."
-                ),
+                format!("The addon in this project is {v}, newer than this editor, {editor}. Update the editor or go back to the addon {editor}."),
                 format!("Replace the addon with {editor}"),
             ),
             Installed::Unknown => (
-                "res://addons/func_godot has no version in its plugin.cfg, so it is damaged or not the TrenchDot addon.".to_string(),
+                "res://addons/func_godot has no version in its plugin.cfg, it is damaged or not the TrenchDot addon.".to_string(),
                 format!("Replace the addon with {editor}"),
             ),
             Installed::Current => {
@@ -163,18 +157,13 @@ impl AddonWizard {
         ui.label(text);
         ui.ctx().request_repaint_after(Duration::from_secs_f64(RECHECK));
         if status.git {
-            ui.label(
-                RichText::new("It is a git checkout, so the editor leaves it alone. Update it with git, for example with git submodule update --remote.")
-                    .color(theme::YELLOW),
-            );
+            ui.label(RichText::new("It is a git checkout, update it with git.").color(theme::YELLOW));
             return;
         }
 
         let replacing = status.installed != Installed::Missing;
         if replacing && godot_open {
-            ui.label(
-                RichText::new("Godot has this project open. Close it first, it keeps running the old addon and holds on to its files.").color(theme::YELLOW),
-            );
+            ui.label(RichText::new("Godot has this project open. Close it first.").color(theme::YELLOW));
         }
 
         let go = ui.add_enabled(!(replacing && godot_open), egui::Button::new(RichText::new(button).strong()));
@@ -183,7 +172,7 @@ impl AddonWizard {
         }
 
         if replacing && !godot_open {
-            ui.label(RichText::new("The old addon is kept in a backup folder that Godot ignores. If Godot has this project open, close it first.").weak());
+            ui.label(RichText::new("The old addon is kept in a backup folder. Close Godot first if it has this project open.").weak());
         }
     }
 
@@ -206,13 +195,10 @@ impl AddonWizard {
                     self.checked = None;
                 }
 
-                ui.label(
-                    RichText::new("Adds it to the plugins in project.godot and leaves the rest of the file as it is. Close Godot first if it has this project open, or it writes its own copy back.")
-                        .weak(),
-                );
+                ui.label(RichText::new("Adds it to the plugins in project.godot. Close Godot first if it has this project open.").weak());
             }
         } else if !status.exported {
-            ui.label("Next, open the project in Godot once. The addon then writes trenchdot_game.json with the project's entities and textures, and the editor loads it by itself.");
+            ui.label("Next, open the project in Godot once. The addon then exports the project's entities and textures for the editor.");
             if !godot_open && state.godot.found() && ui.button("Open Project in Godot Editor").clicked() {
                 crate::commands::execute(state, crate::commands::Action::OpenGodotEditor, ui.ctx());
             }

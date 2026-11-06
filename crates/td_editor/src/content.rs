@@ -116,11 +116,7 @@ impl std::fmt::Display for Error {
             Error::NotPublished(asset) => {
                 write!(f, "{asset} is not published yet, neither with the v{} release nor with the rolling beta.", crate::RELEASE)
             }
-            Error::NoRelease => write!(
-                f,
-                "Neither the v{} release nor the rolling beta was found. The beta is replaced after each change, try again in a few minutes.",
-                crate::RELEASE
-            ),
+            Error::NoRelease => write!(f, "Neither the v{} release nor the rolling beta was found, try again in a few minutes.", crate::RELEASE),
             Error::Status(code @ (403 | 429)) => write!(f, "GitHub refused the request ({code}), it limits how often one address may ask. Try again later."),
             Error::Status(code) => write!(f, "GitHub answered with error {code}. Try again later."),
             Error::Damaged(why) => write!(f, "The download is damaged: {why}. Try again."),

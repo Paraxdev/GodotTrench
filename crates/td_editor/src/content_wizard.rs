@@ -247,22 +247,14 @@ impl ContentWizard {
         let dir = crate::entity_pack::RES_DIR;
         let install = if !pack.installed && pack.available {
             ui.label(format!(
-                "Doors, buttons, lifts, triggers, logic, spawners, props and effects. Installing copies their definitions and scripts into {dir}. The project owns the copies, so you can edit, delete or add entities there without clashing with the addon."
+                "Doors, buttons, lifts, triggers, logic, spawners, props and effects. Installing copies them into {dir}, where you can edit them."
             ));
             ui.button(RichText::new("Install Gameplay Entities").strong()).clicked()
         } else if !pack.installed {
-            ui.label(
-                RichText::new(
-                    "Doors, buttons, lifts, triggers, logic, spawners, props and effects come as a pack with the addon. Install or update the addon first.",
-                )
-                .weak(),
-            );
+            ui.label(RichText::new("The gameplay entities come with the addon. Install or update the addon first.").weak());
             false
         } else if pack.update() {
-            ui.label(format!(
-                "Installed in {dir}. The addon has a newer version of {} of its files. Updating replaces only files you did not edit, and never brings back ones you deleted.",
-                pack.changes
-            ));
+            ui.label(format!("Installed in {dir}. The addon has a newer version of {} of its files. Updating keeps the files you edited.", pack.changes));
             ui.button("Update Gameplay Entities").clicked()
         } else {
             ui.label(RichText::new(format!("Installed in {dir}, where the project owns the copies.")).color(theme::SUCCESS));
@@ -283,9 +275,7 @@ impl ContentWizard {
     fn choice_ui(&mut self, ui: &mut Ui, state: &mut EditorState, root: &Path) {
         let name = crate::content::project_name(root);
         if self.automatic {
-            ui.label(format!(
-                "{name} is new to TrenchDot. Should it get ready made models, or the demo to learn from? You can add them later with Godot > Add Content to Project."
-            ));
+            ui.label(format!("{name} is new to TrenchDot. Add ready made models or the demo? You can do it later with Godot > Add Content to Project."));
         } else {
             ui.label(format!("Add ready made models, or the demo to learn from, to {name}."));
         }
@@ -302,11 +292,11 @@ impl ContentWizard {
                 Choice::Nothing => ("Nothing extra".to_string(), "Only the built-in entities and materials. Nothing is written into the project."),
                 Choice::Nature => (
                     format!("Nature models, about {} MB to download", choice.approx_mb()),
-                    "Trees, bushes, rocks, grass and flowers with their textures, for the Scatter tool and the Models panel. They go into res://trenchdot/nature.",
+                    "Trees, bushes, rocks, grass and flowers for the Scatter tool, in res://trenchdot/nature.",
                 ),
                 Choice::Demo => (
                     format!("Nature models and the demo, about {} MB to download", choice.approx_mb()),
-                    "Also the showcase maps, the demo models and textures, overlays and demo scenes, into res://demo and res://models. In Godot, res://demo/demo.tscn plays the showcase maps.",
+                    "Also the showcase maps and demo assets, in res://demo and res://models.",
                 ),
             };
             let installed = match choice {
@@ -325,7 +315,7 @@ impl ContentWizard {
         }
 
         ui.add_space(4.0);
-        ui.label(RichText::new("Files the project already has are never replaced. project.godot, the addon and your own files stay as they are.").weak());
+        ui.label(RichText::new("Files the project already has are never replaced.").weak());
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             let go = match self.choice {
@@ -376,13 +366,13 @@ impl ContentWizard {
         }
 
         if outcome.error.is_none() && outcome.choice == Choice::Demo {
-            ui.label("In Godot, open res://demo/demo.tscn and press F6 to walk through the showcase maps. File > Maps in Project opens them here.");
+            ui.label("In Godot, open res://demo/demo.tscn and press F6 to play the showcase maps.");
         }
 
         if outcome.error.is_none() && outcome.choice != Choice::Nothing {
             ui.label("The Scatter presets and the Models panel now find the nature models.");
         } else if outcome.tags.is_empty() && !outcome.added.written.is_empty() {
-            ui.label("The Blockbench trees, rocks and grass built into the editor were added, so the rocks, boulders, grass, undergrowth and low-poly trees presets work. Try again for the rest.");
+            ui.label("The built-in rocks, grass and low-poly trees were added. Try again for the rest.");
         }
 
         ui.add_space(6.0);

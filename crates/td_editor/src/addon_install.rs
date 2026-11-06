@@ -24,7 +24,7 @@ pub const BACKUPS: &str = ".trenchdot/addon-backups";
 /// install.
 const UNPACKING: &str = "addon-new-";
 
-const GIT: &str = "res://addons/func_godot is a git checkout, so the editor leaves it alone. Update it with git instead.";
+const GIT: &str = "res://addons/func_godot is a git checkout, update it with git";
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum Installed {
@@ -158,8 +158,7 @@ enum Plugins {
     List(Range<usize>),
 }
 
-const UNREADABLE: &str =
-    "project.godot lists its enabled plugins in a way the editor does not change. Enable TrenchDot in Godot under Project > Project Settings > Plugins.";
+const UNREADABLE: &str = "The editor cannot edit the plugin list in project.godot. Enable TrenchDot in Godot under Project > Project Settings > Plugins.";
 
 fn find_plugins(text: &str) -> Result<Plugins, String> {
     let mut header = None;
@@ -277,9 +276,7 @@ impl Outcome {
             _ => String::new(),
         };
         let shown = backup.strip_prefix(root).unwrap_or(backup).to_string_lossy().replace('\\', "/");
-        format!(
-            "Updated the addon{old} to {version}{from}. The old one is in the project's {shown} folder, which Godot ignores. Delete it once the new one works."
-        )
+        format!("Updated the addon{old} to {version}{from}. The old one is in the project's {shown} folder, delete it when the new one works.")
     }
 }
 
@@ -363,8 +360,7 @@ fn swap(root: &Path, new: &Path, before: &Installed) -> Result<Option<PathBuf>, 
         .map(|n| backups.join(if n == 1 { format!("func_godot-{version}") } else { format!("func_godot-{version}-{n}") }))
         .find(|p| std::fs::symlink_metadata(p).is_err())
         .expect("a free backup name");
-    std::fs::rename(&target, &backup)
-        .map_err(|e| Error::Io(format!("Could not move the old addon out of the way ({e}). Close Godot and anything else using its files, then try again.")))?;
+    std::fs::rename(&target, &backup).map_err(|e| Error::Io(format!("Could not move the old addon ({e}). Close Godot and try again.")))?;
     if let Err(e) = std::fs::rename(new, &target) {
         let back = std::fs::rename(&backup, &target);
         return Err(Error::Io(match back {

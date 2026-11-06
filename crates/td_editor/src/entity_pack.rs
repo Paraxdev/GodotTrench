@@ -200,8 +200,8 @@ pub struct Report {
 
 /// Pack scripts that appear while Godot runs can be compiled before Godot knows the classes they use, and stay broken
 /// until Godot starts again.
-pub const RESTART_NOTE: &str = "If Godot has the project open, restart it, then press Build Map in each scene that uses your maps and save.";
-pub const SCAN_NOTE: &str = "Godot is picking up the new files. A scene in live mode rebuilds by itself, press Build Map in the others and save.";
+pub const RESTART_NOTE: &str = "If Godot has the project open, restart it, then press Build Map in each scene that uses your maps.";
+pub const SCAN_NOTE: &str = "Godot is picking up the new files. Press Build Map in scenes that are not in live mode.";
 
 impl Report {
     pub fn summary(&self) -> String {
@@ -299,7 +299,7 @@ pub fn install_for_wizard(state: &mut crate::state::EditorState, classes: &[&str
     let named = format!("{} {}", crate::live_link::name_list(&lacking), if lacking.len() == 1 { "comes" } else { "come" });
     if !state.gameplay_pack.available {
         return Err(format!(
-            "{named} with the {NAME} pack, which the addon in this project does not have. Update the addon with Godot > Install or Update Addon, then use Gameplay > Install Gameplay Entities"
+            "{named} with the {NAME} pack, which the addon in this project does not have. Update the addon, then use Gameplay > Install Gameplay Entities"
         ));
     }
 
