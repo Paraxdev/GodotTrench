@@ -120,7 +120,7 @@ impl Viewport {
 
         self.paint_overlay(ui, cx);
         if let Some(edge) = self.hover_edge {
-            ui.painter_at(rect).line_segment(edge, egui::Stroke::new(3.0, crate::theme::colors().yellow));
+            ui.painter_at(rect).line_segment(edge, egui::Stroke::new(3.0, crate::theme::VIEW.yellow));
         }
 
         cx.tools.paint_overlay(ui, &self.camera, rect, cx.state);
@@ -816,7 +816,7 @@ impl Viewport {
     fn paint_drop_target(&self, ui: &Ui, cx: &ViewCtx, payload: &DndPayload, pos: egui::Pos2) {
         let ray = self.camera.ray(self.rect, pos);
         let painter = ui.painter().with_clip_rect(self.rect);
-        let drop_color = crate::theme::colors().cyan;
+        let drop_color = crate::theme::VIEW.cyan;
         let stroke = egui::Stroke::new(2.0, drop_color);
         match payload {
             DndPayload::Material(_) => {
@@ -862,7 +862,7 @@ impl Viewport {
     fn handle_drop(&mut self, ui: &Ui, response: &Response, cx: &mut ViewCtx) {
         let Some(payload) = response.dnd_release_payload::<DndPayload>() else {
             if let Some(payload) = response.dnd_hover_payload::<DndPayload>() {
-                ui.painter().rect_stroke(self.rect.shrink(1.0), 0.0, egui::Stroke::new(2.0, crate::theme::colors().cyan), egui::StrokeKind::Inside);
+                ui.painter().rect_stroke(self.rect.shrink(1.0), 0.0, egui::Stroke::new(2.0, crate::theme::VIEW.cyan), egui::StrokeKind::Inside);
                 ui.ctx().set_cursor_icon(CursorIcon::Copy);
                 if let Some(pos) = drop_pos(response) {
                     self.paint_drop_target(ui, cx, &payload, pos);
@@ -991,11 +991,11 @@ impl Viewport {
             shade: state.shade_mode(),
             orthographic: is_2d,
             clear: if is_2d {
-                crate::theme::linear(crate::theme::colors().gray_0)
+                crate::theme::linear(crate::theme::VIEW.gray_0)
             } else if state.prefs.shade.is_lit() {
                 BG_LIT
             } else {
-                crate::theme::linear(crate::theme::colors().gray_1)
+                crate::theme::linear(crate::theme::VIEW.gray_1)
             },
             line_width,
         }

@@ -118,14 +118,14 @@ fn thumbnail(ui: &mut Ui, item: &ScatterItem, image: Option<egui::TextureId>, mi
     ui.painter().rect_filled(rect, 3.0, theme::colors().gray_2);
     match image {
         Some(id) => {
-            let tint = if item.enabled { Color32::WHITE } else { theme::colors().gray_4 };
+            let tint = if item.enabled { Color32::WHITE } else { theme::VIEW.gray_4 };
             ui.painter().image(id, rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
         }
         None => {
             let (icon, tint) = if tool::is_classname(&item.source) {
                 (icons::ENTITY, theme::colors().magenta)
             } else {
-                (icons::MESH, crate::panels::model_ext_color(&extension(&item.source)))
+                (icons::MESH, crate::panels::model_ext_color(theme::colors(), &extension(&item.source)))
             };
             let tint = if item.enabled { tint } else { theme::colors().gray_4 };
             ui.put(rect.shrink(THUMB * 0.2), icon.image(THUMB * 0.6).tint(tint));
@@ -248,7 +248,11 @@ fn item_cards(ui: &mut Ui, state: &mut EditorState, id: NodeId, set: td_doc::Sca
                         ui.label(if item.enabled { name.strong() } else { name.color(theme::colors().gray_5) });
                         if let Some(e) = entry {
                             let slug = e.source.short.as_deref().unwrap_or(e.source.name.as_str());
-                            ui.label(RichText::new(crate::panels::truncate_slug(slug, 12).as_ref()).small().color(crate::panels::pack_color(&e.source.name)));
+                            ui.label(
+                                RichText::new(crate::panels::truncate_slug(slug, 12).as_ref())
+                                    .small()
+                                    .color(crate::panels::pack_color(theme::colors(), &e.source.name)),
+                            );
                         }
 
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {

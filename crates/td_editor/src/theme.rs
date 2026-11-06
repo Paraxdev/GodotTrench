@@ -123,6 +123,10 @@ pub const LIGHT: Palette = Palette {
     shadow_alpha: 40,
 };
 
+/// The palette of the 3D view, the texture canvases and what is drawn over a thumbnail. They sit on a render or
+/// a texture, so they stay dark in every theme.
+pub const VIEW: Palette = DARK;
+
 /// The palette the editor draws with.
 pub fn colors() -> &'static Palette {
     &DARK
@@ -392,6 +396,28 @@ mod tests {
 
     fn hex(rgb: u32) -> Color32 {
         Color32::from_rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8)
+    }
+
+    #[test]
+    fn the_view_palette_is_the_dark_one() {
+        assert_eq!(VIEW, DARK);
+        assert_ne!(VIEW.gray_1, LIGHT.gray_1);
+    }
+
+    #[test]
+    fn thumbnail_badge_colors_come_from_the_palette_given() {
+        use crate::panels::{model_ext_color, pack_color};
+        for (ext, dark, light) in
+            [("glb", DARK.teal, LIGHT.teal), ("obj", DARK.cyan, LIGHT.cyan), ("md3", DARK.pink, LIGHT.pink), ("xyz", DARK.gray_5, LIGHT.gray_5)]
+        {
+            assert_eq!((model_ext_color(&VIEW, ext), model_ext_color(&LIGHT, ext)), (dark, light), "{ext}");
+        }
+
+        let accents = |p: &Palette| [p.magenta, p.green, p.yellow, p.blue, p.cyan, p.pink, p.red, p.teal];
+        for name in ["kenney", "quaternius", "Poly Haven", ""] {
+            let at = accents(&VIEW).iter().position(|c| *c == pack_color(&VIEW, name)).expect("a dark accent");
+            assert_eq!(pack_color(&LIGHT, name), accents(&LIGHT)[at], "{name}");
+        }
     }
 
     #[test]

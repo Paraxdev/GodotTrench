@@ -178,8 +178,8 @@ pub fn gizmo_part_at(center: Pos2, p: Pos2) -> Option<GizmoPart> {
 }
 
 fn paint_gizmo(painter: &egui::Painter, center: Pos2, hot: Option<GizmoPart>) {
-    let color = |part: GizmoPart, base: Color32| if hot == Some(part) { crate::theme::colors().yellow } else { base };
-    for (part, dir, base) in [(GizmoPart::U, Vec2::X, crate::theme::colors().axis()[0]), (GizmoPart::V, -Vec2::Y, crate::theme::colors().axis()[1])] {
+    let color = |part: GizmoPart, base: Color32| if hot == Some(part) { crate::theme::VIEW.yellow } else { base };
+    for (part, dir, base) in [(GizmoPart::U, Vec2::X, crate::theme::VIEW.axis()[0]), (GizmoPart::V, -Vec2::Y, crate::theme::VIEW.axis()[1])] {
         let c = color(part, base);
         let (from, head, tip) = (center + dir * GIZMO_START, center + dir * (GIZMO_LEN - 12.0), center + dir * GIZMO_LEN);
         painter.line_segment([from, head], Stroke::new(if hot == Some(part) { 3.5 } else { 2.5 }, c));
@@ -189,8 +189,8 @@ fn paint_gizmo(painter: &egui::Painter, center: Pos2, hot: Option<GizmoPart>) {
 
     let free = hot == Some(GizmoPart::Free);
     let r = Rect::from_center_size(center, Vec2::splat(GIZMO_BOX * 2.0));
-    painter.rect_filled(r, 1.0, if free { crate::theme::colors().yellow.gamma_multiply(0.6) } else { Color32::from_black_alpha(120) });
-    painter.rect_stroke(r, 1.0, Stroke::new(1.5, if free { crate::theme::colors().yellow } else { Color32::WHITE }), StrokeKind::Inside);
+    painter.rect_filled(r, 1.0, if free { crate::theme::VIEW.yellow.gamma_multiply(0.6) } else { Color32::from_black_alpha(120) });
+    painter.rect_stroke(r, 1.0, Stroke::new(1.5, if free { crate::theme::VIEW.yellow } else { Color32::WHITE }), StrokeKind::Inside);
 }
 
 /// Pixel size of a material's image, its UV size when the image is unknown.
@@ -530,7 +530,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
     for r in &hotspots {
         let a = to_screen(rect, view, DVec2::new(r[0], r[1]) / tex);
         let b = to_screen(rect, view, DVec2::new(r[0] + r[2], r[1] + r[3]) / tex);
-        painter.rect_stroke(Rect::from_two_pos(a, b), 0.0, Stroke::new(1.0, crate::theme::colors().cyan), StrokeKind::Inside);
+        painter.rect_stroke(Rect::from_two_pos(a, b), 0.0, Stroke::new(1.0, crate::theme::VIEW.cyan), StrokeKind::Inside);
     }
 
     let mods = ui.input(|i| i.modifiers);
@@ -564,7 +564,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
         for (k, p) in pts.iter().enumerate() {
             let key = (info.id, info.face, k);
             let sel = uv_state.selected.contains(&key);
-            painter.circle_filled(*p, if sel { 4.5 } else { 3.0 }, if sel { crate::theme::colors().yellow } else { Color32::from_rgb(230, 230, 230) });
+            painter.circle_filled(*p, if sel { 4.5 } else { 3.0 }, if sel { crate::theme::VIEW.yellow } else { Color32::from_rgb(230, 230, 230) });
             if hovered_corner == Some(key) {
                 painter.circle_stroke(*p, 6.5, Stroke::new(1.5, Color32::WHITE));
             }
@@ -707,8 +707,8 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
         Some(UvDrag::Box { start, .. }) => {
             if let Some(p) = pointer_pos {
                 let r = Rect::from_two_pos(start, p);
-                painter.rect_filled(r, 0.0, crate::theme::colors().yellow.gamma_multiply(0.08));
-                painter.rect_stroke(r, 0.0, Stroke::new(1.0, crate::theme::colors().yellow), StrokeKind::Inside);
+                painter.rect_filled(r, 0.0, crate::theme::VIEW.yellow.gamma_multiply(0.08));
+                painter.rect_stroke(r, 0.0, Stroke::new(1.0, crate::theme::VIEW.yellow), StrokeKind::Inside);
             }
         }
         None => {}

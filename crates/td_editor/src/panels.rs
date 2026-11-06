@@ -1894,21 +1894,21 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
     }
 
     if state.prefs.favorite_materials.iter().any(|f| f == name) {
-        ui.painter().text(img_rect.right_top() + Vec2::new(-3.0, 1.0), egui::Align2::RIGHT_TOP, "★", egui::FontId::proportional(13.0), theme::colors().yellow);
+        ui.painter().text(img_rect.right_top() + Vec2::new(-3.0, 1.0), egui::Align2::RIGHT_TOP, "★", egui::FontId::proportional(13.0), theme::VIEW.yellow);
     }
 
     if label {
         let corner = img_rect.left_top() + Vec2::new(2.0, 2.0);
         if missing_albedo {
-            badge(ui.painter(), corner, "no albedo", theme::colors().warning());
+            badge(ui.painter(), corner, "no albedo", theme::VIEW.warning());
         } else if is_pbr {
-            badge(ui.painter(), corner, "PBR", theme::colors().green);
+            badge(ui.painter(), corner, "PBR", theme::VIEW.green);
         } else if has_normal {
-            badge(ui.painter(), corner, "normal", theme::colors().info());
+            badge(ui.painter(), corner, "normal", theme::VIEW.info());
         }
 
         if is_emissive {
-            badge(ui.painter(), img_rect.left_bottom() + Vec2::new(2.0, -15.0), "glow", theme::colors().yellow);
+            badge(ui.painter(), img_rect.left_bottom() + Vec2::new(2.0, -15.0), "glow", theme::VIEW.yellow);
         }
     }
 
@@ -2088,22 +2088,21 @@ pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
 // -------------------------------------------------------------------- models
 
 /// A tint per model format so the cards read apart at a glance.
-pub(crate) fn model_ext_color(ext: &str) -> Color32 {
+pub(crate) fn model_ext_color(c: &theme::Palette, ext: &str) -> Color32 {
     match ext {
-        "glb" | "gltf" => theme::colors().teal,
-        "obj" => theme::colors().cyan,
-        "bbmodel" => theme::colors().yellow,
-        "stl" => theme::colors().gray_6,
-        "md2" | "md3" | "mdl" => theme::colors().pink,
-        "map" | "vmf" => theme::colors().green,
-        _ => theme::colors().gray_5,
+        "glb" | "gltf" => c.teal,
+        "obj" => c.cyan,
+        "bbmodel" => c.yellow,
+        "stl" => c.gray_6,
+        "md2" | "md3" | "mdl" => c.pink,
+        "map" | "vmf" => c.green,
+        _ => c.gray_5,
     }
 }
 
 /// The CVD-safe accent palette (see theme.rs), picked stably per pack name so the same pack always
 /// gets the same slug color without a color table to maintain.
-pub(crate) fn pack_color(name: &str) -> Color32 {
-    let c = theme::colors();
+pub(crate) fn pack_color(c: &theme::Palette, name: &str) -> Color32 {
     let accents = [c.magenta, c.green, c.yellow, c.blue, c.cyan, c.pink, c.red, c.teal];
     let mut hash: u64 = 0xcbf29ce484222325;
     for b in name.bytes() {
@@ -2162,16 +2161,16 @@ fn model_cell(ui: &mut Ui, selected: bool, entry: &crate::models::ModelEntry, si
             ui.painter().image(id, img_rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
         }
         None => {
-            ui.put(img_rect, icons::MESH.image((size * 0.55).min(48.0)).tint(model_ext_color(&entry.ext)));
+            ui.put(img_rect, icons::MESH.image((size * 0.55).min(48.0)).tint(model_ext_color(theme::colors(), &entry.ext)));
         }
     }
 
-    badge(ui.painter(), img_rect.left_top() + Vec2::new(2.0, 2.0), &entry.ext, model_ext_color(&entry.ext));
+    badge(ui.painter(), img_rect.left_top() + Vec2::new(2.0, 2.0), &entry.ext, model_ext_color(&theme::VIEW, &entry.ext));
     if show_slug {
         let text = entry.source.short.as_deref().unwrap_or(entry.source.name.as_str());
         let fitted = fit_slug(ui.painter(), text, (size - 10.0).max(10.0));
         let slug_pos = egui::pos2(img_rect.min.x + 2.0, img_rect.max.y - 15.0);
-        badge(ui.painter(), slug_pos, &fitted, pack_color(&entry.source.name));
+        badge(ui.painter(), slug_pos, &fitted, pack_color(&theme::VIEW, &entry.source.name));
     }
 
     let short = entry.name.rsplit('/').next().unwrap_or(&entry.name);
@@ -2436,7 +2435,7 @@ pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, 
                     ui.horizontal(|ui| {
                         ui.add_space(4.0);
                         let dot = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover()).0;
-                        ui.painter().circle_filled(dot.center(), 4.0, pack_color(name));
+                        ui.painter().circle_filled(dot.center(), 4.0, pack_color(theme::colors(), name));
                         ui.label(RichText::new(name).strong());
                         if let Some(license) = license {
                             ui.label(RichText::new(license).weak());

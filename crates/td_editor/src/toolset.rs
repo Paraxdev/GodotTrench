@@ -1134,7 +1134,7 @@ impl ToolSet {
                         else {
                             continue;
                         };
-                        let c = if hot_axis == Some(i) { crate::theme::colors().yellow } else { crate::theme::colors().axis()[i] };
+                        let c = if hot_axis == Some(i) { crate::theme::VIEW.yellow } else { crate::theme::VIEW.axis()[i] };
                         painter.line_segment([from, head], Stroke::new(if hot_axis == Some(i) { 3.5 } else { 2.5 }, c));
                         let dir = tip - head;
                         if dir.length() > 1.0 {

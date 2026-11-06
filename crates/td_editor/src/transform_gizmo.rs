@@ -343,7 +343,7 @@ pub fn paint_on(ui: &Ui, cam: &Camera, rect: Rect, bounds: &Aabb, active: Option
     let l = Layout::new(cam, rect, bounds);
     let edge = edge_on(cam, rect, &l);
     let painter = ui.painter_at(rect);
-    let (axis_colors, hot_color) = (crate::theme::colors().axis(), crate::theme::colors().yellow);
+    let (axis_colors, hot_color) = (crate::theme::VIEW.axis(), crate::theme::VIEW.yellow);
     let color = |part: Part, base: Color32| if hovered == Some(part) { hot_color } else { base };
 
     for (i, axis_color) in axis_colors.into_iter().enumerate() {
