@@ -225,6 +225,8 @@ pub struct MaterialLibrary {
     /// `metadata/texture_size` of every material file, keyed by lowercased material name.
     world_sizes: HashMap<String, [f64; 2]>,
     infos: HashMap<String, Option<GodotMaterial>>,
+    /// What [`Self::info`] read within the current fence, kept apart so `infos` is not handed out inside it.
+    fenced_infos: HashMap<String, Option<GodotMaterial>>,
     /// Counts rescans, so caches built from the library know when to refresh.
     pub generation: u64,
     /// Fingerprint of the files at the last rescan.
@@ -254,6 +256,7 @@ impl MaterialLibrary {
             sizes: HashMap::new(),
             world_sizes: HashMap::new(),
             infos: HashMap::new(),
+            fenced_infos: HashMap::new(),
             generation: 0,
             scanned: 0,
             missed: HashSet::new(),
@@ -281,6 +284,7 @@ impl MaterialLibrary {
             sizes: self.sizes.clone(),
             world_sizes: self.world_sizes.clone(),
             infos: self.infos.clone(),
+            fenced_infos: self.fenced_infos.clone(),
             generation: self.generation,
             scanned: self.scanned,
             missed: self.missed.clone(),
@@ -297,6 +301,7 @@ impl MaterialLibrary {
     /// What was read before is not handed out inside it.
     pub fn set_fence(&mut self, fence: Option<crate::mcp::script::Fence>) {
         self.fence = fence;
+        self.fenced_infos.clear();
         self.unread.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
 
@@ -320,6 +325,7 @@ impl MaterialLibrary {
         self.sizes.clear();
         self.world_sizes.clear();
         self.infos.clear();
+        self.fenced_infos.clear();
         self.rescan_owed = false;
         self.root = game.texture_root().filter(|p| p.is_dir());
         self.project_root = game.project_root.clone();
@@ -516,16 +522,13 @@ impl MaterialLibrary {
 
     /// Godot material settings for a face material, from its `.tres` file. Cached.
     pub fn info(&mut self, name: &str) -> Option<GodotMaterial> {
-        if self.fence.is_some() {
-            return self.read_info(name);
-        }
-
-        if let Some(i) = self.infos.get(name) {
+        let fenced = self.fence.is_some();
+        if let Some(i) = if fenced { &self.fenced_infos } else { &self.infos }.get(name) {
             return i.clone();
         }
 
         let info = self.read_info(name);
-        self.infos.insert(name.to_string(), info.clone());
+        if fenced { &mut self.fenced_infos } else { &mut self.infos }.insert(name.to_string(), info.clone());
         info
     }
 
@@ -1149,6 +1152,48 @@ metadata/texture_size = Vector2(80, 48)
         let vent = lib.load_material("vent").unwrap();
         assert!(vent.emission.is_none() && !vent.info.is_emissive());
         assert!(lib.load_material("wall").unwrap().emission.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fenced_material_reads_are_cached_until_the_fence_changes() {
+        let (dir, game) = empty_project("td_material_fence_cache");
+        let (inside, away) = (dir.join("textures/inside"), dir.join("textures/away"));
+        std::fs::create_dir_all(&inside).unwrap();
+        std::fs::create_dir_all(&away).unwrap();
+        let tres = |path: &Path, c: [f32; 3]| {
+            std::fs::write(
+                path,
+                format!("[gd_resource type=\"StandardMaterial3D\" format=3]\n[resource]\nalbedo_color = Color({}, {}, {}, 1)\n", c[0], c[1], c[2]),
+            )
+            .unwrap()
+        };
+        tres(&inside.join("brick.tres"), [0.25, 0.5, 0.75]);
+        tres(&inside.join("tile.tres"), [0.125, 0.875, 0.375]);
+        tres(&away.join("stone.tres"), [0.625, 0.0625, 0.3125]);
+        let mut lib = MaterialLibrary::new(&game);
+        let color = |lib: &mut MaterialLibrary, name: &str| lib.info(name).map(|i| i.albedo_color);
+        assert_eq!(color(&mut lib, "away/stone"), Some([0.625, 0.0625, 0.3125, 1.0]));
+
+        let fence = crate::mcp::script::Fence::new(vec![inside.clone()]);
+        lib.set_fence(Some(fence.clone()));
+        assert_eq!(color(&mut lib, "inside/brick"), Some([0.25, 0.5, 0.75, 1.0]));
+        assert_eq!(color(&mut lib, "inside/tile"), Some([0.125, 0.875, 0.375, 1.0]));
+        tres(&inside.join("brick.tres"), [0.9, 0.1, 0.2]);
+        tres(&inside.join("tile.tres"), [0.3, 0.6, 0.05]);
+        assert_eq!(color(&mut lib, "inside/brick"), Some([0.25, 0.5, 0.75, 1.0]), "read once inside the fence");
+        assert_eq!(color(&mut lib, "inside/tile"), Some([0.125, 0.875, 0.375, 1.0]));
+        assert_eq!(color(&mut lib, "away/stone"), None, "what was read before the fence is not handed out in it");
+        assert_eq!(color(&mut lib, "away/stone"), None);
+        assert_eq!(lib.unread(), vec![away.join("stone.tres")]);
+
+        lib.set_fence(Some(fence));
+        assert_eq!(color(&mut lib, "inside/brick"), Some([0.9, 0.1, 0.2, 1.0]), "a new fence reads again");
+        assert_eq!(color(&mut lib, "inside/tile"), Some([0.3, 0.6, 0.05, 1.0]));
+        assert!(lib.unread().is_empty());
+        lib.set_fence(None);
+        assert_eq!(color(&mut lib, "away/stone"), Some([0.625, 0.0625, 0.3125, 1.0]));
+        assert_eq!(color(&mut lib, "inside/brick"), Some([0.9, 0.1, 0.2, 1.0]));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
