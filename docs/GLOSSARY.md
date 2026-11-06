@@ -191,3 +191,6 @@ The map's root entity, which holds the world brushes. Its keys hold settings for
 
 ## yaw
 Rotation around the vertical axis, the direction something faces when seen from above. A teleport destination's yaw sets which way bodies face after arriving.
+
+## z-fighting
+Flickering stripes where two surfaces lie on or very near the same plane. The GPU cannot tell which one is in front, so each pixel shows one or the other, and the pattern shifts as the camera moves. Decals avoid it, thin brushes laid over a wall do not.
