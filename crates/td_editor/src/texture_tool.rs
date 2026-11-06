@@ -140,7 +140,10 @@ impl TextureTool {
         }
 
         if let Some(drag) = &mut self.drag {
-            if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
+            // Every visible view runs this with the one global pointer, only the view being dragged may slide the texture.
+            if response.dragged_by(PointerButton::Primary)
+                && let Some(pos) = ui.input(|i| i.pointer.interact_pos())
+            {
                 let ray = cam.ray(rect, pos);
                 if let Some(t) = ray.intersect_plane(&drag.plane) {
                     // The texel under the cursor stays under the cursor.

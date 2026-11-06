@@ -924,6 +924,52 @@ fn texel(uv: &Value, p: [f64; 3]) -> [f64; 2] {
     [dot(u) / s(0) + o(0), dot(v) / s(1) + o(1)]
 }
 
+/// Builds a box, selects its top face and picks the texture tool, returns the editor, the brush and the face index.
+fn top_face_for_sliding(name: &'static str) -> (Editor, u64, u64) {
+    let ed = Editor::launch(name);
+    let brush = ed.box_brush([32.0, 0.0, 0.0], [160.0, 64.0, 64.0]);
+    let all = ed.call("texture", json!({ "op": "get", "faces": (0..6).map(|f| json!([brush, f])).collect::<Vec<_>>() }));
+    let top = all["faces"].as_array().unwrap().iter().find(|f| f["normal"][1].as_f64().unwrap() > 0.99).unwrap()["face"][1].as_u64().unwrap();
+    ed.call("set_camera", json!({ "view": "top", "center": [96, 0, 32], "zoom": 1.5 }));
+    ed.call("set_editor", json!({ "tool": "texture" }));
+    ed.call("select", json!({ "faces": [[brush, top]] }));
+    (ed, brush, top)
+}
+
+fn face_offset(ed: &Editor, brush: u64, face: u64) -> [f64; 2] {
+    let uv = &ed.call("texture", json!({ "op": "get", "faces": [[brush, face]] }))["faces"][0]["uv"]["offset"];
+    [uv[0].as_f64().unwrap(), uv[1].as_f64().unwrap()]
+}
+
+#[test]
+#[ignore]
+fn a_held_slide_drag_in_the_top_view_slides_by_what_was_dragged() {
+    let (ed, brush, top) = top_face_for_sliding("held_slide_drag");
+    let start = face_offset(&ed, brush, top);
+    let drag = json!({ "type": "drag", "world": [64, 0, 16], "to_world": [96, 0, 32], "release": false });
+    assert_eq!(ed.call("simulate_input", json!({ "target": "top", "events": [drag] }))["held"], true);
+    std::thread::sleep(Duration::from_millis(500));
+    let held = face_offset(&ed, brush, top);
+    let mut moved = [(held[0] - start[0]).abs(), (held[1] - start[1]).abs()];
+    moved.sort_by(f64::total_cmp);
+    assert!(approx(&moved, &[16.0, 32.0]), "the held drag already slid the texture {start:?} {held:?}");
+
+    ed.call("simulate_input", json!({ "target": "top", "events": [{ "type": "release" }] }));
+    assert!(approx(&face_offset(&ed, brush, top), &held), "the release keeps the slide under the pointer");
+}
+
+#[test]
+#[ignore]
+fn a_one_shot_slide_drag_in_the_top_view_slides_by_what_was_dragged() {
+    let (ed, brush, top) = top_face_for_sliding("one_shot_slide_drag");
+    let start = face_offset(&ed, brush, top);
+    ed.input("top", json!([{ "type": "drag", "world": [64, 0, 16], "to_world": [96, 0, 32] }]));
+    let end = face_offset(&ed, brush, top);
+    let mut moved = [(end[0] - start[0]).abs(), (end[1] - start[1]).abs()];
+    moved.sort_by(f64::total_cmp);
+    assert!(approx(&moved, &[16.0, 32.0]), "{start:?} {end:?}");
+}
+
 #[test]
 #[ignore]
 fn texture_tool_apply_wrap_slide_scale() {
