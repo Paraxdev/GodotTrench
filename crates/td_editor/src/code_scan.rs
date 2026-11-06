@@ -51,6 +51,10 @@ pub fn find_within(root: &Path, limits: &Limits) -> Option<Code> {
 /// How often a kept result looks whether a file in its project changed.
 const WATCH_INTERVAL: Duration = Duration::from_secs(1);
 
+/// While nothing changes the watcher waits longer between looks, up to this many times the interval. A check wakes it
+/// at once, so only a lookup that does not check first sees a change that late.
+const WATCH_BACKOFF: u32 = 4;
+
 /// Projects whose results are kept at once, the open one and those of maps opened from elsewhere.
 const KEEP: usize = 4;
 
@@ -151,6 +155,8 @@ struct Shared {
     checked: u64,
     /// Set by the watcher once a file in the project changed after the scan began.
     stale: bool,
+    /// Looks at the files the watcher took, to tell how often it polls.
+    looks: u64,
 }
 
 struct Kept {
@@ -182,8 +188,9 @@ impl Kept {
             let mut s = lock.lock().unwrap_or_else(PoisonError::into_inner);
             (s.found, s.checked) = (Some(found), asked);
             wake();
+            let mut pause = interval;
             loop {
-                s = ended.wait_timeout_while(s, interval, |s| s.asked == s.checked && !stop.load(Ordering::Relaxed)).unwrap_or_else(PoisonError::into_inner).0;
+                s = ended.wait_timeout_while(s, pause, |s| s.asked == s.checked && !stop.load(Ordering::Relaxed)).unwrap_or_else(PoisonError::into_inner).0;
                 if stop.load(Ordering::Relaxed) {
                     return;
                 }
@@ -194,6 +201,8 @@ impl Kept {
                 let changed = stamp(&at) != before;
                 s = lock.lock().unwrap_or_else(PoisonError::into_inner);
                 (s.checked, s.stale) = (asked, changed);
+                s.looks += 1;
+                pause = if answers { interval } else { (pause * 2).min(interval * WATCH_BACKOFF) };
                 if changed || answers {
                     wake();
                 }
@@ -1173,5 +1182,24 @@ mod tests {
         let (found, started) = received.recv_timeout(Duration::from_secs(10)).expect("the lookup waits for a worker that is gone");
         assert_eq!((found, started), (None, 2), "a second scan answered");
         assert!(fired.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn an_idle_watcher_looks_less_often_but_still_sees_a_change() {
+        let quiet = fresh();
+        let mut scans = Scans::with_interval(Duration::from_millis(50));
+        assert_eq!(scans.wait(quiet.path()), None);
+        std::thread::sleep(Duration::from_millis(1000));
+        let looks = scans.kept[&crate::trust::real_path(quiet.path())].shared.0.lock().unwrap().looks;
+        assert!((2..=10).contains(&looks), "about 7 looks at 50 to 200 ms, not 20 at 50 ms: {looks}");
+
+        write(
+            quiet.path(),
+            "late.gd",
+            "extends Node
+",
+        );
+        scans.wait_for_change(quiet.path());
+        assert_eq!(scans.wait(quiet.path()).map(|c| c.path), Some("late.gd".into()));
     }
 }
