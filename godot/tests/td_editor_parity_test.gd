@@ -24,6 +24,7 @@ static func run(t) -> void:
 	_test_buried_brush_faces_clip_from_the_cull_budget(t)
 	_test_smoothing_a_vertex_of_thousands_of_faces_shades_flat(t)
 	_test_a_face_of_collinear_corners_does_not_count_toward_smoothing(t)
+	_test_a_face_that_repeats_a_vertex_smooths_it_once(t)
 	_test_terrain_splat_shader_defaults_to_first_layer(t)
 	_test_terrain_missing_layer_slots_use_first_layer(t)
 	_test_terrain_emissive_layers_glow(t)
@@ -413,6 +414,33 @@ static func _test_a_face_of_collinear_corners_does_not_count_toward_smoothing(t)
 	var brush := TrenchDotMesh.parse(node, Transform3D.IDENTITY, 1.0, "")
 	var smoothed := brush.faces.any(func(f): return Array(f.disp_normals).any(func(n): return n.distance_to(f.plane.normal) > 1e-5))
 	t.check(brush.faces.size() == 651 and smoothed, "the cone keeps its 651 faces and stays smoothed")
+
+## A face that visits a vertex twice still adds its normal once to the smoothed normal there, as in td_geom's
+## a_face_that_repeats_a_vertex_smooths_it_once. The two faces are 86.5 degrees apart.
+static func _test_a_face_that_repeats_a_vertex_smooths_it_once(t) -> void:
+	print("- a face that repeats a vertex smooths it once")
+	var node := {
+		"id": 1, "type": "mesh", "smooth_angle": 89.0,
+		"vertices": [[40.0, 12.0, -7.0], [8.0, 20.0, 30.0], [-10.0, 45.0, 22.0], [30.0, 60.0, 5.0], [50.0, 18.0, 60.0], [-20.0, 10.0, 48.0]],
+		"faces": [{ "indices": [0, 1, 2, 1, 3], "material": "showcase/cobble" }, { "indices": [1, 4, 5], "material": "showcase/cobble" }],
+	}
+	var brush := TrenchDotMesh.parse(node, Transform3D.IDENTITY, 1.0, "")
+	t.check(brush.faces.size() == 2, "both faces are kept")
+	if brush.faces.size() != 2:
+		return
+	var at_b := TrenchDotParser.to_id(Vector3(-0.49327488, -0.5511023, -0.67302759))
+	var first: PackedVector3Array = brush.faces[0].disp_normals
+	var second: PackedVector3Array = brush.faces[1].disp_normals
+	var plane_first: Vector3 = brush.faces[0].plane.normal
+	var plane_second: Vector3 = brush.faces[1].plane.normal
+	var want_first := [plane_first, at_b, plane_first, at_b, plane_first]
+	var want_second := [at_b, plane_second, plane_second]
+	t.check(first.size() == 5 and second.size() == 3, "the corners are kept, got %d and %d" % [first.size(), second.size()])
+	if first.size() == 5 and second.size() == 3:
+		for k in 5:
+			t.check(first[k].distance_to(want_first[k]) < 1e-5, "first face corner %d is %s, wanted %s" % [k, first[k], want_first[k]])
+		for k in 3:
+			t.check(second[k].distance_to(want_second[k]) < 1e-5, "second face corner %d is %s, wanted %s" % [k, second[k], want_second[k]])
 
 ## Finding 8: an all zero splat weight must render as the first layer, matching Terrain::weights and
 ## docs/format/terrain-scatter.md, not black. Not practically capturable headlessly, so this pins the fixed GLSL

@@ -1783,6 +1783,27 @@ mod tests {
     }
 
     #[test]
+    fn a_face_that_repeats_a_vertex_smooths_it_once() {
+        let v = |x, y, z| DVec3::new(x, y, z);
+        let mut m = Mesh { smooth_angle: 89.0, ..Default::default() };
+        // Corners a, b, c, d of the first face and b, e, h of the second, which share only b.
+        m.vertices = vec![v(40.0, 12.0, -7.0), v(8.0, 20.0, 30.0), v(-10.0, 45.0, 22.0), v(30.0, 60.0, 5.0), v(50.0, 18.0, 60.0), v(-20.0, 10.0, 48.0)];
+        let data = FaceData::default();
+        m.faces = vec![MeshFace::new(vec![0, 1, 2, 1, 3], data.clone()), MeshFace::new(vec![1, 4, 5], data)];
+        assert_eq!(m.vertex_faces()[1], vec![0, 1]);
+        // The faces are 86.5 degrees apart, inside the angle. Counting the first face twice at b would give
+        // (-0.638, -0.323, -0.699) there instead. godot/tests/td_editor_parity_test.gd checks the same two faces.
+        let at_b = DVec3::new(-0.49327488, -0.5511023, -0.67302759);
+        let normals = m.corner_normals();
+        let near = |n: DVec3, want: DVec3| n.distance(want) < 1e-6;
+        let first = m.face_normal(0);
+        let second = m.face_normal(1);
+        assert_eq!(normals[0].len(), 5);
+        assert!([first, at_b, first, at_b, first].iter().zip(&normals[0]).all(|(want, got)| near(*got, *want)), "{:?}", normals[0]);
+        assert!([at_b, second, second].iter().zip(&normals[1]).all(|(want, got)| near(*got, *want)), "{:?}", normals[1]);
+    }
+
+    #[test]
     fn contains_point_separates_inside_from_outside() {
         let c = cube();
         assert!(c.contains_point(DVec3::ZERO));
