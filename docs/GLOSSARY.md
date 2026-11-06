@@ -40,7 +40,7 @@ A box that limits the map to one area while you work on it. With the cordon enab
 Constructive solid geometry, building shapes by combining solids, such as subtracting one brush from another to cut a doorway. The editor's CSG commands are Subtract, Hollow, Convex Merge and Intersect.
 
 ## decal
-A texture laid over a surface, like a stain, a crack or a poster. In TrenchDot a decal is a thin mesh that sits on the face without flickering, placed by holding Alt while you drop a material on a face.
+A texture laid over a surface, like a stain, a crack or a poster. In TrenchDot a decal is a thin mesh that sits on the face without flickering, placed by holding Alt while you drop a material on a face. A projected decal is an entity that shines a material onto everything inside its box instead.
 
 ## detile
 A terrain layer setting from 0 to 1 that turns and shifts every repeat of the texture at random, so a large field does not show an obvious grid. It costs extra texture reads, so leave it at 0 where the repeat does not show.

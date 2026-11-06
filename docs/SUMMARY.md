@@ -11,6 +11,7 @@
     * [Models](editor/models.md)
     * [Texturing](editor/texturing.md)
     * [Decals](editor/decals.md)
+    * [Projected decals](editor/projected-decals.md)
     * [UV Editor](editor/uv-editor.md)
     * [Terrain](editor/terrain.md)
     * [Terrain layers](editor/terrain-layers.md)

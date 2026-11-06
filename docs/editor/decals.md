@@ -54,10 +54,12 @@ A thin mesh is fine once you tick **Decal (blended, double sided)** on it, that 
 
 ## Projected decals
 
-A regular decal is flat. For a stain that wraps over a step or a pipe, use a projected decal instead, an entity with
-the `trenchdot_decal.gd` script like the demo's `infodecal`. Set its `material` key to a material name like
-`base/stain`. It shines the material onto everything inside its box, props included, and costs more, so stick to
+A regular decal is flat. For a stain that wraps over a step, a pipe or bumpy ground, use a projected decal instead. It
+is an entity that shines a material onto everything inside its box, props included. It costs more to draw, so stick to
 regular decals on flat surfaces.
+
+Your project needs an entity class for it first. [Projected decals](projected-decals.md) shows you how to set one up,
+place it and what to watch out for.
 
 <div class="td-mcp" markdown>
 
