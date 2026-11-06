@@ -992,6 +992,7 @@ impl EditorState {
         }
 
         let mut kept = None;
+        let mut switching = false;
         if let Some(root) = self.other_project(path) {
             let found = (self.game.project_root.is_some() && !self.is_trusted(&root)).then(|| {
                 self.code_scans.check(&root);
@@ -1003,7 +1004,10 @@ impl EditorState {
                     self.trust_request = Some(TrustRequest::Switch { root: root.clone(), map: path.clone() });
                     kept = Some(root);
                 }
-                Some(None) => self.switch_scan = Some((root, path.clone())),
+                Some(None) => {
+                    self.switch_scan = Some((root, path.clone()));
+                    switching = true;
+                }
             }
         }
 
@@ -1027,7 +1031,14 @@ impl EditorState {
             self.set_status(status);
         }
 
-        if !own && !crate::validate::map_script_issues(&self.doc.map, &mut self.prefabs, self.doc.path.as_deref()).is_empty() {
+        // Whether the map is the project's own is not known until the scan of the project it belongs to ends.
+        if !own && !switching {
+            self.note_map_scripts();
+        }
+    }
+
+    fn note_map_scripts(&mut self) {
+        if !crate::validate::map_script_issues(&self.doc.map, &mut self.prefabs, self.doc.path.as_deref()).is_empty() {
             let status = format!("{}. {MAP_SCRIPTS}", self.status);
             self.set_status(status);
         }
@@ -1319,6 +1330,7 @@ impl EditorState {
             } else if current {
                 self.trust_request = Some(TrustRequest::Switch { root: root.clone(), map: map.clone() });
                 self.set_status(format!("{} belongs to {}, a project you have not trusted, so the open project stays", map.display(), root.display()));
+                self.note_map_scripts();
             }
         }
 
@@ -2017,6 +2029,83 @@ mod tests {
         state.open_map(&outside).unwrap();
         assert_eq!(state.game.project_root.as_deref(), Some(absolute(&project).as_path()));
         assert_eq!(state.status, format!("Opened {}. {MAP_SCRIPTS}", absolute(&outside).display()), "a loose map is not the project's own");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_map_waits_for_the_scan_of_its_project_before_it_says_it_has_scripts() {
+        let dir = std::env::temp_dir().join(format!("td_map_scripts_scan_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (mine, quiet, coded) = (dir.join("mine"), dir.join("quiet"), dir.join("coded"));
+        for root in [&mine, &quiet, &coded] {
+            std::fs::create_dir_all(root).unwrap();
+            std::fs::write(
+                root.join("project.godot"),
+                "config_version=5
+",
+            )
+            .unwrap();
+        }
+
+        std::fs::write(
+            coded.join("main.gd"),
+            "extends Node
+",
+        )
+        .unwrap();
+        for i in 0..2000 {
+            let art = quiet.join(format!("art/{i}.png.import"));
+            std::fs::create_dir_all(art.parent().unwrap()).unwrap();
+            std::fs::write(
+                art,
+                "[remap]
+
+importer=\"texture\"
+",
+            )
+            .unwrap();
+        }
+
+        let with_script = || {
+            let mut map = td_doc::Map::new();
+            let layer = map.default_layer();
+            let mut script = td_doc::Entity::new("logic_script");
+            script.properties.insert("source".into(), "print(activator)".into());
+            map.insert(layer, td_doc::NodeKind::Entity(script));
+            map
+        };
+        // The same prefab path, a script in the open project's and none in the other's.
+        std::fs::create_dir_all(mine.join("prefabs")).unwrap();
+        std::fs::create_dir_all(quiet.join("prefabs")).unwrap();
+        format::save(&with_script(), &mine.join("prefabs/door.tdm")).unwrap();
+        format::save(&td_doc::Map::new(), &quiet.join("prefabs/door.tdm")).unwrap();
+        let mut placed = td_doc::Map::new();
+        let layer = placed.default_layer();
+        let instance =
+            td_doc::map::Instance { path: "res://prefabs/door.tdm".into(), origin: DVec3::new(96.0, -32.0, 8.0), angles: DVec3::ZERO, fixup: String::new() };
+        placed.insert(layer, td_doc::NodeKind::Instance(instance));
+        format::save(&placed, &quiet.join("level.tdm")).unwrap();
+        format::save(&with_script(), &coded.join("level.tdm")).unwrap();
+
+        let mut state = EditorState::new(Prefs::default());
+        state.trust_for_session(&mine);
+        state.load_project(&mine);
+        state.refresh_instance_extents();
+        state.open_map(&quiet.join("level.tdm")).unwrap();
+        assert!(state.switch_scan.is_some(), "the scan of the other project still runs");
+        assert!(!state.status.contains(MAP_SCRIPTS), "{}", state.status);
+        state.apply_code_scans(true);
+        assert_eq!(state.game.project_root.as_deref(), Some(quiet.as_path()), "a project without code is switched to");
+        assert!(!state.restricted());
+        assert!(!state.status.contains(MAP_SCRIPTS), "{}", state.status);
+
+        state.load_project(&mine);
+        state.refresh_instance_extents();
+        state.open_map(&coded.join("level.tdm")).unwrap();
+        state.apply_code_scans(true);
+        assert_eq!(state.game.project_root.as_deref(), Some(mine.as_path()), "a project with code that is not trusted is not switched to");
+        assert!(state.status.contains("a project you have not trusted"), "{}", state.status);
+        assert!(state.status.ends_with(MAP_SCRIPTS), "{}", state.status);
         let _ = std::fs::remove_dir_all(dir);
     }
 
