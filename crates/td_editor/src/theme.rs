@@ -12,6 +12,8 @@ pub const DOCK_GAP: f32 = 8.0;
 /// Every color the editor draws its own interface with.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Palette {
+    /// Whether egui styles it from its dark or its light visuals.
+    pub dark: bool,
     pub fg: Color32,
     pub gray_0: Color32,
     pub gray_1: Color32,
@@ -38,6 +40,17 @@ pub struct Palette {
     pub chrome: Color32,
     /// Collapsible section headers.
     pub header: Color32,
+    /// The background of the 2D views.
+    pub view_2d: Color32,
+    /// Text on a filled accent.
+    pub on_accent: Color32,
+    /// How far selected rows and cards sink into the accent, 0 is the panel and 1 the accent.
+    pub selected_mix: f32,
+    /// The same for selected widgets and text, which carry white text.
+    pub selection_mix: f32,
+    /// Weak text, or egui's translucent gray-out of the text color when `None`.
+    pub weak_text: Option<Color32>,
+    pub shadow_alpha: u8,
 }
 
 // Accents use a colorblind-safe palette derived from Okabe & Ito, so meaning carried by hue (axes,
@@ -45,6 +58,7 @@ pub struct Palette {
 // protanopia and tritanopia. red is a vermillion and green a bluish green, the pair that keeps
 // red-green viewers apart, and the cvd_pairs test guards the critical distinctions.
 pub const DARK: Palette = Palette {
+    dark: true,
     fg: Color32::from_rgb(0xdd, 0xe0, 0xe6),
     gray_0: Color32::from_rgb(0x11, 0x12, 0x15),
     gray_1: Color32::from_rgb(0x1d, 0x1e, 0x23),
@@ -67,6 +81,46 @@ pub const DARK: Palette = Palette {
     backdrop: Color32::from_rgb(0x11, 0x12, 0x15),
     chrome: Color32::from_rgb(0x16, 0x17, 0x1b),
     header: Color32::from_rgb(0x26, 0x28, 0x2e),
+    view_2d: Color32::from_rgb(0x11, 0x12, 0x15),
+    on_accent: Color32::from_rgb(0x11, 0x12, 0x15),
+    selected_mix: 0.45,
+    selection_mix: 0.6,
+    weak_text: None,
+    shadow_alpha: 90,
+};
+
+/// Accents are the darker family of the same hues, 4.7 or more on panels so they read as text, with the CVD order
+/// of the dark set.
+pub const LIGHT: Palette = Palette {
+    dark: false,
+    fg: Color32::from_rgb(0x1f, 0x22, 0x29),
+    gray_0: Color32::from_rgb(0xfc, 0xfc, 0xfd),
+    gray_1: Color32::from_rgb(0xf3, 0xf4, 0xf7),
+    gray_2: Color32::from_rgb(0xe4, 0xe7, 0xeb),
+    gray_3: Color32::from_rgb(0xcb, 0xd0, 0xd8),
+    gray_4: Color32::from_rgb(0xaa, 0xb1, 0xbc),
+    gray_5: Color32::from_rgb(0x55, 0x5c, 0x6b),
+    gray_6: Color32::from_rgb(0x39, 0x3e, 0x48),
+    gray_7: Color32::from_rgb(0x12, 0x14, 0x18),
+    magenta: Color32::from_rgb(0xa6, 0x47, 0x97),
+    green: Color32::from_rgb(0x0a, 0x5b, 0x46),
+    yellow: Color32::from_rgb(0x81, 0x69, 0x07),
+    blue: Color32::from_rgb(0x07, 0x5e, 0x9b),
+    cyan: Color32::from_rgb(0x01, 0x76, 0x9b),
+    pink: Color32::from_rgb(0xb4, 0x41, 0x78),
+    red: Color32::from_rgb(0x92, 0x27, 0x03),
+    teal: Color32::from_rgb(0x00, 0x77, 0x83),
+    orange: Color32::from_rgb(0x9f, 0x5c, 0x02),
+    accent: Color32::from_rgb(0x48, 0x63, 0xd1),
+    backdrop: Color32::from_rgb(0xd5, 0xd9, 0xe0),
+    chrome: Color32::from_rgb(0xe4, 0xe7, 0xec),
+    header: Color32::from_rgb(0xe9, 0xec, 0xf0),
+    view_2d: Color32::from_rgb(0x11, 0x12, 0x15),
+    on_accent: Color32::WHITE,
+    selected_mix: 0.25,
+    selection_mix: 1.0,
+    weak_text: Some(Color32::from_rgb(0x55, 0x5c, 0x6b)),
+    shadow_alpha: 40,
 };
 
 /// The palette the editor draws with.
@@ -155,11 +209,11 @@ impl Palette {
 
     /// Selected cards and rows: the accent sunk into the panel so text on top stays readable.
     pub fn selected_fill(&self) -> Color32 {
-        blend(self.gray_1, self.accent, 0.45)
+        blend(self.gray_1, self.accent, self.selected_mix)
     }
 
     pub fn visuals(&self) -> Visuals {
-        let mut v = Visuals::dark();
+        let mut v = if self.dark { Visuals::dark() } else { Visuals::light() };
         let radius = CornerRadius::same(RADIUS);
         v.panel_fill = self.gray_1;
         v.window_fill = self.gray_1;
@@ -172,14 +226,15 @@ impl Palette {
         v.warn_fg_color = self.warning();
         v.error_fg_color = self.error();
         // egui draws selected labels and selected text in selection.stroke on top of bg_fill.
-        v.selection.bg_fill = blend(self.gray_2, self.accent, 0.6);
+        v.selection.bg_fill = blend(self.gray_2, self.accent, self.selection_mix);
         v.selection.stroke = Stroke::new(1.0, Color32::WHITE);
         v.window_corner_radius = CornerRadius::same(WINDOW_RADIUS);
         v.menu_corner_radius = CornerRadius::same(WINDOW_RADIUS - 1);
-        let shadow = Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(90) };
+        let shadow = Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(self.shadow_alpha) };
         v.window_shadow = shadow;
         v.popup_shadow = shadow;
         v.indent_has_left_vline = false;
+        v.weak_text_color = self.weak_text;
 
         let w = &mut v.widgets;
         w.noninteractive.bg_fill = self.gray_1;
@@ -188,7 +243,8 @@ impl Palette {
         w.noninteractive.fg_stroke = Stroke::new(1.0, self.gray_6);
         w.inactive.bg_fill = self.gray_2;
         w.inactive.weak_bg_fill = self.gray_2;
-        w.inactive.bg_stroke = Stroke::NONE;
+        // Light controls sit a step off near white panels, an unchecked checkbox would barely show without an edge.
+        w.inactive.bg_stroke = if self.dark { Stroke::NONE } else { Stroke::new(1.0, self.gray_4) };
         w.inactive.fg_stroke = Stroke::new(1.0, self.fg);
         w.hovered.bg_fill = self.gray_3;
         w.hovered.weak_bg_fill = self.gray_3;
@@ -236,9 +292,34 @@ pub fn linear(c: Color32) -> [f64; 4] {
     [lin(c.r()), lin(c.g()), lin(c.b()), 1.0]
 }
 
-/// Colors and the roomier spacing the editor uses over egui's defaults.
-pub fn style(style: &mut egui::Style) {
-    style.visuals = colors().visuals();
+/// Fills egui's dark and light styles with their palettes. The theme preference decides which one is drawn.
+pub fn install(ctx: &egui::Context) {
+    ctx.options_mut(|o| o.fallback_theme = egui::Theme::Dark);
+    ctx.style_mut_of(egui::Theme::Dark, |s| apply_style(s, &DARK));
+    ctx.style_mut_of(egui::Theme::Light, |s| apply_style(s, &LIGHT));
+}
+
+/// egui frames a focused text field in `selection.stroke`, the white that selected text is drawn in, which vanishes on
+/// light panels. Light rings the field in the accent on top of it.
+pub fn paint_focus_ring(ctx: &egui::Context, palette: &Palette) {
+    if palette.dark {
+        return;
+    }
+
+    let Some(id) = ctx.memory(|m| m.focused()) else { return };
+    if egui::text_edit::TextEditState::load(ctx, id).is_none() {
+        return;
+    }
+
+    let Some(field) = ctx.read_response(id) else { return };
+    let radius = ctx.global_style().visuals.widgets.inactive.corner_radius;
+    let stroke = Stroke::new(1.0, palette.accent);
+    ctx.layer_painter(field.layer_id).with_clip_rect(field.interact_rect).rect_stroke(field.rect, radius, stroke, egui::StrokeKind::Inside);
+}
+
+/// A palette's colors and the roomier spacing the editor uses over egui's defaults.
+fn apply_style(style: &mut egui::Style, palette: &Palette) {
+    style.visuals = palette.visuals();
     style.spacing.item_spacing = Vec2::new(8.0, 5.0);
     style.spacing.button_padding = Vec2::new(8.0, 3.0);
     style.spacing.interact_size.y = 24.0;
@@ -475,7 +556,7 @@ mod tests {
         assert_eq!(DARK.visuals(), visuals_at_45708219());
 
         let mut style = egui::Style::default();
-        super::style(&mut style);
+        apply_style(&mut style, &DARK);
         assert_eq!(style.visuals, visuals_at_45708219());
         assert_eq!((style.spacing.indent, style.spacing.interact_size.y), (18.0, 24.0));
     }
@@ -501,23 +582,164 @@ mod tests {
         (hi + 0.05) / (lo + 0.05)
     }
 
+    const PALETTES: [(&str, Palette); 2] = [("dark", DARK), ("light", LIGHT)];
+
     #[test]
     fn text_stays_readable_on_selected_fills() {
-        let v = DARK.visuals();
-        for (text, fill, what) in [(DARK.fg, DARK.selected_fill(), "selected rows"), (v.selection.stroke.color, v.selection.bg_fill, "selected widgets")] {
-            let ratio = contrast(text, fill);
-            assert!(ratio >= 4.5, "{what}: text contrast {ratio:.2} < 4.5");
+        for (name, p) in PALETTES {
+            let v = p.visuals();
+            for (text, fill, what) in [(p.fg, p.selected_fill(), "selected rows"), (v.selection.stroke.color, v.selection.bg_fill, "selected widgets")] {
+                let ratio = contrast(text, fill);
+                assert!(ratio >= 4.5, "{name} {what}: text contrast {ratio:.2} < 4.5");
+            }
         }
+
+        let ratio = contrast(LIGHT.gray_6, LIGHT.selected_fill());
+        assert!(ratio >= 4.5, "light selected rows: label contrast {ratio:.2} < 4.5");
     }
 
     #[test]
     fn selection_fill_stands_out_from_panels() {
         // Slider and progress fills, the view grid corner dot and the prefab card outline use it as a mark.
-        let v = DARK.visuals();
-        for (bg, what) in [(v.panel_fill, "panels"), (v.extreme_bg_color, "fields and cards")] {
-            let ratio = contrast(v.selection.bg_fill, bg);
-            assert!(ratio >= 3.0, "selection fill on {what}: contrast {ratio:.2} < 3");
+        for (name, p) in PALETTES {
+            let v = p.visuals();
+            for (bg, what) in [(v.panel_fill, "panels"), (v.extreme_bg_color, "fields and cards")] {
+                let ratio = contrast(v.selection.bg_fill, bg);
+                assert!(ratio >= 3.0, "{name} selection fill on {what}: contrast {ratio:.2} < 3");
+            }
         }
+    }
+
+    #[test]
+    fn light_text_stays_readable() {
+        let p = LIGHT;
+        let v = p.visuals();
+        assert!(!v.dark_mode);
+        let weak = v.weak_text_color();
+        assert_eq!(weak, p.gray_5);
+        let surfaces = [("gray_0", p.gray_0), ("gray_1", p.gray_1), ("gray_2", p.gray_2), ("chrome", p.chrome), ("header", p.header)];
+        for (surface, bg) in surfaces {
+            for (text, color) in [("fg", p.fg), ("gray_6", p.gray_6), ("weak", weak)] {
+                let ratio = contrast(color, bg);
+                assert!(ratio >= 4.5, "{text} on {surface}: {ratio:.2} < 4.5");
+            }
+        }
+
+        for (text, color) in [("fg", p.fg), ("gray_6", p.gray_6)] {
+            let ratio = contrast(color, p.gray_3);
+            assert!(ratio >= 4.5, "{text} on gray_3: {ratio:.2} < 4.5");
+        }
+
+        let ratio = contrast(p.gray_7, p.gray_4);
+        assert!(ratio >= 4.5, "gray_7 on gray_4: {ratio:.2} < 4.5");
+
+        let accents = [
+            ("magenta", p.magenta),
+            ("green", p.green),
+            ("yellow", p.yellow),
+            ("blue", p.blue),
+            ("cyan", p.cyan),
+            ("pink", p.pink),
+            ("red", p.red),
+            ("teal", p.teal),
+            ("orange", p.orange),
+            ("accent", p.accent),
+        ];
+        for (name, accent) in accents {
+            for (surface, bg) in [("gray_1", p.gray_1), ("gray_0", p.gray_0)] {
+                let ratio = contrast(accent, bg);
+                assert!(ratio >= 4.5, "{name} text on {surface}: {ratio:.2} < 4.5");
+            }
+
+            let ratio = contrast(p.on_accent, accent);
+            assert!(ratio >= 4.5, "on_accent on {name}: {ratio:.2} < 4.5");
+        }
+    }
+
+    /// The rects stroked in `palette.accent` after a pass with a text field and a button, one of them focused.
+    fn focus_rings(palette: &Palette, focus: Option<&str>) -> (Vec<egui::Rect>, egui::Rect) {
+        let ctx = egui::Context::default();
+        install(&ctx);
+        let mut text = String::from("crate_01");
+        let mut field = egui::Rect::NOTHING;
+        let mut rings = Vec::new();
+        for _ in 0..2 {
+            let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::pos2(13.0, 7.0), egui::vec2(410.0, 290.0))), ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| {
+                ui.add_space(31.0);
+                let edit = ui.add(egui::TextEdit::singleline(&mut text).id_salt("name"));
+                let button = ui.button("Apply");
+                field = edit.rect;
+                match focus {
+                    Some("field") => edit.request_focus(),
+                    Some("button") => button.request_focus(),
+                    _ => {}
+                }
+
+                paint_focus_ring(ui.ctx(), palette);
+            });
+            out.textures_delta.clear();
+            rings = out
+                .shapes
+                .into_iter()
+                .filter_map(|c| match c.shape {
+                    egui::Shape::Rect(r) if r.stroke.color == palette.accent && r.stroke.width > 0.0 => Some(r.rect),
+                    _ => None,
+                })
+                .collect();
+        }
+
+        (rings, field)
+    }
+
+    #[test]
+    fn light_rings_the_focused_text_field() {
+        let (rings, field) = focus_rings(&LIGHT, Some("field"));
+        assert_eq!(field.min, egui::pos2(13.0, 38.0));
+        assert_eq!(rings, vec![field]);
+        assert_eq!(focus_rings(&LIGHT, None).0, vec![], "nothing has focus");
+        assert_eq!(focus_rings(&LIGHT, Some("button")).0, vec![], "a focused button is not a text field");
+        assert_eq!(focus_rings(&DARK, Some("field")).0, vec![], "dark keeps egui's white frame");
+    }
+
+    #[test]
+    fn light_controls_have_an_edge() {
+        let light = LIGHT.visuals().widgets.inactive;
+        assert_eq!(light.bg_stroke, Stroke::new(1.0, LIGHT.gray_4));
+        assert!(contrast(light.bg_stroke.color, LIGHT.gray_1) > contrast(light.bg_fill, LIGHT.gray_1) + 0.5);
+        assert_eq!(DARK.visuals().widgets.inactive.bg_stroke, Stroke::NONE);
+    }
+
+    #[test]
+    fn install_fills_both_styles() {
+        let ctx = egui::Context::default();
+        install(&ctx);
+        assert_eq!(ctx.options(|o| (o.dark_style.visuals.panel_fill, o.dark_style.visuals.dark_mode)), (DARK.gray_1, true));
+        assert_eq!(ctx.options(|o| (o.light_style.visuals.panel_fill, o.light_style.visuals.dark_mode)), (LIGHT.gray_1, false));
+        assert_eq!(ctx.options(|o| (o.light_style.spacing.indent, o.light_style.spacing.interact_size.y)), (18.0, 24.0));
+
+        let theme_in = |system: Option<egui::Theme>| {
+            ctx.set_theme(egui::ThemePreference::System);
+            ctx.begin_pass(egui::RawInput { system_theme: system, ..Default::default() });
+            let theme = ctx.theme();
+            let panel = ctx.global_style().visuals.panel_fill;
+            ctx.end_pass().drop_without_applying_deltas();
+            (theme, panel)
+        };
+        assert_eq!(theme_in(None), (egui::Theme::Dark, DARK.gray_1));
+        assert_eq!(theme_in(Some(egui::Theme::Dark)), (egui::Theme::Dark, DARK.gray_1));
+        assert_eq!(theme_in(Some(egui::Theme::Light)), (egui::Theme::Light, LIGHT.gray_1));
+        assert_eq!(theme_in(None), (egui::Theme::Dark, DARK.gray_1), "an OS that stops reporting falls back to dark");
+    }
+
+    #[test]
+    fn light_palette_keeps_its_colors() {
+        let p = LIGHT;
+        assert_eq!(p.selected_fill(), hex(0xc8d0ee));
+        assert_eq!(p.visuals().selection.bg_fill, hex(0x4863d1));
+        assert_eq!(p.visuals().window_shadow.color, Color32::from_black_alpha(40));
+        assert_eq!((p.view_2d, p.on_accent), (hex(0x111215), Color32::WHITE));
+        assert_eq!(DARK.visuals().weak_text_color, None);
     }
 
     fn srgb_to_lin(v: f32) -> f32 {
@@ -555,7 +777,12 @@ mod tests {
 
     #[test]
     fn cvd_pairs_stay_distinguishable() {
-        let p = DARK;
+        for (name, p) in PALETTES {
+            cvd_pairs_hold(&p, name);
+        }
+    }
+
+    fn cvd_pairs_hold(p: &Palette, name: &str) {
         // Role pairs whose only difference is hue, so they must survive every common color blindness.
         let category = |name: &str| p.category_color(name);
         let pin = |name: &str| p.pin_type_color(name);
@@ -582,12 +809,12 @@ mod tests {
         for kind in 0..3 {
             for (a, b, what) in pairs {
                 let d = distance(simulate(a, kind), simulate(b, kind));
-                assert!(d >= MIN, "cvd {kind}: {what} too close ({d:.0} < {MIN})");
+                assert!(d >= MIN, "{name} cvd {kind}: {what} too close ({d:.0} < {MIN})");
             }
 
             for (c, what) in [(p.error(), "error"), (p.success(), "success"), (p.warning(), "warning"), (axis[0], "axis x"), (axis[1], "axis y")] {
                 let d = distance(simulate(p.accent, kind), simulate(c, kind));
-                assert!(d >= MIN, "cvd {kind}: accent vs {what} too close ({d:.0} < {MIN})");
+                assert!(d >= MIN, "{name} cvd {kind}: accent vs {what} too close ({d:.0} < {MIN})");
             }
         }
     }

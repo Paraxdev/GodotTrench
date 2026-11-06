@@ -814,7 +814,8 @@ impl App {
 
         state.link = Some(crate::live_link::LiveLink::start(Some(cc.egui_ctx.clone())));
         let dock: Option<DockState<Tab>> = if keep_prefs { cc.storage.and_then(|s| eframe::get_value(s, DOCK_KEY)).filter(valid_dock) } else { None };
-        cc.egui_ctx.global_style_mut(crate::theme::style);
+        crate::theme::install(&cc.egui_ctx);
+        cc.egui_ctx.set_theme(egui::Theme::Dark);
         cc.egui_ctx.set_fonts(crate::theme::fonts());
         // UI scale shortcuts go through the keymap so they are rebindable and saved in the preferences.
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
@@ -2889,6 +2890,7 @@ impl eframe::App for App {
         }
 
         panels::copy_unopened_links(&mut self.state, &ctx);
+        crate::theme::paint_focus_ring(&ctx, crate::theme::colors());
 
         self.state.tick_autosave();
         self.state.poll_live_link();
@@ -3263,7 +3265,7 @@ mod tests {
     #[test]
     fn a_selected_menu_choice_draws_its_shortcut_like_its_label() {
         let ctx = egui::Context::default();
-        ctx.global_style_mut(crate::theme::style);
+        crate::theme::install(&ctx);
         let frame = || {
             ctx.begin_pass(egui::RawInput::default());
             egui::Area::new(egui::Id::new("menu")).show(&ctx, |ui| ui.add(menu_choice(ui, None, "Select Tool", Some("Q".into()), true)));
