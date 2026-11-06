@@ -2354,6 +2354,10 @@ impl App {
                 }
                 "release" => {
                     let h = held.take().ok_or("release ends a drag held with release: false, and no drag is held")?;
+                    if ev["x"].is_null() != ev["y"].is_null() {
+                        return Err("a release needs both x and y, or neither to end the drag where the pointer is".into());
+                    }
+
                     let p = if ev["x"].is_null() && ev["world"].is_null() { h.pos } else { self.resolve_pos(target, ev, "x", "world")? };
                     steps.push_back(step(vec![Event::PointerMoved(p)]));
                     steps.push_back(step(vec![Event::PointerButton { pos: p, button: h.button, pressed: false, modifiers }]));

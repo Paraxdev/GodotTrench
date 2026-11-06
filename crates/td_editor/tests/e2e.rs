@@ -277,6 +277,25 @@ fn a_held_drag_keeps_its_modifiers_until_the_release() {
 
 #[test]
 #[ignore]
+fn a_release_with_only_one_axis_is_refused_and_keeps_the_drag() {
+    let ed = Editor::launch("held_half_release");
+    let drag = json!({ "type": "drag", "world": [-96, 0, -32], "to_world": [32, 0, 64], "release": false });
+    assert_eq!(ed.call("simulate_input", json!({ "target": "top", "events": [drag] }))["held"], true);
+    for half in [json!({ "x": 40 }), json!({ "y": 70 })] {
+        let mut release = json!({ "type": "release" });
+        release.as_object_mut().unwrap().extend(half.as_object().unwrap().clone());
+        let e = ed.call_err("simulate_input", json!({ "target": "top", "events": [release] }));
+        assert!(e.contains("both x and y"), "{e}");
+    }
+
+    let (min, max) = ed.selection_bounds();
+    assert!(approx(&min, &[-96.0, 0.0, -32.0]) && approx(&max, &[32.0, 128.0, 64.0]), "the refused releases moved nothing {min:?} {max:?}");
+    let reply = ed.call("simulate_input", json!({ "target": "top", "events": [{ "type": "release" }] }));
+    assert_eq!(reply["held"], false, "the drag was still held for the real release");
+}
+
+#[test]
+#[ignore]
 fn draw_select_move_delete_undo() {
     let ed = Editor::launch("basic");
     // Draw a brush by dragging in the top view. The first brush is 128 units tall, a room once hollowed.
