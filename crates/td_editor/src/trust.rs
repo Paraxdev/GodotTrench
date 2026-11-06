@@ -54,7 +54,7 @@ pub fn parent_folder(root: &Path) -> Option<&Path> {
 
 pub const TRUSTED_TITLE: &str = "Trusted projects";
 const TRUSTED_NOTE: &str =
-    "Godot runs the scripts of these projects when TrenchDot starts it on them or has it build their maps, other projects with code open in Restricted Mode.";
+    "Godot runs the scripts of these projects when TrenchDot starts it on them or has it build their maps. Other projects with code open in Restricted Mode.";
 pub const REMOVE: &str = "Remove";
 /// Follows a folder in the list.
 const FOLDER: &str = "and every project in it";
