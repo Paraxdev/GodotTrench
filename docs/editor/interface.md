@@ -132,9 +132,42 @@ Once the map has a [bake](light-baking.md), **Baked Lighting** comes after Lit P
 Lit Preview shows the map's lights, sun shadows, sky and fog without building in Godot. It only draws the 64 strongest
 point and spot lights, so a map with many more can look darker here than in Godot.
 
+## Theme
+
+TrenchDot comes in a dark and a light look. A fresh install starts dark.
+
+1. Open **File > Preferences**. **Theme** is the first row, at the top of the window.
+2. Click the dropdown and pick **Dark**, **Light** or **System**.
+
+    ![The Theme dropdown in Preferences, open with Dark, Light and System](../assets/interface/preferences-theme.png)
+
+3. The whole editor changes on the next frame, no restart. The choice is saved with your other preferences.
+
+    ![The editor in the light theme, with the menu bar, the Outliner, the 3D view and the Top view](../assets/interface/theme-light-window.png)
+
+**System** follows the light or dark app mode of your operating system and changes with it. While it is picked, the
+dropdown reads *System (Light)* or *System (Dark)* so you can see what your system gave. Where the system does not
+report a mode, the editor stays dark.
+
+You can also pick it in **View > Theme**, right below *Interface Scale*, or in the command palette as *View: Theme:
+Dark*, *Light* or *System*. No key is bound by default, but you can give each one a key in the keymap editor.
+
+In Light, the 2D views (Top, Front and Side) turn into paper, a light gray background with dark grid lines and brush
+edges, so the lines you draw still read at a glance. The 3D view keeps its dark surround in both themes, and so do the
+texture canvases of the UV editor and the hotspot editor. A texture looks the same in either theme, and a light
+surround would change how you judge its colors.
+
+<div class="td-mcp" markdown>
+
+Over the [MCP server](../mcp.md), `set_editor` with `"theme": "light"` switches the theme. The values are `dark`,
+`light` and `system`, and an unknown one is an error that changes nothing. `get_state` reports the choice as
+`ui.theme` and what is on screen as `ui.theme_active`.
+
+</div>
+
 ## Interface scale
 
 Ctrl+= and Ctrl+- scale the interface and Ctrl+0 resets it. You find the same as *Interface scale* at the top of
 *File > Preferences*. If the monitor reports the wrong display scaling, untick *follow the monitor* right beneath it.
 
-![The top of the Preferences window: Interface scale at 100%, Display scaling with follow the monitor ticked, and below them Tips on an empty map and Help text](../assets/interface/preferences-scale-and-tips.png)
+![The top of the Preferences window: Theme set to Dark, Interface scale at 100%, Display scaling with follow the monitor ticked, and below them Tips on an empty map and Help text](../assets/interface/preferences-scale-and-tips.png)
