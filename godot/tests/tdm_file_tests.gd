@@ -207,6 +207,27 @@ static func _test_budgets(t) -> void:
 	var group: Dictionary = TrenchDotTdmFile.decode(file)["map"]["layers"][0]["children"][0]
 	t.check(group["name"] == "g" and not group.has("children"), "nodes nested inside a batch are dropped, got %s" % group)
 
+	# A batch whose nodes or parents hold another type is a damaged chunk, the chunks around it still read.
+	var wrong := {
+		"nodes as a string": { "parents": PackedInt64Array([2]), "nodes": "gate" },
+		"nodes as a dictionary": { "parents": PackedInt64Array([2]), "nodes": { "id": 3 } },
+		"parents as an array": { "parents": [2], "nodes": [{ "id": 3, "type": "group", "name": "g" }] },
+		"parents as a string": { "parents": "2", "nodes": [{ "id": 3, "type": "group", "name": "g" }] },
+		"parents as floats": { "parents": PackedFloat64Array([2.0]), "nodes": [{ "id": 3, "type": "group", "name": "g" }] },
+	}
+	for what in wrong:
+		var bad := var_to_bytes(wrong[what])
+		file = _container([["HEAD", head, 0, head.size()], ["NODE", node, 0, node.size()], ["NODE", bad, 0, bad.size()], ["NODE", node, 0, node.size()]])
+		read = TrenchDotTdmFile.decode(file)
+		problems = "; ".join(read["problems"])
+		t.check(problems.contains("NODE chunk at byte %d is damaged" % (12 + 48 + head.size() + node.size())), "a batch with %s is reported as damaged, got %s" % [what, problems])
+		t.check(read["map"] != null and read["map"]["layers"].size() == 2, "and the chunks around it are read for %s" % what)
+
+	var bare := var_to_bytes({})
+	file = _container([["HEAD", head, 0, head.size()], ["NODE", bare, 0, bare.size()], ["NODE", node, 0, node.size()]])
+	read = TrenchDotTdmFile.decode(file)
+	t.check(not "; ".join(read["problems"]).contains("damaged") and read["map"]["layers"].size() == 1, "a batch with no nodes and no parents is an empty batch, got %s" % [read["problems"]])
+
 static func _test_scatter_instances(t) -> void:
 	var node := { "type": "scatter", "instances": PackedInt32Array([0, 2, 1234, -1, -500, 0, 102450, 300, 0, 450, 3599, 0, -1, 0, 1250, 800]) }
 	TrenchDotTdmFile._restore_instances(node)
