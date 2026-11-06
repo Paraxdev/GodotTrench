@@ -203,10 +203,24 @@ pub fn is_decal(def: Option<&EntityDef>) -> bool {
     def.is_some_and(|d| d.node_class == "Decal" || d.classname.contains("decal"))
 }
 
-/// Decal projector size in map units from the "size" property ("x depth z").
-pub fn decal_size(e: &Entity) -> DVec3 {
-    let parts: Vec<f64> = e.property("size").unwrap_or("64 32 64").split_whitespace().filter_map(|p| p.parse().ok()).collect();
-    if parts.len() >= 3 { DVec3::new(parts[0], parts[1], parts[2]) } else { DVec3::new(64.0, 32.0, 64.0) }
+const DECAL_DEFAULT_SIZE: DVec3 = DVec3::new(64.0, 32.0, 64.0);
+
+/// Decal projector size in map units from the "size" property ("x depth z"). Left at the default, the footprint of the
+/// material's texture_size sets x and z, the way trenchdot_decal.gd sizes it.
+pub fn decal_size(e: &Entity, footprint: Option<[f64; 2]>) -> DVec3 {
+    let parts: Vec<f64> = e.property("size").unwrap_or_default().split_whitespace().filter_map(|p| p.parse().ok()).collect();
+    let size = if parts.len() >= 3 { DVec3::new(parts[0], parts[1], parts[2]) } else { DECAL_DEFAULT_SIZE };
+    match footprint {
+        Some([w, h]) if size == DECAL_DEFAULT_SIZE && w > 0.0 && h > 0.0 => DVec3::new(w, size.y, h),
+        _ => size,
+    }
+}
+
+/// The renderer keys a projected decal can draw, best first: its material, which replaces the texture in Godot, then
+/// its res:// texture.
+pub fn decal_sources(e: &Entity) -> Vec<String> {
+    let material = e.property("material").map(str::trim).filter(|m| !m.is_empty()).map(decal_key);
+    material.into_iter().chain(e.property("texture").filter(|t| t.starts_with("res://")).map(str::to_string)).collect()
 }
 
 pub fn entity_box(game: &GameConfig, e: &Entity) -> Aabb {
@@ -397,7 +411,7 @@ fn node_materials(node: &td_doc::Node, needed: &mut BTreeSet<String>) {
             }
         }
         NodeKind::Terrain(t) => needed.extend(t.layers.iter().map(|l| l.material.clone())),
-        NodeKind::Entity(e) => needed.extend(e.property("texture").filter(|t| t.starts_with("res://")).map(str::to_string)),
+        NodeKind::Entity(e) => needed.extend(decal_sources(e)),
         NodeKind::Scatter(s) => needed.extend((0..s.items.len()).filter_map(|i| s.item_material(i)).map(str::to_string)),
         _ => {}
     }
@@ -917,11 +931,13 @@ impl Builder<'_> {
 
     /// Textured quad on the decal's local XZ plane plus its projector box.
     fn decal_preview(&mut self, e: &Entity, selected: bool) {
-        let size = decal_size(e);
+        let source = decal_sources(e).into_iter().find(|k| self.renderer.has_material(k));
+        let footprint = source.as_deref().filter(|k| k.starts_with(DECAL_PREFIX)).and_then(|k| self.renderer.material_world_size(k));
+        let size = decal_size(e, footprint.map(|[w, h]| [w as f64, h as f64]));
         let rot = e.rotation();
         let (x, y, z) = (rot * DVec3::X * size.x * 0.5, rot * DVec3::Y, rot * DVec3::Z * size.z * 0.5);
         let center = e.origin + y * 0.5;
-        let material = e.property("texture").filter(|t| !t.is_empty()).unwrap_or(td_render::MISSING_MATERIAL);
+        let material = source.as_deref().unwrap_or(td_render::MISSING_MATERIAL);
         let corners = [center - x - z, center + x - z, center + x + z, center - x + z];
         let uvs = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
         let color = if selected { [1.0, 0.7, 0.7, 0.95] } else { [1.0, 1.0, 1.0, 0.9] };
@@ -2234,5 +2250,29 @@ mod tests {
         let mut needed = BTreeSet::new();
         node_materials(map.get(id).unwrap(), &mut needed);
         assert_eq!(needed, BTreeSet::from(["psx/bark".to_string(), "psx/leaves".to_string()]));
+    }
+
+    #[test]
+    fn a_decal_previews_its_material_at_the_material_footprint() {
+        let mut decal = td_doc::entity::Entity::new("infodecal");
+        assert!(decal_sources(&decal).is_empty());
+        decal.properties.insert("texture".into(), "res://decals/crack.png".into());
+        assert_eq!(decal_sources(&decal), ["res://decals/crack.png"]);
+        decal.properties.insert("material".into(), "base/stain".into());
+        assert_eq!(decal_sources(&decal), [decal_key("base/stain"), "res://decals/crack.png".into()], "the material comes first, like in Godot");
+        let mut map = Map::new();
+        let layer = map.default_layer();
+        let id = map.insert(layer, NodeKind::Entity(decal.clone()));
+        let mut needed = BTreeSet::new();
+        node_materials(map.get(id).unwrap(), &mut needed);
+        assert_eq!(needed, BTreeSet::from([decal_key("base/stain"), "res://decals/crack.png".into()]));
+
+        let footprint = Some([128.0, 96.0]);
+        assert_eq!(decal_size(&decal, None), DVec3::new(64.0, 32.0, 64.0));
+        assert_eq!(decal_size(&decal, footprint), DVec3::new(128.0, 32.0, 96.0), "the default size takes the material's footprint");
+        decal.properties.insert("size".into(), "64 32 64".into());
+        assert_eq!(decal_size(&decal, footprint), DVec3::new(128.0, 32.0, 96.0), "a size set to the default counts as left at it");
+        decal.properties.insert("size".into(), "96 16 48".into());
+        assert_eq!(decal_size(&decal, footprint), DVec3::new(96.0, 16.0, 48.0), "a size of its own wins");
     }
 }

@@ -354,6 +354,8 @@ pub struct Material {
     nearest: bool,
     /// Size in map units that one repeat of the texture covers, the albedo's pixel size unless overridden.
     pub size: [f32; 2],
+    /// The material's own override of that size, see [`MaterialDesc::world_size`].
+    pub world_size: Option<[f32; 2]>,
     pub flags: MaterialFlags,
 }
 
@@ -864,6 +866,10 @@ impl Renderer {
         self.materials.get(name).map(|m| m.size)
     }
 
+    pub fn material_world_size(&self, name: &str) -> Option<[f32; 2]> {
+        self.materials.get(name)?.world_size
+    }
+
     pub fn material_flags(&self, name: &str) -> MaterialFlags {
         self.materials.get(name).map(|m| m.flags).unwrap_or_default()
     }
@@ -933,6 +939,7 @@ impl Renderer {
             uniform,
             nearest: m.nearest,
             size: m.size,
+            world_size: m.world_size,
             flags: m.flags,
         };
         self.materials.insert(dark.clone(), material);
@@ -1004,6 +1011,7 @@ impl Renderer {
             uniform,
             nearest: a.nearest,
             size: a.size,
+            world_size: a.world_size,
             flags: MaterialFlags { transparent: false, double_sided: a.flags.double_sided },
         };
         self.materials.insert(key.clone(), material);
@@ -1022,8 +1030,9 @@ impl Renderer {
         let third = emission.clone().unwrap_or_else(|| self.white.clone());
         let bind_group = self.material_bind_group(name, &view, desc.nearest, normal.as_ref(), &third, &uniform);
         let flags = MaterialFlags { transparent: desc.alpha == AlphaMode::Blend || desc.tint[3] < 0.999, double_sided: desc.double_sided };
-        let size = desc.world_size.unwrap_or([w as f32, h as f32]);
-        self.materials.insert(name.to_string(), Material { bind_group, view, normal, emission, third, uniform, nearest: desc.nearest, size, flags });
+        let (size, world_size) = (desc.world_size.unwrap_or([w as f32, h as f32]), desc.world_size);
+        let material = Material { bind_group, view, normal, emission, third, uniform, nearest: desc.nearest, size, world_size, flags };
+        self.materials.insert(name.to_string(), material);
         // Meshes built earlier keep drawing the dark key, so re-registering the base (model thumbnails do) rebuilds it.
         if had_dark {
             self.prepare_dark_material(name);
