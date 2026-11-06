@@ -165,9 +165,48 @@ Over the [MCP server](../mcp.md), `set_editor` with `"theme": "light"` switches 
 
 </div>
 
+## Language
+
+The menus, panels, tooltips and status messages come in English, German, French, Spanish, Portuguese, Russian,
+Simplified Chinese and Japanese. A fresh install starts in English.
+
+1. Open **File > Preferences**. **Language** is the second row, right below **Theme**.
+2. Click the dropdown and pick your language. Every language is listed by its own name, so you can find yours even when
+    the editor is in a language you do not read.
+
+    ![The Language dropdown in Preferences, open with English, Deutsch, Français, Español, Português, Русский, 简体中文 and 日本語](../assets/interface/preferences-language.png)
+
+3. The whole editor switches right away, no restart. The choice is saved with your other preferences.
+
+    ![The File menu in German](../assets/interface/language-file-menu-de.png)
+
+While another language than English is on, the row reads for example *Sprache (Language)*, so you can always find your
+way back. You can also pick a language in the command palette as *View: Language: Deutsch*, and the same command works
+in every language, since the palette also searches the English names. No key is bound by default, but you can give each
+language a key in the keymap editor.
+
+The translations are written by AI and no native speaker has checked them yet, a note under the row says so. A text that
+has no translation yet shows in English, and so does a language this version does not know. If a translation reads
+wrong, you can fix it in [the locale file of that language](https://github.com/Paraxdev/TrenchDot/tree/main/crates/td_editor/locales),
+see [Translations](../development.md#translations).
+
+> [!NOTE]
+> The manual stays in English and names the English labels. When a page says *File > Preferences*, look for the same
+> entry in your language, or type the English name into the command palette. Entity classnames, map keys, file formats,
+> the log and the [MCP server](../mcp.md) stay in English too.
+
+<div class="td-mcp" markdown>
+
+Over the [MCP server](../mcp.md), `set_editor` with `"language": "de"` switches the language. The values are `en`, `de`,
+`fr`, `es`, `pt`, `ru`, `zh-Hans` and `ja`, in any case, and an unknown one is an error that names them all and changes
+nothing. `get_state` reports the choice as `ui.language`. Tool names, replies and errors stay English in every
+language. An editor started with `--default-prefs` is in English, which the e2e tests rely on.
+
+</div>
+
 ## Interface scale
 
 Ctrl+= and Ctrl+- scale the interface and Ctrl+0 resets it. You find the same as *Interface scale* at the top of
 *File > Preferences*. If the monitor reports the wrong display scaling, untick *follow the monitor* right beneath it.
 
-![The top of the Preferences window: Theme set to Dark, Interface scale at 100%, Display scaling with follow the monitor ticked, and below them Tips on an empty map and Help text](../assets/interface/preferences-scale-and-tips.png)
+![The top of the Preferences window: Theme set to Dark, Language set to English, Interface scale at 100%, Display scaling with follow the monitor ticked, and below them Tips on an empty map and Help text](../assets/interface/preferences-scale-and-tips.png)

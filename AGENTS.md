@@ -62,6 +62,8 @@ This applies to code comments, docs, UI text, commit messages and pull request d
 * The accent colors in `crates/td_editor/src/theme.rs` stay colorblind safe. The `cvd_pairs_stay_distinguishable`
   test enforces it, so adjust the color rather than the threshold.
 * Map units are 32 per meter.
+* UI text goes through `en!`, `tr`, `trf!` or `tr_n!`, with its translations added to every file in `crates/td_editor/locales`,
+  see [Translations](docs/development.md#translations). MCP replies, errors and log lines stay English.
 
 ## Content
 

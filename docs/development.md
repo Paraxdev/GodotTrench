@@ -85,6 +85,29 @@ Push the addon first. A TrenchDot commit pointing at an addon commit GitHub does
 `plugin.cfg`'s `version` matches [Cargo.toml](https://github.com/Paraxdev/TrenchDot/blob/main/Cargo.toml)'s
 workspace version. Bump both together, the editor warns when a project's addon doesn't match it.
 
+## Translations
+
+The editor UI comes in English, German, French, Spanish, Portuguese, Russian, Simplified Chinese and Japanese, see
+[Language](editor/interface.md#language). English is the source, and the other seven live in
+[crates/td_editor/locales](https://github.com/Paraxdev/TrenchDot/tree/main/crates/td_editor/locales), one JSON file
+each, embedded when the editor is built. The README there has the format, the plural forms and a glossary.
+
+In code, the English text is the key. Wrap a literal in `en!("...")` where it is stored and in `tr(...)`,
+`trf!("... {n} ...", n = count)` or `tr_n!(count, "{n} brush", "{n} brushes")` where it is drawn, and add the same key
+to every file. A text with no entry shows in English. Code under `crates/td_editor/src/mcp`, log lines and map content
+never go through them, MCP replies and errors stay English. A `Msg` keeps the English text beside the translation, so
+the status bar can show one while MCP reads the other.
+
+```sh
+TD_L10N_TODO=/tmp/l10n cargo test -p td_editor --lib i18n
+```
+
+That run fails while a file lacks a key the code uses or still holds one it no longer does. With `TD_L10N_TODO` set to
+an existing folder it also writes one file per language with the missing keys. Another test scans the source for UI text
+that skips the lookup, so a raw literal handed to a label fails it. The translations are written by AI and unchecked, a
+fix from a native speaker touches only that language's file. The editor started with `--default-prefs`, as the e2e tests
+do, is always in English.
+
 ## Documentation
 
 The docs are the Markdown pages in `docs/`, and [Zensical](https://zensical.org) turns them into the site.
