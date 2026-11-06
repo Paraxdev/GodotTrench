@@ -121,6 +121,8 @@ pub struct App {
     pub(crate) mcp_pref_rects: Vec<(&'static str, egui::Rect)>,
     pub(crate) input_script: Option<InputScript>,
     pub(crate) held_drag: Option<HeldDrag>,
+    /// A held drag that was dropped, egui hears its button and modifiers go up on the next frame.
+    pub(crate) dropped_drag: Option<HeldDrag>,
     pub(crate) deferred: Vec<Deferred>,
     palette: CommandPalette,
     shape_dialog: ShapeDialog,
@@ -852,6 +854,7 @@ impl App {
             mcp_pref_rects: Vec::new(),
             input_script: None,
             held_drag: None,
+            dropped_drag: None,
             deferred: Vec::new(),
             palette: CommandPalette::default(),
             shape_dialog: ShapeDialog::default(),

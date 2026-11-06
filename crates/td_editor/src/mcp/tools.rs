@@ -539,6 +539,12 @@ impl App {
         }
     }
 
+    pub(crate) fn drop_held_drag(&mut self) {
+        if let Some(held) = self.held_drag.take() {
+            self.dropped_drag = Some(held);
+        }
+    }
+
     /// Called at the end of a frame: replies to input scripts that finished this frame.
     pub(crate) fn finish_input_script(&mut self, ctx: &egui::Context) {
         if let Some(script) = &self.input_script {
@@ -558,6 +564,11 @@ impl App {
     }
 
     pub(crate) fn feed_input_script(&mut self, raw: &mut egui::RawInput) {
+        if let Some(dropped) = self.dropped_drag.take() {
+            raw.events.push(Event::PointerButton { pos: dropped.pos, button: dropped.button, pressed: false, modifiers: Modifiers::NONE });
+            raw.events.push(Event::ModifiersChanged(Modifiers::NONE));
+        }
+
         let Some(script) = &mut self.input_script else {
             // Between calls the real keyboard would let go of the held drag's modifiers.
             if let Some(held) = self.held_drag {
@@ -615,7 +626,17 @@ impl App {
                     Err(e) => Reply::Now(err(e)),
                 }
             }
-            _ => Reply::Now(self.run_tool_as_one_step(name, args, ctx)),
+            _ => {
+                let args_action = args["action"].as_str().map(str::to_string);
+                let result = self.run_tool_as_one_step(name, args, ctx);
+                let ends_drag = name == "run_action" && matches!(args_action.as_deref(), Some("new_map" | "close_tab"));
+                if ends_drag && !matches!(result, ToolResult::Error(_)) {
+                    self.drop_held_drag();
+                    ctx.request_repaint();
+                }
+
+                Reply::Now(result)
+            }
         }
     }
 

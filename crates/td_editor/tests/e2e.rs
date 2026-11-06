@@ -296,6 +296,32 @@ fn a_release_with_only_one_axis_is_refused_and_keeps_the_drag() {
 
 #[test]
 #[ignore]
+fn new_map_and_close_tab_let_go_of_a_held_drag() {
+    let ed = Editor::launch("held_drag_new_map");
+    let hold = || {
+        let drag = json!({ "type": "drag", "world": [-96, 0, -32], "to_world": [32, 0, 64], "release": false });
+        assert_eq!(ed.call("simulate_input", json!({ "target": "top", "events": [drag] }))["held"], true);
+    };
+    let release = json!({ "target": "top", "events": [{ "type": "release" }] });
+
+    hold();
+    ed.call("run_action", json!({ "action": "new_map" }));
+    assert!(ed.call_err("simulate_input", release.clone()).contains("no drag is held"));
+    ed.input("top", json!([{ "type": "move", "world": [128, 0, 96] }]));
+    assert_eq!(ed.brushes(), 0, "the new map draws nothing from the old drag");
+
+    // The held drag drew a brush, so closing the tab without discard is refused and keeps the drag.
+    hold();
+    assert!(ed.call_err("run_action", json!({ "action": "close_tab" })).contains("unsaved"));
+    assert_eq!(ed.call("simulate_input", release.clone())["held"], false, "a refused close_tab keeps the drag");
+
+    hold();
+    ed.call("run_action", json!({ "action": "close_tab", "args": { "discard": true } }));
+    assert!(ed.call_err("simulate_input", release).contains("no drag is held"));
+}
+
+#[test]
+#[ignore]
 fn draw_select_move_delete_undo() {
     let ed = Editor::launch("basic");
     // Draw a brush by dragging in the top view. The first brush is 128 units tall, a room once hollowed.
