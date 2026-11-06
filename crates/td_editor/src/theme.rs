@@ -125,8 +125,9 @@ pub fn visuals() -> Visuals {
     v.hyperlink_color = CYAN;
     v.warn_fg_color = WARNING;
     v.error_fg_color = ERROR;
-    v.selection.bg_fill = blend(GRAY_2, ACCENT, 0.7);
-    v.selection.stroke = Stroke::new(1.0, blend(ACCENT, GRAY_7, 0.35));
+    // egui draws selected labels and selected text in selection.stroke on top of bg_fill.
+    v.selection.bg_fill = blend(GRAY_2, ACCENT, 0.6);
+    v.selection.stroke = Stroke::new(1.0, Color32::WHITE);
     v.window_corner_radius = CornerRadius::same(WINDOW_RADIUS);
     v.menu_corner_radius = CornerRadius::same(WINDOW_RADIUS - 1);
     let shadow = Shadow { offset: [0, 8], blur: 24, spread: 0, color: Color32::from_black_alpha(90) };
@@ -251,11 +252,33 @@ mod tests {
         assert!(linear(GRAY_1)[2] > linear(GRAY_0)[2]);
     }
 
+    /// WCAG 2 contrast ratio. AA asks 4.5 for text and 3 for the parts of a control.
+    fn contrast(a: Color32, b: Color32) -> f64 {
+        let luminance = |c: Color32| {
+            let [r, g, b, _] = linear(c);
+            0.2126 * r + 0.7152 * g + 0.0722 * b
+        };
+        let (hi, lo) = (luminance(a).max(luminance(b)), luminance(a).min(luminance(b)));
+        (hi + 0.05) / (lo + 0.05)
+    }
+
     #[test]
     fn text_stays_readable_on_selected_fills() {
-        let luma = |c: Color32| 0.2126 * c.r() as f32 + 0.7152 * c.g() as f32 + 0.0722 * c.b() as f32;
-        assert!(luma(FG) - luma(selected_fill()) > 90.0);
-        assert!(luma(FG) - luma(visuals().selection.bg_fill) > 70.0);
+        let v = visuals();
+        for (text, fill, what) in [(FG, selected_fill(), "selected rows"), (v.selection.stroke.color, v.selection.bg_fill, "selected widgets")] {
+            let ratio = contrast(text, fill);
+            assert!(ratio >= 4.5, "{what}: text contrast {ratio:.2} < 4.5");
+        }
+    }
+
+    #[test]
+    fn selection_fill_stands_out_from_panels() {
+        // Slider and progress fills, the view grid corner dot and the prefab card outline use it as a mark.
+        let v = visuals();
+        for (bg, what) in [(v.panel_fill, "panels"), (v.extreme_bg_color, "fields and cards")] {
+            let ratio = contrast(v.selection.bg_fill, bg);
+            assert!(ratio >= 3.0, "selection fill on {what}: contrast {ratio:.2} < 3");
+        }
     }
 
     fn srgb_to_lin(v: f32) -> f32 {
