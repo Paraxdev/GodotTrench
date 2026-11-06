@@ -110,5 +110,8 @@ fn fs_main(f: VOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32
     rgb = apply_fog(rgb, f.world);
     let grid_strength = select(0.22, 0.06, is_lit());
     rgb = mix(rgb, vec3<f32>(1.0), grid * grid_strength);
+    if (cam.viewport.w > 0.0) {
+        rgb = flip(rgb, cam.viewport.w);
+    }
     return vec4<f32>(rgb, alpha);
 }

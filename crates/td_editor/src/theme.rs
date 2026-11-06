@@ -42,6 +42,8 @@ pub struct Palette {
     pub header: Color32,
     /// The background of the 2D views.
     pub view_2d: Color32,
+    /// Redraw what the 2D views paint for a dark background by flipping its lightness onto `view_2d`.
+    pub flip_2d: bool,
     /// Text on a filled accent.
     pub on_accent: Color32,
     /// How far selected rows and cards sink into the accent, 0 is the panel and 1 the accent.
@@ -84,6 +86,7 @@ pub const DARK: Palette = Palette {
     chrome: Color32::from_rgb(0x16, 0x17, 0x1b),
     header: Color32::from_rgb(0x26, 0x28, 0x2e),
     view_2d: Color32::from_rgb(0x11, 0x12, 0x15),
+    flip_2d: false,
     on_accent: Color32::from_rgb(0x11, 0x12, 0x15),
     selected_mix: 0.45,
     selection_mix: 0.6,
@@ -118,7 +121,8 @@ pub const LIGHT: Palette = Palette {
     backdrop: Color32::from_rgb(0xd5, 0xd9, 0xe0),
     chrome: Color32::from_rgb(0xe4, 0xe7, 0xec),
     header: Color32::from_rgb(0xe9, 0xec, 0xf0),
-    view_2d: Color32::from_rgb(0x11, 0x12, 0x15),
+    view_2d: Color32::from_rgb(0xee, 0xf0, 0xf3),
+    flip_2d: true,
     on_accent: Color32::WHITE,
     selected_mix: 0.25,
     selection_mix: 1.0,
@@ -156,6 +160,16 @@ pub fn colors() -> &'static Palette {
 pub const FRAME_COLORS: [Color32; 6] = [DARK.blue, DARK.green, DARK.orange, DARK.magenta, DARK.teal, DARK.yellow];
 
 impl Palette {
+    /// Pivot of the lightness flip that turns the dark 2D background into this palette's, `None` when the views
+    /// are drawn as they are.
+    pub fn flip_pivot(&self) -> Option<f32> {
+        let rgb = |c: Color32| {
+            let l = linear(c);
+            [l[0] as f32, l[1] as f32, l[2] as f32]
+        };
+        self.flip_2d.then(|| td_render::ink::flip_pivot(rgb(DARK.view_2d), rgb(self.view_2d)))
+    }
+
     pub fn axis(&self) -> [Color32; 3] {
         [self.red, self.green, self.blue]
     }
@@ -418,6 +432,17 @@ pub fn linear(c: Color32) -> [f64; 4] {
         if s <= 0.04045 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
     };
     [lin(c.r()), lin(c.g()), lin(c.b()), 1.0]
+}
+
+/// The color a shape made for the dark 2D background takes after the flip around `pivot`.
+pub fn flip_color(c: Color32, pivot: f32) -> Color32 {
+    if c == Color32::PLACEHOLDER || c.a() == 0 {
+        return c;
+    }
+
+    let [r, g, b, a] = egui::Rgba::from(c).to_rgba_unmultiplied();
+    let [r, g, b, a] = td_render::ink::flip_linear([r, g, b, a], pivot);
+    Color32::from(egui::Rgba::from_rgba_unmultiplied(r, g, b, a))
 }
 
 /// Fills egui's dark and light styles with their palettes. The theme preference decides which one is drawn.
@@ -1003,7 +1028,7 @@ mod tests {
         assert_eq!(p.selected_fill(), hex(0xc8d0ee));
         assert_eq!(p.visuals().selection.bg_fill, hex(0x4863d1));
         assert_eq!(p.visuals().window_shadow.color, Color32::from_black_alpha(40));
-        assert_eq!((p.view_2d, p.on_accent), (hex(0x111215), Color32::WHITE));
+        assert_eq!((p.view_2d, p.on_accent), (hex(0xeef0f3), Color32::WHITE));
         assert_eq!(DARK.visuals().weak_text_color, None);
     }
 
@@ -1081,6 +1106,71 @@ mod tests {
                 let d = distance(simulate(p.accent, kind), simulate(c, kind));
                 assert!(d >= MIN, "{name} cvd {kind}: accent vs {what} too close ({d:.0} < {MIN})");
             }
+        }
+    }
+
+    fn flipped(c: Color32) -> Color32 {
+        flip_color(c, LIGHT.flip_pivot().unwrap())
+    }
+
+    #[test]
+    fn the_flip_puts_the_dark_background_on_the_paper() {
+        assert_eq!(DARK.flip_pivot(), None);
+        let bg = flipped(DARK.view_2d);
+        for (got, want) in [(bg.r(), LIGHT.view_2d.r()), (bg.g(), LIGHT.view_2d.g()), (bg.b(), LIGHT.view_2d.b())] {
+            assert!(got.abs_diff(want) <= 1, "{bg:?} vs {:?}", LIGHT.view_2d);
+        }
+
+        let white = flipped(Color32::WHITE);
+        assert!(white.r() < 70 && white.g() < 70 && white.b() < 70, "{white:?}");
+    }
+
+    #[test]
+    fn the_flip_keeps_alpha_and_skips_placeholders() {
+        let half = Color32::from_rgba_unmultiplied(230, 200, 40, 128);
+        let out = flipped(half);
+        assert_eq!(out.a(), 128);
+        assert_ne!(out, half);
+        assert_eq!(flipped(Color32::TRANSPARENT), Color32::TRANSPARENT);
+        assert_eq!(flipped(Color32::PLACEHOLDER), Color32::PLACEHOLDER);
+        let faint = Color32::from_rgba_unmultiplied(230, 30, 10, 1);
+        assert_eq!(flipped(faint).a(), 1);
+    }
+
+    /// What the 2D views paint with colors made for a dark background.
+    fn painted_2d() -> [[(Color32, &'static str); 3]; 2] {
+        let [x, y, z] = VIEW.axis();
+        [[(x, "axis x"), (y, "axis y"), (z, "axis z")], [(VIEW.cyan, "cyan handle"), (VIEW.yellow, "yellow handle"), (VIEW.orange, "orange handle")]]
+    }
+
+    #[test]
+    fn flipped_axes_and_handles_stay_distinguishable_on_paper() {
+        const MIN: f32 = 40.0;
+        let [axes, handles] = painted_2d();
+        let hot = (VIEW.yellow, "hot axis");
+        let mut groups = vec![axes.to_vec(), handles.to_vec()];
+        groups.extend(axes.map(|a| vec![a, hot]));
+        for group in groups {
+            let group: Vec<_> = group.into_iter().map(|(c, n)| (flipped(c), n)).collect();
+            for kind in 0..3 {
+                for (i, (a, an)) in group.iter().enumerate() {
+                    for (b, bn) in &group[i + 1..] {
+                        let d = distance(simulate(*a, kind), simulate(*b, kind));
+                        assert!(d >= MIN, "cvd {kind}: flipped {an} vs {bn} too close ({d:.0} < {MIN})");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn flipped_axes_handles_and_dims_read_on_paper() {
+        let [axes, handles] = painted_2d();
+        let dims = [(Color32::from_rgb(255, 120, 100), "size dims"), (Color32::from_rgb(200, 200, 210), "view label")];
+        for (c, what) in axes.into_iter().chain(handles).chain(dims) {
+            let f = flipped(c);
+            let ratio = contrast(f, LIGHT.view_2d);
+            assert!(ratio >= 3.0, "flipped {what} {f:?} is {ratio:.2}:1 on the paper");
         }
     }
 }

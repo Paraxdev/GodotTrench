@@ -2929,6 +2929,25 @@ fn the_walkable_area_comes_from_godot() {
     let top = shot(&ed, json!({ "target": "top", "width": 320, "height": 200, "overlays": true }), "top");
     assert!(top.pixels().any(|p| greenish(p, 40)), "the top view shows the walkable area too");
 
+    // On paper the fill flips with the outlines. 0.4 is walkable::FILL_ALPHA.
+    ed.call("set_editor", json!({ "theme": "light" }));
+    theme_active(&ed, "light");
+    ed.call("set_camera", json!({ "view": "top", "center": [128, 0, 128], "zoom": 1.0 }));
+    let paper = shot(&ed, json!({ "target": "top", "width": 320, "height": 200, "overlays": true }), "top_light");
+    let light = td_editor::theme::LIGHT;
+    let green = egui::Rgba::from(td_editor::theme::DARK.walkable());
+    let fill = [green.r(), green.g(), green.b(), 0.4];
+    let flipped = over(td_render::ink::flip_linear(fill, light.flip_pivot().unwrap()), light.view_2d, 1);
+    let plain = over(fill, light.view_2d, 1);
+    assert!(flipped[1] + 8 < plain[1], "flipped {flipped:?} reads darker than {plain:?}");
+    for (x, y) in [(131, 97), (203, 150), (60, 40)] {
+        let at = paper.get_pixel(x, y).0;
+        assert!((0..3).all(|i| at[i].abs_diff(flipped[i]) <= 3), "fill pixel {x},{y} is {at:?}, flipped it is {flipped:?}");
+    }
+
+    ed.call("set_editor", json!({ "theme": "dark" }));
+    theme_active(&ed, "dark");
+
     ed.box_brush([64.0, 16.0, 64.0], [96.0, 64.0, 96.0]);
     let start = Instant::now();
     while sent_events(&sent, "walkable").len() < 2 {
@@ -3732,4 +3751,89 @@ fn tool_defaults_paths_and_aliases_agree() {
     let img = image::load_from_memory(&png).unwrap();
     assert_eq!(img.width(), 320, "width alone sizes the capture");
     assert!(img.height() >= 16 && img.height() < 640, "{}", img.height());
+}
+
+/// A 2D view in window pixels with its top left corner, shrunk so the dock card edge stays out of it.
+fn view_pixels(ed: &Editor, window: &image::RgbaImage, view: &str) -> (image::RgbaImage, (u32, u32)) {
+    let state = ed.state();
+    let ppp = state["ui"]["pixels_per_point"].as_f64().unwrap();
+    let r: Vec<f64> = state["cameras"].as_array().unwrap().iter().find(|c| c["view"] == view).unwrap()["rect"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_f64().unwrap() * ppp)
+        .collect();
+    let (x, y) = (r[0] as u32 + 4, r[1] as u32 + 4);
+    (image::imageops::crop_imm(window, x, y, r[2] as u32 - 8, r[3] as u32 - 8).to_image(), (x, y))
+}
+
+/// The linear alpha blending of the line shader on the CPU, `top` drawn `times` over `under`.
+fn over(top: [f32; 4], under: egui::Color32, times: u32) -> [u8; 3] {
+    let mut below = egui::Rgba::from(under);
+    for _ in 0..times {
+        let mix = |t: f32, u: f32| t * top[3] + u * (1.0 - top[3]);
+        below = egui::Rgba::from_rgb(mix(top[0], below.r()), mix(top[1], below.g()), mix(top[2], below.b()));
+    }
+
+    let c = egui::Color32::from(below);
+    [c.r(), c.g(), c.b()]
+}
+
+#[test]
+#[ignore]
+fn two_d_views_turn_to_paper() {
+    let ed = Editor::launch("paper_2d");
+    ed.box_brush([-111.5, 0.0, 24.0], [80.0, 96.0, 152.0]);
+    ed.call("run_action", json!({ "action": "select_none" }));
+    ed.call("set_camera", json!({ "view": "top", "center": [16, 0, 88], "zoom": 1.0 }));
+    let args = json!({ "target": "top", "width": 320, "height": 200 });
+    let dark_top = shot(&ed, args.clone(), "dark_top");
+    let dark_window = shot(&ed, json!({ "target": "window" }), "dark_window");
+    let (dark_crop, _) = view_pixels(&ed, &dark_window, "top");
+    let (dark, light) = (td_editor::theme::DARK, td_editor::theme::LIGHT);
+    let rgb = |c: egui::Color32| [c.r(), c.g(), c.b()];
+    assert_eq!(dark_top.get_pixel(2, 2).0[..3], rgb(dark.view_2d), "Dark keeps the dark background");
+
+    ed.call("set_editor", json!({ "theme": "light" }));
+    theme_active(&ed, "light");
+    let top = shot(&ed, args.clone(), "light_top");
+    let paper = rgb(light.view_2d);
+    for (x, y) in [(1, 1), (318, 1), (1, 198), (318, 198)] {
+        assert_eq!(top.get_pixel(x, y).0[..3], paper, "paper at {x},{y}");
+    }
+
+    // The brush edge at x -111.5 lands on the middle of pixel 32, 160 + (-111.5 - 16), with zoom 1.
+    let edge = td_editor::scene::EDGE_COLOR_2D;
+    let c = td_render::ink::flip_linear(edge, light.flip_pivot().unwrap());
+    // The 2D outline sits in both the wire and the overlay line list, so it blends in twice.
+    let twin = over([c[0], c[1], c[2], edge[3]], light.view_2d, 2);
+    let unflipped = over(edge, light.view_2d, 2);
+    let at = top.get_pixel(32, 100).0;
+    assert!((0..3).all(|i| at[i].abs_diff(twin[i]) <= 6), "edge pixel {at:?}, the CPU twin says {twin:?}");
+    assert!(at[0].abs_diff(unflipped[0]) > 60, "the edge is not the unflipped {unflipped:?}");
+    assert_eq!(top.get_pixel(31, 100).0[..3], paper, "the line is one pixel wide");
+
+    // The view name at the top left is painted by egui, bright in Dark and flipped dark in Light.
+    let light_window = shot(&ed, json!({ "target": "window" }), "light_window");
+    let (light_crop, _) = view_pixels(&ed, &light_window, "top");
+    let ppp = ed.state()["ui"]["pixels_per_point"].as_f64().unwrap();
+    let (w, h) = ((100.0 * ppp) as u32, (18.0 * ppp) as u32);
+    let mut label = 0;
+    for y in 0..h {
+        for x in 0..w {
+            let (d, l) = (dark_crop.get_pixel(x, y).0, light_crop.get_pixel(x, y).0);
+            if d[..3].iter().max().unwrap() > &205 {
+                label += 1;
+                assert!(l[..3].iter().max().unwrap() < &120, "label pixel {x},{y} is {d:?} in Dark and {l:?} in Light");
+            }
+        }
+    }
+
+    assert!(label >= 8, "only {label} bright label pixels in the Dark crop");
+
+    ed.call("set_editor", json!({ "theme": "dark" }));
+    theme_active(&ed, "dark");
+    assert_eq!(image_difference(&dark_top, &shot(&ed, args, "dark_top_again")), 0.0);
+    let (again, _) = view_pixels(&ed, &shot(&ed, json!({ "target": "window" }), "dark_window_again"), "top");
+    assert_eq!(image_difference(&dark_crop, &again), 0.0, "Dark draws the Top view as before");
 }

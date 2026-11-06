@@ -68,7 +68,11 @@ impl CameraUniform {
 }
 
 fn line_shader() -> String {
-    format!("{}{}", ink::wgsl_consts(), include_str!("line.wgsl"))
+    format!("{}\n{}", ink::wgsl(), include_str!("line.wgsl"))
+}
+
+fn mesh_shader() -> String {
+    format!("{}\n{}\n{}\n{}", include_str!("common.wgsl"), include_str!("lightmap.wgsl"), ink::wgsl(), include_str!("mesh.wgsl"))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -429,7 +433,7 @@ pub struct FrameParams {
     pub clear: [f64; 4],
     /// Line thickness in physical pixels, usually the UI pixels per point.
     pub line_width: f32,
-    /// Pivot from [`ink::flip_pivot`] to flip the lightness of every line, `None` draws lines in their own colors.
+    /// Pivot from [`ink::flip_pivot`] to flip the lightness of every line and mesh, `None` draws them in their own colors.
     pub line_flip: Option<f32>,
 }
 
@@ -648,10 +652,8 @@ impl Renderer {
 
         let common = include_str!("common.wgsl");
         let baked = include_str!("lightmap.wgsl");
-        let mesh_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("mesh"),
-            source: wgpu::ShaderSource::Wgsl(format!("{common}\n{baked}\n{}", include_str!("mesh.wgsl")).into()),
-        });
+        let mesh_shader =
+            device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("mesh"), source: wgpu::ShaderSource::Wgsl(mesh_shader().into()) });
         let terrain_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("terrain"),
             source: wgpu::ShaderSource::Wgsl(format!("{common}\n{baked}\n{}", include_str!("terrain.wgsl")).into()),
@@ -1657,9 +1659,8 @@ mod tests {
     fn shaders_validate() {
         let common = include_str!("common.wgsl");
         let baked = include_str!("lightmap.wgsl");
-        for (label, body) in [("mesh", include_str!("mesh.wgsl")), ("terrain", include_str!("terrain.wgsl"))] {
-            validate(label, &format!("{common}\n{baked}\n{body}"));
-        }
+        validate("mesh", &super::mesh_shader());
+        validate("terrain", &format!("{common}\n{baked}\n{}", include_str!("terrain.wgsl")));
 
         validate("sky", &format!("{common}\n{}", include_str!("sky.wgsl")));
 

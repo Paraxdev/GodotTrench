@@ -118,12 +118,17 @@ impl Viewport {
             ui.painter().image(target.texture_id, rect, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
         }
 
+        let layer = ui.layer_id();
+        let overlay_start = ui.ctx().graphics_mut(|g| g.entry(layer).next_idx());
         self.paint_overlay(ui, cx);
         if let Some(edge) = self.hover_edge {
             ui.painter_at(rect).line_segment(edge, egui::Stroke::new(3.0, crate::theme::VIEW.yellow));
         }
 
         cx.tools.paint_overlay(ui, &self.camera, rect, cx.state);
+        if let Some(pivot) = crate::theme::colors().flip_pivot().filter(|_| self.camera.kind.is_2d()) {
+            flip_shapes(ui.ctx(), layer, overlay_start, pivot);
+        }
 
         // Right click applies materials in the texture tool.
         if cx.state.tool != ToolKind::Texture {
@@ -983,6 +988,7 @@ impl Viewport {
 
     fn frame_params(&self, size: Vec2, state: &EditorState, line_width: f32) -> FrameParams {
         let is_2d = self.camera.kind.is_2d();
+        let palette = crate::theme::colors();
         FrameParams {
             view_proj: self.camera.view_proj(size).as_mat4(),
             eye: self.camera.eye().as_vec3(),
@@ -991,14 +997,14 @@ impl Viewport {
             shade: state.shade_mode(),
             orthographic: is_2d,
             clear: if is_2d {
-                crate::theme::linear(crate::theme::VIEW.gray_0)
+                crate::theme::linear(palette.view_2d)
             } else if state.prefs.shade.is_lit() {
                 BG_LIT
             } else {
                 crate::theme::linear(crate::theme::VIEW.gray_1)
             },
             line_width,
-            line_flip: None,
+            line_flip: if is_2d { palette.flip_pivot() } else { None },
         }
     }
 
@@ -1186,6 +1192,18 @@ fn coplanar_selected_faces(state: &EditorState, plane: &Plane) -> Vec<(NodeId, u
     }
 
     out
+}
+
+/// Redraws the shapes painted since `start` for the paper of a light 2D view, the same flip the line shader applies.
+fn flip_shapes(ctx: &egui::Context, layer: egui::LayerId, start: egui::layers::ShapeIdx, pivot: f32) {
+    ctx.graphics_mut(|g| {
+        let list = g.entry(layer);
+        for i in start.0..list.next_idx().0 {
+            list.mutate_shape(egui::layers::ShapeIdx(i), |clipped| {
+                egui::epaint::shape_transform::adjust_colors(&mut clipped.shape, move |c| *c = crate::theme::flip_color(*c, pivot));
+            });
+        }
+    });
 }
 
 fn grid_lines(cam: &Camera, rect: Rect, grid: f64) -> Vec<LineVertex> {

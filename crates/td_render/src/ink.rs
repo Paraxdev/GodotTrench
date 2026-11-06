@@ -1,5 +1,5 @@
-//! Lightness flip that redraws line art made for a dark background on light paper. `line.wgsl` runs the same
-//! math on the constants of [`wgsl_consts`].
+//! Lightness flip that redraws line art made for a dark background on light paper. The line and mesh shaders run
+//! the same math from [`wgsl`].
 
 /// Lightness scale of the flip. Below 1, so bright accents land on a mid tone instead of near black.
 pub const FLIP_K: f32 = 0.8;
@@ -46,19 +46,20 @@ pub fn flip_linear(c: [f32; 4], pivot: f32) -> [f32; 4] {
     [rgb[0], rgb[1], rgb[2], c[3]]
 }
 
-/// WGSL declarations of the constants `line.wgsl` shares with this module. The matrices go in as rows, so the
-/// shader multiplies vectors from the left.
-pub(crate) fn wgsl_consts() -> String {
+/// `ink.wgsl` with the constants it shares with this module in front. The matrices go in as rows, so the shader
+/// multiplies vectors from the left.
+pub(crate) fn wgsl() -> String {
     let mat = |name: &str, m: Mat3| {
         let rows = m.map(|r| format!("vec3<f32>({:?}, {:?}, {:?})", r[0], r[1], r[2])).join(", ");
         format!("const {name} = mat3x3<f32>({rows});\n")
     };
     format!(
-        "const FLIP_K: f32 = {FLIP_K:?};\nconst CHROMA_STEPS: i32 = {CHROMA_STEPS};\n{}{}{}{}",
+        "const FLIP_K: f32 = {FLIP_K:?};\nconst CHROMA_STEPS: i32 = {CHROMA_STEPS};\n{}{}{}{}\n{}",
         mat("LMS_FROM_RGB", LMS_FROM_RGB),
         mat("LAB_FROM_LMS", LAB_FROM_LMS),
         mat("LMS_FROM_LAB", LMS_FROM_LAB),
         mat("RGB_FROM_LMS", RGB_FROM_LMS),
+        include_str!("ink.wgsl"),
     )
 }
 
