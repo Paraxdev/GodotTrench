@@ -32,7 +32,7 @@ and compares those. You set this up once:
 > [!WARNING]
 > `trenchdot` has to be on your `PATH`, or `git diff` fails on maps.
 
-To get that JSON as a file, `trenchdot --to-json map.tdm map.json` writes it, and `trenchdot --to-gtm map.json
+To get that JSON as a file, `trenchdot --to-json map.tdm map.json` writes it, and `trenchdot --to-tdm map.json
 map.tdm` turns it back into a binary map. See [Command line](../command-line.md).
 
 <div class="td-mcp" markdown>

@@ -19,7 +19,7 @@ Your own tool doesn't have to copy this layout, any valid JSON with the same con
 | --- | --- |
 | `trenchdot --dump map.tdm` | Prints the map as JSON |
 | `trenchdot --to-json map.tdm map.json` | Writes the map as JSON |
-| `trenchdot --to-gtm map.json map.tdm` | Writes a binary map, refusing a file the editor could not open |
+| `trenchdot --to-tdm map.json map.tdm` | Writes a binary map, refusing a file the editor could not open |
 
 The conversions copy the file content without loading it into the editor, so they keep keys the editor doesn't know.
 

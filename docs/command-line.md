@@ -16,7 +16,7 @@ and exits.
 | `--hot-reload-port=<port>` | Does the same for the *Running game hot reload* port, which a running game listens on to reload saved maps |
 | `--dump <map>` | Prints a map as JSON and exits |
 | `--to-json <map> <out>` | Writes a map as JSON and exits |
-| `--to-gtm <map> <out>` | Writes a map as a binary `.tdm` and exits |
+| `--to-tdm <map> <out>` | Writes a map as a binary `.tdm` and exits |
 | `--export-glb <map> <out.glb>` | Writes the map's geometry and materials as glTF binary for Blender and other 3D tools, and exits |
 | `--export-obj <map> <out.obj>` | Writes the same as OBJ, with a `.mtl` and a folder of textures next to it, and exits |
 
