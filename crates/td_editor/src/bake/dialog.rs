@@ -112,8 +112,7 @@ impl BakeDialog {
         ui.label(summary(&counts));
         ui.label(
             egui::RichText::new(
-                "Moving brush entities, triggers and tool textures are left out, and textures with Bake off in their settings. A light's \
-                 bake_mode key picks how it is baked, auto bakes it unless a targetname or start_on 0 lets I/O switch it.",
+                "Moving brush entities, triggers, tool textures and textures with Bake off are left out. A light's bake_mode key sets how it is baked.",
             )
             .weak(),
         );
@@ -171,8 +170,8 @@ impl BakeDialog {
 fn backend_hint(b: Backend) -> &'static str {
     match b {
         Backend::Cpu => "Traces on every core. Works on every machine",
-        Backend::Gpu => "Traces on the graphics card, much faster on a dedicated one. Falls back to the CPU when there is no usable GPU",
-        Backend::Hybrid => "The graphics card and every core share the work, each taking more while it keeps up. The fastest choice when both are strong",
+        Backend::Gpu => "Traces on the graphics card, much faster on a dedicated one. Uses the CPU without a usable GPU",
+        Backend::Hybrid => "The graphics card and every core share the work. Fastest when both are strong",
     }
 }
 

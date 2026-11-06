@@ -153,7 +153,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
         ui.label(RichText::new("No objects match the filter").weak());
     } else if map.layers.iter().all(|l| map.get(*l).is_none_or(|n| n.children.is_empty())) {
         ui.label(RichText::new("The map is empty").weak())
-            .on_hover_text("Drag in the Top, Front or Side view to draw a box brush, or drag an entity in from the Entities panel");
+            .on_hover_text("Drag in the Top, Front or Side view to draw a brush, or drag an entity in from the Entities panel");
     }
 
     let row_h = 20.0;
@@ -879,12 +879,12 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
                 changed |= ui.add(egui::DragValue::new(&mut layer.tile).range(8.0..=16384.0).prefix("tile ").suffix(" u")).changed();
                 changed |= ui
                     .add(egui::DragValue::new(&mut layer.detile).range(0.0..=1.0).speed(0.02).prefix("detile "))
-                    .on_hover_text("Turns and shifts every tile by a fixed random amount and blends the joins, so the repeat stops showing. Good for paths, costs four texture reads per projection")
+                    .on_hover_text("Hides the tiling by turning and shifting each tile randomly. Costs more texture reads")
                     .changed();
                 if layer.detile > 0.0 {
                     changed |= ui
                         .add(egui::DragValue::new(&mut layer.detile_sharpen).range(0.0..=1.0).speed(0.02).prefix("sharpen "))
-                        .on_hover_text("Keeps the de-tiled texture crisp: 0 mixes the tiles evenly and looks soft, 1 mixes only where they join")
+                        .on_hover_text("Keeps the de-tiled texture crisp, 0 is soft, 1 blends only at the joins")
                         .changed();
                 }
             });
@@ -914,7 +914,7 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
             }
         })
         .response
-        .on_hover_text("Rebuilds the grid with the chosen number of vertices along the longer side, keeping the heights and paint. Cells stay square");
+        .on_hover_text("Rebuilds the grid with this many vertices along the longer side, keeping heights and paint");
     });
     if changed {
         state.doc.edit_coalesced("Edit Terrain", |m, _| {
@@ -942,7 +942,7 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
     let (layer, details) = if state.tool == crate::tools::ToolKind::Blend {
         (state.blend.layer, "It goes to the layer the Blend tool paints")
     } else {
-        (usize::from(state.sculpt.layer), "It goes to the layer the Sculpt tool's PaintLayer mode paints, or with the Blend tool active to the Blend layer")
+        (usize::from(state.sculpt.layer), "It goes to the layer the Sculpt tool paints, or the Blend layer with the Blend tool")
     };
     crate::help::line(ui, state.prefs.help_text, &format!("Drop a material on the terrain to use it for layer {layer}"), details);
 }
@@ -977,19 +977,11 @@ fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Act
             ui,
             actions,
             vec![
-                (
-                    "Edit Mesh",
-                    "Convert brushes to a mesh and edit it Blender style. Tab edits meshes this way, but on brushes it opens the Vertex tool and converts nothing",
-                    Action::EditMesh,
-                ),
+                ("Edit Mesh", "Converts brushes to a mesh and edits it. Tab does this for meshes only", Action::EditMesh),
                 ("Convert to Mesh", "Convert the selected brushes to meshes", Action::ConvertToMesh),
                 ("Join Meshes", "Join the selected meshes and brushes into one mesh", Action::JoinMeshes),
                 ("Duplicate Linked", "Linked copies update together when one is edited", Action::DuplicateLinked),
-                (
-                    "Cordon",
-                    "Hide everything outside the selection bounds in the views. Export > .map, cordon only leaves it out of the file too",
-                    Action::SetCordonFromSelection,
-                ),
+                ("Cordon", "Hides everything outside the selection bounds in the views", Action::SetCordonFromSelection),
                 ("Set Blend Material", "Current material blends into these faces", Action::SetBlendMaterial),
             ],
         );
@@ -1732,7 +1724,7 @@ fn texture_settings(ui: &mut Ui, state: &mut EditorState, material: &str) {
             ui.label("Light map detail");
             let r = ui.add(egui::DragValue::new(&mut set.texel_scale).range(TEXEL_SCALE_RANGE).speed(0.01).prefix("× "));
             dragged |= r.dragged();
-            r.on_hover_text("Multiplies the light map texel size on these faces, below 1 for sharper shadows, above 1 to save space");
+            r.on_hover_text("Scales the light map texel size on these faces, below 1 is sharper");
         });
         ui.horizontal(|ui| {
             let mut own = set.size.is_some();
@@ -2348,8 +2340,7 @@ pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, 
         ui.checkbox(&mut ps.model_show_slugs, "Slugs").on_hover_text("Show a small pack label on each thumbnail");
         ui.separator();
         ui.add(egui::Slider::new(&mut ps.thumb_size, 40.0..=160.0).show_value(false));
-        ui.checkbox(&mut state.prefs.model_import.autofit, "Fit")
-            .on_hover_text("Scale tiny or huge models to a usable size when placed. Real-world-scale assets are otherwise sub-grid specks.");
+        ui.checkbox(&mut state.prefs.model_import.autofit, "Fit").on_hover_text("Scales tiny or huge models to a usable size when placed");
         ui.add(egui::DragValue::new(&mut state.prefs.model_import.scale).speed(0.05).range(0.01..=1000.0).prefix("×").fixed_decimals(2))
             .on_hover_text("Size multiplier applied on top of Fit (or on the model's real size when Fit is off)");
         if ui.small_button("⟳").on_hover_text("Rescan res://models for model files").clicked() {
@@ -2375,12 +2366,7 @@ pub fn model_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, 
     sort_entries(&mut entries, ps.model_sort);
 
     if state.model_library.entries.is_empty() {
-        ui.label(
-            RichText::new(
-                "No models found. Put .glb, .gltf, .obj, .bbmodel, .stl, .md2 or .md3 files under res://models, or use Import… to place one from anywhere.",
-            )
-            .weak(),
-        );
+        ui.label(RichText::new("No models found. Put model files under res://models, or use Import…").weak());
     } else if entries.is_empty() {
         ui.label(RichText::new("No models match the search and filters").weak());
     }
@@ -2631,7 +2617,7 @@ pub fn entity_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState,
         ui,
         state.prefs.help_text,
         "Drag a card into a view, or double click it",
-        "Double click places at the cursor. Ctrl or Shift click selects several cards to drag in together. Hover a heading to see what its entities are for",
+        "Double click places at the cursor, Ctrl or Shift click selects several cards",
     );
     if !state.game.entities.iter().any(|d| crate::entity_pack::in_pack(&d.classname)) {
         ui.horizontal_wrapped(|ui| {
@@ -3040,10 +3026,7 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
         }
 
         let tip = if kind == CodeKind::FgdResource {
-            format!(
-                "Writes res://entities/my_{0}.tres, a definition with a classname of its own, and the script it runs, unless they exist. Godot builds it once the .tres is in Entity Definitions of the FGD your map settings use",
-                def.classname
-            )
+            format!("Writes res://entities/my_{0}.tres and its script, unless they exist. Add the .tres to Entity Definitions of your FGD", def.classname)
         } else {
             "Writes the file under res://entities/ unless it exists".to_string()
         };
@@ -3060,17 +3043,13 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
             let result = if path.exists() {
                 Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "file exists"))
             } else {
-                std::fs::create_dir_all(root.join("entities")).and_then(|_| {
-                    files.iter().filter(|(rel, _)| !root.join(rel).exists()).try_for_each(|(rel, text)| std::fs::write(root.join(rel), text))
-                })
+                std::fs::create_dir_all(root.join("entities"))
+                    .and_then(|_| files.iter().filter(|(rel, _)| !root.join(rel).exists()).try_for_each(|(rel, text)| std::fs::write(root.join(rel), text)))
             };
             state.set_status(match result {
                 Ok(()) if kind == CodeKind::FgdResource => {
                     let fgd = state.game.build.as_ref().filter(|b| !b.entity_fgd.is_empty()).map(|b| format!(", {}", b.entity_fgd)).unwrap_or_default();
-                    format!(
-                        "Wrote {} and the script it runs. Godot builds it once you add it to Entity Definitions of the FGD your map settings use{fgd}",
-                        path.display()
-                    )
+                    format!("Wrote {} and its script. Add it to Entity Definitions of your FGD{fgd}", path.display())
                 }
                 Ok(()) => format!("Wrote {}", path.display()),
                 Err(e) => format!("{}: {e}", path.display()),
@@ -3092,10 +3071,10 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
 /// What the entities of a group are for, since a newcomer cannot tell a func_ from an info_ by the name alone.
 fn entity_group_hint(group: &str) -> Option<&'static str> {
     Some(match group {
-        "func" => "Brush entities: brushes that do something, such as doors, buttons, lifts, or walls without collision",
-        "info" => "Markers for spots in the level, such as where the player starts, a teleport arrives or enemies spawn",
+        "func" => "Brushes that do something, such as doors, buttons and lifts",
+        "info" => "Marker points such as the player start or a teleport arrival",
         "trigger" => "Invisible volumes that fire outputs when a body enters or leaves them",
-        "logic" => "Invisible helpers that wire outputs together: relays, timers, counters, gates, random picks and scripts",
+        "logic" => "Invisible helpers that wire outputs together, such as relays and timers",
         "math" => "Invisible helpers that calculate, compare and store numbers for the outputs they receive",
         "path" => "Stops of a route that trains and walkers follow",
         "light" => "Lights, placed as points",

@@ -670,10 +670,7 @@ impl Default for TerrainDialog {
 pub fn auto_paint_base_ui(ui: &mut egui::Ui, base: &mut Option<f64>) {
     ui.horizontal(|ui| {
         let mut sea = base.is_some();
-        if ui
-            .checkbox(&mut sea, "Bands from sea level")
-            .on_hover_text("Measure the peak and low bands from this height instead of from the lowest point, which on an island is the sea floor")
-            .changed()
+        if ui.checkbox(&mut sea, "Bands from sea level").on_hover_text("Measures the peak and low bands from this height instead of the lowest point").changed()
         {
             *base = sea.then_some(0.0);
         }
@@ -1134,6 +1131,17 @@ mod tests {
             palette_entries(&state).into_iter().filter_map(|(label, action)| fuzzy_score("grid larger", &label).map(|s| (s, label, action))).collect();
         matches.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
         assert_eq!(matches[0].2, Action::GridUp);
+    }
+
+    #[test]
+    fn command_help_stays_short() {
+        const LIMIT: usize = 100;
+        let state = EditorState::new(crate::state::Prefs::default());
+        let helps: Vec<_> = palette_entries(&state).into_iter().filter_map(|(label, action)| action.help().map(|h| (label, h))).collect();
+        assert!(helps.len() > 30, "{} commands explain themselves", helps.len());
+        for (label, help) in helps {
+            assert!(help.chars().count() <= LIMIT, "{label}: {} characters", help.chars().count());
+        }
     }
 
     #[test]

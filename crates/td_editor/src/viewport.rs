@@ -440,7 +440,7 @@ impl Viewport {
                         s.nodes.clear();
                         s.faces.extend(faces);
                     });
-                    cx.state.set_status("Selected every face for UV work. Ctrl+click adds whole objects again once the UV Editor tab is hidden");
+                    cx.state.set_status("Selected every face for UV work. Ctrl+click adds whole objects once the UV Editor tab is hidden");
                 }
                 Some(h) => {
                     let target = map.click_target(h.node, &open_groups);

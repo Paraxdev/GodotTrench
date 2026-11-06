@@ -403,67 +403,50 @@ impl Action {
     /// What a command does in plain words, for the ones whose name assumes level editor jargon.
     pub fn help(&self) -> Option<&'static str> {
         Some(match self {
-            Action::CsgSubtract => {
-                "Cuts the selected brushes out of every brush they overlap, then deletes them. Subtract a box that pokes through a wall to make a doorway"
-            }
+            Action::CsgSubtract => "Cuts the selected brushes out of every brush they overlap, then deletes them",
             Action::CsgMerge => "Replaces the selected brushes with one brush that wraps around all of them, like shrink wrap",
             Action::CsgIntersect => "Keeps only the space the selected brushes share",
-            Action::CsgHollow => "Turns a solid brush into a room, with walls, floor and ceiling of the wall thickness around an empty inside",
+            Action::CsgHollow => "Turns a solid brush into a hollow room with walls of the set thickness",
             Action::SnapVertices => "Moves every corner of the selected brushes to the nearest grid point",
-            Action::MoveToWorld => "Takes the selected brushes out of their door, trigger or other brush entity, back into plain level geometry",
+            Action::MoveToWorld => "Moves the selected brushes out of their brush entity into plain level geometry",
             Action::CreateBrushFromBounds => "Draws a box brush the size of the last selection",
             Action::SelectTouching => "Uses the selected brushes as a selection box, selecting everything they touch and deleting the box",
-            Action::SelectInside => "Uses the selected brushes as a selection box, selecting everything fully inside and deleting the box",
+            Action::SelectInside => "Selects everything fully inside the selected brushes, then deletes them",
             Action::SelectSiblings => "Selects everything in the same group or brush entity as the selection",
             Action::IsolateSelected => "Hides everything except the selection, Show All brings it back",
             Action::DuplicateLinked => "Copies the selection as a linked group, editing one copy changes every copy",
             Action::UnlinkGroups => "Makes the selected linked groups independent copies again",
             Action::OpenGroup => "Lets you click and edit the objects inside the selected group",
-            Action::CreatePrefab => "Saves the selection as its own map file, a prefab, and puts an instance in its place that follows changes to that file",
+            Action::CreatePrefab => "Saves the selection as a prefab map file and puts a linked instance in its place",
             Action::InsertPrefab => "Places an instance of another map file, a prefab, at the cursor",
-            Action::OpenPrefab => "Opens the map file of the selected prefab instance in its own tab, edits there update every instance",
+            Action::OpenPrefab => "Opens the selected prefab instance's map file in its own tab",
             Action::ExplodeInstances => "Replaces the selected prefab instances with plain copies of their contents",
             Action::SetCordonFromSelection => "Hides everything outside the selection bounds, to work on one part of a big map",
             Action::ToggleCordon => "Switches the cordon on or off without forgetting its box",
             Action::ClearCordon => "Removes the cordon box and shows the whole map again",
             Action::ExportQuakeMapCordon => "Exports only the objects that touch the cordon box",
-            Action::ExportGlb | Action::ExportObj => {
-                "Saves the geometry and materials as a 3D model for Blender and other 3D tools. Entity logic, triggers and scripts are left out"
-            }
-            Action::ToggleUvLock => {
-                "When on, textures stick to brushes as you move or rotate them. When off, they stay put in the world and slide across the faces"
-            }
+            Action::ExportGlb | Action::ExportObj => "Saves the geometry and materials as a 3D model, without entity logic",
+            Action::ToggleUvLock => "When on, textures move with the brushes. When off, they stay fixed in the world",
             Action::ToggleTreatAsOne => "Aligns textures across all selected faces as if they were one surface",
-            Action::HotspotTexture => "Fits the selected faces to the best matching rectangle of a trim sheet, read from <texture>.hotspots.json",
+            Action::HotspotTexture => "Fits the selected faces to the best matching rectangle of the texture's trim sheet",
             Action::TexelDensity(_) => "Sets how many map units each texture pixel covers on the selected faces",
             Action::SetBlendMaterial => "Uses the current material as a second texture on the selected faces, painted in with the Blend tool",
             Action::CreateDisplacement(_) => "Splits the selected face into a grid of points you can raise and lower, for uneven ground",
             Action::SewDisplacements => "Joins the edges of neighbouring displacements so they leave no gaps",
             Action::RemoveDisplacement => "Turns displaced faces back into flat faces",
-            Action::EditMesh => {
-                "Converts the selection to a mesh and edits its vertices, edges and faces Blender style. Meshes can take any shape, brushes stay convex"
-            }
+            Action::EditMesh => "Converts the selection to a mesh and edits its vertices, edges and faces",
             Action::ConvertToMesh => "Turns the selected brushes into meshes, which can take any shape but no longer work with CSG",
             Action::ConvertToBrushes => "Turns the selected meshes back into brushes, split into convex pieces",
             Action::MakePlatform => "Turns the selected brushes into a func_platform, a lift that moves up and down",
             Action::ToggleLiveMode => "Sends every edit to the scene open in the Godot editor before you save",
             Action::ToggleWalkable => "Shades the floors a player can walk on, baked by Godot",
-            Action::BakeLighting => {
-                "Traces the light, shadows and ambient occlusion of the sun, the lights and the sky into light maps stored in the map, which \
-                 Godot builds into a LightmapGI"
-            }
+            Action::BakeLighting => "Traces sun, light and sky into light maps stored in the map",
             Action::ToggleGodotOverlays => "Shows the nodes added on top of the built map in Godot as ghost boxes",
             Action::RepeatLast => "Runs the last rotate, flip, nudge or duplicate again",
-            Action::ShowProjectContent => {
-                "Adds the nature models, or the demo maps, models and textures, to the open Godot project. They are downloaded from the TrenchDot release"
-            }
+            Action::ShowProjectContent => "Adds the nature models or the demo content to the open Godot project",
             Action::InstallNatureModels => "Adds the trees, bushes, rocks and grass the scatter presets use to res://trenchdot/nature",
-            Action::InstallGameplayEntities => {
-                "Copies doors, buttons, lifts, triggers, logic, spawners, props and effects into res://trenchdot/entities, where the project owns them. An update keeps the files you edited"
-            }
-            Action::ShowAddonSetup => {
-                "Shows whether the Godot project has the TrenchDot addon in the editor's version and enabled, and installs, updates or enables it"
-            }
+            Action::InstallGameplayEntities => "Copies the gameplay entities into res://trenchdot/entities, where you can edit them",
+            Action::ShowAddonSetup => "Installs, updates or enables the TrenchDot addon in the Godot project",
             _ => return None,
         })
     }
@@ -1133,7 +1116,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         Action::SetShade(s) => {
             state.prefs.shade = if state.prefs.shade == s && s.is_lit() { Shade::Textured } else { s };
             if state.prefs.shade == Shade::Baked && state.doc.map.lightmap.is_none() {
-                state.set_status("Shading: baked, nothing is baked yet so the lit preview shows. Godot > Bake Lighting makes the light maps");
+                state.set_status("Shading: baked, but nothing is baked yet. Godot > Bake Lighting makes the light maps");
             } else {
                 state.set_status(format!("Shading: {}", state.prefs.shade.title()));
             }
@@ -1157,13 +1140,9 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
                 (Err(()), []) => state.fail_status("Select the box to cut out, then Subtract. It cuts every brush it overlaps"),
                 (Err(()), [one]) => {
                     let name = state.doc.map.get(*one).map(|n| n.name()).unwrap_or_default();
-                    state.fail_status(format!(
-                        "Nothing to cut, the selected {name} overlaps no other brush and was kept. Select the box that pokes into the wall"
-                    ));
+                    state.fail_status(format!("Nothing to cut, the selected {name} overlaps no other brush"));
                 }
-                (Err(()), _) => state.fail_status(
-                    "Nothing to cut, the selected brushes overlap no other brush and were kept. Select only the boxes to cut out, every selected brush cuts",
-                ),
+                (Err(()), _) => state.fail_status("Nothing to cut, the selected brushes overlap no other brush"),
             }
         }
         Action::CsgMerge | Action::CsgIntersect => {
@@ -1187,9 +1166,9 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
 
             match state.doc.try_edit("Hollow", |m, s| Some(ops::csg_hollow(m, s, t)).filter(|r| !r.is_empty()).ok_or(())) {
                 Ok(replaced) => state.replaced = replaced,
-                Err(()) => state.fail_status(format!(
-                    "Nothing to hollow, the selection is too thin for walls {t} units thick on each side. Lower Wall thickness in Brush > CSG"
-                )),
+                Err(()) => {
+                    state.fail_status(format!("Nothing to hollow, the selection is too thin for walls {t} units thick. Lower Wall thickness in Brush > CSG"))
+                }
             }
         }
         Action::Rotate { axis, degrees } => {
@@ -1237,9 +1216,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             let (verts, tris) = edit_mesh_weight(state);
             if verts > HEAVY_VERTS || tris > HEAVY_TRIS {
                 // High-res meshes are heavy to edit vertex by vertex, warn but never block, the tools still work.
-                state.set_status(format!(
-                    "Mesh edit mode, {verts} vertices, {tris} triangles, that is high res so editing may be slow (Tab returns to object mode)"
-                ));
+                state.set_status(format!("Mesh edit mode, {verts} vertices, {tris} triangles, editing may be slow (Tab returns)"));
             } else {
                 state.set_status("Mesh edit mode (Tab returns to object mode)");
             }
@@ -2281,7 +2258,7 @@ pub fn place_model_mesh(state: &mut EditorState, path: &std::path::Path, at: DVe
     let untextured = untextured.map(|e| format!(". {e}")).unwrap_or_default();
     // Warn but do not hinder: heavy meshes stay placeable, the user just gets a heads up.
     if verts > HEAVY_VERTS || tris > HEAVY_TRIS {
-        Ok(format!("Placed {name} as an editable mesh, {verts} vertices, {tris} triangles{scaled}{untextured}. That is a lot, editing may be slow."))
+        Ok(format!("Placed {name} as an editable mesh, {verts} vertices, {tris} triangles{scaled}{untextured}. Editing may be slow."))
     } else {
         Ok(format!("Placed {name} as an editable mesh ({verts} vertices, {tris} triangles){scaled}{untextured}"))
     }
@@ -2484,7 +2461,7 @@ pub fn poll_play(state: &mut EditorState) {
     match reply {
         Ok(r) if r["ok"].as_bool() == Some(true) => match r["stale"].as_array().map(|a| a.iter().filter_map(|s| s.as_str()).collect::<Vec<_>>()) {
             Some(scenes) if !scenes.is_empty() => state.set_status(format!(
-                "Godot saved its open scenes and runs the main scene. {} {} built with other entity definitions than the map settings hold now, so entities may be plain nodes or out of date until you build them again",
+                "Godot runs the main scene. {} {} built with other entity definitions than the map settings, build again",
                 crate::live_link::name_list(&scenes),
                 if scenes.len() == 1 { "was" } else { "were" }
             )),
@@ -2499,7 +2476,7 @@ pub fn poll_play(state: &mut EditorState) {
     }
 }
 
-pub const UNSAVED_IN_GODOT: &str = "Godot may have map changes it has not saved, the game runs the scene saved in Godot. Save it there or press Play in Godot";
+pub const UNSAVED_IN_GODOT: &str = "The game runs the scene saved in Godot, which may lack your latest map changes. Save it there first";
 
 fn unsaved_in_godot(state: &mut EditorState) {
     if !state.status_failed() {

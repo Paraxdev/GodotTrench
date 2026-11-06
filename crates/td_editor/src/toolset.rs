@@ -442,7 +442,7 @@ impl ToolSet {
             let cell = terrains.iter().filter_map(|id| state.doc.map.terrain(*id)).map(|t| t.cell_size).fold(0.0, f64::max);
             if sculpting && state.sculpt.radius < cell {
                 state.set_status(format!(
-                    "The brush radius {:.0} is smaller than the terrain's {cell:.0} unit cells, so it barely moves a vertex. Ctrl+wheel makes it bigger",
+                    "The brush radius {:.0} is smaller than the terrain's {cell:.0} unit cells. Ctrl+wheel makes it bigger",
                     state.sculpt.radius
                 ));
             }

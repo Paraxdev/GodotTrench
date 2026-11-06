@@ -1386,7 +1386,7 @@ impl EditorState {
             },
             None => {
                 self.set_status(format!(
-                    "No {} in project, using built-in entities. Export it in Godot with Project > Tools > TrenchDot: Export Game Config.",
+                    "No {} in the project, using built-in entities. Export it in Godot with Project > Tools > TrenchDot: Export Game Config.",
                     td_formats::game::GAME_FILE_NAME
                 ));
                 GameConfig::builtin()
@@ -1442,7 +1442,7 @@ impl EditorState {
             };
             self.set_status(format!("{}.{more}", clash.describe()));
         } else if announce && self.gameplay_pack.update() {
-            self.set_status("The addon has a newer Gameplay entities pack. Gameplay > Update Gameplay Entities installs it and keeps the files you edited.");
+            self.set_status("The addon has a newer Gameplay entities pack. Update it with Gameplay > Update Gameplay Entities.");
         }
     }
 

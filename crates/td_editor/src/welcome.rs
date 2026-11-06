@@ -15,8 +15,7 @@ use crate::tools::ToolKind;
 
 pub const GETTING_STARTED_URL: &str = "https://paraxdev.github.io/TrenchDot/getting-started.html";
 
-pub const CAMERA_3D_HELP: &str =
-    "Hold the right mouse button and move the mouse to look around, WASD flies while it is held. Middle drag pans, the wheel moves forward and back.";
+pub const CAMERA_3D_HELP: &str = "Hold the right mouse button to look around, WASD flies. Middle drag pans, the wheel moves forward and back.";
 pub const CAMERA_2D_HELP: &str = "Right or middle drag pans, the wheel zooms. Drag on empty space to draw a box brush.";
 
 const RESCAN: Duration = Duration::from_secs(3);

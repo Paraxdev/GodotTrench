@@ -155,15 +155,14 @@ impl BlendTool {
         let modifiers = ui.input(|i| i.modifiers);
         if (response.drag_started_by(PointerButton::Primary) || response.clicked_by(PointerButton::Primary)) && !self.stroking && self.hover.is_some() {
             if targets(state).is_empty() {
-                state
-                    .set_status("Nothing to blend: add terrain layers, displacements, or set a blend material on faces (Terrain > Blend > Set Blend Material)");
+                state.set_status("Nothing to blend: add terrain layers or displacements, or use Terrain > Blend > Set Blend Material on faces");
                 return;
             }
 
             let layer = state.blend.layer;
             let short = targets(state).terrains.iter().filter_map(|id| state.doc.map.terrain(*id)).map(|t| t.layer_slot(layer)).find(|slot| *slot != layer);
             if let Some(slot) = short.filter(|_| !matches!(state.blend.mode, BlendMode::Erase | BlendMode::Smooth | BlendMode::Sharpen)) {
-                state.set_status(format!("The terrain has no layer {layer}, painting its last layer, {slot}. Add a layer in the Inspector first"));
+                state.set_status(format!("The terrain has no layer {layer}, painting its last layer, {slot}"));
             }
 
             self.stroking = true;
@@ -230,12 +229,7 @@ impl BlendTool {
 
     pub fn paint_overlay(&self, ui: &Ui, rect: Rect, state: &EditorState) {
         let b = &state.blend;
-        let text = format!(
-            "Blend {} layer {} ({} falloff): drag paints, Shift inverts, Ctrl smooths. Terrains, displacements and faces with a blend material",
-            b.mode.label(),
-            b.layer,
-            b.falloff.label()
-        );
+        let text = format!("Blend {} layer {} ({} falloff): drag paints, Shift inverts, Ctrl smooths", b.mode.label(), b.layer, b.falloff.label());
         ui.painter_at(rect).text(
             rect.left_bottom() + Vec2::new(8.0, -8.0),
             Align2::LEFT_BOTTOM,

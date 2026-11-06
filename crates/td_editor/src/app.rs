@@ -583,15 +583,15 @@ fn stats_text(s: &crate::scene::SceneStats) -> String {
 /// Help menu entries that open the manual in the browser.
 fn help_menu_links(ui: &mut Ui) {
     let mouse = [
-        "3D: right drag looks, WASD flies while it is held, Q and E go down and up, middle drag pans, Alt+left drag orbits",
+        "3D: right drag looks, WASD flies, Q and E go down and up, middle drag pans, Alt+left drag orbits",
         "2D: right or middle drag pans, the wheel zooms, drag a selection edge to resize",
-        "Click selects an object, double click its group. Drag empty space to draw a brush, drag the selection to move it",
+        "Click selects, double click selects the group. Drag empty space to draw a brush",
         "3D gizmo: arrows and squares move, rings rotate, boxes scale",
         "Shift+click selects faces, Shift+drag a face pushes it, Ctrl+Shift+drag extrudes",
         "Tab edits meshes Blender style: 1/2/3 modes, G/R/S, E extrude, I inset, Ctrl+R loop cut, K knife",
     ]
     .join("\n");
-    let manual = format!("F1 over a tool, panel tab, menu or Inspector section opens its page, and so does {} on a toolbar tool", help::MANUAL_CLICK);
+    let manual = format!("F1 over a tool, panel tab, menu or Inspector section opens its manual page, so does {} on a tool", help::MANUAL_CLICK);
     let link = |ui: &mut Ui, label: &str, tip: &str| {
         if ui.add(menu_button(None, label, None)).on_hover_text(tip).clicked() {
             help::open(ui.ctx(), Topic::Menu(label));
@@ -1842,11 +1842,7 @@ impl App {
             let version = if s.link_state.godot.is_empty() { String::new() } else { format!(" {}", s.link_state.godot) };
             (true, format!("Godot{version} has this project open, click to show it"), Some(Action::FocusGodot))
         } else if s.godot.found() {
-            let hint = if s.link_state.outdated {
-                "\nThe running Godot has an older TrenchDot addon, update it with Godot > Install or Update Addon for live mode"
-            } else {
-                ""
-            };
+            let hint = if s.link_state.outdated { "\nThe running Godot has an older addon, update it with Godot > Install or Update Addon" } else { "" };
             (true, format!("Open Project in Godot Editor{hint}"), Some(Action::OpenGodotEditor))
         } else {
             (false, commands::GODOT_NOT_FOUND.to_string(), None)
@@ -1930,7 +1926,7 @@ impl App {
 
                     ui.add(egui::DragValue::new(&mut self.state.sculpt.radius).range(1.0..=8192.0).prefix("radius ").suffix(" u"));
                     ui.add(egui::DragValue::new(&mut self.state.sculpt.strength).range(0.01..=256.0).speed(0.1).prefix("strength "))
-                        .on_hover_text("How fast the brush works. Raise and Lower move the brush centre 8 units a second per point, whatever the radius");
+                        .on_hover_text("How fast the brush works. Raise and Lower move 8 units a second per point");
                 }
                 ToolKind::Texture => {
                     ui.label("Justify");
@@ -2048,7 +2044,7 @@ impl App {
                     ui.add(egui::DragValue::new(&mut p.blend_detile).range(0.0..=1.0).speed(0.02).prefix("detile "))
                         .on_hover_text("Turns and shifts every tile and blends the joins, so a path does not look repeated");
                     ui.add(egui::DragValue::new(&mut p.blend_detile_sharpen).range(0.0..=1.0).speed(0.02).prefix("sharpen "))
-                        .on_hover_text("Keeps the de-tiled texture crisp: 0 mixes the tiles evenly and looks soft, 1 mixes only where they join");
+                        .on_hover_text("Keeps the de-tiled texture crisp, 0 is soft, 1 blends only at the joins");
                     let (detile, uv_scale, sharpen) = (p.blend_detile, p.blend_uv_scale, p.blend_detile_sharpen);
                     if ui.small_button("Apply Tiling").on_hover_text("Give the selected faces the repeat and de-tiling above").clicked() {
                         self.actions.push(Action::SetBlendTiling { detile, uv_scale, sharpen });
@@ -2257,8 +2253,7 @@ impl App {
                 ui.checkbox(&mut p.start_hints, "");
                 ui.end_row();
                 ui.label("Help text");
-                ui.checkbox(&mut p.help_text, "")
-                    .on_hover_text("Short guidance lines in the tool options bar and the panels. Tooltips and the manual (F1) keep the details either way");
+                ui.checkbox(&mut p.help_text, "").on_hover_text("Short guidance lines in the tool options bar and the panels");
                 ui.end_row();
                 ui.label("Grid opacity (3D)");
                 ui.add(egui::Slider::new(&mut p.grid_alpha, 0.0..=1.0));
@@ -2308,7 +2303,7 @@ impl App {
                 ui.label("Godot live mode");
                 ui.add_enabled_ui(p.live_link, |ui| ui.checkbox(&mut p.live_mode, "push edits to Godot before saving"))
                     .response
-                    .on_hover_text("While the Godot editor shows a scene that uses the map, edits appear there right away. Saving still does a full rebuild.");
+                    .on_hover_text("Edits appear right away in a Godot scene that uses the map. Saving still rebuilds it fully");
                 ui.end_row();
                 ui.label("Running game hot reload");
                 ui.horizontal(|ui| {
@@ -2375,7 +2370,7 @@ impl App {
                 None => {
                     let response = ui
                         .checkbox(&mut p.mcp_require_token, "")
-                        .on_hover_text("MCP HTTP clients have to send the token shown below. Without it, any program on this computer can connect");
+                        .on_hover_text("MCP HTTP clients must send the token below. Without it, any program on this computer can connect");
                     token_changed = response.changed();
                     response
                 }
