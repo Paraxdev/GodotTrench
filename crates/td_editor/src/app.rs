@@ -150,6 +150,8 @@ pub struct App {
     export_dialog: crate::export3d::dialog::ExportDialog,
     pub(crate) bake_dialog: crate::bake::dialog::BakeDialog,
     keep_prefs: bool,
+    /// The live link and hot reload ports given on the command line, each with the stored port it replaced for the run.
+    run_ports: [Option<(u16, u16)>; 2],
     mcp_saved: crate::mcp::Saved,
     window_fitted: bool,
     toolbar_fit: ToolbarFit,
@@ -731,6 +733,8 @@ impl App {
         let render_state = cc.wgpu_render_state.as_ref().expect("TrenchDot requires the wgpu renderer");
         let mut prefs: Prefs = if args.default_prefs { Prefs::default() } else { cc.storage.and_then(|s| eframe::get_value(s, "prefs")).unwrap_or_default() };
         let keep_prefs = !args.default_prefs;
+        let run_ports = [(args.live_link_port, &mut prefs.live_link_port), (args.hot_reload_port, &mut prefs.hot_reload_port)]
+            .map(|(given, port)| given.map(|given| (given, std::mem::replace(port, given))));
         let mcp_saved = crate::mcp::Saved::new(crate::mcp_saved_dir(args.default_prefs));
         prefs.mcp_require_token = mcp_saved.get(token::REQUIRE_FILE);
         prefs.mcp_enabled = !mcp_saved.get(switch::OFF_FILE);
@@ -861,6 +865,7 @@ impl App {
             export_dialog: Default::default(),
             bake_dialog: Default::default(),
             keep_prefs,
+            run_ports,
             mcp_saved,
             window_fitted: false,
             toolbar_fit: ToolbarFit::default(),
@@ -2907,16 +2912,43 @@ impl eframe::App for App {
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         if self.keep_prefs {
-            eframe::set_value(storage, "prefs", &self.state.prefs);
+            eframe::set_value(storage, "prefs", &stored_prefs(&self.state.prefs, self.run_ports));
             // A maximized view is a temporary state, the next launch starts from the layout it replaced.
             eframe::set_value(storage, DOCK_KEY, self.maximized.as_ref().unwrap_or(&self.dock));
         }
     }
 }
 
+/// The preferences as they are saved: a port from the command line holds for the run only, unless Preferences changed
+/// it since.
+fn stored_prefs(prefs: &Prefs, run_ports: [Option<(u16, u16)>; 2]) -> Prefs {
+    let mut stored = prefs.clone();
+    for (port, run) in [&mut stored.live_link_port, &mut stored.hot_reload_port].into_iter().zip(run_ports) {
+        if let Some((given, before)) = run
+            && *port == given
+        {
+            *port = before;
+        }
+    }
+
+    stored
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ports_from_the_command_line_are_never_saved() {
+        let mut prefs = Prefs { live_link_port: 45001, hot_reload_port: 45002, ..Default::default() };
+        let run_ports = [Some((45001, 7842)), Some((45002, 7843))];
+        let stored = stored_prefs(&prefs, run_ports);
+        assert_eq!((stored.live_link_port, stored.hot_reload_port), (7842, 7843));
+        prefs.hot_reload_port = 46000;
+        let stored = stored_prefs(&prefs, run_ports);
+        assert_eq!((stored.live_link_port, stored.hot_reload_port), (7842, 46000), "a port changed in Preferences is kept");
+        assert_eq!(stored_prefs(&prefs, [None, None]).live_link_port, 45001);
+    }
 
     #[test]
     fn view_layouts_show_one_two_or_four_views() {

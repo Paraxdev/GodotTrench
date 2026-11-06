@@ -12,6 +12,8 @@ and exits.
 | `--project <dir>` | Loads the Godot project in `<dir>` or a folder above it and trusts it for the session, see [Project trust](godot/running-godot.md#project-trust). Without it the editor loads the last project |
 | `--default-prefs` | Starts with default preferences and never saves them. Useful for scripts and tests, and to check whether a problem comes from your own settings |
 | `--offscreen` | Opens the window outside every screen, without focus or a taskbar button. It still renders, so scripts and tests can take screenshots while you keep working |
+| `--live-link-port=<port>` | Talks to the Godot editor on this port instead of the *Godot live link* port in Preferences, for this run only. Scripts and tests pass a free port, so their saves never rebuild maps in the Godot you have open |
+| `--hot-reload-port=<port>` | Does the same for the *Running game hot reload* port, which a running game listens on to reload saved maps |
 | `--dump <map>` | Prints a map as JSON and exits |
 | `--to-json <map> <out>` | Writes a map as JSON and exits |
 | `--to-gtm <map> <out>` | Writes a map as a binary `.tdm` and exits |

@@ -85,6 +85,9 @@ pub struct CliArgs {
     pub default_prefs: bool,
     /// Open the window outside every screen, without focus or a taskbar button (automated tests).
     pub offscreen: bool,
+    /// Live link and hot reload ports for this run, over the ones in the preferences.
+    pub live_link_port: Option<u16>,
+    pub hot_reload_port: Option<u16>,
     /// Convert a map file and exit instead of opening the editor.
     pub convert: Option<Convert>,
     /// Print [`USAGE`] and exit.
@@ -124,6 +127,12 @@ Options:
                          Preferences asks for one
   --default-prefs        Start with default preferences and never save them
   --offscreen            Open the window outside every screen, for tests and agents
+  --live-link-port=<port>
+                         Talk to the Godot editor on <port> for this run instead of
+                         the port in Preferences
+  --hot-reload-port=<port>
+                         Tell a running game on <port> to reload saved maps for this
+                         run instead of the port in Preferences
   --dump <map>           Print a map as JSON and exit
   --to-json <map> <out>  Write a map as JSON and exit
   --to-tdm <map> <out>   Write a map as a binary .tdm and exit
@@ -172,6 +181,9 @@ impl CliArgs {
                     Err(_) => out.errors.push(format!("{a}: the port must be a number")),
                 },
                 "--mcp-token" => out.errors.push("--mcp-token needs a token, as in --mcp-token=<token>".into()),
+                "--live-link-port" | "--hot-reload-port" => out.errors.push(format!("{arg} needs a port, as in {arg}=<port>")),
+                a if a.starts_with("--live-link-port=") => out.live_link_port = godot_port(a, &mut out.errors),
+                a if a.starts_with("--hot-reload-port=") => out.hot_reload_port = godot_port(a, &mut out.errors),
                 // The error leaves the value out, it is meant to be a secret.
                 a if a.starts_with("--mcp-token=") => match &a["--mcp-token=".len()..] {
                     t if mcp::token::valid(t) => out.mcp_token = Some(t.to_string()),
@@ -184,6 +196,16 @@ impl CliArgs {
 
         out
     }
+}
+
+/// The port after the `=` of `arg`, in the range Preferences takes.
+fn godot_port(arg: &str, errors: &mut Vec<String>) -> Option<u16> {
+    let port = arg.split_once('=').and_then(|(_, p)| p.parse().ok()).filter(|p| *p >= 1024);
+    if port.is_none() {
+        errors.push(format!("{arg}: the port must be a number from 1024 to 65535"));
+    }
+
+    port
 }
 
 /// Runs a conversion, reporting what a damaged input lost on stderr.
@@ -264,6 +286,9 @@ mod tests {
         assert_eq!(a.mcp_http, Some(9000));
         assert_eq!(a.mcp_token.as_deref(), Some("s3cret"));
         assert_eq!(a.project, Some(PathBuf::from("C:/game")));
+        assert_eq!((a.live_link_port, a.hot_reload_port), (None, None));
+        let ports = CliArgs::parse(["--live-link-port=45001", "--hot-reload-port=45002"].map(String::from));
+        assert_eq!((ports.live_link_port, ports.hot_reload_port), (Some(45001), Some(45002)));
         assert_eq!(CliArgs::parse(["--mcp-http".to_string()]).mcp_http, Some(DEFAULT_MCP_PORT));
         assert_eq!(CliArgs::parse(["--dump", "a.tdm"].map(String::from)).convert, Some(Convert::Dump("a.tdm".into())));
         let c = CliArgs::parse(["--to-json", "a.tdm", "a.json"].map(String::from));
@@ -292,6 +317,9 @@ mod tests {
         assert_eq!(errors(&["--to-json", "a.tdm"]), ["--to-json needs a map file and an output file"]);
         assert_eq!(errors(&["--export-glb", "a.tdm"]), ["--export-glb needs a map file and an output file"]);
         assert_eq!(errors(&["--mcp-http=abc"]), ["--mcp-http=abc: the port must be a number"]);
+        assert_eq!(errors(&["--live-link-port"]), ["--live-link-port needs a port, as in --live-link-port=<port>"]);
+        assert_eq!(errors(&["--hot-reload-port=80"]), ["--hot-reload-port=80: the port must be a number from 1024 to 65535"]);
+        assert_eq!(errors(&["--live-link-port=x"]), ["--live-link-port=x: the port must be a number from 1024 to 65535"]);
         assert_eq!(errors(&["--mcp-token"]), ["--mcp-token needs a token, as in --mcp-token=<token>"]);
         assert_eq!(errors(&["--mcp-token="]), ["--mcp-token: the token must be printable ASCII without spaces"]);
         assert_eq!(errors(&["--mcp-token=two words"]), ["--mcp-token: the token must be printable ASCII without spaces"]);

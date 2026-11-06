@@ -31,6 +31,8 @@ impl Drop for Editor {
 fn editor_command(port: u16) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_trenchdot"));
     command.arg(format!("--mcp-http={port}")).arg("--default-prefs");
+    // Nothing listens on these, so saves never reach a Godot editor or game open on the default ports.
+    command.arg(format!("--live-link-port={}", free_port())).arg(format!("--hot-reload-port={}", free_port()));
     // TRENCHDOT_E2E_VISIBLE=1 shows the windows, to watch a test drive the editor. CI runs under Xvfb, which shows
     // nothing anyway.
     if cfg!(windows) && std::env::var_os("TRENCHDOT_E2E_VISIBLE").is_none() {
@@ -2288,6 +2290,41 @@ fn linked_project(name: &str, entities: Value) -> PathBuf {
     std::fs::write(dir.join("trenchdot_game.json"), config.to_string()).unwrap();
     // The editor compares project paths with Godot's, which have no `..` and no verbatim prefix.
     PathBuf::from(dir.canonicalize().unwrap().to_string_lossy().trim_start_matches(r"\\?\").to_string())
+}
+
+/// Editors under test get ports of their own, so their saves never reach a Godot editor or game the person running the
+/// tests has open on the default ports.
+#[test]
+#[ignore]
+fn saves_stay_off_the_default_godot_ports() {
+    use std::io::BufRead;
+    let dir = linked_project("default_godot_ports", json!([]));
+    let map = dir.join("maps/hall.tdm");
+    let sent: Sent = Default::default();
+    // A port a running Godot already holds cannot be listened on, and that Godot then shows nothing here either.
+    for port in [7842, 7843] {
+        let Ok(listener) = std::net::TcpListener::bind(("127.0.0.1", port)) else { continue };
+        let log = sent.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut line = String::new();
+                if std::io::BufReader::new(stream).read_line(&mut line).is_ok()
+                    && let Ok(message) = serde_json::from_str::<Value>(&line)
+                {
+                    log.lock().unwrap().push(message);
+                }
+            }
+        });
+    }
+
+    let ed = Editor::launch_with("default_godot_ports", &["--project", dir.to_str().unwrap()]);
+    ed.box_brush([0.0, 0.0, 0.0], [64.0, 64.0, 64.0]);
+    ed.call("map_file", json!({ "op": "save", "path": map }));
+    wait_state(&ed, "the save to reach the live link", |s| s["status"].as_str().is_some_and(|t| t.starts_with("Live link:")));
+    let godot_path = map.to_string_lossy().replace('\\', "/");
+    // Editors of other checkouts may still talk to the default ports, only this map counts.
+    let ours: Vec<Value> = sent.lock().unwrap().iter().filter(|m| m["path"] == godot_path.as_str()).cloned().collect();
+    assert!(ours.is_empty(), "the save reached a default port: {ours:?}");
 }
 
 /// Godot names the entity classes it built without a definition and the map settings it used, and the editor shows them
