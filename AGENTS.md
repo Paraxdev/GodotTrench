@@ -35,8 +35,9 @@ CI uses the Rust version in `RUST_TOOLCHAIN` in [ci.yml](.github/workflows/ci.ym
 catches things an older one misses, so match it when you can.
 
 Add or extend tests for what you change. UI changes are checked by running the editor with `--mcp-http=PORT
---default-prefs --offscreen` and driving it with `tools/mcp_client.py`, or by an e2e test in
-`crates/td_editor/tests/e2e.rs`. `--offscreen` keeps the window off the screen of whoever is at the machine.
+--default-prefs --offscreen --live-link-port=PORT2 --hot-reload-port=PORT3` and driving it with `tools/mcp_client.py`,
+or by an e2e test in `crates/td_editor/tests/e2e.rs`. `--offscreen` keeps the window off the screen of whoever is at
+the machine, and the two free ports keep its saves from rebuilding maps in a Godot editor or game someone has open.
 The HTTP server asks for no token unless it is given one, as `--mcp-token=<token>` or `TRENCHDOT_MCP_TOKEN`. The
 client sends it with `--token <token>` or the same variable. With `TRENCHDOT_DISABLE_MCP` set to anything but empty or
 `0` the editor serves no MCP at all, so unset it for these runs.
