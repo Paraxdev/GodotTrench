@@ -410,11 +410,11 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "simulate_input",
-            "description": "Plays real mouse and keyboard input into the UI frame by frame, like a user. Positions are points relative to target (window or a viewport), or world coordinates projected through that viewport. Event types: move, click, double_click, drag (from x,y or world to to/to_world), key (key name like Delete, A, Enter, F2), text, scroll (delta). modifiers: ctrl, shift, alt.",
+            "description": "Plays real mouse and keyboard input into the UI frame by frame, like a user. Positions are points relative to target (window or a viewport), or world coordinates projected through that viewport. Event types: move, click, double_click, drag (from x,y or world to to/to_world), release, key (key name like Delete, A, Enter, F2), text, scroll (delta). modifiers: ctrl, shift, alt. A drag with release: false keeps its button and modifiers held at its end after the call returns, with held: true in the reply, so a screenshot can show the drag in progress; move events then carry it on, and a release event (at x,y or world, or where the pointer is) in a later call drops it. Clicks and drags are refused while a drag is held.",
             "inputSchema": { "type": "object", "properties": {
                 "target": { "type": "string", "enum": view_enum, "default": "window" },
                 "events": { "type": "array", "items": { "type": "object", "properties": {
-                    "type": { "type": "string", "enum": ["move", "click", "double_click", "drag", "key", "text", "scroll"] },
+                    "type": { "type": "string", "enum": ["move", "click", "double_click", "drag", "release", "key", "text", "scroll"] },
                     "x": { "type": "number" }, "y": { "type": "number" },
                     "world": vec3_schema("world position (viewport targets)"),
                     "to": { "type": "array", "items": { "type": "number" } },
@@ -422,7 +422,8 @@ pub fn tool_definitions() -> Vec<Value> {
                     "button": { "type": "string", "enum": ["left", "right", "middle"] },
                     "modifiers": { "type": "array", "items": { "type": "string", "enum": ["ctrl", "shift", "alt"] } },
                     "key": { "type": "string" }, "text": { "type": "string" }, "delta": { "type": "number" },
-                    "steps": { "type": "integer", "description": "frames used for a drag, default 8" }
+                    "steps": { "type": "integer", "description": "frames used for a drag, default 8" },
+                    "release": { "type": "boolean", "description": "drag only: false keeps the button held at the drag's end until a release event, default true" }
                 }, "required": ["type"] } }
             }, "required": ["events"] }
         }),

@@ -256,6 +256,27 @@ fn a_drag_held_open_ends_with_a_later_release() {
 
 #[test]
 #[ignore]
+fn a_held_drag_keeps_its_modifiers_until_the_release() {
+    let ed = Editor::launch("held_alt_drag");
+    let brush = ed.box_brush([-32.0, 0.0, -32.0], [32.0, 64.0, 32.0]);
+    ed.call("select", json!({ "ids": [brush] }));
+    ed.call("set_camera", json!({ "view": "top", "center": [0, 0, 0], "zoom": 1.5 }));
+    ed.call("run_action", json!({ "action": "set_tool", "args": { "tool": "scale" } }));
+    // The scale drag reads Alt on every frame and then scales from the center.
+    let drag = json!({ "type": "drag", "world": [32, 0, 0], "to_world": [48, 0, 0], "modifiers": ["alt"], "release": false });
+    assert_eq!(ed.call("simulate_input", json!({ "target": "top", "events": [drag] }))["held"], true);
+    std::thread::sleep(Duration::from_millis(500));
+    let (min, max) = ed.selection_bounds();
+    assert!(approx(&[min[0], max[0]], &[-48.0, 48.0]), "Alt stays down between calls {min:?} {max:?}");
+    ed.input("top", json!([{ "type": "move", "world": [64, 0, 0] }]));
+    let (min, max) = ed.selection_bounds();
+    assert!(approx(&[min[0], max[0]], &[-64.0, 64.0]), "a later move still scales from the center {min:?} {max:?}");
+    let reply = ed.call("simulate_input", json!({ "target": "top", "events": [{ "type": "release" }] }));
+    assert_eq!(reply["held"], false);
+}
+
+#[test]
+#[ignore]
 fn draw_select_move_delete_undo() {
     let ed = Editor::launch("basic");
     // Draw a brush by dragging in the top view. The first brush is 128 units tall, a room once hollowed.

@@ -8,7 +8,7 @@ use crate::commands::{self, Action, ModelImport};
 use crate::dialogs::{CommandPalette, KeymapWindow, LinkDialog, ShapeDialog, TerrainDialog};
 use crate::help::{self, Topic};
 use crate::icons;
-use crate::mcp::tools::{Deferred, InputScript};
+use crate::mcp::tools::{Deferred, HeldDrag, InputScript};
 use crate::mcp::{McpHost, ToolExecutor, switch, token, transport};
 use crate::mesh_tool::MeshOp;
 use crate::panels::{self, PanelState};
@@ -138,6 +138,7 @@ pub struct App {
     /// Where the MCP settings in Preferences are, reported by get_state like `open_windows`.
     pub(crate) mcp_pref_rects: Vec<(&'static str, egui::Rect)>,
     pub(crate) input_script: Option<InputScript>,
+    pub(crate) held_drag: Option<HeldDrag>,
     pub(crate) deferred: Vec<Deferred>,
     palette: CommandPalette,
     shape_dialog: ShapeDialog,
@@ -854,6 +855,7 @@ impl App {
             mcp_off_at: None,
             mcp_pref_rects: Vec::new(),
             input_script: None,
+            held_drag: None,
             deferred: Vec::new(),
             palette: CommandPalette::default(),
             shape_dialog: ShapeDialog::default(),
