@@ -184,6 +184,29 @@ static func _test_budgets(t) -> void:
 	file = _container([["HEAD", head, 0, head.size()], ["NODE", node, 0, node.size()]])
 	t.check(TrenchDotTdmFile.decode(file)["map"]["layers"].size() == 1, "the same chunk inside both budgets reads")
 
+	# Tiny entities whose values fit easily, but not what the nodes built from them take, then a chunk that still fits.
+	var tiny := []
+	tiny.resize(TrenchDotTdmFile._MAX_VALUES / TrenchDotTdmFile._NODE_VALUES["entity"] + 1)
+	tiny.fill({ "id": 0, "type": "entity", "classname": "" })
+	var parents := PackedInt64Array()
+	parents.resize(tiny.size())
+	parents.fill(2)
+	var crowd := var_to_bytes({ "parents": parents, "nodes": tiny })
+	packed = crowd.compress(FileAccess.COMPRESSION_ZSTD)
+	file = _container([["HEAD", head, 0, head.size()], ["NODE", node, 0, node.size()], ["NODE", packed, 1, crowd.size()], ["NODE", node, 0, node.size()]])
+	start = Time.get_ticks_msec()
+	read = TrenchDotTdmFile.decode(file)
+	ms = Time.get_ticks_msec() - start
+	problems = "; ".join(read["problems"])
+	t.check(file.size() < 100000 and problems.contains("NODE chunk at byte %d holds more values than a map may" % (12 + 48 + head.size() + node.size())), "a %d byte file of %d tiny entities is refused, got %s" % [file.size(), tiny.size(), problems])
+	t.check(ms < 2000, "and quickly, in %d ms" % ms)
+	t.check(read["map"]["layers"].size() == 2, "the chunks around it are read")
+
+	var nested := var_to_bytes({ "parents": PackedInt64Array([2]), "nodes": [{ "id": 3, "type": "group", "name": "g", "children": [{ "id": 4, "type": "group", "name": "hidden" }] }] })
+	file = _container([["HEAD", head, 0, head.size()], ["NODE", node, 0, node.size()], ["NODE", nested, 0, nested.size()]])
+	var group: Dictionary = TrenchDotTdmFile.decode(file)["map"]["layers"][0]["children"][0]
+	t.check(group["name"] == "g" and not group.has("children"), "nodes nested inside a batch are dropped, got %s" % group)
+
 static func _test_scatter_instances(t) -> void:
 	var node := { "type": "scatter", "instances": PackedInt32Array([0, 2, 1234, -1, -500, 0, 102450, 300, 0, 450, 3599, 0, -1, 0, 1250, 800]) }
 	TrenchDotTdmFile._restore_instances(node)
