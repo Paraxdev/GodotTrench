@@ -107,7 +107,7 @@ The Issues panel, the tab beside the Outliner and History, checks the map while 
 would break or look wrong in Godot, such as brushes with no volume, faces with no material, or outputs aimed at a
 targetname nothing has.
 
-![The Issues panel with three warnings, for a missing target, a duplicate brush and two faces that z-fight, and an info line for an empty group, most of them with a Fix button](../assets/organizing/issues-panel.png)
+![The Issues panel with an error for a missing target, three warnings for a duplicate brush, an entity with no definition and two faces that z-fight, and an info line for an empty group, most of them with a Fix button](../assets/organizing/issues-panel.png)
 
 Click an issue to select and frame the object. Many have a **Fix** button, and **Fix all** in the header fixes every one
 it can.
