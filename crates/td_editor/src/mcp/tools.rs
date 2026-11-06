@@ -519,7 +519,7 @@ impl App {
             let _ = script.reply.send(err(message));
         }
 
-        self.held_drag = None;
+        self.drop_held_drag();
 
         for Deferred::WindowScreenshot { reply, .. } in self.deferred.drain(..) {
             let _ = reply.send(err(message));
