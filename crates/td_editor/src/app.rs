@@ -2571,6 +2571,8 @@ impl App {
 struct Tabs<'a> {
     /// The tab on top in each leaf, the only ones that get a close button so the rest of the strip fits.
     shown: Vec<Tab>,
+    /// Titles drawn as plain text: the only tab of a dock, unless the pointer is over its title bar.
+    plain_titles: Vec<Tab>,
     views_open: usize,
     start_view: Option<ViewKind>,
     state: &'a mut EditorState,
@@ -2584,6 +2586,19 @@ struct Tabs<'a> {
 }
 
 impl TabViewer for Tabs<'_> {
+    fn tab_style_override(&self, tab: &Tab, global: &egui_dock::TabStyle) -> Option<egui_dock::TabStyle> {
+        if !self.plain_titles.contains(tab) {
+            return None;
+        }
+
+        let mut style = global.clone();
+        for state in [&mut style.active, &mut style.focused, &mut style.active_with_kb_focus, &mut style.focused_with_kb_focus] {
+            state.bg_fill = egui::Color32::TRANSPARENT;
+        }
+
+        Some(style)
+    }
+
     type Tab = Tab;
 
     fn title(&mut self, tab: &mut Tab) -> egui::WidgetText {
@@ -2746,8 +2761,21 @@ impl eframe::App for App {
             .find(|k| self.viewports.iter().enumerate().any(|(i, v)| v.kind() == *k && tab_shown(&self.dock, &Tab::View(i))));
         egui::CentralPanel::default().frame(egui::Frame::new().fill(crate::theme::BACKDROP)).show(ui, |ui| {
             let shown = self.dock.iter_all_tabs().map(|(_, t)| *t).filter(|t| tab_shown(&self.dock, t)).collect();
+            // A pill on a dock's only tab reads as a tab strip waiting for more tabs, so it only comes up under the pointer,
+            // where it shows the title can be dragged onto another dock.
+            let pointer = ui.input(|i| i.pointer.hover_pos());
+            let plain_titles = self
+                .dock
+                .iter_leaves()
+                .filter_map(|(_, leaf)| {
+                    let [tab] = leaf.tabs() else { return None };
+                    let bar = egui::Rect::from_min_max(leaf.rect.min, egui::pos2(leaf.rect.max.x, leaf.viewport.min.y));
+                    (!pointer.is_some_and(|p| bar.contains(p))).then_some(*tab)
+                })
+                .collect();
             let mut tabs = Tabs {
                 shown,
+                plain_titles,
                 views_open: open_views(&self.dock).len(),
                 start_view,
                 state: &mut self.state,
