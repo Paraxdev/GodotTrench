@@ -22,7 +22,7 @@ Sculpting pushes the generated ground into the shapes you want.
     The status bar at the bottom right shows the point under the pointer, and its middle number is the height. Handy to
     judge how far you have raised or lowered a spot.
 
-    ![The status bar coordinates -2200.0, 1193.6 and -599.9, the middle one being the height](../assets/sea-island/status-bar-height.png)
+    ![The status bar coordinates -2200.0, 1549.2 and -600.0, the middle one being the height](../assets/sea-island/status-bar-height.png)
 
 ## Hills
 
