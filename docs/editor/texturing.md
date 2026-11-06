@@ -6,7 +6,7 @@ Your textures live in the **Materials** panel, at the bottom of the window under
 top left filters them by name, **Used in map** and **Favorites** narrow the list down, and the slider sets the
 thumbnail size.
 
-![The Materials panel with the search box, the folder list, Used in map, Favorites and the size slider, below them the built in grids and tool textures with dev/blue hovered showing its name and size](../assets/texturing/materials-panel.png)
+![The Materials panel with the search box, the folder list, Used in map, Favorites and the size slider, below them the material thumbnails with dev/blue hovered showing its name and size](../assets/texturing/materials-panel.png)
 
 | Do this | Result |
 | --- | --- |
