@@ -202,10 +202,20 @@ static func _test_budgets(t) -> void:
 	t.check(ms < 2000, "and quickly, in %d ms" % ms)
 	t.check(read["map"]["layers"].size() == 2, "the chunks around it are read")
 
-	var nested := var_to_bytes({ "parents": PackedInt64Array([2]), "nodes": [{ "id": 3, "type": "group", "name": "g", "children": [{ "id": 4, "type": "group", "name": "hidden" }] }] })
-	file = _container([["HEAD", head, 0, head.size()], ["NODE", node, 0, node.size()], ["NODE", nested, 0, nested.size()]])
-	var group: Dictionary = TrenchDotTdmFile.decode(file)["map"]["layers"][0]["children"][0]
-	t.check(group["name"] == "g" and not group.has("children"), "nodes nested inside a batch are dropped, got %s" % group)
+	var kid := func(id: int) -> Dictionary: return { "id": id, "type": "group", "name": "hidden" }
+	var nested := var_to_bytes({ "parents": PackedInt64Array([2, 2, 2, 2]), "nodes": [
+		{ "id": 3, "type": "group", "name": "g3", "children": [kid.call(13), kid.call(14)] },
+		{ "id": 4, "type": "group", "name": "g4", "children": [] },
+		{ "id": 5, "type": "group", "name": "g5", "children": [kid.call(15)] },
+		{ "id": 6, "type": "group", "name": "g6" }] })
+	var tidy := var_to_bytes({ "parents": PackedInt64Array([2]), "nodes": [{ "id": 7, "type": "group", "name": "g7", "children": [] }] })
+	file = _container([["HEAD", head, 0, head.size()], ["NODE", node, 0, node.size()], ["NODE", nested, 0, nested.size()], ["NODE", tidy, 0, tidy.size()]])
+	var decoded := TrenchDotTdmFile.decode(file)
+	var groups: Array = decoded["map"]["layers"][0]["children"]
+	t.check(groups.map(func(g): return g["name"]) == ["g3", "g4", "g5", "g6", "g7"] and groups.all(func(g): return not g.has("children")), "nodes nested inside a batch are dropped, got %s" % [groups])
+	var expected := "2 of the nodes in the NODE chunk at byte %d held children, which were not read, as a batch lists every node on its own" % (12 + 48 + head.size() + node.size())
+	var held := Array(decoded["problems"]).filter(func(p): return "held children" in p)
+	t.check(held == [expected], "and the batch that held them is reported once, got %s" % [decoded["problems"]])
 
 	# A batch whose nodes or parents hold another type is a damaged chunk, the chunks around it still read.
 	var wrong := {

@@ -176,9 +176,10 @@ value:
 | Bytes, on top | `4 * ceil(n / 3) + n` for `n` bytes, their size as base64 and the copy a terrain or bake decodes them into |
 | A node of a `NODE` chunk, on top of its values | 5 KiB for an entity, 12 KiB for a scatter set, 1 KiB for any other node |
 
-The node costs are what the smallest nodes of each type take in the editor once it opens the map, so a small file of
-many tiny nodes can't take more memory than the budget. Nodes nested under `children` inside a `NODE` chunk are
-dropped, as the editor never writes them there. Scatter instances are only counted by their values, which come to
+The node costs are an upper bound on what the smallest nodes of each type take in the editor once it opens the map
+(a group or brush comes to about 650 bytes and is charged 1 KiB), so a small file of many tiny nodes can't take more
+memory than the budget. Nodes nested under `children` inside a `NODE` chunk are dropped and the reader reports how many
+of the chunk's nodes held some, as the editor never writes them there. Scatter instances are only counted by their values, which come to
 about half of what a built instance takes, so that big foliage sets keep opening.
 
 The biggest showcase map takes 79 MiB, a scatter instance 640 to 720 bytes, and the light, shadow and occlusion of a

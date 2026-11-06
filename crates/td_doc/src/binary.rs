@@ -421,7 +421,14 @@ fn decode_with(bytes: &[u8], mut raw_left: usize, mut memory_left: usize) -> Res
         };
         match h.tag {
             HEAD => head = if let Value::Object(map) = value { Some(map) } else { None },
-            NODE => tree.add_batch(value),
+            NODE => {
+                let nested = tree.add_batch(value);
+                if nested > 0 {
+                    problems.push(format!(
+                        "{nested} of the nodes in the NODE chunk at byte {at} held children, which were not read, as a batch lists every node on its own"
+                    ));
+                }
+            }
             END => end = Some(value),
             _ => {
                 unknown.push(RawChunk { tag: h.tag, flags: h.flags, raw_size: h.raw, data: data.into() });
@@ -473,19 +480,26 @@ struct Tree {
 }
 
 impl Tree {
-    fn add_batch(&mut self, batch: Value) {
-        let Value::Object(mut batch) = batch else { return };
-        let Some(Value::Array(parents)) = batch.remove("parents") else { return };
-        let Some(Value::Array(nodes)) = batch.remove("nodes") else { return };
+    /// How many of the batch's nodes held children, which are dropped.
+    fn add_batch(&mut self, batch: Value) -> usize {
+        let Value::Object(mut batch) = batch else { return 0 };
+        let Some(Value::Array(parents)) = batch.remove("parents") else { return 0 };
+        let Some(Value::Array(nodes)) = batch.remove("nodes") else { return 0 };
+        let mut nested = 0;
         for (node, parent) in nodes.into_iter().zip(parents.iter().map(|v| v.as_i64().unwrap_or(0))) {
             if let Value::Object(mut node) = node {
                 // The writer never puts children in a batch, and nodes nested there would escape the node charge.
-                node.remove("children");
+                if matches!(node.remove("children"), Some(Value::Array(kids)) if !kids.is_empty()) {
+                    nested += 1;
+                }
+
                 variant::restore_node(&mut node);
                 self.nodes.push(node);
                 self.parents.push(parent);
             }
         }
+
+        nested
     }
 
     /// The top level nodes with their subtrees, the orphans in a `Recovered` layer at the end, and how many orphans
@@ -1051,19 +1065,46 @@ mod tests {
     }
 
     #[test]
-    fn nodes_nested_inside_a_batch_are_dropped() {
-        let mut w = Writer::new();
-        w.dict_header(2);
-        w.key("parents");
-        w.int64s(&[1]);
-        w.key("nodes");
-        w.array_header(1);
-        w.value(&json!({ "id": 5, "type": "group", "name": "g", "children": [{ "id": 6, "type": "group", "name": "hidden" }] }));
-        let crafted = insert(&format::to_bytes(&DocMap::new()).unwrap(), &[(NODE, w.out)]);
+    fn nodes_nested_inside_a_batch_are_dropped_and_reported() {
+        let group = |id: i64, kids: Value| json!({ "id": id, "type": "group", "name": format!("g{id}"), "children": kids });
+        let kid = |id: i64| json!({ "id": id, "type": "group", "name": "hidden" });
+        let batch = |nodes: Vec<Value>| {
+            let mut w = Writer::new();
+            w.dict_header(2);
+            w.key("parents");
+            w.int64s(&vec![0; nodes.len()]);
+            w.key("nodes");
+            w.array_header(nodes.len());
+            for node in &nodes {
+                w.value(node);
+            }
+
+            w.out
+        };
+        let base = format::to_bytes(&DocMap::new()).unwrap();
+        let two = batch(vec![
+            group(5, json!([kid(6), kid(7)])),
+            group(8, json!([])),
+            group(9, json!([kid(10)])),
+            json!({ "id": 11, "type": "group", "name": "g11" }),
+        ]);
+        let clean = batch(vec![json!({ "id": 21, "type": "group", "name": "g21" })]);
+        let crafted = insert(&base, &[(NODE, two), (NODE, clean), (NODE, batch(vec![group(31, json!([kid(32)]))]))]);
         let back = decode(&crafted).unwrap();
-        let group = &back.value["layers"][0]["children"][0];
-        assert_eq!(group["name"], "g");
-        assert!(group.get("children").is_none(), "{group}");
+        let layers = back.value["layers"].as_array().unwrap();
+        let names: Vec<_> = layers.iter().map(|l| l["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["Default", "g5", "g8", "g9", "g11", "g21", "g31"]);
+        assert!(layers.iter().all(|l| l.get("children").is_none()), "{layers:?}");
+        let nested: Vec<_> = back.problems.iter().filter(|p| p.contains("held children")).collect();
+        assert_eq!(nested.len(), 2, "{:?}", back.problems);
+        assert_eq!(back.problems.len(), 2, "{:?}", back.problems);
+        assert!(nested[0].starts_with("2 of the nodes in the NODE chunk at byte "), "{nested:?}");
+        assert!(nested[1].starts_with("1 of the nodes in the NODE chunk at byte "), "{nested:?}");
+        let at = |p: &str| p.split("byte ").nth(1).unwrap().split(' ').next().unwrap().parse::<usize>().unwrap();
+        assert!(at(nested[0]) < at(nested[1]));
+
+        let tidy = decode(&insert(&base, &[(NODE, batch(vec![group(5, json!([])), json!({ "id": 6, "type": "group", "name": "g6" })]))])).unwrap();
+        assert!(tidy.problems.is_empty(), "{:?}", tidy.problems);
     }
 
     #[test]
