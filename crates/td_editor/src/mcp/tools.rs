@@ -1570,7 +1570,7 @@ impl App {
         };
         match crate::commands::import_model(&mut self.state, path, mode, origin) {
             Ok((n, status)) => {
-                ok(json!({ "objects": n, "status": status, "selection": self.state.doc.selection.nodes.iter().map(|i| i.0).collect::<Vec<_>>() }))
+                ok(json!({ "objects": n, "status": status.en, "selection": self.state.doc.selection.nodes.iter().map(|i| i.0).collect::<Vec<_>>() }))
             }
             Err(e) => err(e),
         }
@@ -2752,6 +2752,36 @@ mod tests {
     }
 
     #[test]
+    fn a_failure_stays_a_failure_when_the_status_is_shown_in_german() {
+        use crate::i18n::{Lang, scope, test_catalogue};
+        let _cat = test_catalogue(
+            Lang::De,
+            r#"{ "Select one object to rename it": "Wähle ein Objekt zum Umbenennen", "Nothing to cut, the selected brushes overlap no other brush": "Nichts zu schneiden" }"#,
+        );
+        let ctx = egui::Context::default();
+        let mut s = state();
+        let _de = scope(Lang::De);
+        crate::commands::execute(&mut s, Action::Rename, &ctx);
+        assert_eq!(s.status, "Select one object to rename it", "MCP reads the English text");
+        assert_eq!(s.status_shown(), "Wähle ein Objekt zum Umbenennen");
+        assert!(s.status_failed() && is_failure_status(&s.status));
+        assert!(!is_failure_status(s.status_shown()), "the shown text is for people, only the English text is classified");
+
+        for x in [96.0, -160.0] {
+            let parent = s.insert_parent();
+            let min = td_core::DVec3::new(x, 0.0, 0.0);
+            let brush = td_geom::Brush::from_aabb(&td_core::Aabb::new(min, min + td_core::DVec3::splat(32.0)), "dev/grey").unwrap();
+            s.doc.edit("Create Brush", |m, _| td_doc::ops::create_brush(m, parent, brush));
+        }
+
+        crate::commands::execute(&mut s, Action::SelectAll, &ctx);
+        crate::commands::execute(&mut s, Action::CsgSubtract, &ctx);
+        assert_eq!(s.status, "Nothing to cut, the selected brushes overlap no other brush");
+        assert_eq!(s.status_shown(), "Nichts zu schneiden");
+        assert!(s.status_failed());
+    }
+
+    #[test]
     fn failure_statuses_and_dialog_actions() {
         assert!(is_failure_status("Save failed: disk full"));
         assert!(is_failure_status("Select brushes first"));
@@ -2772,12 +2802,20 @@ mod tests {
 
         crate::commands::execute(&mut s, Action::GridUp, &ctx);
         assert!(!s.status_failed(), "a later success clears the failure");
-        // A message worded like a failure must not slip through set_status in commands.rs.
-        let source = include_str!("../commands.rs");
-        let mut checked = 0;
+        // A message worded like a failure must not slip through set_status in commands.rs, and every message there is
+        // looked up for the status bar, so a raw literal or format! would stay English in every language.
+        let source = include_str!("../commands.rs").split("#[cfg(test)]").next().unwrap();
+        let (mut checked, mut looked_up) = (0, 0);
         for (i, line) in source.lines().enumerate() {
-            let Some(at) = line.find("set_status(") else { continue };
-            let arg = line[at + "set_status(".len()..].trim_start_matches("format!(").trim_start_matches("msg!(");
+            looked_up += line.matches("msg!(").count() + line.matches("msg_n!(").count();
+            let Some((call, at)) = ["set_status(", "fail_status("].into_iter().find_map(|c| line.find(c).map(|at| (c, at))) else { continue };
+            let arg = line[at + call.len()..].trim_start();
+            assert!(!arg.starts_with('"') && !arg.starts_with("format!("), "commands.rs:{} words a status without msg!", i + 1);
+            if call == "fail_status(" {
+                continue;
+            }
+
+            let arg = arg.trim_start_matches("msg!(");
             let arg = arg.strip_prefix("msg_n!(").and_then(|a| a.find('"').map(|q| &a[q..])).unwrap_or(arg);
             let Some(text) = arg.strip_prefix('"') else { continue };
             assert!(!is_failure_status(text), "commands.rs:{} reports a failure with set_status, use fail_status", i + 1);
@@ -2785,6 +2823,7 @@ mod tests {
         }
 
         assert!(checked >= 40, "the scan reads {checked} messages, it no longer sees how commands.rs words them");
+        assert!(looked_up >= 100, "commands.rs has {looked_up} msg! texts, the scan no longer sees how it words them");
 
         let names = mesh_op_names();
         for n in ["merge_by_distance", "dissolve_vertices", "select_linked", "mirror_y", "mirror_z"] {

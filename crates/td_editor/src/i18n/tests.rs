@@ -160,6 +160,19 @@ fn trf_and_msg_fill_the_same_values_once() {
 }
 
 #[test]
+fn a_message_from_a_key_and_a_joined_message_keep_both_texts() {
+    let _de = test_catalogue(Lang::De, DE);
+    let _fr = test_catalogue(Lang::Fr, FR);
+    let _s = scope(Lang::De);
+    assert_eq!(Msg::key("Open#verb"), Msg { en: "Open".into(), shown: "Aufmachen".into() }, "the context suffix is not English text");
+    assert_eq!(Msg::key("Missing"), Msg { en: "Missing".into(), shown: "Missing".into() });
+    let joined = msg!("Open").then(". ", msg!("Save")).then(", ", Msg::from("raw 7"));
+    assert_eq!(joined, Msg { en: "Open. Save, raw 7".into(), shown: "Öffnen. Save, raw 7".into() });
+    set(Lang::Fr);
+    assert_eq!(msg!("Open").then("", msg!("Save")), Msg { en: "OpenSave".into(), shown: "OpenEnregistrer".into() }, "fr has no Open");
+}
+
+#[test]
 fn list_joins_per_language() {
     let three = ["A", "B", "C"];
     let cases = [

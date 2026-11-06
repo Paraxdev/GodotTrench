@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use egui::RichText;
 
 use crate::commands::Action;
+use crate::i18n::en;
 use crate::state::{EditorState, TrustRequest};
 
 pub const QUESTION: &str = "Do you trust the authors of the files in this project?";
@@ -21,7 +22,7 @@ const BLOCKS: &str =
     "Godot runs a project's scripts. In Restricted Mode you can edit maps, but TrenchDot does not start Godot on the project until you trust it.";
 pub const CHIP_TIP: &str = "TrenchDot does not run this project in Godot until you trust it. Click to choose";
 /// Why an action that has Godot run the project did nothing. MCP returns it as the error.
-pub const BLOCKED: &str = "This project is in Restricted Mode, so Godot is not run on it. Click Restricted Mode in the status bar to trust it";
+pub const BLOCKED: &str = en!("This project is in Restricted Mode, so Godot is not run on it. Click Restricted Mode in the status bar to trust it");
 /// [`BLOCKED`] as the reason in a longer message.
 pub const RESTRICTED: &str = "the project is in Restricted Mode, click Restricted Mode in the status bar to trust it";
 

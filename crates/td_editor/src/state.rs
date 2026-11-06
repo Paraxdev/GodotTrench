@@ -10,7 +10,7 @@ use td_doc::{Document, format};
 use td_formats::GameConfig;
 use td_render::ShadeMode;
 
-use crate::i18n::{Msg, en};
+use crate::i18n::{Msg, en, msg, msg_n};
 use crate::materials::MaterialLibrary;
 use crate::tools::ToolKind;
 
@@ -193,7 +193,7 @@ impl Default for ScatterSettings {
 /// Editing has to pause this long before translated nodes are sent exactly.
 const LIVE_IDLE: std::time::Duration = std::time::Duration::from_millis(250);
 /// Added to the status when a map from outside the open, trusted project holds code, see [`crate::validate::map_script_issues`].
-pub const MAP_SCRIPTS: &str = "The map runs GDScript of its own when the scene plays, the Issues panel shows where";
+pub const MAP_SCRIPTS: &str = en!("The map runs GDScript of its own when the scene plays, the Issues panel shows where");
 
 /// When the live map was last handed to the link.
 struct LiveTick {
@@ -490,7 +490,7 @@ pub struct EditorState {
     pub open_groups: Vec<NodeId>,
     pub status: String,
     /// The translation of `status` for the status bar, kept with the English it belongs to, see [`Self::status_shown`].
-    status_tr: Option<(String, String)>,
+    status_tr: Option<(String, String, crate::i18n::Lang)>,
     status_time: Instant,
     /// The status line reports that the last command failed or had nothing to do, set by [`Self::fail_status`].
     status_failed: bool,
@@ -775,10 +775,16 @@ impl EditorState {
 
     pub fn set_status(&mut self, msg: impl Into<Msg>) {
         let msg = msg.into();
-        self.status_tr = (msg.shown != msg.en).then(|| (msg.en.clone(), msg.shown));
+        self.status_tr = (msg.shown != msg.en).then(|| (msg.en.clone(), msg.shown, crate::i18n::current()));
         self.status = msg.en;
         self.status_time = Instant::now();
         self.status_failed = false;
+    }
+
+    /// Adds `next` to the status line after `sep`, in the English and the shown text.
+    pub fn extend_status(&mut self, sep: &str, next: Msg) {
+        let current = Msg { en: self.status.clone(), shown: self.status_shown().to_string() };
+        self.set_status(current.then(sep, next));
     }
 
     /// Shows why a command failed or did nothing. MCP's run_action turns it into an error.
@@ -787,12 +793,18 @@ impl EditorState {
         self.status_failed = true;
     }
 
+    /// The status as a message, to pass on what a helper reported in both languages.
+    pub fn status_msg(&self) -> Msg {
+        Msg { en: self.status.clone(), shown: self.status_shown().to_string() }
+    }
+
     /// The status line in the user's language. MCP and tests read the English [`Self::status`], which code also sets
-    /// directly, so the translation only shows while it still belongs to that text.
+    /// directly, so the translation only shows while it still belongs to that text and language. After a switch a
+    /// fixed message is looked up again and the rest shows in English.
     pub fn status_shown(&self) -> &str {
         match &self.status_tr {
-            Some((en, shown)) if *en == self.status => shown,
-            _ => &self.status,
+            Some((en, shown, lang)) if *en == self.status && *lang == crate::i18n::current() => shown,
+            _ => crate::i18n::tr_known(&self.status),
         }
     }
 
@@ -954,7 +966,7 @@ impl EditorState {
         let current = self.take_active();
         all.insert(self.active_tab.min(all.len()), current);
         self.activate(all, index);
-        self.set_status(format!("Switched to {}", self.doc.title()));
+        self.set_status(msg!("Switched to {title}", title = self.doc.title()));
     }
 
     /// Opens a new tab holding `doc` and switches to it.
@@ -1085,23 +1097,22 @@ impl EditorState {
         }
 
         match (&self.doc.recovered_from, &self.doc.path) {
-            _ if !self.doc.load_problems.is_empty() => self.set_status(format!(
-                "{} could not be read in full, opened what could be read: {}. Saving keeps only that, the old file is copied to .tdm.bak",
-                path.display(),
-                self.doc.load_problems.join("; ")
+            _ if !self.doc.load_problems.is_empty() => self.set_status(msg!(
+                "{path} could not be read in full, opened what could be read: {problems}. Saving keeps only that, the old file is copied to .tdm.bak",
+                path = path.display(),
+                problems = self.doc.load_problems.join("; ")
             )),
-            (Some(_), Some(map_path)) => self.set_status(format!("Recovered {} from its autosave, save to keep the changes", map_path.display())),
-            (Some(_), None) => self.set_status("Recovered an untitled map from its autosave, save it to keep the changes"),
+            (Some(_), Some(map_path)) => self.set_status(msg!("Recovered {path} from its autosave, save to keep the changes", path = map_path.display())),
+            (Some(_), None) => self.set_status(msg!("Recovered an untitled map from its autosave, save it to keep the changes")),
             _ if self.doc.migrated => self.set_status(crate::legacy::migrated_status(path)),
-            _ => self.set_status(format!("Opened {}", path.display())),
+            _ => self.set_status(msg!("Opened {path}", path = path.display())),
         }
 
         // Maps of the open project, while it is trusted, are the person's own. Any other map may come from anyone.
         let inside = |root: &PathBuf| path.starts_with(root) || crate::trust::real_path(path).starts_with(crate::trust::real_path(root));
         let own = !self.restricted() && self.game.project_root.as_ref().is_some_and(inside);
         if let Some(root) = kept {
-            let status = format!("{}. It belongs to {}, a project you have not trusted, so the open project stays", self.status, root.display());
-            self.set_status(status);
+            self.extend_status(". ", msg!("It belongs to {root}, a project you have not trusted, so the open project stays", root = root.display()));
         }
 
         // Whether the map is the project's own is not known until the scan of the project it belongs to ends.
@@ -1112,8 +1123,7 @@ impl EditorState {
 
     fn note_map_scripts(&mut self) {
         if !crate::validate::map_script_issues(&self.doc.map, &mut self.prefabs, self.doc.path.as_deref()).is_empty() {
-            let status = format!("{}. {MAP_SCRIPTS}", self.status);
-            self.set_status(status);
+            self.extend_status(". ", Msg::key(MAP_SCRIPTS));
         }
     }
 
@@ -1140,15 +1150,15 @@ impl EditorState {
         }
 
         if let Some(map_path) = autosave_source(path) {
-            self.set_status(format!(
-                "Saved into the autosave file {}, Godot uses {}, Save As to write the real map",
-                path.display(),
-                map_path.file_name().unwrap_or_default().to_string_lossy()
+            self.set_status(msg!(
+                "Saved into the autosave file {path}, Godot uses {map}, Save As to write the real map",
+                path = path.display(),
+                map = map_path.file_name().unwrap_or_default().to_string_lossy()
             ));
             return Ok(());
         }
 
-        self.set_status(format!("Saved {}", path.display()));
+        self.set_status(msg!("Saved {path}", path = path.display()));
         self.live.sent.remove(path);
         if self.prefs.live_link {
             let game_port = self.prefs.hot_reload.then_some(self.prefs.hot_reload_port);
@@ -1341,7 +1351,7 @@ impl EditorState {
         }
 
         let shown = crate::trust::shown(path);
-        self.set_status(format!("{shown} is no longer trusted"));
+        self.set_status(msg!("{shown} is no longer trusted", shown));
         if let Some(root) = self.game.project_root.clone().filter(|root| !self.is_trusted(root) && self.no_code_root.as_ref() != Some(root)) {
             self.wait_for_scan(&root, false, was_trusted.then_some(shown));
         }
@@ -1402,7 +1412,11 @@ impl EditorState {
                 self.load_project(&root);
             } else if current {
                 self.trust_request = Some(TrustRequest::Switch { root: root.clone(), map: map.clone() });
-                self.set_status(format!("{} belongs to {}, a project you have not trusted, so the open project stays", map.display(), root.display()));
+                self.set_status(msg!(
+                    "{map} belongs to {root}, a project you have not trusted, so the open project stays",
+                    map = map.display(),
+                    root = root.display()
+                ));
                 self.note_map_scripts();
             }
         }
@@ -1419,7 +1433,7 @@ impl EditorState {
             }
 
             if let Some(shown) = scan.untrusted.filter(|_| self.restricted()) {
-                self.set_status(format!("{shown} is no longer trusted, so {} is in Restricted Mode now", root.display()));
+                self.set_status(msg!("{shown} is no longer trusted, so {root} is in Restricted Mode now", shown, root = root.display()));
             }
         }
     }
@@ -1447,20 +1461,20 @@ impl EditorState {
             Some(path) => match GameConfig::load(&path) {
                 Ok(g) => {
                     if announce {
-                        self.set_status(format!("Loaded game config {}", path.display()));
+                        self.set_status(msg!("Loaded game config {path}", path = path.display()));
                     }
 
                     g
                 }
                 Err(e) => {
-                    self.set_status(format!("Failed to load {}: {e}", path.display()));
+                    self.set_status(msg!("Failed to load {path}: {e}", path = path.display(), e));
                     GameConfig::builtin()
                 }
             },
             None => {
-                self.set_status(format!(
-                    "No {} in the project, using built-in entities. Export it in Godot with Project > Tools > TrenchDot: Export Game Config.",
-                    td_formats::game::GAME_FILE_NAME
+                self.set_status(msg!(
+                    "No {file} in the project, using built-in entities. Export it in Godot with Project > Tools > TrenchDot: Export Game Config.",
+                    file = td_formats::game::GAME_FILE_NAME
                 ));
                 GameConfig::builtin()
             }
@@ -1509,13 +1523,21 @@ impl EditorState {
         if let Some(status) = crate::entity_pack::install_for_maps(self) {
             self.set_status(status);
         } else if let Some(clash) = self.game.clashes.first().filter(|_| announce) {
-            let more = match self.game.clashes.len() {
-                1 => String::new(),
-                n => format!(" {} more classnames are defined twice, the Issues panel lists the ones a map uses.", n - 1),
-            };
-            self.set_status(format!("{}.{more}", clash.describe()));
+            let mut status = Msg::from(format!("{}.", clash.describe()));
+            if self.game.clashes.len() > 1 {
+                status = status.then(
+                    "",
+                    msg_n!(
+                        self.game.clashes.len() - 1,
+                        " {n} more classname is defined twice, the Issues panel lists the ones a map uses.",
+                        " {n} more classnames are defined twice, the Issues panel lists the ones a map uses."
+                    ),
+                );
+            }
+
+            self.set_status(status);
         } else if announce && self.gameplay_pack.update() {
-            self.set_status("The addon has a newer Gameplay entities pack. Update it with Gameplay > Update Gameplay Entities.");
+            self.set_status(msg!("The addon has a newer Gameplay entities pack. Update it with Gameplay > Update Gameplay Entities."));
         }
     }
 
@@ -1601,8 +1623,8 @@ impl EditorState {
 
         match saved.as_slice() {
             [] => {}
-            [Ok(one)] => self.set_status(format!("Autosaved to {}", one.display())),
-            many => self.set_status(format!("Autosaved {} maps", many.len())),
+            [Ok(one)] => self.set_status(msg!("Autosaved to {path}", path = one.display())),
+            many => self.set_status(msg_n!(many.len(), "Autosaved {n} map", "Autosaved {n} maps")),
         }
     }
 
@@ -2302,6 +2324,30 @@ importer=\"texture\"
         std::fs::remove_file(&file).unwrap();
         assert!(state.reload_changed_game_config() && state.game.entity("clue_spot").is_none(), "a removed config falls back to the built-in one");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_status_line_follows_a_language_switch() {
+        use crate::i18n::{Lang, scope};
+        let mut state = EditorState::new(Default::default());
+        state.set_status(crate::commands::GODOT_NOT_FOUND);
+        let de = scope(Lang::De);
+        assert!(state.status_shown().starts_with("Godot nicht gefunden"), "set before the switch: {}", state.status_shown());
+        state.set_status(msg!("Language: {name}", name = "Klingon"));
+        assert_eq!(state.status_shown(), "Sprache: Klingon");
+        drop(de);
+        assert_eq!(state.status_shown(), "Language: Klingon");
+        let ru = scope(Lang::Ru);
+        assert_eq!(state.status_shown(), "Language: Klingon", "no German left in Russian");
+        state.set_status(msg!("Language: {name}", name = "Klingon"));
+        assert_eq!(state.status_shown(), "Язык: Klingon");
+        state.set_status(crate::i18n::Msg::key(crate::commands::GODOT_NOT_FOUND_AT_START));
+        assert!(state.status_shown().starts_with("Godot не найден"), "{}", state.status_shown());
+        drop(ru);
+        let _de = scope(Lang::De);
+        assert!(state.status_shown().starts_with("Godot nicht gefunden"), "a fixed text is looked up again: {}", state.status_shown());
+        assert!(state.status_shown().ends_with("bleiben bis dahin deaktiviert"), "the startup warning is one text: {}", state.status_shown());
+        assert_eq!(state.status, crate::commands::GODOT_NOT_FOUND_AT_START);
     }
 
     #[test]

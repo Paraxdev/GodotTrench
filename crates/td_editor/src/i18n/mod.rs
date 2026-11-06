@@ -376,6 +376,20 @@ pub struct Msg {
     pub shown: String,
 }
 
+impl Msg {
+    /// The message whose text is the key, for a constant that is looked up where it is shown.
+    pub fn key(key: &str) -> Msg {
+        Msg { en: english(key).to_string(), shown: tr(key).to_string() }
+    }
+
+    /// This message followed by `sep` and `next`, in both texts.
+    pub fn then(mut self, sep: &str, next: Msg) -> Msg {
+        self.en = format!("{}{sep}{}", self.en, next.en);
+        self.shown = format!("{}{sep}{}", self.shown, next.shown);
+        self
+    }
+}
+
 impl From<String> for Msg {
     /// A key passed on as a `String`, like a fixed error that MCP reads too, shows translated.
     fn from(text: String) -> Self {
