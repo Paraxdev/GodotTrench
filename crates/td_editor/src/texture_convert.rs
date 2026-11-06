@@ -64,12 +64,12 @@ pub fn missing_material_issues(map: &td_doc::Map, game: &td_formats::GameConfig,
     missing_materials_in(map, game, materials)
         .into_iter()
         .map(|(name, (faces, node))| {
-            let (code, message) = if inside_project(game, &name) {
-                ("missing_material", format!("Material '{name}' is not in the project ({faces} faces), convert or add its texture"))
+            let (code, template) = if inside_project(game, &name) {
+                ("missing_material", crate::i18n::en!("Material '{name}' is not in the project ({faces} faces), convert or add its texture"))
             } else {
-                ("material_outside_project", format!("Material '{name}' is a path out of the project ({faces} faces), it will not load"))
+                ("material_outside_project", crate::i18n::en!("Material '{name}' is a path out of the project ({faces} faces), it will not load"))
             };
-            td_doc::issues::Issue { node: Some(node), severity: td_doc::issues::Severity::Warning, code, message }
+            td_doc::issues::Issue::new(Some(node), td_doc::issues::Severity::Warning, code, template, &[("name", &name), ("faces", &faces)])
         })
         .collect()
 }

@@ -1927,3 +1927,57 @@ fn the_face_inspector_counts_faces_in_german() {
     harness.get_by_label("2 Flächen");
     assert!(harness.query_by_label("2 faces").is_none());
 }
+
+#[test]
+fn the_issues_panel_words_each_issue_in_the_current_language() {
+    let german = td_editor::i18n::scope(td_editor::i18n::Lang::De);
+    let f = Fixture::new();
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(700.0, 500.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::issues(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    harness.get_by_label("Keine Probleme gefunden");
+
+    let layer = harness.state().state.doc.map.default_layer();
+    harness.state_mut().state.doc.edit("add", |m, _| {
+        m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::new(3.0, 5.0, 9.0), DVec3::new(70.0, 40.0, 33.0)), "").unwrap()));
+        let mut lamp = td_doc::Entity::new("light");
+        lamp.properties.insert("target".into(), "nobody".into());
+        m.insert(layer, NodeKind::Entity(lamp));
+    });
+    harness.run();
+    for face in 0..6 {
+        harness.get_by_label_contains(&format!("Fläche {face} hat kein Material"));
+    }
+
+    harness.get_by_label_contains("Ziel 'nobody' existiert nicht");
+    assert!(harness.query_by_label_contains("has no material").is_none());
+    assert!(harness.query_by_label_contains("does not exist").is_none());
+
+    let found = td_editor::validate::open_map_issues(&mut harness.state_mut().state);
+    let english: Vec<&str> = found.iter().map(|i| i.message.as_str()).collect();
+    assert_eq!(found.len(), 7, "{english:?}");
+    assert!(english.contains(&"Face 4 has no material") && english.contains(&"target 'nobody' does not exist"), "{english:?}");
+    let target = found.iter().find(|i| i.code == "missing_target").unwrap();
+    assert_eq!(td_editor::validate::shown(target), "Ziel 'nobody' existiert nicht");
+
+    drop(german);
+    harness.run();
+    harness.get_by_label_contains("Face 4 has no material");
+    harness.get_by_label_contains("target 'nobody' does not exist");
+    assert!(harness.query_by_label_contains("Fläche").is_none());
+}
+
+#[test]
+fn an_issue_without_a_template_shows_its_message_in_every_language() {
+    let plain = td_doc::issues::Issue::plain(None, td_doc::issues::Severity::Warning, "entity_clash", "func_door is defined more than once".into());
+    let built = td_doc::issues::Issue::new(None, td_doc::issues::Severity::Info, "empty_group", "Group is empty", &[]);
+    for lang in [td_editor::i18n::Lang::En, td_editor::i18n::Lang::De, td_editor::i18n::Lang::Ja] {
+        let _scope = td_editor::i18n::scope(lang);
+        assert_eq!(td_editor::validate::shown(&plain), "func_door is defined more than once");
+    }
+
+    let _scope = td_editor::i18n::scope(td_editor::i18n::Lang::De);
+    assert_eq!(td_editor::validate::shown(&built), "Gruppe ist leer");
+    assert_eq!(built.message, "Group is empty");
+}

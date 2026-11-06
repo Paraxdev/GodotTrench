@@ -543,7 +543,7 @@ fn foreign_keys() -> Vec<Key> {
         "Several convex hulls per instance that follow concave models, slower to build",
         "Every face of the model, exact but the most expensive",
     ];
-    justify.into_iter().chain(sculpt).chain(blend).chain(scatter).map(|k| Key::Text(k.into())).collect()
+    justify.into_iter().chain(sculpt).chain(blend).chain(scatter).chain(td_doc::issues::TEMPLATES).map(|k| Key::Text(k.into())).collect()
 }
 
 #[test]

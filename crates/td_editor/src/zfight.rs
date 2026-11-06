@@ -11,6 +11,7 @@ use td_formats::GameConfig;
 use td_geom::{FaceUv, Terrain, polygon};
 
 use crate::face_cull::{self, COPLANAR_DIST, CullFace, SAME_NORMAL};
+use crate::i18n::en;
 use crate::materials::MaterialLibrary;
 
 /// Faces closer than this to each other's plane fight over depth at any distance.
@@ -299,18 +300,20 @@ pub fn coplanar_overlaps(map: &Map, game: &GameConfig, look: &dyn Fn(&str) -> Lo
         .filter_map(|((id, other), found)| {
             let n = found.len();
             let top = found.into_iter().max_by(|a, b| a.area.total_cmp(&b.area))?;
-            let how = if top.back_to_back { "lies back to back with" } else { "overlaps" };
-            let also = if n > 1 { format!(", as do {} more of their faces", n - 1) } else { String::new() };
-            let (x, y, z) = (top.at.x, top.at.y, top.at.z);
-            Some(Issue {
-                node: Some(id),
-                severity: Severity::Warning,
-                code: "coplanar_faces",
-                message: format!(
-                    "Face {} {how} face {} of {other} on the same plane around ({x:.0}, {y:.0}, {z:.0}), they z-fight{also}",
-                    top.face, top.other_face
+            let template = match (top.back_to_back, n > 1) {
+                (true, false) => en!("Face {face} lies back to back with face {other_face} of {other} on the same plane around ({x}, {y}, {z}), they z-fight"),
+                (true, true) => en!(
+                    "Face {face} lies back to back with face {other_face} of {other} on the same plane around ({x}, {y}, {z}), they z-fight, as do {more} more of their faces"
                 ),
-            })
+                (false, false) => en!("Face {face} overlaps face {other_face} of {other} on the same plane around ({x}, {y}, {z}), they z-fight"),
+                (false, true) => en!(
+                    "Face {face} overlaps face {other_face} of {other} on the same plane around ({x}, {y}, {z}), they z-fight, as do {more} more of their faces"
+                ),
+            };
+            let (x, y, z) = (format!("{:.0}", top.at.x), format!("{:.0}", top.at.y), format!("{:.0}", top.at.z));
+            let args: [(&'static str, &dyn std::fmt::Display); 7] =
+                [("face", &top.face), ("other_face", &top.other_face), ("other", &other), ("x", &x), ("y", &y), ("z", &z), ("more", &(n - 1))];
+            Some(Issue::new(Some(id), Severity::Warning, "coplanar_faces", template, &args))
         })
         .collect()
 }
@@ -380,6 +383,14 @@ mod tests {
         assert_eq!(issues.len(), 1, "{issues:?}");
         assert_eq!(issues[0].node, Some(big));
         assert!(issues[0].message.contains(&small.to_string()) && issues[0].message.contains("as do 1 more"), "{}", issues[0].message);
+        assert!(
+            issues[0].template.starts_with("Face {face} overlaps face {other_face} of {other}")
+                && issues[0].template.ends_with("as do {more} more of their faces")
+        );
+        assert_eq!(issues[0].args.iter().find(|(name, _)| *name == "more").map(|(_, v)| v.as_str()), Some("1"));
+        let _german = crate::i18n::scope(crate::i18n::Lang::De);
+        let shown = crate::validate::shown(&issues[0]);
+        assert!(shown.starts_with("Fläche") && shown.ends_with("ebenso 1 weitere ihrer Flächen"), "{shown}");
     }
 
     #[test]

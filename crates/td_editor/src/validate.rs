@@ -2,6 +2,7 @@
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Display;
 use std::path::{Path, PathBuf};
 
 use td_core::NodeId;
@@ -9,9 +10,21 @@ use td_doc::issues::{self, Issue, Severity};
 use td_doc::{Map, NodeKind};
 use td_formats::GameConfig;
 
+use crate::i18n::en;
 use crate::materials::MaterialLibrary;
 use crate::prefabs::PrefabCache;
 use crate::state::EditorState;
+
+/// The message of `issue` in the current language. The issue keeps its English message for MCP, and one without a
+/// template, or whose template has no translation, shows that.
+pub fn shown(issue: &Issue) -> String {
+    if issue.template.is_empty() {
+        return issue.message.clone();
+    }
+
+    let args: Vec<(&str, &dyn Display)> = issue.args.iter().map(|(name, value)| (*name, value as &dyn Display)).collect();
+    crate::i18n::fill(crate::i18n::tr(issue.template), &args)
+}
 
 /// Inputs validate_map accepts per entity class: the declared ones, plus every method and property of the Godot class
 /// the entity is built as and the functions of its script, since the runtime calls any of them. A class whose Godot
@@ -78,7 +91,7 @@ pub fn map_issues(
     list.extend(stale_issue(map_path, context));
     for clash in &game.clashes {
         if map.entities().any(|(_, e)| e.classname == clash.classname) {
-            list.push(Issue { node: None, severity: Severity::Warning, code: "entity_clash", message: clash.describe() });
+            list.push(Issue::plain(None, Severity::Warning, "entity_clash", clash.describe()));
         }
     }
 
@@ -98,18 +111,20 @@ fn definition_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Iss
             continue;
         }
 
-        let issue = |code, message| Issue { node: Some(id), severity: Severity::Warning, code, message };
-        let Some(def) = game.entity(&e.classname) else {
-            let message = match (crate::entity_pack::in_pack(&e.classname), context.pack_installed) {
-                (true, false) => format!("No entity definition for '{}'. Gameplay > Install Gameplay Entities adds it", e.classname),
-                (true, true) => format!(
-                    "No entity definition for '{}', your FGD lacks the Gameplay entities pack. Add {} to its Base Fgd Files",
-                    e.classname,
-                    crate::entity_pack::DEFAULT_FGD
+        let class = &e.classname;
+        let issue = |code, template, args: &[(&'static str, &dyn Display)]| Issue::new(Some(id), Severity::Warning, code, template, args);
+        let Some(def) = game.entity(class) else {
+            list.push(match (crate::entity_pack::in_pack(class), context.pack_installed) {
+                (true, false) => {
+                    issue("unknown_class", en!("No entity definition for '{class}'. Gameplay > Install Gameplay Entities adds it"), &[("class", class)])
+                }
+                (true, true) => issue(
+                    "unknown_class",
+                    en!("No entity definition for '{class}', your FGD lacks the Gameplay entities pack. Add {fgd} to its Base Fgd Files"),
+                    &[("class", class), ("fgd", &crate::entity_pack::DEFAULT_FGD)],
                 ),
-                _ => format!("No entity definition for '{}'", e.classname),
-            };
-            list.push(issue("unknown_class", message));
+                _ => issue("unknown_class", en!("No entity definition for '{class}'"), &[("class", class)]),
+            });
             continue;
         };
 
@@ -119,10 +134,20 @@ fn definition_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Iss
             context.godot.as_ref().is_some_and(|r| !r.settings.is_empty() && (r.missing.contains(&e.classname) || !r.settings.contains(&b.map_settings)))
         };
         if let Some(build) = game.build.as_ref().filter(|b| !b.defines(&e.classname) && !reported(b)) {
-            let fgd = if build.entity_fgd.is_empty() { String::new() } else { format!("{} ", build.entity_fgd) };
-            let message =
-                format!("Godot builds with {}, whose FGD {fgd}has no '{}'. Set its Entity Fgd to your game config's FGD", build.map_settings, e.classname);
-            list.push(issue("build_lacks_class", message));
+            let settings = &build.map_settings;
+            list.push(if build.entity_fgd.is_empty() {
+                issue(
+                    "build_lacks_class",
+                    en!("Godot builds with {settings}, whose FGD has no '{class}'. Set its Entity Fgd to your game config's FGD"),
+                    &[("settings", settings), ("class", class)],
+                )
+            } else {
+                issue(
+                    "build_lacks_class",
+                    en!("Godot builds with {settings}, whose FGD {fgd} has no '{class}'. Set its Entity Fgd to your game config's FGD"),
+                    &[("settings", settings), ("fgd", &build.entity_fgd), ("class", class)],
+                )
+            });
         }
 
         let brushes =
@@ -130,10 +155,14 @@ fn definition_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Iss
         match (def.kind, brushes) {
             (td_formats::EntityKind::Point, true) => list.push(issue(
                 "point_class_brushes",
-                format!("{} is a point entity in its definition, so Godot drops its brushes. Make it a FuncGodotFGDSolidClass", e.classname),
+                en!("{class} is a point entity in its definition, so Godot drops its brushes. Make it a FuncGodotFGDSolidClass"),
+                &[("class", class)],
             )),
-            (td_formats::EntityKind::Solid, false) => list
-                .push(issue("brush_entity_empty", format!("{} is a brush entity without brushes, so Godot builds it with no mesh or collision", e.classname))),
+            (td_formats::EntityKind::Solid, false) => list.push(issue(
+                "brush_entity_empty",
+                en!("{class} is a brush entity without brushes, so Godot builds it with no mesh or collision"),
+                &[("class", class)],
+            )),
             _ => {}
         }
     }
@@ -154,22 +183,22 @@ fn godot_issues(map: &Map, game: &GameConfig, context: &Context) -> Vec<Issue> {
             (true, true) => format!("Add {} to the Base Fgd Files of its Entity Fgd", crate::entity_pack::DEFAULT_FGD),
             _ => "Add the definition to its Entity Fgd".to_string(),
         };
-        list.push(Issue {
-            node: Some(id),
-            severity: Severity::Warning,
-            code: "godot_missing_class",
-            message: format!("Godot built {class} as a plain node without script or collision, {} no definition for it. {hint}", report.settings_have()),
-        });
+        list.push(Issue::plain(
+            Some(id),
+            Severity::Warning,
+            "godot_missing_class",
+            format!("Godot built {class} as a plain node without script or collision, {} no definition for it. {hint}", report.settings_have()),
+        ));
     }
 
-    list.extend(report.warnings.iter().map(|w| Issue { node: None, severity: Severity::Warning, code: "godot_warning", message: format!("Godot: {w}") }));
+    list.extend(report.warnings.iter().map(|w| Issue::new(None, Severity::Warning, "godot_warning", en!("Godot: {warning}"), &[("warning", w)])));
     list
 }
 
 fn stale_issue(path: Option<&Path>, context: &Context) -> Option<Issue> {
     let path = path.filter(|_| context.godot_stale)?;
     let message = crate::live_link::stale_text(&[path.to_string_lossy()]);
-    Some(Issue { node: None, severity: Severity::Warning, code: "godot_stale_scene", message })
+    Some(Issue::plain(None, Severity::Warning, "godot_stale_scene", message))
 }
 
 /// The export names an FGD of the addon as the Entity Fgd Godot built the map with, which an edit to its Base Fgd Files
@@ -269,15 +298,36 @@ pub fn missing_model_issues(map: &Map, game: &GameConfig) -> Vec<Issue> {
                 Some(name) => format!("{} '{name}'", e.classname),
                 None => format!("{} {}", e.classname, ids[0]),
             });
-            let more = if ids.len() > 1 { format!(" and {} more", ids.len() - 1) } else { String::new() };
             let stem = model.rsplit_once('.').map_or(model, |(stem, _)| stem);
             let other = crate::models::MODEL_EXTS.iter().chain(&["tscn", "scn"]).find(|ext| file.with_extension(ext).is_file());
-            let hint = other.map(|ext| format!(", but {stem}.{ext} does")).unwrap_or_default();
-            Issue {
-                node: Some(ids[0]),
-                severity: Severity::Warning,
-                code: "missing_model",
-                message: format!("Model '{model}' does not exist{hint}, used by {}{more}", first.unwrap_or_default()),
+            let user = first.unwrap_or_default();
+            let (code, count) = ("missing_model", ids.len() - 1);
+            let at = Some(ids[0]);
+            match (other, count) {
+                (None, 0) => {
+                    Issue::new(at, Severity::Warning, code, en!("Model '{model}' does not exist, used by {user}"), &[("model", &model), ("user", &user)])
+                }
+                (None, _) => Issue::new(
+                    at,
+                    Severity::Warning,
+                    code,
+                    en!("Model '{model}' does not exist, used by {user} and {count} more"),
+                    &[("model", &model), ("user", &user), ("count", &count)],
+                ),
+                (Some(ext), 0) => Issue::new(
+                    at,
+                    Severity::Warning,
+                    code,
+                    en!("Model '{model}' does not exist, but {found} does, used by {user}"),
+                    &[("model", &model), ("found", &format!("{stem}.{ext}")), ("user", &user)],
+                ),
+                (Some(ext), _) => Issue::new(
+                    at,
+                    Severity::Warning,
+                    code,
+                    en!("Model '{model}' does not exist, but {found} does, used by {user} and {count} more"),
+                    &[("model", &model), ("found", &format!("{stem}.{ext}")), ("user", &user), ("count", &count)],
+                ),
             }
         })
         .collect()
@@ -309,7 +359,7 @@ pub fn map_script_issues(map: &Map, prefabs: &mut PrefabCache, map_path: Option<
         }
     }
 
-    found.into_iter().map(|(id, message)| Issue { node: Some(id), severity: Severity::Warning, code: "map_script", message }).collect()
+    found.into_iter().map(|(id, message)| Issue::plain(Some(id), Severity::Warning, "map_script", message)).collect()
 }
 
 /// Whether `map` itself runs GDScript, or hands a logic_script code, when the scene plays.
@@ -498,6 +548,23 @@ mod tests {
         );
         assert_eq!(found[1].node, Some(lamp));
         assert!(found[1].message.ends_with(&format!("used by prop_physics {lamp}")), "{}", found[1].message);
+        assert_eq!(found[0].template, "Model '{model}' does not exist, but {found} does, used by {user} and {count} more");
+        assert_eq!(
+            found[0].args,
+            vec![
+                ("model", "res://props/chair.glb".to_string()),
+                ("found", "res://props/chair.gltf".to_string()),
+                ("user", "prop_model 'clue_chair'".to_string()),
+                ("count", "1".to_string()),
+            ]
+        );
+        assert_eq!(found[1].template, "Model '{model}' does not exist, used by {user}");
+        let _german = crate::i18n::scope(crate::i18n::Lang::De);
+        assert_eq!(
+            shown(&found[0]),
+            "Modell 'res://props/chair.glb' existiert nicht, aber res://props/chair.gltf, verwendet von prop_model 'clue_chair' und 1 weiteren"
+        );
+        assert_eq!(shown(&found[1]), format!("Modell 'res://props/lamp.tscn' existiert nicht, verwendet von prop_physics {lamp}"));
 
         game.project_root = None;
         assert!(missing_model_issues(&map, &game).is_empty(), "project paths are not checked without a project");

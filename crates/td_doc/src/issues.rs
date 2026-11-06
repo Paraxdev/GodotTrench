@@ -1,6 +1,7 @@
 //! Map problems. The game configuration is optional: [`check_with`] also checks I/O names against entity definitions.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Display;
 
 use serde::Serialize;
 use td_core::NodeId;
@@ -36,8 +37,77 @@ pub struct Issue {
     pub node: Option<NodeId>,
     pub severity: Severity,
     pub code: &'static str,
+    /// The message in English, for MCP and logs.
     pub message: String,
+    /// `message` with `{name}` placeholders, the key the editor translates it by, empty for a message without one.
+    #[serde(skip)]
+    pub template: &'static str,
+    /// The values of the placeholders of `template`.
+    #[serde(skip)]
+    pub args: Vec<(&'static str, String)>,
 }
+
+impl Issue {
+    /// An issue whose message is `template` with each `{name}` replaced by its value from `args`.
+    pub fn new(node: Option<NodeId>, severity: Severity, code: &'static str, template: &'static str, args: &[(&'static str, &dyn Display)]) -> Issue {
+        let args: Vec<(&'static str, String)> = args.iter().map(|(name, value)| (*name, value.to_string())).collect();
+        Issue { node, severity, code, message: fill(template, &args), template, args }
+    }
+}
+
+impl Issue {
+    /// An issue whose message has no template, so it is shown as it is in every language.
+    pub fn plain(node: Option<NodeId>, severity: Severity, code: &'static str, message: String) -> Issue {
+        Issue { node, severity, code, message, template: "", args: Vec::new() }
+    }
+}
+
+/// Replaces each `{name}` of `template` with its value, a value is never expanded again.
+pub fn fill(template: &str, args: &[(&str, String)]) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(at) = rest.find('{') {
+        out.push_str(&rest[..at]);
+        let tail = &rest[at..];
+        match tail.find('}').and_then(|end| args.iter().find(|(name, _)| *name == &tail[1..end]).map(|(_, v)| (end, v))) {
+            Some((end, value)) => {
+                out.push_str(value);
+                rest = &tail[end + 1..];
+            }
+            None => {
+                out.push('{');
+                rest = &tail[1..];
+            }
+        }
+    }
+
+    out.push_str(rest);
+    out
+}
+
+/// Every template [`check_with`] builds an issue from, the editor translates each by its text.
+pub const TEMPLATES: [&str; 20] = [
+    "{class} has no output '{output}'",
+    "Output {output} calls input '{input}', which {class} '{target}' does not have",
+    "Invalid brush: {error}",
+    "Brush has no volume",
+    "Face {face} has no material",
+    "Brush occupies the same space as {other}",
+    "Entity has no classname",
+    "Output {index} ({output}) has no target",
+    "Output {output} targets unknown entity '{target}'",
+    "Output {index} ({output}) has no input",
+    "target '{target}' does not exist",
+    "Invalid mesh: {error}",
+    "Mesh has faces without material",
+    "Terrain height data does not match its resolution",
+    "Terrain has no layers",
+    "Scatter item has no model",
+    "Scatter instances refer to a missing palette entry",
+    "Scatter set targets a surface that no longer exists",
+    "Group is empty",
+    "targetname '{name}' is also used by {other}",
+];
 
 pub fn check(map: &Map) -> Vec<Issue> {
     check_with(map, |_| None)
@@ -78,12 +148,13 @@ fn check_io_names<'a>(map: &Map, classes: &impl Fn(&str) -> Option<ClassIo<'a>>,
                 && !io.outputs.is_empty()
                 && !io.outputs.iter().any(|d| io_name_matches(d, &o.output))
             {
-                out.push(Issue {
-                    node: Some(id),
-                    severity: Severity::Warning,
-                    code: "io_unknown_output",
-                    message: format!("{} has no output '{}'", e.classname, o.output),
-                });
+                out.push(Issue::new(
+                    Some(id),
+                    Severity::Warning,
+                    "io_unknown_output",
+                    "{class} has no output '{output}'",
+                    &[("class", &e.classname), ("output", &o.output)],
+                ));
             }
 
             if o.input.is_empty() || is_dynamic_target(&o.target) || BUILTIN_INPUTS.iter().any(|b| io_name_matches(b, &o.input)) {
@@ -95,12 +166,13 @@ fn check_io_names<'a>(map: &Map, classes: &impl Fn(&str) -> Option<ClassIo<'a>>,
                     && !io.inputs.is_empty()
                     && !io.inputs.iter().any(|d| io_name_matches(d, &o.input))
                 {
-                    out.push(Issue {
-                        node: Some(id),
-                        severity: Severity::Warning,
-                        code: "io_unknown_input",
-                        message: format!("Output {} calls input '{}', which {class} '{}' does not have", o.output, o.input, o.target),
-                    });
+                    out.push(Issue::new(
+                        Some(id),
+                        Severity::Warning,
+                        "io_unknown_input",
+                        "Output {output} calls input '{input}', which {class} '{target}' does not have",
+                        &[("output", &o.output), ("input", &o.input), ("class", class), ("target", &o.target)],
+                    ));
                 }
             }
         }
@@ -117,16 +189,16 @@ fn check_map(map: &Map, external: &BTreeSet<String>) -> Vec<Issue> {
         match &node.kind {
             NodeKind::Brush(b) => {
                 if let Err(e) = b.validate() {
-                    out.push(Issue { node: Some(*id), severity: Severity::Error, code: "invalid_brush", message: format!("Invalid brush: {e}") });
+                    out.push(Issue::new(Some(*id), Severity::Error, "invalid_brush", "Invalid brush: {error}", &[("error", &e)]));
                 }
 
                 if b.volume() < 1e-3 {
-                    out.push(Issue { node: Some(*id), severity: Severity::Error, code: "degenerate_brush", message: "Brush has no volume".into() });
+                    out.push(Issue::new(Some(*id), Severity::Error, "degenerate_brush", "Brush has no volume", &[]));
                 }
 
                 for (fi, f) in b.faces.iter().enumerate() {
                     if f.data.material.is_empty() {
-                        out.push(Issue { node: Some(*id), severity: Severity::Warning, code: "no_material", message: format!("Face {fi} has no material") });
+                        out.push(Issue::new(Some(*id), Severity::Warning, "no_material", "Face {face} has no material", &[("face", &fi)]));
                     }
                 }
 
@@ -134,44 +206,42 @@ fn check_map(map: &Map, external: &BTreeSet<String>) -> Vec<Issue> {
                     b.vertices.iter().map(|v| [(v.x * 64.0).round() as i64, (v.y * 64.0).round() as i64, (v.z * 64.0).round() as i64]).collect();
                 key.sort();
                 if let Some(other) = brush_keys.insert(key, *id) {
-                    out.push(Issue {
-                        node: Some(*id),
-                        severity: Severity::Warning,
-                        code: "duplicate_brush",
-                        message: format!("Brush occupies the same space as {other}"),
-                    });
+                    out.push(Issue::new(Some(*id), Severity::Warning, "duplicate_brush", "Brush occupies the same space as {other}", &[("other", &other)]));
                 }
             }
             NodeKind::Entity(e) => {
                 if e.classname.trim().is_empty() {
-                    out.push(Issue { node: Some(*id), severity: Severity::Error, code: "missing_classname", message: "Entity has no classname".into() });
+                    out.push(Issue::new(Some(*id), Severity::Error, "missing_classname", "Entity has no classname", &[]));
                 }
 
                 for (i, o) in e.outputs.iter().enumerate() {
                     let wildcard = is_dynamic_target(&o.target);
                     if o.target.is_empty() {
-                        out.push(Issue {
-                            node: Some(*id),
-                            severity: Severity::Warning,
-                            code: "io_no_target",
-                            message: format!("Output {i} ({}) has no target", o.output),
-                        });
+                        out.push(Issue::new(
+                            Some(*id),
+                            Severity::Warning,
+                            "io_no_target",
+                            "Output {index} ({output}) has no target",
+                            &[("index", &i), ("output", &o.output)],
+                        ));
                     } else if !wildcard && !names.contains(o.target.as_str()) {
-                        out.push(Issue {
-                            node: Some(*id),
-                            severity: Severity::Error,
-                            code: "io_missing_target",
-                            message: format!("Output {} targets unknown entity '{}'", o.output, o.target),
-                        });
+                        out.push(Issue::new(
+                            Some(*id),
+                            Severity::Error,
+                            "io_missing_target",
+                            "Output {output} targets unknown entity '{target}'",
+                            &[("output", &o.output), ("target", &o.target)],
+                        ));
                     }
 
                     if o.input.is_empty() {
-                        out.push(Issue {
-                            node: Some(*id),
-                            severity: Severity::Warning,
-                            code: "io_no_input",
-                            message: format!("Output {i} ({}) has no input", o.output),
-                        });
+                        out.push(Issue::new(
+                            Some(*id),
+                            Severity::Warning,
+                            "io_no_input",
+                            "Output {index} ({output}) has no input",
+                            &[("index", &i), ("output", &o.output)],
+                        ));
                     }
                 }
 
@@ -180,57 +250,42 @@ fn check_map(map: &Map, external: &BTreeSet<String>) -> Vec<Issue> {
                     && !is_dynamic_target(t)
                     && !names.contains(t)
                 {
-                    out.push(Issue { node: Some(*id), severity: Severity::Warning, code: "missing_target", message: format!("target '{t}' does not exist") });
+                    out.push(Issue::new(Some(*id), Severity::Warning, "missing_target", "target '{target}' does not exist", &[("target", &t)]));
                 }
             }
             NodeKind::Mesh(m) => {
                 if let Err(e) = m.validate() {
-                    out.push(Issue { node: Some(*id), severity: Severity::Error, code: "invalid_mesh", message: format!("Invalid mesh: {e}") });
+                    out.push(Issue::new(Some(*id), Severity::Error, "invalid_mesh", "Invalid mesh: {error}", &[("error", &e)]));
                 }
 
                 if m.faces.iter().any(|f| f.data.material.is_empty()) {
-                    out.push(Issue { node: Some(*id), severity: Severity::Warning, code: "no_material", message: "Mesh has faces without material".into() });
+                    out.push(Issue::new(Some(*id), Severity::Warning, "no_material", "Mesh has faces without material", &[]));
                 }
             }
             NodeKind::Terrain(t) => {
                 if !t.is_valid() {
-                    out.push(Issue {
-                        node: Some(*id),
-                        severity: Severity::Error,
-                        code: "invalid_terrain",
-                        message: "Terrain height data does not match its resolution".into(),
-                    });
+                    out.push(Issue::new(Some(*id), Severity::Error, "invalid_terrain", "Terrain height data does not match its resolution", &[]));
                 }
 
                 if t.layers.is_empty() {
-                    out.push(Issue { node: Some(*id), severity: Severity::Warning, code: "no_material", message: "Terrain has no layers".into() });
+                    out.push(Issue::new(Some(*id), Severity::Warning, "no_material", "Terrain has no layers", &[]));
                 }
             }
             NodeKind::Scatter(s) => {
                 if s.items.iter().any(|i| i.source.trim().is_empty()) {
-                    out.push(Issue { node: Some(*id), severity: Severity::Warning, code: "scatter_no_source", message: "Scatter item has no model".into() });
+                    out.push(Issue::new(Some(*id), Severity::Warning, "scatter_no_source", "Scatter item has no model", &[]));
                 }
 
                 if s.instances.iter().any(|i| i.item as usize >= s.items.len()) {
-                    out.push(Issue {
-                        node: Some(*id),
-                        severity: Severity::Error,
-                        code: "scatter_bad_item",
-                        message: "Scatter instances refer to a missing palette entry".into(),
-                    });
+                    out.push(Issue::new(Some(*id), Severity::Error, "scatter_bad_item", "Scatter instances refer to a missing palette entry", &[]));
                 }
 
                 if s.targets.iter().any(|t| !map.contains(*t)) {
-                    out.push(Issue {
-                        node: Some(*id),
-                        severity: Severity::Info,
-                        code: "scatter_missing_target",
-                        message: "Scatter set targets a surface that no longer exists".into(),
-                    });
+                    out.push(Issue::new(Some(*id), Severity::Info, "scatter_missing_target", "Scatter set targets a surface that no longer exists", &[]));
                 }
             }
             NodeKind::Group(_) if node.children.is_empty() => {
-                out.push(Issue { node: Some(*id), severity: Severity::Info, code: "empty_group", message: "Group is empty".into() });
+                out.push(Issue::new(Some(*id), Severity::Info, "empty_group", "Group is empty", &[]));
             }
             _ => {}
         }
@@ -241,12 +296,13 @@ fn check_map(map: &Map, external: &BTreeSet<String>) -> Vec<Issue> {
         if let Some(n) = e.targetname()
             && let Some(first) = seen.insert(n, id)
         {
-            out.push(Issue {
-                node: Some(id),
-                severity: Severity::Info,
-                code: "shared_targetname",
-                message: format!("targetname '{n}' is also used by {first}"),
-            });
+            out.push(Issue::new(
+                Some(id),
+                Severity::Info,
+                "shared_targetname",
+                "targetname '{name}' is also used by {other}",
+                &[("name", &n), ("other", &first)],
+            ));
         }
     }
 
@@ -464,5 +520,60 @@ mod tests {
         assert!(io.iter().any(|(c, msg)| *c == "io_unknown_output" && msg.contains("OnBogus")));
         assert!(io.iter().any(|(c, msg)| *c == "io_unknown_input" && msg.contains("BogusInput")));
         assert!(check(&m).iter().all(|i| !i.code.starts_with("io_unknown")), "no definitions, no name checks");
+    }
+
+    #[test]
+    fn issues_keep_their_template_and_values() {
+        let mut m = Map::new();
+        let l = m.default_layer();
+        let shell = Brush::from_aabb(&Aabb::new(DVec3::new(-96.0, 32.0, 64.0), DVec3::new(-32.0, 160.0, 96.0)), "").unwrap();
+        m.insert(l, NodeKind::Brush(shell));
+        let mut e = Entity::new("trigger_once");
+        e.properties.insert("targetname".into(), "gate".into());
+        e.properties.insert("target".into(), "nobody".into());
+        let conn = |output: &str, target: &str, input: &str| IoConnection {
+            output: output.into(),
+            target: target.into(),
+            input: input.into(),
+            parameter: String::new(),
+            delay: 0.0,
+            times: -1,
+        };
+        e.outputs.push(conn("OnTrigger", "", "open"));
+        e.outputs.push(conn("OnUse", "lost", ""));
+        m.insert(l, NodeKind::Entity(e.clone()));
+        m.insert(l, NodeKind::Entity(e));
+        let found = check(&m);
+        for i in &found {
+            assert!(TEMPLATES.contains(&i.template), "{i:?}");
+            assert_eq!(fill(i.template, &i.args), i.message, "{i:?}");
+        }
+
+        let by_code = |code: &str| found.iter().filter(|i| i.code == code).collect::<Vec<_>>();
+        let faces = by_code("no_material");
+        assert_eq!(faces.len(), 6);
+        assert_eq!(faces[5].template, "Face {face} has no material");
+        assert_eq!(faces[5].args, vec![("face", "5".to_string())]);
+        let no_target = by_code("io_no_target");
+        assert_eq!(no_target.len(), 2);
+        assert_eq!(no_target[0].template, "Output {index} ({output}) has no target");
+        assert_eq!(no_target[0].args, vec![("index", "0".to_string()), ("output", "OnTrigger".to_string())]);
+        assert_eq!(no_target[0].message, "Output 0 (OnTrigger) has no target");
+        let missing = by_code("io_missing_target");
+        assert_eq!(missing[0].args, vec![("output", "OnUse".to_string()), ("target", "lost".to_string())]);
+        assert_eq!(by_code("shared_targetname")[0].template, "targetname '{name}' is also used by {other}");
+        assert_eq!(by_code("degenerate_brush").len(), 0);
+        let json = serde_json::to_value(&found[0]).unwrap();
+        let mut keys: Vec<&String> = json.as_object().unwrap().keys().collect();
+        keys.sort();
+        assert_eq!(keys, ["code", "message", "node", "severity"]);
+    }
+
+    #[test]
+    fn fill_replaces_names_once() {
+        let args = [("a", "{b}".to_string()), ("b", "x".to_string())];
+        assert_eq!(fill("{b} then {a}, {b}", &args), "x then {b}, x");
+        assert_eq!(fill("{c} stays, so does {", &args), "{c} stays, so does {");
+        assert_eq!(fill("no names", &[]), "no names");
     }
 }

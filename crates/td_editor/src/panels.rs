@@ -2878,7 +2878,7 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
 
                 // Messages name files and the fix, so they wrap instead of being cut off.
                 let name = issue.node.and_then(|n| state.doc.map.get(n)).map(|n| n.name()).unwrap_or_default();
-                let row = egui::Button::selectable(false, format!("{}  {}", issue.message, RichText::new(name).weak().text())).wrap();
+                let row = egui::Button::selectable(false, format!("{}  {}", crate::validate::shown(issue), RichText::new(name).weak().text())).wrap();
                 if ui.add(row).clicked() {
                     select = issue.node;
                 }

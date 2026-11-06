@@ -3582,6 +3582,32 @@ fn language_switches_without_a_restart() {
     assert_eq!(image_difference(&english, &window("english_again")), 0.0);
 }
 
+/// validate_map words every issue in English while the editor is German, the Issues panel is what translates them.
+#[test]
+#[ignore]
+fn validate_map_stays_english_in_german() {
+    let ed = Editor::launch("validate_german");
+    let first = ed.box_brush([3.0, 5.0, 9.0], [70.0, 40.0, 33.0]);
+    let twin = ed.box_brush([3.0, 5.0, 9.0], [70.0, 40.0, 33.0]);
+    ed.call("create_entity", json!({ "classname": "light", "origin": [8, 96, 96], "properties": { "target": "nobody" } }));
+    let messages = || -> Vec<(String, String)> {
+        let issues = ed.call("validate_map", json!({}));
+        let list = issues["issues"].as_array().unwrap();
+        assert!(list.iter().all(|i| i.get("template").is_none() && i.get("args").is_none()), "{issues}");
+        let mut found: Vec<(String, String)> = list.iter().map(|i| (i["code"].as_str().unwrap().into(), i["message"].as_str().unwrap().into())).collect();
+        found.sort();
+        found
+    };
+    let english = messages();
+    assert!(english.contains(&("duplicate_brush".into(), format!("Brush occupies the same space as #{first}"))), "{english:?}");
+    assert!(english.contains(&("missing_target".into(), "target 'nobody' does not exist".into())), "{english:?}");
+    assert_ne!(first, twin);
+
+    ed.call("set_editor", json!({ "language": "de" }));
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(messages(), english);
+}
+
 /// The palette finds a command by its German name and by its English one, and the window it opens keeps its English
 /// title for MCP.
 #[test]
