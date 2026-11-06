@@ -74,6 +74,7 @@ pub fn parent_folder(root: &Path) -> Option<&Path> {
 pub const TRUSTED_TITLE: &str = "Trusted projects";
 const TRUSTED_NOTE: &str = "TrenchDot runs Godot on these projects. Other projects with code open in Restricted Mode.";
 pub const REMOVE: &str = "Remove";
+const LIST_HEIGHT: f32 = 180.0;
 /// Follows a folder in the list.
 const FOLDER: &str = "and every project in it";
 
@@ -100,7 +101,9 @@ pub fn trusted_list(ui: &mut egui::Ui, state: &mut EditorState) {
     }
 
     let mut remove = None;
-    egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
+    // The window around the list only offers the height it had last frame, so without a minimum the list would start
+    // at 64 points and never grow. It still shrinks to its rows.
+    egui::ScrollArea::vertical().min_scrolled_height(LIST_HEIGHT).max_height(LIST_HEIGHT).show(ui, |ui| {
         egui::Grid::new("trusted_projects").num_columns(2).striped(true).show(ui, |ui| {
             for (path, folder) in &entries {
                 ui.horizontal(|ui| {
@@ -476,6 +479,51 @@ mod tests {
         assert!(state.prefs.trusted_folders.is_empty() && state.restricted(), "the open project lay in the removed folder");
         assert_eq!(state.prefs.trusted_projects.len(), 1);
         let _ = std::fs::remove_dir_all(folder);
+    }
+
+    /// Preferences is an auto-sized window, so the list only gets the height the window already has below the
+    /// settings above it.
+    fn list_in_window(listed: usize, folders: usize) -> Vec<egui::Rect> {
+        let mut state = EditorState::new(Prefs::default());
+        for i in 0..listed {
+            state.prefs.trusted_projects.insert(PathBuf::from(format!("/games/slanted_{i}/x{}", i * 7)));
+        }
+
+        for i in 0..folders {
+            state.prefs.trusted_folders.insert(PathBuf::from(format!("/sets/{i}")));
+        }
+
+        let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(900.0, 900.0)).build_ui_state(
+            |ui, (state, window): &mut (EditorState, egui::Rect)| {
+                let shown = egui::Window::new("Preferences").resizable(false).show(ui.ctx(), |ui| {
+                    for i in 0..12 {
+                        ui.label(format!("setting {i}"));
+                    }
+
+                    ui.separator();
+                    trusted_list(ui, state);
+                });
+                *window = shown.unwrap().response.rect;
+            },
+            (state, egui::Rect::NOTHING),
+        );
+        harness.run();
+        let window = harness.state().1;
+        let mut rows: Vec<egui::Rect> = harness.get_all_by_label(REMOVE).map(|b| b.rect()).collect();
+        rows.push(window);
+        rows
+    }
+
+    #[test]
+    fn the_trusted_list_keeps_every_row_inside_the_preferences_window() {
+        for (listed, folders) in [(1, 0), (0, 1), (3, 1), (6, 0)] {
+            let mut rects = list_in_window(listed, folders);
+            let window = rects.pop().unwrap();
+            assert_eq!(rects.len(), listed + folders);
+            for (i, row) in rects.iter().enumerate() {
+                assert!(row.max.y <= window.max.y, "row {i} of {} lies below the window, {row:?} against {window:?}", rects.len());
+            }
+        }
     }
 
     #[test]
