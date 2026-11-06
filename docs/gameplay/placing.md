@@ -85,7 +85,7 @@ map entity, for example to open a door or listen for a button. Open it with *Vie
 *Help > Entity and Code Reference*, or with **Code Reference** in the Inspector, which jumps straight to the selected
 entity's class.
 
-![The Reference panel with func_button picked: its properties, inputs and outputs, and the Use from GDScript code](../assets/placing/reference-panel.png)
+![The Reference panel with func_button picked: its inputs and outputs, and the Use from GDScript code](../assets/placing/reference-panel.png)
 
 Pick a class on the left, then a tab. *Use from GDScript* and *Use from C#* show how to call the entity, *GDScript
 class*, *C# class* and *FGD .tres* are skeletons for writing your own. **Copy** puts the code on the clipboard. On the
