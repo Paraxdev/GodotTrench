@@ -63,7 +63,7 @@ Ticking **Follow cursor** ignores the targets and paints on any surface or scatt
 The quick settings sit in the tool options bar at the top left: the set, **Paint** or **Erase**, radius, density, max
 slope, **Follow cursor**, the eyedropper and **Fill**. **Scatter Panel** brings the panel back if you closed it.
 
-![The Scatter tool's options bar with the bushes set, Paint, radius 900 u, density 1.00 and max slope 40°](../assets/scatter/scatter-toolbar.png)
+![The Scatter tool's options bar with the bushes set, Paint, radius 512 u, density 1.00 and max slope 40°](../assets/scatter/scatter-toolbar.png)
 
 | Input | Action |
 | --- | --- |
