@@ -79,9 +79,15 @@ This applies to code comments, docs, UI text, commit messages and pull request d
 ## Docs
 
 * `docs/` is built with Zensical from `zensical.toml` and deployed by `.github/workflows/pages.yml`. Every page must
-  be listed in `docs/SUMMARY.md`, `zensical build --clean --strict` in the repository root (after
-  `pip install -r docs/requirements.txt`) must build without warnings, and `python3 tools/check_site.py` must then
-  pass. See [docs/development.md](docs/development.md#documentation).
+  be listed in `docs/SUMMARY.md`, `python3 tools/build_site.py` in the repository root (after
+  `pip install -r docs/requirements.txt`) must build every language without warnings, and `python3 tools/check_site.py`
+  must then pass. See [docs/development.md](docs/development.md#documentation).
+* The other languages live in `docs/translations/<code>/`. An English edit needs no translation edit, the page falls
+  back to English until its translation is updated, and `python3 tools/translations.py status` lists those pages.
+  Translate or update a page by the recipe in [Translating the manual](docs/development.md#translating-the-manual) and
+  run `python3 tools/translations.py check`. Run the same check after changing a value in a catalogue, since the
+  translated pages repeat its labels. When you add a term to `docs/GLOSSARY.md`, add it to the translated glossaries too
+  when practical. Every rule in this section holds in every language.
 * Keep pages short and to the point. Prefer a table, a numbered list of steps or a short paragraph over a wall of text,
   and split a page that grows long. Leave out what a reader does not need to get the job done.
 * Write task pages the way [getting-started.md](docs/getting-started.md) reads: talk to the reader as "you", name the
