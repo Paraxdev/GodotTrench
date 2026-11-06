@@ -13,8 +13,6 @@ use crate::commands::axis_name;
 use crate::state::EditorState;
 use crate::tools::ToolKind;
 
-const AXIS_COLORS: [Color32; 3] = crate::theme::AXIS;
-const HOT: Color32 = crate::theme::YELLOW;
 /// Pointer distance in points that still grabs a handle.
 const GRAB: f32 = 8.0;
 const ROTATE_SNAP_DEGREES: f64 = 15.0;
@@ -345,9 +343,10 @@ pub fn paint_on(ui: &Ui, cam: &Camera, rect: Rect, bounds: &Aabb, active: Option
     let l = Layout::new(cam, rect, bounds);
     let edge = edge_on(cam, rect, &l);
     let painter = ui.painter_at(rect);
-    let color = |part: Part, base: Color32| if hovered == Some(part) { HOT } else { base };
+    let (axis_colors, hot_color) = (crate::theme::colors().axis(), crate::theme::colors().yellow);
+    let color = |part: Part, base: Color32| if hovered == Some(part) { hot_color } else { base };
 
-    for (i, axis_color) in AXIS_COLORS.into_iter().enumerate() {
+    for (i, axis_color) in axis_colors.into_iter().enumerate() {
         if !usable(Part::Rotate(i), edge) {
             continue;
         }
@@ -358,7 +357,7 @@ pub fn paint_on(ui: &Ui, cam: &Camera, rect: Rect, bounds: &Aabb, active: Option
         }
     }
 
-    for (i, axis_color) in AXIS_COLORS.into_iter().enumerate() {
+    for (i, axis_color) in axis_colors.into_iter().enumerate() {
         if !usable(Part::Plane(i), edge) {
             continue;
         }
@@ -369,7 +368,7 @@ pub fn paint_on(ui: &Ui, cam: &Camera, rect: Rect, bounds: &Aabb, active: Option
         }
     }
 
-    for (i, axis_color) in AXIS_COLORS.into_iter().enumerate() {
+    for (i, axis_color) in axis_colors.into_iter().enumerate() {
         if edge[i] {
             continue;
         }
@@ -397,8 +396,8 @@ pub fn paint_on(ui: &Ui, cam: &Camera, rect: Rect, bounds: &Aabb, active: Option
         painter.circle(
             center,
             5.5,
-            if hot { HOT.gamma_multiply(0.6) } else { Color32::from_black_alpha(90) },
-            Stroke::new(1.5, if hot { HOT } else { Color32::WHITE }),
+            if hot { hot_color.gamma_multiply(0.6) } else { Color32::from_black_alpha(90) },
+            Stroke::new(1.5, if hot { hot_color } else { Color32::WHITE }),
         );
     }
 }

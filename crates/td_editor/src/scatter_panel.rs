@@ -115,25 +115,25 @@ fn extension(source: &str) -> String {
 
 fn thumbnail(ui: &mut Ui, item: &ScatterItem, image: Option<egui::TextureId>, missing: bool) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(THUMB), Sense::hover());
-    ui.painter().rect_filled(rect, 3.0, theme::GRAY_2);
+    ui.painter().rect_filled(rect, 3.0, theme::colors().gray_2);
     match image {
         Some(id) => {
-            let tint = if item.enabled { Color32::WHITE } else { theme::GRAY_4 };
+            let tint = if item.enabled { Color32::WHITE } else { theme::colors().gray_4 };
             ui.painter().image(id, rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
         }
         None => {
             let (icon, tint) = if tool::is_classname(&item.source) {
-                (icons::ENTITY, theme::MAGENTA)
+                (icons::ENTITY, theme::colors().magenta)
             } else {
                 (icons::MESH, crate::panels::model_ext_color(&extension(&item.source)))
             };
-            let tint = if item.enabled { tint } else { theme::GRAY_4 };
+            let tint = if item.enabled { tint } else { theme::colors().gray_4 };
             ui.put(rect.shrink(THUMB * 0.2), icon.image(THUMB * 0.6).tint(tint));
         }
     }
 
     if missing {
-        ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(1.5, theme::ERROR), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(1.5, theme::colors().error()), egui::StrokeKind::Inside);
     }
 
     resp
@@ -162,7 +162,7 @@ fn models_section(ui: &mut Ui, state: &mut EditorState, active: Option<NodeId>, 
             }
         }
 
-        ui.vertical_centered(|ui| ui.label(RichText::new("Drop models here from the Models panel").small().color(theme::GRAY_5)));
+        ui.vertical_centered(|ui| ui.label(RichText::new("Drop models here from the Models panel").small().color(theme::colors().gray_5)));
     });
     if let Some(payload) = dropped {
         drop_payload(state, &payload);
@@ -237,7 +237,7 @@ fn item_cards(ui: &mut Ui, state: &mut EditorState, id: NodeId, set: td_doc::Sca
             resolved.as_ref().filter(|_| !missing).and_then(|p| state.model_thumbs.thumbnail(ui.ctx(), renderer.as_deref_mut(), &mut state.models, upm, p));
         let open_id = ui.id().with(("scatter_item_open", id, &item.source));
         let mut open: bool = ui.data(|d| d.get_temp(open_id).unwrap_or(false));
-        egui::Frame::new().fill(theme::GRAY_1).corner_radius(4.0).inner_margin(6.0).show(ui, |ui| {
+        egui::Frame::new().fill(theme::colors().gray_1).corner_radius(4.0).inner_margin(6.0).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 let hover = if missing { format!("{} is missing, install the nature models or fix the path", item.source) } else { item.source.clone() };
@@ -245,7 +245,7 @@ fn item_cards(ui: &mut Ui, state: &mut EditorState, id: NodeId, set: td_doc::Sca
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         let name = RichText::new(item.label());
-                        ui.label(if item.enabled { name.strong() } else { name.color(theme::GRAY_5) });
+                        ui.label(if item.enabled { name.strong() } else { name.color(theme::colors().gray_5) });
                         if let Some(e) = entry {
                             let slug = e.source.short.as_deref().unwrap_or(e.source.name.as_str());
                             ui.label(RichText::new(crate::panels::truncate_slug(slug, 12).as_ref()).small().color(crate::panels::pack_color(&e.source.name)));
@@ -265,7 +265,7 @@ fn item_cards(ui: &mut Ui, state: &mut EditorState, id: NodeId, set: td_doc::Sca
                     });
                     ui.horizontal(|ui| {
                         ui.spacing_mut().slider_width = 80.0;
-                        ui.label(RichText::new("weight").color(theme::GRAY_5));
+                        ui.label(RichText::new("weight").color(theme::colors().gray_5));
                         changed |=
                             ui.add(egui::Slider::new(&mut item.weight, 0.0..=10.0).max_decimals(1)).on_hover_text("Relative chance of this model").changed();
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -395,7 +395,7 @@ fn targets_section(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Actio
                 Some(td_doc::NodeKind::Mesh(_)) => icons::MESH,
                 _ => icons::BRUSH,
             };
-            ui.add(icon.image(14.0).tint(theme::GRAY_6));
+            ui.add(icon.image(14.0).tint(theme::colors().gray_6));
             ui.label(tool::target_label(state, *t));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if icons::small(ui, icons::DELETE, "Remove target", None).on_hover_text("Stop painting on this").clicked() {
@@ -413,7 +413,7 @@ fn targets_section(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Actio
     ui.checkbox(&mut follow_edit, "Follow cursor").on_hover_text("Paint on any surface under the brush. Off keeps each stroke on the set's targets");
     state.prefs.scatter.rules.only_targets = !follow_edit;
     if follow && !set.targets.is_empty() {
-        ui.label(RichText::new("The targets above are ignored while following the cursor").small().color(theme::WARNING));
+        ui.label(RichText::new("The targets above are ignored while following the cursor").small().color(theme::colors().warning()));
     }
 }
 

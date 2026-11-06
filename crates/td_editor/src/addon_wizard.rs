@@ -117,7 +117,7 @@ impl AddonWizard {
 
         let status = self.status(root, ui.input(|i| i.time));
         if let Some(outcome) = &self.outcome {
-            let color = if outcome.error.is_some() { theme::WARNING } else { theme::SUCCESS };
+            let color = if outcome.error.is_some() { theme::colors().warning() } else { theme::colors().success() };
             ui.label(RichText::new(outcome.summary(root)).color(color));
             if outcome.error.as_ref().is_some_and(Error::is_download) {
                 download_links(ui, &[addon_install::ADDON.asset]);
@@ -157,13 +157,13 @@ impl AddonWizard {
         ui.label(text);
         ui.ctx().request_repaint_after(Duration::from_secs_f64(RECHECK));
         if status.git {
-            ui.label(RichText::new("It is a git checkout, update it with git.").color(theme::YELLOW));
+            ui.label(RichText::new("It is a git checkout, update it with git.").color(theme::colors().yellow));
             return;
         }
 
         let replacing = status.installed != Installed::Missing;
         if replacing && godot_open {
-            ui.label(RichText::new("Godot has this project open. Close it first.").color(theme::YELLOW));
+            ui.label(RichText::new("Godot has this project open. Close it first.").color(theme::colors().yellow));
         }
 
         let go = ui.add_enabled(!(replacing && godot_open), egui::Button::new(RichText::new(button).strong()));
@@ -179,8 +179,8 @@ impl AddonWizard {
     fn current_ui(&mut self, ui: &mut Ui, state: &mut EditorState, root: &Path, status: &Status, godot_open: bool) {
         if let Some(result) = &self.enabled {
             let (text, color) = match result {
-                Ok(_) => ("Enabled the plugin in project.godot.", theme::SUCCESS),
-                Err(e) => (e.as_str(), theme::WARNING),
+                Ok(_) => ("Enabled the plugin in project.godot.", theme::colors().success()),
+                Err(e) => (e.as_str(), theme::colors().warning()),
             };
             ui.label(RichText::new(text).color(color));
         }
@@ -203,7 +203,7 @@ impl AddonWizard {
                 crate::commands::execute(state, crate::commands::Action::OpenGodotEditor, ui.ctx());
             }
         } else {
-            ui.label(RichText::new(format!("The addon {} is installed and enabled.", crate::VERSION)).color(theme::SUCCESS));
+            ui.label(RichText::new(format!("The addon {} is installed and enabled.", crate::VERSION)).color(theme::colors().success()));
             return;
         }
 

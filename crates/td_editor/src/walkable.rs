@@ -164,9 +164,9 @@ impl Walkable {
     }
 
     fn island_colors(&self, alpha: f32) -> Vec<[f32; 4]> {
-        let mut out = vec![color(crate::theme::WALKABLE_CUT_OFF, alpha); self.polygons.len()];
+        let mut out = vec![color(crate::theme::colors().walkable_cut_off(), alpha); self.polygons.len()];
         for p in self.islands.first().map(|i| i.polygons.as_slice()).unwrap_or_default() {
-            out[*p] = color(crate::theme::WALKABLE, alpha);
+            out[*p] = color(crate::theme::colors().walkable(), alpha);
         }
 
         out
@@ -419,8 +419,8 @@ mod tests {
         let w = Walkable::from_reply(&sample()).unwrap();
         let mesh = w.mesh();
         assert!(mesh.vertices.iter().all(|v| v.normal[1] > 0.99 && v.pos[1] >= LIFT as f32), "every polygon faces up and floats over the floor");
-        let main = color(crate::theme::WALKABLE, FILL_ALPHA);
-        let cut = color(crate::theme::WALKABLE_CUT_OFF, FILL_ALPHA);
+        let main = color(crate::theme::colors().walkable(), FILL_ALPHA);
+        let cut = color(crate::theme::colors().walkable_cut_off(), FILL_ALPHA);
         assert_eq!(mesh.vertices.iter().filter(|v| v.color == main).count(), 10);
         assert_eq!(mesh.vertices.iter().filter(|v| v.color == cut).count(), 4);
         let lines = w.outlines();

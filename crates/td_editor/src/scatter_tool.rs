@@ -754,7 +754,7 @@ impl ScatterTool {
                 if !b.is_empty() {
                     let c = b.corners();
                     for (i, j) in Aabb::EDGES {
-                        line(out, c[i], c[j], rgba(crate::theme::YELLOW, 0.9));
+                        line(out, c[i], c[j], rgba(crate::theme::colors().yellow, 0.9));
                     }
                 }
             } else {

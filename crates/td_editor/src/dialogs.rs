@@ -896,7 +896,7 @@ impl KeymapWindow {
                 ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text("filter").desired_width(160.0));
             });
             if self.recording.is_some() {
-                ui.label(RichText::new("Press the new shortcut (Esc cancels)").color(crate::theme::YELLOW));
+                ui.label(RichText::new("Press the new shortcut (Esc cancels)").color(crate::theme::colors().yellow));
             }
 
             ui.separator();

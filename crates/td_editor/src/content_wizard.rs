@@ -257,7 +257,7 @@ impl ContentWizard {
             ui.label(format!("Installed in {dir}. The addon has a newer version of {} of its files. Updating keeps the files you edited.", pack.changes));
             ui.button("Update Gameplay Entities").clicked()
         } else {
-            ui.label(RichText::new(format!("Installed in {dir}, where the project owns the copies.")).color(theme::SUCCESS));
+            ui.label(RichText::new(format!("Installed in {dir}, where the project owns the copies.")).color(theme::colors().success()));
             false
         };
         if install {
@@ -281,7 +281,7 @@ impl ContentWizard {
         }
 
         if let Some(note) = &self.note {
-            ui.label(RichText::new(note).color(theme::YELLOW));
+            ui.label(RichText::new(note).color(theme::colors().yellow));
         }
 
         ui.add_space(6.0);
@@ -311,7 +311,7 @@ impl ContentWizard {
         }
 
         if self.choice == Choice::Demo && state.game.addon_version.is_none() {
-            ui.label(RichText::new("The demo scenes need the TrenchDot addon, install it above.").color(theme::YELLOW));
+            ui.label(RichText::new("The demo scenes need the TrenchDot addon, install it above.").color(theme::colors().yellow));
         }
 
         ui.add_space(4.0);
@@ -357,7 +357,7 @@ impl ContentWizard {
 
     fn outcome_ui(&mut self, ui: &mut Ui, state: &mut EditorState) {
         let Some(outcome) = self.outcome.clone() else { return };
-        let color = if outcome.error.is_some() { theme::WARNING } else { theme::SUCCESS };
+        let color = if outcome.error.is_some() { theme::colors().warning() } else { theme::colors().success() };
         let summary = outcome.summary();
         ui.label(RichText::new(if summary.is_empty() { "Nothing to add.".to_string() } else { summary }).color(color));
         if outcome.error.as_ref().is_some_and(crate::content::Error::is_download) {

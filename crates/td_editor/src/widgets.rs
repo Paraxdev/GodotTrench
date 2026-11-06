@@ -48,13 +48,13 @@ fn field_style(ui: &mut Ui) {
     let field = v.extreme_bg_color;
     v.widgets.inactive.bg_fill = field;
     v.widgets.inactive.weak_bg_fill = field;
-    v.widgets.inactive.bg_stroke = Stroke::new(1.0, theme::GRAY_2);
+    v.widgets.inactive.bg_stroke = Stroke::new(1.0, theme::colors().gray_2);
     v.widgets.hovered.bg_fill = field;
     v.widgets.hovered.weak_bg_fill = field;
-    v.widgets.hovered.bg_stroke = Stroke::new(1.0, theme::GRAY_4);
+    v.widgets.hovered.bg_stroke = Stroke::new(1.0, theme::colors().gray_4);
     v.widgets.active.bg_fill = field;
     v.widgets.active.weak_bg_fill = field;
-    v.widgets.active.bg_stroke = Stroke::new(1.0, theme::ACCENT);
+    v.widgets.active.bg_stroke = Stroke::new(1.0, theme::colors().accent);
 }
 
 /// Speed that drags small values finely and large ones quickly.
@@ -84,9 +84,9 @@ pub fn vector_input_snapped(ui: &mut Ui, values: &mut [f64], width: f32, speed: 
             }
 
             let (letter, color) = match i {
-                0 => ("X", theme::AXIS[0]),
-                1 => ("Y", theme::AXIS[1]),
-                _ => ("Z", theme::AXIS[2]),
+                0 => ("X", theme::colors().axis()[0]),
+                1 => ("Y", theme::colors().axis()[1]),
+                _ => ("Z", theme::colors().axis()[2]),
             };
             ui.add_sized([AXIS_LABEL, ROW_HEIGHT - 2.0], egui::Label::new(RichText::new(letter).color(color).strong()));
             let before = *value;
@@ -133,7 +133,7 @@ pub fn color_input(ui: &mut Ui, value: &mut String, width: f32) -> bool {
     let picked = ui
         .scope(|ui| {
             ui.spacing_mut().interact_size = Vec2::new(swatch_w, ROW_HEIGHT - 4.0);
-            ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(1.0, theme::GRAY_3);
+            ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(1.0, theme::colors().gray_3);
             ui.color_edit_button_rgb(&mut rgb).changed()
         })
         .inner;
@@ -229,7 +229,7 @@ impl Collapsing {
         let salt = self.salt.unwrap_or_else(|| self.title.text().to_owned());
         let outer = ui.style().clone();
         ui.scope(|ui| {
-            let label = RichText::new(self.title.text()).size(12.5).color(theme::GRAY_7);
+            let label = RichText::new(self.title.text()).size(12.5).color(theme::colors().gray_7);
             ui.spacing_mut().button_padding.y = 5.0;
             let v = ui.visuals_mut();
             v.collapsing_header_frame = true;
@@ -238,8 +238,8 @@ impl Collapsing {
                 state.bg_stroke = Stroke::NONE;
             }
 
-            let hover = theme::blend(theme::HEADER, theme::GRAY_3, 0.5);
-            v.widgets.inactive.weak_bg_fill = theme::HEADER;
+            let hover = theme::blend(theme::colors().header, theme::colors().gray_3, 0.5);
+            v.widgets.inactive.weak_bg_fill = theme::colors().header;
             v.widgets.hovered.weak_bg_fill = hover;
             v.widgets.active.weak_bg_fill = hover;
             egui::CollapsingHeader::new(label).id_salt(salt).default_open(self.open).icon(chevron).show(ui, |ui| {
@@ -252,7 +252,7 @@ impl Collapsing {
 }
 
 fn chevron(ui: &mut Ui, openness: f32, response: &egui::Response) {
-    let color = if response.hovered() { theme::GRAY_7 } else { theme::ACCENT };
+    let color = if response.hovered() { theme::colors().gray_7 } else { theme::colors().accent };
     let c = response.rect.center();
     let turn = egui::emath::Rot2::from_angle(openness * std::f32::consts::FRAC_PI_2);
     let points = [egui::vec2(-2.0, -3.5), egui::vec2(2.0, 0.0), egui::vec2(-2.0, 3.5)].map(|p| c + turn * p);

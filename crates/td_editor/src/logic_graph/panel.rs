@@ -597,17 +597,17 @@ fn distance_to_curve(points: &[Pos2; 4], p: Pos2) -> f32 {
 
 fn edge_color(kind: EdgeKind) -> Color32 {
     match kind {
-        EdgeKind::Resolved => theme::GRAY_6,
-        EdgeKind::Dynamic | EdgeKind::Overlay => theme::INFO,
-        EdgeKind::Broken => theme::ERROR,
+        EdgeKind::Resolved => theme::colors().gray_6,
+        EdgeKind::Dynamic | EdgeKind::Overlay => theme::colors().info(),
+        EdgeKind::Broken => theme::colors().error(),
     }
 }
 
 fn marker_color(key: &NodeKey) -> Option<Color32> {
     match key {
         NodeKey::Entity(_) => None,
-        NodeKey::Dynamic(_) | NodeKey::Overlay(_) => Some(theme::INFO),
-        NodeKey::Missing(_) => Some(theme::ERROR),
+        NodeKey::Dynamic(_) | NodeKey::Overlay(_) => Some(theme::colors().info()),
+        NodeKey::Missing(_) => Some(theme::colors().error()),
     }
 }
 
@@ -975,10 +975,10 @@ fn finish_wire(ctx: &egui::Context, state: &mut EditorState, gs: &mut GraphState
 fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover: Option<&Hit>) {
     let canvas = gs.canvas;
     let painter = ui.painter_at(canvas);
-    painter.rect_filled(canvas, 0.0, theme::GRAY_0);
+    painter.rect_filled(canvas, 0.0, theme::colors().gray_0);
     let step = 32.0 * gs.zoom;
     if step >= 10.0 {
-        let grid = Stroke::new(1.0, theme::GRAY_1);
+        let grid = Stroke::new(1.0, theme::colors().gray_1);
         let origin = canvas.min + gs.pan;
         let mut x = canvas.min.x + (origin.x - canvas.min.x).rem_euclid(step);
         while x < canvas.max.x {
@@ -1011,7 +1011,7 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
             Align2::LEFT_CENTER,
             &gs.frames[i].title,
             font,
-            theme::GRAY_7,
+            theme::colors().gray_7,
         );
         let corner = r.right_bottom();
         let grip = 10.0;
@@ -1056,11 +1056,11 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
         let steps = sim_steps(e.id());
         let chosen = gs.selected_edge == Some(e.id());
         let (width, color) = if chosen {
-            (3.0, theme::ACCENT)
+            (3.0, theme::colors().accent)
         } else if !steps.is_empty() {
-            (3.0, theme::YELLOW)
+            (3.0, theme::colors().yellow)
         } else if hovered_edge == Some(i) {
-            (2.5, theme::GRAY_7)
+            (2.5, theme::colors().gray_7)
         } else if e.kind == EdgeKind::Resolved {
             let pin = gs.model.nodes[e.from].outputs.get(e.from_pin).map_or(PinType::Pulse, |p| p.ty);
             (1.6, theme::pin_type_color(pin.name()))
@@ -1079,10 +1079,10 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
         if !steps.is_empty() {
             badges.push((mid, steps.join(",")));
         } else if detail && !e.label.is_empty() {
-            let galley = painter.layout_no_wrap(e.label.clone(), font(11.0), theme::GRAY_7);
+            let galley = painter.layout_no_wrap(e.label.clone(), font(11.0), theme::colors().gray_7);
             let r = Rect::from_center_size(mid, galley.size() + vec2(8.0, 2.0));
-            painter.rect_filled(r, 3.0, theme::GRAY_2);
-            painter.galley(r.min + vec2(4.0, 1.0), galley, theme::GRAY_7);
+            painter.rect_filled(r, 3.0, theme::colors().gray_2);
+            painter.galley(r.min + vec2(4.0, 1.0), galley, theme::colors().gray_7);
         }
     }
 
@@ -1091,7 +1091,7 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
         let r = gs.node_rect(n);
         let rounding = 6.0 * gs.zoom;
         let marker = marker_color(&n.key);
-        painter.rect_filled(r, rounding, if marker.is_some() { theme::GRAY_1 } else { theme::GRAY_2 });
+        painter.rect_filled(r, rounding, if marker.is_some() { theme::colors().gray_1 } else { theme::colors().gray_2 });
         let header = Rect::from_min_size(r.min, vec2(r.width(), HEADER * gs.zoom));
         let category = (!n.category.is_empty()).then(|| theme::category_color(&n.category));
         if let Some(c) = category {
@@ -1104,11 +1104,11 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
             clip.text(at, align, s, font(size), color);
         };
         let title = FontId::proportional((14.0 * gs.zoom).max(MIN_TITLE));
-        clip.text(header.min + vec2(10.0, 7.0) * gs.zoom.max(0.4), Align2::LEFT_TOP, &n.title, title, theme::GRAY_7);
+        clip.text(header.min + vec2(10.0, 7.0) * gs.zoom.max(0.4), Align2::LEFT_TOP, &n.title, title, theme::colors().gray_7);
         if detail {
-            text(header.min + vec2(10.0, 25.0) * gs.zoom, Align2::LEFT_TOP, &n.subtitle, 11.0, marker.or(category).unwrap_or(theme::GRAY_5));
+            text(header.min + vec2(10.0, 25.0) * gs.zoom, Align2::LEFT_TOP, &n.subtitle, 11.0, marker.or(category).unwrap_or(theme::colors().gray_5));
             for (row, line) in n.settings.iter().enumerate() {
-                text(header.min + vec2(10.0, HEADER + SETTING_ROW * row as f32 + 1.0) * gs.zoom, Align2::LEFT_TOP, line, 11.0, theme::GRAY_6);
+                text(header.min + vec2(10.0, HEADER + SETTING_ROW * row as f32 + 1.0) * gs.zoom, Align2::LEFT_TOP, line, 11.0, theme::colors().gray_6);
             }
         }
 
@@ -1131,7 +1131,7 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
                     .as_ref()
                     .is_some_and(|(from, ty, _)| from.output != output && from.key != n.key && if from.output { ty.fits(pin.ty) } else { pin.ty.fits(*ty) });
                 if fits {
-                    painter.circle_stroke(at, radius + 4.0 * gs.zoom.max(0.6), Stroke::new(2.0, theme::ACCENT));
+                    painter.circle_stroke(at, radius + 4.0 * gs.zoom.max(0.6), Stroke::new(2.0, theme::colors().accent));
                 }
 
                 // A pulse is a triangle pointing the way the signal flows, a value a circle, so the shape tells them
@@ -1146,7 +1146,7 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
 
                 if detail {
                     let warn = n.defined && !pin.declared;
-                    let label_color = if warn { theme::WARNING } else { theme::FG };
+                    let label_color = if warn { theme::colors().warning() } else { theme::colors().fg };
                     let (align, dx) = if output { (Align2::RIGHT_CENTER, -10.0) } else { (Align2::LEFT_CENTER, 10.0) };
                     text(at + vec2(dx * gs.zoom, 0.0), align, pin_label(&pin.name), 13.0, label_color);
                 }
@@ -1154,24 +1154,24 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
         }
 
         let border = if n.key.entity().is_some_and(|id| selected.contains(&id)) {
-            Stroke::new(2.0, theme::ACCENT)
+            Stroke::new(2.0, theme::colors().accent)
         } else if n.key.entity().is_some_and(|id| sim_nodes.contains(&id)) {
-            Stroke::new(2.0, theme::YELLOW)
+            Stroke::new(2.0, theme::colors().yellow)
         } else if let Some(c) = marker {
             Stroke::new(1.5, c)
         } else if matches!(hover, Some(Hit::Node(k)) if *k == n.key) {
-            Stroke::new(1.0, theme::GRAY_5)
+            Stroke::new(1.0, theme::colors().gray_5)
         } else {
-            Stroke::new(1.0, theme::GRAY_3)
+            Stroke::new(1.0, theme::colors().gray_3)
         };
         painter.rect_stroke(r, rounding, border, StrokeKind::Inside);
     }
 
     for (at, label) in badges {
-        let galley = painter.layout_no_wrap(label, FontId::proportional(11.0), theme::GRAY_0);
+        let galley = painter.layout_no_wrap(label, FontId::proportional(11.0), theme::colors().gray_0);
         let r = Rect::from_center_size(at, galley.size() + vec2(10.0, 4.0));
-        painter.rect_filled(r, r.height() * 0.5, theme::YELLOW);
-        painter.galley(r.min + vec2(5.0, 2.0), galley, theme::GRAY_0);
+        painter.rect_filled(r, r.height() * 0.5, theme::colors().yellow);
+        painter.galley(r.min + vec2(5.0, 2.0), galley, theme::colors().gray_0);
     }
 
     match &gs.drag {
@@ -1180,13 +1180,13 @@ fn draw(ui: &Ui, state: &EditorState, gs: &GraphState, visible: &[usize], hover:
                 let pin = if from.output { n.output(&from.name) } else { n.input(&from.name) }.unwrap_or(0);
                 let a = gs.pin_screen(n, from.output, pin);
                 let points = if from.output { curve(a, *at, gs.zoom) } else { curve(*at, a, gs.zoom) };
-                painter.add(CubicBezierShape::from_points_stroke(points, false, Color32::TRANSPARENT, Stroke::new(2.0, theme::ACCENT)));
+                painter.add(CubicBezierShape::from_points_stroke(points, false, Color32::TRANSPARENT, Stroke::new(2.0, theme::colors().accent)));
             }
         }
         Some(Drag::Box { start, at, .. }) => {
             let r = Rect::from_two_pos(*start, *at);
-            painter.rect_filled(r, 0.0, theme::ACCENT.gamma_multiply(0.12));
-            painter.rect_stroke(r, 0.0, Stroke::new(1.0, theme::ACCENT), StrokeKind::Inside);
+            painter.rect_filled(r, 0.0, theme::colors().accent.gamma_multiply(0.12));
+            painter.rect_stroke(r, 0.0, Stroke::new(1.0, theme::colors().accent), StrokeKind::Inside);
         }
         _ => {}
     }
@@ -1474,7 +1474,7 @@ fn frame_menu(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, i: usiz
             let (rect, response) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
             ui.painter().rect_filled(rect, 3.0, c);
             if color32(gs.frames[i].color) == c {
-                ui.painter().rect_stroke(rect, 3.0, Stroke::new(2.0, theme::GRAY_7), StrokeKind::Outside);
+                ui.painter().rect_stroke(rect, 3.0, Stroke::new(2.0, theme::colors().gray_7), StrokeKind::Outside);
             }
 
             if response.on_hover_text("Frame color").clicked() {
@@ -1688,7 +1688,7 @@ fn sim_list(ui: &mut Ui, rect: Rect, state: &mut EditorState, gs: &mut GraphStat
             let r = &sim.result;
             ui.label(format!("{} steps", r.events.len()));
             if r.broken() > 0 {
-                ui.label(RichText::new(format!("{} broken", r.broken())).color(theme::ERROR));
+                ui.label(RichText::new(format!("{} broken", r.broken())).color(theme::colors().error()));
             }
 
             if r.truncated {
@@ -1713,11 +1713,11 @@ fn sim_list(ui: &mut Ui, rect: Rect, state: &mut EditorState, gs: &mut GraphStat
                 }
 
                 let color = if ev.broken() {
-                    theme::ERROR
+                    theme::colors().error()
                 } else if ev.dynamic {
-                    theme::INFO
+                    theme::colors().info()
                 } else if ev.possible() {
-                    theme::GRAY_6
+                    theme::colors().gray_6
                 } else {
                     ui.visuals().text_color()
                 };

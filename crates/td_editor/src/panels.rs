@@ -198,7 +198,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                     toggles.push((*id, 1));
                 }
 
-                let (lock, lock_tint) = if node.locked { (icons::LOCK, theme::YELLOW) } else { (icons::UNLOCK, weak) };
+                let (lock, lock_tint) = if node.locked { (icons::LOCK, theme::colors().yellow) } else { (icons::UNLOCK, weak) };
                 if icons::small(ui, lock, "Lock", Some(lock_tint))
                     .on_hover_text(if node.locked { "Locked, click to unlock" } else { "Unlocked, click to lock" })
                     .clicked()
@@ -209,20 +209,20 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                 let selected = state.doc.selection.nodes.contains(id);
                 let (icon, color) = match &node.kind {
                     NodeKind::Layer(l) => (icons::LAYER, Color32::from_rgb((l.color.r * 255.0) as u8, (l.color.g * 255.0) as u8, (l.color.b * 255.0) as u8)),
-                    NodeKind::Group(_) => (icons::GROUP, theme::CYAN),
+                    NodeKind::Group(_) => (icons::GROUP, theme::colors().cyan),
                     NodeKind::Entity(e) => (
                         icons::ENTITY,
                         state
                             .game
                             .entity(&e.classname)
                             .map(|d| Color32::from_rgb((d.color.r * 255.0) as u8, (d.color.g * 255.0) as u8, (d.color.b * 255.0) as u8))
-                            .unwrap_or(theme::GRAY_6),
+                            .unwrap_or(theme::colors().gray_6),
                     ),
-                    NodeKind::Brush(_) => (icons::BRUSH, theme::GRAY_5),
-                    NodeKind::Instance(_) => (icons::INSTANCE, theme::YELLOW),
-                    NodeKind::Mesh(_) => (icons::MESH, theme::PINK),
-                    NodeKind::Terrain(_) => (icons::TERRAIN, theme::GREEN),
-                    NodeKind::Scatter(_) => (icons::SCATTER, theme::TEAL),
+                    NodeKind::Brush(_) => (icons::BRUSH, theme::colors().gray_5),
+                    NodeKind::Instance(_) => (icons::INSTANCE, theme::colors().yellow),
+                    NodeKind::Mesh(_) => (icons::MESH, theme::colors().pink),
+                    NodeKind::Terrain(_) => (icons::TERRAIN, theme::colors().green),
+                    NodeKind::Scatter(_) => (icons::SCATTER, theme::colors().teal),
                 };
                 ui.add(icon.image(icons::SMALL).tint(color));
                 let mut label = node.name();
@@ -1105,7 +1105,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
     ui.horizontal(|ui| {
         ui.heading(&entity.classname);
         if def.is_none() {
-            ui.label(RichText::new("no definition").color(theme::WARNING));
+            ui.label(RichText::new("no definition").color(theme::colors().warning()));
         }
     });
     if let Some(d) = &def
@@ -1322,7 +1322,7 @@ fn io_editor(ui: &mut Ui, state: &mut EditorState, id: NodeId, entity: &td_doc::
             let valid_target = conn.target.is_empty() || targetnames.iter().any(|(n, _)| *n == conn.target) || td_doc::issues::is_dynamic_target(&conn.target);
             ui.horizontal(|ui| {
                 if !valid_target {
-                    ui.label(RichText::new("target not found").color(theme::ERROR));
+                    ui.label(RichText::new("target not found").color(theme::colors().error()));
                 }
 
                 if ui.small_button("Remove").clicked() {
@@ -1878,7 +1878,7 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
     if selected {
         ui.painter().rect_filled(rect, 3.0, theme::selected_fill());
     } else if resp.hovered() {
-        ui.painter().rect_filled(rect, 3.0, theme::GRAY_2);
+        ui.painter().rect_filled(rect, 3.0, theme::colors().gray_2);
     }
 
     let img_rect = egui::Rect::from_min_size(rect.min + Vec2::splat(if label { 4.0 } else { 2.0 }), Vec2::splat(size));
@@ -1888,33 +1888,39 @@ fn material_cell(ui: &mut Ui, state: &mut EditorState, name: &str, size: f32, la
             ui.painter().image(tex.id(), img_rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
         }
         None => {
-            ui.painter().rect_filled(img_rect, 2.0, theme::GRAY_2);
+            ui.painter().rect_filled(img_rect, 2.0, theme::colors().gray_2);
             ui.ctx().request_repaint();
         }
     }
 
     if state.prefs.favorite_materials.iter().any(|f| f == name) {
-        ui.painter().text(img_rect.right_top() + Vec2::new(-3.0, 1.0), egui::Align2::RIGHT_TOP, "★", egui::FontId::proportional(13.0), theme::YELLOW);
+        ui.painter().text(img_rect.right_top() + Vec2::new(-3.0, 1.0), egui::Align2::RIGHT_TOP, "★", egui::FontId::proportional(13.0), theme::colors().yellow);
     }
 
     if label {
         let corner = img_rect.left_top() + Vec2::new(2.0, 2.0);
         if missing_albedo {
-            badge(ui.painter(), corner, "no albedo", theme::WARNING);
+            badge(ui.painter(), corner, "no albedo", theme::colors().warning());
         } else if is_pbr {
-            badge(ui.painter(), corner, "PBR", theme::GREEN);
+            badge(ui.painter(), corner, "PBR", theme::colors().green);
         } else if has_normal {
-            badge(ui.painter(), corner, "normal", theme::INFO);
+            badge(ui.painter(), corner, "normal", theme::colors().info());
         }
 
         if is_emissive {
-            badge(ui.painter(), img_rect.left_bottom() + Vec2::new(2.0, -15.0), "glow", theme::YELLOW);
+            badge(ui.painter(), img_rect.left_bottom() + Vec2::new(2.0, -15.0), "glow", theme::colors().yellow);
         }
     }
 
     if label {
         let short = name.rsplit('/').next().unwrap_or(name);
-        ui.painter().text(egui::pos2(rect.center().x, rect.max.y - 9.0), egui::Align2::CENTER_CENTER, short, egui::FontId::proportional(11.0), theme::GRAY_6);
+        ui.painter().text(
+            egui::pos2(rect.center().x, rect.max.y - 9.0),
+            egui::Align2::CENTER_CENTER,
+            short,
+            egui::FontId::proportional(11.0),
+            theme::colors().gray_6,
+        );
     }
 
     resp
@@ -2084,28 +2090,28 @@ pub fn material_browser(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
 /// A tint per model format so the cards read apart at a glance.
 pub(crate) fn model_ext_color(ext: &str) -> Color32 {
     match ext {
-        "glb" | "gltf" => theme::TEAL,
-        "obj" => theme::CYAN,
-        "bbmodel" => theme::YELLOW,
-        "stl" => theme::GRAY_6,
-        "md2" | "md3" | "mdl" => theme::PINK,
-        "map" | "vmf" => theme::GREEN,
-        _ => theme::GRAY_5,
+        "glb" | "gltf" => theme::colors().teal,
+        "obj" => theme::colors().cyan,
+        "bbmodel" => theme::colors().yellow,
+        "stl" => theme::colors().gray_6,
+        "md2" | "md3" | "mdl" => theme::colors().pink,
+        "map" | "vmf" => theme::colors().green,
+        _ => theme::colors().gray_5,
     }
 }
 
 /// The CVD-safe accent palette (see theme.rs), picked stably per pack name so the same pack always
 /// gets the same slug color without a color table to maintain.
-const PACK_ACCENTS: [Color32; 8] = [theme::MAGENTA, theme::GREEN, theme::YELLOW, theme::BLUE, theme::CYAN, theme::PINK, theme::RED, theme::TEAL];
-
 pub(crate) fn pack_color(name: &str) -> Color32 {
+    let c = theme::colors();
+    let accents = [c.magenta, c.green, c.yellow, c.blue, c.cyan, c.pink, c.red, c.teal];
     let mut hash: u64 = 0xcbf29ce484222325;
     for b in name.bytes() {
         hash ^= b as u64;
         hash = hash.wrapping_mul(0x100000001b3);
     }
 
-    PACK_ACCENTS[(hash % PACK_ACCENTS.len() as u64) as usize]
+    accents[(hash % accents.len() as u64) as usize]
 }
 
 pub(crate) fn truncate_slug(s: &str, max_chars: usize) -> std::borrow::Cow<'_, str> {
@@ -2146,11 +2152,11 @@ fn model_cell(ui: &mut Ui, selected: bool, entry: &crate::models::ModelEntry, si
     if selected {
         ui.painter().rect_filled(rect, 3.0, theme::selected_fill());
     } else if resp.hovered() {
-        ui.painter().rect_filled(rect, 3.0, theme::GRAY_2);
+        ui.painter().rect_filled(rect, 3.0, theme::colors().gray_2);
     }
 
     let img_rect = egui::Rect::from_min_size(rect.min + Vec2::splat(4.0), Vec2::splat(size));
-    ui.painter().rect_filled(img_rect, 2.0, theme::GRAY_1);
+    ui.painter().rect_filled(img_rect, 2.0, theme::colors().gray_1);
     match thumb {
         Some(id) => {
             ui.painter().image(id, img_rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
@@ -2169,7 +2175,13 @@ fn model_cell(ui: &mut Ui, selected: bool, entry: &crate::models::ModelEntry, si
     }
 
     let short = entry.name.rsplit('/').next().unwrap_or(&entry.name);
-    ui.painter().text(egui::pos2(rect.center().x, rect.max.y - 9.0), egui::Align2::CENTER_CENTER, short, egui::FontId::proportional(11.0), theme::GRAY_6);
+    ui.painter().text(
+        egui::pos2(rect.center().x, rect.max.y - 9.0),
+        egui::Align2::CENTER_CENTER,
+        short,
+        egui::FontId::proportional(11.0),
+        theme::colors().gray_6,
+    );
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, short));
     resp
 }
@@ -2494,7 +2506,7 @@ pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
                             ui.painter().image(tex.id(), rect, egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
                         }
                         None => {
-                            ui.painter().rect_filled(rect, 2.0, theme::GRAY_2);
+                            ui.painter().rect_filled(rect, 2.0, theme::colors().gray_2);
                         }
                     }
 
@@ -2523,8 +2535,8 @@ pub fn dnd_preview(ctx: &egui::Context, state: &mut EditorState) {
                 }
                 DndPayload::Model(path) => {
                     let (rect, _) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::hover());
-                    ui.painter().rect_filled(rect, 3.0, theme::GRAY_2);
-                    ui.put(rect, icons::MESH.image(18.0).tint(theme::TEAL));
+                    ui.painter().rect_filled(rect, 3.0, theme::colors().gray_2);
+                    ui.put(rect, icons::MESH.image(18.0).tint(theme::colors().teal));
                     let name = path.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
                     ui.vertical(|ui| {
                         ui.label(RichText::new(name).strong());
@@ -2565,7 +2577,7 @@ fn entity_icon(def: &EntityDef) -> icons::Icon {
 }
 
 fn paint_entity_tile(ui: &Ui, rect: egui::Rect, def: Option<&EntityDef>) {
-    let color = def.map(entity_color).unwrap_or(theme::GRAY_6);
+    let color = def.map(entity_color).unwrap_or(theme::colors().gray_6);
     ui.painter().rect(rect, 3.0, color.gamma_multiply(0.22), egui::Stroke::new(1.0, color.gamma_multiply(0.7)), egui::StrokeKind::Inside);
     let icon = def.map(entity_icon).unwrap_or(icons::ENTITY);
     icon.image(rect.width() * 0.5).tint(color).paint_at(ui, egui::Rect::from_center_size(rect.center(), Vec2::splat(rect.width() * 0.5)));
@@ -2578,19 +2590,19 @@ fn entity_card(ui: &mut Ui, def: &EntityDef, size: f32, selected: bool) -> egui:
     if selected {
         ui.painter().rect_filled(rect, 3.0, theme::selected_fill());
     } else if resp.hovered() {
-        ui.painter().rect_filled(rect, 3.0, theme::GRAY_2);
+        ui.painter().rect_filled(rect, 3.0, theme::colors().gray_2);
     }
 
     let tile = egui::Rect::from_min_size(rect.min + Vec2::splat(4.0), Vec2::splat(size));
     paint_entity_tile(ui, tile, Some(def));
     if def.kind == td_formats::EntityKind::Solid {
-        ui.painter().text(tile.right_top() + Vec2::new(-3.0, 2.0), egui::Align2::RIGHT_TOP, "brush", egui::FontId::proportional(10.0), theme::GRAY_5);
+        ui.painter().text(tile.right_top() + Vec2::new(-3.0, 2.0), egui::Align2::RIGHT_TOP, "brush", egui::FontId::proportional(10.0), theme::colors().gray_5);
     }
 
-    let mut job = egui::text::LayoutJob::simple_singleline(def.classname.clone(), egui::FontId::proportional(11.0), theme::GRAY_6);
+    let mut job = egui::text::LayoutJob::simple_singleline(def.classname.clone(), egui::FontId::proportional(11.0), theme::colors().gray_6);
     job.wrap = egui::text::TextWrapping::truncate_at_width(cell.x - 4.0);
     let label = ui.painter().layout_job(job);
-    ui.painter().galley(egui::pos2(rect.center().x, rect.max.y - 9.0) - label.size() / 2.0, label, theme::GRAY_6);
+    ui.painter().galley(egui::pos2(rect.center().x, rect.max.y - 9.0) - label.size() / 2.0, label, theme::colors().gray_6);
     resp
 }
 
@@ -2795,8 +2807,8 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
     let fixable = ps.issues.iter().filter(|i| issues::fixable(i.code)).count();
     let mut fix: Vec<td_doc::issues::Issue> = Vec::new();
     ui.horizontal(|ui| {
-        ui.label(RichText::new(format!("{errors} errors")).color(theme::ERROR));
-        ui.label(RichText::new(format!("{warnings} warnings")).color(theme::WARNING));
+        ui.label(RichText::new(format!("{errors} errors")).color(theme::colors().error()));
+        ui.label(RichText::new(format!("{warnings} warnings")).color(theme::colors().warning()));
         ui.label(format!("{} total", ps.issues.len()));
         if ui.add_enabled(fixable > 0, egui::Button::new(format!("Fix all ({fixable})"))).clicked() {
             fix = ps.issues.iter().filter(|i| issues::fixable(i.code)).cloned().collect();
@@ -2804,7 +2816,7 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
     });
     ui.separator();
     if ps.issues.is_empty() {
-        ui.label(RichText::new("No problems found").color(theme::SUCCESS));
+        ui.label(RichText::new("No problems found").color(theme::colors().success()));
     }
 
     let mut select: Option<NodeId> = None;
@@ -2812,9 +2824,9 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
         for issue in &ps.issues {
             ui.horizontal_top(|ui| {
                 let (tag, color) = match issue.severity {
-                    Severity::Error => ("Error", theme::ERROR),
-                    Severity::Warning => ("Warning", theme::WARNING),
-                    Severity::Info => ("Info", theme::INFO),
+                    Severity::Error => ("Error", theme::colors().error()),
+                    Severity::Warning => ("Warning", theme::colors().warning()),
+                    Severity::Info => ("Info", theme::colors().info()),
                 };
                 ui.label(RichText::new(tag).small().strong().color(color));
                 if issues::fixable(issue.code) && ui.small_button("Fix").clicked() {
@@ -2951,7 +2963,7 @@ pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
             ui.separator();
             ui.label(RichText::new("Tools").strong());
             for (tool, help) in TOOL_HELP {
-                ui.label(RichText::new(tool).color(theme::CYAN)).on_hover_text(help);
+                ui.label(RichText::new(tool).color(theme::colors().cyan)).on_hover_text(help);
             }
         });
     });

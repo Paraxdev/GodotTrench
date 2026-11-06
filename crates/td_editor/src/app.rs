@@ -1817,7 +1817,7 @@ impl App {
                     Some(p) => format!("{} ({})", self.state.game.name, p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
                     None => "Open Godot Project…".into(),
                 };
-                let button = egui::Button::image_and_text(icons::OPEN.image(icons::SMALL), RichText::new(project).color(crate::theme::CYAN))
+                let button = egui::Button::image_and_text(icons::OPEN.image(icons::SMALL), RichText::new(project).color(crate::theme::colors().cyan))
                     .image_tint_follows_text_color(true);
                 let resp = ui.add(button).on_hover_text("Open a Godot project folder");
                 self.toolbar_fit.project_width = (resp.rect | godot_rect).width();
@@ -1850,7 +1850,7 @@ impl App {
         let tip = if enabled && s.restricted() { format!("{tip}\nThe project is in Restricted Mode, so this asks you to trust it first") } else { tip };
         let mut image = icons::GODOT.image(size).alt_text("Open Project in Godot Editor");
         if open {
-            image = image.tint(crate::theme::CYAN);
+            image = image.tint(crate::theme::colors().cyan);
         }
 
         let button = egui::Button::image(image).image_tint_follows_text_color(!open).frame_when_inactive(false);
@@ -2142,17 +2142,17 @@ impl App {
 
                 if s.doc.map.editor.cordon_enabled {
                     ui.separator();
-                    ui.label(RichText::new("cordon").color(crate::theme::YELLOW));
+                    ui.label(RichText::new("cordon").color(crate::theme::colors().yellow));
                 }
 
                 if !s.open_groups.is_empty() {
                     ui.separator();
-                    ui.label(RichText::new(format!("{} open groups", s.open_groups.len())).color(crate::theme::CYAN));
+                    ui.label(RichText::new(format!("{} open groups", s.open_groups.len())).color(crate::theme::colors().cyan));
                 }
 
                 if let Some((text, tip)) = crate::addon_wizard::status_warning(s) {
                     ui.separator();
-                    let chip = egui::Button::new(RichText::new(text).color(crate::theme::YELLOW)).frame(false);
+                    let chip = egui::Button::new(RichText::new(text).color(crate::theme::colors().yellow)).frame(false);
                     if ui.add(chip).on_hover_text(tip).clicked() {
                         self.actions.push(Action::ShowAddonSetup);
                     }
@@ -2166,7 +2166,7 @@ impl App {
                 // The message gets the width the counts leave, so a long one is cut short instead of running under them.
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     let alpha = if s.status_age() > 6.0 { 120 } else { 230 };
-                    ui.add(egui::Label::new(RichText::new(&s.status).color(crate::theme::FG.gamma_multiply_u8(alpha))).truncate());
+                    ui.add(egui::Label::new(RichText::new(&s.status).color(crate::theme::colors().fg.gamma_multiply_u8(alpha))).truncate());
                 });
             });
         });
@@ -2288,7 +2288,9 @@ impl App {
                 ui.label("");
                 match &self.state.godot.exe {
                     Some(exe) => ui.label(RichText::new(format!("Using {}", exe.display())).weak()),
-                    None => ui.label(RichText::new("Not found, Run Project and Open Project in Godot Editor are disabled").color(crate::theme::YELLOW)),
+                    None => {
+                        ui.label(RichText::new("Not found, Run Project and Open Project in Godot Editor are disabled").color(crate::theme::colors().yellow))
+                    }
                 };
                 ui.end_row();
                 ui.label("Autosave (minutes, 0 = off)");
@@ -2760,7 +2762,7 @@ impl eframe::App for App {
         let start_view = [ViewKind::Top, ViewKind::Front, ViewKind::Side]
             .into_iter()
             .find(|k| self.viewports.iter().enumerate().any(|(i, v)| v.kind() == *k && tab_shown(&self.dock, &Tab::View(i))));
-        egui::CentralPanel::default().frame(egui::Frame::new().fill(crate::theme::BACKDROP)).show(ui, |ui| {
+        egui::CentralPanel::default().frame(egui::Frame::new().fill(crate::theme::colors().backdrop)).show(ui, |ui| {
             let shown = self.dock.iter_all_tabs().map(|(_, t)| *t).filter(|t| tab_shown(&self.dock, t)).collect();
             // A pill on a dock's only tab reads as a tab strip waiting for more tabs, so it only comes up under the pointer,
             // where it shows the title can be dragged onto another dock.

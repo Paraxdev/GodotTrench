@@ -43,7 +43,6 @@ pub struct Viewport {
 
 // Linear values, the targets are sRGB.
 const BG_LIT: [f64; 4] = [0.18, 0.28, 0.45, 1.0];
-const DROP_COLOR: Color32 = crate::theme::CYAN;
 /// Depth of the first brush drawn in a 2D view, 4 m. A box drawn in the Top view and hollowed with 16 unit walls
 /// leaves 3 m of headroom, enough for a player.
 const FIRST_BRUSH_DEPTH: f64 = 128.0;
@@ -121,7 +120,7 @@ impl Viewport {
 
         self.paint_overlay(ui, cx);
         if let Some(edge) = self.hover_edge {
-            ui.painter_at(rect).line_segment(edge, egui::Stroke::new(3.0, crate::theme::YELLOW));
+            ui.painter_at(rect).line_segment(edge, egui::Stroke::new(3.0, crate::theme::colors().yellow));
         }
 
         cx.tools.paint_overlay(ui, &self.camera, rect, cx.state);
@@ -817,7 +816,8 @@ impl Viewport {
     fn paint_drop_target(&self, ui: &Ui, cx: &ViewCtx, payload: &DndPayload, pos: egui::Pos2) {
         let ray = self.camera.ray(self.rect, pos);
         let painter = ui.painter().with_clip_rect(self.rect);
-        let stroke = egui::Stroke::new(2.0, DROP_COLOR);
+        let drop_color = crate::theme::colors().cyan;
+        let stroke = egui::Stroke::new(2.0, drop_color);
         match payload {
             DndPayload::Material(_) => {
                 let Some(hit) = picking::pick(cx.state, &ray) else { return };
@@ -836,7 +836,7 @@ impl Viewport {
                     let Some(points) = polygon.iter().map(|p| self.camera.project(self.rect, *p)).collect::<Option<Vec<_>>>() else { continue };
                     painter.add(egui::Shape::closed_line(points.clone(), stroke));
                     if map.brush(hit.node).is_some() {
-                        painter.add(egui::Shape::convex_polygon(points, DROP_COLOR.gamma_multiply(0.25), egui::Stroke::NONE));
+                        painter.add(egui::Shape::convex_polygon(points, drop_color.gamma_multiply(0.25), egui::Stroke::NONE));
                     }
                 }
             }
@@ -844,7 +844,7 @@ impl Viewport {
                 let through = ui.input(|i| i.modifiers.alt);
                 let Some((at, _)) = crate::commands::drop_target(cx.state, &ray, self.camera.kind, through) else { return };
                 let Some(point) = self.camera.project(self.rect, at) else { return };
-                painter.circle(point, 5.0, DROP_COLOR.gamma_multiply(0.4), stroke);
+                painter.circle(point, 5.0, drop_color.gamma_multiply(0.4), stroke);
                 // The marker alone shows no depth in a 2D view, so say how deep the drop lands.
                 if self.camera.kind.is_2d() {
                     let axis = self.camera.kind.depth_axis();
@@ -862,7 +862,7 @@ impl Viewport {
     fn handle_drop(&mut self, ui: &Ui, response: &Response, cx: &mut ViewCtx) {
         let Some(payload) = response.dnd_release_payload::<DndPayload>() else {
             if let Some(payload) = response.dnd_hover_payload::<DndPayload>() {
-                ui.painter().rect_stroke(self.rect.shrink(1.0), 0.0, egui::Stroke::new(2.0, DROP_COLOR), egui::StrokeKind::Inside);
+                ui.painter().rect_stroke(self.rect.shrink(1.0), 0.0, egui::Stroke::new(2.0, crate::theme::colors().cyan), egui::StrokeKind::Inside);
                 ui.ctx().set_cursor_icon(CursorIcon::Copy);
                 if let Some(pos) = drop_pos(response) {
                     self.paint_drop_target(ui, cx, &payload, pos);
@@ -991,11 +991,11 @@ impl Viewport {
             shade: state.shade_mode(),
             orthographic: is_2d,
             clear: if is_2d {
-                crate::theme::linear(crate::theme::GRAY_0)
+                crate::theme::linear(crate::theme::colors().gray_0)
             } else if state.prefs.shade.is_lit() {
                 BG_LIT
             } else {
-                crate::theme::linear(crate::theme::GRAY_1)
+                crate::theme::linear(crate::theme::colors().gray_1)
             },
             line_width,
         }

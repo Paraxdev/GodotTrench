@@ -30,11 +30,11 @@ pub const RESTRICTED: &str = "the project is in Restricted Mode, click Restricte
 pub fn status_entry(ui: &mut egui::Ui, state: &EditorState) -> Option<egui::Response> {
     if state.scanning_code() {
         ui.separator();
-        ui.label(RichText::new(SCANNING).color(crate::theme::FG.gamma_multiply_u8(160))).on_hover_text(SCANNING_TIP);
+        ui.label(RichText::new(SCANNING).color(crate::theme::colors().fg.gamma_multiply_u8(160))).on_hover_text(SCANNING_TIP);
         None
     } else if state.restricted() {
         ui.separator();
-        let chip = egui::Button::new(RichText::new(CHIP).color(crate::theme::YELLOW)).frame(false);
+        let chip = egui::Button::new(RichText::new(CHIP).color(crate::theme::colors().yellow)).frame(false);
         Some(ui.add(chip).on_hover_text(CHIP_TIP))
     } else {
         None
@@ -158,7 +158,7 @@ impl TrustPrompt {
             ui.set_width(540.0);
             ui.heading(QUESTION);
             ui.add_space(4.0);
-            ui.label(RichText::new(root.display().to_string()).monospace().color(crate::theme::CYAN));
+            ui.label(RichText::new(root.display().to_string()).monospace().color(crate::theme::colors().cyan));
             ui.add_space(4.0);
             match &request {
                 TrustRequest::Project(_) => {

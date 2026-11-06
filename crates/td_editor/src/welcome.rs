@@ -150,13 +150,13 @@ pub fn view_hint(
         if state.tool == ToolKind::Select && rect.width() > 160.0 && rect.height() > 80.0 {
             let start = start_view == Some(kind);
             let (text, color) =
-                if start { ("Drag here to draw your first box", theme::YELLOW) } else { ("Drag here to draw a box", ui.visuals().text_color()) };
+                if start { ("Drag here to draw your first box", theme::colors().yellow) } else { ("Drag here to draw a box", ui.visuals().text_color()) };
             let painter = ui.painter_at(rect);
             let galley = painter.layout_no_wrap(text.into(), FontId::proportional(15.0), color);
             let back = Rect::from_center_size(rect.center(), galley.size() + Vec2::new(20.0, 12.0));
             painter.rect_filled(back, 6.0, ui.visuals().extreme_bg_color.gamma_multiply(0.85));
             if start {
-                painter.rect_stroke(back, 6.0, Stroke::new(1.5, theme::YELLOW), StrokeKind::Inside);
+                painter.rect_stroke(back, 6.0, Stroke::new(1.5, theme::colors().yellow), StrokeKind::Inside);
             }
 
             painter.galley(back.center() - galley.size() / 2.0, galley, color);
@@ -194,7 +194,7 @@ pub fn view_hint(
                     crate::commands::shortcut_text(ui.ctx(), &state.prefs, &Action::SetTool(ToolKind::Select)).map(|k| format!(" ({k})")).unwrap_or_default();
                 format!("To start, pick the Select tool{keys}, then drag {place} to draw your first box.")
             };
-            ui.label(RichText::new(first).size(15.0).color(theme::YELLOW));
+            ui.label(RichText::new(first).size(15.0).color(theme::colors().yellow));
             ui.add_space(8.0);
             let hollow = match crate::commands::shortcut_text(ui.ctx(), &state.prefs, &Action::CsgHollow) {
                 Some(keys) => format!("Brush > CSG > Hollow ({keys})"),
