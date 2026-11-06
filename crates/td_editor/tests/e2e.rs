@@ -3580,6 +3580,34 @@ fn language_switches_without_a_restart() {
     assert_eq!(image_difference(&english, &window("english_again")), 0.0);
 }
 
+/// The palette finds a command by its German name and by its English one, and the window it opens keeps its English
+/// title for MCP.
+#[test]
+#[ignore]
+fn the_palette_matches_german_and_english_names_and_windows_keep_english_ids() {
+    let ed = Editor::launch("palette_german");
+    ed.call("set_editor", json!({ "language": "de" }));
+    std::thread::sleep(Duration::from_millis(300));
+    let run = |query: &str| {
+        ed.input(
+            "window",
+            json!([{ "type": "move", "x": 10, "y": 10 }, { "type": "key", "key": "F1" }, { "type": "text", "text": query }, { "type": "key", "key": "Enter" }]),
+        );
+        std::thread::sleep(Duration::from_millis(400));
+    };
+    assert!(window_titles(&ed).is_empty());
+    run("brush: formgenerator");
+    assert_eq!(window_titles(&ed), ["Shape Generator"], "the German name opens the generator");
+
+    run("help: keyboard shortcuts");
+    let titles = window_titles(&ed);
+    assert!(titles.contains(&"Keyboard Shortcuts".to_string()) && titles.contains(&"Shape Generator".to_string()), "{titles:?}");
+    assert!(titles.iter().all(|t| t.is_ascii()), "MCP reads English titles: {titles:?}");
+
+    run("qqqq");
+    assert_eq!(window_titles(&ed).len(), 2, "a query nothing matches runs nothing");
+}
+
 /// The palette and the dialogs it opens work with the light colors, and the palette frame is light too.
 #[test]
 #[ignore]

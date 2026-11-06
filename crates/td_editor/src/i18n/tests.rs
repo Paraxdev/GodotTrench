@@ -925,7 +925,7 @@ fn mcp_code_stays_english() {
 }
 
 /// Files whose UI text all goes through the lookup, so a raw literal there is text someone forgot to translate.
-const CONVERTED: &[&str] = &[];
+const CONVERTED: &[&str] = &["dialogs.rs"];
 
 /// Functions of a file that is still being converted, as (file, function name).
 const CONVERTED_FNS: &[(&str, &str)] = &[("app.rs", "menu_bar"), ("app.rs", "help_menu_links")];

@@ -7,9 +7,11 @@ use td_geom::heightfield::{TerrainGen, TerrainShape};
 use td_geom::{Brush, Terrain, TerrainLayer, mesh_shapes, shapes};
 
 use crate::commands::{self, Action, ModelImport};
+use crate::i18n::{self, Lang, Msg, en, tr, tr_n, trf};
 use crate::mesh_tool::MeshOp;
 use crate::state::{EditorState, Shade};
 use crate::tools::ToolKind;
+use crate::widgets;
 
 /// Subsequence match score, higher is better. None if `query` is not a subsequence of `text`.
 pub fn fuzzy_score(query: &str, text: &str) -> Option<i32> {
@@ -48,166 +50,182 @@ pub struct CommandPalette {
     selected: usize,
 }
 
-fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
-    let mut out: Vec<(String, Action)> = vec![
-        ("File: New Map".into(), Action::NewMap),
-        ("File: Open Map".into(), Action::OpenMap),
-        ("File: Save".into(), Action::Save),
-        ("File: Save As".into(), Action::SaveAs),
-        ("File: Import .map".into(), Action::ImportQuakeMap),
-        ("File: Export .map".into(), Action::ExportQuakeMap),
-        ("File: Export glTF Binary (.glb) for Blender".into(), Action::ExportGlb),
-        ("File: Export Wavefront OBJ (.obj)".into(), Action::ExportObj),
-        ("Godot: Open Godot Project".into(), Action::OpenProject),
-        ("Godot: Reload Game Config".into(), Action::ReloadProject),
-        ("Godot: Open Project in Godot Editor".into(), Action::OpenGodotEditor),
-        ("Godot: Run Project".into(), Action::RunGodotProject),
-        ("Godot: Build in Godot".into(), Action::BuildInGodot),
-        ("Godot: Toggle Live Mode".into(), Action::ToggleLiveMode),
-        ("Edit: Undo".into(), Action::Undo),
-        ("Edit: Redo".into(), Action::Redo),
-        ("Edit: Duplicate".into(), Action::Duplicate),
-        ("Edit: Rename".into(), Action::Rename),
-        ("Edit: Delete".into(), Action::Delete),
-        ("Edit: Copy".into(), Action::Copy),
-        ("Edit: Cut".into(), Action::Cut),
-        ("Select: All".into(), Action::SelectAll),
-        ("Select: None".into(), Action::SelectNone),
-        ("Select: Inverse".into(), Action::SelectInverse),
-        ("Select: Touching".into(), Action::SelectTouching),
-        ("Select: Inside".into(), Action::SelectInside),
-        ("Select: Siblings".into(), Action::SelectSiblings),
-        ("Select: Same Material".into(), Action::SelectSameMaterial),
-        ("Group: Group Selection".into(), Action::Group),
-        ("Group: Ungroup".into(), Action::Ungroup),
-        ("Group: Close Group".into(), Action::CloseGroup),
-        ("Prefab: Create from Selection".into(), Action::CreatePrefab),
-        ("Prefab: Insert".into(), Action::InsertPrefab),
-        ("Prefab: Explode Instance".into(), Action::ExplodeInstances),
-        ("Prefab: Open".into(), Action::OpenPrefab),
-        ("View: Hide Selected".into(), Action::HideSelected),
-        ("View: Isolate Selected".into(), Action::IsolateSelected),
-        ("View: Show All".into(), Action::UnhideAll),
-        ("View: Lock Selected".into(), Action::LockSelected),
-        ("View: Unlock All".into(), Action::UnlockAll),
-        ("View: Focus Selection".into(), Action::FocusSelection),
-        ("View: Cycle Shading".into(), Action::ToggleTextured),
-        ("View: Increase Interface Scale".into(), Action::UiScaleUp),
-        ("View: Decrease Interface Scale".into(), Action::UiScaleDown),
-        ("View: Reset Interface Scale".into(), Action::UiScaleReset),
-        ("View: Maximize View".into(), Action::ToggleMaximizeView),
-        ("View: Single View".into(), Action::ViewLayout(1)),
-        ("View: Two Views".into(), Action::ViewLayout(2)),
-        ("View: Four Views".into(), Action::ViewLayout(4)),
-        ("Grid: Smaller".into(), Action::GridDown),
-        ("Grid: Larger".into(), Action::GridUp),
-        ("Grid: Toggle Snap".into(), Action::ToggleSnap),
-        ("Brush: CSG Subtract".into(), Action::CsgSubtract),
-        ("Brush: CSG Convex Merge".into(), Action::CsgMerge),
-        ("Brush: CSG Intersect".into(), Action::CsgIntersect),
-        ("Brush: Hollow".into(), Action::CsgHollow),
-        ("Brush: Snap Vertices to Grid".into(), Action::SnapVertices),
-        ("Brush: Move to World".into(), Action::MoveToWorld),
-        ("Brush: Shape Generator".into(), Action::ShowShapeDialog),
-        ("Brush: Add Trim (baseboards, molding)".into(), Action::ShowTrimDialog),
-        ("Brush: Random Fill from the prefab library".into(), Action::ShowRandomFillDialog),
-        ("Displacement: Create (power 2)".into(), Action::CreateDisplacement(2)),
-        ("Displacement: Create (power 3)".into(), Action::CreateDisplacement(3)),
-        ("Displacement: Create (power 4)".into(), Action::CreateDisplacement(4)),
-        ("Displacement: Remove".into(), Action::RemoveDisplacement),
-        ("Displacement: Sew".into(), Action::SewDisplacements),
-        ("Texture: Toggle UV Lock".into(), Action::ToggleUvLock),
-        ("Texture: Hotspot Fit".into(), Action::HotspotTexture),
-        ("Texture: UV Editor".into(), Action::ShowUvEditor),
-        ("Layer: Add Layer".into(), Action::AddLayer),
-        ("Godot: Bake Lighting".into(), Action::BakeLighting),
-        ("View: Set Cordon from Selection".into(), Action::SetCordonFromSelection),
-        ("View: Toggle Cordon".into(), Action::ToggleCordon),
-        ("View: Clear Cordon".into(), Action::ClearCordon),
-        ("File: Import Hammer .vmf".into(), Action::ImportVmf),
-        ("File: Convert Textures (VTF/VMT, WAD, WAL)".into(), Action::ConvertTextures),
-        ("File: Import Model as Mesh (.bbmodel)".into(), Action::ImportModel(ModelImport::Mesh)),
-        ("File: Import Model as Brushes (.bbmodel)".into(), Action::ImportModel(ModelImport::Brushes)),
-        ("File: Place Model Prop (.bbmodel, .glb)".into(), Action::ImportModel(ModelImport::Prop)),
-        ("File: Export .map, Cordon Only".into(), Action::ExportQuakeMapCordon),
-        ("File: New Tab".into(), Action::NewTab),
-        ("File: Close Tab".into(), Action::CloseTab),
-        ("File: Next Tab".into(), Action::NextTab),
-        ("Help: Keyboard Shortcuts".into(), Action::ShowKeymap),
-        ("Godot: Reload Models".into(), Action::ReloadModels),
-        ("Godot: Add Content to Project".into(), Action::ShowProjectContent),
-        ("Godot: Install or Update Addon".into(), Action::ShowAddonSetup),
-        ("Group: Duplicate Linked".into(), Action::DuplicateLinked),
-        ("Group: Unlink Groups".into(), Action::UnlinkGroups),
-        ("Mesh: Edit Mesh".into(), Action::EditMesh),
-        ("Edit: Toggle Edit Mode".into(), Action::ToggleEditMode),
-        ("Mesh: Convert Brushes to Mesh".into(), Action::ConvertToMesh),
-        ("Mesh: Convert Meshes to Brushes".into(), Action::ConvertToBrushes),
-        ("Mesh: Join Meshes".into(), Action::JoinMeshes),
-        ("Terrain: Create Terrain".into(), Action::ShowTerrainDialog),
-        ("Terrain: Flatten".into(), Action::TerrainFlatten),
-        ("Terrain: Auto Paint Layers".into(), Action::TerrainAutoPaint),
-        ("Scatter: New Empty Set".into(), Action::NewScatterSet),
-        ("Scatter: Fill Targets".into(), Action::ScatterFill),
-        ("Scatter: Panel".into(), Action::ShowScatterPanel),
-        ("Scatter: Install Nature Models".into(), Action::InstallNatureModels),
-        ("Scatter: Sets to Entities".into(), Action::ScatterToEntities),
-        ("Texture: Set Blend Material".into(), Action::SetBlendMaterial),
-        ("Texture: Clear Blend Material".into(), Action::ClearBlendMaterial),
-        ("Gameplay: Lift, Moving Platform".into(), Action::MakePlatform),
-        ("Gameplay: Install or Update Gameplay Entities".into(), Action::InstallGameplayEntities),
-        ("Gameplay: Link Selected Entities".into(), Action::ShowLinkDialog),
-        ("Gameplay: Logic Graph".into(), Action::ShowLogicGraph),
-        ("Help: Entity and Code Reference".into(), Action::ShowReference),
-        ("File: Preferences".into(), Action::ShowPreferences),
-        ("View: Toggle Transform Gizmo".into(), Action::ToggleTransformGizmo),
-        ("View: Toggle Godot Overlays".into(), Action::ToggleGodotOverlays),
-        ("View: Toggle Walkable Area".into(), Action::ToggleWalkable),
-        ("Edit: Repeat Last".into(), Action::RepeatLast),
-        ("Group: Open Group".into(), Action::OpenGroup),
-        ("Brush: Box from Last Bounds".into(), Action::CreateBrushFromBounds),
-        ("Godot: Reload Materials".into(), Action::ReloadMaterials),
-        ("Texture: Align to 3D View".into(), Action::AlignTextureToView),
-        ("Texture: Reset Alignment".into(), Action::ResetTexture),
-        ("Texture: Copy Material and Alignment".into(), Action::CopyAlignment),
-        ("Texture: Paste Alignment".into(), Action::PasteAlignment),
-        ("Texture: Toggle Treat as One".into(), Action::ToggleTreatAsOne),
-        ("Texture: Hotspot Editor".into(), Action::ShowHotspotEditor),
+/// A command listed as "Category: Name", `category` and `name` are English keys. `en` keeps the English label for
+/// searching, `shown` is in the editor's language.
+fn entry(category: &str, name: &str, action: Action) -> (Msg, Action) {
+    let en = format!("{}: {}", i18n::english(category), i18n::english(name));
+    (Msg { en, shown: format!("{}: {}", tr(category), tr(name)) }, action)
+}
+
+/// Like [`entry`] for a name that is built at run time, `name` is called again in English for the English label.
+fn entry_with(category: &str, name: impl Fn() -> String, action: Action) -> (Msg, Action) {
+    let en = {
+        let _en = i18n::scope(Lang::En);
+        format!("{}: {}", i18n::english(category), name())
+    };
+    (Msg { en, shown: format!("{}: {}", tr(category), name()) }, action)
+}
+
+fn palette_entries(state: &EditorState) -> Vec<(Msg, Action)> {
+    let mut out: Vec<(Msg, Action)> = vec![
+        entry(en!("File"), en!("New Map"), Action::NewMap),
+        entry(en!("File"), en!("Open Map"), Action::OpenMap),
+        entry(en!("File"), en!("Save"), Action::Save),
+        entry(en!("File"), en!("Save As"), Action::SaveAs),
+        entry(en!("File"), en!("Import .map"), Action::ImportQuakeMap),
+        entry(en!("File"), en!("Export .map"), Action::ExportQuakeMap),
+        entry(en!("File"), en!("Export glTF Binary (.glb) for Blender"), Action::ExportGlb),
+        entry(en!("File"), en!("Export Wavefront OBJ (.obj)"), Action::ExportObj),
+        entry(en!("Godot"), en!("Open Godot Project"), Action::OpenProject),
+        entry(en!("Godot"), en!("Reload Game Config"), Action::ReloadProject),
+        entry(en!("Godot"), en!("Open Project in Godot Editor"), Action::OpenGodotEditor),
+        entry(en!("Godot"), en!("Run Project"), Action::RunGodotProject),
+        entry(en!("Godot"), en!("Build in Godot"), Action::BuildInGodot),
+        entry(en!("Godot"), en!("Toggle Live Mode"), Action::ToggleLiveMode),
+        entry(en!("Edit"), en!("Undo"), Action::Undo),
+        entry(en!("Edit"), en!("Redo"), Action::Redo),
+        entry(en!("Edit"), en!("Duplicate"), Action::Duplicate),
+        entry(en!("Edit"), en!("Rename"), Action::Rename),
+        entry(en!("Edit"), en!("Delete"), Action::Delete),
+        entry(en!("Edit"), en!("Copy"), Action::Copy),
+        entry(en!("Edit"), en!("Cut"), Action::Cut),
+        entry(en!("Select"), en!("All"), Action::SelectAll),
+        entry(en!("Select"), en!("None"), Action::SelectNone),
+        entry(en!("Select"), en!("Inverse"), Action::SelectInverse),
+        entry(en!("Select"), en!("Touching"), Action::SelectTouching),
+        entry(en!("Select"), en!("Inside"), Action::SelectInside),
+        entry(en!("Select"), en!("Siblings"), Action::SelectSiblings),
+        entry(en!("Select"), en!("Same Material"), Action::SelectSameMaterial),
+        entry(en!("Group"), en!("Group Selection"), Action::Group),
+        entry(en!("Group"), en!("Ungroup"), Action::Ungroup),
+        entry(en!("Group"), en!("Close Group"), Action::CloseGroup),
+        entry(en!("Prefab"), en!("Create from Selection"), Action::CreatePrefab),
+        entry(en!("Prefab"), en!("Insert"), Action::InsertPrefab),
+        entry(en!("Prefab"), en!("Explode Instance"), Action::ExplodeInstances),
+        entry(en!("Prefab"), en!("Open"), Action::OpenPrefab),
+        entry(en!("View"), en!("Hide Selected"), Action::HideSelected),
+        entry(en!("View"), en!("Isolate Selected"), Action::IsolateSelected),
+        entry(en!("View"), en!("Show All"), Action::UnhideAll),
+        entry(en!("View"), en!("Lock Selected"), Action::LockSelected),
+        entry(en!("View"), en!("Unlock All"), Action::UnlockAll),
+        entry(en!("View"), en!("Focus Selection"), Action::FocusSelection),
+        entry(en!("View"), en!("Cycle Shading"), Action::ToggleTextured),
+        entry(en!("View"), en!("Increase Interface Scale"), Action::UiScaleUp),
+        entry(en!("View"), en!("Decrease Interface Scale"), Action::UiScaleDown),
+        entry(en!("View"), en!("Reset Interface Scale"), Action::UiScaleReset),
+        entry(en!("View"), en!("Maximize View"), Action::ToggleMaximizeView),
+        entry(en!("View"), en!("Single View"), Action::ViewLayout(1)),
+        entry(en!("View"), en!("Two Views"), Action::ViewLayout(2)),
+        entry(en!("View"), en!("Four Views"), Action::ViewLayout(4)),
+        entry(en!("Grid"), en!("Smaller"), Action::GridDown),
+        entry(en!("Grid"), en!("Larger"), Action::GridUp),
+        entry(en!("Grid"), en!("Toggle Snap"), Action::ToggleSnap),
+        entry(en!("Brush"), en!("CSG Subtract"), Action::CsgSubtract),
+        entry(en!("Brush"), en!("CSG Convex Merge"), Action::CsgMerge),
+        entry(en!("Brush"), en!("CSG Intersect"), Action::CsgIntersect),
+        entry(en!("Brush"), en!("Hollow"), Action::CsgHollow),
+        entry(en!("Brush"), en!("Snap Vertices to Grid"), Action::SnapVertices),
+        entry(en!("Brush"), en!("Move to World"), Action::MoveToWorld),
+        entry(en!("Brush"), en!("Shape Generator"), Action::ShowShapeDialog),
+        entry(en!("Brush"), en!("Add Trim (baseboards, molding)"), Action::ShowTrimDialog),
+        entry(en!("Brush"), en!("Random Fill from the prefab library"), Action::ShowRandomFillDialog),
+        entry(en!("Displacement"), en!("Create (power 2)"), Action::CreateDisplacement(2)),
+        entry(en!("Displacement"), en!("Create (power 3)"), Action::CreateDisplacement(3)),
+        entry(en!("Displacement"), en!("Create (power 4)"), Action::CreateDisplacement(4)),
+        entry(en!("Displacement"), en!("Remove"), Action::RemoveDisplacement),
+        entry(en!("Displacement"), en!("Sew"), Action::SewDisplacements),
+        entry(en!("Texture"), en!("Toggle UV Lock"), Action::ToggleUvLock),
+        entry(en!("Texture"), en!("Hotspot Fit"), Action::HotspotTexture),
+        entry(en!("Texture"), en!("UV Editor"), Action::ShowUvEditor),
+        entry(en!("Layer"), en!("Add Layer"), Action::AddLayer),
+        entry(en!("Godot"), en!("Bake Lighting"), Action::BakeLighting),
+        entry(en!("View"), en!("Set Cordon from Selection"), Action::SetCordonFromSelection),
+        entry(en!("View"), en!("Toggle Cordon"), Action::ToggleCordon),
+        entry(en!("View"), en!("Clear Cordon"), Action::ClearCordon),
+        entry(en!("File"), en!("Import Hammer .vmf"), Action::ImportVmf),
+        entry(en!("File"), en!("Convert Textures (VTF/VMT, WAD, WAL)"), Action::ConvertTextures),
+        entry(en!("File"), en!("Import Model as Mesh (.bbmodel)"), Action::ImportModel(ModelImport::Mesh)),
+        entry(en!("File"), en!("Import Model as Brushes (.bbmodel)"), Action::ImportModel(ModelImport::Brushes)),
+        entry(en!("File"), en!("Place Model Prop (.bbmodel, .glb)"), Action::ImportModel(ModelImport::Prop)),
+        entry(en!("File"), en!("Export .map, Cordon Only"), Action::ExportQuakeMapCordon),
+        entry(en!("File"), en!("New Tab"), Action::NewTab),
+        entry(en!("File"), en!("Close Tab"), Action::CloseTab),
+        entry(en!("File"), en!("Next Tab"), Action::NextTab),
+        entry(en!("Help"), en!("Keyboard Shortcuts"), Action::ShowKeymap),
+        entry(en!("Godot"), en!("Reload Models"), Action::ReloadModels),
+        entry(en!("Godot"), en!("Add Content to Project"), Action::ShowProjectContent),
+        entry(en!("Godot"), en!("Install or Update Addon"), Action::ShowAddonSetup),
+        entry(en!("Group"), en!("Duplicate Linked"), Action::DuplicateLinked),
+        entry(en!("Group"), en!("Unlink Groups"), Action::UnlinkGroups),
+        entry(en!("Mesh"), en!("Edit Mesh"), Action::EditMesh),
+        entry(en!("Edit"), en!("Toggle Edit Mode"), Action::ToggleEditMode),
+        entry(en!("Mesh"), en!("Convert Brushes to Mesh"), Action::ConvertToMesh),
+        entry(en!("Mesh"), en!("Convert Meshes to Brushes"), Action::ConvertToBrushes),
+        entry(en!("Mesh"), en!("Join Meshes"), Action::JoinMeshes),
+        entry(en!("Terrain"), en!("Create Terrain"), Action::ShowTerrainDialog),
+        entry(en!("Terrain"), en!("Flatten"), Action::TerrainFlatten),
+        entry(en!("Terrain"), en!("Auto Paint Layers"), Action::TerrainAutoPaint),
+        entry(en!("Scatter"), en!("New Empty Set"), Action::NewScatterSet),
+        entry(en!("Scatter"), en!("Fill Targets"), Action::ScatterFill),
+        entry(en!("Scatter"), en!("Panel"), Action::ShowScatterPanel),
+        entry(en!("Scatter"), en!("Install Nature Models"), Action::InstallNatureModels),
+        entry(en!("Scatter"), en!("Sets to Entities"), Action::ScatterToEntities),
+        entry(en!("Texture"), en!("Set Blend Material"), Action::SetBlendMaterial),
+        entry(en!("Texture"), en!("Clear Blend Material"), Action::ClearBlendMaterial),
+        entry(en!("Gameplay"), en!("Lift, Moving Platform"), Action::MakePlatform),
+        entry(en!("Gameplay"), en!("Install or Update Gameplay Entities"), Action::InstallGameplayEntities),
+        entry(en!("Gameplay"), en!("Link Selected Entities"), Action::ShowLinkDialog),
+        entry(en!("Gameplay"), en!("Logic Graph"), Action::ShowLogicGraph),
+        entry(en!("Help"), en!("Entity and Code Reference"), Action::ShowReference),
+        entry(en!("File"), en!("Preferences"), Action::ShowPreferences),
+        entry(en!("View"), en!("Toggle Transform Gizmo"), Action::ToggleTransformGizmo),
+        entry(en!("View"), en!("Toggle Godot Overlays"), Action::ToggleGodotOverlays),
+        entry(en!("View"), en!("Toggle Walkable Area"), Action::ToggleWalkable),
+        entry(en!("Edit"), en!("Repeat Last"), Action::RepeatLast),
+        entry(en!("Group"), en!("Open Group"), Action::OpenGroup),
+        entry(en!("Brush"), en!("Box from Last Bounds"), Action::CreateBrushFromBounds),
+        entry(en!("Godot"), en!("Reload Materials"), Action::ReloadMaterials),
+        entry(en!("Texture"), en!("Align to 3D View"), Action::AlignTextureToView),
+        entry(en!("Texture"), en!("Reset Alignment"), Action::ResetTexture),
+        entry(en!("Texture"), en!("Copy Material and Alignment"), Action::CopyAlignment),
+        entry(en!("Texture"), en!("Paste Alignment"), Action::PasteAlignment),
+        entry(en!("Texture"), en!("Toggle Treat as One"), Action::ToggleTreatAsOne),
+        entry(en!("Texture"), en!("Hotspot Editor"), Action::ShowHotspotEditor),
     ];
     for s in Shade::ALL {
-        out.push((format!("Shading: {}", s.title()), Action::SetShade(s)));
+        out.push(entry_with(en!("Shading"), || tr(s.title()).into(), Action::SetShade(s)));
     }
 
     for v in crate::bake::View::ALL {
-        out.push((format!("Shading: Baked View, {}", v.label()), Action::SetBakeView(v)));
+        out.push(entry_with(en!("Shading"), || trf!("Baked View, {view}", view = tr(v.label())), Action::SetBakeView(v)));
     }
 
     for t in crate::state::UiTheme::ALL {
-        out.push((format!("View: Theme: {}", t.label()), Action::SetTheme(t)));
+        out.push(entry_with(en!("View"), || trf!("Theme: {theme}", theme = tr(t.label())), Action::SetTheme(t)));
     }
 
     for l in crate::i18n::Lang::ALL {
-        out.push((format!("View: Language: {}", l.name()), Action::SetLanguage(l)));
+        out.push(entry_with(en!("View"), || trf!("Language: {language}", language = l.name()), Action::SetLanguage(l)));
     }
 
     for j in td_geom::Justify::ALL {
-        out.push((format!("Texture: Justify {}", j.label()), Action::Justify(j)));
+        out.push(entry_with(en!("Texture"), || trf!("Justify {side}", side = tr(j.label())), Action::Justify(j)));
     }
 
     for d in [0.125, 0.25, 0.5, 1.0, 2.0, 4.0] {
-        out.push((format!("Texture: Texel Density {d} units per pixel"), Action::TexelDensity(d)));
+        out.push(entry_with(en!("Texture"), || trf!("Texel Density {d} units per pixel", d), Action::TexelDensity(d)));
     }
 
     for k in crate::texture_ops::MeshUvKind::ALL {
-        out.push((format!("Mesh UVs: {}", k.label()), Action::MeshUv(k)));
+        out.push(entry_with(en!("Mesh UVs"), || tr(k.label()).into(), Action::MeshUv(k)));
     }
 
     for preset in td_doc::scatter::PRESETS {
-        out.push((format!("Scatter: Preset {preset}"), Action::ScatterPreset(preset.to_string())));
+        out.push(entry_with(en!("Scatter"), || trf!("Preset {preset}", preset), Action::ScatterPreset(preset.to_string())));
     }
 
     for class in crate::volume_tool::VOLUME_CLASSES {
-        out.push((format!("Gameplay: {class} Around Selection"), Action::VolumeAroundSelection(class.to_string())));
+        out.push(entry_with(en!("Gameplay"), || trf!("{class} Around Selection", class), Action::VolumeAroundSelection(class.to_string())));
     }
 
     {
@@ -220,47 +238,50 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ] {
             for trigger in [true, false] {
                 let action = Action::MakeDoor { kind: kind.clone(), trigger };
-                out.push((format!("Gameplay: {}", action.label()), action));
+                out.push(entry_with(en!("Gameplay"), || action.title(), action.clone()));
             }
         }
     }
 
     for op in MeshOp::ALL {
-        out.push((format!("Mesh: {}", op.label()), Action::MeshOp(op)));
+        out.push(entry_with(en!("Mesh"), || tr(op.label()).into(), Action::MeshOp(op)));
     }
 
     for n in 1..=9u8 {
-        out.push((format!("Camera: Store Bookmark {n}"), Action::StoreCamera(n)));
-        out.push((format!("Camera: Go to Bookmark {n}"), Action::RecallCamera(n)));
+        out.push(entry_with(en!("Camera"), || trf!("Store Bookmark {n}", n), Action::StoreCamera(n)));
+        out.push(entry_with(en!("Camera"), || trf!("Go to Bookmark {n}", n), Action::RecallCamera(n)));
     }
 
     for t in ToolKind::all() {
-        out.push((format!("Tool: {}", t.label()), Action::SetTool(t)));
+        out.push(entry_with(en!("Tool"), || tr(t.label()).into(), Action::SetTool(t)));
     }
 
     for axis in 0..3 {
         let a = commands::axis_name(axis);
-        out.push((format!("Transform: Rotate {a} +90"), Action::Rotate { axis, degrees: 90.0 }));
-        out.push((format!("Transform: Rotate {a} -90"), Action::Rotate { axis, degrees: -90.0 }));
-        out.push((format!("Transform: Flip {a}"), Action::Flip { axis }));
+        out.push(entry_with(en!("Transform"), || trf!("Rotate {axis} +90", axis = a), Action::Rotate { axis, degrees: 90.0 }));
+        out.push(entry_with(en!("Transform"), || trf!("Rotate {axis} -90", axis = a), Action::Rotate { axis, degrees: -90.0 }));
+        out.push(entry_with(en!("Transform"), || trf!("Flip {axis}", axis = a), Action::Flip { axis }));
         for sign in [1.0, -1.0] {
             let mut offset = DVec3::ZERO;
             offset[axis] = sign * state.grid;
-            out.push((format!("Transform: Nudge by Grid {}{a}", if sign > 0.0 { "+" } else { "-" }), Action::Nudge(offset)));
+            let step = format!("{}{a}", if sign > 0.0 { "+" } else { "-" });
+            out.push(entry_with(en!("Transform"), || trf!("Nudge by Grid {step}", step), Action::Nudge(offset)));
         }
     }
 
     for def in state.game.solid_entities() {
-        out.push((format!("Brush Entity: {}", def.classname), Action::CreateBrushEntity(def.classname.clone())));
+        out.push(entry_with(en!("Brush Entity"), || def.classname.clone(), Action::CreateBrushEntity(def.classname.clone())));
     }
 
     for def in state.game.point_entities() {
-        out.push((format!("Entity: Place {}", def.classname), Action::CreatePointEntity { classname: def.classname.clone(), at: None }));
+        let class = &def.classname;
+        out.push(entry_with(en!("Entity"), || trf!("Place {class}", class), Action::CreatePointEntity { classname: class.clone(), at: None }));
     }
 
     for layer in &state.doc.map.layers {
         if let Some(n) = state.doc.map.get(*layer) {
-            out.push((format!("Layer: Move Selection to {}", n.name()), Action::MoveToLayer(*layer)));
+            let name = n.name();
+            out.push(entry_with(en!("Layer"), || trf!("Move Selection to {name}", name), Action::MoveToLayer(*layer)));
         }
     }
 
@@ -270,6 +291,16 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
     }
 
     out
+}
+
+/// The entries that match `query` in the shown label or the English one, best first.
+fn ranked(query: &str, entries: Vec<(Msg, Action)>) -> Vec<(i32, Msg, Action)> {
+    let mut matches: Vec<(i32, Msg, Action)> = entries
+        .into_iter()
+        .filter_map(|(label, action)| [fuzzy_score(query, &label.shown), fuzzy_score(query, &label.en)].into_iter().flatten().max().map(|s| (s, label, action)))
+        .collect();
+    matches.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.shown.cmp(&b.1.shown)));
+    matches
 }
 
 impl CommandPalette {
@@ -284,9 +315,7 @@ impl CommandPalette {
             return;
         }
 
-        let mut matches: Vec<(i32, String, Action)> =
-            palette_entries(state).into_iter().filter_map(|(label, action)| fuzzy_score(&self.query, &label).map(|s| (s, label, action))).collect();
-        matches.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        let matches = ranked(&self.query, palette_entries(state));
         self.selected = self.selected.min(matches.len().saturating_sub(1));
 
         let (up, down, enter, escape) = ctx.input_mut(|i| {
@@ -326,19 +355,19 @@ impl CommandPalette {
         let modal =
             egui::Modal::new(egui::Id::new("command_palette")).area(area).frame(frame).backdrop_color(egui::Color32::from_black_alpha(60)).show(ctx, |ui| {
                 ui.set_width(460.0);
-                let edit = ui.add(egui::TextEdit::singleline(&mut self.query).hint_text("Type a command…").desired_width(f32::INFINITY));
+                let edit = ui.add(egui::TextEdit::singleline(&mut self.query).hint_text(tr("Type a command…")).desired_width(f32::INFINITY));
                 edit.request_focus();
                 if edit.changed() {
                     self.selected = 0;
                 }
 
                 ui.separator();
-                let help = matches.get(self.selected).and_then(|(_, _, a)| a.help());
+                let help = matches.get(self.selected).and_then(|(_, _, a)| a.help()).map(tr);
                 egui::ScrollArea::vertical().max_height(if help.is_some() { 270.0 } else { 320.0 }).show(ui, |ui| {
                     for (i, (_, label, action)) in matches.iter().enumerate().take(200) {
                         let shortcut = commands::shortcut_text(ctx, &state.prefs, action).unwrap_or_default();
                         let resp = ui.horizontal(|ui| {
-                            let r = ui.selectable_label(i == self.selected, label);
+                            let r = ui.selectable_label(i == self.selected, &label.shown);
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| ui.label(RichText::new(shortcut).weak()));
                             r
                         });
@@ -408,21 +437,21 @@ impl ShapeKind {
 
     fn label(&self) -> &'static str {
         match self {
-            ShapeKind::Cylinder => "Cylinder",
-            ShapeKind::Cone => "Cone",
-            ShapeKind::Sphere => "Sphere",
-            ShapeKind::Wedge => "Wedge",
-            ShapeKind::Spike => "Spike",
-            ShapeKind::Arch => "Arch",
-            ShapeKind::Pipe => "Pipe",
-            ShapeKind::Stairs => "Stairs",
-            ShapeKind::SpiralStairs => "Spiral Stairs",
-            ShapeKind::Torus => "Torus",
-            ShapeKind::ArchWall => "Arch Wall",
-            ShapeKind::GableRoof => "Gable Roof",
-            ShapeKind::Spire => "Spire",
-            ShapeKind::Grid => "Grid",
-            ShapeKind::Text => "Text",
+            ShapeKind::Cylinder => en!("Cylinder"),
+            ShapeKind::Cone => en!("Cone"),
+            ShapeKind::Sphere => en!("Sphere"),
+            ShapeKind::Wedge => en!("Wedge"),
+            ShapeKind::Spike => en!("Spike"),
+            ShapeKind::Arch => en!("Arch"),
+            ShapeKind::Pipe => en!("Pipe"),
+            ShapeKind::Stairs => en!("Stairs"),
+            ShapeKind::SpiralStairs => en!("Spiral Stairs"),
+            ShapeKind::Torus => en!("Torus"),
+            ShapeKind::ArchWall => en!("Arch Wall"),
+            ShapeKind::GableRoof => en!("Gable Roof"),
+            ShapeKind::Spire => en!("Spire"),
+            ShapeKind::Grid => en!("Grid"),
+            ShapeKind::Text => en!("Text"),
         }
     }
 
@@ -538,21 +567,21 @@ impl ShapeDialog {
         let mut open = self.open;
         let brushes = state.doc.selection.brushes(&state.doc.map);
         let bounds = if brushes.is_empty() { state.last_bounds } else { state.doc.map.bounds_of(brushes.iter().copied()) };
-        egui::Window::new("Shape Generator").open(&mut open).resizable(false).show(ctx, |ui| {
-            egui::ComboBox::from_label("Shape").selected_text(self.kind.label()).show_ui(ui, |ui| {
+        widgets::window(en!("Shape Generator")).open(&mut open).resizable(false).show(ctx, |ui| {
+            egui::ComboBox::new("shape_kind", tr("Shape")).selected_text(tr(self.kind.label())).show_ui(ui, |ui| {
                 for k in ShapeKind::ALL {
-                    ui.selectable_value(&mut self.kind, k, k.label());
+                    ui.selectable_value(&mut self.kind, k, tr(k.label()));
                 }
             });
             if matches!(
                 self.kind,
                 ShapeKind::Cylinder | ShapeKind::Cone | ShapeKind::Sphere | ShapeKind::Arch | ShapeKind::Pipe | ShapeKind::Torus | ShapeKind::ArchWall
             ) {
-                ui.add(egui::Slider::new(&mut self.sides, 3..=96).text(if matches!(self.kind, ShapeKind::Arch | ShapeKind::ArchWall) {
-                    "segments"
+                ui.add(egui::Slider::new(&mut self.sides, 3..=96).text(tr(if matches!(self.kind, ShapeKind::Arch | ShapeKind::ArchWall) {
+                    en!("segments")
                 } else {
-                    "sides"
-                }));
+                    en!("sides")
+                })));
             }
 
             if matches!(self.kind, ShapeKind::Arch | ShapeKind::Pipe | ShapeKind::Torus | ShapeKind::ArchWall | ShapeKind::GableRoof | ShapeKind::SpiralStairs)
@@ -560,54 +589,54 @@ impl ShapeDialog {
                 ui.add(
                     egui::DragValue::new(&mut self.thickness)
                         .range(1.0..=4096.0)
-                        .prefix(if self.kind == ShapeKind::SpiralStairs { "inner radius " } else { "thickness " })
+                        .prefix(format!("{} ", tr(if self.kind == ShapeKind::SpiralStairs { en!("inner radius") } else { en!("thickness") })))
                         .suffix(" u"),
                 );
             }
 
             if matches!(self.kind, ShapeKind::Cylinder | ShapeKind::Cone) {
                 ui.horizontal(|ui| {
-                    ui.label("Axis");
+                    ui.label(tr("Axis"));
                     for a in shapes::Axis::ALL {
                         ui.selectable_value(&mut self.axis, a, a.label());
                     }
                 })
                 .response
-                .on_hover_text("The axis the shape runs along, Y stands it upright, X or Z lays it down like a pipe");
+                .on_hover_text(tr("The axis the shape runs along, Y stands it upright, X or Z lays it down like a pipe"));
             }
 
             if matches!(self.kind, ShapeKind::Stairs | ShapeKind::SpiralStairs | ShapeKind::Grid) {
-                ui.add(egui::Slider::new(&mut self.steps, 1..=128).text(if self.kind == ShapeKind::Grid { "divisions" } else { "steps" }));
+                ui.add(egui::Slider::new(&mut self.steps, 1..=128).text(tr(if self.kind == ShapeKind::Grid { en!("divisions") } else { en!("steps") })));
             }
 
             if !self.kind.mesh_only() && matches!(self.kind, ShapeKind::Cylinder | ShapeKind::Cone | ShapeKind::Sphere) {
-                ui.checkbox(&mut self.as_mesh, "Create as editable mesh");
+                ui.checkbox(&mut self.as_mesh, tr("Create as editable mesh"));
             }
 
             if self.as_mesh || matches!(self.kind, ShapeKind::Torus) {
-                ui.checkbox(&mut self.smooth, "Smooth shading");
+                ui.checkbox(&mut self.smooth, tr("Smooth shading"));
             }
 
             if self.kind == ShapeKind::Text {
                 let t = &mut self.text;
                 egui::Grid::new("shape_text").num_columns(2).show(ui, |ui| {
-                    ui.label("Text");
+                    ui.label(tr("Text"));
                     ui.add(egui::TextEdit::multiline(&mut t.text).desired_rows(2).desired_width(180.0))
-                        .on_hover_text("A-Z, 0-9, space and . , ! ? ' - + : /, Enter starts a new line");
+                        .on_hover_text(tr("A-Z, 0-9, space and . , ! ? ' - + : /, Enter starts a new line"));
                     ui.end_row();
-                    ui.label("Letter height");
+                    ui.label(tr("Letter height"));
                     ui.add(egui::DragValue::new(&mut t.letter_height).range(1.0..=4096.0).suffix(" u"));
                     ui.end_row();
-                    ui.label("Depth");
+                    ui.label(tr("Depth"));
                     ui.add(egui::DragValue::new(&mut t.depth).range(0.125..=4096.0).suffix(" u"));
                     ui.end_row();
-                    ui.label("Spacing");
-                    ui.add(egui::DragValue::new(&mut t.spacing).range(0.0..=10.0).speed(0.05)).on_hover_text("Gap between letters in font cells");
+                    ui.label(tr("Spacing"));
+                    ui.add(egui::DragValue::new(&mut t.spacing).range(0.0..=10.0).speed(0.05)).on_hover_text(tr("Gap between letters in font cells"));
                     ui.end_row();
-                    ui.label("Orientation");
+                    ui.label(tr("Orientation"));
                     ui.horizontal(|ui| {
-                        ui.selectable_value(&mut t.standing, true, "standing");
-                        ui.selectable_value(&mut t.standing, false, "lying");
+                        ui.selectable_value(&mut t.standing, true, tr("standing"));
+                        ui.selectable_value(&mut t.standing, false, tr("lying"));
                     });
                     ui.end_row();
                 });
@@ -617,18 +646,19 @@ impl ShapeDialog {
             }
 
             let size = bounds.size();
+            let source = tr(if brushes.is_empty() { en!("last brush") } else { en!("replaces selection") });
             if self.kind == ShapeKind::Text {
                 let c = bounds.min;
-                ui.label(format!("Starts at {} {} {} ({})", c.x, c.y, c.z, if brushes.is_empty() { "last brush" } else { "replaces selection" }));
+                ui.label(trf!("Starts at {x} {y} {z} ({source})", x = c.x, y = c.y, z = c.z, source));
             } else {
-                ui.label(format!("Bounds {} x {} x {} ({})", size.x, size.y, size.z, if brushes.is_empty() { "last brush" } else { "replaces selection" }));
+                ui.label(trf!("Bounds {x} x {y} x {z} ({source})", x = size.x, y = size.y, z = size.z, source));
             }
 
             let preview = self.generate(&bounds, &state.current_material);
-            ui.label(RichText::new(format!("{} object(s)", preview.len())).weak());
-            if ui.add_enabled(!preview.is_empty(), egui::Button::new("Create")).clicked() {
+            ui.label(RichText::new(tr_n!(preview.len(), "{n} object", "{n} objects")).weak());
+            if ui.add_enabled(!preview.is_empty(), egui::Button::new(tr("Create"))).clicked() {
                 let parent = state.insert_parent();
-                state.doc.edit("Create Shape", |m, s| {
+                state.doc.edit(en!("Create Shape"), |m, s| {
                     let target_parent = brushes.first().and_then(|b| m.get(*b)).and_then(|n| n.parent).unwrap_or(parent);
                     for b in &brushes {
                         m.remove(*b);
@@ -679,7 +709,10 @@ impl Default for TerrainDialog {
 pub fn auto_paint_base_ui(ui: &mut egui::Ui, base: &mut Option<f64>) {
     ui.horizontal(|ui| {
         let mut sea = base.is_some();
-        if ui.checkbox(&mut sea, "Bands from sea level").on_hover_text("Measures the peak and low bands from this height instead of the lowest point").changed()
+        if ui
+            .checkbox(&mut sea, tr("Bands from sea level"))
+            .on_hover_text(tr("Measures the peak and low bands from this height instead of the lowest point"))
+            .changed()
         {
             *base = sea.then_some(0.0);
         }
@@ -720,68 +753,79 @@ pub fn make_terrain(
     t
 }
 
+fn terrain_shape_label(shape: TerrainShape) -> &'static str {
+    match shape {
+        TerrainShape::Flat => en!("Flat"),
+        TerrainShape::Hills => en!("Hills"),
+        TerrainShape::Mountain => en!("Mountain"),
+        TerrainShape::Island => en!("Island"),
+        TerrainShape::Valley => en!("Valley"),
+        TerrainShape::Ridges => en!("Ridges"),
+    }
+}
+
 impl TerrainDialog {
     pub fn show(&mut self, ctx: &egui::Context, state: &mut EditorState) {
         let mut open = self.open;
-        egui::Window::new("Create Terrain").open(&mut open).resizable(false).show(ctx, |ui| {
+        widgets::window(en!("Create Terrain")).open(&mut open).resizable(false).show(ctx, |ui| {
             egui::Grid::new("terrain_grid").num_columns(2).show(ui, |ui| {
-                ui.label("Resolution");
+                ui.label(tr("Resolution"));
                 egui::ComboBox::from_id_salt("terrain_res").selected_text(format!("{0} x {0}", self.resolution)).show_ui(ui, |ui| {
                     for r in [33, 65, 129, 257, 513, 1025] {
                         ui.selectable_value(&mut self.resolution, r, format!("{r} x {r}"));
                     }
                 });
                 ui.end_row();
-                ui.label("Cell size");
+                ui.label(tr("Cell size"));
                 ui.add(egui::DragValue::new(&mut self.cell_size).range(4.0..=1024.0).suffix(" u"));
                 ui.end_row();
-                ui.label("Size");
+                ui.label(tr("Size"));
                 let side = (self.resolution - 1) as f64 * self.cell_size;
-                ui.label(format!("{side} units ({:.0} m)", side / state.game.units_per_meter));
+                ui.label(trf!("{side} units ({meters} m)", side, meters = format!("{:.0}", side / state.game.units_per_meter)));
                 ui.end_row();
-                ui.label("Shape");
-                egui::ComboBox::from_id_salt("terrain_shape").selected_text(format!("{:?}", self.params.shape)).show_ui(ui, |ui| {
+                ui.label(tr("Shape"));
+                egui::ComboBox::from_id_salt("terrain_shape").selected_text(tr(terrain_shape_label(self.params.shape))).show_ui(ui, |ui| {
                     for s in [TerrainShape::Flat, TerrainShape::Hills, TerrainShape::Mountain, TerrainShape::Island, TerrainShape::Valley, TerrainShape::Ridges]
                     {
-                        ui.selectable_value(&mut self.params.shape, s, format!("{s:?}"));
+                        ui.selectable_value(&mut self.params.shape, s, tr(terrain_shape_label(s)));
                     }
                 });
                 ui.end_row();
-                ui.label("Height");
+                ui.label(tr("Height"));
                 ui.add(egui::DragValue::new(&mut self.params.height).range(0.0..=65536.0).suffix(" u"));
                 ui.end_row();
-                ui.label("Feature size");
+                ui.label(tr("Feature size"));
                 ui.add(egui::DragValue::new(&mut self.params.feature_size).range(16.0..=65536.0).suffix(" u"));
                 ui.end_row();
-                ui.label("Octaves / roughness");
+                ui.label(tr("Octaves / roughness"));
                 ui.horizontal(|ui| {
                     ui.add(egui::DragValue::new(&mut self.params.octaves).range(1..=10));
                     ui.add(egui::Slider::new(&mut self.params.roughness, 0.1..=0.9));
                 });
                 ui.end_row();
-                ui.label("Erosion");
+                ui.label(tr("Erosion"));
                 ui.add(egui::DragValue::new(&mut self.params.erosion_iterations).range(0..=200));
                 ui.end_row();
-                ui.label("Seed");
+                ui.label(tr("Seed"));
                 ui.add(egui::DragValue::new(&mut self.params.seed));
                 ui.end_row();
-                for (i, name) in ["Base layer", "Slope layer", "Peak layer", "Low layer"].iter().enumerate() {
-                    ui.label(*name);
+                for (i, name) in [en!("Base layer"), en!("Slope layer"), en!("Peak layer"), en!("Low layer")].into_iter().enumerate() {
+                    ui.label(tr(name));
                     ui.horizontal(|ui| {
                         ui.add(egui::TextEdit::singleline(&mut self.layers[i]).desired_width(140.0));
-                        if ui.button("Use Current").clicked() {
+                        if ui.button(tr("Use Current")).clicked() {
                             self.layers[i] = state.current_material.clone();
                         }
 
-                        ui.add(egui::DragValue::new(&mut self.tiles[i]).range(8.0..=8192.0).prefix("tile ").suffix(" u"));
+                        ui.add(egui::DragValue::new(&mut self.tiles[i]).range(8.0..=8192.0).prefix(format!("{} ", tr("tile"))).suffix(" u"));
                     });
                     ui.end_row();
                 }
 
-                ui.label("Center");
+                ui.label(tr("Center"));
                 ui.horizontal(|ui| {
                     let mut at_cursor = self.center.is_none();
-                    if ui.checkbox(&mut at_cursor, "3D cursor").changed() {
+                    if ui.checkbox(&mut at_cursor, tr("3D cursor")).changed() {
                         let cursor = state.cursor_world.map(|c| state.snap(c)).unwrap_or(DVec3::ZERO);
                         // Adding 0.0 turns a snapped -0.0 into 0.0, which the field would show as "-0".
                         self.center = (!at_cursor).then(|| cursor.to_array().map(|v| v + 0.0));
@@ -794,30 +838,30 @@ impl TerrainDialog {
                     }
                 });
                 ui.end_row();
-                ui.label("Heightmap");
+                ui.label(tr("Heightmap"));
                 ui.horizontal(|ui| {
                     ui.label(
                         self.heightmap
                             .as_ref()
                             .map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
-                            .unwrap_or_else(|| "procedural".into()),
+                            .unwrap_or_else(|| tr("procedural").into()),
                     );
-                    if ui.button("Import PNG…").clicked() {
-                        self.heightmap = commands::file_dialog(state, |d| d.add_filter("Heightmap", &["png", "tga", "bmp"]).pick_file());
+                    if ui.button(tr("Import PNG…")).clicked() {
+                        self.heightmap = commands::file_dialog(state, |d| d.add_filter(tr("Heightmap"), &["png", "tga", "bmp"]).pick_file());
                     }
 
-                    if self.heightmap.is_some() && ui.button("Clear").clicked() {
+                    if self.heightmap.is_some() && ui.button(tr("Clear")).clicked() {
                         self.heightmap = None;
                     }
                 });
                 ui.end_row();
             });
-            ui.checkbox(&mut self.auto_paint, "Paint layers from slope and height");
+            ui.checkbox(&mut self.auto_paint, tr("Paint layers from slope and height"));
             if self.auto_paint {
                 auto_paint_base_ui(ui, &mut state.auto_paint_base);
             }
 
-            if ui.button("Create").clicked() {
+            if ui.button(tr("Create")).clicked() {
                 let side = (self.resolution - 1) as f64 * self.cell_size;
                 let cursor = || state.cursor_world.map(|c| state.snap(c)).unwrap_or(DVec3::ZERO);
                 let center = self.center.map(DVec3::from_array).unwrap_or_else(cursor);
@@ -839,7 +883,7 @@ impl TerrainDialog {
                     state.auto_paint_base,
                 );
                 let parent = state.insert_parent();
-                state.doc.edit("Create Terrain", |m, s| {
+                state.doc.edit(en!("Create Terrain"), |m, s| {
                     let id = m.insert(parent, NodeKind::Terrain(t));
                     s.clear();
                     s.select_node(id);
@@ -890,22 +934,22 @@ impl KeymapWindow {
         }
 
         let mut open = self.open;
-        egui::Window::new("Keyboard Shortcuts").open(&mut open).default_size([520.0, 520.0]).show(ctx, |ui| {
+        widgets::window(en!("Keyboard Shortcuts")).open(&mut open).default_size([520.0, 520.0]).show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label("Preset");
+                ui.label(tr("Preset"));
                 egui::ComboBox::from_id_salt("keymap_preset").selected_text(commands::preset_label(&state.prefs.keymap_preset)).show_ui(ui, |ui| {
                     for p in commands::PRESETS {
                         ui.selectable_value(&mut state.prefs.keymap_preset, p.to_string(), commands::preset_label(p));
                     }
                 });
-                if ui.button("Reset overrides").clicked() {
+                if ui.button(tr("Reset overrides")).clicked() {
                     state.prefs.key_overrides.clear();
                 }
 
-                ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text("filter").desired_width(160.0));
+                ui.add(egui::TextEdit::singleline(&mut self.filter).hint_text(tr("filter")).desired_width(160.0));
             });
             if self.recording.is_some() {
-                ui.label(RichText::new("Press the new shortcut (Esc cancels)").color(crate::theme::colors().yellow));
+                ui.label(RichText::new(tr("Press the new shortcut (Esc cancels)")).color(crate::theme::colors().yellow));
             }
 
             ui.separator();
@@ -913,25 +957,25 @@ impl KeymapWindow {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 egui::Grid::new("keymap").striped(true).num_columns(3).show(ui, |ui| {
                     for action in commands::bindable_actions() {
-                        let label = action.label();
-                        if !self.filter.is_empty() && fuzzy_score(&self.filter, &label).is_none() {
+                        let label = action.title();
+                        if !self.filter.is_empty() && fuzzy_score(&self.filter, &label).or_else(|| fuzzy_score(&self.filter, &action.label())).is_none() {
                             continue;
                         }
 
                         let id = action.binding_id();
                         let keys: Vec<String> = active.iter().filter(|(_, a)| *a == action).map(|(s, _)| commands::shortcut_to_text(s)).collect();
                         ui.label(label);
-                        ui.label(RichText::new(if keys.is_empty() { "unbound".to_string() } else { keys.join(", ") }).monospace());
+                        ui.label(RichText::new(if keys.is_empty() { tr("unbound").to_string() } else { keys.join(", ") }).monospace());
                         ui.horizontal(|ui| {
-                            if ui.small_button(if self.recording.as_deref() == Some(id.as_str()) { "…" } else { "Set" }).clicked() {
+                            if ui.small_button(if self.recording.as_deref() == Some(id.as_str()) { "…" } else { tr("Set") }).clicked() {
                                 self.recording = Some(id.clone());
                             }
 
-                            if ui.small_button("Clear").clicked() {
+                            if ui.small_button(tr("Clear")).clicked() {
                                 state.prefs.key_overrides.insert(id.clone(), String::new());
                             }
 
-                            if state.prefs.key_overrides.contains_key(&id) && ui.small_button("Default").clicked() {
+                            if state.prefs.key_overrides.contains_key(&id) && ui.small_button(tr("Default")).clicked() {
                                 state.prefs.key_overrides.remove(&id);
                             }
                         });
@@ -1008,36 +1052,36 @@ impl LinkDialog {
         let mut open = self.open;
         let mut apply = false;
         let mut swap = false;
-        egui::Window::new("Link Entities").open(&mut open).resizable(false).show(ctx, |ui| {
+        widgets::window(en!("Link Entities")).open(&mut open).resizable(false).show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(&from_name).strong());
-                swap = ui.small_button("⇄").on_hover_text("Swap").clicked();
+                swap = ui.small_button("⇄").on_hover_text(tr("Swap")).clicked();
 
                 ui.label(RichText::new(&to_name).strong());
             });
             egui::Grid::new("link_grid").num_columns(2).show(ui, |ui| {
-                ui.label("When");
+                ui.label(tr("When"));
                 egui::ComboBox::from_id_salt("link_out").selected_text(&self.output).show_ui(ui, |ui| {
                     for o in outs {
                         ui.selectable_value(&mut self.output, o.clone(), o);
                     }
                 });
                 ui.end_row();
-                ui.label("call");
+                ui.label(tr("call"));
                 egui::ComboBox::from_id_salt("link_in").selected_text(&self.input).show_ui(ui, |ui| {
                     for i in ins {
                         ui.selectable_value(&mut self.input, i.clone(), i);
                     }
                 });
                 ui.end_row();
-                ui.label("parameter");
+                ui.label(tr("parameter"));
                 ui.text_edit_singleline(&mut self.parameter);
                 ui.end_row();
-                ui.label("delay");
+                ui.label(tr("delay"));
                 ui.add(egui::DragValue::new(&mut self.delay).range(0.0..=3600.0).speed(0.05).suffix(" s"));
                 ui.end_row();
             });
-            apply = ui.button("Link").clicked();
+            apply = ui.button(tr("Link")).clicked();
         });
         if swap {
             self.swap(state);
@@ -1140,10 +1184,10 @@ mod tests {
         let languages: Vec<_> = entries.iter().filter(|(_, a)| matches!(a, Action::SetLanguage(_))).collect();
         assert_eq!(languages.len(), crate::i18n::Lang::ALL.len());
         for l in crate::i18n::Lang::ALL {
-            assert!(languages.iter().any(|(label, a)| *a == Action::SetLanguage(l) && *label == format!("View: Language: {}", l.name())));
+            assert!(languages.iter().any(|(label, a)| *a == Action::SetLanguage(l) && label.en == format!("View: Language: {}", l.name())));
         }
 
-        let hits = |q: &str| entries.iter().filter(|(label, _)| fuzzy_score(q, label).is_some() && label.starts_with("View: Language")).count();
+        let hits = |q: &str| entries.iter().filter(|(label, _)| fuzzy_score(q, &label.en).is_some() && label.en.starts_with("View: Language")).count();
         assert_eq!(hits("language deutsch"), 1);
         assert_eq!(hits("language"), 8);
     }
@@ -1151,17 +1195,36 @@ mod tests {
     #[test]
     fn palette_ranks_grid_larger_first() {
         let state = EditorState::new(crate::state::Prefs::default());
-        let mut matches: Vec<(i32, String, Action)> =
-            palette_entries(&state).into_iter().filter_map(|(label, action)| fuzzy_score("grid larger", &label).map(|s| (s, label, action))).collect();
-        matches.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        let matches = ranked("grid larger", palette_entries(&state));
         assert_eq!(matches[0].2, Action::GridUp);
+        assert_eq!(matches[0].1.en, "Grid: Larger");
+    }
+
+    #[test]
+    fn the_palette_finds_a_command_by_its_english_or_its_translated_name() {
+        let _ja =
+            crate::i18n::test_catalogue(Lang::Ja, r#"{ "Grid": "グリッド", "Larger": "大きく", "Smaller": "小さく", "Select": "選択", "All": "すべて" }"#);
+        let state = EditorState::new(crate::state::Prefs::default());
+        let _scope = i18n::scope(Lang::Ja);
+        let entries = palette_entries(&state);
+        let up = entries.iter().find(|(_, a)| *a == Action::GridUp).unwrap().0.clone();
+        assert_eq!((up.en.as_str(), up.shown.as_str()), ("Grid: Larger", "グリッド: 大きく"));
+        for query in ["grid larger", "グリッド: 大きく", "グリッド 大きく"] {
+            let matches = ranked(query, entries.clone());
+            assert_eq!(matches[0].2, Action::GridUp, "{query}");
+        }
+
+        let down = ranked("グリッド小", entries.clone());
+        assert_eq!(down[0].2, Action::GridDown);
+        assert!(ranked("zzzz", entries.clone()).is_empty());
+        assert_eq!(ranked("", entries.clone()).len(), entries.len(), "an empty query lists everything");
     }
 
     #[test]
     fn command_help_stays_short() {
         use crate::i18n::{Lang, scope, tr};
         let state = EditorState::new(crate::state::Prefs::default());
-        let helps: Vec<_> = palette_entries(&state).into_iter().filter_map(|(label, action)| action.help().map(|h| (label, h))).collect();
+        let helps: Vec<_> = palette_entries(&state).into_iter().filter_map(|(label, action)| action.help().map(|h| (label.en, h))).collect();
         assert!(helps.len() > 30, "{} commands explain themselves", helps.len());
         for lang in Lang::ALL {
             let _scope = scope(lang);
@@ -1179,10 +1242,65 @@ mod tests {
         let entries = palette_entries(&state);
         for (i, (label, action)) in entries.iter().enumerate() {
             let twin = entries[i + 1..].iter().find(|(_, other)| other == action);
-            assert!(twin.is_none(), "{label} and {} run the same command", twin.unwrap().0);
+            assert!(twin.is_none(), "{} and {} run the same command", label.en, twin.unwrap().0.en);
         }
 
         assert!(entries.iter().any(|(_, a)| *a == Action::ToggleEditMode));
+    }
+
+    #[test]
+    fn the_generator_and_keymap_windows_open_under_their_english_ids_in_german() {
+        let _de = crate::i18n::test_catalogue(
+            Lang::De,
+            r#"{ "Shape Generator": "Formgenerator", "Create Terrain": "Gelände erstellen", "Keyboard Shortcuts": "Tastenkürzel", "Link Entities": "Entitäten verknüpfen" }"#,
+        );
+        let _scope = i18n::scope(Lang::De);
+        let mut state = EditorState::new(crate::state::Prefs::default());
+        let layer = state.doc.map.default_layer();
+        state.doc.edit("add", |m, s| {
+            let a = td_doc::ops::create_point_entity(m, layer, "logic_branch", DVec3::ZERO);
+            let b = td_doc::ops::create_point_entity(m, layer, "light", DVec3::X);
+            s.select_node(a);
+            s.select_node(b);
+        });
+        let (mut shape, mut terrain, mut keymap, mut link) = (ShapeDialog::default(), TerrainDialog::default(), KeymapWindow::default(), LinkDialog::default());
+        (shape.open, terrain.open, keymap.open) = (true, true, true);
+        link.open_for(&state);
+        assert!(link.open);
+        let ctx = egui::Context::default();
+        for time in [0.0, 0.1, 0.2] {
+            ctx.begin_pass(egui::RawInput {
+                time: Some(time),
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 900.0))),
+                ..Default::default()
+            });
+            shape.show(&ctx, &mut state);
+            terrain.show(&ctx, &mut state);
+            keymap.show(&ctx, &mut state);
+            link.show(&ctx, &mut state);
+            ctx.end_pass().drop_without_applying_deltas();
+        }
+
+        for english in ["Shape Generator", "Create Terrain", "Keyboard Shortcuts", "Link Entities"] {
+            let id = egui::Id::new(Some(english));
+            assert!(ctx.memory(|m| m.area_rect(id)).is_some(), "{english} is open under its English id");
+            assert!(ctx.memory(|m| m.area_rect(egui::Id::new(Some(tr(english))))).is_none(), "{english} is not under its German id");
+        }
+    }
+
+    #[test]
+    fn no_two_commands_have_the_same_name_in_any_language() {
+        let state = EditorState::new(crate::state::Prefs::default());
+        for lang in Lang::ALL {
+            let _scope = i18n::scope(lang);
+            let entries = palette_entries(&state);
+            let mut seen = std::collections::HashMap::new();
+            for (label, action) in &entries {
+                if let Some(other) = seen.insert(label.shown.clone(), action) {
+                    panic!("{} {:?} and {:?} are both called {}", lang.code(), other, action, label.shown);
+                }
+            }
+        }
     }
 
     #[test]
@@ -1203,13 +1321,18 @@ mod tests {
         use crate::i18n::{Lang, scope, tr};
         let state = EditorState::new(crate::state::Prefs::default());
         for (label, action) in palette_entries(&state) {
-            let jargon = ["CSG", "Hollow", "UV Lock", "Displacement", "Cordon", "Prefab", "Duplicate Linked", "Convex"].iter().any(|j| label.contains(j));
+            let jargon = ["CSG", "Hollow", "UV Lock", "Displacement", "Cordon", "Prefab", "Duplicate Linked", "Convex"].iter().any(|j| label.en.contains(j));
             let help = action.help();
-            assert!(!jargon || help.is_some(), "{label} needs a help line");
+            assert!(!jargon || help.is_some(), "{} needs a help line", label.en);
             for lang in Lang::ALL {
                 let _scope = scope(lang);
                 let shown = help.map(tr);
-                assert!(shown.is_none_or(|h| !h.contains(['\u{2013}', '\u{2014}']) && !h.contains(" - ")), "{} {label}: no dashes as punctuation", lang.code());
+                assert!(
+                    shown.is_none_or(|h| !h.contains(['\u{2013}', '\u{2014}']) && !h.contains(" - ")),
+                    "{} {}: no dashes as punctuation",
+                    lang.code(),
+                    label.en
+                );
             }
         }
     }

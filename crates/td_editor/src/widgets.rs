@@ -203,6 +203,12 @@ pub fn effective_type(defined: Option<PropertyType>, name: &str, value: &str) ->
     }
 }
 
+/// A window titled in the editor's language under the id egui gives its English title, so positions, `open_windows`
+/// and the MCP window list stay the same in every language.
+pub fn window(title: &str) -> egui::Window<'_> {
+    egui::Window::new(crate::i18n::tr(title)).id(egui::Id::new(Some(crate::i18n::english(title))))
+}
+
 /// A collapsible section on a raised header card.
 pub struct Collapsing {
     title: RichText,
@@ -262,6 +268,27 @@ fn chevron(ui: &mut Ui, openness: f32, response: &egui::Response) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn window_id(ctx: &egui::Context, window: egui::Window<'_>) -> egui::Id {
+        ctx.begin_pass(egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0))), ..Default::default() });
+        let id = window.show(ctx, |_| {}).expect("the window is visible").response.layer_id.id;
+        ctx.end_pass().drop_without_applying_deltas();
+        id
+    }
+
+    #[test]
+    fn a_window_shows_its_translation_under_the_id_of_its_english_title() {
+        use crate::i18n::{Lang, scope, test_catalogue};
+        let ctx = egui::Context::default();
+        let english = window_id(&ctx, egui::Window::new("Shape Generator"));
+        assert_eq!(window_id(&ctx, window("Shape Generator")), english, "English");
+        let _de = test_catalogue(Lang::De, r#"{ "Shape Generator": "Formgenerator", "Create Terrain": "Formgenerator" }"#);
+        let _scope = scope(Lang::De);
+        assert_eq!(window_id(&ctx, window("Shape Generator")), english, "German");
+        let terrain = window_id(&ctx, window("Create Terrain"));
+        assert_eq!(terrain, window_id(&ctx, egui::Window::new("Create Terrain")));
+        assert_ne!(terrain, english, "two keys that translate to one word keep two ids");
+    }
 
     #[test]
     fn guesses_editors_for_undefined_properties() {
