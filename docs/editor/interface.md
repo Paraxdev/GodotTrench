@@ -191,9 +191,12 @@ wrong, you can fix it in [the locale file of that language](https://github.com/P
 see [Translations](../development.md#translations).
 
 > [!NOTE]
-> The manual stays in English and names the English labels. When a page says *File > Preferences*, look for the same
-> entry in your language, or type the English name into the command palette. Entity classnames, map keys, file formats,
-> the log and the [MCP server](../mcp.md) stay in English too.
+> The manual follows the language of the editor. With a language picked, **F1** over a tool, panel or menu, and the
+> **Help** menu entries, open that page of the manual in your language. The language button in the header of the manual
+> switches the language there. A page that is not translated yet, or that has changed since it was translated, shows
+> in English with a note on top. The screenshots show the English editor, so look for the same entry in your
+> language, or type the English name into the command palette. Entity classnames, map keys, file formats, the log and
+> the [MCP server](../mcp.md) stay in English in every language.
 
 <div class="td-mcp" markdown>
 

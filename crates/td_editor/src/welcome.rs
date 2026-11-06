@@ -14,7 +14,9 @@ use crate::state::EditorState;
 use crate::theme;
 use crate::tools::ToolKind;
 
-pub const GETTING_STARTED_URL: &str = "https://paraxdev.github.io/TrenchDot/getting-started.html";
+pub fn getting_started_url() -> String {
+    format!("{}getting-started.html", crate::help::site())
+}
 
 pub const CAMERA_3D_HELP: &str = en!("Hold the right mouse button to look around, WASD flies. Middle drag pans, the wheel moves forward and back.");
 pub const CAMERA_2D_HELP: &str = en!("Right or middle drag pans, the wheel zooms. Drag on empty space to draw a box brush.");
@@ -212,7 +214,8 @@ pub fn view_hint(
             ui.label(RichText::new(tr(CAMERA_3D_HELP)).weak());
             ui.add_space(6.0);
             ui.horizontal_wrapped(|ui| {
-                ui.hyperlink_to(tr("Getting Started Guide"), GETTING_STARTED_URL).on_hover_text(GETTING_STARTED_URL);
+                let guide = getting_started_url();
+                ui.hyperlink_to(tr("Getting Started Guide"), &guide).on_hover_text(&guide);
                 let maps = maps.get(ui.ctx(), root.as_deref());
                 if !maps.is_empty() {
                     ui.menu_button(tr("Open a map from this project"), |ui| maps_menu(ui, root.as_deref(), maps, actions))
@@ -342,7 +345,7 @@ mod tests {
 
         harness.get_by_label("Getting Started Guide").click();
         harness.run();
-        assert_eq!(harness.state().opened, [GETTING_STARTED_URL], "the link reaches the app, which opens it in the browser");
+        assert_eq!(harness.state().opened, [getting_started_url()], "the link reaches the app, which opens it in the browser");
 
         // The scan runs on a thread, the menu shows up once it is done.
         for _ in 0..500 {
@@ -366,6 +369,24 @@ mod tests {
         harness.run();
         assert!(!harness.state().state.prefs.start_hints);
         assert!(harness.query_by_label("This is a new, empty map").is_none());
+    }
+
+    #[test]
+    fn the_getting_started_link_opens_the_guide_in_the_editor_language() {
+        use egui_kittest::kittest::Queryable;
+
+        for (lang, label, url) in [
+            (crate::i18n::Lang::De, "Einstieg", "https://paraxdev.github.io/TrenchDot/de/getting-started.html"),
+            (crate::i18n::Lang::Ja, "はじめにガイド", "https://paraxdev.github.io/TrenchDot/ja/getting-started.html"),
+            (crate::i18n::Lang::En, "Getting Started Guide", "https://paraxdev.github.io/TrenchDot/getting-started.html"),
+        ] {
+            let _scope = crate::i18n::scope(lang);
+            let mut harness = card_harness(Fixture::new(EditorState::new(Default::default())));
+            harness.run();
+            harness.get_by_label(label).click();
+            harness.run();
+            assert_eq!(harness.state().opened, [url], "{}", lang.code());
+        }
     }
 
     /// Where the card's title and its last row sit in a 3D view at `view`.

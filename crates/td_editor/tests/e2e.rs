@@ -2210,27 +2210,25 @@ fn theme_switches_without_a_restart() {
     assert_eq!(image_difference(&body(&dark), &body(&again)), 0.0, "the palette command brings the dark window back exactly");
 }
 
-/// F1 over a toolbar tool and a Ctrl+click on it open the tool's page of the manual. The system opener is replaced by a
-/// script that writes down what it was asked to open, so no browser starts.
-#[test]
-#[ignore]
+/// An editor whose system opener is replaced by a script that writes down what it was asked to open, so no browser
+/// starts. The closure waits for that many lines in the log, 0 for what is there now.
 #[cfg(unix)]
-fn f1_and_ctrl_click_on_a_tool_open_its_manual_page() {
+fn editor_with_opener(name: &'static str) -> (Editor, impl Fn(usize) -> Vec<String>) {
     use std::os::unix::fs::PermissionsExt;
 
     let bin = artifacts().join("opener");
     std::fs::create_dir_all(&bin).unwrap();
     let log = bin.join("opened.txt");
     let _ = std::fs::remove_file(&log);
-    for name in ["xdg-open", "open"] {
-        let script = bin.join(name);
+    for opener in ["xdg-open", "open"] {
+        let script = bin.join(opener);
         std::fs::write(&script, format!("#!/bin/sh\necho \"$1\" >> '{}'\n", log.display())).unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 
     let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap_or_default());
-    let ed = Editor::launch_env("manual", &[], &[("PATH", &path)]);
-    let opened = |count: usize| {
+    let ed = Editor::launch_env(name, &[], &[("PATH", &path)]);
+    let opened = move |count: usize| {
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
             let lines: Vec<String> = std::fs::read_to_string(&log).unwrap_or_default().lines().map(str::to_string).collect();
@@ -2241,10 +2239,25 @@ fn f1_and_ctrl_click_on_a_tool_open_its_manual_page() {
             std::thread::sleep(Duration::from_millis(100));
         }
     };
+    (ed, opened)
+}
+
+/// The middle of the Clip tool button in window points.
+#[cfg(unix)]
+fn clip_button_center(ed: &Editor) -> (f64, f64) {
     let state = ed.state();
     let button = state["ui"]["tool_buttons"].as_array().unwrap().iter().find(|b| b["tool"] == "Clip").expect("the Clip tool button")["rect"].clone();
     let r: Vec<f64> = button.as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
-    let (x, y) = ((r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0);
+    ((r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0)
+}
+
+/// F1 over a toolbar tool and a Ctrl+click on it open the tool's page of the manual.
+#[test]
+#[ignore]
+#[cfg(unix)]
+fn f1_and_ctrl_click_on_a_tool_open_its_manual_page() {
+    let (ed, opened) = editor_with_opener("manual");
+    let (x, y) = clip_button_center(&ed);
     let page = "https://paraxdev.github.io/TrenchDot/editor/brushes.html#reshape";
 
     ed.input("window", json!([{ "type": "move", "x": x, "y": y }, { "type": "key", "key": "F1" }, { "type": "text", "text": "grid larger" }, { "type": "key", "key": "Enter" }]));
@@ -2264,6 +2277,35 @@ fn f1_and_ctrl_click_on_a_tool_open_its_manual_page() {
     assert_eq!(ed.state()["editor"]["grid"], 32.0, "the palette ran the command");
     std::thread::sleep(Duration::from_secs(1));
     assert_eq!(opened(0).len(), 2, "nothing else was opened");
+}
+
+/// The manual opens in the language of the editor, English at the root of the site and every other language in its own
+/// folder.
+#[test]
+#[ignore]
+#[cfg(unix)]
+fn f1_opens_the_manual_in_the_editor_language() {
+    let (ed, opened) = editor_with_opener("manual_language");
+    let page = |folder: &str| format!("https://paraxdev.github.io/TrenchDot/{folder}editor/brushes.html#reshape");
+
+    ed.call("set_editor", json!({ "language": "de" }));
+    let (x, y) = clip_button_center(&ed);
+    ed.input("window", json!([{ "type": "move", "x": x, "y": y }, { "type": "key", "key": "F1" }]));
+    assert!(ed.state()["status"].as_str().unwrap().contains(&page("de/")), "{}", ed.state()["status"]);
+    assert_eq!(opened(1), [page("de/")]);
+
+    ed.call("set_editor", json!({ "language": "zh-Hans" }));
+    let (x, y) = clip_button_center(&ed);
+    ed.input("window", json!([{ "type": "click", "x": x, "y": y, "modifiers": ["ctrl"] }]));
+    assert_eq!(opened(2), [page("de/"), page("zh-Hans/")]);
+
+    ed.call("set_editor", json!({ "language": "en" }));
+    let (x, y) = clip_button_center(&ed);
+    ed.input("window", json!([{ "type": "move", "x": x, "y": y }, { "type": "key", "key": "F1" }]));
+    assert_eq!(opened(3), [page("de/"), page("zh-Hans/"), page("")]);
+
+    std::thread::sleep(Duration::from_secs(1));
+    assert_eq!(opened(0).len(), 3, "nothing else was opened");
 }
 
 /// Ctrl+click adds objects in the views. With the UV Editor tab showing it grabs all of a brush's faces instead, but

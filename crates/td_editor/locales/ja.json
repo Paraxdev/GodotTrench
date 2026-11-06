@@ -1,7 +1,7 @@
 {
   "Language": "言語",
   "Translations are written by AI and not checked by native speakers.": "翻訳はAIが作成したもので、ネイティブスピーカーの確認は受けていません。",
-  "Language of menus, panels and messages. The manual stays in English.": "メニュー、パネル、メッセージの言語です。マニュアルは英語のままです。",
+  "Language of menus, panels, messages and the manual.": "メニュー、パネル、メッセージ、マニュアルの言語です。",
   "Language: {name}": "言語：{name}",
   "View": "表示",
   "Outliner": "アウトライナー",

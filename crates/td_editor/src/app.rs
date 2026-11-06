@@ -641,7 +641,7 @@ fn help_menu_links(ui: &mut Ui) {
             ui.close();
         }
     };
-    link(ui, en!("Getting Started Guide"), crate::welcome::GETTING_STARTED_URL);
+    link(ui, en!("Getting Started Guide"), &crate::welcome::getting_started_url());
     link(ui, en!("Manual"), &manual);
     link(ui, en!("Mouse and Keys"), &mouse);
 }
@@ -2862,7 +2862,7 @@ fn language_pref(ui: &mut Ui, prefs: &mut Prefs) {
             }
         }
     });
-    combo.response.on_hover_text(tr("Language of menus, panels and messages. The manual stays in English."));
+    combo.response.on_hover_text(tr("Language of menus, panels, messages and the manual."));
     if let Some(picked) = picked {
         prefs.language = picked.code().into();
         ui.ctx().request_repaint();

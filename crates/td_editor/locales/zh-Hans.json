@@ -1,7 +1,7 @@
 {
   "Language": "语言",
   "Translations are written by AI and not checked by native speakers.": "翻译由 AI 编写，未经母语者审校。",
-  "Language of menus, panels and messages. The manual stays in English.": "菜单、面板和消息所用的语言。手册仍为英文。",
+  "Language of menus, panels, messages and the manual.": "菜单、面板、消息和手册所用的语言。",
   "Language: {name}": "语言：{name}",
   "View": "视图",
   "Outliner": "大纲",

@@ -6,7 +6,7 @@ use egui::{Context, Key, Modifiers, Response, RichText, Ui, WidgetText};
 use crate::i18n::en;
 use crate::tools::ToolKind;
 
-/// The published manual, built from `docs/`.
+/// The published manual, built from `docs/`. English sits at the root, [`site`] adds the language folder.
 pub const SITE: &str = "https://paraxdev.github.io/TrenchDot/";
 /// Ends the tooltip of anything F1 opens the manual for.
 pub const F1_HINT: &str = en!("F1: manual");
@@ -132,11 +132,20 @@ pub fn page(topic: Topic) -> Option<(&'static str, &'static str)> {
     PAGES.iter().find(|(t, _, _)| *t == topic).map(|(_, page, anchor)| (*page, *anchor))
 }
 
+/// The manual in the editor's language. Every language has its own folder on the site and English keeps the root.
+pub fn site() -> String {
+    match crate::i18n::current() {
+        crate::i18n::Lang::En => SITE.to_string(),
+        lang => format!("{SITE}{}/", lang.code()),
+    }
+}
+
 pub fn url(topic: Topic) -> Option<String> {
     let (page, anchor) = page(topic)?;
     // Zensical publishes every README.md as the index.html of its folder.
     let page = page.strip_suffix("README").map_or_else(|| page.to_string(), |folder| format!("{folder}index"));
-    Some(if anchor.is_empty() { format!("{SITE}{page}.html") } else { format!("{SITE}{page}.html#{anchor}") })
+    let site = site();
+    Some(if anchor.is_empty() { format!("{site}{page}.html") } else { format!("{site}{page}.html#{anchor}") })
 }
 
 fn hover_id() -> egui::Id {
@@ -321,8 +330,46 @@ mod tests {
         assert_eq!(url(Menu("Mesh")).unwrap(), format!("{SITE}editor/meshes.html"));
         assert_eq!(url(Menu("Manual")).unwrap(), format!("{SITE}index.html"));
         assert_eq!(url(Section("Properties")).unwrap(), format!("{SITE}gameplay/entities/index.html#reading-the-entries"));
-        assert_eq!(url(Menu("Getting Started Guide")).unwrap(), crate::welcome::GETTING_STARTED_URL);
+        assert_eq!(url(Menu("Getting Started Guide")).unwrap(), crate::welcome::getting_started_url());
         assert_eq!(url(Menu("Not a menu")), None);
+
+        for lang in crate::i18n::Lang::ALL {
+            let _scope = crate::i18n::scope(lang);
+            for tool in ToolKind::all() {
+                assert!(url(Tool(tool)).unwrap().starts_with(&site()), "{} {tool:?}", lang.code());
+            }
+        }
+    }
+
+    #[test]
+    fn manual_follows_the_editor_language() {
+        let root = "https://paraxdev.github.io/TrenchDot";
+        let cases = [(crate::i18n::Lang::En, ""), (crate::i18n::Lang::De, "/de"), (crate::i18n::Lang::ZhHans, "/zh-Hans"), (crate::i18n::Lang::Ja, "/ja")];
+        for (lang, folder) in cases {
+            let _scope = crate::i18n::scope(lang);
+            assert_eq!(url(Tool(ToolKind::Clip)).unwrap(), format!("{root}{folder}/editor/brushes.html#reshape"), "{}", lang.code());
+            assert_eq!(url(Menu("Manual")).unwrap(), format!("{root}{folder}/index.html"), "{}", lang.code());
+            assert_eq!(url(Section("Properties")).unwrap(), format!("{root}{folder}/gameplay/entities/index.html#reading-the-entries"), "{}", lang.code());
+            assert_eq!(url(Menu("Getting Started Guide")).unwrap(), format!("{root}{folder}/getting-started.html"), "{}", lang.code());
+        }
+
+        assert_eq!(url(Tool(ToolKind::Clip)).unwrap(), format!("{SITE}editor/brushes.html#reshape"), "the scopes ended, English again");
+    }
+
+    #[test]
+    fn every_language_has_a_manual() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let config = std::fs::read_to_string(root.join("zensical.toml")).unwrap();
+        let linked: Vec<&str> = config.lines().filter_map(|l| l.strip_prefix("link = \"/TrenchDot/")?.strip_suffix("/\"")).collect();
+
+        let translated: Vec<&str> = crate::i18n::Lang::ALL.iter().filter(|l| **l != crate::i18n::Lang::En).map(|l| l.code()).collect();
+        for code in &translated {
+            assert!(root.join(format!("docs/translations/{code}/site.toml")).is_file(), "{code} has no site.toml");
+            assert!(linked.contains(code), "zensical.toml has no language button entry for {code}");
+        }
+
+        assert_eq!(linked.len(), translated.len(), "zensical.toml lists a language the editor does not know: {linked:?}");
+        assert!(config.contains("link = \"/TrenchDot/\""), "the English entry");
     }
 
     /// A button with a page and one without, driven through egui's real input the way the app handles F1: the page
