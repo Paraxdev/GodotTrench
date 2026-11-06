@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use td_formats::{EntityDef, GameConfig};
 
+use crate::i18n::{Msg, en, msg_n, tr};
+
 /// The template's folder inside the addon.
 pub const TEMPLATE_IN_ADDON: &str = "gameplay_pack";
 /// Where the pack is installed, relative to the project.
@@ -21,7 +23,7 @@ pub const FGD: &str = "gameplay_fgd.tres";
 /// The addon's FGD with FuncGodot's entities, the core entities and the pack, for an FGD's Base Fgd Files.
 pub const DEFAULT_FGD: &str = "res://addons/func_godot/fgd/trenchdot_default_fgd.tres";
 pub const FORMAT: &str = "trenchdot-entity-pack";
-pub const NAME: &str = "Gameplay entities";
+pub const NAME: &str = en!("Gameplay entities");
 
 /// Template files that are not copied into the project.
 const NOT_COPIED: [&str; 2] = [".gdignore", MANIFEST];
@@ -200,26 +202,50 @@ pub struct Report {
 
 /// Pack scripts that appear while Godot runs can be compiled before Godot knows the classes they use, and stay broken
 /// until Godot starts again.
-pub const RESTART_NOTE: &str = "If Godot has the project open, restart it, then press Build Map in each scene that uses your maps.";
-pub const SCAN_NOTE: &str = "Godot is picking up the new files. Press Build Map in scenes that are not in live mode.";
+pub const RESTART_NOTE: &str = en!("If Godot has the project open, restart it, then press Build Map in each scene that uses your maps.");
+pub const SCAN_NOTE: &str = en!("Godot is picking up the new files. Press Build Map in scenes that are not in live mode.");
 
 impl Report {
-    pub fn summary(&self) -> String {
+    pub fn message(&self) -> Msg {
+        let name = tr(NAME);
+        let words = [("name", NAME, name), ("dir", RES_DIR, RES_DIR)];
         let mut text = match (self.added.len(), self.updated.len()) {
-            (0, 0) => format!("The {NAME} pack in {RES_DIR} is up to date."),
-            (added, 0) => format!("Added {added} files of the {NAME} pack to {RES_DIR}."),
-            (0, updated) => format!("Updated {updated} files of the {NAME} pack in {RES_DIR}."),
-            (added, updated) => format!("Added {added} and updated {updated} files of the {NAME} pack in {RES_DIR}."),
+            (0, 0) => Msg::filled("The {name} pack in {dir} is up to date.", &words),
+            (added, 0) => Msg::filled_n("Added {n} file of the {name} pack to {dir}.", "Added {n} files of the {name} pack to {dir}.", added, &words),
+            (0, updated) => Msg::filled_n("Updated {n} file of the {name} pack in {dir}.", "Updated {n} files of the {name} pack in {dir}.", updated, &words),
+            (added, updated) => {
+                let added = added.to_string();
+                Msg::filled_n(
+                    "Added {added} and updated {n} file of the {name} pack in {dir}.",
+                    "Added {added} and updated {n} files of the {name} pack in {dir}.",
+                    updated,
+                    &[words[0], words[1], ("added", &added, &added)],
+                )
+            }
         };
         if !self.kept.is_empty() {
-            text += &format!(" Kept your edited {}, the addon has a newer version of it.", self.kept.join(", "));
+            let files = self.kept.join(", ");
+            text = text.then(
+                " ",
+                msg_n!(
+                    self.kept.len(),
+                    "Kept your edited {files}, the addon has a newer version of it.",
+                    "Kept your edited {files}, the addon has a newer version of them.",
+                    files
+                ),
+            );
         }
 
         if !self.added.is_empty() || !self.updated.is_empty() {
-            text += &format!(" {}", if self.scanned { SCAN_NOTE } else { RESTART_NOTE });
+            text = text.then(" ", Msg::key(if self.scanned { SCAN_NOTE } else { RESTART_NOTE }));
         }
 
         text
+    }
+
+    /// [`Report::message`] in English, for MCP and tests.
+    pub fn summary(&self) -> String {
+        self.message().en
     }
 }
 
@@ -318,8 +344,9 @@ pub fn with_pack<T>(
     let installed = install_for_wizard(state, classes)?;
     let result = wizard(state);
     if let (Ok(_), Some(report)) = (&result, installed) {
-        let status = format!("{}. {}", state.status.trim_end_matches('.'), report.summary());
-        state.set_status(status);
+        let trimmed = |s: &str| s.trim_end_matches(['.', '。']).to_string();
+        let status = Msg { en: trimmed(&state.status), shown: trimmed(state.status_shown()) };
+        state.set_status(status.then(". ", report.message()));
     }
 
     result
@@ -395,7 +422,7 @@ fn defined(game: &GameConfig, classname: &str) -> bool {
 /// Installs the pack into the open project when its maps use entities of the pack that nothing defines, which is what
 /// a project made while those entities were part of the addon looks like after an addon update. Returns a status line
 /// when it installed or tried to.
-pub fn install_for_maps(state: &mut crate::state::EditorState) -> Option<String> {
+pub fn install_for_maps(state: &mut crate::state::EditorState) -> Option<Msg> {
     let root = state.game.project_root.clone()?;
     if state.gameplay_pack.installed || !state.gameplay_pack.available {
         return None;
@@ -404,12 +431,18 @@ pub fn install_for_maps(state: &mut crate::state::EditorState) -> Option<String>
     let need: Vec<String> = used_by_maps(&root).into_iter().filter(|c| !defined(&state.game, c)).collect();
     let named = match need.len() {
         0 => return None,
-        1..=3 => need.join(", "),
-        n => format!("{} and {} more", need[..3].join(", "), n - 3),
+        1..=3 => Msg::from(need.join(", ")),
+        n => msg_n!(n - 3, "{first} and {n} more", "{first} and {n} more", first = need[..3].join(", ")),
     };
     Some(match install_in_project(state) {
-        Ok(report) => format!("The maps use {named}, which now come with the {NAME} pack. {}", report.summary()),
-        Err(e) => format!("The maps use {named} from the {NAME} pack, which could not be installed: {e}"),
+        Ok(report) => {
+            Msg::filled("The maps use {named}, which now come with the {name} pack.", &[("named", &named.en, &named.shown), ("name", NAME, tr(NAME))])
+                .then(" ", report.message())
+        }
+        Err(e) => Msg::filled(
+            "The maps use {named} from the {name} pack, which could not be installed: {e}",
+            &[("named", &named.en, &named.shown), ("name", NAME, tr(NAME)), ("e", &e, &e)],
+        ),
     })
 }
 
@@ -434,6 +467,38 @@ mod tests {
         write(&template.join("scripts/td_relay.gd"), "relay 1");
         write(&template.join("definitions/func_door.tres"), "func_door 1");
         dir
+    }
+
+    fn report(added: &[&str], updated: &[&str], kept: &[&str]) -> Report {
+        let owned = |files: &[&str]| files.iter().map(|f| f.to_string()).collect();
+        Report { added: owned(added), updated: owned(updated), kept: owned(kept), scanned: false }
+    }
+
+    #[test]
+    fn a_report_words_added_updated_and_kept_files_per_language() {
+        let _lang = crate::i18n::scope(crate::i18n::Lang::De);
+        let one = report(&["a"], &[], &[]).message();
+        assert!(one.en.starts_with(&format!("Added 1 file of the {NAME} pack to {RES_DIR}. ")), "{one:?}");
+        assert!(one.en.ends_with(RESTART_NOTE), "{one:?}");
+        assert_eq!(one.shown, format!("1 Datei des Pakets Gameplay-Entitäten nach {RES_DIR} hinzugefügt. {}", tr(RESTART_NOTE)));
+        assert_ne!(tr(RESTART_NOTE), RESTART_NOTE);
+
+        let both = report(&["a", "b"], &["c"], &[]).message();
+        assert!(both.en.starts_with(&format!("Added 2 and updated 1 file of the {NAME} pack in {RES_DIR}.")), "{both:?}");
+        assert!(both.shown.starts_with(&format!("2 hinzugefügt und 1 Datei des Pakets Gameplay-Entitäten in {RES_DIR} aktualisiert.")), "{both:?}");
+        let updated = report(&[], &["c", "d", "e"], &[]).message();
+        assert!(updated.shown.starts_with(&format!("3 Dateien des Pakets Gameplay-Entitäten in {RES_DIR} aktualisiert.")), "{updated:?}");
+
+        let kept = report(&[], &[], &["a.gd"]).message();
+        assert_eq!(kept.en, format!("The {NAME} pack in {RES_DIR} is up to date. Kept your edited a.gd, the addon has a newer version of it."));
+        assert!(kept.shown.ends_with("1 bearbeitete Datei behalten (a.gd), das Addon hat eine neuere Version."), "{kept:?}");
+        let kept = report(&[], &[], &["a.gd", "b.gd"]).message();
+        assert!(kept.en.ends_with("Kept your edited a.gd, b.gd, the addon has a newer version of them."), "{kept:?}");
+        assert!(kept.shown.ends_with("2 bearbeitete Dateien behalten (a.gd, b.gd), das Addon hat neuere Versionen."), "{kept:?}");
+
+        let scanned = Report { scanned: true, ..report(&["a"], &[], &[]) }.message();
+        assert!(scanned.en.ends_with(SCAN_NOTE) && scanned.shown.ends_with(tr(SCAN_NOTE)), "{scanned:?}");
+        assert_eq!(report(&["a"], &[], &[]).summary(), one.en, "summary stays English");
     }
 
     fn read(root: &Path, rel: &str) -> String {
@@ -483,7 +548,7 @@ mod tests {
     #[test]
     fn the_summary_says_to_restart_godot_after_new_files() {
         let added = Report { added: vec!["scripts/td_door.gd".into()], ..Default::default() };
-        assert_eq!(added.summary(), format!("Added 1 files of the {NAME} pack to {RES_DIR}. {RESTART_NOTE}"));
+        assert_eq!(added.summary(), format!("Added 1 file of the {NAME} pack to {RES_DIR}. {RESTART_NOTE}"));
         let updated = Report { updated: vec!["a".into()], kept: vec!["b".into()], ..Default::default() };
         assert!(updated.summary().ends_with(&format!("newer version of it. {RESTART_NOTE}")), "{}", updated.summary());
         assert!(!Report::default().summary().contains("restart"), "nothing changed, nothing to pick up");
@@ -619,7 +684,7 @@ mod tests {
         game.project_root = Some(root.to_path_buf());
         state.game = game;
         let status = install_for_maps(&mut state).expect("installed");
-        assert!(status.starts_with("The maps use func_door, which now come with the Gameplay entities pack. Added 4 files"), "{status}");
+        assert!(status.en.starts_with("The maps use func_door, which now come with the Gameplay entities pack. Added 4 files"), "{}", status.en);
         assert!(state.gameplay_pack.installed && install_dir(root).join("scripts/td_door.gd").is_file());
         assert_eq!(state.game.entity("func_door").unwrap().script, "res://trenchdot/entities/scripts/td_door.gd", "the stale definition is replaced");
         assert!(install_for_maps(&mut state).is_none(), "once");

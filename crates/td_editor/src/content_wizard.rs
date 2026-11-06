@@ -7,11 +7,12 @@ use std::path::{Path, PathBuf};
 use egui::{RichText, Ui};
 
 use crate::content::{Choice, Job, Outcome, Progress};
+use crate::i18n::{en, msg, tr, trf};
 use crate::state::{ContentRequest, EditorState};
 use crate::theme;
 
-pub const TITLE: &str = "Set up this project";
-pub const PACK_HEADING: &str = "Gameplay entities";
+pub const TITLE: &str = en!("Set up this project");
+pub const PACK_HEADING: &str = en!("Gameplay entities");
 
 /// MCP tools a person at the screen uses through the test harness: looking and clicking, which leave the wizard open.
 const WATCHING_TOOLS: [&str; 3] = ["get_state", "screenshot", "simulate_input"];
@@ -70,14 +71,14 @@ impl ContentWizard {
     pub fn open_addon_from_menu(&mut self, state: &mut EditorState) {
         match state.game.project_root.clone() {
             Some(root) => self.open_addon(root, false),
-            None => state.set_status("Open a Godot project first, the addon goes into it"),
+            None => state.set_status(msg!("Open a Godot project first, the addon goes into it")),
         }
     }
 
     /// Opens on the choice that adds something the project lacks.
     pub fn open_from_menu(&mut self, state: &mut EditorState, choice: Option<Choice>) {
         let Some(root) = state.game.project_root.clone() else {
-            state.set_status("Open a Godot project first, content is added to it");
+            state.set_status(msg!("Open a Godot project first, content is added to it"));
             return;
         };
         let choice = choice.unwrap_or(if crate::content::has_nature_pack(&root) { Choice::Demo } else { Choice::Nature });
@@ -160,8 +161,8 @@ impl ContentWizard {
             state.material_reload = true;
         }
 
-        let summary = outcome.summary();
-        if !summary.is_empty() {
+        let summary = outcome.message();
+        if !summary.en.is_empty() {
             state.set_status(summary);
         }
 
@@ -191,7 +192,7 @@ impl ContentWizard {
 
         let modal = egui::Modal::new(egui::Id::new("content_wizard")).show(ctx, |ui| {
             ui.set_width(540.0);
-            ui.heading(TITLE);
+            ui.heading(tr(TITLE));
             ui.add_space(4.0);
             if let Some(root) = self.project.clone() {
                 self.addon.ui(ui, state, &root);
@@ -199,7 +200,7 @@ impl ContentWizard {
                 self.pack_ui(ui, state, &root);
                 ui.add_space(6.0);
                 if !self.content {
-                    if ui.button("Close").clicked() {
+                    if ui.button(tr("Close")).clicked() {
                         self.close(state);
                     }
 
@@ -207,14 +208,14 @@ impl ContentWizard {
                 }
 
                 ui.separator();
-                ui.label(RichText::new("Ready made content").strong());
+                ui.label(RichText::new(tr("Ready made content")).strong());
             }
 
             match (&self.job, &self.project) {
                 (Some(job), _) => self.running_ui(ui, job.progress()),
                 (None, None) => {
-                    ui.label("Open a Godot project first, the content is added to it.");
-                    if ui.button("Close").clicked() {
+                    ui.label(tr("Open a Godot project first, the content is added to it."));
+                    if ui.button(tr("Close")).clicked() {
                         self.open = false;
                     }
                 }
@@ -242,27 +243,32 @@ impl ContentWizard {
         }
 
         ui.separator();
-        ui.label(RichText::new(PACK_HEADING).strong());
+        ui.label(RichText::new(tr(PACK_HEADING)).strong());
         let pack = state.gameplay_pack.clone();
         let dir = crate::entity_pack::RES_DIR;
         let install = if !pack.installed && pack.available {
-            ui.label(format!(
-                "Doors, buttons, lifts, triggers, logic, spawners, props and effects. Installing copies them into {dir}, where you can edit them."
+            ui.label(trf!(
+                "Doors, buttons, lifts, triggers, logic, spawners, props and effects. Installing copies them into {dir}, where you can edit them.",
+                dir
             ));
-            ui.button(RichText::new("Install Gameplay Entities").strong()).clicked()
+            ui.button(RichText::new(tr("Install Gameplay Entities")).strong()).clicked()
         } else if !pack.installed {
-            ui.label(RichText::new("The gameplay entities come with the addon. Install or update the addon first.").weak());
+            ui.label(RichText::new(tr("The gameplay entities come with the addon. Install or update the addon first.")).weak());
             false
         } else if pack.update() {
-            ui.label(format!("Installed in {dir}. The addon has a newer version of {} of its files. Updating keeps the files you edited.", pack.changes));
-            ui.button("Update Gameplay Entities").clicked()
+            ui.label(trf!(
+                "Installed in {dir}. The addon has a newer version of {n} of its files. Updating keeps the files you edited.",
+                dir,
+                n = pack.changes
+            ));
+            ui.button(tr("Update Gameplay Entities")).clicked()
         } else {
-            ui.label(RichText::new(format!("Installed in {dir}, where the project owns the copies.")).color(theme::colors().success()));
+            ui.label(RichText::new(trf!("Installed in {dir}, where the project owns the copies.", dir)).color(theme::colors().success()));
             false
         };
         if install {
             self.pack_note = Some(match crate::entity_pack::install_in_project(state) {
-                Ok(report) => report.summary(),
+                Ok(report) => report.message().shown,
                 Err(e) => e,
             });
         }
@@ -275,9 +281,9 @@ impl ContentWizard {
     fn choice_ui(&mut self, ui: &mut Ui, state: &mut EditorState, root: &Path) {
         let name = crate::content::project_name(root);
         if self.automatic {
-            ui.label(format!("{name} is new to TrenchDot. Add ready made models or the demo? You can do it later with Godot > Add Content to Project."));
+            ui.label(trf!("{name} is new to TrenchDot. Add ready made models or the demo? You can do it later with Godot > Add Content to Project.", name));
         } else {
-            ui.label(format!("Add ready made models, or the demo to learn from, to {name}."));
+            ui.label(trf!("Add ready made models, or the demo to learn from, to {name}.", name));
         }
 
         if let Some(note) = &self.note {
@@ -289,14 +295,14 @@ impl ContentWizard {
         let has_demo = crate::content::has_demo(root);
         for choice in Choice::ALL {
             let (title, text) = match choice {
-                Choice::Nothing => ("Nothing extra".to_string(), "Only the built-in entities and materials. Nothing is written into the project."),
+                Choice::Nothing => (tr("Nothing extra").to_string(), tr("Only the built-in entities and materials. Nothing is written into the project.")),
                 Choice::Nature => (
-                    format!("Nature models, about {} MB to download", choice.approx_mb()),
-                    "Trees, bushes, rocks, grass and flowers for the Scatter tool, in res://trenchdot/nature.",
+                    trf!("Nature models, about {mb} MB to download", mb = choice.approx_mb()),
+                    tr("Trees, bushes, rocks, grass and flowers for the Scatter tool, in res://trenchdot/nature."),
                 ),
                 Choice::Demo => (
-                    format!("Nature models and the demo, about {} MB to download", choice.approx_mb()),
-                    "Also the showcase maps and demo assets, in res://demo and res://models.",
+                    trf!("Nature models and the demo, about {mb} MB to download", mb = choice.approx_mb()),
+                    tr("Also the showcase maps and demo assets, in res://demo and res://models."),
                 ),
             };
             let installed = match choice {
@@ -304,23 +310,23 @@ impl ContentWizard {
                 Choice::Nature => has_pack,
                 Choice::Demo => has_pack && has_demo,
             };
-            let title = if installed { format!("{title} (already in this project)") } else { title };
+            let title = if installed { trf!("{title} (already in this project)", title) } else { title };
             ui.radio_value(&mut self.choice, choice, RichText::new(title).strong());
             ui.indent(choice.name(), |ui| ui.label(RichText::new(text).weak()));
             ui.add_space(2.0);
         }
 
         if self.choice == Choice::Demo && state.game.addon_version.is_none() {
-            ui.label(RichText::new("The demo scenes need the TrenchDot addon, install it above.").color(theme::colors().yellow));
+            ui.label(RichText::new(tr("The demo scenes need the TrenchDot addon, install it above.")).color(theme::colors().yellow));
         }
 
         ui.add_space(4.0);
-        ui.label(RichText::new("Files the project already has are never replaced.").weak());
+        ui.label(RichText::new(tr("Files the project already has are never replaced.")).weak());
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             let go = match self.choice {
-                Choice::Nothing => "Continue".to_string(),
-                c => format!("Download and Add ({} MB)", c.approx_mb()),
+                Choice::Nothing => tr("Continue").to_string(),
+                c => trf!("Download and Add ({mb} MB)", mb = c.approx_mb()),
             };
             if ui.button(RichText::new(go).strong()).clicked() {
                 if self.choice == Choice::Nothing {
@@ -331,7 +337,7 @@ impl ContentWizard {
                 }
             }
 
-            if ui.button("Cancel").clicked() {
+            if ui.button(tr("Cancel")).clicked() {
                 self.close(state);
             }
         });
@@ -339,16 +345,16 @@ impl ContentWizard {
 
     fn running_ui(&mut self, ui: &mut Ui, progress: Progress) {
         let cancelling = self.job.as_ref().is_some_and(Job::cancelling);
-        let stage = match progress.stage.as_str() {
-            _ if cancelling => "Cancelling…",
-            "" => "Starting",
-            stage => stage,
+        let stage = match progress.stage.en.as_str() {
+            _ if cancelling => tr("Cancelling…"),
+            "" => tr("Starting"),
+            _ => progress.stage.shown.as_str(),
         };
         ui.label(stage);
         ui.add(egui::ProgressBar::new(progress.fraction()).text(progress.amount()).animate(progress.total == 0));
         ui.add_space(6.0);
-        let cancel = ui.add_enabled(!cancelling, egui::Button::new("Cancel"));
-        if cancel.on_hover_text("Stops after the file being added, the files added so far stay").clicked()
+        let cancel = ui.add_enabled(!cancelling, egui::Button::new(tr("Cancel")));
+        if cancel.on_hover_text(tr("Stops after the file being added, the files added so far stay")).clicked()
             && let Some(job) = &self.job
         {
             job.cancel();
@@ -358,30 +364,30 @@ impl ContentWizard {
     fn outcome_ui(&mut self, ui: &mut Ui, state: &mut EditorState) {
         let Some(outcome) = self.outcome.clone() else { return };
         let color = if outcome.error.is_some() { theme::colors().warning() } else { theme::colors().success() };
-        let summary = outcome.summary();
-        ui.label(RichText::new(if summary.is_empty() { "Nothing to add.".to_string() } else { summary }).color(color));
+        let summary = outcome.message().shown;
+        ui.label(RichText::new(if summary.is_empty() { tr("Nothing to add.").to_string() } else { summary }).color(color));
         if outcome.error.as_ref().is_some_and(crate::content::Error::is_download) {
             let assets: Vec<&str> = outcome.choice.downloads().iter().map(|d| d.asset).collect();
             crate::addon_wizard::download_links(ui, &assets);
         }
 
         if outcome.error.is_none() && outcome.choice == Choice::Demo {
-            ui.label("In Godot, open res://demo/demo.tscn and press F6 to play the showcase maps.");
+            ui.label(tr("In Godot, open res://demo/demo.tscn and press F6 to play the showcase maps."));
         }
 
         if outcome.error.is_none() && outcome.choice != Choice::Nothing {
-            ui.label("The Scatter presets and the Models panel now find the nature models.");
+            ui.label(tr("The Scatter presets and the Models panel now find the nature models."));
         } else if outcome.tags.is_empty() && !outcome.added.written.is_empty() {
-            ui.label("The built-in rocks, grass and low-poly trees were added. Try again for the rest.");
+            ui.label(tr("The built-in rocks, grass and low-poly trees were added. Try again for the rest."));
         }
 
         ui.add_space(6.0);
         ui.horizontal(|ui| {
-            if outcome.error.is_some() && ui.button("Try Again").clicked() {
+            if outcome.error.is_some() && ui.button(tr("Try Again")).clicked() {
                 let _ = self.start(state, outcome.choice, Some(ui.ctx().clone()));
             }
 
-            if ui.button("Close").clicked() {
+            if ui.button(tr("Close")).clicked() {
                 self.close(state);
             }
         });

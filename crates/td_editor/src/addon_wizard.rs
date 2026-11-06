@@ -8,10 +8,11 @@ use egui::{RichText, Ui};
 
 use crate::addon_install::{self, Installed, Job, Outcome, Status};
 use crate::content::Error;
+use crate::i18n::{self, en, tr, trf};
 use crate::state::EditorState;
 use crate::theme;
 
-pub const HEADING: &str = "TrenchDot addon";
+pub const HEADING: &str = en!("TrenchDot addon");
 /// Where people download by hand what the editor downloads by itself.
 pub const RELEASES_PAGE: &str = "https://github.com/Paraxdev/TrenchDot/releases";
 /// A storefront with the same files. The editor never downloads from it.
@@ -80,7 +81,11 @@ impl AddonWizard {
         }
 
         let migrated = crate::entity_pack::install_for_maps(state);
-        state.set_status([outcome.summary(&root), migrated.unwrap_or_default()].join(" ").trim().to_string());
+        let status = outcome.message(&root);
+        state.set_status(match migrated {
+            Some(migrated) => status.then(" ", migrated),
+            None => status,
+        });
         self.outcome = Some(outcome.clone());
         Some(outcome)
     }
@@ -97,18 +102,18 @@ impl AddonWizard {
     }
 
     pub fn ui(&mut self, ui: &mut Ui, state: &mut EditorState, root: &Path) {
-        ui.label(RichText::new(HEADING).strong());
+        ui.label(RichText::new(tr(HEADING)).strong());
         if let Some((_, job)) = &self.job {
             let progress = job.progress();
-            let stage = match progress.stage.as_str() {
-                _ if job.cancelling() => "Cancelling…",
-                "" => "Starting",
-                stage => stage,
+            let stage = match progress.stage.en.as_str() {
+                _ if job.cancelling() => tr("Cancelling…"),
+                "" => tr("Starting"),
+                _ => progress.stage.shown.as_str(),
             };
             ui.label(stage);
             ui.add(egui::ProgressBar::new(progress.fraction()).text(progress.amount()).animate(progress.total == 0));
-            let cancel = ui.add_enabled(!job.cancelling(), egui::Button::new("Cancel"));
-            if cancel.on_hover_text("Stops the install, the project stays as it was").clicked() {
+            let cancel = ui.add_enabled(!job.cancelling(), egui::Button::new(tr("Cancel")));
+            if cancel.on_hover_text(tr("Stops the install, the project stays as it was")).clicked() {
                 job.cancel();
             }
 
@@ -118,13 +123,13 @@ impl AddonWizard {
         let status = self.status(root, ui.input(|i| i.time));
         if let Some(outcome) = &self.outcome {
             let color = if outcome.error.is_some() { theme::colors().warning() } else { theme::colors().success() };
-            ui.label(RichText::new(outcome.summary(root)).color(color));
+            ui.label(RichText::new(outcome.message(root).shown).color(color));
             if outcome.error.as_ref().is_some_and(Error::is_download) {
                 download_links(ui, &[addon_install::ADDON.asset]);
             }
 
             if let Some(backup) = &outcome.backup
-                && ui.button("Show in File Manager").on_hover_text("Shows the folder with the old addon").clicked()
+                && ui.button(tr("Show in File Manager")).on_hover_text(tr("Shows the folder with the old addon")).clicked()
             {
                 crate::panels::show_in_file_manager(backup);
             }
@@ -135,18 +140,19 @@ impl AddonWizard {
         let (text, button) = match &status.installed {
             Installed::Missing => {
                 let name = crate::content::project_name(root);
-                (format!("Godot needs the TrenchDot addon to build maps, and {name} does not have it yet."), "Install the addon".to_string())
+                (trf!("Godot needs the TrenchDot addon to build maps, and {name} does not have it yet.", name), tr("Install the addon").to_string())
             }
-            Installed::Older(v) => {
-                (format!("The addon in this project is {v}, older than this editor, {editor}. Update it."), format!("Update the addon to {editor}"))
-            }
+            Installed::Older(v) => (
+                trf!("The addon in this project is {v}, older than this editor, {editor}. Update it.", v, editor),
+                trf!("Update the addon to {editor}", editor),
+            ),
             Installed::Newer(v) => (
-                format!("The addon in this project is {v}, newer than this editor, {editor}. Update the editor or go back to the addon {editor}."),
-                format!("Replace the addon with {editor}"),
+                trf!("The addon in this project is {v}, newer than this editor, {editor}. Update the editor or go back to the addon {editor}.", v, editor),
+                trf!("Replace the addon with {editor}", editor),
             ),
             Installed::Unknown => (
-                "res://addons/func_godot has no version in its plugin.cfg, it is damaged or not the TrenchDot addon.".to_string(),
-                format!("Replace the addon with {editor}"),
+                tr("res://addons/func_godot has no version in its plugin.cfg, it is damaged or not the TrenchDot addon.").to_string(),
+                trf!("Replace the addon with {editor}", editor),
             ),
             Installed::Current => {
                 self.current_ui(ui, state, root, &status, godot_open);
@@ -157,53 +163,53 @@ impl AddonWizard {
         ui.label(text);
         ui.ctx().request_repaint_after(Duration::from_secs_f64(RECHECK));
         if status.git {
-            ui.label(RichText::new("It is a git checkout, update it with git.").color(theme::colors().yellow));
+            ui.label(RichText::new(tr("It is a git checkout, update it with git.")).color(theme::colors().yellow));
             return;
         }
 
         let replacing = status.installed != Installed::Missing;
         if replacing && godot_open {
-            ui.label(RichText::new("Godot has this project open. Close it first.").color(theme::colors().yellow));
+            ui.label(RichText::new(tr("Godot has this project open. Close it first.")).color(theme::colors().yellow));
         }
 
         let go = ui.add_enabled(!(replacing && godot_open), egui::Button::new(RichText::new(button).strong()));
-        if go.on_disabled_hover_text("Close Godot first").clicked() {
+        if go.on_disabled_hover_text(tr("Close Godot first")).clicked() {
             self.start(root.to_path_buf(), Some(ui.ctx().clone()));
         }
 
         if replacing && !godot_open {
-            ui.label(RichText::new("The old addon is kept in a backup folder. Close Godot first if it has this project open.").weak());
+            ui.label(RichText::new(tr("The old addon is kept in a backup folder. Close Godot first if it has this project open.")).weak());
         }
     }
 
     fn current_ui(&mut self, ui: &mut Ui, state: &mut EditorState, root: &Path, status: &Status, godot_open: bool) {
         if let Some(result) = &self.enabled {
             let (text, color) = match result {
-                Ok(_) => ("Enabled the plugin in project.godot.", theme::colors().success()),
+                Ok(_) => (tr("Enabled the plugin in project.godot."), theme::colors().success()),
                 Err(e) => (e.as_str(), theme::colors().warning()),
             };
             ui.label(RichText::new(text).color(color));
         }
 
         if !status.enabled {
-            ui.label(format!("The addon {} is installed but not enabled, so Godot does not use it yet.", crate::VERSION));
+            ui.label(trf!("The addon {version} is installed but not enabled, so Godot does not use it yet.", version = crate::VERSION));
             if godot_open {
-                ui.label("Godot has this project open, enable it there under Project > Project Settings > Plugins.");
+                ui.label(tr("Godot has this project open, enable it there under Project > Project Settings > Plugins."));
             } else {
-                if ui.button(RichText::new("Enable the plugin").strong()).clicked() {
+                if ui.button(RichText::new(tr("Enable the plugin")).strong()).clicked() {
                     self.enabled = Some(addon_install::enable(root));
                     self.checked = None;
                 }
 
-                ui.label(RichText::new("Adds it to the plugins in project.godot. Close Godot first if it has this project open.").weak());
+                ui.label(RichText::new(tr("Adds it to the plugins in project.godot. Close Godot first if it has this project open.")).weak());
             }
         } else if !status.exported {
-            ui.label("Next, open the project in Godot once. The addon then exports the project's entities and textures for the editor.");
-            if !godot_open && state.godot.found() && ui.button("Open Project in Godot Editor").clicked() {
+            ui.label(tr("Next, open the project in Godot once. The addon then exports the project's entities and textures for the editor."));
+            if !godot_open && state.godot.found() && ui.button(tr("Open Project in Godot Editor")).clicked() {
                 crate::commands::execute(state, crate::commands::Action::OpenGodotEditor, ui.ctx());
             }
         } else {
-            ui.label(RichText::new(format!("The addon {} is installed and enabled.", crate::VERSION)).color(theme::colors().success()));
+            ui.label(RichText::new(trf!("The addon {version} is installed and enabled.", version = crate::VERSION)).color(theme::colors().success()));
             return;
         }
 
@@ -215,11 +221,11 @@ impl AddonWizard {
 pub fn download_links(ui: &mut Ui, assets: &[&str]) {
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
-        ui.label("Download it yourself from");
-        ui.hyperlink_to("the GitHub releases", RELEASES_PAGE).on_hover_text(RELEASES_PAGE);
-        ui.label("or");
-        ui.hyperlink_to("itch.io", ITCH_PAGE).on_hover_text(ITCH_PAGE);
-        ui.label(format!("and unpack {} into the project folder.", assets.join(" and ")));
+        ui.label(tr("Download it yourself from"));
+        ui.hyperlink_to(tr("the GitHub releases"), RELEASES_PAGE).on_hover_text(RELEASES_PAGE);
+        ui.label(tr("or"));
+        ui.hyperlink_to(tr("itch.io"), ITCH_PAGE).on_hover_text(ITCH_PAGE);
+        ui.label(trf!("and unpack {assets} into the project folder.", assets = i18n::list(assets)));
     });
 }
 
@@ -229,10 +235,13 @@ pub fn status_warning(state: &EditorState) -> Option<(String, String)> {
     state.game.project_root.as_ref()?;
     let editor = crate::VERSION;
     match state.game.addon_version.as_deref() {
-        None => Some(("No TrenchDot addon".into(), "Godot needs the TrenchDot addon to build maps and this project lacks it. Click to install it.".into())),
-        Some(v) if addon_install::compare(v, editor) != Some(std::cmp::Ordering::Equal) => {
-            Some((format!("Addon {v}, editor {editor}"), format!("The project's TrenchDot addon is {v} and this editor is {editor}. Click to update it.")))
+        None => {
+            Some((tr("No TrenchDot addon").into(), tr("Godot needs the TrenchDot addon to build maps and this project lacks it. Click to install it.").into()))
         }
+        Some(v) if addon_install::compare(v, editor) != Some(std::cmp::Ordering::Equal) => Some((
+            trf!("Addon {v}, editor {editor}", v, editor),
+            trf!("The project's TrenchDot addon is {v} and this editor is {editor}. Click to update it.", v, editor),
+        )),
         Some(_) => None,
     }
 }

@@ -8,6 +8,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
+use crate::i18n::{self, Msg, msg, msg_n, trf};
+
 /// A release download and the project folders it adds to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Download {
@@ -98,7 +100,7 @@ pub enum Error {
     Unsafe(String),
     /// A folder the archive adds to is a link leading out of the project. Nothing from the archive is written then.
     Link(PathBuf),
-    Io(String),
+    Io(Msg),
     Cancelled,
 }
 
@@ -109,23 +111,30 @@ impl Error {
     }
 }
 
+impl Error {
+    /// The error in English and in the editor's language, the reasons inside it stay English.
+    pub fn message(&self) -> Msg {
+        match self {
+            Error::Offline(why) => msg!("Could not reach GitHub ({why}). Check the internet connection and try again.", why),
+            Error::NotPublished(asset) => {
+                msg!("{asset} is not published yet, neither with the v{release} release nor with the rolling beta.", asset, release = crate::RELEASE)
+            }
+            Error::NoRelease => msg!("Neither the v{release} release nor the rolling beta was found, try again in a few minutes.", release = crate::RELEASE),
+            Error::Status(code @ (403 | 429)) => msg!("GitHub refused the request ({code}), it limits how often one address may ask. Try again later.", code),
+            Error::Status(code) => msg!("GitHub answered with error {code}. Try again later.", code),
+            Error::Damaged(why) => msg!("The download is damaged: {why}. Try again.", why),
+            Error::DiskFull => msg!("The disk is full. Free some space and try again, the files added so far stay."),
+            Error::Unsafe(path) => msg!("The archive holds {path}, which it may not add to the project, so nothing from it was added.", path),
+            Error::Link(path) => msg!("{path} is a link that leads out of the project, so nothing from the archive was added.", path = path.display()),
+            Error::Io(why) => why.clone(),
+            Error::Cancelled => msg!("Cancelled. The files added so far stay, installing again adds the rest."),
+        }
+    }
+}
+
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Error::Offline(why) => write!(f, "Could not reach GitHub ({why}). Check the internet connection and try again."),
-            Error::NotPublished(asset) => {
-                write!(f, "{asset} is not published yet, neither with the v{} release nor with the rolling beta.", crate::RELEASE)
-            }
-            Error::NoRelease => write!(f, "Neither the v{} release nor the rolling beta was found, try again in a few minutes.", crate::RELEASE),
-            Error::Status(code @ (403 | 429)) => write!(f, "GitHub refused the request ({code}), it limits how often one address may ask. Try again later."),
-            Error::Status(code) => write!(f, "GitHub answered with error {code}. Try again later."),
-            Error::Damaged(why) => write!(f, "The download is damaged: {why}. Try again."),
-            Error::DiskFull => write!(f, "The disk is full. Free some space and try again, the files added so far stay."),
-            Error::Unsafe(path) => write!(f, "The archive holds {path}, which it may not add to the project, so nothing from it was added."),
-            Error::Link(path) => write!(f, "{} is a link that leads out of the project, so nothing from the archive was added.", path.display()),
-            Error::Io(why) => write!(f, "{why}"),
-            Error::Cancelled => write!(f, "Cancelled. The files added so far stay, installing again adds the rest."),
-        }
+        f.write_str(&self.message().en)
     }
 }
 
@@ -134,7 +143,7 @@ pub(crate) fn io_error(e: std::io::Error, what: &Path) -> Error {
         std::io::ErrorKind::StorageFull => Error::DiskFull,
         // The zip reader reports a CRC mismatch as invalid data.
         std::io::ErrorKind::InvalidData => Error::Damaged(format!("{}: {e}", what.display())),
-        _ => Error::Io(format!("Could not write {}: {e}", what.display())),
+        _ => Error::Io(msg!("Could not write {path}: {e}", path = what.display(), e)),
     }
 }
 
@@ -254,7 +263,7 @@ fn trusted(api: &str, name: &str, url: &str, checksum: bool) -> Result<(), Error
 /// What a running install shows: a sentence and how far along it is.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Progress {
-    pub stage: String,
+    pub stage: Msg,
     pub done: u64,
     pub total: u64,
     /// `done` and `total` count bytes, else files.
@@ -269,8 +278,8 @@ impl Progress {
     pub fn amount(&self) -> String {
         match (self.total, self.bytes) {
             (0, _) => String::new(),
-            (_, true) => format!("{} of {}", megabytes(self.done), megabytes(self.total)),
-            (_, false) => format!("{} of {} files", self.done, self.total),
+            (_, true) => trf!("{done} of {total}", done = megabytes(self.done), total = megabytes(self.total)),
+            (_, false) => trf!("{done} of {total} files", done = self.done, total = self.total),
         }
     }
 }
@@ -336,7 +345,7 @@ pub fn download(agent: &ureq::Agent, asset: &Asset, report: &Reporter) -> Result
     }
 
     let name = asset.url.rsplit('/').next().unwrap_or_default().to_string();
-    report.set(|p| *p = Progress { stage: format!("Downloading {name} from the {} release", asset.tag), done: 0, total: asset.size, bytes: true });
+    report.set(|p| *p = Progress { stage: msg!("Downloading {name} from the {tag} release", name, tag = asset.tag), done: 0, total: asset.size, bytes: true });
     let temp = std::env::temp_dir();
     let mut file = tempfile::tempfile().map_err(|e| io_error(e, &temp))?;
     // Read on a thread of its own, so a connection that stalls or a cancel does not have to wait for the next read.
@@ -443,7 +452,7 @@ fn check_dirs(root: &Path, real_root: &Path, rel: &Path, create: bool) -> Result
                 }
             }
             Ok(meta) if meta.is_dir() => {}
-            Ok(_) => return Err(Error::Io(format!("Could not add files to {}, it is a file and not a folder", dir.display()))),
+            Ok(_) => return Err(Error::Io(msg!("Could not add files to {path}, it is a file and not a folder", path = dir.display()))),
             Err(_) if create => std::fs::create_dir(&dir).map_err(|e| io_error(e, &dir))?,
             // Nothing below a missing folder exists either.
             Err(_) => return Ok(()),
@@ -506,7 +515,7 @@ pub fn extract(archive: std::fs::File, name: &str, root: &Path, folders: &[&str]
     }
 
     let count = files.len() as u64;
-    report.set(|p| *p = Progress { stage: format!("Adding files to the project from {name}"), done: 0, total: count, bytes: false });
+    report.set(|p| *p = Progress { stage: msg!("Adding files to the project from {name}", name), done: 0, total: count, bytes: false });
     for (n, (i, rel)) in files.into_iter().enumerate() {
         report.check()?;
         let target = root.join(&rel);
@@ -551,28 +560,37 @@ pub struct Outcome {
 
 impl Outcome {
     /// One or two sentences for the wizard and the status bar.
-    pub fn summary(&self) -> String {
+    pub fn message(&self) -> Msg {
         let written = self.added.written.len();
         let from = match self.tags.first() {
-            Some(tag) if tag == "beta" => " from the rolling beta",
-            Some(_) => " from the release",
-            None => "",
+            Some(tag) if tag == "beta" => Msg::key(" from the rolling beta"),
+            Some(_) => Msg::key(" from the release"),
+            None => Msg::default(),
         };
-        let mut text = match (written, self.added.kept) {
-            (0, 0) => String::new(),
-            (0, kept) => format!("The project already had all {kept} files, nothing was replaced."),
-            (n, 0) => format!("Added {n} files to the project{from}."),
-            (n, kept) => format!("Added {n} files to the project{from} and kept the {kept} it already had."),
-        };
-        if let Some(e) = &self.error {
-            if !text.is_empty() {
-                text.push(' ');
+        let words = [("from", from.en.as_str(), from.shown.as_str())];
+        let text = match (written, self.added.kept) {
+            (0, 0) => Msg::default(),
+            (0, kept) => {
+                msg_n!(kept, "The project already had that file, nothing was replaced.", "The project already had all {n} files, nothing was replaced.")
             }
-
-            text.push_str(&e.to_string());
+            (n, 0) => Msg::filled_n("Added {n} file to the project{from}.", "Added {n} files to the project{from}.", n, &words),
+            (n, kept) => Msg::filled_n(
+                "Added {n} file to the project{from} and kept the {kept} it already had.",
+                "Added {n} files to the project{from} and kept the {kept} it already had.",
+                n,
+                &[words[0], ("kept", &kept.to_string(), &kept.to_string())],
+            ),
+        };
+        match &self.error {
+            Some(e) if text.en.is_empty() => e.message(),
+            Some(e) => text.then(" ", e.message()),
+            None => text,
         }
+    }
 
-        text
+    /// [`Outcome::message`] in English, for MCP and tests.
+    pub fn summary(&self) -> String {
+        self.message().en
     }
 }
 
@@ -584,7 +602,7 @@ pub fn install(root: &Path, choice: Choice, api: &str, report: &Reporter) -> Out
     let agent = agent();
     let skip_pack = choice == Choice::Demo && has_nature_pack(root);
     for download in choice.downloads().iter().filter(|d| !(skip_pack && **d == NATURE_PACK)) {
-        report.set(|p| *p = Progress { stage: format!("Looking up {} in the releases", download.asset), ..Default::default() });
+        report.set(|p| *p = Progress { stage: msg!("Looking up {asset} in the releases", asset = download.asset), ..Default::default() });
         let result = find_asset(&agent, api, download.asset).and_then(|asset| {
             let file = self::download(&agent, &asset, report)?;
             extract(file, download.asset, root, download.folders, report, &mut outcome.added)?;
@@ -637,7 +655,9 @@ impl Job {
         let report = Reporter::new(repaint);
         let (tx, rx) = mpsc::channel();
         let (thread_root, thread_report) = (root.clone(), report.clone());
+        let lang = i18n::current();
         std::thread::spawn(move || {
+            let _lang = i18n::scope(lang);
             let outcome = install(&thread_root, choice, &api, &thread_report);
             let _ = tx.send(outcome);
             if let Some(ctx) = &thread_report.repaint {
@@ -665,7 +685,7 @@ impl Job {
             Ok(outcome) => Some(outcome),
             Err(mpsc::TryRecvError::Empty) => None,
             Err(mpsc::TryRecvError::Disconnected) => {
-                Some(Outcome { choice: self.choice, error: Some(Error::Io("The install stopped unexpectedly.".into())), ..Default::default() })
+                Some(Outcome { choice: self.choice, error: Some(Error::Io(msg!("The install stopped unexpectedly."))), ..Default::default() })
             }
         }
     }
@@ -1026,6 +1046,77 @@ mod tests {
         assert!(outcome.summary().starts_with("Added 18 files to the project. Could not reach GitHub"), "{}", outcome.summary());
         assert!(!has_nature_pack(&root));
         std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    fn finished(job: &Job) -> Outcome {
+        loop {
+            if let Some(o) = job.poll() {
+                return o;
+            }
+
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn a_worker_words_its_stage_in_the_language_it_started_under() {
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
+        for (lang, shown) in [(i18n::Lang::De, "Suche "), (i18n::Lang::En, "Looking up ")] {
+            let _lang = i18n::scope(lang);
+            let root = project(&format!("lang_{}", lang.code()));
+            let job = Job::start(root.clone(), Choice::Nature, format!("http://{closed}"), None);
+            let outcome = finished(&job);
+            let stage = job.progress().stage;
+            assert!(stage.en.starts_with("Looking up ") && stage.en.ends_with(" in the releases"), "{stage:?}");
+            assert!(stage.shown.starts_with(shown), "{lang:?}: {stage:?}");
+            let message = outcome.message();
+            assert!(message.en.contains("Could not reach GitHub"), "{message:?}");
+            assert_eq!(message.shown.contains("GitHub ist nicht erreichbar"), lang == i18n::Lang::De, "{lang:?}: {message:?}");
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+    }
+
+    fn outcome(written: usize, kept: usize, tag: &str, error: Option<Error>) -> Outcome {
+        let tags = if tag.is_empty() { vec![] } else { vec![tag.to_string()] };
+        Outcome { added: Added { written: vec![PathBuf::new(); written], kept }, tags, error, ..Default::default() }
+    }
+
+    #[test]
+    fn an_outcome_counts_its_files_per_language_and_keeps_english_for_mcp() {
+        let _lang = i18n::scope(i18n::Lang::De);
+        let one = outcome(1, 0, "beta", None).message();
+        assert_eq!(one.en, "Added 1 file to the project from the rolling beta.");
+        assert_eq!(one.shown, "1 Datei zum Projekt hinzugefügt aus der Rolling-Beta.");
+        let many = outcome(3, 2, "v1", None).message();
+        assert_eq!(many.en, "Added 3 files to the project from the release and kept the 2 it already had.");
+        assert_eq!(many.shown, "3 Dateien zum Projekt hinzugefügt aus dem Release, 2 vorhandene blieben.");
+        assert_eq!(outcome(0, 1, "", None).message().shown, "Das Projekt hatte diese Datei schon, nichts wurde ersetzt.");
+        let all = outcome(0, 4, "", None).message();
+        assert_eq!(
+            (all.en.as_str(), all.shown.as_str()),
+            ("The project already had all 4 files, nothing was replaced.", "Das Projekt hatte schon alle 4 Dateien, nichts wurde ersetzt.")
+        );
+        assert_eq!(outcome(0, 0, "", None).message().en, "");
+        let stopped = outcome(2, 0, "", Some(Error::DiskFull)).message();
+        assert_eq!(stopped.en, "Added 2 files to the project. The disk is full. Free some space and try again, the files added so far stay.");
+        assert!(stopped.shown.starts_with("2 Dateien zum Projekt hinzugefügt. Der Datenträger ist voll."), "{stopped:?}");
+        assert_eq!(
+            outcome(0, 0, "", Some(Error::Cancelled)).message().shown,
+            "Abgebrochen. Bereits hinzugefügte Dateien bleiben, eine erneute Installation fügt den Rest hinzu."
+        );
+        assert_eq!(outcome(2, 0, "", None).summary(), "Added 2 files to the project.", "summary stays English");
+
+        i18n::set(i18n::Lang::Ru);
+        let shown: Vec<String> = [1, 2, 5, 21].map(|n| outcome(n, 0, "v1", None).message().shown).into();
+        assert_eq!(
+            shown,
+            [
+                "Добавлен 1 файл в проект из релиза.",
+                "Добавлено 2 файла в проект из релиза.",
+                "Добавлено 5 файлов в проект из релиза.",
+                "Добавлен 21 файл в проект из релиза."
+            ]
+        );
     }
 
     #[test]

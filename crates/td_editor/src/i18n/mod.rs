@@ -390,6 +390,17 @@ impl Msg {
         Msg { en: fill(english(key), &en), shown: fill(tr(key), &shown) }
     }
 
+    /// [`Msg::filled`] for a counted text, `{n}` is `n`.
+    pub fn filled_n(one: &'static str, other: &'static str, n: usize, words: &[(&str, &str, &str)]) -> Msg {
+        let count = n.to_string();
+        let en: Vec<(&str, &dyn Display)> =
+            std::iter::once(("n", &count as &dyn Display)).chain(words.iter().map(|(name, en, _)| (*name, en as &dyn Display))).collect();
+        let shown: Vec<(&str, &dyn Display)> =
+            std::iter::once(("n", &count as &dyn Display)).chain(words.iter().map(|(name, _, shown)| (*name, shown as &dyn Display))).collect();
+        let n = self::count(n);
+        Msg { en: fill(english_plural(one, other, n), &en), shown: fill(tr_plural(one, other, n), &shown) }
+    }
+
     /// This message followed by `sep` and `next`, in both texts.
     pub fn then(mut self, sep: &str, next: Msg) -> Msg {
         self.en = format!("{}{sep}{}", self.en, next.en);

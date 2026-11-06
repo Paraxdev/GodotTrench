@@ -9,6 +9,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::mpsc;
 
 use crate::content::{Added, Download, Error, Progress, Reporter, io_error};
+use crate::i18n::{self, Msg, en, msg};
 
 pub const ADDON: Download = Download { asset: "func_godot-trenchdot-addon.zip", folders: &["addons/func_godot"], approx_mb: 1 };
 /// Where the addon lives in a project.
@@ -24,7 +25,7 @@ pub const BACKUPS: &str = ".trenchdot/addon-backups";
 /// install.
 const UNPACKING: &str = "addon-new-";
 
-const GIT: &str = "res://addons/func_godot is a git checkout, update it with git";
+const GIT: &str = en!("res://addons/func_godot is a git checkout, update it with git");
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum Installed {
@@ -259,24 +260,37 @@ pub struct Outcome {
 }
 
 impl Outcome {
-    pub fn summary(&self, root: &Path) -> String {
+    pub fn message(&self, root: &Path) -> Msg {
         match &self.error {
             // The addon is unpacked beside the project and only moved in once complete, so nothing half done stays.
-            Some(Error::Cancelled) => return "Cancelled, the project is as it was.".into(),
-            Some(Error::DiskFull) => return "The disk is full. Free some space and try again, the project is as it was.".into(),
-            Some(e) => return e.to_string(),
+            Some(Error::Cancelled) => return msg!("Cancelled, the project is as it was."),
+            Some(Error::DiskFull) => return msg!("The disk is full. Free some space and try again, the project is as it was."),
+            Some(e) => return e.message(),
             None => {}
         }
 
         let version = self.version.as_deref().unwrap_or_default();
-        let from = if self.tag.as_deref() == Some("beta") { " from the rolling beta" } else { "" };
-        let Some(backup) = &self.backup else { return format!("Installed the TrenchDot addon {version}{from} into res://addons/func_godot.") };
+        let from = if self.tag.as_deref() == Some("beta") { Msg::key(" from the rolling beta") } else { Msg::default() };
+        let Some(backup) = &self.backup else {
+            return Msg::filled(
+                "Installed the TrenchDot addon {version}{from} into res://addons/func_godot.",
+                &[("version", version, version), ("from", &from.en, &from.shown)],
+            );
+        };
         let old = match &self.before {
-            Installed::Older(v) | Installed::Newer(v) => format!(" from {v}"),
-            _ => String::new(),
+            Installed::Older(v) | Installed::Newer(v) => msg!(" from {v}", v),
+            _ => Msg::default(),
         };
         let shown = backup.strip_prefix(root).unwrap_or(backup).to_string_lossy().replace('\\', "/");
-        format!("Updated the addon{old} to {version}{from}. The old one is in the project's {shown} folder, delete it when the new one works.")
+        Msg::filled(
+            "Updated the addon{old} to {version}{from}. The old one is in the project's {shown} folder, delete it when the new one works.",
+            &[("old", &old.en, &old.shown), ("version", version, version), ("from", &from.en, &from.shown), ("shown", &shown, &shown)],
+        )
+    }
+
+    /// [`Outcome::message`] in English, for MCP and tests.
+    pub fn summary(&self, root: &Path) -> String {
+        self.message(root).en
     }
 }
 
@@ -286,7 +300,7 @@ pub fn install(root: &Path, api: &str, report: &Reporter) -> Outcome {
     let before = Status::check(root);
     let mut outcome = Outcome { before: before.installed.clone(), ..Default::default() };
     if before.git {
-        outcome.error = Some(Error::Io(GIT.into()));
+        outcome.error = Some(Error::Io(Msg::key(GIT)));
         return outcome;
     }
 
@@ -301,7 +315,7 @@ pub fn install(root: &Path, api: &str, report: &Reporter) -> Outcome {
     // Inside the project, so the addon moves into place with a rename rather than a copy.
     let unpacked = work.join(format!("{UNPACKING}{}-{}", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
     let result = (|| {
-        report.set(|p| *p = Progress { stage: format!("Looking up {} in the releases", ADDON.asset), ..Default::default() });
+        report.set(|p| *p = Progress { stage: msg!("Looking up {asset} in the releases", asset = ADDON.asset), ..Default::default() });
         let agent = crate::content::agent();
         let asset = crate::content::find_asset(&agent, api, ADDON.asset)?;
         let archive = crate::content::download(&agent, &asset, report)?;
@@ -338,7 +352,7 @@ fn swap(root: &Path, new: &Path, before: &Installed) -> Result<Option<PathBuf>, 
     }
 
     if target.join(".git").exists() {
-        return Err(Error::Io(GIT.into()));
+        return Err(Error::Io(Msg::key(GIT)));
     }
 
     let backups = root.join(BACKUPS);
@@ -360,12 +374,17 @@ fn swap(root: &Path, new: &Path, before: &Installed) -> Result<Option<PathBuf>, 
         .map(|n| backups.join(if n == 1 { format!("func_godot-{version}") } else { format!("func_godot-{version}-{n}") }))
         .find(|p| std::fs::symlink_metadata(p).is_err())
         .expect("a free backup name");
-    std::fs::rename(&target, &backup).map_err(|e| Error::Io(format!("Could not move the old addon ({e}). Close Godot and try again.")))?;
+    std::fs::rename(&target, &backup).map_err(|e| Error::Io(msg!("Could not move the old addon ({e}). Close Godot and try again.", e)))?;
     if let Err(e) = std::fs::rename(new, &target) {
         let back = std::fs::rename(&backup, &target);
         return Err(Error::Io(match back {
-            Ok(()) => format!("Could not put the new addon in place ({e}), the old one is back where it was."),
-            Err(_) => format!("Could not put the new addon in place ({e}). The old one is in {}, move it back to {}.", backup.display(), target.display()),
+            Ok(()) => msg!("Could not put the new addon in place ({e}), the old one is back where it was.", e),
+            Err(_) => msg!(
+                "Could not put the new addon in place ({e}). The old one is in {backup}, move it back to {target}.",
+                e,
+                backup = backup.display(),
+                target = target.display()
+            ),
         }));
     }
 
@@ -383,7 +402,9 @@ impl Job {
         let report = Reporter::new(repaint.clone());
         let thread_report = report.clone();
         let (tx, rx) = mpsc::channel();
+        let lang = i18n::current();
         std::thread::spawn(move || {
+            let _lang = i18n::scope(lang);
             let _ = tx.send(install(&root, &api, &thread_report));
             if let Some(ctx) = repaint {
                 ctx.request_repaint();
@@ -408,7 +429,7 @@ impl Job {
         match self.rx.try_recv() {
             Ok(outcome) => Some(outcome),
             Err(mpsc::TryRecvError::Empty) => None,
-            Err(mpsc::TryRecvError::Disconnected) => Some(Outcome { error: Some(Error::Io("The install stopped unexpectedly.".into())), ..Default::default() }),
+            Err(mpsc::TryRecvError::Disconnected) => Some(Outcome { error: Some(Error::Io(msg!("The install stopped unexpectedly."))), ..Default::default() }),
         }
     }
 }
@@ -604,7 +625,7 @@ mod tests {
         addon(&root, "0.0.1");
         std::fs::create_dir_all(root.join(DIR).join(".git")).unwrap();
         let outcome = install(&root, &server.url, &Reporter::default());
-        assert!(matches!(&outcome.error, Some(Error::Io(why)) if why.contains("git")), "{outcome:?}");
+        assert!(matches!(&outcome.error, Some(Error::Io(why)) if why.en.contains("git")), "{outcome:?}");
         assert!(server.requests.lock().unwrap().is_empty(), "nothing is downloaded");
         assert_eq!(Status::check(&root).installed, Installed::Older("0.0.1".into()));
         assert!(!root.join(WORK_DIR).exists());
@@ -650,6 +671,48 @@ mod tests {
         let line = ci.lines().find(|l| l.contains(&format!("{}\"", ADDON.asset)) && l.contains("zip -qr")).expect("ci.yml zips the addon");
         assert!(line.contains(&format!("cd godot && zip -qr \"../dist/{}\" {DIR} ", ADDON.asset)), "{line}");
         assert_eq!(ADDON.folders, [DIR]);
+    }
+
+    #[test]
+    fn a_worker_words_its_stage_and_outcome_in_the_language_it_started_under() {
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
+        for (lang, stage, error) in [(i18n::Lang::De, "Suche ", "GitHub ist nicht erreichbar"), (i18n::Lang::En, "Looking up ", "Could not reach GitHub")] {
+            let _lang = i18n::scope(lang);
+            let root = project(&format!("lang_{}", lang.code()), "config_version=5\n");
+            let job = Job::start(root.clone(), format!("http://{closed}"), None);
+            let outcome = loop {
+                if let Some(o) = job.poll() {
+                    break o;
+                }
+
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            };
+            let progress = job.progress().stage;
+            assert!(progress.en.starts_with("Looking up ") && progress.shown.starts_with(stage), "{lang:?}: {progress:?}");
+            let message = outcome.message(&root);
+            assert!(message.en.starts_with("Could not reach GitHub"), "{message:?}");
+            assert!(message.shown.starts_with(error), "{lang:?}: {message:?}");
+            assert!(outcome.summary(&root).starts_with("Could not reach GitHub"));
+            std::fs::remove_dir_all(&root).unwrap();
+        }
+    }
+
+    #[test]
+    fn an_outcome_words_a_new_install_and_an_update_per_language() {
+        let _lang = i18n::scope(i18n::Lang::De);
+        let root = Path::new("/project");
+        let fresh = Outcome { version: Some("1.2.0".into()), tag: Some("beta".into()), ..Default::default() }.message(root);
+        assert_eq!(fresh.en, "Installed the TrenchDot addon 1.2.0 from the rolling beta into res://addons/func_godot.");
+        assert_eq!(fresh.shown, "TrenchDot-Addon 1.2.0 aus der Rolling-Beta in res://addons/func_godot installiert.");
+        let updated = Outcome {
+            before: Installed::Older("1.0.0".into()),
+            version: Some("1.2.0".into()),
+            backup: Some(root.join("backup/func_godot")),
+            ..Default::default()
+        }
+        .message(root);
+        assert!(updated.en.starts_with("Updated the addon from 1.0.0 to 1.2.0. The old one is in the project's backup/func_godot folder"), "{updated:?}");
+        assert!(updated.shown.starts_with("Addon von 1.0.0 auf 1.2.0 aktualisiert. Das alte liegt im Ordner backup/func_godot"), "{updated:?}");
     }
 
     #[test]

@@ -187,6 +187,22 @@ fn a_message_with_translated_words_keeps_the_english_ones_in_its_english_text() 
 }
 
 #[test]
+fn a_counted_message_with_translated_words_picks_the_form_in_both_texts() {
+    let _de = test_catalogue(Lang::De, r#"{ "{n} file{x}": { "one": "{n} Datei{x}", "other": "{n} Dateien{x}" } }"#);
+    let _ru = test_catalogue(Lang::Ru, r#"{ "{n} file{x}": { "one": "{n} файл{x}", "few": "{n} файла{x}", "many": "{n} файлов{x}" } }"#);
+    let words = [("x", " from the beta", " aus der Beta")];
+    let _s = scope(Lang::De);
+    assert_eq!(Msg::filled_n("{n} file{x}", "{n} files{x}", 1, &words), Msg { en: "1 file from the beta".into(), shown: "1 Datei aus der Beta".into() });
+    assert_eq!(Msg::filled_n("{n} file{x}", "{n} files{x}", 3, &words), Msg { en: "3 files from the beta".into(), shown: "3 Dateien aus der Beta".into() });
+    set(Lang::Ru);
+    let words = [("x", "", "")];
+    let shown: Vec<String> = [1, 2, 5, 21].map(|n| Msg::filled_n("{n} file{x}", "{n} files{x}", n, &words).shown).into();
+    assert_eq!(shown, ["1 файл", "2 файла", "5 файлов", "21 файл"]);
+    set(Lang::En);
+    assert_eq!(Msg::filled_n("{n} file{x}", "{n} files{x}", 2, &words).shown, "2 files");
+}
+
+#[test]
 fn list_joins_per_language() {
     let three = ["A", "B", "C"];
     let cases = [
@@ -464,6 +480,20 @@ fn keys(src: &str) -> Vec<(Key, usize)> {
                     out.push((Key::Text(k.into()), *line));
                 }
             }
+
+            // A counted message with translated words in its placeholders
+            "filled_n" if is(&t, i.wrapping_sub(1), &Tok::Punct(':')) && is(&t, i + 1, &open) => {
+                if let (Some(one), Some(other)) = (str_at(&t, i + 2), str_at(&t, i + 4)) {
+                    out.push((Key::Plural(one.into(), other.into()), *line));
+                }
+            }
+
+            // A constant looked up where it is shown
+            "key" if is(&t, i.wrapping_sub(1), &Tok::Punct(':')) && is(&t, i.wrapping_sub(3), &Tok::Ident("Msg".into())) && is(&t, i + 1, &open) => {
+                if let Some(k) = str_at(&t, i + 2) {
+                    out.push((Key::Text(k.into()), *line));
+                }
+            }
             "trf" | "msg" | "en" if is(&t, i + 1, &bang) && is(&t, i + 2, &open) => {
                 if let Some(k) = str_at(&t, i + 3) {
                     out.push((Key::Text(k.into()), *line));
@@ -589,6 +619,8 @@ fn the_scanner_reads_every_literal_form() {
             doc.edit("Undo label", |m| m); doc.edit_coalesced("Coalesced label", |m| m); doc.edit(&label, |m| m); edit("Free fn", 1);
             doc.begin("Drag label"); progress.begin(false, 3); begin("Free begin");
             Msg::filled("Filled {x}", &[("x", a, b)]); filled("Free filled", &[]);
+            Msg::filled_n("{n} file{x}", "{n} files{x}", 2, &[]); filled_n("Free one", "Free other", 1, &[]);
+            Msg::key(" from the beta"); key("Free key"); other::key("Other key");
         }
     "##;
     let found = keys(src);
@@ -609,6 +641,8 @@ fn the_scanner_reads_every_literal_form() {
         (text("Coalesced label"), 22),
         (text("Drag label"), 23),
         (text("Filled {x}"), 24),
+        (plural("{n} file{x}", "{n} files{x}"), 25),
+        (text(" from the beta"), 26),
     ];
     assert_eq!(found, want);
     assert!(keys("").is_empty());
@@ -1015,6 +1049,17 @@ const CONVERTED: &[&str] = &[
     "prefab_library.rs",
     "random_fill.rs",
     "scatter_panel.rs",
+    "content_wizard.rs",
+    "addon_wizard.rs",
+    "addon_install.rs",
+    "entity_pack.rs",
+    "entity_wizards.rs",
+    "trust.rs",
+    "content.rs",
+    "models.rs",
+    "materials.rs",
+    "model_thumbs.rs",
+    "code_scan.rs",
 ];
 
 /// Functions of a file that is still being converted, as (file, function name).

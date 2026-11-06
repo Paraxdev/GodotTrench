@@ -1234,7 +1234,10 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
             if state.tool == ToolKind::Volume {
                 let class = state.prefs.volume_class.clone();
                 match crate::entity_pack::install_for_wizard(state, &[&class]) {
-                    Ok(Some(report)) => state.set_status(msg!("Volume tool. {summary}", summary = report.summary())),
+                    Ok(Some(report)) => {
+                        let report = report.message();
+                        state.set_status(Msg::filled("Volume tool. {summary}", &[("summary", &report.en, &report.shown)]));
+                    }
                     Ok(None) => {}
                     Err(e) => state.fail_status(e),
                 }
@@ -1612,7 +1615,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
         // The app opens the content wizard for these.
         Action::InstallNatureModels | Action::ShowProjectContent | Action::ShowAddonSetup => {}
         Action::InstallGameplayEntities => match crate::entity_pack::install_in_project(state) {
-            Ok(report) => state.set_status(report.summary()),
+            Ok(report) => state.set_status(report.message()),
             Err(e) => state.fail_status(e),
         },
         Action::ScatterToEntities => {

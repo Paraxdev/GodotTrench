@@ -133,7 +133,7 @@ pub fn hinge_for(bounds: &Aabb, side: HingeSide, angle: f64) -> (DVec3, f64) {
 pub fn make_door(state: &mut EditorState, ids: &[NodeId], kind: &DoorKind, trigger: bool) -> Result<NodeId, String> {
     let geometry = geometry_of(state, ids);
     if geometry.is_empty() {
-        return Err("Select the brushes or meshes of the door first".into());
+        return Err(en!("Select the brushes or meshes of the door first").into());
     }
 
     let bounds = state.doc.map.bounds_of(geometry.iter().copied());
@@ -189,7 +189,7 @@ pub fn make_door(state: &mut EditorState, ids: &[NodeId], kind: &DoorKind, trigg
         });
     }
 
-    state.set_status(format!("{classname} '{name}' created, drag its gizmo handles to adjust"));
+    state.set_status(crate::i18n::msg!("{classname} '{name}' created, drag its gizmo handles to adjust", classname, name));
     Ok(door)
 }
 
@@ -197,7 +197,7 @@ pub fn make_door(state: &mut EditorState, ids: &[NodeId], kind: &DoorKind, trigg
 pub fn make_platform(state: &mut EditorState, ids: &[NodeId], travel: DVec3, mode: u8) -> Result<NodeId, String> {
     let geometry = geometry_of(state, ids);
     if geometry.is_empty() {
-        return Err("Select the brushes of the platform first".into());
+        return Err(en!("Select the brushes of the platform first").into());
     }
 
     let name = unique_name(state, "lift");
@@ -223,7 +223,7 @@ pub fn make_platform(state: &mut EditorState, ids: &[NodeId], travel: DVec3, mod
 pub fn make_button(state: &mut EditorState, ids: &[NodeId], target: &str, input: &str) -> Result<NodeId, String> {
     let geometry = geometry_of(state, ids);
     if geometry.is_empty() {
-        return Err("Select the brushes of the button first".into());
+        return Err(en!("Select the brushes of the button first").into());
     }
 
     let name = unique_name(state, "button");
@@ -286,7 +286,7 @@ pub fn ensure_targetname(state: &mut EditorState, id: NodeId) -> Option<String> 
 /// Adds an output on `from` that calls `input` on `to`, naming `to` when needed.
 pub fn link(state: &mut EditorState, from: NodeId, to: NodeId, output: &str, input: &str, parameter: &str, delay: f64) -> Result<IoConnection, String> {
     if state.doc.map.entity(from).is_none() || state.doc.map.entity(to).is_none() {
-        return Err("Both ends of a link must be entities".into());
+        return Err(en!("Both ends of a link must be entities").into());
     }
 
     let target = ensure_targetname(state, to).ok_or("target has no name")?;
@@ -349,6 +349,7 @@ mod tests {
         assert_eq!(e.classname, "func_door_rotating");
         assert_eq!(e.property("hinge"), Some("24 0 0"));
         assert_eq!(e.property("open_angle"), Some("-90"));
+        assert_eq!(state.status, "func_door_rotating 'door_1' created, drag its gizmo handles to adjust");
         let trigger = state.doc.map.entities().find(|(_, e)| e.classname == "trigger_multiple").map(|(id, _)| id).unwrap();
         let tb = state.doc.map.bounds(trigger);
         assert!(tb.min.z < -60.0 && tb.max.z > 60.0, "volume covers both sides: {tb:?}");
@@ -362,6 +363,11 @@ mod tests {
         let conn = link(&mut state, door, lamp, "opened", "turn_on", "", 0.5).unwrap();
         assert_eq!(state.doc.map.entity(lamp).unwrap().targetname(), Some(conn.target.as_str()));
         assert!(td_doc::issues::check(&state.doc.map).iter().all(|i| i.code != "io_missing_target"));
+
+        let _de = crate::i18n::scope(crate::i18n::Lang::De);
+        let refused = make_button(&mut state, &[], "door_1", "toggle").unwrap_err();
+        state.fail_status(refused);
+        assert_eq!((state.status.as_str(), state.status_shown()), ("Select the brushes of the button first", "Zuerst die Brushes des Knopfs auswählen"));
     }
 
     #[test]

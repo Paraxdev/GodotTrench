@@ -8,19 +8,20 @@ use std::path::{Path, PathBuf};
 use egui::RichText;
 
 use crate::commands::Action;
-use crate::i18n::en;
+use crate::i18n::{Msg, en, msg, tr, trf};
 use crate::state::{EditorState, TrustRequest};
 
-pub const QUESTION: &str = "Do you trust the authors of the files in this project?";
-pub const CHIP: &str = "Restricted Mode";
-pub const SCANNING: &str = "Looking for code";
-pub const SCANNING_TIP: &str = "Looking through the project for code Godot would run. Godot is not started until it is done";
-pub const TRUST: &str = "Trust Project";
-pub const RESTRICT: &str = "Open in Restricted Mode";
-pub const KEEP: &str = "Keep Current Project";
+/// The window id and title MCP reports, shown translated.
+pub const QUESTION: &str = en!("Do you trust the authors of the files in this project?");
+pub const CHIP: &str = en!("Restricted Mode");
+pub const SCANNING: &str = en!("Looking for code");
+pub const SCANNING_TIP: &str = en!("Looking through the project for code Godot would run. Godot is not started until it is done");
+pub const TRUST: &str = en!("Trust Project");
+pub const RESTRICT: &str = en!("Open in Restricted Mode");
+pub const KEEP: &str = en!("Keep Current Project");
 const BLOCKS: &str =
-    "Godot runs a project's scripts. In Restricted Mode you can edit maps, but TrenchDot does not start Godot on the project until you trust it.";
-pub const CHIP_TIP: &str = "TrenchDot does not run this project in Godot until you trust it. Click to choose";
+    en!("Godot runs a project's scripts. In Restricted Mode you can edit maps, but TrenchDot does not start Godot on the project until you trust it.");
+pub const CHIP_TIP: &str = en!("TrenchDot does not run this project in Godot until you trust it. Click to choose");
 /// Why an action that has Godot run the project did nothing. MCP returns it as the error.
 pub const BLOCKED: &str = en!("This project is in Restricted Mode, so Godot is not run on it. Click Restricted Mode in the status bar to trust it");
 /// [`BLOCKED`] as the reason in a longer message.
@@ -31,12 +32,12 @@ pub const RESTRICTED: &str = en!("the project is in Restricted Mode, click Restr
 pub fn status_entry(ui: &mut egui::Ui, state: &EditorState) -> Option<egui::Response> {
     if state.scanning_code() {
         ui.separator();
-        ui.label(RichText::new(SCANNING).color(crate::theme::colors().fg.gamma_multiply_u8(160))).on_hover_text(SCANNING_TIP);
+        ui.label(RichText::new(tr(SCANNING)).color(crate::theme::colors().fg.gamma_multiply_u8(160))).on_hover_text(tr(SCANNING_TIP));
         None
     } else if state.restricted() {
         ui.separator();
-        let chip = egui::Button::new(RichText::new(CHIP).color(crate::theme::colors().yellow)).frame(false);
-        Some(ui.add(chip).on_hover_text(CHIP_TIP))
+        let chip = egui::Button::new(RichText::new(tr(CHIP)).color(crate::theme::colors().yellow)).frame(false);
+        Some(ui.add(chip).on_hover_text(tr(CHIP_TIP)))
     } else {
         None
     }
@@ -72,12 +73,12 @@ pub fn parent_folder(root: &Path) -> Option<&Path> {
     root.parent().filter(|p| p.parent().is_some())
 }
 
-pub const TRUSTED_TITLE: &str = "Trusted projects";
-const TRUSTED_NOTE: &str = "TrenchDot runs Godot on these projects. Other projects with code open in Restricted Mode.";
-pub const REMOVE: &str = "Remove";
+pub const TRUSTED_TITLE: &str = en!("Trusted projects");
+const TRUSTED_NOTE: &str = en!("TrenchDot runs Godot on these projects. Other projects with code open in Restricted Mode.");
+pub const REMOVE: &str = en!("Remove");
 const LIST_HEIGHT: f32 = 180.0;
 /// Follows a folder in the list.
-const FOLDER: &str = "and every project in it";
+const FOLDER: &str = en!("and every project in it");
 
 /// A stored path the way a person writes it, without the `\\?\` that canonical paths have on Windows.
 pub fn shown(path: &Path) -> String {
@@ -92,12 +93,12 @@ pub fn shown(path: &Path) -> String {
 /// The Trusted projects part of Preferences: every trusted project and folder, each with a button that takes the
 /// trust back.
 pub fn trusted_list(ui: &mut egui::Ui, state: &mut EditorState) {
-    ui.label(RichText::new(TRUSTED_TITLE).strong());
-    ui.label(TRUSTED_NOTE);
+    ui.label(RichText::new(tr(TRUSTED_TITLE)).strong());
+    ui.label(tr(TRUSTED_NOTE));
     let entries: Vec<(PathBuf, bool)> =
         state.prefs.trusted_projects.iter().map(|p| (p.clone(), false)).chain(state.prefs.trusted_folders.iter().map(|p| (p.clone(), true))).collect();
     if entries.is_empty() {
-        ui.label(RichText::new("None yet. Trust Project in the trust prompt adds one.").weak());
+        ui.label(RichText::new(tr("None yet. Trust Project in the trust prompt adds one.")).weak());
         return;
     }
 
@@ -110,10 +111,10 @@ pub fn trusted_list(ui: &mut egui::Ui, state: &mut EditorState) {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(shown(path)).monospace());
                     if *folder {
-                        ui.label(FOLDER);
+                        ui.label(tr(FOLDER));
                     }
                 });
-                if ui.button(REMOVE).on_hover_text("TrenchDot asks again before Godot runs the scripts here").clicked() {
+                if ui.button(tr(REMOVE)).on_hover_text(tr("TrenchDot asks again before Godot runs the scripts here")).clicked() {
                     remove = Some((path.clone(), *folder));
                 }
 
@@ -160,49 +161,49 @@ impl TrustPrompt {
         let mut answer = None;
         let modal = egui::Modal::new(egui::Id::new("trust_prompt")).show(ctx, |ui| {
             ui.set_width(540.0);
-            ui.heading(QUESTION);
+            ui.heading(tr(QUESTION));
             ui.add_space(4.0);
             ui.label(RichText::new(root.display().to_string()).monospace().color(crate::theme::colors().cyan));
             ui.add_space(4.0);
             match &request {
                 TrustRequest::Project(_) => {
-                    ui.label(BLOCKS);
+                    ui.label(tr(BLOCKS));
                 }
                 TrustRequest::Run(_, action) => {
-                    ui.label(format!("{} has Godot run this project.", action.label()));
-                    ui.label(RichText::new("Running it runs its scripts. Trust it and continue?").strong());
+                    ui.label(trf!("{action} has Godot run this project.", action = action.title()));
+                    ui.label(RichText::new(tr("Running it runs its scripts. Trust it and continue?")).strong());
                 }
                 TrustRequest::Switch { map, .. } => {
                     let name = map.file_name().unwrap_or_default().to_string_lossy();
-                    ui.label(format!("{name} belongs to this project, not to the one that is open. {BLOCKS}"));
+                    ui.label(format!("{} {}", trf!("{name} belongs to this project, not to the one that is open.", name), tr(BLOCKS)));
                 }
             }
 
             if let Some(name) = parent_folder(&root).and_then(Path::file_name) {
                 ui.add_space(4.0);
-                ui.checkbox(&mut self.parent, format!("Trust the authors of all files in the parent folder '{}'", name.to_string_lossy()));
+                ui.checkbox(&mut self.parent, trf!("Trust the authors of all files in the parent folder '{name}'", name = name.to_string_lossy()));
             }
 
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                if ui.button(RichText::new(TRUST).strong()).clicked() {
+                if ui.button(RichText::new(tr(TRUST)).strong()).clicked() {
                     answer = Some(Answer::Trust);
                 }
 
                 match request {
                     TrustRequest::Run(..) => {
-                        if ui.button("Cancel").clicked() {
+                        if ui.button(tr("Cancel")).clicked() {
                             answer = Some(Answer::Keep);
                         }
                     }
                     _ => {
-                        if ui.button(RESTRICT).clicked() {
+                        if ui.button(tr(RESTRICT)).clicked() {
                             answer = Some(Answer::Restrict);
                         }
                     }
                 }
 
-                if matches!(request, TrustRequest::Switch { .. }) && ui.button(KEEP).clicked() {
+                if matches!(request, TrustRequest::Switch { .. }) && ui.button(tr(KEEP)).clicked() {
                     answer = Some(Answer::Keep);
                 }
             });
@@ -212,7 +213,7 @@ impl TrustPrompt {
         }
 
         let Some(answer) = answer else { return Some(modal.response.rect) };
-        let restricted = format!("{} is open in Restricted Mode, click Restricted Mode in the status bar to trust it", root.display());
+        let restricted = msg!("{path} is open in Restricted Mode, click Restricted Mode in the status bar to trust it", path = root.display());
         match (answer, request) {
             (Answer::Trust, request) => {
                 state.trust_project(&root, self.parent);
@@ -223,8 +224,8 @@ impl TrustPrompt {
                 }
 
                 match parent_folder(&root).filter(|_| self.parent) {
-                    Some(parent) => state.set_status(format!("Trusted every project in {}", parent.display())),
-                    None => state.set_status(format!("Trusted {}", root.display())),
+                    Some(parent) => state.set_status(msg!("Trusted every project in {folder}", folder = parent.display())),
+                    None => state.set_status(msg!("Trusted {path}", path = root.display())),
                 }
             }
             (Answer::Restrict, TrustRequest::Switch { .. }) => {
@@ -234,9 +235,13 @@ impl TrustPrompt {
             }
             (Answer::Restrict, _) => state.set_status(restricted),
             (Answer::Keep, TrustRequest::Run(_, action)) => {
-                state.set_status(format!("Cancelled {}, {} stays in Restricted Mode", action.label(), root.display()));
+                let path = root.display().to_string();
+                state.set_status(Msg::filled(
+                    "Cancelled {action}, {path} stays in Restricted Mode",
+                    &[("action", &action.label(), &action.title()), ("path", &path, &path)],
+                ));
             }
-            (Answer::Keep, _) => state.set_status(format!("Kept the open project, {} stays closed", root.display())),
+            (Answer::Keep, _) => state.set_status(msg!("Kept the open project, {path} stays closed", path = root.display())),
         }
 
         self.request = None;
@@ -561,6 +566,26 @@ mod tests {
         assert_eq!(f.actions, [Action::RunGodotProject], "the action goes on once trusted");
         assert!(f.state.is_trusted(&keep), "the parent folder is trusted");
         assert!(f.state.status.starts_with("Trusted every project in"), "{}", f.state.status);
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[test]
+    fn the_status_stays_english_for_mcp_while_the_prompt_and_status_bar_speak_german() {
+        let _lang = crate::i18n::scope(crate::i18n::Lang::De);
+        let (folder, castle, _) = projects("german");
+        let mut state = EditorState::new(Prefs::default());
+        state.load_project(&castle);
+        state.apply_code_scans(true);
+        let mut harness = harness(state);
+        harness.run();
+        assert!(harness.query_by_label(tr(QUESTION)).is_some());
+        assert!(tr(QUESTION).starts_with("Vertraust du"));
+        harness.get_by_label(tr(RESTRICT)).click();
+        harness.run();
+        let state = &harness.state().state;
+        assert!(state.status.contains("is open in Restricted Mode, click Restricted Mode in the status bar"), "{}", state.status);
+        assert!(state.status_shown().contains("im eingeschränkten Modus geöffnet"), "{}", state.status_shown());
+        assert!(!state.status_shown().contains("Restricted Mode"));
         let _ = std::fs::remove_dir_all(folder);
     }
 
