@@ -24,7 +24,7 @@ pub const CHIP_TIP: &str = "TrenchDot does not run this project in Godot until y
 /// Why an action that has Godot run the project did nothing. MCP returns it as the error.
 pub const BLOCKED: &str = en!("This project is in Restricted Mode, so Godot is not run on it. Click Restricted Mode in the status bar to trust it");
 /// [`BLOCKED`] as the reason in a longer message.
-pub const RESTRICTED: &str = "the project is in Restricted Mode, click Restricted Mode in the status bar to trust it";
+pub const RESTRICTED: &str = en!("the project is in Restricted Mode, click Restricted Mode in the status bar to trust it");
 
 /// The status bar entry for the open project's trust. A note while its code scan runs, the Restricted Mode chip once
 /// the scan ended and the project stays restricted, whose response is returned.

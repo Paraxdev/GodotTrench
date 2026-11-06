@@ -405,7 +405,7 @@ pub fn shift(state: &mut EditorState, faces: &[(NodeId, usize)], texels: DVec2) 
             }
         })
         .collect();
-    commit(state, "Shift Texture", true, plans)
+    commit(state, "Slide Texture", true, plans)
 }
 
 /// Multiplies the texture scale (world units per texel), keeping the texel at each face center in place.

@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use td_core::{Aabb, DVec3};
 use td_render::{LineVertex, MeshBatch, MeshVertex, WHITE_MATERIAL};
 
+use crate::i18n::{Msg, en, tr, tr_n, trf};
 use crate::state::EditorState;
 
 /// Edits settle this long before the overlay is baked again.
@@ -245,14 +246,14 @@ impl WalkableView {
     /// One line for the menu.
     pub fn describe(&self) -> String {
         match (&self.result, &self.error) {
-            _ if self.busy() => "Baking in Godot…".into(),
-            (_, Some(e)) => e.clone(),
+            _ if self.busy() => tr("Baking in Godot…").into(),
+            (_, Some(e)) => tr(e).into(),
             (Some(w), _) => match w.islands.len() {
-                0 => "Nothing is walkable".into(),
-                1 => format!("{:.0} m² walkable, all connected", w.area()),
-                n => format!("{:.0} m² walkable, {} cut off islands", w.area(), n - 1),
+                0 => tr("Nothing is walkable").into(),
+                1 => trf!("{area} m² walkable, all connected", area = format!("{:.0}", w.area())),
+                n => tr_n!(n - 1, "{area} m² walkable, {n} cut off island", "{area} m² walkable, {n} cut off islands", area = format!("{:.0}", w.area())),
             },
-            _ => "Not baked yet".into(),
+            _ => tr("Not baked yet").into(),
         }
     }
 
@@ -265,11 +266,11 @@ impl WalkableView {
 /// Why Godot cannot bake the current map, checked before asking it.
 pub fn unavailable(state: &EditorState) -> Option<String> {
     if state.doc.path.is_none() {
-        Some("save the map into the Godot project first, Godot bakes the scene that builds it".into())
+        Some(en!("save the map into the Godot project first, Godot bakes the scene that builds it").into())
     } else if state.game.project_root.is_none() {
-        Some("open the Godot project first".into())
+        Some(en!("open the Godot project first").into())
     } else if state.link.is_none() || !state.prefs.live_link {
-        Some("the Godot live link is off, turn it on in Preferences".into())
+        Some(en!("the Godot live link is off, turn it on in Preferences").into())
     } else if state.restricted() {
         Some(crate::trust::RESTRICTED.into())
     } else {
@@ -331,7 +332,7 @@ fn poll_inner(state: &mut EditorState, ctx: &egui::Context) {
                 view.on = false;
                 view.result = None;
                 view.error = Some(e.clone());
-                state.set_status(format!("Walkable area: {e}"));
+                state.set_status(Msg::filled("Walkable area: {e}", &[("e", &e, tr(&e))]));
             }
             Err(mpsc::TryRecvError::Disconnected) => {}
             Err(mpsc::TryRecvError::Empty) => return,
@@ -368,7 +369,7 @@ fn poll_inner(state: &mut EditorState, ctx: &egui::Context) {
         state.walkable.on = false;
         state.walkable.error = Some(e.clone());
         state.walkable.generation += 1;
-        state.set_status(format!("Walkable area: {e}"));
+        state.set_status(Msg::filled("Walkable area: {e}", &[("e", &e, tr(&e))]));
     }
 }
 
@@ -435,5 +436,25 @@ mod tests {
         assert!(s["main"].is_null());
         assert!(s["hint"].as_str().unwrap().starts_with("Nothing"));
         assert!(Walkable::from_reply(&json!({ "ok": true })).is_err());
+    }
+
+    #[test]
+    fn the_summary_counts_cut_off_islands_in_the_language_of_the_user() {
+        use crate::i18n::{Lang, scope};
+        let baked = |islands: Value| {
+            let mut reply = sample();
+            reply["islands"] = islands;
+            WalkableView { result: Some(Walkable::from_reply(&reply).unwrap()), ..Default::default() }
+        };
+        let (one, two, all) = (baked(json!([[0, 1, 2], [3]])), baked(json!([[0, 1, 2], [3], [0]])), baked(json!([[0, 1, 2, 3]])));
+        let _en = scope(Lang::En);
+        assert!(one.describe().ends_with("1 cut off island"), "{}", one.describe());
+        assert!(two.describe().ends_with("2 cut off islands"), "{}", two.describe());
+        assert!(all.describe().ends_with("all connected"));
+        let _de = scope(Lang::De);
+        assert!(one.describe().ends_with("1 abgetrennte Insel"), "{}", one.describe());
+        assert!(two.describe().ends_with("2 abgetrennte Inseln"), "{}", two.describe());
+        assert!(one.describe().contains(" m² begehbar"));
+        assert_eq!(WalkableView::default().describe(), "Noch nicht gebacken");
     }
 }

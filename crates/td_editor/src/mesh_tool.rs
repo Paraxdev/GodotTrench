@@ -4,15 +4,16 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use egui::{Align2, Color32, FontId, Key, Modifiers, PointerButton, Pos2, Rect, Response, Stroke, Ui, Vec2};
+use egui::{Color32, Key, Modifiers, PointerButton, Pos2, Rect, Response, Stroke, Ui, Vec2};
 use td_core::{Aabb, DMat4, DQuat, DVec3, NodeId, Plane};
 use td_geom::Mesh;
 use td_render::LineVertex;
 
 use crate::camera::{Camera, ViewKind};
-use crate::i18n::en;
+use crate::i18n::{Msg, en, msg, msg_n, tr, trf};
 use crate::scene::v3;
 use crate::state::EditorState;
+use crate::widgets::corner_hint;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Component {
@@ -28,6 +29,14 @@ impl Component {
             Component::Vertex => "vertex",
             Component::Edge => "edge",
             Component::Face => "face",
+        }
+    }
+
+    pub fn title(&self) -> &'static str {
+        match self {
+            Component::Vertex => en!("Vertex"),
+            Component::Edge => en!("Edge"),
+            Component::Face => en!("Face"),
         }
     }
 }
@@ -64,12 +73,30 @@ pub enum TransformKind {
     Scale,
 }
 
+impl TransformKind {
+    fn name(self) -> &'static str {
+        match self {
+            TransformKind::Grab => en!("Grab"),
+            TransformKind::Rotate => en!("Rotate"),
+            TransformKind::Scale => en!("Scale"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Constraint {
     pub dir: DVec3,
     /// Shift+axis: move within the plane perpendicular to `dir`.
     pub exclude: bool,
     pub label: &'static str,
+}
+
+impl Constraint {
+    /// The axis the way a status names it, in English and in the editor's language.
+    fn words(&self) -> (String, String) {
+        let word = |label: &str| if label == "normal" { tr("normal").to_string() } else { label.to_string() };
+        if self.exclude { (format!("not {}", self.label), trf!("not {axis}", axis = word(self.label))) } else { (self.label.to_string(), word(self.label)) }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -349,7 +376,7 @@ impl MeshTool {
 
         if pressed(ctx, none, Key::K) {
             self.modal = Some(Modal::Knife { first: None, view: None });
-            state.set_status("Knife: click two points to cut, Esc cancels");
+            state.set_status(msg!("Knife: click two points to cut, Esc cancels"));
             return true;
         }
 
@@ -379,7 +406,7 @@ impl MeshTool {
 
         if pressed(ctx, none, Key::I) {
             if let Some(center) = self.selection_center(state) {
-                state.doc.begin("Inset Faces");
+                state.doc.begin(en!("Inset Faces"));
                 self.modal = Some(Modal::Inset { start: None, center, view: None });
             }
 
@@ -388,7 +415,7 @@ impl MeshTool {
 
         if pressed(ctx, ctrl_shift, Key::B) {
             if let Some(center) = self.selection_center(state) {
-                state.doc.begin("Bevel Vertices");
+                state.doc.begin(en!("Bevel Vertices"));
                 self.modal = Some(Modal::Bevel { start: None, center, vertices: true, view: None });
             }
 
@@ -397,7 +424,7 @@ impl MeshTool {
 
         if pressed(ctx, ctrl, Key::B) {
             if let Some(center) = self.selection_center(state) {
-                state.doc.begin("Bevel Edges");
+                state.doc.begin(en!("Bevel Edges"));
                 self.modal = Some(Modal::Bevel { start: None, center, vertices: false, view: None });
             }
 
@@ -459,9 +486,9 @@ impl MeshTool {
     pub fn start_transform(&mut self, kind: TransformKind, constraint: Option<Constraint>, state: &mut EditorState) {
         let Some(center) = self.selection_center(state) else { return };
         state.doc.begin(match kind {
-            TransformKind::Grab => "Grab",
-            TransformKind::Rotate => "Rotate Vertices",
-            TransformKind::Scale => "Scale Vertices",
+            TransformKind::Grab => en!("Grab"),
+            TransformKind::Rotate => en!("Rotate Vertices"),
+            TransformKind::Scale => en!("Scale Vertices"),
         });
         self.modal = Some(Modal::Transform { kind, constraint, start: None, center, numeric: String::new(), view: None });
     }
@@ -661,7 +688,7 @@ impl MeshTool {
         }
 
         self.prune(state);
-        state.set_status(label);
+        state.set_status(Msg::key(label));
     }
 
     // ------------------------------------------------------------------------ mouse
@@ -721,7 +748,7 @@ impl MeshTool {
             }
 
             self.gizmo = true;
-            state.set_status("Gizmo: arrows and squares move, rings rotate, boxes scale. Esc hides it");
+            state.set_status(msg!("Gizmo: arrows and squares move, rings rotate, boxes scale. Esc hides it"));
         }
 
         if response.drag_started_by(PointerButton::Primary)
@@ -730,9 +757,9 @@ impl MeshTool {
             && let Some(drag) = crate::transform_gizmo::begin_on(cam, rect, bounds, origin)
         {
             state.doc.begin(match drag.part {
-                crate::transform_gizmo::Part::Rotate(_) => "Rotate Vertices",
-                crate::transform_gizmo::Part::Scale(_) => "Scale Vertices",
-                _ => "Move Vertices",
+                crate::transform_gizmo::Part::Rotate(_) => en!("Rotate Vertices"),
+                crate::transform_gizmo::Part::Scale(_) => en!("Scale Vertices"),
+                _ => en!("Move Vertices"),
             });
             self.gizmo_drag = Some((drag, cam.kind));
             return;
@@ -805,10 +832,11 @@ impl MeshTool {
                     }
                 });
                 let (_, _, t) = m.to_scale_rotation_translation();
-                state.set_status(format!(
-                    "{kind:?} {}  {}  (X/Y/Z constrain, type a value, Enter confirms, Esc cancels)",
-                    constraint.map(|c| if c.exclude { format!("not {}", c.label) } else { c.label.to_string() }).unwrap_or_else(|| "free".into()),
-                    if numeric.is_empty() { format!("{:.2} {:.2} {:.2}", t.x, t.y, t.z) } else { numeric.clone() }
+                let (axis, axis_shown) = constraint.map(|c| c.words()).unwrap_or_else(|| ("free".into(), tr("free").into()));
+                let value = if numeric.is_empty() { format!("{:.2} {:.2} {:.2}", t.x, t.y, t.z) } else { numeric.clone() };
+                state.set_status(Msg::filled(
+                    "{kind} {axis}  {value}  (X/Y/Z constrain, type a value, Enter confirms, Esc cancels)",
+                    &[("kind", kind.name(), tr(kind.name())), ("axis", &axis, &axis_shown), ("value", &value, &value)],
                 ));
                 if confirm_click {
                     self.confirm(state);
@@ -861,7 +889,12 @@ impl MeshTool {
                         }
                     }
                 });
-                state.set_status(format!("{} {amount:.2} (move the mouse, click to confirm)", if is_bevel { "Bevel" } else { "Inset" }));
+                let amount = format!("{amount:.2}");
+                state.set_status(if is_bevel {
+                    msg!("Bevel {amount} (move the mouse, click to confirm)", amount)
+                } else {
+                    msg!("Inset {amount} (move the mouse, click to confirm)", amount)
+                });
                 if confirm_click {
                     self.confirm(state);
                     if is_bevel {
@@ -892,7 +925,7 @@ impl MeshTool {
                     self.selection.insert(id, MeshSel { verts: created.into_iter().collect(), ..Default::default() });
                     self.component = Component::Vertex;
                     self.modal = None;
-                    state.set_status(format!("Loop cut with {cuts} cut(s), G slides the new loop"));
+                    state.set_status(msg_n!(cuts, "Loop cut with {n} cut, G slides the new loop", "Loop cut with {n} cuts, G slides the new loop"));
                 }
             }
             Modal::Knife { first, view } => {
@@ -962,7 +995,7 @@ impl MeshTool {
                 changed += faces.len();
             }
         });
-        state.set_status(format!("Knife cut {changed} face(s)"));
+        state.set_status(msg_n!(changed, "Knife cut {n} face", "Knife cut {n} faces"));
     }
 
     fn is_selected(&self, id: NodeId, c: &Picked) -> bool {
@@ -1256,17 +1289,18 @@ impl MeshTool {
         }
 
         let hint = match &self.modal {
-            Some(Modal::Transform { .. }) => "Transform: X/Y/Z axis, Shift+X/Y/Z plane, type a value, click or Enter confirms, Esc cancels".to_string(),
-            Some(Modal::Inset { .. }) => "Inset: move the mouse away from the selection, click to confirm".to_string(),
-            Some(Modal::Bevel { .. }) => "Bevel: move the mouse to set the width, click to confirm".to_string(),
-            Some(Modal::LoopCut { cuts, .. }) => format!("Loop cut: hover an edge, wheel or +/- changes cuts ({cuts}), click to cut"),
-            Some(Modal::Knife { .. }) => "Knife: click the start and end of the cut".to_string(),
-            None if meshes.is_empty() => "Mesh edit: select a mesh (or brushes and press Tab to convert them)".to_string(),
-            None => {
-                format!("Mesh edit ({}): 1/2/3 mode, G/R/S transform, E extrude, I inset, Ctrl+R loop cut, double click for a gizmo", self.component.label())
-            }
+            Some(Modal::Transform { .. }) => trf!("Transform: X/Y/Z axis, Shift+X/Y/Z plane, type a value, click or Enter confirms, Esc cancels"),
+            Some(Modal::Inset { .. }) => trf!("Inset: move the mouse away from the selection, click to confirm"),
+            Some(Modal::Bevel { .. }) => trf!("Bevel: move the mouse to set the width, click to confirm"),
+            Some(Modal::LoopCut { cuts, .. }) => trf!("Loop cut: hover an edge, wheel or +/- changes cuts ({cuts}), click to cut", cuts),
+            Some(Modal::Knife { .. }) => trf!("Knife: click the start and end of the cut"),
+            None if meshes.is_empty() => trf!("Mesh edit: select a mesh (or brushes and press Tab to convert them)"),
+            None => trf!(
+                "Mesh edit ({mode}): 1/2/3 mode, G/R/S transform, E extrude, I inset, Ctrl+R loop cut, double click for a gizmo",
+                mode = tr(self.component.title())
+            ),
         };
-        painter.text(rect.left_bottom() + Vec2::new(8.0, -8.0), Align2::LEFT_BOTTOM, hint, FontId::proportional(12.0), Color32::from_rgb(255, 200, 120));
+        corner_hint(&painter, rect, hint, Color32::from_rgb(255, 200, 120));
     }
 }
 
@@ -1473,6 +1507,25 @@ mod tests {
         let x = Some(Constraint { dir: DVec3::X, exclude: false, label: "X" });
         let s = transform_matrix(TransformKind::Scale, x, Pos2::ZERO, Pos2::ZERO, DVec3::ZERO, "2", &cam, rect, false, 16.0);
         assert!((s.transform_point3(DVec3::ONE) - DVec3::new(2.0, 1.0, 1.0)).length() < 1e-9);
+    }
+
+    #[test]
+    fn a_transform_status_keeps_its_english_text_whatever_the_language() {
+        use crate::i18n::{Lang, scope};
+        let _de = scope(Lang::De);
+        let words = |c: Constraint| c.words();
+        assert_eq!(words(Constraint { dir: DVec3::Z, exclude: true, label: "Z" }), ("not Z".to_string(), "nicht Z".to_string()));
+        assert_eq!(words(Constraint { dir: DVec3::X, exclude: false, label: "X" }), ("X".to_string(), "X".to_string()));
+        let (en, shown) = words(Constraint { dir: DVec3::Y, exclude: false, label: "normal" });
+        assert_eq!(en, "normal");
+        assert_ne!(shown, en, "the face normal is a word, not a letter");
+
+        let status = Msg::filled(
+            "{kind} {axis}  {value}  (X/Y/Z constrain, type a value, Enter confirms, Esc cancels)",
+            &[("kind", TransformKind::Rotate.name(), tr(TransformKind::Rotate.name())), ("axis", "X", "X"), ("value", "-12.50 3.00 0.25", "-12.50 3.00 0.25")],
+        );
+        assert_eq!(status.en, "Rotate X  -12.50 3.00 0.25  (X/Y/Z constrain, type a value, Enter confirms, Esc cancels)");
+        assert!(status.shown.starts_with("Drehen X  -12.50 3.00 0.25  ("), "{}", status.shown);
     }
 
     #[test]

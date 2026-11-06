@@ -628,7 +628,7 @@ pub fn uv_editor(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
             };
             uv_state.drag = Some(UvDrag::Box { start: origin, mode });
         } else {
-            state.doc.begin("Shift Texture");
+            state.doc.begin("Slide Texture");
             uv_state.drag = Some(UvDrag::Faces { last: origin_uv });
         }
     }

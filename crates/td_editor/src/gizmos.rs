@@ -7,6 +7,7 @@ use td_formats::GizmoDef;
 use td_render::LineVertex;
 
 use crate::camera::{Camera, ViewKind};
+use crate::i18n::{Msg, msg};
 use crate::scene::v3;
 use crate::state::EditorState;
 
@@ -320,7 +321,7 @@ fn set_property(state: &mut EditorState, id: NodeId, key: &str, value: String) {
 }
 
 /// Moves a handle to the pointer. Returns a status line describing the new value.
-pub fn drag(state: &mut EditorState, handle: GizmoHandle, start: DVec3, cam: &Camera, rect: Rect, pos: Pos2, modifiers: egui::Modifiers) -> Option<String> {
+pub fn drag(state: &mut EditorState, handle: GizmoHandle, start: DVec3, cam: &Camera, rect: Rect, pos: Pos2, modifiers: egui::Modifiers) -> Option<Msg> {
     let t = targets(state).into_iter().find(|t| t.id == handle.entity)?;
     let gizmo = t.gizmos.get(handle.gizmo)?.clone();
     let ray = cam.ray(rect, pos);
@@ -340,7 +341,7 @@ pub fn drag(state: &mut EditorState, handle: GizmoHandle, start: DVec3, cam: &Ca
     let (key, value, status) = match (&gizmo, handle.part) {
         (GizmoDef::Hinge { property, .. }, 0) => {
             let v = state.snap(world) - t.center;
-            (property.clone(), fmt_vec3(v), format!("hinge {}", fmt_vec3(v)))
+            (property.clone(), fmt_vec3(v), msg!("hinge {v}", v = fmt_vec3(v)))
         }
         (GizmoDef::Hinge { angle, .. }, _) => {
             let (hinge, axis, far, _) = hinge_geometry(&t, state, &gizmo)?;
@@ -348,26 +349,26 @@ pub fn drag(state: &mut EditorState, handle: GizmoHandle, start: DVec3, cam: &Ca
             let (a, b) = (a - axis * a.dot(axis), b - axis * b.dot(axis));
             let deg = a.cross(b).dot(axis).atan2(a.dot(b)).to_degrees();
             let deg = (deg / angle_step).round() * angle_step;
-            (angle.clone(), fmt_num(deg), format!("open angle {}°", fmt_num(deg)))
+            (angle.clone(), fmt_num(deg), msg!("open angle {deg}°", deg = fmt_num(deg)))
         }
         (GizmoDef::Travel { property }, _) => {
             let v = state.snap(world - t.center);
-            (property.clone(), fmt_vec3(v), format!("{property} {} ({} units)", fmt_vec3(v), fmt_num(v.length())))
+            (property.clone(), fmt_vec3(v), msg!("{property} {v} ({length} units)", property, v = fmt_vec3(v), length = fmt_num(v.length())))
         }
         (GizmoDef::Radius { property, scale }, _) => {
             let r = state.snap_scalar((world - t.center).length()).max(0.0) / scale.max(1e-9);
-            (property.clone(), fmt_num(r), format!("{property} {}", fmt_num(r)))
+            (property.clone(), fmt_num(r), Msg::from(format!("{property} {}", fmt_num(r))))
         }
         (GizmoDef::Cone { range, scale, .. }, 0) => {
             let len = state.snap_scalar((world - t.center).dot(t.forward()).max(0.0)) / scale.max(1e-9);
-            (range.clone(), fmt_num(len), format!("{range} {}", fmt_num(len)))
+            (range.clone(), fmt_num(len), Msg::from(format!("{range} {}", fmt_num(len))))
         }
         (GizmoDef::Cone { angle, .. }, _) => {
             let d = world - t.center;
             let along = d.dot(t.forward()).max(1e-6);
             let side = (d - t.forward() * d.dot(t.forward())).length();
             let deg = ((side / along).atan().to_degrees() / angle_step).round() * angle_step;
-            (angle.clone(), fmt_num(deg.clamp(1.0, 89.0)), format!("{angle} {}°", fmt_num(deg)))
+            (angle.clone(), fmt_num(deg.clamp(1.0, 89.0)), Msg::from(format!("{angle} {}°", fmt_num(deg))))
         }
         (GizmoDef::Box { property, half }, k) => {
             let (full_size, rot) = t.box_frame(state, property, *half);
@@ -375,12 +376,12 @@ pub fn drag(state: &mut EditorState, handle: GizmoHandle, start: DVec3, cam: &Ca
             let axis = (k as usize).min(2);
             let full = state.snap_scalar(((rot.inverse() * (world - t.center))[axis]).abs() * 2.0).max(1.0);
             s[axis] = if *half { full * 0.5 } else { full };
-            (property.clone(), fmt_vec3(s), format!("{property} {}", fmt_vec3(s)))
+            (property.clone(), fmt_vec3(s), Msg::from(format!("{property} {}", fmt_vec3(s))))
         }
         (GizmoDef::Point { property, world: absolute }, _) => {
             let p = state.snap(world);
             let v = if *absolute { p } else { p - t.center };
-            (property.clone(), fmt_vec3(v), format!("{property} {}", fmt_vec3(v)))
+            (property.clone(), fmt_vec3(v), Msg::from(format!("{property} {}", fmt_vec3(v))))
         }
     };
     set_property(state, t.id, &key, value);

@@ -173,6 +173,20 @@ fn a_message_from_a_key_and_a_joined_message_keep_both_texts() {
 }
 
 #[test]
+fn a_message_with_translated_words_keeps_the_english_ones_in_its_english_text() {
+    let _de = test_catalogue(Lang::De, r#"{ "{kind} {axis} at {x}": "{kind} auf {axis}, {x}" }"#);
+    let words = [("kind", "Grab", "Greifen"), ("axis", "free", "frei"), ("x", "3.50", "3.50")];
+    let _s = scope(Lang::De);
+    assert_eq!(Msg::filled("{kind} {axis} at {x}", &words), Msg { en: "Grab free at 3.50".into(), shown: "Greifen auf frei, 3.50".into() });
+    assert_eq!(Msg::filled("{kind} {axis} at {x}", &words[..1]).en, "Grab {axis} at {x}", "a missing word stays visible");
+    assert_eq!(
+        Msg::filled("{kind} {axis} here", &words),
+        Msg { en: "Grab free here".into(), shown: "Greifen frei here".into() },
+        "a key without a translation shows its English template around the shown words"
+    );
+}
+
+#[test]
 fn list_joins_per_language() {
     let three = ["A", "B", "C"];
     let cases = [
@@ -438,7 +452,14 @@ fn keys(src: &str) -> Vec<(Key, usize)> {
             }
 
             // An undo label, the History panel looks it up
-            "edit" | "edit_coalesced" if is(&t, i.wrapping_sub(1), &Tok::Punct('.')) && is(&t, i + 1, &open) => {
+            "edit" | "edit_coalesced" | "begin" if is(&t, i.wrapping_sub(1), &Tok::Punct('.')) && is(&t, i + 1, &open) => {
+                if let Some(k) = str_at(&t, i + 2) {
+                    out.push((Key::Text(k.into()), *line));
+                }
+            }
+
+            // A message with translated words in its placeholders
+            "filled" if is(&t, i.wrapping_sub(1), &Tok::Punct(':')) && is(&t, i + 1, &open) => {
                 if let Some(k) = str_at(&t, i + 2) {
                     out.push((Key::Text(k.into()), *line));
                 }
@@ -570,6 +591,8 @@ fn the_scanner_reads_every_literal_form() {
             attr("Attribute"); str("Str"); x.tr_name("No");
             tr(label);
             doc.edit("Undo label", |m| m); doc.edit_coalesced("Coalesced label", |m| m); doc.edit(&label, |m| m); edit("Free fn", 1);
+            doc.begin("Drag label"); progress.begin(false, 3); begin("Free begin");
+            Msg::filled("Filled {x}", &[("x", a, b)]); filled("Free filled", &[]);
         }
     "##;
     let found = keys(src);
@@ -588,6 +611,8 @@ fn the_scanner_reads_every_literal_form() {
         (plural("{n} face", "{n} faces"), 16),
         (text("Undo label"), 22),
         (text("Coalesced label"), 22),
+        (text("Drag label"), 23),
+        (text("Filled {x}"), 24),
     ];
     assert_eq!(found, want);
     assert!(keys("").is_empty());
@@ -967,7 +992,21 @@ fn mcp_code_stays_english() {
 }
 
 /// Files whose UI text all goes through the lookup, so a raw literal there is text someone forgot to translate.
-const CONVERTED: &[&str] = &["dialogs.rs", "help.rs", "tools.rs", "welcome.rs", "icons.rs"];
+const CONVERTED: &[&str] = &[
+    "dialogs.rs",
+    "help.rs",
+    "tools.rs",
+    "welcome.rs",
+    "icons.rs",
+    "toolset.rs",
+    "mesh_tool.rs",
+    "viewport.rs",
+    "gizmos.rs",
+    "transform_gizmo.rs",
+    "extra_tools.rs",
+    "walkable.rs",
+    "overlays.rs",
+];
 
 /// Functions of a file that is still being converted, as (file, function name).
 const CONVERTED_FNS: &[(&str, &str)] = &[

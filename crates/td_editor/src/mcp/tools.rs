@@ -2830,4 +2830,15 @@ mod tests {
             assert!(names.iter().any(|x| x == n), "{n}");
         }
     }
+
+    #[test]
+    fn mesh_op_names_stay_english_in_german() {
+        use crate::i18n::{Lang, Msg, scope};
+        let english = mesh_op_names();
+        let _de = scope(Lang::De);
+        let shown: Vec<_> = crate::mesh_tool::MeshOp::ALL.iter().map(|o| Msg::key(o.label()).shown).collect();
+        assert!(shown.iter().zip(crate::mesh_tool::MeshOp::ALL).any(|(s, o)| s != o.label()), "the menu does show German names");
+        assert_eq!(mesh_op_names(), english);
+        assert!(english.iter().all(|n| n.is_ascii()), "{english:?}");
+    }
 }

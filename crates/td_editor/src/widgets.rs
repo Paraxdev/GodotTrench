@@ -1,6 +1,6 @@
 //! Inspector building blocks: label and value rows, axis colored vector fields and color fields.
 
-use egui::{Align, Layout, RichText, Stroke, Ui, Vec2, WidgetText};
+use egui::{Align, Color32, FontId, Layout, Pos2, Rect, RichText, Stroke, Ui, Vec2, WidgetText};
 use td_formats::PropertyType;
 
 use crate::theme;
@@ -209,6 +209,18 @@ pub fn window(title: &str) -> egui::Window<'_> {
     egui::Window::new(crate::i18n::tr(title)).id(egui::Id::new(Some(crate::i18n::english(title))))
 }
 
+/// Where a tool's hint goes at the bottom left of a viewport, and its text. It wraps at the viewport width and grows
+/// upward, so a long translation stays inside the view.
+fn corner_hint_galley(painter: &egui::Painter, rect: Rect, text: String, color: Color32) -> (Pos2, std::sync::Arc<egui::Galley>) {
+    let galley = painter.layout(text, FontId::proportional(12.0), color, (rect.width() - 16.0).max(40.0));
+    (rect.left_bottom() + Vec2::new(8.0, -8.0 - galley.size().y), galley)
+}
+
+pub fn corner_hint(painter: &egui::Painter, rect: Rect, text: String, color: Color32) {
+    let (pos, galley) = corner_hint_galley(painter, rect, text, color);
+    painter.galley(pos, galley, color);
+}
+
 /// A collapsible section on a raised header card.
 pub struct Collapsing {
     title: RichText,
@@ -288,6 +300,67 @@ mod tests {
         let terrain = window_id(&ctx, window("Create Terrain"));
         assert_eq!(terrain, window_id(&ctx, egui::Window::new("Create Terrain")));
         assert_ne!(terrain, english, "two keys that translate to one word keep two ids");
+    }
+
+    #[test]
+    fn a_long_hint_wraps_inside_the_view_and_ends_at_its_bottom_left() {
+        let ctx = egui::Context::default();
+        ctx.begin_pass(egui::RawInput::default());
+        let painter = ctx.layer_painter(egui::LayerId::background());
+        let text = "Scale: drag handles, Alt scales symmetrically around the center of the selection".to_string();
+        let view = |w: f32| Rect::from_min_size(Pos2::new(40.0, 30.0), egui::vec2(w, 200.0));
+        let (wide_pos, wide) = corner_hint_galley(&painter, view(900.0), text.clone(), Color32::WHITE);
+        let (narrow_pos, narrow) = corner_hint_galley(&painter, view(220.0), text.clone(), Color32::WHITE);
+        let (tiny_pos, tiny) = corner_hint_galley(&painter, view(10.0), text, Color32::WHITE);
+        ctx.end_pass().drop_without_applying_deltas();
+        assert_eq!(wide.rows.len(), 1);
+        assert!(narrow.rows.len() > 1 && narrow.size().x <= 220.0 - 16.0, "{:?}", narrow.size());
+        assert!(tiny.rows.len() > narrow.rows.len(), "a sliver of a view still wraps");
+        for (pos, galley) in [(wide_pos, &wide), (narrow_pos, &narrow), (tiny_pos, &tiny)] {
+            assert_eq!(pos.x, 48.0);
+            assert!((pos.y + galley.size().y - 222.0).abs() < 0.01, "the last row sits 8 above the bottom edge");
+        }
+    }
+
+    #[test]
+    fn every_tool_hint_fits_a_small_view_in_each_language() {
+        use crate::i18n::{Lang, scope, tr};
+        const HINTS: [&str; 15] = [
+            "Clip: click to place points, keep {side} (Tab), Enter to apply",
+            "Vertex: drag a corner or a blue dot, double click a corner for a gizmo, Del removes",
+            "Scale: drag handles, Alt scales symmetrically",
+            "Rotate: drag a ring, snaps {degrees}° (Shift for 1°)",
+            "Path: click to place path corners linked by target, Enter finishes the chain",
+            "Sculpt: no terrain or displacements. Terrain > Create Terrain, or select quad faces and use Brush > Displacement",
+            "Vertex paint: drag over brush faces (the selected brushes, or every brush when nothing is selected)",
+            "Measure: {units} units, {meters} m   dx {dx}  dy {dy}  dz {dz}   horizontal {horizontal}",
+            "Transform: X/Y/Z axis, Shift+X/Y/Z plane, type a value, click or Enter confirms, Esc cancels",
+            "Loop cut: hover an edge, wheel or +/- changes cuts ({cuts}), click to cut",
+            "Mesh edit: select a mesh (or brushes and press Tab to convert them)",
+            "Mesh edit ({mode}): 1/2/3 mode, G/R/S transform, E extrude, I inset, Ctrl+R loop cut, double click for a gizmo",
+            "Gizmo: arrows and squares move, rings rotate, boxes scale. Esc hides it",
+            "Bevel: move the mouse to set the width, click to confirm",
+            "Sculpt {mode}: drag to apply, Shift inverts, Ctrl smooths",
+        ];
+        let view = Rect::from_min_size(Pos2::new(40.0, 30.0), egui::vec2(480.0, 300.0));
+        for lang in [Lang::De, Lang::Ru, Lang::Ja] {
+            let _scope = scope(lang);
+            let ctx = egui::Context::default();
+            ctx.set_fonts(crate::fonts::definitions(lang));
+            ctx.begin_pass(egui::RawInput::default());
+            ctx.end_pass().drop_without_applying_deltas();
+            ctx.begin_pass(egui::RawInput::default());
+            let painter = ctx.layer_painter(egui::LayerId::background());
+            for key in HINTS {
+                let shown = tr(key);
+                let (pos, galley) = corner_hint_galley(&painter, view, shown.to_string(), Color32::WHITE);
+                assert!(galley.rows.len() <= 3, "{lang:?} {key}: {} rows", galley.rows.len());
+                assert!(galley.size().x <= view.width() - 16.0 + 0.01, "{lang:?} {key}");
+                assert!(pos.y >= view.top() + 150.0, "{lang:?} {key}: the hint climbs past the middle of the view");
+            }
+
+            ctx.end_pass().drop_without_applying_deltas();
+        }
     }
 
     #[test]

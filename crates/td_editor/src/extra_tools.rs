@@ -6,9 +6,11 @@ use td_doc::{Entity, NodeKind};
 use td_render::LineVertex;
 
 use crate::camera::Camera;
+use crate::i18n::{msg, trf};
 use crate::picking;
 use crate::scene::v3;
 use crate::state::EditorState;
+use crate::widgets::corner_hint;
 
 fn line(out: &mut Vec<LineVertex>, a: DVec3, b: DVec3, color: [f32; 4]) {
     out.push(LineVertex { pos: v3(a), color });
@@ -57,7 +59,7 @@ impl PathTool {
             id
         });
         self.last = Some(id);
-        state.set_status(format!("Placed {name}. Click to continue the path, Enter or Esc to finish"));
+        state.set_status(msg!("Placed {name}. Click to continue the path, Enter or Esc to finish", name));
     }
 
     pub fn finish(&mut self) {
@@ -139,19 +141,19 @@ impl MeasureTool {
                     );
                 }
 
-                format!(
-                    "Measure: {:.2} units, {:.3} m   dx {:.2}  dy {:.2}  dz {:.2}   horizontal {:.2}",
-                    d.length(),
-                    d.length() / upm,
-                    d.x,
-                    d.y,
-                    d.z,
-                    DVec2::new(d.x, d.z).length()
+                trf!(
+                    "Measure: {units} units, {meters} m   dx {dx}  dy {dy}  dz {dz}   horizontal {horizontal}",
+                    units = format!("{:.2}", d.length()),
+                    meters = format!("{:.3}", d.length() / upm),
+                    dx = format!("{:.2}", d.x),
+                    dy = format!("{:.2}", d.y),
+                    dz = format!("{:.2}", d.z),
+                    horizontal = format!("{:.2}", DVec2::new(d.x, d.z).length())
                 )
             }
-            (Some(_), None) => "Measure: click the second point".into(),
-            _ => "Measure: drag or click two points".into(),
+            (Some(_), None) => trf!("Measure: click the second point"),
+            _ => trf!("Measure: drag or click two points"),
         };
-        painter.text(rect.left_bottom() + Vec2::new(8.0, -8.0), Align2::LEFT_BOTTOM, text, FontId::proportional(12.0), Color32::from_rgb(255, 255, 140));
+        corner_hint(&painter, rect, text, Color32::from_rgb(255, 255, 140));
     }
 }

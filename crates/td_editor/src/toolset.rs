@@ -5,10 +5,12 @@ use td_geom::Brush;
 use td_render::LineVertex;
 
 use crate::camera::{Camera, ViewKind};
+use crate::i18n::{Msg, en, msg, tr, trf};
 use crate::picking;
 use crate::scene::v3;
 use crate::state::EditorState;
 use crate::tools::ToolKind;
+use crate::widgets::corner_hint;
 
 const HANDLE_RADIUS: f32 = 7.0;
 
@@ -115,8 +117,8 @@ const DOT_MIN_SIDEWAYS: f64 = 0.2;
 
 const SELECTED_RED: Color32 = Color32::from_rgb(255, 60, 40);
 
-const DENT_REASON: &str = "Pull it outward, brushes cannot have dents.";
-const REFUSED_REASON: &str = "That move would break the brush, try another spot.";
+const DENT_REASON: &str = en!("Pull it outward, brushes cannot have dents.");
+const REFUSED_REASON: &str = en!("That move would break the brush, try another spot.");
 
 struct VGizmoDrag {
     axis: usize,
@@ -342,7 +344,7 @@ impl ToolSet {
         if self.holds_drag() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
             state.doc.cancel();
             self.end_drags();
-            state.set_status("Cancelled");
+            state.set_status(msg!("Cancelled"));
             return true;
         }
 
@@ -378,7 +380,7 @@ impl ToolSet {
                     && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Enter) || i.consume_key(egui::Modifiers::NONE, Key::Escape)) =>
             {
                 self.path.finish();
-                state.set_status("Path finished");
+                state.set_status(msg!("Path finished"));
                 return true;
             }
             _ => {}
@@ -438,12 +440,13 @@ impl ToolSet {
             self.stroke.last_dab = None;
             self.stroke.held = 0.0;
             state.sculpt.flatten_height = p.dot(n);
-            state.doc.begin(if sculpting { "Sculpt" } else { "Vertex Paint" });
+            state.doc.begin(if sculpting { en!("Sculpt") } else { en!("Vertex Paint") });
             let cell = terrains.iter().filter_map(|id| state.doc.map.terrain(*id)).map(|t| t.cell_size).fold(0.0, f64::max);
             if sculpting && state.sculpt.radius < cell {
-                state.set_status(format!(
-                    "The brush radius {:.0} is smaller than the terrain's {cell:.0} unit cells. Ctrl+wheel makes it bigger",
-                    state.sculpt.radius
+                state.set_status(msg!(
+                    "The brush radius {radius} is smaller than the terrain's {cell} unit cells. Ctrl+wheel makes it bigger",
+                    radius = format!("{:.0}", state.sculpt.radius),
+                    cell = format!("{cell:.0}")
                 ));
             }
         }
@@ -570,12 +573,12 @@ impl ToolSet {
 
     fn apply_clip(&mut self, state: &mut EditorState) {
         let Some(plane) = self.clip_plane() else {
-            state.set_status("Place two or three clip points first");
+            state.set_status(msg!("Place two or three clip points first"));
             return;
         };
         clip_selection(state, &plane, self.clip.side.unwrap_or(ClipSide::Front));
         self.clip.points.clear();
-        state.set_status("Clipped");
+        state.set_status(msg!("Clipped"));
     }
 
     // -------------------------------------------------------------- vertex
@@ -627,7 +630,7 @@ impl ToolSet {
                     }
 
                     if matches!(h, Handle::Dot(_)) {
-                        state.set_status("Drag the dot away from the brush to add a vertex.");
+                        state.set_status(msg!("Drag the dot away from the brush to add a vertex."));
                     }
                 }
                 None => {
@@ -670,7 +673,7 @@ impl ToolSet {
                 let ray = cam.ray(rect, origin);
                 if let Some(t) = ray.intersect_plane(&plane) {
                     self.vertex.selected = vec![g];
-                    state.doc.begin("Move Vertex");
+                    state.doc.begin(en!("Move Vertex"));
                     self.vertex.gizmo_drag = Some(VGizmoDrag { axis: i, start: ray.at(t), plane, base: g });
                 }
 
@@ -686,7 +689,7 @@ impl ToolSet {
                 }
 
                 let plane = vertex_drag_plane(cam, &h, modifiers.alt);
-                state.doc.begin("Move Vertices");
+                state.doc.begin(en!("Move Vertices"));
                 self.vertex.drag = Some(VertexDrag { start: v, plane, base: self.vertex.selected.clone(), is_dot });
             }
         }
@@ -727,7 +730,8 @@ impl ToolSet {
                         self.vertex.selected = vec![base + delta];
                         self.vertex.gizmo = Some(base + delta);
                         self.vertex.refused = None;
-                        state.set_status(format!("Vertex {:.3} {:.3} {:.3}", (base + delta).x, (base + delta).y, (base + delta).z));
+                        let at = base + delta;
+                        state.set_status(msg!("Vertex {x} {y} {z}", x = format!("{:.3}", at.x), y = format!("{:.3}", at.y), z = format!("{:.3}", at.z)));
                     } else {
                         self.refuse(state, &[base], base, delta);
                     }
@@ -750,7 +754,7 @@ impl ToolSet {
         }
 
         self.vertex.refused = Some((from, from + delta));
-        state.set_status(refusal_reason(state, base, delta));
+        state.set_status(Msg::key(refusal_reason(state, base, delta)));
     }
 
     fn clear_refusal(&mut self, state: &mut EditorState) {
@@ -832,7 +836,7 @@ impl ToolSet {
             let mut n = DVec3::ZERO;
             n[axis] = 1.0;
             if let Some(p) = ring_plane_point(cam, rect, origin, center, n) {
-                state.doc.begin("Rotate");
+                state.doc.begin(en!("Rotate"));
                 self.rotate.drag = Some(RotateDrag { axis: n, center, start_vec: (p - center).normalize_or_zero(), screen_start: origin });
             }
         }
@@ -854,7 +858,7 @@ impl ToolSet {
                         state.doc.edit("Rotate", |map, s| ops::transform_selection(map, s, &m, opts));
                     }
 
-                    state.set_status(format!("Rotate {angle:.1}°"));
+                    state.set_status(msg!("Rotate {angle}°", angle = format!("{angle:.1}")));
                 }
 
                 let _ = drag.screen_start;
@@ -924,7 +928,7 @@ impl ToolSet {
                     }
                     k => Plane::from_point_normal(p, -k.axes().2),
                 };
-                state.doc.begin("Scale");
+                state.doc.begin(en!("Scale"));
                 self.scale.drag = Some(ScaleDrag { base: bounds, handle: h, plane, start: p });
             }
         }
@@ -960,7 +964,7 @@ impl ToolSet {
                         let opts = state.opts();
                         state.doc.edit("Scale", |map, s| ops::transform_selection(map, s, &m, opts));
                         let size = new.size();
-                        state.set_status(format!("Scale to {} x {} x {}", size.x, size.y, size.z));
+                        state.set_status(msg!("Scale to {x} x {y} x {z}", x = size.x, y = size.y, z = size.z));
                     }
                 }
             }
@@ -1090,17 +1094,11 @@ impl ToolSet {
                 }
 
                 let side = match self.clip.side.unwrap_or(ClipSide::Front) {
-                    ClipSide::Front => "front",
-                    ClipSide::Back => "back",
-                    ClipSide::Both => "both",
+                    ClipSide::Front => tr("front"),
+                    ClipSide::Back => tr("back"),
+                    ClipSide::Both => tr("both"),
                 };
-                painter.text(
-                    rect.left_bottom() + Vec2::new(8.0, -8.0),
-                    Align2::LEFT_BOTTOM,
-                    format!("Clip: click to place points, keep {side} (Tab), Enter to apply"),
-                    FontId::proportional(12.0),
-                    Color32::from_rgb(120, 240, 240),
-                );
+                corner_hint(&painter, rect, trf!("Clip: click to place points, keep {side} (Tab), Enter to apply", side), Color32::from_rgb(120, 240, 240));
             }
             ToolKind::Vertex => {
                 let (verts, dots) = Self::vertex_handles(state);
@@ -1154,11 +1152,10 @@ impl ToolSet {
                     }
                 }
 
-                painter.text(
-                    rect.left_bottom() + Vec2::new(8.0, -8.0),
-                    Align2::LEFT_BOTTOM,
-                    "Vertex: drag a corner or a blue dot, double click a corner for a gizmo, Del removes",
-                    FontId::proportional(12.0),
+                corner_hint(
+                    &painter,
+                    rect,
+                    trf!("Vertex: drag a corner or a blue dot, double click a corner for a gizmo, Del removes"),
                     Color32::from_rgb(255, 220, 120),
                 );
             }
@@ -1173,20 +1170,13 @@ impl ToolSet {
                     }
                 }
 
-                painter.text(
-                    rect.left_bottom() + Vec2::new(8.0, -8.0),
-                    Align2::LEFT_BOTTOM,
-                    "Scale: drag handles, Alt scales symmetrically",
-                    FontId::proportional(12.0),
-                    Color32::from_rgb(255, 210, 120),
-                );
+                corner_hint(&painter, rect, trf!("Scale: drag handles, Alt scales symmetrically"), Color32::from_rgb(255, 210, 120));
             }
             ToolKind::Rotate => {
-                painter.text(
-                    rect.left_bottom() + Vec2::new(8.0, -8.0),
-                    Align2::LEFT_BOTTOM,
-                    format!("Rotate: drag a ring, snaps {}° (Shift for 1°)", self.rotate.snap_degrees),
-                    FontId::proportional(12.0),
+                corner_hint(
+                    &painter,
+                    rect,
+                    trf!("Rotate: drag a ring, snaps {degrees}° (Shift for 1°)", degrees = self.rotate.snap_degrees),
                     Color32::from_rgb(200, 255, 160),
                 );
             }
@@ -1197,11 +1187,10 @@ impl ToolSet {
             ToolKind::Blend => self.blend.paint_overlay(ui, rect, state),
             ToolKind::Volume => self.volume.paint_overlay(ui, rect, state),
             ToolKind::Path => {
-                painter.text(
-                    rect.left_bottom() + Vec2::new(8.0, -8.0),
-                    Align2::LEFT_BOTTOM,
-                    "Path: click to place path corners linked by target, Enter finishes the chain",
-                    FontId::proportional(12.0),
+                corner_hint(
+                    &painter,
+                    rect,
+                    trf!("Path: click to place path corners linked by target, Enter finishes the chain"),
                     Color32::from_rgb(160, 220, 255),
                 );
             }
@@ -1209,24 +1198,17 @@ impl ToolSet {
                 let has_terrain = state.doc.map.terrains().next().is_some();
                 // An empty list is the whole map here: the hint is about the map having nothing to sculpt at all.
                 let hint = if !has_terrain && td_doc::terrain::displacement_faces(&state.doc.map, &[]).is_empty() {
-                    "Sculpt: no terrain or displacements. Terrain > Create Terrain, or select quad faces and use Brush > Displacement".to_string()
+                    trf!("Sculpt: no terrain or displacements. Terrain > Create Terrain, or select quad faces and use Brush > Displacement")
                 } else {
-                    format!("Sculpt {}: drag to apply, Shift inverts, Ctrl smooths", state.sculpt.mode.label())
+                    trf!("Sculpt {mode}: drag to apply, Shift inverts, Ctrl smooths", mode = tr(state.sculpt.mode.label()))
                 };
-                painter.text(
-                    rect.left_bottom() + Vec2::new(8.0, -8.0),
-                    Align2::LEFT_BOTTOM,
-                    hint,
-                    FontId::proportional(12.0),
-                    Color32::from_rgb(140, 255, 170),
-                );
+                corner_hint(&painter, rect, hint, Color32::from_rgb(140, 255, 170));
             }
             ToolKind::Paint => {
-                painter.text(
-                    rect.left_bottom() + Vec2::new(8.0, -8.0),
-                    Align2::LEFT_BOTTOM,
-                    "Vertex paint: drag over brush faces (the selected brushes, or every brush when nothing is selected)",
-                    FontId::proportional(12.0),
+                corner_hint(
+                    &painter,
+                    rect,
+                    trf!("Vertex paint: drag over brush faces (the selected brushes, or every brush when nothing is selected)"),
                     Color32::from_rgb(255, 170, 230),
                 );
             }

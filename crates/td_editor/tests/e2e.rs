@@ -3582,6 +3582,35 @@ fn language_switches_without_a_restart() {
     assert_eq!(image_difference(&english, &window("english_again")), 0.0);
 }
 
+/// The tool hint at the corner of a view is painted text, so it wraps to the view and follows the language while
+/// the tool, its status for MCP and the history labels stay English.
+#[test]
+#[ignore]
+fn viewport_hints_follow_the_language_and_mcp_stays_english() {
+    let ed = Editor::launch("hint_language");
+    let id = ed.box_brush([37.0, -21.0, 90.0], [133.0, 43.0, 154.0]);
+    ed.call("select", json!({ "ids": [id] }));
+    ed.call("run_action", json!({ "action": "set_tool", "args": { "tool": "scale" } }));
+    let view = |label: &str| shot(&ed, json!({ "target": "window" }), label);
+    let english = view("english");
+    let mut seen = vec![english.clone()];
+    for (code, label) in [("de", "german"), ("ru", "russian"), ("ja", "japanese")] {
+        ed.call("set_editor", json!({ "language": code }));
+        std::thread::sleep(Duration::from_millis(500));
+        let now = view(label);
+        for before in &seen {
+            assert!(image_difference(before, &now) > 0.01, "{label} looks like another language");
+        }
+
+        seen.push(now);
+        assert_eq!(ed.state()["editor"]["tool"].as_str().map(str::to_lowercase).as_deref(), Some("scale"));
+    }
+
+    ed.call("set_editor", json!({ "language": "en" }));
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(image_difference(&english, &view("english_again")), 0.0);
+}
+
 /// validate_map words every issue in English while the editor is German, the Issues panel is what translates them.
 #[test]
 #[ignore]

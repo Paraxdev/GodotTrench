@@ -382,6 +382,14 @@ impl Msg {
         Msg { en: english(key).to_string(), shown: tr(key).to_string() }
     }
 
+    /// The message `key` with each placeholder given as its English and its shown word, for a sentence that holds a
+    /// translated word, like the name of a tool.
+    pub fn filled(key: &str, words: &[(&str, &str, &str)]) -> Msg {
+        let en: Vec<(&str, &dyn Display)> = words.iter().map(|(name, en, _)| (*name, en as &dyn Display)).collect();
+        let shown: Vec<(&str, &dyn Display)> = words.iter().map(|(name, _, shown)| (*name, shown as &dyn Display)).collect();
+        Msg { en: fill(english(key), &en), shown: fill(tr(key), &shown) }
+    }
+
     /// This message followed by `sep` and `next`, in both texts.
     pub fn then(mut self, sep: &str, next: Msg) -> Msg {
         self.en = format!("{}{sep}{}", self.en, next.en);

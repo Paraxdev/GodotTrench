@@ -10,6 +10,7 @@ use td_doc::ops;
 
 use crate::camera::{Camera, ViewKind};
 use crate::commands::axis_name;
+use crate::i18n::{Msg, en, msg};
 use crate::state::EditorState;
 use crate::tools::ToolKind;
 
@@ -42,9 +43,9 @@ pub enum Part {
 impl Part {
     fn label(self) -> &'static str {
         match self {
-            Part::Move(_) | Part::Plane(_) | Part::Free => "Move",
-            Part::Rotate(_) => "Rotate",
-            Part::Scale(_) => "Scale",
+            Part::Move(_) | Part::Plane(_) | Part::Free => en!("Move"),
+            Part::Rotate(_) => en!("Rotate"),
+            Part::Scale(_) => en!("Scale"),
         }
     }
 }
@@ -260,14 +261,7 @@ impl Motion {
 
 /// The motion and status line for the pointer at `pos`, None when the pointer ray misses the drag plane. The motion is
 /// None when nothing moves, for example a scale that would flatten the selection.
-pub fn motion(
-    state: &EditorState,
-    drag: &GizmoDrag,
-    cam: &Camera,
-    rect: Rect,
-    pos: Pos2,
-    modifiers: egui::Modifiers,
-) -> Option<(Option<Motion>, Option<String>)> {
+pub fn motion(state: &EditorState, drag: &GizmoDrag, cam: &Camera, rect: Rect, pos: Pos2, modifiers: egui::Modifiers) -> Option<(Option<Motion>, Option<Msg>)> {
     let ray = cam.ray(rect, pos);
     let point = ray.at(ray.intersect_plane(&drag.plane)?);
     let offset = point - drag.start;
@@ -279,7 +273,7 @@ pub fn motion(
     };
     if let Some(delta) = moved {
         let delta = state.snap(delta);
-        return Some(((delta != DVec3::ZERO).then_some(Motion::Translate(delta)), Some(format!("Move {} {} {}", delta.x, delta.y, delta.z))));
+        return Some(((delta != DVec3::ZERO).then_some(Motion::Translate(delta)), Some(msg!("Move {x} {y} {z}", x = delta.x, y = delta.y, z = delta.z))));
     }
 
     Some(match drag.part {
@@ -289,7 +283,10 @@ pub fn motion(
             let raw = from.cross(to).dot(axis(i)).atan2(from.dot(to)).to_degrees();
             let step = if modifiers.shift { 1.0 } else { ROTATE_SNAP_DEGREES };
             let angle = (raw / step).round() * step;
-            ((angle != 0.0).then(|| Motion::Rotate(ops::rotation_about(drag.center, axis(i), angle))), Some(format!("Rotate {} {angle}°", axis_name(i))))
+            (
+                (angle != 0.0).then(|| Motion::Rotate(ops::rotation_about(drag.center, axis(i), angle))),
+                Some(msg!("Rotate {axis} {angle}°", axis = axis_name(i), angle)),
+            )
         }
         Part::Scale(i) => {
             let reach = (drag.start - drag.center)[i];
@@ -307,13 +304,16 @@ pub fn motion(
                 return Some((None, None));
             }
 
-            ((scaled != drag.base).then(|| Motion::Scale(ops::scale_bounds(&drag.base, &scaled))), Some(format!("Scale {} to {new_size}", axis_name(i))))
+            (
+                (scaled != drag.base).then(|| Motion::Scale(ops::scale_bounds(&drag.base, &scaled))),
+                Some(msg!("Scale {axis} to {size}", axis = axis_name(i), size = new_size)),
+            )
         }
     })
 }
 
 /// Applies the drag for the pointer at `pos`. Returns a status line.
-pub fn drag(state: &mut EditorState, drag: &GizmoDrag, cam: &Camera, rect: Rect, pos: Pos2, modifiers: egui::Modifiers) -> Option<String> {
+pub fn drag(state: &mut EditorState, drag: &GizmoDrag, cam: &Camera, rect: Rect, pos: Pos2, modifiers: egui::Modifiers) -> Option<Msg> {
     let (motion, status) = motion(state, drag, cam, rect, pos, modifiers)?;
     let opts = state.opts();
     state.doc.reset_transaction();
@@ -475,6 +475,6 @@ mod tests {
         let drag_rot = begin(&mut state2, &cam, rect, grab).expect("grabs the y ring");
         assert_eq!(drag_rot.part, Part::Rotate(1));
         let status = drag(&mut state2, &drag_rot, &cam, rect, cam.project(rect, ring[24]).unwrap(), egui::Modifiers::NONE);
-        assert_eq!(status.as_deref(), Some("Rotate Y 90°"));
+        assert_eq!(status.map(|m| m.en).as_deref(), Some("Rotate Y 90°"));
     }
 }

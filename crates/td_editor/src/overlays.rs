@@ -76,7 +76,7 @@ impl OverlayItem {
     pub fn label(&self) -> String {
         match (self.targetnames.first(), &self.anchor) {
             (Some(t), _) => format!("{} ({t})", self.name),
-            (None, Some(a)) => format!("{} on {a}", self.name),
+            (None, Some(a)) => crate::i18n::trf!("{name} on {anchor}", name = self.name, anchor = a),
             _ => self.name.clone(),
         }
     }

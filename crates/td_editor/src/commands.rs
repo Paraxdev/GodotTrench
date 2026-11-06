@@ -2550,7 +2550,7 @@ fn toggle_walkable(state: &mut EditorState) {
 
     let offline = || format!("Godot is not running with the TrenchDot addon on port {}, open the project in the Godot editor", state.prefs.live_link_port);
     match crate::walkable::unavailable(state).or_else(|| (!state.link_state.connected).then(offline)) {
-        Some(why) => state.fail_status(msg!("Cannot show the walkable area: {why}", why)),
+        Some(why) => state.fail_status(Msg::filled("Cannot show the walkable area: {why}", &[("why", &why, tr(&why))])),
         None => {
             state.walkable.set_on(true);
             state.set_status(msg!("Baking the walkable area in Godot"));

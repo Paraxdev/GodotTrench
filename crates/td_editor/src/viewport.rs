@@ -6,6 +6,7 @@ use td_render::{Frame, FrameParams, LineVertex, Renderer, ViewTarget};
 
 use crate::camera::{Camera, ViewKind};
 use crate::commands::Action;
+use crate::i18n::{en, msg, msg_n, tr, trf};
 use crate::panels::DndPayload;
 use crate::picking::{self, Hit};
 use crate::scene::{SceneCache, v3};
@@ -132,7 +133,7 @@ impl Viewport {
 
         // Right click applies materials in the texture tool.
         if cx.state.tool != ToolKind::Texture {
-            response.context_menu(|ui| context_menu(ui, cx));
+            response.context_menu(|ui| context_menu(ui, cx.state, cx.actions));
         }
     }
 
@@ -405,9 +406,13 @@ impl Viewport {
                 } else if (again || modifiers.alt) && targets.len() > 1 {
                     let next = current.map_or(0, |i| (i + 1) % targets.len());
                     hit = Some(targets[next].1);
-                    cx.state.set_status(format!("Object {} of {} under the cursor, click again for the next", next + 1, targets.len()));
+                    cx.state.set_status(msg!("Object {n} of {total} under the cursor, click again for the next", n = next + 1, total = targets.len()));
                 } else if targets.len() > 1 {
-                    cx.state.set_status(format!("{} objects under the cursor, click again or Alt+click to select the next", targets.len()));
+                    cx.state.set_status(msg_n!(
+                        targets.len(),
+                        "{n} object under the cursor, click again or Alt+click to select the next",
+                        "{n} objects under the cursor, click again or Alt+click to select the next"
+                    ));
                 }
             }
 
@@ -444,7 +449,7 @@ impl Viewport {
                         s.nodes.clear();
                         s.faces.extend(faces);
                     });
-                    cx.state.set_status("Selected every face for UV work. Ctrl+click adds whole objects once the UV Editor tab is hidden");
+                    cx.state.set_status(msg!("Selected every face for UV work. Ctrl+click adds whole objects once the UV Editor tab is hidden"));
                 }
                 Some(h) => {
                     let target = map.click_target(h.node, &open_groups);
@@ -482,7 +487,7 @@ impl Viewport {
                     s.select_node(group);
                 });
                 let name = cx.state.doc.map.get(group).map(|n| n.name()).unwrap_or_default();
-                cx.state.set_status(format!("Selected group {name}"));
+                cx.state.set_status(msg!("Selected group {name}", name));
             } else if let Some(e) = map.owning_entity(h.node) {
                 let brushes = map.get(e).map(|n| n.children.clone()).unwrap_or_default();
                 cx.state.outliner_reveal = Some(h.node);
@@ -539,7 +544,7 @@ impl Viewport {
         if let Some(handle) = crate::gizmos::handle_at(cx.state, &self.camera, self.rect, origin)
             && let Some(start) = crate::gizmos::handle_position(cx.state, handle)
         {
-            cx.state.doc.begin("Edit Gizmo");
+            cx.state.doc.begin(en!("Edit Gizmo"));
             return Some(Drag::Gizmo { handle, start });
         }
 
@@ -552,7 +557,7 @@ impl Viewport {
             && let Some(edge) = self.edge_under_cursor(origin, cx)
         {
             let origin_world = self.camera.screen_to_plane(self.rect, origin);
-            cx.state.doc.begin("Resize Brushes");
+            cx.state.doc.begin(en!("Resize Brushes"));
             return Some(Drag::FaceResize { faces: edge.faces, origin: origin_world, normal: edge.normal });
         }
 
@@ -576,7 +581,7 @@ impl Viewport {
             {
                 let plane = brush.faces[face].plane;
                 let faces = coplanar_selected_faces(state, &plane);
-                state.doc.begin(if modifiers.command { "Extrude" } else { "Resize Brushes" });
+                state.doc.begin(if modifiers.command { en!("Extrude") } else { en!("Resize Brushes") });
                 return Some(Drag::FaceResize { faces, origin: h.point, normal: plane.normal });
             }
 
@@ -594,7 +599,7 @@ impl Viewport {
                     k => Plane::from_point_normal(h.point, -k.axes().2),
                 };
                 let axis = (self.camera.kind == ViewKind::Perspective && modifiers.alt).then_some(DVec3::Y);
-                state.doc.begin(if modifiers.command { "Duplicate Objects" } else { "Move Objects" });
+                state.doc.begin(if modifiers.command { en!("Duplicate Objects") } else { en!("Move Objects") });
                 return Some(Drag::Move { start: h.point, plane, axis, duplicate: modifiers.command });
             }
         }
@@ -611,12 +616,12 @@ impl Viewport {
                 let axis = td_core::major_axis(normal);
                 let mut n = DVec3::ZERO;
                 n[axis] = normal[axis].signum();
-                state.doc.begin("Create Brush");
+                state.doc.begin(en!("Create Brush"));
                 Some(Drag::CreateBrush { start, normal: n, anchor: state.snap_scalar(start[axis]) })
             }
             _ => {
                 let start = self.camera.screen_to_plane(self.rect, origin);
-                state.doc.begin("Create Brush");
+                state.doc.begin(en!("Create Brush"));
                 Some(Drag::CreateBrush2d { start })
             }
         }
@@ -673,7 +678,7 @@ impl Viewport {
                     state.doc.edit("Move", |m, s| ops::translate_selection(m, s, delta, opts));
                 }
 
-                state.set_status(format!("Move {:.3} {:.3} {:.3}", delta.x, delta.y, delta.z));
+                state.set_status(msg!("Move {x} {y} {z}", x = format!("{:.3}", delta.x), y = format!("{:.3}", delta.y), z = format!("{:.3}", delta.z)));
             }
             Drag::CreateBrush { start, normal, anchor } => {
                 let axis = td_core::major_axis(*normal);
@@ -750,7 +755,7 @@ impl Viewport {
                         }
                     }
                 });
-                state.set_status(format!("Resize {dist:.3}"));
+                state.set_status(msg!("Resize {dist}", dist = format!("{dist:.3}")));
             }
             _ => {}
         }
@@ -767,7 +772,7 @@ impl Viewport {
                 s.select_node(id);
             });
             let size = bounds.size();
-            state.set_status(format!("Brush {} x {} x {}", size.x, size.y, size.z));
+            state.set_status(msg!("Brush {x} x {y} x {z}", x = size.x, y = size.y, z = size.z));
         }
     }
 
@@ -853,10 +858,8 @@ impl Viewport {
                 // The marker alone shows no depth in a 2D view, so say how deep the drop lands.
                 if self.camera.kind.is_2d() {
                     let axis = self.camera.kind.depth_axis();
-                    let mut text = format!("{} {}", ["X", "Y", "Z"][axis], at[axis].round() + 0.0);
-                    if !through {
-                        text += ", hold Alt to drop through";
-                    }
+                    let (axis, depth) = (["X", "Y", "Z"][axis], at[axis].round() + 0.0);
+                    let text = if through { trf!("{axis} {depth}", axis, depth) } else { trf!("{axis} {depth}, hold Alt to drop through", axis, depth) };
 
                     painter.text(point + Vec2::new(10.0, -10.0), Align2::LEFT_BOTTOM, text, FontId::proportional(13.0), ui.visuals().strong_text_color());
                 }
@@ -923,7 +926,7 @@ impl Viewport {
                                 cx.state.sculpt.layer = slot as u8;
                             }
 
-                            cx.state.set_status(format!("The terrain had no layer {layer}, {name} was added as layer {slot}"));
+                            cx.state.set_status(msg!("The terrain had no layer {layer}, {name} was added as layer {slot}", layer, name, slot));
                         }
                     }
                     _ => {}
@@ -1033,19 +1036,22 @@ impl Viewport {
         let painter = ui.painter_at(self.rect);
         let label_color = Color32::from_rgb(200, 200, 210);
         let text = match self.camera.kind {
-            ViewKind::Perspective => format!("{}  {}", self.camera.kind.label(), cx.state.prefs.shade.label()),
+            ViewKind::Perspective => format!("{}  {}", tr(self.camera.kind.label()), tr(cx.state.prefs.shade.title())),
             // Two significant digits, so a notch of the wheel shows when zoomed far out too.
-            k => format!(
-                "{}  zoom {:.*}",
-                k.label(),
-                if self.camera.zoom < 0.01 {
-                    4
-                } else if self.camera.zoom < 0.1 {
-                    3
-                } else {
-                    2
-                },
-                self.camera.zoom
+            k => trf!(
+                "{view}  zoom {zoom}",
+                view = tr(k.label()),
+                zoom = format!(
+                    "{:.*}",
+                    if self.camera.zoom < 0.01 {
+                        4
+                    } else if self.camera.zoom < 0.1 {
+                        3
+                    } else {
+                        2
+                    },
+                    self.camera.zoom
+                )
             ),
         };
         let label = painter.text(self.rect.min + Vec2::new(8.0, 6.0), Align2::LEFT_TOP, text, FontId::proportional(12.0), label_color);
@@ -1272,15 +1278,15 @@ fn is_selected(state: &EditorState, id: NodeId) -> bool {
     state.doc.selection.nodes.contains(&target) || map.ancestors(id).iter().any(|a| state.doc.selection.nodes.contains(a))
 }
 
-fn context_menu(ui: &mut Ui, cx: &mut ViewCtx) {
-    let has_sel = !cx.state.doc.selection.nodes.is_empty();
-    let cursor = cx.state.cursor_world;
-    let point_classes: Vec<String> = cx.state.game.point_entities().map(|e| e.classname.clone()).collect();
-    let solid_classes: Vec<String> = cx.state.game.solid_entities().map(|e| e.classname.clone()).collect();
-    let layers: Vec<(NodeId, String)> = cx.state.doc.map.layers.iter().filter_map(|l| cx.state.doc.map.get(*l).map(|n| (*l, n.name()))).collect();
+fn context_menu(ui: &mut Ui, state: &EditorState, actions: &mut Vec<Action>) {
+    let has_sel = !state.doc.selection.nodes.is_empty();
+    let cursor = state.cursor_world;
+    let point_classes: Vec<String> = state.game.point_entities().map(|e| e.classname.clone()).collect();
+    let solid_classes: Vec<String> = state.game.solid_entities().map(|e| e.classname.clone()).collect();
+    let layers: Vec<(NodeId, String)> = state.doc.map.layers.iter().filter_map(|l| state.doc.map.get(*l).map(|n| (*l, n.name()))).collect();
     let mut out: Vec<Action> = Vec::new();
 
-    ui.menu_button("Create Point Entity", |ui| {
+    ui.menu_button(tr("Create Point Entity"), |ui| {
         for c in point_classes {
             if ui.button(&c).clicked() {
                 out.push(Action::CreatePointEntity { classname: c, at: cursor });
@@ -1288,9 +1294,9 @@ fn context_menu(ui: &mut Ui, cx: &mut ViewCtx) {
             }
         }
     });
-    let has_brushes = !td_doc::ops::brush_entity_geometry(&cx.state.doc.map, &cx.state.doc.selection).is_empty();
+    let has_brushes = !td_doc::ops::brush_entity_geometry(&state.doc.map, &state.doc.selection).is_empty();
     ui.add_enabled_ui(has_brushes, |ui| {
-        ui.menu_button("Create Brush Entity", |ui| {
+        ui.menu_button(tr("Create Brush Entity"), |ui| {
             for c in solid_classes {
                 if ui.button(&c).clicked() {
                     out.push(Action::CreateBrushEntity(c));
@@ -1300,29 +1306,29 @@ fn context_menu(ui: &mut Ui, cx: &mut ViewCtx) {
         });
     });
     let entries: [Option<(&str, Action)>; 16] = [
-        Some(("Rename", Action::Rename)),
-        Some(("Move Brushes to World", Action::MoveToWorld)),
+        Some((en!("Rename"), Action::Rename)),
+        Some((en!("Move Brushes to World"), Action::MoveToWorld)),
         None,
-        Some(("Create Prefab from Selection…", Action::CreatePrefab)),
-        Some(("Explode Instance", Action::ExplodeInstances)),
-        Some(("Open Prefab", Action::OpenPrefab)),
-        Some(("Group", Action::Group)),
-        Some(("Ungroup", Action::Ungroup)),
-        Some(("Hide", Action::HideSelected)),
-        Some(("Isolate", Action::IsolateSelected)),
+        Some((en!("Create Prefab from Selection…"), Action::CreatePrefab)),
+        Some((en!("Explode Instance"), Action::ExplodeInstances)),
+        Some((en!("Open Prefab"), Action::OpenPrefab)),
+        Some((en!("Group"), Action::Group)),
+        Some((en!("Ungroup"), Action::Ungroup)),
+        Some((en!("Hide"), Action::HideSelected)),
+        Some((en!("Isolate"), Action::IsolateSelected)),
         None,
-        Some(("CSG Subtract", Action::CsgSubtract)),
-        Some(("CSG Convex Merge", Action::CsgMerge)),
-        Some(("CSG Intersect", Action::CsgIntersect)),
-        Some(("Hollow", Action::CsgHollow)),
+        Some((en!("CSG Subtract"), Action::CsgSubtract)),
+        Some((en!("CSG Convex Merge"), Action::CsgMerge)),
+        Some((en!("CSG Intersect"), Action::CsgIntersect)),
+        Some((en!("Hollow"), Action::CsgHollow)),
         None,
     ];
     for entry in entries {
         match entry {
             Some((label, action)) => {
-                let mut resp = ui.add_enabled(has_sel, egui::Button::new(label));
+                let mut resp = ui.add_enabled(has_sel, egui::Button::new(tr(label)));
                 if let Some(help) = action.help() {
-                    resp = resp.on_hover_text(help);
+                    resp = resp.on_hover_text(tr(help));
                 }
 
                 if resp.clicked() {
@@ -1337,7 +1343,7 @@ fn context_menu(ui: &mut Ui, cx: &mut ViewCtx) {
     }
 
     ui.add_enabled_ui(has_sel, |ui| {
-        ui.menu_button("Move to Layer", |ui| {
+        ui.menu_button(tr("Move to Layer"), |ui| {
             for (id, name) in layers {
                 if ui.button(name).clicked() {
                     out.push(Action::MoveToLayer(id));
@@ -1346,7 +1352,7 @@ fn context_menu(ui: &mut Ui, cx: &mut ViewCtx) {
             }
         });
     });
-    cx.actions.extend(out);
+    actions.extend(out);
 }
 
 /// Puts `material` into terrain layer `layer`. A layer past the last one adds a single new layer instead of filling
@@ -1406,6 +1412,45 @@ mod tests {
         }
 
         assert_eq!(*harness.state(), Some(Some(Pos2::new(100.0, 120.0))));
+    }
+
+    #[test]
+    fn the_context_menu_speaks_german_and_still_sends_the_same_actions() {
+        use crate::i18n::{Lang, scope};
+        use egui_kittest::kittest::Queryable;
+        struct Probe {
+            state: EditorState,
+            actions: Vec<Action>,
+        }
+
+        let mut state = EditorState::new(Default::default());
+        let parent = state.insert_parent();
+        let min = DVec3::new(96.0, -32.0, 8.0);
+        let brush = td_geom::Brush::from_aabb(&td_core::Aabb::new(min, min + DVec3::new(32.0, 64.0, 16.0)), "dev/grey").unwrap();
+        let id = state.doc.edit("Create Brush", |m, _| td_doc::ops::create_brush(m, parent, brush));
+        let _de = scope(Lang::De);
+        let mut harness = egui_kittest::Harness::builder().with_size(Vec2::new(400.0, 500.0)).build_ui_state(
+            |ui, p: &mut Probe| {
+                crate::i18n::set(Lang::De);
+                context_menu(ui, &p.state, &mut p.actions);
+            },
+            Probe { state, actions: Vec::new() },
+        );
+        harness.run();
+        for english in ["Rename", "Group", "Hide", "CSG Subtract", "Move to Layer", "Create Point Entity"] {
+            assert!(harness.query_by_label_contains(english).is_none(), "{english} is still English");
+        }
+
+        for german in ["Umbenennen", "Gruppieren", "Ausblenden", "CSG subtrahieren", "In Ebene verschieben", "Punkt-Entität erstellen"] {
+            assert!(harness.query_by_label_contains(german).is_some(), "{german} is missing");
+        }
+
+        assert!(harness.state().actions.is_empty());
+        harness.state_mut().state.doc.selection.nodes.insert(id);
+        harness.run();
+        harness.get_by_label("Gruppieren").click();
+        harness.run();
+        assert_eq!(harness.state().actions, [Action::Group]);
     }
 
     #[test]
