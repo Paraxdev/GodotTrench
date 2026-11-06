@@ -58,14 +58,15 @@ For slopes, ramps and angled walls, press C for the **Clip** tool:
 ![The Clip tool with two points placed in the Front view across the top corner of a box, the cut line shows in the 3D view as well](../assets/brushes/clip-points.png)
 
 To drag single corners, press V for the **Vertex** tool, or Tab with brushes selected. It shows handles on the corners,
-and small dots on the edge midpoints and face centers that add a vertex when you drag them. Delete removes the selected
-vertices.
+and small blue dots on the edge midpoints and face centers. Click a dot to select it, or drag it away from the brush
+to add a corner there. Delete removes the selected vertices.
 
 ![The Vertex tool on a clipped box, yellow corner handles and blue dots on the edges and faces](../assets/brushes/vertex-handles.png)
 
 > [!NOTE]
-> A brush cannot have dents, so a vertex move that would make one is refused. For dents and overhangs,
-> convert the brush to a [mesh](meshes.md).
+> A brush cannot have dents, so a move that would make one is refused. You get a red ghost where it would land and a
+> line in the status bar. Pull the dot outward instead, or convert the brush to a [mesh](meshes.md) for dents and
+> overhangs.
 
 ## Rotate, scale and measure
 
