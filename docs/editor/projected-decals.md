@@ -21,7 +21,10 @@ setting it up is installing the pack.
 
 2. Check that the editor sees it
 
-    You should see an `infodecal` card in the **Entities** tab, next to the Inspector.
+    You should see an `infodecal` card in the **Entities** tab, next to the Inspector. Type `infodecal` into the search
+    box at the top of the tab to find it quickly.
+
+    ![The Entities tab searched for infodecal, the card hovered and its tooltip saying Projected decal](../assets/projected-decals/entities-infodecal-card.png)
 
 (Note: if you made your own `infodecal` definition before the pack had one, take it out of your FGD after updating.
 Otherwise the class is defined twice, and the editor warns about it.)
@@ -42,10 +45,14 @@ Otherwise the class is defined twice, and the editor warns about it.)
     first solid surface, turned so it projects into that surface. A box shows the space it covers, half in front of
     the surface and half behind it.
 
+    ![An infodecal on the edge of a brick step in the 3D view, its box reaching over the top and down the front, with the sign material previewed inside](../assets/projected-decals/decal-box-on-step.png)
+
 2. Pick the material
 
     In the Inspector, type a material name into `material`, the same name a face uses, like `base/stain`. Its color,
     normal map and glow carry over.
+
+    ![The Inspector with the infodecal selected, night/shop_sign in material and 128 48 64 in size](../assets/projected-decals/decal-inspector-material.png)
 
 3. Size it
 
