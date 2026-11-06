@@ -3368,6 +3368,66 @@ fn logic_graph_command_opens_the_graph() {
     assert_eq!(run(), first, "running it again keeps the graph open");
 }
 
+/// The pixels of a window shot inside a rectangle given in points, counted by color.
+fn pixel_counts(shot: &image::RgbaImage, rect: &[f64], ppp: f64) -> std::collections::HashMap<[u8; 3], usize> {
+    let [x0, y0, x1, y1] = [rect[0], rect[1], rect[2], rect[3]].map(|v| (v * ppp).round() as u32);
+    let mut counts = std::collections::HashMap::new();
+    for y in y0..y1.min(shot.height()) {
+        for x in x0..x1.min(shot.width()) {
+            let p = shot.get_pixel(x, y).0;
+            *counts.entry([p[0], p[1], p[2]]).or_default() += 1;
+        }
+    }
+
+    counts
+}
+
+/// The Logic graph follows the theme: its canvas is the lightest fill in light and the darkest in dark, with node
+/// bodies and grid lines in their own grays.
+#[test]
+#[ignore]
+fn logic_graph_canvas_follows_the_theme() {
+    let ed = Editor::launch("logic_theme");
+    ed.call("create_entity", json!({ "classname": "light", "origin": [-100, 90, 70], "properties": { "targetname": "hall_lamp" } }));
+    ed.call(
+        "create_entity",
+        json!({
+        "classname": "logic_flipflop", "origin": [-40, 40, 100], "properties": { "targetname": "hall_switch" },
+        "outputs": [{ "output": "on_a", "target": "hall_lamp", "input": "turn_on" }, { "output": "on_b", "target": "hall_lamp", "input": "turn_off" }] }),
+    );
+    assert!(ed.state()["ui"]["logic_canvas"].is_null(), "the graph is closed at first");
+    ed.input("window", json!([{ "type": "move", "x": 10, "y": 10 }, { "type": "key", "key": "F1" }, { "type": "text", "text": "logic graph" }, { "type": "key", "key": "Enter" }]));
+    std::thread::sleep(Duration::from_millis(500));
+
+    let canvas_colors = |label: &str| {
+        let window = shot(&ed, json!({ "target": "window" }), label);
+        let state = ed.state();
+        let ppp = state["ui"]["pixels_per_point"].as_f64().unwrap();
+        let rect: Vec<f64> = state["ui"]["logic_canvas"]
+            .as_array()
+            .unwrap_or_else(|| panic!("no Logic graph canvas: {}", state["ui"]))
+            .iter()
+            .map(|v| v.as_f64().unwrap())
+            .collect();
+        let counts = pixel_counts(&window, &rect, ppp);
+        let total: usize = counts.values().sum();
+        (counts, total)
+    };
+    let rgb = |c: egui::Color32| [c.r(), c.g(), c.b()];
+    let (palette, other) = (td_editor::theme::LIGHT, td_editor::theme::DARK);
+    for (theme, p, q) in [("dark", other, palette), ("light", palette, other)] {
+        ed.call("set_editor", json!({ "theme": theme }));
+        theme_active(&ed, theme);
+        std::thread::sleep(Duration::from_millis(300));
+        let (counts, total) = canvas_colors(&format!("logic_{theme}"));
+        let count = |c: egui::Color32| counts.get(&rgb(c)).copied().unwrap_or(0);
+        assert!(count(p.gray_0) * 2 > total, "{theme}: the canvas is gray_0, {} of {total} pixels", count(p.gray_0));
+        assert!(count(p.gray_1) > 0, "{theme}: grid lines are gray_1");
+        assert!(count(p.gray_2) > 1000, "{theme}: two node bodies are gray_2, {} pixels", count(p.gray_2));
+        assert_eq!(count(q.gray_0), 0, "{theme}: nothing is drawn in the other theme's canvas color");
+    }
+}
+
 fn open_preferences(ed: &Editor) {
     ed.input("window", json!([{ "type": "key", "key": "F1" }, { "type": "text", "text": "preferences" }, { "type": "key", "key": "Enter" }]));
     assert!(window_titles(ed).contains(&"Preferences".to_string()), "{:?}", window_titles(ed));
