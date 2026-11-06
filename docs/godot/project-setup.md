@@ -79,7 +79,7 @@ there clashes with it, and an addon update does not undo it.
     The window should now say "Installed in res://trenchdot/entities" in green, and the editor offers the new
     entities right away.
 
-    ![The Gameplay entities section after installing, saying it added 85 files to res://trenchdot/entities and to restart Godot if it has the project open](../assets/project-setup/setup-gameplay-installed.png)
+    ![The Gameplay entities section after installing, saying it added 86 files to res://trenchdot/entities and to restart Godot if it has the project open](../assets/project-setup/setup-gameplay-installed.png)
 
     When a Godot editor has the project open, TrenchDot asks it to pick up the new files, and the window says so. A
     scene in [live mode](live.md#when-live-mode-rebuilds-the-whole-map) then rebuilds by itself. Press **Build Map**
