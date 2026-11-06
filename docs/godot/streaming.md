@@ -18,7 +18,7 @@ The build sorts the map's meshes into chunks on a grid, and only the chunks near
 
     You should see it listed with the other worldspawn keys:
 
-    ![The worldspawn Inspector with chunk_streaming set to 1](../assets/streaming/worldspawn-chunk-streaming.png)
+    ![The worldspawn Inspector with chunk_streaming ticked](../assets/streaming/worldspawn-chunk-streaming.png)
 
 3. Save the map
 
