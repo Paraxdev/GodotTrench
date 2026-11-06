@@ -79,6 +79,18 @@ impl Target {
     fn forward(&self) -> DVec3 {
         self.entity.rotation() * DVec3::NEG_Z
     }
+
+    /// Full size and orientation of a box gizmo. A projected decal's box is the one its preview draws, which takes the
+    /// material's footprint and turns with the decal.
+    fn box_frame(&self, state: &EditorState, property: &str, half: bool) -> (DVec3, DQuat) {
+        if property == "size" && crate::scene::is_decal(state.game.entity(&self.entity.classname)) {
+            let material = self.entity.property("material").map(str::trim).unwrap_or_default();
+            let footprint = state.materials.world_size(material);
+            return (crate::scene::decal_size(&self.entity, footprint), self.entity.rotation());
+        }
+
+        (self.vector(state, property) * if half { 2.0 } else { 1.0 }, DQuat::IDENTITY)
+    }
 }
 
 fn targets(state: &EditorState) -> Vec<Target> {
@@ -189,10 +201,9 @@ pub fn handles(state: &EditorState) -> Vec<(GizmoHandle, DVec3, String)> {
                     out.push((h(1), t.center + fwd * len + side * len * half.tan(), format!("{}°", fmt_num(t.number(state, angle)))));
                 }
                 GizmoDef::Box { property, half } => {
-                    let v = t.vector(state, property);
-                    let s = v * if *half { 2.0 } else { 1.0 };
+                    let (s, rot) = t.box_frame(state, property, *half);
                     for (k, axis) in [DVec3::X, DVec3::Y, DVec3::Z].into_iter().enumerate() {
-                        out.push((h(k as u8), t.center + axis * s[k] * 0.5, fmt_num(v[k])));
+                        out.push((h(k as u8), t.center + rot * axis * s[k] * 0.5, fmt_num(s[k] * if *half { 0.5 } else { 1.0 })));
                     }
                 }
                 GizmoDef::Point { property, world } => {
@@ -271,8 +282,9 @@ pub fn lines(state: &EditorState, out: &mut Vec<LineVertex>) {
                     }
                 }
                 GizmoDef::Box { property, half } => {
-                    let s = t.vector(state, property) * if *half { 2.0 } else { 1.0 };
-                    box_lines(out, &Aabb::from_center_size(t.center, s.abs()).corners(), GHOST);
+                    let (s, rot) = t.box_frame(state, property, *half);
+                    let corners = Aabb::from_center_size(DVec3::ZERO, s.abs()).corners().map(|c| t.center + rot * c);
+                    box_lines(out, &corners, GHOST);
                 }
                 GizmoDef::Point { property, world } => {
                     let v = t.vector(state, property);
@@ -358,9 +370,10 @@ pub fn drag(state: &mut EditorState, handle: GizmoHandle, start: DVec3, cam: &Ca
             (angle.clone(), fmt_num(deg.clamp(1.0, 89.0)), format!("{angle} {}°", fmt_num(deg)))
         }
         (GizmoDef::Box { property, half }, k) => {
-            let mut s = t.vector(state, property);
+            let (full_size, rot) = t.box_frame(state, property, *half);
+            let mut s = full_size * if *half { 0.5 } else { 1.0 };
             let axis = (k as usize).min(2);
-            let full = state.snap_scalar(((world - t.center)[axis]).abs() * 2.0).max(1.0);
+            let full = state.snap_scalar(((rot.inverse() * (world - t.center))[axis]).abs() * 2.0).max(1.0);
             s[axis] = if *half { full * 0.5 } else { full };
             (property.clone(), fmt_vec3(s), format!("{property} {}", fmt_vec3(s)))
         }
@@ -469,6 +482,82 @@ mod tests {
         let mut lines_out = Vec::new();
         lines(&state, &mut lines_out);
         assert!(lines_out.len() > 40);
+    }
+
+    fn decal_state(dir: &std::path::Path) -> (EditorState, NodeId) {
+        let tex = dir.join("textures");
+        std::fs::create_dir_all(&tex).unwrap();
+        std::fs::write(dir.join("project.godot"), "").unwrap();
+        image::RgbaImage::from_pixel(16, 16, image::Rgba([90, 60, 40, 255])).save(tex.join("stain.png")).unwrap();
+        std::fs::write(
+            tex.join("stain.tres"),
+            "[gd_resource type=\"StandardMaterial3D\" format=3]
+[ext_resource type=\"Texture2D\" path=\"res://textures/stain.png\" id=\"1\"]
+[resource]
+albedo_texture = ExtResource(\"1\")
+metadata/texture_size = Vector2(96, 160)
+",
+        )
+        .unwrap();
+        let mut state = EditorState::new(Default::default());
+        state.game = td_formats::GameConfig::with_gameplay_pack();
+        state.game.project_root = Some(dir.to_path_buf());
+        state.game.textures.base_dir = "res://textures".into();
+        state.materials = crate::materials::MaterialLibrary::new(&state.game);
+        state.snap = false;
+        let layer = state.doc.map.default_layer();
+        let id = state.doc.edit("decal", |m, s| {
+            let mut e = td_doc::Entity::new("infodecal");
+            e.origin = DVec3::new(100.0, -40.0, 60.0);
+            e.angles = DVec3::new(30.0, 40.0, 10.0);
+            e.properties.insert("material".into(), "stain".into());
+            let id = m.insert(layer, NodeKind::Entity(e));
+            s.select_node(id);
+            id
+        });
+        (state, id)
+    }
+
+    #[test]
+    fn decal_box_follows_the_material_footprint_and_the_rotation() {
+        let dir = std::env::temp_dir().join(format!("td_decal_gizmo_{}", std::process::id()));
+        let (mut state, id) = decal_state(&dir);
+        let entity = state.doc.map.entity(id).unwrap().clone();
+        let (center, rot) = (entity.origin, entity.rotation());
+        let size = DVec3::new(96.0, 32.0, 160.0);
+        let near = |a: DVec3, b: DVec3| (a - b).length() < 1e-3;
+
+        let hs = handles(&state);
+        assert_eq!(hs.len(), 3);
+        for (k, axis) in [DVec3::X, DVec3::Y, DVec3::Z].into_iter().enumerate() {
+            let (h, p, label) = &hs[k];
+            assert_eq!(h.part as usize, k);
+            assert!(near(*p, center + rot * axis * size[k] * 0.5), "handle {k} at {p:?}");
+            assert_eq!(label, &fmt_num(size[k]));
+        }
+
+        let mut out = Vec::new();
+        lines(&state, &mut out);
+        assert_eq!(out.len(), 24, "twelve edges");
+        let corners: Vec<DVec3> = Aabb::from_center_size(DVec3::ZERO, size).corners().iter().map(|c| center + rot * *c).collect();
+        for v in &out {
+            let p = DVec3::new(v.pos[0] as f64, v.pos[1] as f64, v.pos[2] as f64);
+            assert!(corners.iter().any(|c| near(*c, p)), "{p:?} is not a corner of the turned footprint box");
+        }
+
+        let mut cam = Camera::new(ViewKind::Perspective);
+        cam.look_at(center);
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+        let handle = hs[0].0;
+        let start = handle_position(&state, handle).unwrap();
+        let target = start + cam.right() * 17.0 + cam.up() * 9.0;
+        let pos = cam.project(rect, target).unwrap();
+        drag(&mut state, handle, start, &cam, rect, pos, Default::default()).unwrap();
+        let written = parse_vec3(state.doc.map.entity(id).unwrap().property("size").unwrap()).unwrap();
+        let local = rot.inverse() * (target - center);
+        assert!((written.x - local.x.abs() * 2.0).abs() < 0.01, "width follows the pointer in the decal's own axes: {written:?}");
+        assert_eq!((written.y, written.z), (32.0, 160.0), "the other axes keep what the preview draws");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
