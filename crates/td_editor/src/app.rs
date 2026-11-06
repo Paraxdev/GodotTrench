@@ -2645,10 +2645,6 @@ impl TabViewer for Tabs<'_> {
         view_closeable(tab, self.views_open)
     }
 
-    fn clear_background(&self, tab: &Tab) -> bool {
-        !matches!(tab, Tab::View(_))
-    }
-
     fn scroll_bars(&self, tab: &Tab) -> [bool; 2] {
         if matches!(tab, Tab::View(_) | Tab::Logic) { [false, false] } else { [true, true] }
     }
