@@ -465,6 +465,11 @@ pub struct EditorState {
     trusted_root: Option<PathBuf>,
     /// The open project's root when it held no code as it opened.
     no_code_root: Option<PathBuf>,
+    /// The code scan the open project's trust waits for.
+    open_scan: Option<OpenScan>,
+    /// The project of a map just opened and the map, switched to once the scan of the project finds no code.
+    switch_scan: Option<(PathBuf, PathBuf)>,
+    pub code_scans: crate::code_scan::Scans,
     /// The Gameplay entities pack in the open project, checked when it loads and after an install.
     pub gameplay_pack: crate::entity_pack::Status,
     live_link_status: Option<std::sync::mpsc::Receiver<String>>,
@@ -545,6 +550,14 @@ fn game_file_stamp(root: &Path) -> Option<FileStamp> {
 fn still_written((path, modified, _): &FileStamp) -> bool {
     modified.and_then(|m| m.elapsed().ok()).is_some_and(|age| age.as_secs() < 2)
         && matches!(GameConfig::load(path), Err(td_formats::game::GameError::Json(e)) if e.is_eof())
+}
+
+struct OpenScan {
+    root: PathBuf,
+    /// Asks the person to trust the project when the scan finds code.
+    ask: bool,
+    /// The trust taken back before the scan, named in the status when the project ends up restricted.
+    untrusted: Option<String>,
 }
 
 /// Looks at a project's game config once a second on a thread and wakes the UI once the file differs from the one
@@ -631,6 +644,9 @@ impl EditorState {
             session_trusted: Vec::new(),
             trusted_root: None,
             no_code_root: None,
+            open_scan: None,
+            switch_scan: None,
+            code_scans: crate::code_scan::Scans::default(),
             gameplay_pack: Default::default(),
             live_link_status: None,
             godot_scan: None,
@@ -975,11 +991,17 @@ impl EditorState {
 
         let mut kept = None;
         if let Some(root) = self.other_project(path) {
-            if self.game.project_root.is_none() || self.is_trusted(&root) || crate::code_scan::find(&root).is_none() {
-                self.load_project(&root);
-            } else {
-                self.trust_request = Some(TrustRequest::Switch { root: root.clone(), map: path.clone() });
-                kept = Some(root);
+            let found = (self.game.project_root.is_some() && !self.is_trusted(&root)).then(|| {
+                self.code_scans.check(&root);
+                self.code_scans.get(&root)
+            });
+            match found {
+                None | Some(Some(None)) => self.load_project(&root),
+                Some(Some(Some(_))) => {
+                    self.trust_request = Some(TrustRequest::Switch { root: root.clone(), map: path.clone() });
+                    kept = Some(root);
+                }
+                Some(None) => self.switch_scan = Some((root, path.clone())),
             }
         }
 
@@ -1232,16 +1254,14 @@ impl EditorState {
             return;
         }
 
+        let shown = crate::trust::shown(path);
+        self.set_status(format!("{shown} is no longer trusted"));
         if let Some(root) = self.game.project_root.clone().filter(|root| !self.is_trusted(root) && self.no_code_root.as_ref() != Some(root)) {
-            self.no_code_root = crate::code_scan::find(&root).is_none().then_some(root);
+            self.wait_for_scan(&root, false, was_trusted.then_some(shown));
         }
 
         self.refresh_trust();
-        let shown = crate::trust::shown(path);
-        match self.game.project_root.clone().filter(|_| was_trusted && self.restricted()) {
-            Some(root) => self.set_status(format!("{shown} is no longer trusted, so {} is in Restricted Mode now", root.display())),
-            None => self.set_status(format!("{shown} is no longer trusted")),
-        }
+        self.apply_code_scans(false);
     }
 
     /// Trusts the project at `root` until the editor closes.
@@ -1269,6 +1289,56 @@ impl EditorState {
         if let Some(root) = self.game.project_root.clone().filter(|root| self.trust() == Some(Trust::NoCode) && crate::trust::within(path, root)) {
             self.trust_project(&root, false);
         }
+    }
+
+    /// Holds the trust of the open project at `root` until its code scan ends.
+    fn wait_for_scan(&mut self, root: &Path, ask: bool, untrusted: Option<String>) {
+        let ask = ask || self.open_scan.as_ref().is_some_and(|s| s.root == root && s.ask);
+        self.code_scans.check(root);
+        self.open_scan = Some(OpenScan { root: root.to_path_buf(), ask, untrusted });
+    }
+
+    /// The open project's trust waits for its code scan, so it counts as restricted until then.
+    pub fn scanning_code(&self) -> bool {
+        self.restricted() && self.open_scan.as_ref().is_some_and(|s| self.game.project_root.as_ref() == Some(&s.root))
+    }
+
+    /// Settles what waits for code scans that ended. With `wait` it waits for those still running.
+    pub fn apply_code_scans(&mut self, wait: bool) {
+        // First, since switching projects starts a scan of the one switched to.
+        if let Some((root, map)) = self.switch_scan.clone()
+            && let Some(found) = self.scanned(&root, wait)
+        {
+            self.switch_scan = None;
+            // Another map opened since leaves the project as it is.
+            let current = self.doc.path.as_deref().map(absolute) == Some(map.clone()) && self.other_project(&map).as_ref() == Some(&root);
+            if current && (found.is_none() || self.is_trusted(&root)) {
+                self.load_project(&root);
+            } else if current {
+                self.trust_request = Some(TrustRequest::Switch { root: root.clone(), map: map.clone() });
+                self.set_status(format!("{} belongs to {}, a project you have not trusted, so the open project stays", map.display(), root.display()));
+            }
+        }
+
+        if let Some(root) = self.open_scan.as_ref().map(|s| s.root.clone())
+            && let Some(found) = self.scanned(&root, wait)
+            && let Some(scan) = self.open_scan.take()
+            && self.game.project_root.as_ref() == Some(&root)
+        {
+            self.no_code_root = (!self.is_trusted(&root) && found.is_none()).then(|| root.clone());
+            self.refresh_trust();
+            if scan.ask && self.restricted() {
+                self.trust_request = Some(TrustRequest::Project(root.clone()));
+            }
+
+            if let Some(shown) = scan.untrusted.filter(|_| self.restricted()) {
+                self.set_status(format!("{shown} is no longer trusted, so {} is in Restricted Mode now", root.display()));
+            }
+        }
+    }
+
+    fn scanned(&mut self, root: &Path, wait: bool) -> Option<Option<crate::code_scan::Code>> {
+        if wait { Some(self.code_scans.wait(root)) } else { self.code_scans.get(root) }
     }
 
     fn refresh_trust(&mut self) {
@@ -1325,14 +1395,17 @@ impl EditorState {
         self.game = game;
         // Checked again each time a project opens, but not while it stays open: Godot adds imported files to it then.
         if switched || self.no_code_root.as_ref() != Some(root) {
-            self.no_code_root = (!self.is_trusted(root) && crate::code_scan::find(root).is_none()).then(|| root.clone());
+            self.no_code_root = None;
+            if self.is_trusted(root) {
+                self.open_scan = None;
+            } else {
+                self.wait_for_scan(root, switched, None);
+            }
         }
 
         self.forget_godot_missing(&before);
         self.refresh_trust();
-        if switched && self.restricted() {
-            self.trust_request = Some(TrustRequest::Project(root.clone()));
-        }
+        self.apply_code_scans(false);
 
         self.restart_game_watch();
         let p = root.to_path_buf();
@@ -1872,6 +1945,7 @@ mod tests {
         assert_eq!(state.other_project(&pack.join("level.tdm")), None);
 
         state.open_map(&other.join("level.tdm")).unwrap();
+        state.apply_code_scans(true);
         assert_eq!(state.game.project_root.as_deref(), Some(mine.as_path()), "an untrusted project is not switched to");
         assert_eq!(state.trust_request, Some(TrustRequest::Switch { root: other.clone(), map: other.join("level.tdm") }));
         assert!(state.status.contains("a project you have not trusted"), "{}", state.status);
@@ -1886,6 +1960,7 @@ mod tests {
         let mut state = EditorState::new(Prefs::default());
         state.open_map(&pack.join("level.tdm")).unwrap();
         assert_eq!(state.game.project_root.as_deref(), Some(pack.as_path()), "with no project open the map's own loads");
+        state.apply_code_scans(true);
         assert!(state.restricted() && state.trust_request == Some(TrustRequest::Project(pack.clone())));
 
         // A project unpacked inside a trusted one is not trusted with it.
@@ -1895,6 +1970,7 @@ mod tests {
             trust(&mut state, &other);
             state.load_project(&other);
             state.open_map(&pack.join("level.tdm")).unwrap();
+            state.apply_code_scans(true);
             assert_eq!(state.game.project_root.as_deref(), Some(other.as_path()), "the nested project is asked about");
             assert_eq!(state.trust_request, Some(TrustRequest::Switch { root: pack.clone(), map: pack.join("level.tdm") }));
         }

@@ -906,6 +906,10 @@ fn runs_project(state: &EditorState, action: &Action) -> bool {
 }
 
 fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
+    if state.scanning_code() && runs_project(state, &action) {
+        state.apply_code_scans(true);
+    }
+
     if state.restricted() && runs_project(state, &action) {
         let root = state.game.project_root.clone().unwrap_or_default();
         state.trust_request = Some(crate::state::TrustRequest::Run(root, action));

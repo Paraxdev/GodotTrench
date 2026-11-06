@@ -469,8 +469,12 @@ impl App {
 
             // A prompt would only stand in an agent's way. It learns about Restricted Mode from the results instead, and
             // the person from the status bar.
+            // Settled before, so the prompt for a project the person opened stays up.
+            self.state.apply_code_scans(true);
             let asked = self.state.trust_request.is_some();
-            if let Reply::Now(result) = self.call_tool(&call.name, call.args, ctx, &call.reply) {
+            let reply = self.call_tool(&call.name, call.args, ctx, &call.reply);
+            self.state.apply_code_scans(true);
+            if let Reply::Now(result) = reply {
                 let _ = call.reply.send(result);
             }
 
@@ -770,6 +774,7 @@ impl App {
                 match td_formats::game::find_project_root(&path) {
                     Some(root) => {
                         self.state.load_project(&root);
+                        self.state.apply_code_scans(true);
                         self.project_generation += 1;
                         ok(json!({
                             "project_root": path_text(&root), "game": self.state.game.name, "entities": self.state.game.entities.len(),
@@ -1642,6 +1647,7 @@ impl App {
             }
             "open" => need(path).and_then(|p| {
                 if modified { crate::commands::open_map_in_tab(&mut self.state, &p) } else { self.state.open_map(&p) }.map(|()| {
+                    self.state.apply_code_scans(true);
                     let other = self.state.other_project(&p);
                     json!({ "new_tab": modified, "problems": self.state.doc.load_problems, "other_project": path_value(other.as_ref()) })
                 })

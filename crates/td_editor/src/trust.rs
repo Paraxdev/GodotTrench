@@ -12,6 +12,8 @@ use crate::state::{EditorState, TrustRequest};
 
 pub const QUESTION: &str = "Do you trust the authors of the files in this project?";
 pub const CHIP: &str = "Restricted Mode";
+pub const SCANNING: &str = "Looking for code";
+pub const SCANNING_TIP: &str = "TrenchDot looks through the project for code Godot would run. Until it is done, it does not start Godot on the project";
 pub const TRUST: &str = "Trust Project";
 pub const RESTRICT: &str = "Open in Restricted Mode";
 pub const KEEP: &str = "Keep Current Project";
@@ -270,7 +272,9 @@ mod tests {
         let (folder, castle, keep) = projects("restricted");
         let mut state = EditorState::new(Prefs::default());
         state.load_project(&castle);
-        assert!(state.restricted());
+        assert!(state.restricted(), "nothing runs before the scan ends");
+        state.apply_code_scans(true);
+        assert!(state.restricted() && !state.scanning_code());
         assert_eq!(state.trust_request, Some(TrustRequest::Project(castle.clone())));
         state.trust_request = None;
         state.load_project(&castle);
@@ -327,6 +331,7 @@ mod tests {
         let mut state = EditorState::new(Prefs::default());
         assert!(!state.restricted() && state.trust().is_none(), "no project, nothing to ask");
         state.load_project(&castle);
+        state.apply_code_scans(true);
         assert!(!state.restricted() && state.trust_request.is_none(), "no prompt and no chip");
         assert_eq!(state.trust(), Some(Trust::NoCode));
         assert!(state.prefs.trusted_projects.is_empty() && state.prefs.trusted_folders.is_empty(), "nothing is stored");
@@ -336,8 +341,10 @@ mod tests {
         state.load_project(&castle);
         assert_eq!(state.trust(), Some(Trust::NoCode));
         state.load_project(&keep);
+        state.apply_code_scans(true);
         state.trust_request = None;
         state.load_project(&castle);
+        state.apply_code_scans(true);
         assert!(state.restricted(), "opened again, the project with a script is asked about");
         assert_eq!(state.trust_request, Some(TrustRequest::Project(castle.clone())));
 
@@ -348,6 +355,7 @@ mod tests {
         state.load_project(&keep);
         state.trust_request = None;
         state.open_map(&castle.join("level.tdm")).unwrap();
+        state.apply_code_scans(true);
         assert_eq!(state.game.project_root.as_ref(), Some(&castle));
         assert!(state.trust_request.is_none() && !state.restricted());
         let _ = std::fs::remove_dir_all(folder);
@@ -360,6 +368,7 @@ mod tests {
         let ctx = egui::Context::default();
         let mut state = EditorState::new(Prefs::default());
         state.load_project(&castle);
+        state.apply_code_scans(true);
         state.save_map(&castle.join("agent.tdm")).unwrap();
         assert_eq!(state.trust(), Some(Trust::NoCode), "the save MCP makes stores nothing");
         state.doc.path = Some(folder.join("loose.tdm"));
@@ -407,6 +416,7 @@ mod tests {
         state.untrust(&real_path(&castle), false);
         assert!(state.prefs.trusted_projects.is_empty());
         assert!(state.restricted(), "the open project is in Restricted Mode at once");
+        state.apply_code_scans(true);
         assert!(state.status.ends_with("is in Restricted Mode now"), "{}", state.status);
 
         state.trust_project(&castle, true);
@@ -419,6 +429,7 @@ mod tests {
         state.load_project(&keep);
         assert_eq!(state.trust(), Some(Trust::Stored));
         state.untrust(&real_path(&keep), false);
+        state.apply_code_scans(true);
         assert_eq!(state.trust(), Some(Trust::NoCode), "a project without code stays trusted");
         assert_eq!(state.status, format!("{} is no longer trusted", shown(&real_path(&keep))));
         let _ = std::fs::remove_dir_all(folder);
@@ -456,6 +467,7 @@ mod tests {
         let (folder, castle, keep) = projects("prompt");
         let mut state = EditorState::new(Prefs::default());
         state.load_project(&castle);
+        state.apply_code_scans(true);
         let mut harness = harness(state);
         harness.run();
         assert!(harness.query_by_label(QUESTION).is_some());
@@ -496,6 +508,7 @@ mod tests {
         state.trust_for_session(&castle);
         state.load_project(&castle);
         state.open_map(&map).unwrap();
+        state.apply_code_scans(true);
         let mut harness = harness(state);
         harness.run();
         assert!(harness.query_by_label(&keep.display().to_string()).is_some());

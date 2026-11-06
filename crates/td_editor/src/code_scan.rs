@@ -2,8 +2,11 @@
 //! none opens trusted, see [`crate::trust`]. TrenchDot's own addon and the Gameplay pack it installs do not count, as
 //! long as every file in them has the bytes this editor version installs.
 
-use std::collections::BTreeMap;
-use std::path::Path;
+use std::collections::{BTreeMap, HashMap};
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use base64::Engine;
@@ -43,6 +46,205 @@ pub fn find(root: &Path) -> Option<Code> {
 
 pub fn find_within(root: &Path, limits: &Limits) -> Option<Code> {
     Scan { root, limits, started: Instant::now(), entries: 0 }.run().err()
+}
+
+/// How often a kept result looks whether a file in its project changed.
+const WATCH_INTERVAL: Duration = Duration::from_secs(1);
+
+/// Projects whose results are kept at once, the open one and those of maps opened from elsewhere.
+const KEEP: usize = 4;
+
+/// Scans that run on a worker, each project's result kept until a file in the project changes.
+pub struct Scans {
+    kept: HashMap<PathBuf, Kept>,
+    interval: Duration,
+    repaint: Option<egui::Context>,
+    started: usize,
+}
+
+impl Default for Scans {
+    fn default() -> Self {
+        Self::with_interval(WATCH_INTERVAL)
+    }
+}
+
+impl Scans {
+    pub fn with_interval(interval: Duration) -> Self {
+        Self { kept: HashMap::new(), interval, repaint: None, started: 0 }
+    }
+
+    /// Wakes `repaint` when a scan or a check ends.
+    pub fn set_repaint(&mut self, repaint: egui::Context) {
+        self.repaint = Some(repaint);
+    }
+
+    /// Asks what the project at `root` holds now. A kept result counts again only once the watcher looked at the files
+    /// after this, so a file written just before is not missed between two of its rounds.
+    pub fn check(&mut self, root: &Path) {
+        let key = crate::trust::real_path(root);
+        if self.kept.get(&key).is_some_and(|k| !k.watched) {
+            self.kept.remove(&key);
+        }
+
+        let (kept, new) = self.start(root);
+        if !new {
+            kept.shared.0.lock().unwrap_or_else(PoisonError::into_inner).asked += 1;
+            kept.shared.1.notify_all();
+        }
+    }
+
+    /// What the project at `root` holds, None while its scan or check runs. Starts a scan unless a result is kept for
+    /// the project and no file in it changed since that scan began.
+    pub fn get(&mut self, root: &Path) -> Option<Option<Code>> {
+        let shared = self.start(root).0.shared.0.lock().unwrap_or_else(PoisonError::into_inner);
+        (shared.checked == shared.asked).then(|| shared.found.clone()).flatten()
+    }
+
+    /// Like [`Self::get`], waiting for the scan or check to end.
+    pub fn wait(&mut self, root: &Path) -> Option<Code> {
+        loop {
+            let (shared, ended) = &*self.start(root).0.shared;
+            let guard = shared.lock().unwrap_or_else(PoisonError::into_inner);
+            let shared = ended.wait_while(guard, |s| !s.stale && (s.found.is_none() || s.checked != s.asked)).unwrap_or_else(PoisonError::into_inner);
+            if !shared.stale {
+                return shared.found.clone().flatten();
+            }
+        }
+    }
+
+    /// Waits until the watcher of the result kept for `root` saw a file in the project change.
+    #[cfg(test)]
+    pub fn wait_for_change(&self, root: &Path) {
+        let (shared, ended) = &*self.kept[&crate::trust::real_path(root)].shared;
+        let guard = shared.lock().unwrap();
+        let (guard, _) = ended.wait_timeout_while(guard, Duration::from_secs(10), |s| !s.stale).unwrap();
+        assert!(guard.stale, "the watcher did not see {} change", root.display());
+    }
+
+    /// The kept result for `root`, a new scan when none is kept or it went stale, and whether it is new.
+    fn start(&mut self, root: &Path) -> (&Kept, bool) {
+        let key = crate::trust::real_path(root);
+        if self.kept.get(&key).is_some_and(|k| k.shared.0.lock().unwrap_or_else(PoisonError::into_inner).stale) {
+            self.kept.remove(&key);
+        }
+
+        let new = !self.kept.contains_key(&key);
+        if new {
+            if self.kept.len() >= KEEP {
+                let oldest = self.kept.iter().min_by_key(|(_, k)| k.started).map(|(p, _)| p.clone());
+                self.kept.retain(|p, _| Some(p) != oldest.as_ref());
+            }
+
+            self.started += 1;
+        }
+
+        let (interval, repaint, started) = (self.interval, self.repaint.clone(), self.started);
+        (self.kept.entry(key).or_insert_with(|| Kept::start(root.to_path_buf(), interval, repaint, started)), new)
+    }
+}
+
+#[derive(Default)]
+struct Shared {
+    found: Option<Option<Code>>,
+    /// Checks asked for, and the last one answered by a look at the files that began after it was asked.
+    asked: u64,
+    checked: u64,
+    /// Set by the watcher once a file in the project changed after the scan began.
+    stale: bool,
+}
+
+struct Kept {
+    shared: Arc<(Mutex<Shared>, Condvar)>,
+    stop: Arc<AtomicBool>,
+    watched: bool,
+    started: usize,
+}
+
+impl Kept {
+    fn start(root: PathBuf, interval: Duration, repaint: Option<egui::Context>, started: usize) -> Self {
+        let mut kept = Kept { shared: Arc::default(), stop: Arc::default(), watched: true, started };
+        let (shared, stop, at) = (kept.shared.clone(), kept.stop.clone(), root.clone());
+        let spawned = std::thread::Builder::new().name("code-scan".into()).spawn(move || {
+            let (lock, ended) = &*shared;
+            let wake = || {
+                ended.notify_all();
+                if let Some(repaint) = &repaint {
+                    repaint.request_repaint();
+                }
+            };
+
+            // Taken before the scan, so a file written while it ran counts as changed afterwards.
+            let mut asked = lock.lock().unwrap_or_else(PoisonError::into_inner).asked;
+            let before = stamp(&at);
+            let found = std::panic::catch_unwind(|| find(&at)).unwrap_or_else(|_| Some(code("", "could not be looked through")));
+            let mut s = lock.lock().unwrap_or_else(PoisonError::into_inner);
+            (s.found, s.checked) = (Some(found), asked);
+            wake();
+            loop {
+                s = ended.wait_timeout_while(s, interval, |s| s.asked == s.checked && !stop.load(Ordering::Relaxed)).unwrap_or_else(PoisonError::into_inner).0;
+                if stop.load(Ordering::Relaxed) {
+                    return;
+                }
+
+                let answers = s.asked != s.checked;
+                asked = s.asked;
+                drop(s);
+                let changed = stamp(&at) != before;
+                s = lock.lock().unwrap_or_else(PoisonError::into_inner);
+                (s.checked, s.stale) = (asked, changed);
+                if changed || answers {
+                    wake();
+                }
+
+                if changed {
+                    return;
+                }
+            }
+        });
+        if spawned.is_err() {
+            kept.shared.0.lock().unwrap_or_else(PoisonError::into_inner).found = Some(find(&root));
+            kept.watched = false;
+        }
+
+        kept
+    }
+}
+
+impl Drop for Kept {
+    fn drop(&mut self) {
+        let _shared = self.shared.0.lock().unwrap_or_else(PoisonError::into_inner);
+        self.stop.store(true, Ordering::Relaxed);
+        self.shared.1.notify_all();
+    }
+}
+
+/// The names, sizes and times of everything the scan looks through, to tell when one of them changed.
+fn stamp(root: &Path) -> u64 {
+    let (mut sum, mut seen, mut dirs) = (0u64, 0, vec![root.to_path_buf()]);
+    while let Some(dir) = dirs.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            seen += 1;
+            if seen > LIMITS.entries {
+                return sum;
+            }
+
+            if entry.file_name() == ".git" {
+                continue;
+            }
+
+            let meta = entry.metadata().ok();
+            let mut h = std::hash::DefaultHasher::new();
+            entry.path().hash(&mut h);
+            meta.as_ref().map(|m| (m.is_dir(), m.len(), m.modified().ok())).hash(&mut h);
+            sum = sum.wrapping_add(h.finish());
+            if meta.is_some_and(|m| m.is_dir()) {
+                dirs.push(entry.path());
+            }
+        }
+    }
+
+    sum
 }
 
 fn code(path: &str, why: impl Into<String>) -> Code {
@@ -881,5 +1083,42 @@ mod tests {
         let dir = fresh();
         write(dir.path(), "project.godot", "config_version=5\nx=[1, ; \"\n]\n[autoload]\nGame=\"*res://game.tscn\"\n; \"\n");
         assert_eq!(found(dir.path()).as_deref(), Some("project.godot"));
+    }
+
+    #[test]
+    fn a_kept_result_holds_until_a_file_in_the_project_changes() {
+        let (castle, keep) = (fresh(), fresh());
+        let mut scans = Scans::with_interval(Duration::from_millis(20));
+        assert_eq!(scans.wait(castle.path()), None);
+        assert_eq!(scans.get(castle.path()), Some(None), "kept, so it is known at once");
+        assert_eq!(scans.wait(keep.path()), None);
+        std::thread::sleep(Duration::from_millis(100));
+        scans.check(castle.path());
+        assert_eq!(scans.wait(castle.path()), None);
+        assert_eq!(scans.started, 2, "one scan per project while nothing changes");
+
+        write(castle.path(), "main.gd", "extends Node\n");
+        scans.check(castle.path());
+        assert_eq!(scans.wait(castle.path()).map(|c| c.path), Some("main.gd".into()), "a check right after the change sees it");
+        assert_eq!(scans.started, 3);
+        assert_eq!(scans.get(keep.path()), Some(None), "the other project keeps its result");
+
+        std::fs::remove_file(castle.path().join("main.gd")).unwrap();
+        scans.wait_for_change(castle.path());
+        assert_eq!(scans.wait(castle.path()), None, "the watcher saw the change by itself");
+        assert_eq!(scans.started, 4);
+    }
+
+    #[test]
+    fn a_scan_runs_on_a_worker() {
+        let dir = fresh();
+        for i in 0..2000 {
+            write(dir.path(), &format!("art/{i}.png.import"), "[remap]\n\nimporter=\"texture\"\n");
+        }
+
+        let mut scans = Scans::default();
+        assert_eq!(scans.get(dir.path()), None, "the scan still runs");
+        assert_eq!(scans.wait(dir.path()), None);
+        assert_eq!(scans.get(dir.path()), Some(None));
     }
 }

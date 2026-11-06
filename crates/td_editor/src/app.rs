@@ -748,6 +748,7 @@ impl App {
             state.trust_for_session(&given);
         }
 
+        state.code_scans.set_repaint(cc.egui_ctx.clone());
         if let Some(root) = root {
             state.load_project(&root);
         }
@@ -2160,7 +2161,10 @@ impl App {
                     }
                 }
 
-                if s.restricted() {
+                if s.scanning_code() {
+                    ui.separator();
+                    ui.label(RichText::new(crate::trust::SCANNING).color(crate::theme::FG.gamma_multiply_u8(160))).on_hover_text(crate::trust::SCANNING_TIP);
+                } else if s.restricted() {
                     ui.separator();
                     let chip = egui::Button::new(RichText::new(crate::trust::CHIP).color(crate::theme::YELLOW)).frame(false);
                     let resp = ui.add(chip).on_hover_text(crate::trust::CHIP_TIP);
@@ -2728,6 +2732,8 @@ impl eframe::App for App {
         if self.state.game_config_changed() && self.state.reload_changed_game_config() {
             self.project_generation += 1;
         }
+
+        self.state.apply_code_scans(false);
 
         if self.state.materials.changed_on_disk() {
             self.state.material_reload = true;
