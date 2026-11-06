@@ -192,6 +192,18 @@ impl Drop for TestCatalogue {
     }
 }
 
+/// Every translated text of the shipped catalogue of `lang`, plural forms included.
+#[cfg(test)]
+pub(crate) fn shipped_texts(lang: Lang) -> Vec<String> {
+    shipped(lang)
+        .values()
+        .flat_map(|entry| match entry {
+            Entry::Text(text) => vec![text.clone()],
+            Entry::Plural(forms) => forms.iter().map(|(_, text)| text.clone()).collect(),
+        })
+        .collect()
+}
+
 /// The English text of a key, without its `#context` suffix.
 #[doc(hidden)]
 pub fn english(key: &str) -> &str {

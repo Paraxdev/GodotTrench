@@ -16,6 +16,7 @@ pub mod entity_wizards;
 pub mod export3d;
 pub mod extra_tools;
 pub mod face_cull;
+pub mod fonts;
 pub mod gizmos;
 pub mod godot;
 pub mod help;

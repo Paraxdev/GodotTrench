@@ -816,7 +816,7 @@ impl App {
         let dock: Option<DockState<Tab>> = if keep_prefs { cc.storage.and_then(|s| eframe::get_value(s, DOCK_KEY)).filter(valid_dock) } else { None };
         crate::theme::install(&cc.egui_ctx);
         cc.egui_ctx.set_theme(egui::Theme::Dark);
-        cc.egui_ctx.set_fonts(crate::theme::fonts());
+        cc.egui_ctx.set_fonts(crate::fonts::definitions(crate::i18n::current()));
         // UI scale shortcuts go through the keymap so they are rebindable and saved in the preferences.
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
         icons::install(&cc.egui_ctx);

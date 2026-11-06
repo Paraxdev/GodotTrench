@@ -2,7 +2,7 @@
 """Regenerates the Rust crate table in LICENSES.md from `cargo metadata`.
 
   python tools/gen_licenses.py          # rewrite the table
-  python tools/gen_licenses.py --check  # exit 1 when the table is out of date
+  python tools/gen_licenses.py --check  # exit 1 when the table is out of date or a bundled font lacks its license
 """
 import json
 import pathlib
@@ -11,6 +11,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FILE = ROOT / "LICENSES.md"
+FONTS = ROOT / "crates" / "td_editor" / "assets" / "fonts"
 BEGIN = "<!-- crates:begin -->"
 END = "<!-- crates:end -->"
 
@@ -46,8 +47,24 @@ def crate_table():
     return f"{BEGIN}\n" + "\n".join(lines) + f"\n{END}"
 
 
+def font_problems(text):
+    """Each bundled font needs a `LICENSE-<family>*.txt` beside it whose family is part of the font's file name, and
+    LICENSES.md has to link each of those files by name."""
+    licenses = sorted(p.name for p in FONTS.glob("LICENSE-*.txt"))
+    families = [name.removeprefix("LICENSE-").removesuffix(".txt").split("-")[0].lower() for name in licenses]
+    fonts = [p.name for p in sorted(FONTS.iterdir()) if p.suffix in (".ttf", ".otf")]
+    problems = [f"{font} has no LICENSE-<family>*.txt beside it" for font in fonts if not any(f in font.lower() for f in families)]
+    problems += [f"LICENSES.md does not link {name}" for name in licenses if f"{FONTS.relative_to(ROOT).as_posix()}/{name}" not in text]
+    return problems
+
+
 def main():
     text = FILE.read_text(encoding="utf-8")
+    problems = font_problems(text)
+    if problems:
+        print("\n".join(problems))
+        if "--check" in sys.argv:
+            sys.exit(1)
     start, end = text.index(BEGIN), text.index(END) + len(END)
     new = text[:start] + crate_table() + text[end:]
     if "--check" in sys.argv:
