@@ -8,7 +8,7 @@ use td_geom::FaceUv;
 use td_render::Renderer;
 
 use crate::commands::Action;
-use crate::i18n::{en, tr};
+use crate::i18n::{en, tr, tr_n, trf};
 use crate::icons;
 use crate::state::EditorState;
 pub use crate::uv_editor::uv_editor;
@@ -110,12 +110,12 @@ impl Default for PanelState {
 
 pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions: &mut Vec<Action>) {
     ui.horizontal(|ui| {
-        let add_layer = egui::Button::image_and_text(icons::LAYER.image(icons::SMALL), "Add Layer").image_tint_follows_text_color(true);
-        if ui.add(add_layer).on_hover_text("New layer, it becomes the current layer new objects go into").clicked() {
+        let add_layer = egui::Button::image_and_text(icons::LAYER.image(icons::SMALL), tr("Add Layer")).image_tint_follows_text_color(true);
+        if ui.add(add_layer).on_hover_text(tr("New layer, it becomes the current layer new objects go into")).clicked() {
             actions.push(Action::AddLayer);
         }
 
-        ui.add(egui::TextEdit::singleline(&mut ps.outliner_filter).hint_text("Filter").desired_width(f32::INFINITY));
+        ui.add(egui::TextEdit::singleline(&mut ps.outliner_filter).hint_text(tr("Filter")).desired_width(f32::INFINITY));
     });
     ui.separator();
 
@@ -151,10 +151,10 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
     }
 
     if !filter.is_empty() && rows.iter().all(|(depth, _)| *depth == 0) {
-        ui.label(RichText::new("No objects match the filter").weak());
+        ui.label(RichText::new(tr("No objects match the filter")).weak());
     } else if map.layers.iter().all(|l| map.get(*l).is_none_or(|n| n.children.is_empty())) {
-        ui.label(RichText::new("The map is empty").weak())
-            .on_hover_text("Drag in the Top, Front or Side view to draw a brush, or drag an entity in from the Entities panel");
+        ui.label(RichText::new(tr("The map is empty")).weak())
+            .on_hover_text(tr("Drag in the Top, Front or Side view to draw a brush, or drag an entity in from the Entities panel"));
     }
 
     let row_h = 20.0;
@@ -182,7 +182,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                 let has_children = !node.children.is_empty();
                 let expanded = ps.expanded.contains(id);
                 if has_children {
-                    let (icon, label) = if expanded { (icons::COLLAPSE, "Collapse") } else { (icons::EXPAND, "Expand") };
+                    let (icon, label) = if expanded { (icons::COLLAPSE, tr("Collapse")) } else { (icons::EXPAND, tr("Expand")) };
                     if icons::small(ui, icon, label, None).clicked() {
                         toggles.push((*id, 0));
                     }
@@ -192,16 +192,16 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
 
                 let weak = ui.visuals().weak_text_color();
                 let (eye, eye_tint) = if node.hidden { (icons::EYE_OFF, Some(weak)) } else { (icons::EYE, None) };
-                if icons::small(ui, eye, "Visibility", eye_tint)
-                    .on_hover_text(if node.hidden { "Hidden, click to show" } else { "Visible, click to hide" })
+                if icons::small(ui, eye, tr("Visibility"), eye_tint)
+                    .on_hover_text(if node.hidden { tr("Hidden, click to show") } else { tr("Visible, click to hide") })
                     .clicked()
                 {
                     toggles.push((*id, 1));
                 }
 
                 let (lock, lock_tint) = if node.locked { (icons::LOCK, theme::colors().yellow) } else { (icons::UNLOCK, weak) };
-                if icons::small(ui, lock, "Lock", Some(lock_tint))
-                    .on_hover_text(if node.locked { "Locked, click to unlock" } else { "Unlocked, click to lock" })
+                if icons::small(ui, lock, tr("Lock"), Some(lock_tint))
+                    .on_hover_text(if node.locked { tr("Locked, click to unlock") } else { tr("Unlocked, click to lock") })
                     .clicked()
                 {
                     toggles.push((*id, 2));
@@ -223,11 +223,11 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                 let mut label = node.name();
                 if let NodeKind::Layer(_) = node.kind {
                     if state.current_layer == *id {
-                        label = format!("{label}  (current)");
+                        label = trf!("{label}  (current)", label);
                     }
 
                     if state.doc.map.get(*id).is_some_and(|n| matches!(&n.kind, NodeKind::Layer(l) if l.omit_from_export)) {
-                        label = format!("{label}  [omitted]");
+                        label = trf!("{label}  [omitted]", label);
                     }
                 }
 
@@ -274,7 +274,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
 
                 resp.context_menu(|ui| {
                     // Opens the row's name field. egui closes a menu on any click, so a field in the menu could not be clicked into.
-                    if ui.button("Rename").clicked() {
+                    if ui.button(tr("Rename")).clicked() {
                         renamed = Some((*id, None));
                         if !matches!(node.kind, NodeKind::Layer(_)) {
                             clicked = Some((*id, egui::Modifiers::NONE));
@@ -284,22 +284,22 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                     }
 
                     if let NodeKind::Layer(_) = &node.kind {
-                        if ui.button("Set Current Layer").clicked() {
+                        if ui.button(tr("Set Current Layer")).clicked() {
                             set_layer = Some(*id);
                             ui.close();
                         }
 
-                        if ui.button("Toggle Omit From Export").clicked() {
+                        if ui.button(tr("Toggle Omit From Export")).clicked() {
                             toggles.push((*id, 3));
                             ui.close();
                         }
 
-                        if ui.button("Move Selection Here").clicked() {
+                        if ui.button(tr("Move Selection Here")).clicked() {
                             actions.push(Action::MoveToLayer(*id));
                             ui.close();
                         }
 
-                        if ui.button("Delete Layer").clicked() {
+                        if ui.button(tr("Delete Layer")).clicked() {
                             toggles.push((*id, 4));
                             ui.close();
                         }
@@ -313,23 +313,23 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                         };
                         match &node.kind {
                             NodeKind::Group(_) => {
-                                item(ui, "Open Group", Action::OpenGroup);
-                                item(ui, "Ungroup", Action::Ungroup);
+                                item(ui, tr("Open Group"), Action::OpenGroup);
+                                item(ui, tr("Ungroup"), Action::Ungroup);
                                 ui.separator();
                             }
                             NodeKind::Scatter(_) => {
-                                item(ui, "Paint Into This Set", Action::ActivateScatter(*id));
+                                item(ui, tr("Paint Into This Set"), Action::ActivateScatter(*id));
                                 ui.separator();
                             }
                             NodeKind::Entity(_) => {
-                                item(ui, "Code Reference", Action::ShowReference);
+                                item(ui, tr("Code Reference"), Action::ShowReference);
                                 ui.separator();
                             }
                             _ => {}
                         }
 
-                        item(ui, "Focus", Action::FocusSelection);
-                        if ui.button(if node.hidden { "Show" } else { "Hide" }).clicked() {
+                        item(ui, tr("Focus"), Action::FocusSelection);
+                        if ui.button(if node.hidden { tr("Show") } else { tr("Hide") }).clicked() {
                             if selected {
                                 selection_flag = Some((true, !node.hidden));
                             } else {
@@ -339,7 +339,7 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                             ui.close();
                         }
 
-                        if ui.button(if node.locked { "Unlock" } else { "Lock" }).clicked() {
+                        if ui.button(if node.locked { tr("Unlock") } else { tr("Lock") }).clicked() {
                             if selected {
                                 selection_flag = Some((false, !node.locked));
                             } else {
@@ -350,15 +350,15 @@ pub fn outliner(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actio
                         }
 
                         ui.separator();
-                        item(ui, "Duplicate", Action::Duplicate);
-                        ui.menu_button("Move to Layer", |ui| {
+                        item(ui, tr("Duplicate"), Action::Duplicate);
+                        ui.menu_button(tr("Move to Layer"), |ui| {
                             for layer in &map.layers {
                                 if let Some(l) = map.get(*layer) {
                                     item(ui, &l.name(), Action::MoveToLayer(*layer));
                                 }
                             }
                         });
-                        item(ui, "Delete", Action::Delete);
+                        item(ui, tr("Delete"), Action::Delete);
                     }
                 });
             });
@@ -502,14 +502,14 @@ fn outliner_tooltip(ui: &mut Ui, map: &td_doc::Map, id: NodeId, node: &td_doc::N
     }
 
     if let Some(e) = map.entity(id).filter(|_| map.is_point_entity(id)) {
-        ui.label(format!("Origin {}", xyz(e.origin, " ")));
+        ui.label(trf!("Origin {pos}", pos = xyz(e.origin, " ")));
         return;
     }
 
     let b = map.bounds(id);
     if !b.is_empty() {
-        ui.label(format!("Size {}", xyz(b.size(), " x ")));
-        ui.label(format!("From {} to {}", xyz(b.min, " "), xyz(b.max, " ")));
+        ui.label(trf!("Size {size}", size = xyz(b.size(), " x ")));
+        ui.label(trf!("From {min} to {max}", min = xyz(b.min, " "), max = xyz(b.max, " ")));
     }
 }
 
@@ -557,25 +557,32 @@ pub fn inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
 
 fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mut Vec<Action>) {
     let Some(mesh) = state.doc.map.mesh(id).cloned() else { return };
-    ui.heading(if mesh.decal { "Decal" } else { "Mesh" });
-    let shape = if mesh.is_closed() { "closed" } else { "open surface" };
-    let counts = ui.label(format!("{} vertices, {} faces, {} triangles, {shape}", mesh.vertices.len(), mesh.faces.len(), mesh.triangle_count()));
+    ui.heading(if mesh.decal { tr("Decal") } else { tr("Mesh") });
+    let shape = if mesh.is_closed() { tr("closed") } else { tr("open surface") };
+    let counts = ui.label(trf!(
+        "{vertices}, {faces}, {triangles}, {shape}",
+        vertices = tr_n!(mesh.vertices.len(), "{n} vertex", "{n} vertices"),
+        faces = tr_n!(mesh.faces.len(), "{n} face", "{n} faces"),
+        triangles = tr_n!(mesh.triangle_count(), "{n} triangle", "{n} triangles"),
+        shape
+    ));
     if mesh.is_convex() {
-        counts.on_hover_text("Convex, so it exports to .map as a brush");
+        counts.on_hover_text(tr("Convex, so it exports to .map as a brush"));
     }
 
     // A placed model draws with its own textures, a material applied to it later shows up here in their place.
     let mut used: Vec<&str> = mesh.faces.iter().map(|f| f.data.material.as_str()).collect::<HashSet<_>>().into_iter().collect();
     used.sort_unstable();
     if !used.is_empty() {
-        let more = if used.len() > 3 { format!(" and {} more", used.len() - 3) } else { String::new() };
-        ui.label(format!("Materials: {}{more}", used[..used.len().min(3)].join(", "))).on_hover_text(used.join("\n"));
+        let list = used[..used.len().min(3)].join(", ");
+        let text = if used.len() > 3 { trf!("Materials: {list} and {n} more", list, n = used.len() - 3) } else { trf!("Materials: {list}", list) };
+        ui.label(text).on_hover_text(used.join("\n"));
     }
 
     let mut decal = mesh.decal;
     if ui
-        .checkbox(&mut decal, "Decal (blended, double sided)")
-        .on_hover_text("Blend this sheet's texture over the surface behind it, Godot draws it without z-fighting")
+        .checkbox(&mut decal, tr("Decal (blended, double sided)"))
+        .on_hover_text(tr("Blend this sheet's texture over the surface behind it, Godot draws it without z-fighting"))
         .changed()
     {
         state.doc.edit("Toggle Decal", |m, _| {
@@ -588,7 +595,7 @@ fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mu
     bounds_rows(ui, state, widgets::label_width(ui), 0);
     let mut angle = mesh.smooth_angle;
     ui.horizontal(|ui| {
-        ui.label("Smoothing angle");
+        ui.label(tr("Smoothing angle"));
         if ui.add(egui::Slider::new(&mut angle, 0.0..=180.0).suffix("°")).changed() {
             state.doc.edit_coalesced("Smoothing Angle", |m, _| {
                 if let Some(mesh) = m.mesh_mut(id) {
@@ -597,17 +604,17 @@ fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mu
             });
         }
     });
-    section(ui, "Mesh Operations", "", true, |ui| {
+    section(ui, en!("Mesh Operations"), "", true, |ui| {
         ui.horizontal_wrapped(|ui| {
             for (label, action) in [
-                ("Edit Mesh", Action::EditMesh),
-                ("Convert to Brushes", Action::ConvertToBrushes),
-                ("Subdivide", Action::MeshOp(crate::mesh_tool::MeshOp::Subdivide)),
-                ("Solidify", Action::MeshOp(crate::mesh_tool::MeshOp::Solidify)),
-                ("Merge by Distance", Action::MeshOp(crate::mesh_tool::MeshOp::MergeByDistance)),
-                ("Flip Normals", Action::MeshOp(crate::mesh_tool::MeshOp::Flip)),
+                (en!("Edit Mesh"), Action::EditMesh),
+                (en!("Convert to Brushes"), Action::ConvertToBrushes),
+                (en!("Subdivide"), Action::MeshOp(crate::mesh_tool::MeshOp::Subdivide)),
+                (en!("Solidify"), Action::MeshOp(crate::mesh_tool::MeshOp::Solidify)),
+                (en!("Merge by Distance"), Action::MeshOp(crate::mesh_tool::MeshOp::MergeByDistance)),
+                (en!("Flip Normals"), Action::MeshOp(crate::mesh_tool::MeshOp::Flip)),
             ] {
-                if ui.small_button(label).clicked() {
+                if ui.small_button(tr(label)).clicked() {
                     actions.push(action);
                 }
             }
@@ -616,13 +623,18 @@ fn mesh_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mu
     brush_entity_section(ui, state, actions);
 }
 
-/// Collapsible inspector section with a strong title. `tip` says what is inside, F1 opens its page of the manual.
+/// Collapsible inspector section with a strong title. `title` and `tip` are English keys, the title is also its id and
+/// its manual topic so a language switch keeps the section open. `tip` says what is inside, F1 opens its page of the manual.
 fn section<R>(ui: &mut Ui, title: &str, tip: &str, open: bool, add_contents: impl FnOnce(&mut Ui) -> R) {
-    let header = crate::widgets::collapsing(RichText::new(title).strong()).id_salt(title).default_open(open).show(ui, add_contents).header_response;
+    let header = crate::widgets::collapsing(RichText::new(tr(title)).strong())
+        .id_salt(crate::i18n::english(title))
+        .default_open(open)
+        .show(ui, add_contents)
+        .header_response;
     section_help(&header, title, tip);
 }
 
-/// Tooltip and manual page of an Inspector section or heading, found by `topic`.
+/// Tooltip and manual page of an Inspector section or heading, found by the English `topic`. `tip` is an English key.
 fn section_help(response: &egui::Response, topic: &str, tip: &str) {
     let topic = crate::help::Topic::Section(topic);
     crate::help::register(response, topic);
@@ -630,7 +642,7 @@ fn section_help(response: &egui::Response, topic: &str, tip: &str) {
     if manual || !tip.is_empty() {
         response.clone().on_hover_ui(|ui| {
             if !tip.is_empty() {
-                ui.label(tip);
+                ui.label(tr(tip));
             }
 
             if manual {
@@ -658,19 +670,18 @@ fn bounds_rows(ui: &mut Ui, state: &mut EditorState, label_w: f32, first_row: us
     let mut min = bounds.min.to_array();
     let mut size = bounds.size().to_array();
     let width = |ui: &Ui| ui.available_width() - widgets::TRAILING;
-    let moved = widgets::row(ui, first_row, "position", "Lowest corner of the bounds in map units, 32 per meter", label_w, |ui| {
+    let moved = widgets::row(ui, first_row, tr("position"), tr("Lowest corner of the bounds in map units, 32 per meter"), label_w, |ui| {
         widgets::vector_input_snapped(ui, &mut min, width(ui), 1.0, grid)
     });
-    let resized = widgets::row(ui, first_row + 1, "size", "Width, height and depth of the bounds. A new size scales from the lowest corner", label_w, |ui| {
-        if scalable {
-            widgets::vector_input_snapped(ui, &mut size, width(ui), 1.0, grid)
-        } else {
-            let s = bounds.size();
-            ui.label(RichText::new(format!("{} x {} x {}", widgets::format_number(s.x), widgets::format_number(s.y), widgets::format_number(s.z))).weak())
-                .on_hover_text("Only brushes and meshes scale, move this selection with position");
-            false
-        }
-    });
+    let resized =
+        widgets::row(ui, first_row + 1, tr("size"), tr("Width, height and depth of the bounds. A new size scales from the lowest corner"), label_w, |ui| {
+            if scalable {
+                widgets::vector_input_snapped(ui, &mut size, width(ui), 1.0, grid)
+            } else {
+                ui.label(RichText::new(xyz(bounds.size(), " x ")).weak()).on_hover_text(tr("Only brushes and meshes scale, move this selection with position"));
+                false
+            }
+        });
 
     let min = DVec3::from_array(min);
     let old_size = bounds.size();
@@ -697,10 +708,10 @@ fn brush_entity_section(ui: &mut Ui, state: &EditorState, actions: &mut Vec<Acti
         }
     }
 
-    let title = format!("Make Brush Entity ({})", groups.iter().map(|(_, d)| d.len()).sum::<usize>());
+    let title = trf!("Make Brush Entity ({n})", n = groups.iter().map(|(_, d)| d.len()).sum::<usize>());
     let section = crate::widgets::collapsing(RichText::new(title).strong()).id_salt("brush_entity_section").default_open(false).show(ui, |ui| {
         if groups.is_empty() {
-            sub_heading(ui, "No brush entities, open a Godot project with a game config");
+            sub_heading(ui, tr("No brush entities, open a Godot project with a game config"));
         }
 
         for (group, defs) in groups {
@@ -714,56 +725,58 @@ fn brush_entity_section(ui: &mut Ui, state: &EditorState, actions: &mut Vec<Acti
             });
         }
     });
-    section_help(&section.header_response, "Make Brush Entity", "Turns the selected brushes into a door, trigger or other brush entity");
+    section_help(&section.header_response, "Make Brush Entity", en!("Turns the selected brushes into a door, trigger or other brush entity"));
 }
 
 fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mut Vec<Action>) {
     use td_doc::scatter::ScatterCollision;
     let Some(set) = state.doc.map.scatter(id).cloned() else { return };
-    let heading = ui.heading(format!("Scatter set '{}'", set.name));
+    let heading = ui.heading(trf!("Scatter set '{name}'", name = set.name));
     section_help(&heading, "Scatter set", "");
     let active = state.active_scatter == Some(id);
     let enabled = set.items.iter().filter(|i| i.enabled).count();
-    ui.label(format!(
-        "{} instances of {} models ({enabled} painted), {} targets{}",
-        set.instances.len(),
-        set.items.len(),
-        set.targets.len(),
-        if active { ", painting here" } else { "" }
+    ui.label(trf!(
+        "{instances} of {models} ({enabled} painted), {targets}{painting}",
+        instances = tr_n!(set.instances.len(), "{n} instance", "{n} instances"),
+        models = tr_n!(set.items.len(), "{n} model", "{n} models"),
+        enabled,
+        targets = tr_n!(set.targets.len(), "{n} target", "{n} targets"),
+        painting = if active { tr(", painting here") } else { "" }
     ));
     let mut edited = set.clone();
     let mut changed = false;
     egui::Grid::new("scatter_props").num_columns(2).show(ui, |ui| {
-        ui.label("Name");
+        ui.label(tr("Name"));
         changed |= ui.text_edit_singleline(&mut edited.name).changed();
         ui.end_row();
-        ui.label("Kind");
+        ui.label(tr("Kind"));
         ui.horizontal(|ui| {
             let mut kind = edited.kind;
             for k in td_doc::ScatterKind::ALL {
-                changed |= ui.selectable_value(&mut kind, k, k.label()).on_hover_text("props keep scenes and collision, foliage uses MultiMesh").changed();
+                changed |=
+                    ui.selectable_value(&mut kind, k, tr(k.label())).on_hover_text(tr("props keep scenes and collision, foliage uses MultiMesh")).changed();
             }
 
             edited.set_kind(kind);
         });
         ui.end_row();
-        ui.label("Collision");
+        ui.label(tr("Collision"));
         ui.horizontal(|ui| {
             for c in ScatterCollision::ALL {
-                changed |= ui.selectable_value(&mut edited.collision, c, c.label()).on_hover_text(c.tooltip()).changed();
+                changed |= ui.selectable_value(&mut edited.collision, c, tr(c.label())).on_hover_text(tr(c.tooltip())).changed();
             }
         });
         ui.end_row();
-        ui.label("Cast shadows");
+        ui.label(tr("Cast shadows"));
         changed |= ui.checkbox(&mut edited.cast_shadows, "").changed();
         ui.end_row();
-        ui.label("Visibility range");
+        ui.label(tr("Visibility range"));
         changed |= ui
             .add(egui::DragValue::new(&mut edited.visibility_range).range(0.0..=100_000.0).suffix(" u"))
-            .on_hover_text("0 shows instances at any distance")
+            .on_hover_text(tr("0 shows instances at any distance"))
             .changed();
         ui.end_row();
-        ui.label("Chunk size");
+        ui.label(tr("Chunk size"));
         ui.horizontal(|ui| {
             let mut chunked = edited.chunk_size > 0.0;
             if ui.checkbox(&mut chunked, "").changed() {
@@ -776,30 +789,32 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
             }
         })
         .response
-        .on_hover_text(format!("{} chunks, each culled on its own in Godot", set.chunks().len()));
+        .on_hover_text(tr_n!(set.chunks().len(), "{n} chunk, each culled on its own in Godot", "{n} chunks, each culled on its own in Godot"));
         ui.end_row();
-        ui.label("Props as MultiMesh");
-        changed |=
-            ui.checkbox(&mut edited.static_props_multimesh, "").on_hover_text("Cheaper for many props, but scripts on those prop scenes are dropped").changed();
+        ui.label(tr("Props as MultiMesh"));
+        changed |= ui
+            .checkbox(&mut edited.static_props_multimesh, "")
+            .on_hover_text(tr("Cheaper for many props, but scripts on those prop scenes are dropped"))
+            .changed();
         ui.end_row();
-        ui.label("Material");
+        ui.label(tr("Material"));
         ui.horizontal(|ui| {
             let mut material = edited.material.clone().unwrap_or_default();
             if ui
-                .add(egui::TextEdit::singleline(&mut material).hint_text("model's own").desired_width(120.0))
-                .on_hover_text("Drawn instead of the materials the models ship with. A palette entry's own material wins over it")
+                .add(egui::TextEdit::singleline(&mut material).hint_text(tr("model's own")).desired_width(120.0))
+                .on_hover_text(tr("Drawn instead of the materials the models ship with. A palette entry's own material wins over it"))
                 .changed()
             {
                 edited.material = (!material.trim().is_empty()).then(|| material.trim().to_string());
                 changed = true;
             }
 
-            if ui.small_button("Use Current").on_hover_text(state.current_material.clone()).clicked() {
+            if ui.small_button(tr("Use Current")).on_hover_text(state.current_material.clone()).clicked() {
                 edited.material = Some(state.current_material.clone());
                 changed = true;
             }
 
-            if edited.material.is_some() && ui.small_button("×").on_hover_text("Back to the models' own materials").clicked() {
+            if edited.material.is_some() && ui.small_button("×").on_hover_text(tr("Back to the models' own materials")).clicked() {
                 edited.material = None;
                 changed = true;
             }
@@ -815,13 +830,13 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
     }
 
     ui.horizontal_wrapped(|ui| {
-        if ui.button("Edit in Scatter Panel").on_hover_text("Models, targets and brush of this set, ready to paint").clicked() {
+        if ui.button(tr("Edit in Scatter Panel")).on_hover_text(tr("Models, targets and brush of this set, ready to paint")).clicked() {
             actions.push(Action::ActivateScatter(id));
             actions.push(Action::ShowScatterPanel);
         }
 
-        for (label, action) in [("Fill Targets", Action::ScatterFill), ("To Entities", Action::ScatterToEntities)] {
-            if ui.small_button(label).clicked() {
+        for (label, action) in [(en!("Fill Targets"), Action::ScatterFill), (en!("To Entities"), Action::ScatterToEntities)] {
+            if ui.small_button(tr(label)).clicked() {
                 if matches!(action, Action::ScatterFill) {
                     actions.push(Action::ActivateScatter(id));
                 }
@@ -830,7 +845,7 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
             }
         }
 
-        if ui.small_button("Clear Instances").on_hover_text("Remove every placed instance, keep the models").clicked() {
+        if ui.small_button(tr("Clear Instances")).on_hover_text(tr("Remove every placed instance, keep the models")).clicked() {
             state.doc.edit("Clear Scatter", |m, _| {
                 if let Some(s) = m.scatter_mut(id) {
                     s.instances.clear();
@@ -840,46 +855,53 @@ fn scatter_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
     });
     if !set.targets.is_empty() {
         let names: Vec<String> = set.targets.iter().map(|t| crate::scatter_tool::target_label(state, *t)).collect();
-        ui.label(RichText::new(format!("Targets: {}", names.join(", "))).weak());
+        ui.label(RichText::new(trf!("Targets: {names}", names = names.join(", "))).weak());
     }
 }
 
 fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: &mut Vec<Action>) {
     let Some(t) = state.doc.map.terrain(id).cloned() else { return };
-    let heading = ui.heading("Terrain");
+    let heading = ui.heading(tr("Terrain"));
     section_help(&heading, "Terrain", "");
     let size = t.size();
     let upm = state.game.units_per_meter;
-    ui.label(format!("{} x {} vertices, cell {} units", t.resolution[0], t.resolution[1], t.cell_size));
-    ui.label(format!("{} x {} units ({:.0} x {:.0} m), {} chunks", size.x, size.y, size.x / upm, size.y / upm, t.chunks().len()));
+    ui.label(trf!("{w} x {h} vertices, cell {cell} units", w = t.resolution[0], h = t.resolution[1], cell = t.cell_size));
+    ui.label(trf!(
+        "{w} x {d} units ({mw} x {md} m), {chunks}",
+        w = size.x,
+        d = size.y,
+        mw = format!("{:.0}", size.x / upm),
+        md = format!("{:.0}", size.y / upm),
+        chunks = tr_n!(t.chunks().len(), "{n} chunk", "{n} chunks")
+    ));
     let b = t.bounds();
-    ui.label(format!("Heights {:.1} to {:.1}", b.min.y, b.max.y));
+    ui.label(trf!("Heights {low} to {high}", low = format!("{:.1}", b.min.y), high = format!("{:.1}", b.max.y)));
     let mut edited = t.clone();
     let mut changed = false;
     let mut origin = edited.origin.to_array();
-    widgets::row(ui, 0, "Origin", "", widgets::label_width(ui), |ui| {
+    widgets::row(ui, 0, tr("Origin"), "", widgets::label_width(ui), |ui| {
         if widgets::vector_input(ui, &mut origin, ui.available_width() - widgets::TRAILING, 1.0) {
             edited.origin = DVec3::from_array(origin);
             changed = true;
         }
     });
     egui::Grid::new("terrain_props").num_columns(2).show(ui, |ui| {
-        ui.label("Chunk cells");
+        ui.label(tr("Chunk cells"));
         changed |= ui.add(egui::DragValue::new(&mut edited.chunk_cells).range(4..=256)).changed();
         ui.end_row();
         for (i, layer) in edited.layers.iter_mut().enumerate() {
-            ui.label(format!("Layer {i}"));
-            ui.horizontal(|ui| {
+            ui.label(trf!("Layer {i}", i));
+            ui.horizontal_wrapped(|ui| {
                 changed |= ui.add(egui::TextEdit::singleline(&mut layer.material).desired_width(130.0)).changed();
-                changed |= ui.add(egui::DragValue::new(&mut layer.tile).range(8.0..=16384.0).prefix("tile ").suffix(" u")).changed();
+                changed |= ui.add(egui::DragValue::new(&mut layer.tile).range(8.0..=16384.0).prefix(tr("tile ")).suffix(" u")).changed();
                 changed |= ui
-                    .add(egui::DragValue::new(&mut layer.detile).range(0.0..=1.0).speed(0.02).prefix("detile "))
-                    .on_hover_text("Hides the tiling by turning and shifting each tile randomly. Costs more texture reads")
+                    .add(egui::DragValue::new(&mut layer.detile).range(0.0..=1.0).speed(0.02).prefix(tr("detile ")))
+                    .on_hover_text(tr("Hides the tiling by turning and shifting each tile randomly. Costs more texture reads"))
                     .changed();
                 if layer.detile > 0.0 {
                     changed |= ui
-                        .add(egui::DragValue::new(&mut layer.detile_sharpen).range(0.0..=1.0).speed(0.02).prefix("sharpen "))
-                        .on_hover_text("Keeps the de-tiled texture crisp, 0 is soft, 1 blends only at the joins")
+                        .add(egui::DragValue::new(&mut layer.detile_sharpen).range(0.0..=1.0).speed(0.02).prefix(tr("sharpen ")))
+                        .on_hover_text(tr("Keeps the de-tiled texture crisp, 0 is soft, 1 blends only at the joins"))
                         .changed();
                 }
             });
@@ -887,29 +909,29 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
         }
     });
     ui.horizontal_wrapped(|ui| {
-        if edited.layers.len() < td_geom::heightfield::MAX_LAYERS && ui.small_button("+ layer (current material)").clicked() {
+        if edited.layers.len() < td_geom::heightfield::MAX_LAYERS && ui.small_button(tr("+ layer (current material)")).clicked() {
             let last = edited.layers.last();
             let (tile, detile) = last.map(|l| (l.tile, l.detile)).unwrap_or((256.0, 0.0));
             edited.layers.push(td_geom::TerrainLayer { detile, ..td_geom::TerrainLayer::new(state.current_material.clone(), tile) });
             changed = true;
         }
 
-        if edited.layers.len() > 1 && ui.small_button("- last layer").clicked() {
+        if edited.layers.len() > 1 && ui.small_button(tr("- last layer")).clicked() {
             edited.layers.pop();
             changed = true;
         }
 
         let longest = t.resolution[0].max(t.resolution[1]);
-        ui.menu_button("Resample", |ui| {
+        ui.menu_button(tr("Resample"), |ui| {
             for res in [65u32, 129, 257, 513].into_iter().filter(|r| *r != longest) {
-                if ui.button(format!("{res} vertices")).clicked() {
+                if ui.button(tr_n!(res, "{n} vertex", "{n} vertices")).clicked() {
                     edited = t.resample([res, res]);
                     changed = true;
                 }
             }
         })
         .response
-        .on_hover_text("Rebuilds the grid with this many vertices along the longer side, keeping heights and paint");
+        .on_hover_text(tr("Rebuilds the grid with this many vertices along the longer side, keeping heights and paint"));
     });
     if changed {
         state.doc.edit_coalesced("Edit Terrain", |m, _| {
@@ -922,24 +944,24 @@ fn terrain_inspector(ui: &mut Ui, state: &mut EditorState, id: NodeId, actions: 
     ui.separator();
     ui.horizontal_wrapped(|ui| {
         for (label, action) in [
-            ("Sculpt", Action::SetTool(crate::tools::ToolKind::Sculpt)),
-            ("Auto Paint", Action::TerrainAutoPaint),
-            ("Flatten", Action::TerrainFlatten),
-            ("Scatter", Action::SetTool(crate::tools::ToolKind::Scatter)),
-            ("Blend", Action::SetTool(crate::tools::ToolKind::Blend)),
+            (en!("Sculpt"), Action::SetTool(crate::tools::ToolKind::Sculpt)),
+            (en!("Auto Paint"), Action::TerrainAutoPaint),
+            (en!("Flatten"), Action::TerrainFlatten),
+            (en!("Scatter"), Action::SetTool(crate::tools::ToolKind::Scatter)),
+            (en!("Blend"), Action::SetTool(crate::tools::ToolKind::Blend)),
         ] {
-            if ui.small_button(label).clicked() {
+            if ui.small_button(tr(label)).clicked() {
                 actions.push(action);
             }
         }
     });
     crate::dialogs::auto_paint_base_ui(ui, &mut state.auto_paint_base);
     let (layer, details) = if state.tool == crate::tools::ToolKind::Blend {
-        (state.blend.layer, "It goes to the layer the Blend tool paints")
+        (state.blend.layer, tr("It goes to the layer the Blend tool paints"))
     } else {
-        (usize::from(state.sculpt.layer), "It goes to the layer the Sculpt tool paints, or the Blend layer with the Blend tool")
+        (usize::from(state.sculpt.layer), tr("It goes to the layer the Sculpt tool paints, or the Blend layer with the Blend tool"))
     };
-    crate::help::line(ui, state.prefs.help_text, &format!("Drop a material on the terrain to use it for layer {layer}"), details);
+    crate::help::line(ui, state.prefs.help_text, &trf!("Drop a material on the terrain to use it for layer {layer}", layer), details);
 }
 
 fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Action>) {
@@ -952,8 +974,12 @@ fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Act
     match state.doc.selection.nodes.first().and_then(|id| map.get(*id)).filter(|_| count == 1) {
         Some(node) => ui.heading(node.name()),
         None => {
-            ui.heading(format!("{count} objects"));
-            ui.label(format!("{} brushes, {} meshes", brushes.len(), meshes.len()))
+            ui.heading(tr_n!(count, "{n} object", "{n} objects"));
+            ui.label(trf!(
+                "{brushes}, {meshes}",
+                brushes = tr_n!(brushes.len(), "{n} brush", "{n} brushes"),
+                meshes = tr_n!(meshes.len(), "{n} mesh", "{n} meshes")
+            ))
         }
     };
     bounds_rows(ui, state, widgets::label_width(ui), 0);
@@ -961,76 +987,76 @@ fn selection_summary(ui: &mut Ui, state: &mut EditorState, actions: &mut Vec<Act
     let buttons = |ui: &mut Ui, actions: &mut Vec<Action>, list: Vec<(&str, &str, Action)>| {
         ui.horizontal_wrapped(|ui| {
             for (label, tip, action) in list {
-                if ui.small_button(label).on_hover_text(tip).clicked() {
+                if ui.small_button(tr(label)).on_hover_text(tr(tip)).clicked() {
                     actions.push(action);
                 }
             }
         });
     };
-    section(ui, "Selection", "", true, |ui| {
+    section(ui, en!("Selection"), "", true, |ui| {
         buttons(
             ui,
             actions,
             vec![
-                ("Edit Mesh", "Converts brushes to a mesh and edits it. Tab does this for meshes only", Action::EditMesh),
-                ("Convert to Mesh", "Convert the selected brushes to meshes", Action::ConvertToMesh),
-                ("Join Meshes", "Join the selected meshes and brushes into one mesh", Action::JoinMeshes),
-                ("Duplicate Linked", "Linked copies update together when one is edited", Action::DuplicateLinked),
-                ("Cordon", "Hides everything outside the selection bounds in the views", Action::SetCordonFromSelection),
-                ("Set Blend Material", "Current material blends into these faces", Action::SetBlendMaterial),
+                (en!("Edit Mesh"), en!("Converts brushes to a mesh and edits it. Tab does this for meshes only"), Action::EditMesh),
+                (en!("Convert to Mesh"), en!("Convert the selected brushes to meshes"), Action::ConvertToMesh),
+                (en!("Join Meshes"), en!("Join the selected meshes and brushes into one mesh"), Action::JoinMeshes),
+                (en!("Duplicate Linked"), en!("Linked copies update together when one is edited"), Action::DuplicateLinked),
+                (en!("Cordon"), en!("Hides everything outside the selection bounds in the views"), Action::SetCordonFromSelection),
+                (en!("Set Blend Material"), en!("Current material blends into these faces"), Action::SetBlendMaterial),
             ],
         );
     });
-    section(ui, "Transform", "Rotate, flip and snap the selection", false, |ui| {
+    section(ui, en!("Transform"), en!("Rotate, flip and snap the selection"), false, |ui| {
         buttons(
             ui,
             actions,
             vec![
-                ("Rotate Y 90", "Rotate around the vertical axis", Action::Rotate { axis: 1, degrees: 90.0 }),
-                ("Rotate Y -90", "Rotate around the vertical axis", Action::Rotate { axis: 1, degrees: -90.0 }),
-                ("Flip X", "Mirror along X", Action::Flip { axis: 0 }),
-                ("Flip Y", "Mirror along Y", Action::Flip { axis: 1 }),
-                ("Flip Z", "Mirror along Z", Action::Flip { axis: 2 }),
-                ("Snap Vertices", "Snap every vertex to the grid", Action::SnapVertices),
+                (en!("Rotate Y 90"), en!("Rotate around the vertical axis"), Action::Rotate { axis: 1, degrees: 90.0 }),
+                (en!("Rotate Y -90"), en!("Rotate around the vertical axis"), Action::Rotate { axis: 1, degrees: -90.0 }),
+                (en!("Flip X"), en!("Mirror along X"), Action::Flip { axis: 0 }),
+                (en!("Flip Y"), en!("Mirror along Y"), Action::Flip { axis: 1 }),
+                (en!("Flip Z"), en!("Mirror along Z"), Action::Flip { axis: 2 }),
+                (en!("Snap Vertices"), en!("Snap every vertex to the grid"), Action::SnapVertices),
             ],
         );
     });
-    section(ui, "Gameplay", "Doors, lifts and trigger volumes from the selection", false, |ui| {
-        sub_heading(ui, "Doors and movers");
+    section(ui, en!("Gameplay"), en!("Doors, lifts and trigger volumes from the selection"), false, |ui| {
+        sub_heading(ui, tr("Doors and movers"));
         let doors = [
-            (DoorKind::Hinged { side: HingeSide::Left, angle: 95.0 }, "func_door_rotating hinged on the left end, with a trigger that opens it"),
-            (DoorKind::Hinged { side: HingeSide::Right, angle: 95.0 }, "func_door_rotating hinged on the right end, with a trigger that opens it"),
-            (DoorKind::Sliding { direction: SlideDirection::Up, lip: 4.0 }, "func_door that slides up by its height, with a trigger that opens it"),
-            (DoorKind::Sliding { direction: SlideDirection::Left, lip: 4.0 }, "func_door that slides along its width, with a trigger that opens it"),
+            (DoorKind::Hinged { side: HingeSide::Left, angle: 95.0 }, en!("func_door_rotating hinged on the left end, with a trigger that opens it")),
+            (DoorKind::Hinged { side: HingeSide::Right, angle: 95.0 }, en!("func_door_rotating hinged on the right end, with a trigger that opens it")),
+            (DoorKind::Sliding { direction: SlideDirection::Up, lip: 4.0 }, en!("func_door that slides up by its height, with a trigger that opens it")),
+            (DoorKind::Sliding { direction: SlideDirection::Left, lip: 4.0 }, en!("func_door that slides along its width, with a trigger that opens it")),
         ];
         let mut list: Vec<(&str, &str, Action)> = doors.into_iter().map(|(kind, tip)| (kind.label(), tip, Action::MakeDoor { kind, trigger: true })).collect();
-        list.push(("Lift, Moving Platform", "func_platform that travels up, drag its travel handle", Action::MakePlatform));
+        list.push((en!("Lift, Moving Platform"), en!("func_platform that travels up, drag its travel handle"), Action::MakePlatform));
         buttons(ui, actions, list);
-        sub_heading(ui, "Volumes around the selection");
+        sub_heading(ui, tr("Volumes around the selection"));
         buttons(
             ui,
             actions,
             vec![
-                ("Trigger", "trigger_multiple around the selection", Action::VolumeAroundSelection("trigger_multiple".into())),
-                ("Spawn Area", "trigger_spawn_area around the selection", Action::VolumeAroundSelection("trigger_spawn_area".into())),
+                (en!("Trigger"), en!("trigger_multiple around the selection"), Action::VolumeAroundSelection("trigger_multiple".into())),
+                (en!("Spawn Area"), en!("trigger_spawn_area around the selection"), Action::VolumeAroundSelection("trigger_spawn_area".into())),
             ],
         );
         if entity_count == 2 {
-            sub_heading(ui, "Logic");
-            buttons(ui, actions, vec![("Link…", "Connect an output of one selected entity to an input of the other", Action::ShowLinkDialog)]);
+            sub_heading(ui, tr("Logic"));
+            buttons(ui, actions, vec![(en!("Link…"), en!("Connect an output of one selected entity to an input of the other"), Action::ShowLinkDialog)]);
         }
     });
     brush_entity_section(ui, state, actions);
 }
 
 fn worldspawn_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState) {
-    let heading = ui.heading("Map (worldspawn)");
+    let heading = ui.heading(tr("Map (worldspawn)"));
     section_help(&heading, "Map (worldspawn)", "");
     crate::help::line(
         ui,
         state.prefs.help_text,
-        "Nothing selected, these settings apply to the whole map",
-        "Click an object in a view or the Outliner to inspect it instead",
+        tr("Nothing selected, these settings apply to the whole map"),
+        tr("Click an object in a view or the Outliner to inspect it instead"),
     );
     let props: Vec<(String, String)> = state.doc.map.properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let def = state.game.entity("worldspawn").cloned();
@@ -1057,7 +1083,7 @@ fn worldspawn_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
         let custom = p.is_none();
         let (edited, remove) = widgets::row(ui, index, key.as_str(), &hover, label_w, |ui| {
             let edited = property_editor(ui, ty, &options, &mut value, state, ui.available_width() - widgets::TRAILING);
-            (edited, custom && ui.small_button("×").on_hover_text("Remove property").clicked())
+            (edited, custom && ui.small_button("×").on_hover_text(tr("Remove property")).clicked())
         });
         index += 1;
         if edited {
@@ -1082,9 +1108,9 @@ fn worldspawn_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelStat
 
 fn add_property_row(ui: &mut Ui, ps: &mut PanelState, mut add: impl FnMut(String, String)) {
     ui.horizontal(|ui| {
-        ui.add(egui::TextEdit::singleline(&mut ps.new_key).hint_text("key").desired_width(90.0));
-        ui.add(egui::TextEdit::singleline(&mut ps.new_value).hint_text("value").desired_width(90.0));
-        if ui.button("Add").clicked() && !ps.new_key.trim().is_empty() {
+        ui.add(egui::TextEdit::singleline(&mut ps.new_key).hint_text(tr("key")).desired_width(90.0));
+        ui.add(egui::TextEdit::singleline(&mut ps.new_value).hint_text(tr("value")).desired_width(90.0));
+        if ui.button(tr("Add")).clicked() && !ps.new_key.trim().is_empty() {
             add(ps.new_key.trim().to_string(), ps.new_value.clone());
             ps.new_key.clear();
             ps.new_value.clear();
@@ -1100,7 +1126,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
     ui.horizontal(|ui| {
         ui.heading(&entity.classname);
         if def.is_none() {
-            ui.label(RichText::new("no definition").color(theme::colors().warning()));
+            ui.label(RichText::new(tr("no definition")).color(theme::colors().warning()));
         }
     });
     if let Some(d) = &def
@@ -1110,13 +1136,14 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
     }
 
     ui.horizontal_wrapped(|ui| {
-        if ui.small_button("Code Reference").on_hover_text("GDScript and C# for this entity").clicked() {
+        if ui.small_button(tr("Code Reference")).on_hover_text(tr("GDScript and C# for this entity")).clicked() {
             ps.reference_class = entity.classname.clone();
             actions.push(Action::ShowReference);
         }
 
         let entity_count = state.doc.selection.nodes.iter().filter(|n| state.doc.map.entity(**n).is_some()).count();
-        if entity_count == 2 && ui.small_button("Link…").on_hover_text("Connect an output of one selected entity to an input of the other").clicked() {
+        if entity_count == 2 && ui.small_button(tr("Link…")).on_hover_text(tr("Connect an output of one selected entity to an input of the other")).clicked()
+        {
             actions.push(Action::ShowLinkDialog);
         }
 
@@ -1124,7 +1151,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
             let gizmos = d.gizmos(state.game.units_per_meter);
             if !gizmos.is_empty() {
                 let names: Vec<String> = gizmos.iter().map(|g| g.label()).collect();
-                crate::help::line(ui, state.prefs.help_text, &format!("drag the {} handles in the views", names.join(", ")), "");
+                crate::help::line(ui, state.prefs.help_text, &trf!("drag the {names} handles in the views", names = names.join(", ")), "");
             }
         }
     });
@@ -1151,10 +1178,10 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
         let mut origin = [entity.origin.x, entity.origin.y, entity.origin.z];
         let mut angles = [entity.angles.x, entity.angles.y, entity.angles.z];
         let mut changed = false;
-        widgets::row(ui, 1, "origin", "Position in map units", label_w, |ui| {
+        widgets::row(ui, 1, "origin", tr("Position in map units"), label_w, |ui| {
             changed |= widgets::vector_input(ui, &mut origin, ui.available_width() - widgets::TRAILING, 1.0);
         });
-        widgets::row(ui, 2, "angles", "Pitch, yaw and roll in degrees", label_w, |ui| {
+        widgets::row(ui, 2, "angles", tr("Pitch, yaw and roll in degrees"), label_w, |ui| {
             changed |= widgets::vector_input(ui, &mut angles, ui.available_width() - widgets::TRAILING, 1.0);
         });
         if changed {
@@ -1169,7 +1196,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
 
     let count = state.doc.selection.nodes.len();
     if count > 1 {
-        sub_heading(ui, &format!("Bounds of all {count} selected objects"));
+        sub_heading(ui, &tr_n!(count, "Bounds of {n} selected object", "Bounds of all {n} selected objects"));
     }
 
     if !is_point || count > 1 {
@@ -1177,7 +1204,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
     }
 
     let value_x = ui.cursor().left() + label_w;
-    let properties = crate::widgets::collapsing(RichText::new("Properties").strong()).id_salt("entity_properties").default_open(true).show(ui, |ui| {
+    let properties = crate::widgets::collapsing(RichText::new(tr("Properties")).strong()).id_salt("entity_properties").default_open(true).show(ui, |ui| {
         let label_w = value_x - ui.cursor().left();
         let mut index = 0;
         if let Some(d) = &def {
@@ -1189,7 +1216,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
                 let ty = widgets::effective_type(Some(p.ty), &p.name, &value);
                 let (edited, reset) = widgets::row(ui, index, label, &hover, label_w, |ui| {
                     let edited = property_editor(ui, ty, &p.options, &mut value, state, ui.available_width() - widgets::TRAILING);
-                    (edited, set && ui.small_button("×").on_hover_text("Reset to default").clicked())
+                    (edited, set && ui.small_button("×").on_hover_text(tr("Reset to default")).clicked())
                 });
                 index += 1;
                 if edited {
@@ -1221,9 +1248,9 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
 
             let mut value = v.clone();
             let ty = widgets::effective_type(None, k, v);
-            let (edited, remove) = widgets::row(ui, index, RichText::new(k).italics(), "Not in the entity definition", label_w, |ui| {
+            let (edited, remove) = widgets::row(ui, index, RichText::new(k).italics(), tr("Not in the entity definition"), label_w, |ui| {
                 let edited = property_editor(ui, ty, &[], &mut value, state, ui.available_width() - widgets::TRAILING);
-                (edited, ui.small_button("×").on_hover_text("Remove property").clicked())
+                (edited, ui.small_button("×").on_hover_text(tr("Remove property")).clicked())
             });
             index += 1;
             if edited {
@@ -1255,7 +1282,7 @@ fn entity_inspector(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, i
     });
 
     section_help(&properties.header_response, "Properties", "");
-    let title = format!("Outputs (I/O, {})", entity.outputs.len());
+    let title = trf!("Outputs (I/O, {n})", n = entity.outputs.len());
     let outputs = crate::widgets::collapsing(RichText::new(title).strong()).id_salt("entity_outputs").default_open(true).show(ui, |ui| {
         io_editor(ui, state, id, &entity, def.as_ref());
     });

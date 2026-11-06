@@ -1675,3 +1675,186 @@ fn prefabs_panel_shows_the_library_and_pastes_a_clicked_card() {
     harness.run();
     assert!(harness.query_by_label("Archway").is_none() && harness.query_by_label("Square pillar").is_some(), "the search filters the cards");
 }
+
+fn brushes_selected(n: usize) -> Fixture {
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    f.state.doc.edit("add", |m, s| {
+        for i in 0..n {
+            let at = DVec3::new(i as f64 * 80.0 + 8.0, 4.0, 12.0);
+            s.select_node(m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(at, at + DVec3::new(64.0, 32.0, 16.0)), "dev/grey").unwrap())));
+        }
+    });
+    f
+}
+
+#[test]
+fn the_outliner_selects_renames_and_deletes_in_german() {
+    let _german = td_editor::i18n::scope(td_editor::i18n::Lang::De);
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    let brush =
+        f.state.doc.edit("add", |m, _| m.insert(layer, NodeKind::Brush(Brush::from_aabb(&Aabb::new(DVec3::ZERO, DVec3::splat(64.0)), "dev/grey").unwrap())));
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(360.0, 400.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::outliner(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    harness.get_by_label("Ebene hinzufügen");
+    assert!(harness.query_by_label("Add Layer").is_none());
+    harness.get_by_label("Aufklappen").click();
+    harness.run();
+    let name = format!("brush{}", brush.0);
+    harness.get_by_label(&name).click();
+    harness.run();
+    assert!(harness.state().state.doc.selection.nodes.contains(&brush), "a click selects the row");
+
+    harness.get_by_label(&name).click_secondary();
+    harness.run();
+    assert!(harness.query_by_label("Rename").is_none() && harness.query_by_label("Delete").is_none(), "the menu is German");
+    harness.get_by_label("Umbenennen").click();
+    harness.run();
+    harness.get_all_by_role(egui::accesskit::Role::TextInput).last().unwrap().type_text("Nordwand");
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    assert_eq!(harness.state().state.doc.map.get(brush).unwrap().name(), "Nordwand");
+    assert_eq!(harness.state().state.doc.history.undo_labels().next(), Some("Rename"), "the undo label is stored in English");
+
+    harness.get_by_label("Nordwand").click_secondary();
+    harness.run();
+    harness.get_by_label("Löschen").click();
+    harness.run();
+    assert_eq!(harness.state().actions, vec![Action::Delete]);
+}
+
+#[test]
+fn the_inspector_headers_are_german_and_keep_their_open_state() {
+    let _german = td_editor::i18n::scope(td_editor::i18n::Lang::De);
+    let mut harness = Harness::new_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), Fixture::new());
+    harness.run();
+    harness.get_by_label("Karte (worldspawn)");
+    assert!(harness.query_by_label("Map (worldspawn)").is_none());
+
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(520.0, 700.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), brushes_selected(2));
+    harness.run();
+    harness.get_by_label("Auswahl");
+    assert!(harness.query_by_label("Selection").is_none());
+    harness.get_by_label("Transformation").click();
+    harness.run();
+    harness.get_by_label("Y spiegeln").click();
+    harness.run();
+    assert!(matches!(harness.state().actions.as_slice(), [Action::Flip { axis: 1 }]));
+}
+
+#[test]
+fn the_selection_summary_counts_with_russian_plurals() {
+    let _russian = td_editor::i18n::scope(td_editor::i18n::Lang::Ru);
+    for (n, objects, brushes) in [
+        (2, "2 объекта", "2 браша, 0 мешей"),
+        (5, "5 объектов", "5 брашей, 0 мешей"),
+        (11, "11 объектов", "11 брашей, 0 мешей"),
+        (21, "21 объект", "21 браш, 0 мешей"),
+        (22, "22 объекта", "22 браша, 0 мешей"),
+    ] {
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(520.0, 700.0))
+            .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), brushes_selected(n));
+        harness.run();
+        harness.get_by_label(objects);
+        harness.get_by_label(brushes);
+    }
+}
+
+#[test]
+fn the_selection_summary_counts_in_english() {
+    for (n, objects, brushes) in [(2, "2 objects", "2 brushes, 0 meshes"), (3, "3 objects", "3 brushes, 0 meshes")] {
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(520.0, 700.0))
+            .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), brushes_selected(n));
+        harness.run();
+        harness.get_by_label(objects);
+        harness.get_by_label(brushes);
+    }
+}
+
+#[test]
+fn a_section_opened_in_english_stays_open_after_switching_to_german() {
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(520.0, 700.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), brushes_selected(2));
+    harness.run();
+    harness.get_by_label("Transform").click();
+    harness.run();
+    harness.get_by_label("Flip X");
+    assert!(harness.query_by_label("Gameplay").is_some() && harness.query_by_label("Snap Vertices").is_some());
+
+    let _german = td_editor::i18n::scope(td_editor::i18n::Lang::De);
+    harness.run();
+    harness.get_by_label("Transformation");
+    harness.get_by_label("X spiegeln");
+    harness.get_by_label("Gameplay");
+    assert!(harness.query_by_label("Flip X").is_none());
+}
+
+#[test]
+fn the_scatter_and_entity_inspectors_are_german() {
+    let _german = td_editor::i18n::scope(td_editor::i18n::Lang::De);
+    let mut f = Fixture::new();
+    let layer = f.state.doc.map.default_layer();
+    let (kind, items) = td_doc::scatter::preset("rocks").unwrap();
+    f.state.doc.edit("add", |m, s| {
+        s.select_node(m.insert(layer, NodeKind::Scatter(td_doc::Scatter::new("rocks", kind, items))));
+    });
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(520.0, 700.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+    harness.run();
+    harness.get_by_label("Scatter-Set 'rocks'");
+    harness.get_by_label("Im Scatter-Panel bearbeiten").click();
+    harness.run();
+    assert!(matches!(harness.state().actions.as_slice(), [Action::ActivateScatter(_), Action::ShowScatterPanel]));
+
+    let (fixture, _) = Fixture::with_light();
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(420.0, 900.0))
+        .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), fixture);
+    harness.run();
+    harness.get_by_label("Eigenschaften");
+    harness.get_by_label("Ausgänge (I/O, 0)");
+    harness.get_by_label("Code-Referenz");
+    assert!(harness.query_by_label("Properties").is_none());
+}
+
+#[test]
+fn the_terrain_inspector_fits_a_narrow_panel_in_every_language() {
+    use egui::accesskit::Role;
+    use egui_kittest::kittest::NodeT;
+    use td_editor::i18n::{Lang, scope};
+    let width = 340.0;
+    for lang in [Lang::En, Lang::De, Lang::Ru, Lang::Ja] {
+        let _lang = scope(lang);
+        let mut f = Fixture::new();
+        let layer = f.state.doc.map.default_layer();
+        let mut terrain = td_geom::Terrain::new(DVec3::new(-704.0, 48.0, 1312.0), [33, 17], 48.0, "dev/grey");
+        terrain.layers.push(td_geom::TerrainLayer::new("nature/grass_meadow_long_name", 512.0));
+        terrain.layers.push(td_geom::TerrainLayer { detile: 0.4, ..td_geom::TerrainLayer::new("rock/cliff", 1024.0) });
+        let id = f.state.doc.edit("terrain", |m, _| m.insert(layer, NodeKind::Terrain(terrain)));
+        f.state.doc.selection.select_node(id);
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(width, 700.0))
+            .build_ui_state(|ui, f: &mut Fixture| panels::inspector(ui, &mut f.state, &mut f.panels, &mut f.actions), f);
+        harness.run();
+
+        let scatter = td_editor::i18n::tr("Scatter");
+        assert!(harness.query_by_label(scatter).is_some(), "{lang:?} shows {scatter}");
+        let past: Vec<String> = harness
+            .query_all(egui_kittest::kittest::By::new())
+            .filter(|n| matches!(n.accesskit_node().role(), Role::Button | Role::Label | Role::SpinButton | Role::TextInput))
+            .filter(|n| n.rect().max.x > width + 0.5)
+            .map(|n| format!("{:?} {:?} ends at {}", n.accesskit_node().role(), n.accesskit_node().label(), n.rect().max.x))
+            .collect();
+        assert!(past.is_empty(), "{lang:?} draws past the {width} wide panel: {past:#?}");
+    }
+}

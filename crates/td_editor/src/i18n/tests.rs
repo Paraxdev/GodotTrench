@@ -521,7 +521,22 @@ fn foreign_keys() -> Vec<Key> {
     // td_doc::terrain::SculptMode::label and td_doc::blend::{BlendMode, Falloff}::label, the tool options bar draws them through tr
     let sculpt = ["Raise", "Lower", "Smooth", "Flatten", "Noise", "Paint Alpha", "Erase Alpha", "Terrace", "Paint Layer", "Hole", "Unhole"];
     let blend = ["paint", "erase", "smooth", "sharpen", "noise", "slope", "height", "linear", "constant", "spray"];
-    justify.into_iter().chain(sculpt).chain(blend).map(|k| Key::Text(k.into())).collect()
+    // td_doc::scatter::{ScatterKind, ScatterCollision}::{label, tooltip}, the Inspector of a scatter set draws them through tr
+    let scatter = [
+        "props",
+        "foliage",
+        "none",
+        "box",
+        "convex",
+        "decomposition",
+        "trimesh",
+        "No collision",
+        "One box around each instance",
+        "One convex hull around each instance",
+        "Several convex hulls per instance that follow concave models, slower to build",
+        "Every face of the model, exact but the most expensive",
+    ];
+    justify.into_iter().chain(sculpt).chain(blend).chain(scatter).map(|k| Key::Text(k.into())).collect()
 }
 
 #[test]
@@ -961,13 +976,30 @@ const CONVERTED_FNS: &[(&str, &str)] = &[
     ("app.rs", "close_dialog"),
     ("app.rs", "close_tab_dialog"),
     ("app.rs", "tab_title"),
+    ("panels.rs", "outliner"),
+    ("panels.rs", "outliner_tooltip"),
+    ("panels.rs", "inspector"),
+    ("panels.rs", "mesh_inspector"),
+    ("panels.rs", "section_help"),
+    ("panels.rs", "sub_heading"),
+    ("panels.rs", "bounds_rows"),
+    ("panels.rs", "brush_entity_section"),
+    ("panels.rs", "scatter_inspector"),
+    ("panels.rs", "terrain_inspector"),
+    ("panels.rs", "selection_summary"),
+    ("panels.rs", "worldspawn_inspector"),
+    ("panels.rs", "add_property_row"),
+    ("panels.rs", "entity_inspector"),
 ];
 
 /// The lines of function `name`, rustfmt closes it with a brace at the indent of its `fn`, and the number of the line
 /// before the first one.
 fn fn_lines<'a>(src: &'a str, name: &str) -> Option<(usize, Vec<&'a str>)> {
     let lines: Vec<&str> = src.lines().collect();
-    let start = lines.iter().position(|l| l.trim_start().starts_with(&format!("fn {name}(")))?;
+    let start = lines.iter().position(|l| {
+        let l = l.trim_start();
+        l.strip_prefix("pub ").unwrap_or(l).starts_with(&format!("fn {name}("))
+    })?;
     let indent = &lines[start][..lines[start].len() - lines[start].trim_start().len()];
     let end = lines[start..].iter().position(|l| l.strip_prefix(indent) == Some("}"))? + start;
     Some((start, lines[start..=end].to_vec()))
@@ -1076,11 +1108,13 @@ fn converted_files_have_no_raw_ui_text() {
         found.extend(raw_ui_text(without_tests(&src)).into_iter().map(|(line, s)| format!("{file}:{line} {s:?}")));
     }
 
-    let src = "fn a() {\n    ui.label(\"Outside\");\n}\n\nimpl X {\n    fn menu_bar(&mut self) {\n        ui.label(\"Inside\");\n        ui.label(tr(\"Done\"));\n    }\n\n    fn b() {\n        ui.label(\"After\");\n    }\n}\n";
+    let src = "fn a() {\n    ui.label(\"Outside\");\n}\n\nimpl X {\n    fn menu_bar(&mut self) {\n        ui.label(\"Inside\");\n        ui.label(tr(\"Done\"));\n    }\n\n    fn b() {\n        ui.label(\"After\");\n    }\n}\n\npub fn shown(ui: &mut Ui) {\n    ui.label(\"Pub\");\n}\n";
     let (start, body) = fn_lines(src, "menu_bar").unwrap();
     assert_eq!((start, body.len()), (5, 4));
     assert!(fn_lines(src, "missing").is_none());
     assert_eq!(raw_ui_text(&body.join("\n")), [(2, "Inside".to_string())]);
+    let (_, body) = fn_lines(src, "shown").unwrap();
+    assert_eq!(raw_ui_text(&body.join("\n")), [(2, "Pub".to_string())], "a pub fn is found too");
 
     for (file, name) in CONVERTED_FNS {
         let src = std::fs::read_to_string(src_dir().join(file)).unwrap();
