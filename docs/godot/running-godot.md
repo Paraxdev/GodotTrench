@@ -64,6 +64,9 @@ Godot runs a project's scripts as soon as it opens, plays or builds it, and a pr
 bring scripts of its own. So when you open a project TrenchDot doesn't know yet and it holds code, TrenchDot asks
 first.
 
+TrenchDot first looks through the project for code. While it does, the status bar shows *Looking for code* and
+nothing is started in Godot on the project, so a big project takes a moment before it asks or opens.
+
 ![The prompt asking "Do you trust the authors of the files in this project?" with the project's folder, what Restricted Mode blocks, the parent folder checkbox and the Trust Project and Open in Restricted Mode buttons](../assets/running-godot/trust-prompt.png)
 
 Click **Trust Project** for your own projects and ones from people you trust. Tick *Trust the authors of all files in
