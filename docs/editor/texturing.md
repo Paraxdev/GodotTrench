@@ -64,7 +64,7 @@ tool, which edits it in place, like Hammer's face edit mode. Click a face to sel
 blue box around one repeat of the texture, plus two short lines for the U and V directions. The face under the cursor
 gets a yellow outline.
 
-![The Texture tool with the front face of a brick wall selected, a blue box marks one texture repeat and the hint line at the bottom lists the inputs](../assets/texturing/texture-tool-face.png)
+![The Texture tool with the front face of a brick wall selected, a blue box marks one texture repeat](../assets/texturing/texture-tool-face.png)
 
 | Input | Result |
 | --- | --- |
