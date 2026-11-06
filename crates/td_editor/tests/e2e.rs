@@ -227,8 +227,46 @@ fn place_entities_wants_its_classnames_in_args() {
     let ed = Editor::launch("place_entities");
     let e = ed.call_err("run_action", json!({ "action": "place_entities", "classnames": ["infodecal"], "at": [0, 0, 0] }));
     assert!(e.contains("args.classnames") && e.contains("inside args"), "{e}");
+    let e = ed.call_err("run_action", json!({ "action": "place_entities", "args": { "classnames": [], "at": [0, 0, 0] } }));
+    assert!(e.contains("args.classnames") && !e.contains("inside args"), "{e}");
+    assert_eq!(ed.call("list_nodes", json!({ "type": "entity" }))["total"], 0);
     ed.call("run_action", json!({ "action": "place_entities", "args": { "classnames": ["info_null"], "at": [64, 0, 0], "normal": [0, 1, 0] } }));
     assert_eq!(ed.call("list_nodes", json!({ "type": "entity" }))["total"], 1);
+}
+
+/// A decal projects along its local -Y, so placing one with a normal turns it to face out of the surface, where other
+/// entities keep their angles.
+#[test]
+#[ignore]
+fn an_infodecal_placed_with_a_normal_turns_to_the_surface() {
+    let infodecal = td_formats::GameConfig::with_gameplay_pack().entity("infodecal").cloned().expect("the Gameplay pack has infodecal");
+    let dir = linked_project("infodecal_normal", json!([infodecal]));
+    let ed = Editor::launch_with("infodecal_normal", &["--project", dir.to_str().unwrap()]);
+
+    let place = |classname: &str, at: [f64; 3], normal: [f64; 3]| -> Value {
+        ed.call("run_action", json!({ "action": "place_entities", "args": { "classnames": [classname], "at": at, "normal": normal } }));
+        let nodes = ed.call("list_nodes", json!({ "type": "entity" }));
+        let id = nodes["nodes"].as_array().unwrap().iter().filter(|n| n["classname"] == classname).map(|n| n["id"].as_u64().unwrap()).max().unwrap();
+        ed.call("get_node", json!({ "id": id }))
+    };
+    let facing = |node: &Value| -> td_core::DVec3 {
+        let a: Vec<f64> = node["angles"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+        let q = td_core::DQuat::from_euler(td_core::EulerRot::YXZ, a[1].to_radians(), a[0].to_radians(), a[2].to_radians());
+        q * td_core::DVec3::Y
+    };
+
+    for (at, normal) in [([96.0, 40.0, -48.0], [2.0, 3.0, 6.0]), ([-160.0, 8.0, 72.0], [-3.0, -6.0, 2.0])] {
+        let decal = place("infodecal", at, normal);
+        assert_eq!(decal["origin"], json!(at), "{decal}");
+        let want = td_core::DVec3::from(normal).normalize();
+        assert!((facing(&decal) - want).length() < 1e-4, "{decal} faces {} not {want}", facing(&decal));
+    }
+
+    let straight = place("infodecal", [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    assert_eq!(straight["angles"], json!([0.0, 0.0, 0.0]), "{straight}");
+
+    let marker = place("info_null", [64.0, 0.0, 16.0], [2.0, 3.0, 6.0]);
+    assert_eq!(marker["angles"], json!([0.0, 0.0, 0.0]), "{marker}");
 }
 
 #[test]
