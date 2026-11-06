@@ -9,6 +9,8 @@ on:
       - "tools/build_site.py"
       - "tools/check_site.py"
       - "tools/test_docs.py"
+      - "tools/translations.py"
+      - "crates/td_editor/locales/**"
       - ".github/workflows/pages.yml"
   pull_request:
     paths:
@@ -17,6 +19,8 @@ on:
       - "tools/build_site.py"
       - "tools/check_site.py"
       - "tools/test_docs.py"
+      - "tools/translations.py"
+      - "crates/td_editor/locales/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -43,6 +47,11 @@ jobs:
       - name: Install Zensical
         run: pip install -r docs/requirements.txt
 
+      - name: Check the translations
+        # Translated pages that follow the current English page must keep its structure, code, links and the labels
+        # the editor shows, see docs/development.md#documentation. A label changed in a catalogue fails here too.
+        run: python tools/translations.py check
+
       - name: Build the site
         # English first, then every language. Each build is strict, so it fails on links to pages or headings that do
         # not exist. The output lands in _site.
@@ -54,6 +63,10 @@ jobs:
       - name: Check links in the site
         # What --strict lets through: a mistyped page in SUMMARY.md, a missing image, a page left out of the nav.
         run: python tools/check_site.py
+
+      - name: Report translations that fell behind
+        # Never fails, an English edit only turns that page English until its translation is updated.
+        run: python tools/translations.py status >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'

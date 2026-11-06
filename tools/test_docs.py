@@ -22,6 +22,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import build_site as bs  # noqa: E402
 import check_site  # noqa: E402
+import translations as tr  # noqa: E402
 
 CONFIG = bs.load_config()
 ZH = {"theme_language": "zh"}
@@ -239,6 +240,22 @@ class NavTest(unittest.TestCase):
 
     def test_empty_table_changes_nothing(self):
         self.assertEqual(bs.translate_nav(self.SUMMARY, {}), self.SUMMARY)
+
+    def test_titles_in_order_with_repeats(self):
+        self.assertEqual(bs.nav_titles(self.SUMMARY), [
+            "Introduction", "Editor", "Brushes and CSG", "Brushes", "Brushes and CSG", "The Godot addon", "Unmapped",
+            "Reference [odd]"])
+
+
+class FenceSpanTest(unittest.TestCase):
+    def test_spans_of_adjacent_indented_and_quoted_fences(self):
+        lines = ["a", "```x", "1", "```", "```y", "2", "```", "  ~~~~", "  3", "  ~~~", "  ~~~~", "> ```", "> 4", "> ```"]
+        self.assertEqual(bs.fence_spans(lines), [(1, 3), (4, 6), (7, 10), (11, 13)])
+
+    def test_unclosed_fence_runs_to_the_end_and_no_fence_gives_nothing(self):
+        self.assertEqual(bs.fence_spans(["a", "```", "b", "c"]), [(1, 3)])
+        self.assertEqual(bs.fence_spans(["a", "`x` and ```y```"]), [])
+        self.assertEqual(bs.fence_spans([]), [])
 
 
 class TomlTest(unittest.TestCase):
@@ -638,6 +655,7 @@ class BuiltSiteTest(unittest.TestCase):
             self.assertLess(bs.compressed_size(self.SITE / code), bs.LANGUAGE_SIZE_LIMIT, code)
 
 
+
 @unittest.skipUnless(importlib.util.find_spec("zensical"), "needs zensical, pip install -r docs/requirements.txt")
 class FallbackBuildTest(unittest.TestCase):
     """Builds a small German site, so the fallback page is checked whatever the real translations have reached."""
@@ -736,6 +754,665 @@ console.log(JSON.stringify(%s.map(function (t) { return t.match(re) || []; })));
     def test_cjk_terms_match_inside_cjk_text_and_against_latin(self):
         self.assertEqual(self.matches(["ブラシ", "笔刷"], ["大ブラシ箱", "Xブラシ", "这个笔刷很好"]),
                          [["ブラシ"], ["ブラシ"], ["笔刷"]])
+
+
+ENGLISH_PAGE = """# Maps and Brushes
+
+Intro with `Ctrl+S` and **Inspector**, then *File > Preferences…* in italics, *Just italic* and **Not a label**.
+
+## Draw it { #draw }
+
+1. Click **Open**, see the [glossary](GLOSSARY.md#brush) and the [site](https://example.com/a(b)).
+
+    ![Alt one](../assets/x/one.png)
+
+    ```json
+    {"a": 1}
+    ```
+
+2. Then ![inline](../assets/x/two.png) stays inline.
+
+> [!NOTE]
+> A note about `set_editor`.
+
+<div class="td-mcp" markdown>
+
+## MCP
+
+Call `foo_bar` with `{"x": 1}`.
+
+```json
+{"tool": "x"}
+```
+
+</div>
+
+> [!TIP]
+> ```text
+> > [!NOTE]
+> ```
+
+## Draw it
+
+Last words.
+"""
+
+GERMAN_PAGE = """# Karten und Brushes { #maps-and-brushes }
+
+Einleitung mit `Ctrl+S` und **Inspektor**, dann *Datei > Einstellungen…* kursiv, *Nur kursiv* und **Kein Label**.
+
+## Zeichne es { #draw }
+
+1. Klicke **Öffnen**, sieh dir das [Glossar](GLOSSARY.md#brush) und die [Seite](https://example.com/a(b)) an.
+
+    ![Bild eins](../assets/x/one.png)
+
+    ```json
+    {"a": 1}
+    ```
+
+2. Dann bleibt ![Bild](../assets/x/two.png) im Text.
+
+> [!NOTE]
+> Eine Notiz über `set_editor`.
+
+<div class="td-mcp" markdown>
+
+## MCP { #mcp }
+
+Rufe `foo_bar` mit `{"x": 1}` auf.
+
+```json
+{"tool": "x"}
+```
+
+</div>
+
+> [!TIP]
+> ```text
+> > [!NOTE]
+> ```
+
+## Zeichne es noch mal { #draw-it }
+
+Letzte Worte.
+"""
+
+CATALOGUE_JSON = """{
+  "File": "Datei",
+  "Preferences…": "Einstellungen…",
+  "Open#verb": "Öffnen",
+  "Open#adjective": "Offen",
+  "Inspector": "Inspektor",
+  "Brush": "Brush",
+  "{n} brush": { "one": "{n} Brush", "other": "{n} Brushes" }
+}"""
+BREAK = "join clauses with a comma or a full stop"
+
+
+def line_of(text, needle):
+    return next(i for i, line in enumerate(text.split("\n"), 1) if needle in line)
+
+
+class CatalogueTest(unittest.TestCase):
+    def test_senses_merge_and_plurals_are_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write(pathlib.Path(tmp) / "de.json", CATALOGUE_JSON)
+            self.assertEqual(tr.load_catalogue(tmp, "de"), {
+                "File": ["Datei"], "Preferences…": ["Einstellungen…"], "Open": ["Öffnen", "Offen"],
+                "Inspector": ["Inspektor"], "Brush": ["Brush"]})
+
+    def test_second_language_shares_nothing_with_the_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write(pathlib.Path(tmp) / "de.json", CATALOGUE_JSON)
+            write(pathlib.Path(tmp) / "fr.json", '{"File": "Fichier"}')
+            tr.load_catalogue(tmp, "de")
+            self.assertEqual(tr.load_catalogue(tmp, "fr"), {"File": ["Fichier"]})
+
+    def test_a_hash_that_is_part_of_the_text_stays(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write(pathlib.Path(tmp) / "de.json", '{"C#": "C#", "Open#verb": "Öffnen", "A#B": "x"}')
+            self.assertEqual(tr.load_catalogue(tmp, "de"), {"C#": ["C#"], "Open": ["Öffnen"], "A#B": ["x"]})
+
+    def test_real_catalogues_load(self):
+        for code in ("de", "ja", "zh-Hans"):
+            self.assertIn("Inspector", tr.load_catalogue(tr.LOCALES, code))
+
+
+class HeadingTest(unittest.TestCase):
+    def ids(self, text):
+        return [h[3] for h in tr.headings(text)]
+
+    def test_explicit_slug_and_repeats(self):
+        text = "# Title { #brushes }\n\n## Reshape { #re }\n\n## A\n\n## A\n\n## a_1 { #x }\n\n## Inputs\n\n## Inputs\n"
+        self.assertEqual(self.ids(text), ["brushes", "re", "a", "a_1", "x", "inputs", "inputs_1"])
+
+    def test_explicit_ids_are_reserved_before_the_slugs(self):
+        self.assertEqual(self.ids("## Inputs\n\n## Other { #inputs }\n"), ["inputs_1", "inputs"])
+
+    def test_markup_is_not_part_of_the_slug(self):
+        self.assertEqual(self.ids("## `Code` *x* [link](u.md) **b**\n\n## Größe ändern\n\n## 日本語\n"),
+                         ["code-x-link-b", "groe-andern", "_1"])
+
+    def test_code_and_attribute_values_are_not_headings(self):
+        text = '```text\n# not a heading\n```\n\n## Term { #term data-forms="a #b|c" }\n\n    # indented\n'
+        found = tr.headings(text)
+        self.assertEqual([(h[1], h[2], h[3], h[4]) for h in found], [(2, "Term", "term", ["a #b", "c"])])
+
+    def test_ids_of_the_real_pages_match_python_markdown(self):
+        try:
+            import markdown
+        except ImportError:
+            self.skipTest("markdown is not installed")
+        for page in ("editor/brushes.md", "gameplay/io.md", "GLOSSARY.md", "getting-started.md"):
+            text = bs.read_page(bs.ROOT / "docs" / page)
+            html = markdown.Markdown(extensions=["attr_list", "toc", "md_in_html"]).convert(text)
+            self.assertEqual(self.ids(text), re.findall(r'<h[1-6][^>]*id="([^"]+)"', html), page)
+
+
+class CheckPageTest(unittest.TestCase):
+    CATALOGUE = {"File": ["Datei"], "Preferences…": ["Einstellungen…"], "Open": ["Öffnen", "Offen"],
+                 "Inspector": ["Inspektor"], "Brush": ["Brush"]}
+
+    def problems(self, translated, code="de", english=ENGLISH_PAGE, glossary=False, catalogue=None):
+        return tr.check_page(english, translated, code, catalogue or self.CATALOGUE, glossary)
+
+    def test_a_faithful_translation_passes(self):
+        self.assertEqual(self.problems(GERMAN_PAGE), [])
+
+    def test_the_english_page_passes_with_itself(self):
+        self.assertEqual(self.problems(ENGLISH_PAGE, catalogue={k: [k] for k in self.CATALOGUE}), [])
+
+    def test_the_front_matter_lines_move_the_line_numbers(self):
+        text = GERMAN_PAGE.replace("Letzte Worte.", "Letzte \u2014 Worte.")
+        found = tr.check_page(ENGLISH_PAGE, text, "de", self.CATALOGUE, offset=3)
+        self.assertEqual(found, [f"line {line_of(text, 'Letzte') + 3}: em dash U+2014, {BREAK}"])
+
+    def test_heading_without_the_english_id(self):
+        text = GERMAN_PAGE.replace("## Zeichne es { #draw }", "## Zeichne es")
+        self.assertEqual(self.problems(text), ["heading ids: number 2 is 'zeichne-es', the English page has 'draw'"])
+
+    def test_umlaut_heading_without_id_fails_and_ascii_slug_equal_to_the_english_id_passes(self):
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("## MCP { #mcp }", "## Größe")),
+                         ["heading ids: number 3 is 'groe', the English page has 'mcp'"])
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("## MCP { #mcp }", "## MCP")), [])
+
+    def test_headings_in_another_order_or_missing(self):
+        swapped = GERMAN_PAGE.replace("{ #draw }", "{ #xx }").replace("{ #mcp }", "{ #draw }") \
+            .replace("{ #xx }", "{ #mcp }")
+        self.assertEqual(self.problems(swapped), ["heading ids: number 2 is 'mcp', the English page has 'draw'"])
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("## Zeichne es noch mal { #draw-it }\n", "")),
+                         ["heading ids: 3 found, the English page has 4"])
+
+    def test_code_block_changed_indentation_missing_or_extra(self):
+        message = "code block 1 differs from the English one, code stays byte for byte"
+        self.assertEqual(self.problems(GERMAN_PAGE.replace('{"a": 1}', '{"a": 2}')), [message])
+        flat = GERMAN_PAGE.replace('    ```json\n    {"a": 1}\n    ```', '```json\n{"a": 1}\n```')
+        self.assertEqual(self.problems(flat), [message])
+        self.assertEqual(self.problems(GERMAN_PAGE + "\n```\nx\n```\n"), ["4 code blocks, the English page has 3"])
+        self.assertEqual(self.problems(GERMAN_PAGE.replace('{"a": 1}', '{"a": 1}\n    // c')), [message])
+
+    def test_alert_marker_inside_a_fence_is_code(self):
+        text = GERMAN_PAGE.replace("> > [!NOTE]", "> > [!TIP]")
+        self.assertEqual(self.problems(text), ["code block 3 differs from the English one, code stays byte for byte"])
+
+    def test_inline_code_missing_or_reworded(self):
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("`set_editor`", "set_editor")),
+                         ["inline code `set_editor` of the English page is missing"])
+        self.assertEqual(self.problems(GERMAN_PAGE.replace('`{"x": 1}`', '`{"x":1}`')),
+                         ['inline code `{"x": 1}` of the English page is missing'])
+        self.assertEqual(self.problems(GERMAN_PAGE + "\nund `extra`\n"), [])
+
+    def test_inline_code_wrapped_over_two_lines_still_counts(self):
+        english = ENGLISH_PAGE.replace("`Ctrl+S`", "`two words`")
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("`Ctrl+S`", "`two\nwords`"), english=english), [])
+
+    def test_links(self):
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("GLOSSARY.md#brush", "GLOSSARY.md#bruch")), [
+            "link to GLOSSARY.md#brush of the English page is missing",
+            "link to GLOSSARY.md#bruch is not in the English page"])
+        self.assertEqual(self.problems(GERMAN_PAGE.replace(" und die [Seite](https://example.com/a(b))", "")),
+                         ["link to https://example.com/a(b) of the English page is missing"])
+
+    def test_link_order_and_repeats_do_not_matter(self):
+        text = GERMAN_PAGE.replace("das [Glossar](GLOSSARY.md#brush) und die [Seite](https://example.com/a(b))",
+                                   "die [Seite](https://example.com/a(b)) und [Glossar](GLOSSARY.md#brush) und "
+                                   "[noch mal](GLOSSARY.md#brush)")
+        self.assertEqual(self.problems(text), [])
+
+    def test_html_links_count(self):
+        english = ENGLISH_PAGE + '\n<a href="x.md">x</a> and <https://example.com/b>\n'
+        self.assertEqual(self.problems(GERMAN_PAGE + "\nund\n", english=english), [
+            "link to https://example.com/b of the English page is missing",
+            "link to x.md of the English page is missing"])
+
+    def test_images_in_order_with_their_indent(self):
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("one.png", "uno.png")), [
+            "images: number 1 is ('    ', '../assets/x/uno.png'), the English page has "
+            "('    ', '../assets/x/one.png')"])
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("    ![Bild eins]", "![Bild eins]")), [
+            "images: number 1 is ('', '../assets/x/one.png'), the English page has ('    ', '../assets/x/one.png')"])
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("![Bild](../assets/x/two.png)", "")),
+                         ["images: 1 found, the English page has 2"])
+
+    def test_inline_image_may_move_to_another_indent(self):
+        text = GERMAN_PAGE.replace("2. Dann bleibt ![Bild](../assets/x/two.png) im Text.",
+                                   "2. Dann bleibt\n   ![Bild](../assets/x/two.png) im Text.")
+        self.assertEqual(self.problems(text), [])
+
+    def test_div_blocks(self):
+        self.assertEqual(self.problems(GERMAN_PAGE.replace('<div class="td-mcp" markdown>', '<div class="td-mcp">')), [
+            "div blocks: number 1 is '<div class=\"td-mcp\">', the English page has '<div class=\"td-mcp\" markdown>'"])
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("</div>\n", "")),
+                         ["div blocks: 1 found, the English page has 2"])
+
+    def test_alert_kinds(self):
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("> [!NOTE]\n> Eine", "> [!WARNING]\n> Eine")),
+                         ["alert kinds: number 1 is 'WARNING', the English page has 'NOTE'"])
+        text = GERMAN_PAGE.replace("> [!NOTE]\n> Eine Notiz über `set_editor`.\n", "Eine Notiz über `set_editor`.\n")
+        self.assertEqual(self.problems(text), ["alert kinds: number 1 is 'TIP', the English page has 'NOTE'"])
+        self.assertEqual(self.problems(GERMAN_PAGE + "\n> [!WARNING]\n> Achtung.\n"),
+                         ["alert kinds: 3 found, the English page has 2"])
+
+    def test_alert_with_a_title_still_counts_as_its_kind(self):
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("> [!NOTE]\n> Eine", "> [!NOTE] Hinweis\n> Eine")), [])
+
+    def test_label_missing_or_in_another_word(self):
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("**Inspektor**", "**Inspector**")), [
+            "label 'Inspector' is not written as the editor shows it, expected 'Inspektor' in bold or italic"])
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("*Datei > Einstellungen…*", "*Datei > Optionen*")), [
+            "label 'File > Preferences…' is not written as the editor shows it, expected 'Datei > Einstellungen…' "
+            "in bold or italic"])
+
+    def test_label_with_two_senses_takes_either_and_the_message_lists_both(self):
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("**Öffnen**", "**Offen**")), [])
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("**Öffnen**", "**Auf**")), [
+            "label 'Open' is not written as the editor shows it, expected 'Öffnen' or 'Offen' in bold or italic"])
+
+    def test_label_in_plain_text_does_not_count(self):
+        self.assertEqual(self.problems(GERMAN_PAGE.replace("**Öffnen**", "Öffnen")), [
+            "label 'Open' is not written as the editor shows it, expected 'Öffnen' or 'Offen' in bold or italic"])
+
+    def test_other_bold_and_single_word_italic_are_not_labels(self):
+        text = GERMAN_PAGE.replace("**Kein Label**", "**Anderes**").replace("*Nur kursiv*", "*x*")
+        self.assertEqual(self.problems(text), [])
+
+    def test_label_between_cjk_letters_without_spaces(self):
+        english = "Use **Inspector** and *File > Preferences…* now.\n"
+        catalogue = {"Inspector": ["检查器"], "File": ["文件"], "Preferences…": ["首选项…"]}
+        self.assertEqual(tr.check_page(english, "现在用**检查器**和*文件 > 首选项…*吧。\n", "zh-Hans", catalogue), [])
+        self.assertEqual(tr.check_page(english, "现在用**检查**和*文件 > 首选项…*吧。\n", "zh-Hans", catalogue), [
+            "label 'Inspector' is not written as the editor shows it, expected '检查器' in bold or italic"])
+
+    def test_star_in_code_and_arithmetic_is_not_emphasis(self):
+        english = "Use `a * b` and 2 * 3 * 4 and **Inspector**.\n"
+        self.assertEqual(tr.check_page(english, "Nimm `a * b` und 2 * 3 * 4 und **Inspektor**.\n", "de",
+                                       self.CATALOGUE), [])
+
+    def test_glossary_terms_use_the_catalogue_word(self):
+        english = "# Glossary\n\n## brush\nA solid.\n\n## Inspector\nThe panel.\n\n## activator\nWho started it.\n"
+        good = ("# Glossar { #glossary }\n\n## Brush { #brush data-forms=\"Brushes\" }\nEin Körper.\n\n"
+                "## inspektor { #inspector }\nDas Panel.\n\n## Auslöser { #activator }\nWer es startete.\n")
+        self.assertEqual(self.problems(good, english=english, glossary=True), [])
+        bad = good.replace("## inspektor", "## Prüfer")
+        self.assertEqual(self.problems(bad, english=english, glossary=True), [
+            "glossary term 'Inspector' is 'Prüfer', the editor calls it 'Inspektor'"])
+        self.assertEqual(self.problems(bad, english=english, glossary=False), [])
+
+    def test_dashes(self):
+        for char, name in (("\u2014", "em dash"), ("\u2013", "en dash"), ("\u2015", "horizontal bar")):
+            text = GERMAN_PAGE.replace("Letzte Worte.", f"Letzte {char} Worte.")
+            self.assertEqual(self.problems(text), [f"line {line_of(text, 'Letzte')}: {name} U+{ord(char):04X}, {BREAK}"])
+        text = GERMAN_PAGE.replace("Letzte Worte.", "Letzte\u2014Worte\u2013 noch.")
+        self.assertEqual(self.problems(text), [f"line {line_of(text, 'Letzte')}: em dash U+2014, {BREAK}",
+                                               f"line {line_of(text, 'Letzte')}: en dash U+2013, {BREAK}"])
+
+    def test_spaced_hyphen(self):
+        text = GERMAN_PAGE.replace("Letzte Worte.", "Letzte - Worte.")
+        self.assertEqual(self.problems(text), [f"line {line_of(text, 'Letzte')}: spaced hyphen as punctuation, {BREAK}"])
+        text = GERMAN_PAGE.replace("Letzte Worte.", "Letzte -Worte und Rück- und Vorwärts.")
+        self.assertEqual(self.problems(text), [])
+
+    def test_hyphens_that_are_fine(self):
+        text = GERMAN_PAGE.replace("Letzte Worte.", "Ein Open-Source-Tool\n\n- Punkt\n    - Unterpunkt\n1. Eins\n\n"
+                                   "| a | b |\n| - | --- |\n\n---\n\nund `a - b` im Code")
+        self.assertEqual(self.problems(text), [])
+
+    def test_spaced_hyphens_of_the_english_page_are_allowed_once_each(self):
+        english = ENGLISH_PAGE.replace("Last words.", "The + and - keys.")
+        text = GERMAN_PAGE.replace("Letzte Worte.", "Die + und - Tasten.")
+        self.assertEqual(self.problems(text, english=english), [])
+        text = GERMAN_PAGE.replace("Letzte Worte.", "Die + und - Tasten - nicht.")
+        self.assertEqual(self.problems(text, english=english),
+                         [f"line {line_of(text, 'Tasten')}: spaced hyphen as punctuation, {BREAK}"])
+
+    def test_emoji_is_flagged_and_code_is_not(self):
+        text = GERMAN_PAGE.replace("Letzte Worte.", "Gut \u2705 so \U0001F600.")
+        self.assertEqual(self.problems(text), [f"line {line_of(text, 'Gut')}: emoji"])
+        english = ENGLISH_PAGE.replace("Last words.", "In code `a \u2014 b \u2705`.")
+        text = GERMAN_PAGE.replace("Letzte Worte.", "Im Code `a \u2014 b \u2705` bleibt es.")
+        self.assertEqual(self.problems(text, english=english), [])
+
+    def test_arrows_umlauts_and_symbols_are_not_emoji(self):
+        text = GERMAN_PAGE.replace("Letzte Worte.", "Von A \u2192 B, äöüß \u00a9 \u2122 \u2318.")
+        self.assertEqual(self.problems(text), [])
+
+    def test_cjk_line_break_only_in_chinese_and_japanese(self):
+        english = "# T\n\nLine one\nline two.\n\nMore.\n"
+        broken = "# T { #t }\n\n第一行文字\n第二行文字。\n\nMore.\n"
+        message = ["line 4: line break between two CJK letters, keep the paragraph on one line"]
+        self.assertEqual(tr.check_page(english, broken, "zh-Hans", {}), message)
+        self.assertEqual(tr.check_page(english, broken, "ja", {}), message)
+        self.assertEqual(tr.check_page(english, broken, "de", {}), [])
+
+    def test_cjk_breaks(self):
+        self.assertEqual(tr.cjk_breaks("> あいう\n> えお\n"), [1])
+        self.assertEqual(tr.cjk_breaks("한글\n한글\n"), [1])
+        self.assertEqual(tr.cjk_breaks("一\n二\n三\n"), [1, 2])
+
+    def test_cjk_line_breaks_that_are_fine(self):
+        for text in ("文字、\n文字\n", "文字\n。文字\n", "文字。\n文字\n", "中文\nlatin\n", "latin\n中文\n",
+                     "文字\n\n文字\n", "- 项目一\n- 项目二\n", "| 甲 |\n| 乙 |\n", "```text\n文字\n文字\n```\n",
+                     "文字\n1. 项目\n"):
+            self.assertEqual(tr.cjk_breaks(text), [], text)
+
+
+class TranslationsToolTest(unittest.TestCase):
+    SUMMARY = "# Summary\n\n* [Intro](README.md)\n* Editor\n    * [Brushes](editor/brushes.md)\n    * [Terrain](editor/terrain.md)\n"
+    PAGES = {
+        "README.md": "# Intro\n\nHello `x` and **Inspector**.\n",
+        "GLOSSARY.md": "# Glossary\n\n## brush\nA solid.\n\n## unit\nA step.\n",
+        "editor/brushes.md": "# Brushes\n\nUse *File > Preferences…*.\n",
+        "editor/terrain.md": "# Terrain\n",
+    }
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = pathlib.Path(tmp.name)
+        self.docs = self.root / "docs"
+        self.locales = self.root / "locales"
+        write(self.docs / "SUMMARY.md", self.SUMMARY)
+        for page, text in self.PAGES.items():
+            write(self.docs / page, text)
+        write(self.locales / "de.json", CATALOGUE_JSON)
+        write(self.locales / "fr.json", '{"File": "Fichier", "Preferences…": "Préférences…", "Inspector": "Inspecteur"}')
+        self.de = self.docs / "translations" / "de"
+        write(self.de / "site.toml", 'theme_language = "de"\n\n[nav]\n"Intro" = "Einführung"\n"Old" = "Alt"\n')
+        write(self.de / "README.md", stamped(self.PAGES["README.md"], "# Einführung { #intro }\n\nHallo `x` und **Inspektor**.\n"))
+        write(self.de / "GLOSSARY.md", stamped("# Glossary\n\n## brush\nOld.\n", "# Glossar { #glossary }\n\n## Brush { #brush }\nEin Körper.\n"))
+        write(self.de / "editor/brushes.md", stamped("# Brushes\n", "# Pinsel { #brushes }\n"))
+        write(self.de / "orphan.md", stamped("# Gone\n"))
+
+    def run_main(self, *argv):
+        out = io.StringIO()
+        with mock.patch.object(tr, "DOCS", self.docs), mock.patch.object(tr, "LOCALES", self.locales), \
+                contextlib.redirect_stdout(out):
+            code = tr.main(list(argv))
+        return code, out.getvalue()
+
+    def test_status_of_german(self):
+        self.assertEqual(tr.status(self.docs, ["de"]), """### de: 1 of 4 pages current
+
+Outdated, the English page changed since it was translated (2):
+
+* GLOSSARY.md (the glossary hover cards show English until it is updated)
+* editor/brushes.md
+
+Missing (1): editor/terrain.md
+
+Orphans, translated pages whose English page is gone (1): orphan.md
+
+Nav texts with no [nav] entry (3): Editor, Brushes, Terrain
+
+[nav] keys no longer in SUMMARY.md (1): Old
+""")
+
+    def test_status_of_a_language_with_nothing(self):
+        self.assertEqual(tr.status(self.docs, ["fr"]), """### fr: 0 of 4 pages current
+
+Missing (4): GLOSSARY.md, README.md, editor/brushes.md, editor/terrain.md
+
+Nav texts with no [nav] entry (4): Intro, Editor, Brushes, Terrain
+""")
+
+    def test_status_of_a_finished_language(self):
+        for page, text in self.PAGES.items():
+            write(self.docs / "translations" / "es" / page, stamped(text))
+        write(self.docs / "translations" / "es" / "site.toml",
+              '[nav]\n"Intro" = "a"\n"Editor" = "b"\n"Brushes" = "c"\n"Terrain" = "d"\n')
+        self.assertEqual(tr.status(self.docs, ["es"]), "### es: 4 of 4 pages current\n\nNothing to do.\n")
+
+    def test_status_puts_the_glossary_first_and_lists_languages_in_order(self):
+        report = tr.status(self.docs, ["fr", "de"])
+        self.assertLess(report.index("### fr"), report.index("### de"))
+        german = tr.status(self.docs, ["de"])
+        self.assertLess(german.index("* GLOSSARY.md"), german.index("* editor/brushes.md"))
+
+    def test_status_with_diffs(self):
+        glossary = "# Glossary\n\n## brush\nOld.\n"
+        old = {bs.blob_id(b"# Brushes\n"): "# Brushes\n", bs.blob_id(glossary.encode()): glossary}
+        text = tr.status(self.docs, ["de"], True, old.get)
+        self.assertIn("* editor/brushes.md\n\n```diff\n--- stamped\n+++ current\n@@ -1 +1,3 @@\n # Brushes\n+\n"
+                      "+Use *File > Preferences…*.\n```\n\nMissing (1)", text)
+        self.assertIn("```diff\n--- stamped\n+++ current\n@@ -3,2 +3,5 @@\n ## brush\n-Old.\n"
+                      "+A solid.\n+\n+## unit\n+A step.\n```\n* editor/brushes.md", text)
+
+    def test_status_diff_when_the_old_page_is_gone(self):
+        text = tr.status(self.docs, ["de"], True, lambda blob: None)
+        self.assertIn("the English page it followed is not in this clone", text)
+
+    def test_status_with_a_broken_site_toml_still_reports(self):
+        write(self.de / "site.toml", "this is not toml")
+        self.assertIn("Nav texts with no [nav] entry (4)", tr.status(self.docs, ["de"]))
+
+    def test_status_never_fails(self):
+        code, out = self.run_main("status", "--lang", "de")
+        self.assertEqual((code, out.startswith("### de: 1 of 4")), (0, True))
+
+    def test_check_of_a_clean_language(self):
+        self.assertEqual(tr.check(self.docs, self.locales, ["de"], ["README.md"]), [])
+
+    def test_check_skips_outdated_pages_unless_named(self):
+        self.assertEqual(tr.check(self.docs, self.locales, ["de"]), [])
+        found = tr.check(self.docs, self.locales, ["de"], ["editor/brushes.md"])
+        self.assertEqual(found, [
+            "de/editor/brushes.md: label 'File > Preferences…' is not written as the editor shows it, expected "
+            "'Datei > Einstellungen…' in bold or italic"])
+
+    def test_check_looks_at_current_pages_and_names_the_page(self):
+        write(self.de / "README.md", stamped(self.PAGES["README.md"], "# Einführung { #intro }\n\nHallo und **Inspector**.\n"))
+        self.assertEqual(tr.check(self.docs, self.locales, ["de"]), [
+            "de/README.md: inline code `x` of the English page is missing",
+            "de/README.md: label 'Inspector' is not written as the editor shows it, expected 'Inspektor' in bold or italic"])
+
+    def test_check_front_matter(self):
+        good = "# Einführung { #intro }\n\nHallo `x` und **Inspektor**.\n"
+        message = "de/README.md: front matter needs source: followed by 40 hex digits, see `prep` and `stamp`"
+        for head in ("", "---\nsource: abc\n---\n", "---\nsource: " + "G" * 40 + "\n---\n", "---\n---\n",
+                     "---\nsource: " + "A" * 40 + "\n---\n", "---\nsource: " + "a" * 41 + "\n---\n"):
+            write(self.de / "README.md", head + good)
+            self.assertEqual(tr.check(self.docs, self.locales, ["de"]), [message], head)
+        write(self.de / "README.md", f"---\nsource: {'a' * 40}\n---\n" + good)
+        self.assertEqual(tr.check(self.docs, self.locales, ["de"], ["README.md"]), [])
+        write(self.de / "README.md", f"---\nsource: {'a' * 40}\ntitle: x\n---\n" + good)
+        self.assertEqual(tr.check(self.docs, self.locales, ["de"], ["README.md"]), ["de/README.md: front matter holds only source"])
+
+    def test_check_line_numbers_count_the_front_matter(self):
+        write(self.de / "README.md", stamped(self.PAGES["README.md"], "# Einführung { #intro }\n\nHallo \u2014 `x` und **Inspektor**.\n"))
+        self.assertEqual(tr.check(self.docs, self.locales, ["de"]),
+                         [f"de/README.md: line 6: em dash U+2014, {BREAK}"])
+
+    def test_check_glossary_uses_the_catalogue(self):
+        write(self.de / "GLOSSARY.md", stamped(self.PAGES["GLOSSARY.md"],
+              "# Glossar { #glossary }\n\n## Pinsel { #brush }\nEin Körper.\n\n## Einheit { #unit }\nEin Schritt.\n"))
+        self.assertEqual(tr.check(self.docs, self.locales, ["de"]), [
+            "de/GLOSSARY.md: glossary term 'brush' is 'Pinsel', the editor calls it 'Brush'"])
+
+    def test_check_named_page_without_translation_or_english_page(self):
+        self.assertEqual(tr.check(self.docs, self.locales, ["de"], ["editor/terrain.md", "orphan.md"]), [
+            "de/editor/terrain.md: no such translation", "de/orphan.md: no such English page"])
+
+    def test_check_language_without_catalogue(self):
+        write(self.docs / "translations" / "ja" / "site.toml", 'theme_language = "ja"\n')
+        found = tr.check(self.docs, self.locales, ["ja"])
+        self.assertEqual(found, [f"ja: no editor catalogue ja.json in {self.locales}"])
+
+    def test_check_every_language_and_one_language(self):
+        write(self.docs / "translations" / "fr" / "README.md", stamped(self.PAGES["README.md"], "# Intro { #intro }\n"))
+        both = tr.check(self.docs, self.locales, ["de", "fr"])
+        self.assertEqual(len(both), 2)
+        self.assertTrue(all(line.startswith("fr/README.md") for line in both))
+        self.assertEqual(tr.check(self.docs, self.locales, ["de"]), [])
+
+    def test_site_strings(self):
+        def problems(text):
+            write(self.de / "site.toml", text)
+            return tr.check_site_strings(self.docs, "de")
+        self.assertEqual(problems('theme_language = "de"\nnote = "Hinweis"\n[nav]\n"A" = "B"\n'), [])
+        self.assertEqual(problems(""), [])
+        self.assertEqual(problems('titel = "x"\n'), ["site.toml has an unknown key 'titel'"])
+        self.assertEqual(problems("note = 3\n"), ["site.toml note has to be a string"])
+        self.assertEqual(problems('nav = "x"\n'), ["site.toml nav has to be a table of strings"])
+        self.assertEqual(problems('[nav]\n"A" = 1\n'), ["site.toml nav has to be a table of strings"])
+        self.assertEqual(len(problems("nope")), 1)
+        self.assertTrue(problems("nope")[0].startswith("site.toml does not parse"))
+        self.assertEqual(tr.check_site_strings(self.docs, "pt"), [])
+
+    def test_site_strings_of_the_real_languages_are_fine(self):
+        for code in tr.known_languages():
+            self.assertEqual(tr.check_site_strings(tr.DOCS, code), [], code)
+
+    def test_check_exit_codes(self):
+        code, out = self.run_main("check", "--lang", "de")
+        self.assertEqual((code, out), (0, "\ntranslations are fine\n"))
+        write(self.de / "README.md", stamped(self.PAGES["README.md"], "# Einführung { #intro }\n"))
+        code, out = self.run_main("check", "--lang", "de", "README.md")
+        self.assertEqual(code, 1)
+        self.assertTrue(out.endswith("2 problems\n"), out)
+
+    def test_unknown_language_and_missing_language(self):
+        with mock.patch.object(tr, "DOCS", self.docs), contextlib.redirect_stderr(io.StringIO()):
+            for argv in (["status", "--lang", "xx"], ["prep", "README.md"], ["stamp", "README.md"],
+                         ["prep", "--lang", "de", "nope.md"], ["stamp", "--lang", "de", "editor/terrain.md"],
+                         ["stamp", "--lang", "de"]):
+                with self.assertRaises(SystemExit) as raised:
+                    tr.main(argv)
+                self.assertEqual(raised.exception.code, 2, argv)
+
+    def test_stamp_changes_only_the_source_line(self):
+        old = self.de / "editor/brushes.md"
+        before = old.read_text(encoding="utf-8")
+        self.assertEqual(tr.stamp(self.docs, "de", ["editor/brushes.md", "README.md"]), ["editor/brushes.md"])
+        now = bs.blob_id((self.docs / "editor/brushes.md").read_bytes())
+        self.assertEqual(old.read_text(encoding="utf-8"), before.replace(before.split("\n")[1], f"source: {now}"))
+        self.assertEqual(bs.page_state(self.docs, "de", "editor/brushes.md"), "current")
+        self.assertEqual(tr.stamp(self.docs, "de", ["editor/brushes.md"]), [])
+
+    def test_stamp_adds_the_block_or_the_line(self):
+        write(self.de / "editor/terrain.md", "# Gelände { #terrain }\n")
+        write(self.de / "editor/brushes.md", "---\ntitle: x\n---\n# Pinsel { #brushes }\n")
+        tr.stamp(self.docs, "de", ["editor/terrain.md", "editor/brushes.md"])
+        now = bs.blob_id((self.docs / "editor/terrain.md").read_bytes())
+        self.assertEqual((self.de / "editor/terrain.md").read_text(encoding="utf-8"),
+                         f"---\nsource: {now}\n---\n# Gelände {{ #terrain }}\n")
+        now = bs.blob_id((self.docs / "editor/brushes.md").read_bytes())
+        self.assertEqual((self.de / "editor/brushes.md").read_text(encoding="utf-8"),
+                         f"---\ntitle: x\nsource: {now}\n---\n# Pinsel {{ #brushes }}\n")
+
+    def test_stamp_does_not_touch_another_language(self):
+        write(self.docs / "translations" / "fr" / "README.md", "---\nsource: old\n---\n# Intro\n")
+        tr.stamp(self.docs, "de", ["README.md"])
+        self.assertEqual((self.docs / "translations" / "fr" / "README.md").read_text(encoding="utf-8"),
+                         "---\nsource: old\n---\n# Intro\n")
+
+    def test_stamp_command(self):
+        code, out = self.run_main("stamp", "--lang", "de", "editor/brushes.md")
+        self.assertEqual((code, out), (0, "stamped de/editor/brushes.md\n"))
+
+    def test_prep_of_a_page_with_labels_and_glossary_terms(self):
+        page = "editor/brushes.md"
+        write(self.docs / page, "# Brushes\n\nA brush is made *File > Preferences…*, **Open** and **Inspector** plus `x`.\n")
+        write(self.de / page, "---\nsource: " + "0" * 40 + "\n---\n# Pinsel { #brushes }\n")
+        write(self.de / "GLOSSARY.md", "---\nsource: x\n---\n# Glossar { #glossary }\n\n## Brush { #brush data-forms=\"Brushes|Brushs\" }\nx\n")
+        with mock.patch.object(tr, "git_blob", lambda blob: "# Brushes\n"):
+            text = tr.prep(self.docs, self.locales, "de", page)
+        self.assertEqual(text, f"""front matter to put at the top of the translation:
+
+---
+source: {bs.blob_id((self.docs / page).read_bytes())}
+---
+
+heading ids, in order:
+
+# Brushes {{ #brushes }}
+
+labels, written as the editor shows them in bold or italic:
+
+File > Preferences…  =>  Datei > Einstellungen…
+Open  =>  Öffnen  or  Offen
+Inspector  =>  Inspektor
+
+glossary terms of the page:
+
+brush  =>  Brush  (forms: Brushes, Brushs)
+
+the English page changed since the translation:
+
+--- stamped
++++ current
+@@ -1 +1,3 @@
+ # Brushes
++
++A brush is made *File > Preferences…*, **Open** and **Inspector** plus `x`.
+
+the English page:
+
+# Brushes
+
+A brush is made *File > Preferences…*, **Open** and **Inspector** plus `x`.
+""")
+
+    def test_prep_of_a_current_page_has_no_diff_and_catalogue_words_stand_in_for_a_missing_glossary(self):
+        write(self.docs / "README.md", "# Intro\n\nThe Inspector shows it.\n")
+        text = tr.prep(self.docs, self.locales, "fr", "README.md")
+        self.assertNotIn("changed since", text)
+        self.assertIn("glossary terms of the page:\n\n\nthe English page:", text)
+        self.assertIn("labels, written as the editor shows them in bold or italic:\n\n\nglossary", text)
+
+    def test_prep_command_prints_the_page(self):
+        code, out = self.run_main("prep", "--lang", "de", "README.md")
+        self.assertEqual(code, 0)
+        self.assertTrue(out.startswith("front matter to put at the top of the translation:"))
+        self.assertTrue(out.rstrip().endswith("Hello `x` and **Inspector**."))
+
+
+class RealTranslationsTest(unittest.TestCase):
+    def test_the_repository_translations_pass(self):
+        self.assertEqual(tr.check(tr.DOCS, tr.LOCALES, tr.known_languages()), [])
+
+    def test_the_english_docs_pass_as_their_own_translation(self):
+        for page in bs.english_pages(tr.DOCS):
+            text = bs.read_page(tr.DOCS / page)
+            self.assertEqual(tr.check_page(text, text, "de", {}), [], page)
+
+    def test_every_catalogue_is_found_for_every_language(self):
+        for code in tr.known_languages():
+            self.assertTrue((tr.LOCALES / f"{code}.json").is_file(), code)
+
+
+class WorkflowTest(unittest.TestCase):
+    TEXT = (bs.ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+
+    def test_both_triggers_watch_the_tools_and_the_catalogues(self):
+        for path in ('"tools/translations.py"', '"crates/td_editor/locales/**"', '"tools/test_docs.py"'):
+            self.assertEqual(self.TEXT.count(path), 2, path)
+
+    def test_check_runs_before_the_build_and_the_report_goes_to_the_job_summary(self):
+        check = self.TEXT.index("python tools/translations.py check")
+        self.assertLess(check, self.TEXT.index("python tools/build_site.py"))
+        self.assertIn('python tools/translations.py status >> "$GITHUB_STEP_SUMMARY"', self.TEXT)
+        self.assertLess(self.TEXT.index("translations.py status"), self.TEXT.index("upload-pages-artifact"))
 
 
 if __name__ == "__main__":

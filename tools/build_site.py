@@ -44,6 +44,8 @@ TOGGLES = {"default": "light_toggle", "slate": "dark_toggle"}
 ALERT = re.compile(r"^(?P<quote>[ \t]*(?:>[ \t]?)+)\[!(?P<kind>NOTE|TIP|WARNING)\][ \t]*$")
 FENCE = re.compile(r"(?P<mark>`{3,}|~{3,})(?P<rest>.*)$")
 TAG = re.compile(r"<(?:img|source|video|a)\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", re.IGNORECASE)
+NAV_LINK = re.compile(r"^(?P<head>\s*[*+-]\s+)\[(?P<text>.*)\]\((?P<url>[^)]*)\)(?P<tail>\s*)$")
+NAV_SECTION = re.compile(r"^(?P<head>\s*[*+-]\s+)(?P<text>[^\[\s].*?)(?P<tail>\s*)$")
 ATTRIBUTE = re.compile(r"""(?P<name>\b(?:src|href|poster|srcset))(?P<eq>\s*=\s*)(?P<quote>["'])(?P<value>.*?)(?P=quote)""",
                        re.IGNORECASE | re.DOTALL)
 
@@ -109,22 +111,29 @@ def page_state(docs, code, page):
     return "current" if meta.get("source") == blob_id(english.read_bytes()) else "outdated"
 
 
-def fenced(lines):
-    """For every line whether it is inside a fenced code block, the fence lines included. Fences may be indented
-    inside a list or quoted."""
-    inside = []
+def fence_spans(lines):
+    """The first and last line index of every fenced code block, the fence lines included. Fences may be indented
+    inside a list or quoted. A fence that is never closed runs to the last line."""
+    spans = []
     fence = None
-    for line in lines:
+    for i, line in enumerate(lines):
         match = FENCE.match(line.lstrip(" \t>"))
         if fence is None:
-            opens = match is not None and not (match["mark"][0] == "`" and "`" in match["rest"])
-            if opens:
-                fence = (match["mark"][0], len(match["mark"]))
-            inside.append(opens)
-        else:
-            inside.append(True)
-            if match and match["mark"][0] == fence[0] and len(match["mark"]) >= fence[1] and not match["rest"].strip():
-                fence = None
+            if match is not None and not (match["mark"][0] == "`" and "`" in match["rest"]):
+                fence = (match["mark"][0], len(match["mark"]), i)
+        elif match and match["mark"][0] == fence[0] and len(match["mark"]) >= fence[1] and not match["rest"].strip():
+            spans.append((fence[2], i))
+            fence = None
+    if fence is not None:
+        spans.append((fence[2], len(lines) - 1))
+    return spans
+
+
+def fenced(lines):
+    """For every line whether it is inside a fenced code block, the fence lines included."""
+    inside = [False] * len(lines)
+    for start, end in fence_spans(lines):
+        inside[start:end + 1] = [True] * (end - start + 1)
     return inside
 
 
@@ -156,17 +165,24 @@ def localise_alerts(text, titles):
 def translate_nav(summary, nav):
     """SUMMARY.md with the text of every link and section label looked up in `nav`, the English text being the key.
     A text with no entry stays English, link targets are never touched."""
-    link = re.compile(r"^(?P<head>\s*[*+-]\s+)\[(?P<text>.*)\]\((?P<url>[^)]*)\)(?P<tail>\s*)$")
-    section = re.compile(r"^(?P<head>\s*[*+-]\s+)(?P<text>[^\[\s].*?)(?P<tail>\s*)$")
     out = []
     for line in summary.split("\n"):
-        if match := link.match(line):
+        if match := NAV_LINK.match(line):
             text = nav.get(match["text"], match["text"])
             line = f"{match['head']}[{text}]({match['url']}){match['tail']}"
-        elif match := section.match(line):
+        elif match := NAV_SECTION.match(line):
             line = f"{match['head']}{nav.get(match['text'], match['text'])}{match['tail']}"
         out.append(line)
     return "\n".join(out)
+
+
+def nav_titles(summary):
+    """The link texts and section labels of SUMMARY.md in order, the keys of a site.toml `[nav]` table."""
+    titles = []
+    for line in summary.split("\n"):
+        if match := NAV_LINK.match(line) or NAV_SECTION.match(line):
+            titles.append(match["text"])
+    return titles
 
 
 def toml_key(key):
