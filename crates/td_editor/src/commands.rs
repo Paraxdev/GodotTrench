@@ -219,6 +219,7 @@ pub enum Action {
     MakePlatform,
     /// Opens the link dialog for the two selected entities.
     ShowLinkDialog,
+    ShowLogicGraph,
     /// A trigger volume of this class around the selection bounds.
     VolumeAroundSelection(String),
     ShowReference,
@@ -387,6 +388,7 @@ impl Action {
             }
             Action::MakePlatform => "Lift, Moving Platform",
             Action::ShowLinkDialog => "Link Two Selected Entities",
+            Action::ShowLogicGraph => "Logic Graph",
             Action::VolumeAroundSelection(class) => return format!("{class} Around Selection"),
             Action::ShowReference => "Entity and Code Reference",
             Action::ShowPreferences => "Preferences",
@@ -711,6 +713,7 @@ pub fn bindable_actions() -> Vec<Action> {
         Action::SetBlendMaterial,
         Action::MakePlatform,
         Action::ShowLinkDialog,
+        Action::ShowLogicGraph,
         Action::ShowReference,
         Action::ShowPreferences,
         Action::ViewLayout(1),
@@ -1641,6 +1644,7 @@ fn run(state: &mut EditorState, action: Action, ctx: &egui::Context) {
 
         Action::ShowScatterPanel
         | Action::ShowLinkDialog
+        | Action::ShowLogicGraph
         | Action::ShowReference
         | Action::ShowPreferences
         | Action::ToggleMaximizeView

@@ -1011,6 +1011,7 @@ impl App {
                 "mcp_prefs": self.mcp_pref_rects.iter().map(|(name, r)| (name.to_string(), json!([r.min.x, r.min.y, r.max.x, r.max.y]))).collect::<serde_json::Map<_, _>>(),
                 "tool_options": [self.tool_options_rect.min.x, self.tool_options_rect.min.y, self.tool_options_rect.max.x, self.tool_options_rect.max.y],
                 "trust_chip": self.trust_chip.map(|r| [r.min.x, r.min.y, r.max.x, r.max.y]),
+                "logic_canvas": self.panels.logic.canvas_on_screen().map(|r| [r.min.x, r.min.y, r.max.x, r.max.y]),
             },
             "game": {
                 "name": s.game.name, "project_root": path_value(s.game.project_root.as_ref()), "entity_definitions": s.game.entities.len(),

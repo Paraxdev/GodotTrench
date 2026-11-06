@@ -3350,6 +3350,24 @@ fn command_palette_and_dialogs_open_in_light() {
     assert_eq!(ed.state()["ui"]["theme_active"], "light");
 }
 
+/// Gameplay: Logic Graph opens the graph, brings it forward when run again, and get_state reports its canvas.
+#[test]
+#[ignore]
+fn logic_graph_command_opens_the_graph() {
+    let ed = Editor::launch("logic_command");
+    assert!(ed.state()["ui"]["logic_canvas"].is_null(), "the graph is closed at first");
+    let run = || {
+        ed.input("window", json!([{ "type": "move", "x": 10, "y": 10 }, { "type": "key", "key": "F1" }, { "type": "text", "text": "logic graph" }, { "type": "key", "key": "Enter" }]));
+        std::thread::sleep(Duration::from_millis(500));
+        let state = ed.state();
+        let canvas = state["ui"]["logic_canvas"].as_array().unwrap_or_else(|| panic!("no Logic graph canvas: {}", state["ui"])).clone();
+        canvas.iter().map(|v| v.as_f64().unwrap()).collect::<Vec<_>>()
+    };
+    let first = run();
+    assert!(first[2] - first[0] > 100.0 && first[3] - first[1] > 100.0, "{first:?}");
+    assert_eq!(run(), first, "running it again keeps the graph open");
+}
+
 fn open_preferences(ed: &Editor) {
     ed.input("window", json!([{ "type": "key", "key": "F1" }, { "type": "text", "text": "preferences" }, { "type": "key", "key": "Enter" }]));
     assert!(window_titles(ed).contains(&"Preferences".to_string()), "{:?}", window_titles(ed));

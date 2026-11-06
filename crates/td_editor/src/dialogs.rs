@@ -157,6 +157,7 @@ fn palette_entries(state: &EditorState) -> Vec<(String, Action)> {
         ("Gameplay: Lift, Moving Platform".into(), Action::MakePlatform),
         ("Gameplay: Install or Update Gameplay Entities".into(), Action::InstallGameplayEntities),
         ("Gameplay: Link Selected Entities".into(), Action::ShowLinkDialog),
+        ("Gameplay: Logic Graph".into(), Action::ShowLogicGraph),
         ("Help: Entity and Code Reference".into(), Action::ShowReference),
         ("File: Preferences".into(), Action::ShowPreferences),
         ("View: Toggle Transform Gizmo".into(), Action::ToggleTransformGizmo),

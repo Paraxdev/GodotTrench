@@ -143,6 +143,7 @@ pub struct GraphState {
     pub sim: Option<Simulation>,
     hovered: bool,
     canvas: Rect,
+    drawn: bool,
     /// The view follows the panel's size until the user zooms or pans.
     navigated: bool,
     fitted: Vec2,
@@ -172,6 +173,7 @@ impl Default for GraphState {
             sim: None,
             hovered: false,
             canvas: Rect::NOTHING,
+            drawn: false,
             navigated: false,
             fitted: Vec2::ZERO,
         }
@@ -204,6 +206,15 @@ fn select(state: &mut EditorState, ids: &[NodeId], add: bool) {
 }
 
 impl GraphState {
+    /// Called before the dock draws, so [`Self::canvas_on_screen`] only answers for a panel drawn this frame.
+    pub(crate) fn begin_frame(&mut self) {
+        self.drawn = false;
+    }
+
+    pub(crate) fn canvas_on_screen(&self) -> Option<Rect> {
+        self.drawn.then_some(self.canvas)
+    }
+
     /// Builds the model again when the map, the selection, the entity definitions or the overlay changed.
     pub fn refresh(&mut self, state: &EditorState) {
         let game = (state.game.entities.len(), state.game.entities.as_ptr() as usize);
@@ -671,6 +682,7 @@ pub fn show(ui: &mut Ui, state: &mut EditorState, gs: &mut GraphState, actions: 
     let canvas = Rect::from_min_size(room.min, (room.size() - vec2(0.0, strip)).max(vec2(120.0, 120.0)));
     let response = ui.allocate_rect(canvas, Sense::click_and_drag());
     gs.canvas = canvas;
+    gs.drawn = true;
     let resized = !gs.navigated && (gs.fitted - canvas.size()).length() > 1.0;
     if (gs.refit || resized) && !gs.model.nodes.is_empty() {
         gs.fit(READABLE_ZOOM);

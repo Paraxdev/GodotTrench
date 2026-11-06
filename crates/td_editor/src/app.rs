@@ -98,7 +98,7 @@ pub struct App {
     pub(crate) scene: SceneCache,
     pub(crate) viewports: Vec<Viewport>,
     dock: DockState<Tab>,
-    panels: PanelState,
+    pub(crate) panels: PanelState,
     pub(crate) tools: ToolSet,
     actions: Vec<Action>,
     pub(crate) project_generation: u64,
@@ -972,6 +972,13 @@ impl App {
             Action::BakeLighting => self.bake_dialog.open(&mut self.state),
             Action::ShowKeymap => self.keymap.open = true,
             Action::ShowScatterPanel => reveal_tab(&mut self.dock, Tab::Scatter, Tab::Inspector),
+            Action::ShowLogicGraph => {
+                if self.dock.find_tab(&Tab::Logic).is_some() {
+                    show_tab(&mut self.dock, Tab::Logic);
+                } else {
+                    toggle_panel(&mut self.dock, Tab::Logic);
+                }
+            }
             Action::ShowLinkDialog => {
                 self.link_dialog.open_for(&self.state);
                 if !self.link_dialog.open {
@@ -1452,6 +1459,7 @@ impl App {
                 });
                 sub_menu(ui, Some(icons::LINK), "Logic", |ui| {
                     m.item(ui, Some(icons::LINK), "Link Two Selected Entities…", Action::ShowLinkDialog);
+                    m.item(ui, None, "Logic Graph", Action::ShowLogicGraph);
                     ui.separator();
                     empty_hint(ui, "Place at the cursor");
                     m.point_entities(
@@ -2826,6 +2834,7 @@ impl eframe::App for App {
                     (!pointer.is_some_and(|p| bar.contains(p))).then_some(*tab)
                 })
                 .collect();
+            self.panels.logic.begin_frame();
             let mut tabs = Tabs {
                 shown,
                 plain_titles,
