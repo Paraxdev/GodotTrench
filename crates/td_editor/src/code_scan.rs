@@ -184,6 +184,8 @@ impl Kept {
             // Taken before the scan, so a file written while it ran counts as changed afterwards.
             let mut asked = lock.lock().unwrap_or_else(PoisonError::into_inner).asked;
             let before = stamp(&at);
+            #[cfg(test)]
+            held::wait(&at);
             let found = std::panic::catch_unwind(|| find(&at)).unwrap_or_else(|_| Some(code("", "could not be looked through")));
             let mut s = lock.lock().unwrap_or_else(PoisonError::into_inner);
             (s.found, s.checked) = (Some(found), asked);
@@ -218,6 +220,39 @@ impl Kept {
         }
 
         kept
+    }
+}
+
+/// Lets a test keep the scan of a project running until it wants the result.
+#[cfg(test)]
+pub mod held {
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    static ROOTS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+    /// Scans of the project at `root` wait while this is alive.
+    pub struct Hold(PathBuf);
+
+    pub fn hold(root: &Path) -> Hold {
+        let key = crate::trust::real_path(root);
+        ROOTS.lock().unwrap().push(key.clone());
+        Hold(key)
+    }
+
+    pub(super) fn wait(root: &Path) {
+        let key = crate::trust::real_path(root);
+        while ROOTS.lock().unwrap().contains(&key) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    impl Drop for Hold {
+        fn drop(&mut self) {
+            let mut roots = ROOTS.lock().unwrap_or_else(|e| e.into_inner());
+            roots.retain(|r| r != &self.0);
+        }
     }
 }
 

@@ -24,6 +24,22 @@ pub const BLOCKED: &str = "This project is in Restricted Mode, so Godot does not
 /// [`BLOCKED`] as the reason in a longer message.
 pub const RESTRICTED: &str = "the project is in Restricted Mode, click Restricted Mode in the status bar to trust it";
 
+/// The status bar entry for the open project's trust. A note while its code scan runs, the Restricted Mode chip once
+/// the scan ended and the project stays restricted, whose response is returned.
+pub fn status_entry(ui: &mut egui::Ui, state: &EditorState) -> Option<egui::Response> {
+    if state.scanning_code() {
+        ui.separator();
+        ui.label(RichText::new(SCANNING).color(crate::theme::FG.gamma_multiply_u8(160))).on_hover_text(SCANNING_TIP);
+        None
+    } else if state.restricted() {
+        ui.separator();
+        let chip = egui::Button::new(RichText::new(CHIP).color(crate::theme::YELLOW)).frame(false);
+        Some(ui.add(chip).on_hover_text(CHIP_TIP))
+    } else {
+        None
+    }
+}
+
 /// `path` with links resolved, as trusted folders are stored. The part that does not exist yet is kept as written.
 pub fn real_path(path: &Path) -> PathBuf {
     let path = crate::state::absolute(path);
@@ -535,6 +551,33 @@ mod tests {
         let state = &harness.state().state;
         assert_eq!(state.game.project_root.as_ref(), Some(&keep));
         assert!(!state.restricted() && state.is_trusted(&keep));
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[test]
+    fn the_status_bar_says_it_looks_for_code_until_the_scan_ends() {
+        let (folder, castle, _) = projects("status");
+        let hold = crate::code_scan::held::hold(&castle);
+        let mut state = EditorState::new(Prefs::default());
+        state.load_project(&castle);
+        let mut harness = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(400.0, 60.0))
+            .build_ui_state(|ui, state: &mut EditorState| drop(ui.horizontal(|ui| status_entry(ui, state))), state);
+        harness.run();
+        assert!(harness.state().scanning_code());
+        assert!(harness.query_by_label(SCANNING).is_some(), "the scan is still running");
+        assert!(harness.query_by_label(CHIP).is_none());
+
+        drop(hold);
+        harness.state_mut().apply_code_scans(true);
+        harness.run();
+        assert!(harness.state().restricted() && !harness.state().scanning_code());
+        assert!(harness.query_by_label(SCANNING).is_none());
+        assert!(harness.query_by_label(CHIP).is_some(), "the scan found code, so the chip takes its place");
+
+        harness.state_mut().trust_project(&castle, false);
+        harness.run();
+        assert!(harness.query_by_label(SCANNING).is_none() && harness.query_by_label(CHIP).is_none());
         let _ = std::fs::remove_dir_all(folder);
     }
 }

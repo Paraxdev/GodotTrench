@@ -2159,15 +2159,9 @@ impl App {
                     }
                 }
 
-                if s.scanning_code() {
-                    ui.separator();
-                    ui.label(RichText::new(crate::trust::SCANNING).color(crate::theme::FG.gamma_multiply_u8(160))).on_hover_text(crate::trust::SCANNING_TIP);
-                } else if s.restricted() {
-                    ui.separator();
-                    let chip = egui::Button::new(RichText::new(crate::trust::CHIP).color(crate::theme::YELLOW)).frame(false);
-                    let resp = ui.add(chip).on_hover_text(crate::trust::CHIP_TIP);
-                    self.trust_chip = Some(resp.rect);
-                    ask_trust = resp.clicked();
+                if let Some(chip) = crate::trust::status_entry(ui, s) {
+                    self.trust_chip = Some(chip.rect);
+                    ask_trust = chip.clicked();
                 }
 
                 // The message gets the width the counts leave, so a long one is cut short instead of running under them.
