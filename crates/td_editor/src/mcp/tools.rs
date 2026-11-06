@@ -149,6 +149,18 @@ fn ok(v: Value) -> ToolResult {
     ToolResult::Json(v)
 }
 
+/// The `language` argument of set_editor: None when it is absent, an error naming every code when it is not one.
+fn language_arg(v: &Value) -> Result<Option<crate::i18n::Lang>, String> {
+    if v.is_null() {
+        return Ok(None);
+    }
+
+    v.as_str().and_then(crate::i18n::Lang::from_code).map(Some).ok_or_else(|| {
+        let codes: Vec<_> = crate::i18n::Lang::ALL.iter().map(|l| l.code()).collect();
+        format!("unknown language {v}, use {}", codes.join(", "))
+    })
+}
+
 /// Issues as validate_map returns them, each with the bounds of its node so it can be found without the id.
 fn issues_json(map: &td_doc::Map, found: &[issues::Issue]) -> Vec<Value> {
     found
@@ -1009,6 +1021,7 @@ impl App {
             },
             "cameras": cameras,
             "ui": {
+                "language": s.prefs.lang().code(),
                 "theme": s.prefs.theme.id(), "theme_active": if crate::theme::active() == egui::Theme::Light { "light" } else { "dark" },
                 "scale": (s.prefs.ui_scale as f64 * 100.0).round() / 100.0, "follow_display_scaling": s.prefs.follow_display_scaling,
                 "pixels_per_point": self.viewports.first().map(|v| (v.pixels_per_point as f64 * 1000.0).round() / 1000.0),
@@ -1807,6 +1820,10 @@ impl App {
                 None => return err(format!("unknown theme {v}, use dark, light or system")),
             },
         };
+        let language = match language_arg(&args["language"]) {
+            Ok(l) => l,
+            Err(e) => return err(e),
+        };
         let component = match args["mesh_component"].as_str() {
             Some("vertex") => Some(crate::mesh_tool::Component::Vertex),
             Some("edge") => Some(crate::mesh_tool::Component::Edge),
@@ -1873,6 +1890,10 @@ impl App {
 
         if let Some(t) = theme {
             self.state.prefs.theme = t;
+        }
+
+        if let Some(l) = language {
+            self.state.prefs.language = l.code().into();
         }
 
         if let Some(scale) = args["ui_scale"].as_f64() {
@@ -2714,6 +2735,20 @@ mod tests {
         assert_eq!(ridge_along_x(&json!({ "ridge_x": true, "ridge_z": false }), false), Ok(true));
         assert!(ridge_along_x(&json!({ "ridge_x": true, "ridge_z": true }), false).is_err());
         assert!(ridge_along_x(&json!({ "ridge_x": "yes" }), false).is_err());
+    }
+
+    #[test]
+    fn the_language_argument_takes_a_code_in_any_case() {
+        use crate::i18n::Lang;
+        assert_eq!(language_arg(&Value::Null), Ok(None));
+        assert_eq!(language_arg(&json!("de")), Ok(Some(Lang::De)));
+        assert_eq!(language_arg(&json!("JA")), Ok(Some(Lang::Ja)));
+        assert_eq!(language_arg(&json!("zh-hans")), Ok(Some(Lang::ZhHans)));
+        for bad in [json!("xx"), json!(3), json!(true), json!(""), json!("zh"), json!(["de"]), json!("de ")] {
+            let e = language_arg(&bad).unwrap_err();
+            assert!(e.starts_with("unknown language"), "{e}");
+            assert!(e.ends_with("use en, de, fr, es, pt, ru, zh-Hans, ja"), "{e}");
+        }
     }
 
     #[test]

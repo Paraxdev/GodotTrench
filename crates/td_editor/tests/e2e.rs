@@ -3533,6 +3533,53 @@ fn the_palette_switches_the_language_and_english_comes_back() {
     assert_eq!(image_difference(&english, &window("english_again")), 0.0);
 }
 
+/// set_editor language redraws the editor at once while MCP keeps reading English: window titles, tool names and the
+/// failure status. A bad language changes nothing, not even the other settings of the same call.
+#[test]
+#[ignore]
+fn language_switches_without_a_restart() {
+    let ed = Editor::launch("language_switch");
+    let language = || ed.state()["ui"]["language"].as_str().unwrap().to_string();
+    let body = |img: &image::RgbaImage| image::imageops::crop_imm(img, 0, 0, img.width(), img.height() - 40).to_image();
+    let window = |label: &str| body(&shot(&ed, json!({ "target": "window" }), label));
+    assert_eq!(language(), "en");
+    open_preferences(&ed);
+    let english = window("english");
+
+    ed.call("set_editor", json!({ "language": "de" }));
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(language(), "de");
+    let german = window("german");
+    assert!(image_difference(&english, &german) > 0.01, "Preferences did not change");
+    assert!(window_titles(&ed).contains(&"Preferences".to_string()), "{:?}", window_titles(&ed));
+    let tools = ed.state()["ui"]["tool_buttons"].clone();
+    assert!(tools.as_array().unwrap().iter().any(|b| b["tool"] == "Clip"), "{tools}");
+    let failure = ed.call_err("run_action", json!({ "action": "csg_subtract" }));
+    assert!(failure.contains("Select the box to cut out"), "{failure}");
+    assert!(ed.state()["status"].as_str().unwrap().starts_with("Select the box to cut out"));
+
+    for bad in [json!("xx"), json!(3), json!(["de"])] {
+        let e = ed.call_err("set_editor", json!({ "language": bad, "ui_scale": 1.5, "grid": 8 }));
+        assert!(e.contains("unknown language") && e.contains("zh-Hans"), "{e}");
+        let ui = &ed.state()["ui"];
+        assert_eq!((ui["language"].as_str(), ui["scale"].as_f64()), (Some("de"), Some(1.0)), "{ui}");
+    }
+
+    let set = ed.call("set_editor", json!({ "language": "JA" }));
+    assert!(set.is_object(), "{set}");
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(language(), "ja");
+    assert!(image_difference(&german, &window("japanese")) > 0.01);
+
+    ed.input(
+        "window",
+        json!([{ "type": "move", "x": 10, "y": 10 }, { "type": "key", "key": "F1" }, { "type": "text", "text": "language: english" }, { "type": "key", "key": "Enter" }]),
+    );
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(language(), "en");
+    assert_eq!(image_difference(&english, &window("english_again")), 0.0);
+}
+
 /// The palette and the dialogs it opens work with the light colors, and the palette frame is light too.
 #[test]
 #[ignore]

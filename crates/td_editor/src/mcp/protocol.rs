@@ -354,7 +354,7 @@ pub fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "set_editor",
-            "description": "Editor settings: grid size, snapping, uv lock, active tool (select, clip, vertex, rotate, scale, mesh, sculpt, blend, paint, scatter, volume, path, measure, texture), current material, shading, mesh component mode, scatter palette items, brush radius, sculpt mode and interface scale. mcp: false turns MCP off until a person turns it back on in Preferences.",
+            "description": "Editor settings: grid size, snapping, uv lock, active tool (select, clip, vertex, rotate, scale, mesh, sculpt, blend, paint, scatter, volume, path, measure, texture), current material, shading, mesh component mode, scatter palette items, brush radius, sculpt mode, editor language and interface scale. mcp: false turns MCP off until a person turns it back on in Preferences.",
             "inputSchema": { "type": "object", "properties": {
                 "grid": { "type": "number", "exclusiveMinimum": 0, "description": "positive, clamped to 0.125..1024" }, "snap": { "type": "boolean" }, "uv_lock": { "type": "boolean" },
                 "tool": { "type": "string" }, "material": { "type": "string" },
@@ -365,6 +365,7 @@ pub fn tool_definitions() -> Vec<Value> {
                 "brush_radius": { "type": "number" },
                 "sculpt_mode": { "type": "string" },
                 "theme": { "type": "string", "enum": ["dark", "light", "system"], "description": "Editor colors. system follows the OS app mode and falls back to dark." },
+                "language": { "type": "string", "enum": ["en", "de", "fr", "es", "pt", "ru", "zh-Hans", "ja"], "description": "Language of the menus, panels and messages. Tool names, MCP replies and errors stay English." },
                 "ui_scale": { "type": "number", "description": "Interface scale, 1 is 100%" },
                 "follow_display_scaling": { "type": "boolean" },
                 "live_mode": { "type": "boolean", "description": "Send edits to a Godot editor that has the map open before saving" },
