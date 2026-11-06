@@ -172,6 +172,8 @@ impl Kept {
                     repaint.request_repaint();
                 }
             };
+            // A waiting UI thread must not keep waiting for an answer the worker can no longer give.
+            let _gone = Gone { shared: &shared, repaint: &repaint };
 
             // Taken before the scan, so a file written while it ran counts as changed afterwards.
             let mut asked = lock.lock().unwrap_or_else(PoisonError::into_inner).asked;
@@ -207,6 +209,28 @@ impl Kept {
         }
 
         kept
+    }
+}
+
+/// Marks the result stale when the worker panics, so the next lookup scans again.
+struct Gone<'a> {
+    shared: &'a (Mutex<Shared>, Condvar),
+    repaint: &'a Option<egui::Context>,
+}
+
+impl Drop for Gone<'_> {
+    fn drop(&mut self) {
+        if !std::thread::panicking() {
+            return;
+        }
+
+        self.shared.0.lock().unwrap_or_else(PoisonError::into_inner).stale = true;
+        self.shared.1.notify_all();
+        // A repaint callback that panicked is what ended the worker in the first place, and a second panic while
+        // unwinding aborts the process.
+        if let Some(repaint) = self.repaint {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| repaint.request_repaint()));
+        }
     }
 }
 
@@ -1120,5 +1144,34 @@ mod tests {
         assert_eq!(scans.get(dir.path()), None, "the scan still runs");
         assert_eq!(scans.wait(dir.path()), None);
         assert_eq!(scans.get(dir.path()), Some(None));
+    }
+
+    #[test]
+    fn a_panic_on_the_worker_makes_the_next_lookup_scan_again() {
+        let dir = fresh();
+        let repaint = egui::Context::default();
+        let fired = Arc::new(AtomicBool::new(false));
+        let once = fired.clone();
+        repaint.set_request_repaint_callback(move |_| assert!(once.swap(true, Ordering::SeqCst), "the first repaint of the worker panics"));
+        let mut scans = Scans::with_interval(Duration::from_millis(20));
+        scans.set_repaint(repaint);
+        scans.check(dir.path());
+        let key = crate::trust::real_path(dir.path());
+        let start = Instant::now();
+        while !scans.kept[&key].shared.0.is_poisoned() {
+            assert!(start.elapsed() < Duration::from_secs(10), "the worker did not panic");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        scans.check(dir.path());
+        let (sent, received) = std::sync::mpsc::channel();
+        let root = dir.path().to_path_buf();
+        std::thread::spawn(move || {
+            let found = scans.wait(&root);
+            let _ = sent.send((found, scans.started));
+        });
+        let (found, started) = received.recv_timeout(Duration::from_secs(10)).expect("the lookup waits for a worker that is gone");
+        assert_eq!((found, started), (None, 2), "a second scan answered");
+        assert!(fired.load(Ordering::SeqCst));
     }
 }
