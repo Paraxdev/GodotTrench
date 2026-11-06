@@ -162,19 +162,25 @@ A few kilobytes of zstd can unpack to gigabytes, so a reader budgets each file. 
 
 1. Before unpacking, the chunk's raw size comes off a budget of 1 GiB.
 2. The unpacked chunk stays in memory while its values are built, so its raw size and the memory of its values have to
-   fit together in what is left of a budget of 1200 MiB. Only the memory of the values comes off it. A chunk that
-   doesn't fit takes nothing, so the chunks after it can still be read.
+   fit together in what is left of a budget of 1200 MiB, beside what the nodes of a `NODE` chunk take once the map is
+   built from them. Only the memory of the values and the nodes comes off it. A chunk that doesn't fit takes nothing,
+   so the chunks after it can still be read.
 
-Chunks with other tags are never unpacked and take nothing. The memory of a value is counted like this, without
-building it:
+Chunks with other tags are never unpacked and take nothing. The memory is counted like this, without building any
+value:
 
 | Value | Memory |
 | --- | --- |
 | Every value, dictionary keys and the items of packed arrays included | 80 bytes |
 | A string, on top | 6 bytes per byte, as JSON may write a byte as `\u0000` |
 | Bytes, on top | `4 * ceil(n / 3) + n` for `n` bytes, their size as base64 and the copy a terrain or bake decodes them into |
+| A node of a `NODE` chunk, on top of its values | 5 KiB for an entity, 12 KiB for a scatter set, 1 KiB for any other node |
 
-The biggest showcase map takes 76 MiB, a scatter instance 640 to 720 bytes, and the light, shadow and occlusion of a
-bake at the largest atlas size 299 MiB. The budgets only cover these values. The brushes, entities and instances a
-map builds from them take memory of their own, which is not counted, so a small file of many tiny nodes can still take
-a few GiB to open. The editor refuses to save a map past either limit, so every file it writes reads in full.
+The node costs are what the smallest nodes of each type take in the editor once it opens the map, so a small file of
+many tiny nodes can't take more memory than the budget. Nodes nested under `children` inside a `NODE` chunk are
+dropped, as the editor never writes them there. Scatter instances are only counted by their values, which come to
+about half of what a built instance takes, so that big foliage sets keep opening.
+
+The biggest showcase map takes 79 MiB, a scatter instance 640 to 720 bytes, and the light, shadow and occlusion of a
+bake at the largest atlas size 299 MiB. The editor refuses to save a map past either limit, so every file it writes
+reads in full.

@@ -327,6 +327,47 @@ pub fn cost(bytes: &[u8]) -> Result<usize, Refused> {
     Ok(usize::MAX - r.left)
 }
 
+/// The sum of `cost` over the type of every node in the NODE batch `bytes`, found without building any value. Every
+/// `nodes` key counts, as a crafted batch may repeat it.
+pub fn nodes_cost(bytes: &[u8], cost: impl Fn(Option<&str>) -> usize) -> Result<usize, Refused> {
+    let mut r = Reader { bytes, pos: 0, left: usize::MAX };
+    let mut total = 0usize;
+    if r.peek(0)? != DICTIONARY {
+        return Ok(0);
+    }
+
+    r.header(0)?;
+    for _ in 0..r.count(DICTIONARY)? {
+        if r.key(1)? != "nodes" || r.peek(1)? != ARRAY {
+            r.skip(1)?;
+            continue;
+        }
+
+        r.header(1)?;
+        for _ in 0..r.count(ARRAY)? {
+            if r.peek(2)? != DICTIONARY {
+                r.skip(2)?;
+                continue;
+            }
+
+            r.header(2)?;
+            let mut kind = None;
+            for _ in 0..r.count(DICTIONARY)? {
+                if r.key(3)? == "type" && r.peek(3)? == STRING {
+                    r.header(3)?;
+                    kind = Some(r.string()?);
+                } else {
+                    r.skip(3)?;
+                }
+            }
+
+            total = total.saturating_add(cost(kind));
+        }
+    }
+
+    Ok(total)
+}
+
 struct Reader<'a> {
     bytes: &'a [u8],
     pos: usize,
@@ -369,6 +410,20 @@ impl<'a> Reader<'a> {
         }
 
         Ok((kind, wide))
+    }
+
+    fn peek(&mut self, depth: usize) -> Result<u32, Refused> {
+        let at = self.pos;
+        let (kind, _) = self.header(depth)?;
+        self.pos = at;
+        Ok(kind)
+    }
+
+    fn key(&mut self, depth: usize) -> Result<&'a str, Refused> {
+        match self.header(depth)?.0 {
+            STRING => self.string(),
+            _ => Err(Refused::Damaged("dictionary key is not a string")),
+        }
     }
 
     /// The bytes of a string or byte array, charged by what they grow to once decoded.

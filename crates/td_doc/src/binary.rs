@@ -32,6 +32,17 @@ pub const RECOVERED_LAYER: &str = "Recovered";
 /// About as deep as JSON maps can nest before serde_json's recursion limit refuses them.
 const MAX_TREE_DEPTH: usize = 60;
 
+/// What a node of a NODE chunk takes in the editor once the map is built from it, on top of its values. Measured by
+/// opening maps of 200 000 of the smallest brushes, groups, entities and scatter sets. Scatter instances are left to
+/// their values, which take half of what a built instance takes, as charging more would refuse big foliage maps.
+fn node_cost(kind: Option<&str>) -> usize {
+    match kind {
+        Some("entity") => 5 << 10,
+        Some("scatter") => 12 << 10,
+        _ => 1 << 10,
+    }
+}
+
 /// A chunk this version does not know, kept as stored so saving writes it back unchanged.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RawChunk {
@@ -202,21 +213,21 @@ pub fn encode(value: Value, unknown: &[RawChunk]) -> Result<Vec<u8>, ContainerEr
 /// `decode` would not read all of it.
 fn check_fits(payloads: &[&[u8]], unknown: &[RawChunk], end: &[u8]) -> Result<(), ContainerError> {
     let (mut raw, mut taken, mut peak) = (0usize, 0usize, 0usize);
-    let mut read = |len: usize, payload: Option<&[u8]>| {
+    let mut read = |len: usize, payload: Option<&[u8]>, tag: [u8; 4]| {
         raw = raw.saturating_add(len);
         if let Some(payload) = payload {
-            let cost = variant::cost(payload).unwrap_or(usize::MAX);
+            let cost = chunk_cost(payload, tag).unwrap_or(usize::MAX);
             peak = peak.max(taken.saturating_add(len).saturating_add(cost));
             taken = taken.saturating_add(cost);
         }
     };
-    payloads.iter().for_each(|p| read(p.len(), Some(p)));
+    payloads.iter().enumerate().for_each(|(i, p)| read(p.len(), Some(p), if i == 0 { HEAD } else { NODE }));
     // A light map that does not unpack is dropped by the reader whether or not it is saved again.
     for chunk in unknown.iter().filter(|c| c.tag == LMAP) {
-        read(chunk.raw_size as usize, chunk_payload(chunk).as_deref());
+        read(chunk.raw_size as usize, chunk_payload(chunk).as_deref(), LMAP);
     }
 
-    read(end.len(), Some(end));
+    read(end.len(), Some(end), END);
     let mib = |n: usize| n.div_ceil(1 << 20);
     if raw > MAX_FILE_RAW {
         return Err(ContainerError::TooLarge(mib(raw)));
@@ -227,6 +238,23 @@ fn check_fits(payloads: &[&[u8]], unknown: &[RawChunk], end: &[u8]) -> Result<()
     }
 
     Ok(())
+}
+
+/// What reading the payload `raw` of a `tag` chunk takes from the memory budget: its values, and for a NODE batch
+/// what its nodes take once built.
+fn chunk_cost(raw: &[u8], tag: [u8; 4]) -> Result<usize, variant::Refused> {
+    let nodes = if tag == NODE { variant::nodes_cost(raw, node_cost)? } else { 0 };
+    Ok(variant::cost(raw)?.saturating_add(nodes))
+}
+
+/// Reads the payload `raw` of a `tag` chunk and takes [`chunk_cost`] from `budget`, which the chunk's bytes have to fit
+/// in beside it. A chunk that is refused takes nothing.
+fn read_chunk(raw: &[u8], tag: [u8; 4], budget: &mut usize) -> Result<Value, variant::Refused> {
+    let nodes = if tag == NODE { variant::nodes_cost(raw, node_cost)? } else { 0 };
+    let mut left = budget.checked_sub(nodes).ok_or(variant::Refused::TooBig)?;
+    let value = variant::decode_within(raw, &mut left)?;
+    *budget = left;
+    Ok(value)
 }
 
 /// A chunk holding `raw`, compressed at a level that keeps saving quick for payloads of many megabytes.
@@ -320,8 +348,8 @@ pub fn decode(bytes: &[u8]) -> Result<Decoded, ContainerError> {
 }
 
 /// Reads the HEAD, NODE, END and LMAP chunks in file order. A chunk is unpacked when its raw size fits in what is left
-/// of `raw_left` and of `memory_left`, and read when its raw size and its values fit in what is left of `memory_left`.
-/// Only the values are taken from `memory_left`, a chunk that is not read takes nothing from it.
+/// of `raw_left` and of `memory_left`, and read when its raw size and its [`chunk_cost`] fit in what is left of
+/// `memory_left`. Only the cost is taken from `memory_left`, a chunk that is not read takes nothing from it.
 fn decode_with(bytes: &[u8], mut raw_left: usize, mut memory_left: usize) -> Result<Decoded, ContainerError> {
     if bytes.starts_with(b"\x89GTM\n") || bytes.starts_with(b"\x89GTM\r\r\n") {
         return Err(ContainerError::Mangled);
@@ -382,7 +410,7 @@ fn decode_with(bytes: &[u8], mut raw_left: usize, mut memory_left: usize) -> Res
         } else {
             payload(&h, data).ok_or(variant::Refused::Damaged("payload does not unpack"))
         };
-        let value = match read.and_then(|raw| variant::decode_within(&raw, &mut memory_left)) {
+        let value = match read.and_then(|raw| read_chunk(&raw, h.tag, &mut memory_left)) {
             Ok(value) => value,
             Err(refused) => {
                 let why = if refused == variant::Refused::TooBig { "takes more memory than a map may and was not read" } else { "is damaged" };
@@ -451,6 +479,8 @@ impl Tree {
         let Some(Value::Array(nodes)) = batch.remove("nodes") else { return };
         for (node, parent) in nodes.into_iter().zip(parents.iter().map(|v| v.as_i64().unwrap_or(0))) {
             if let Value::Object(mut node) = node {
+                // The writer never puts children in a batch, and nodes nested there would escape the node charge.
+                node.remove("children");
                 variant::restore_node(&mut node);
                 self.nodes.push(node);
                 self.parents.push(parent);
@@ -745,7 +775,7 @@ mod tests {
         let (mut taken, mut peak) = (0, 0);
         for (at, h) in chunks(bytes) {
             let raw = payload(&h, &bytes[at + HEADER_LEN..at + HEADER_LEN + h.stored]).unwrap();
-            let cost = variant::cost(&raw).unwrap();
+            let cost = chunk_cost(&raw, h.tag).unwrap();
             peak = usize::max(peak, taken + raw.len() + cost);
             taken += cost;
         }
@@ -977,6 +1007,65 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    /// A NODE batch of `n` of the smallest entities under the layer with id 1.
+    fn tiny_entities(n: usize) -> Vec<u8> {
+        let mut w = Writer::new();
+        w.dict_header(2);
+        w.key("parents");
+        w.int64s(&vec![1; n]);
+        w.key("nodes");
+        w.array_header(n);
+        for _ in 0..n {
+            w.value(&json!({ "id": 0, "type": "entity", "classname": "" }));
+        }
+
+        w.out
+    }
+
+    #[test]
+    fn many_tiny_nodes_are_charged_what_they_take_once_built() {
+        let n = 260_000;
+        let batch = tiny_entities(n);
+        assert!(variant::cost(&batch).unwrap() < variant::MAX_MEMORY / 4, "its values alone fit");
+        assert_eq!(variant::nodes_cost(&batch, node_cost), Ok(n * node_cost(Some("entity"))));
+        let empty = format::to_bytes(&DocMap::new()).unwrap();
+        let (end_at, _) = *chunks(&empty).last().unwrap();
+        let mut crafted = empty[..end_at].to_vec();
+        write_chunk(&mut crafted, NODE, FLAG_ZSTD, batch.len() as u32, &compress(&batch));
+        crafted.extend_from_slice(&empty[end_at..]);
+        assert!(crafted.len() < 16 << 10, "{} bytes", crafted.len());
+
+        let started = std::time::Instant::now();
+        let back = decode(&crafted).unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
+        assert_eq!(refused(&back.problems), 1, "{:?}", back.problems);
+        assert!(matches!(check_fits(&[&nils(0), &batch], &[], &nils(0)), Err(ContainerError::TooMuchMemory(_))));
+
+        let fits = tiny_entities(1000);
+        let crafted = insert(&empty, &[(NODE, fits)]);
+        let back = decode_with(&crafted, MAX_FILE_RAW, need_of(&crafted)).unwrap();
+        assert!(back.problems.is_empty(), "{:?}", back.problems);
+        assert_eq!(back.value["layers"][0]["children"].as_array().map(Vec::len), Some(1000));
+        let back = decode_with(&crafted, MAX_FILE_RAW, need_of(&crafted) - 1).unwrap();
+        assert_eq!(refused(&back.problems), 1, "{:?}", back.problems);
+    }
+
+    #[test]
+    fn nodes_nested_inside_a_batch_are_dropped() {
+        let mut w = Writer::new();
+        w.dict_header(2);
+        w.key("parents");
+        w.int64s(&[1]);
+        w.key("nodes");
+        w.array_header(1);
+        w.value(&json!({ "id": 5, "type": "group", "name": "g", "children": [{ "id": 6, "type": "group", "name": "hidden" }] }));
+        let crafted = insert(&format::to_bytes(&DocMap::new()).unwrap(), &[(NODE, w.out)]);
+        let back = decode(&crafted).unwrap();
+        let group = &back.value["layers"][0]["children"][0];
+        assert_eq!(group["name"], "g");
+        assert!(group.get("children").is_none(), "{group}");
+    }
+
     #[test]
     fn committed_maps_cost_what_the_reader_takes() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -997,8 +1086,8 @@ mod tests {
             for (at, h) in chunks(&bytes) {
                 let raw = payload(&h, &bytes[at + HEADER_LEN..at + HEADER_LEN + h.stored]).unwrap();
                 let mut left = usize::MAX;
-                variant::decode_within(&raw, &mut left).unwrap();
-                assert_eq!(variant::cost(&raw), Ok(usize::MAX - left), "{}", path.display());
+                read_chunk(&raw, h.tag, &mut left).unwrap();
+                assert_eq!(chunk_cost(&raw, h.tag), Ok(usize::MAX - left), "{}", path.display());
                 total += usize::MAX - left;
             }
 

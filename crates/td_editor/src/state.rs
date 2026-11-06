@@ -985,7 +985,7 @@ impl EditorState {
 
         match (&self.doc.recovered_from, &self.doc.path) {
             _ if !self.doc.load_problems.is_empty() => self.set_status(format!(
-                "{} is damaged, opened what could be read: {}. Saving keeps only that, the old file is copied to .tdm.bak",
+                "{} could not be read in full, opened what could be read: {}. Saving keeps only that, the old file is copied to .tdm.bak",
                 path.display(),
                 self.doc.load_problems.join("; ")
             )),
