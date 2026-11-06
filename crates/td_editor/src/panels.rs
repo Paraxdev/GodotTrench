@@ -8,6 +8,7 @@ use td_geom::FaceUv;
 use td_render::Renderer;
 
 use crate::commands::Action;
+use crate::i18n::{en, tr};
 use crate::icons;
 use crate::state::EditorState;
 pub use crate::uv_editor::uv_editor;
@@ -633,7 +634,7 @@ fn section_help(response: &egui::Response, topic: &str, tip: &str) {
             }
 
             if manual {
-                crate::help::hint(ui, crate::help::F1_HINT);
+                crate::help::hint(ui, tr(crate::help::F1_HINT));
             }
         });
     }
@@ -2863,20 +2864,20 @@ pub fn issues(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, actions
 /// One short line per tool, shown in the toolbar tooltip, the Tools menu, the tool options and the reference panel.
 /// Modifiers and the rest live in the manual.
 pub const TOOL_HELP: [(&str, &str); 14] = [
-    ("Select", "Click to select, double click for the whole group. Drag empty space to draw a brush, drag the selection to move it."),
-    ("Clip", "Click two or three points, Tab picks the side to keep, Enter clips."),
-    ("Vertex", "Drag brush vertices, drag an edge or face midpoint to split it."),
-    ("Rotate", "Drag a ring to rotate the selection."),
-    ("Scale", "Drag a handle on the selection's bounds to scale it."),
-    ("Mesh", "Edit a mesh Blender style, 1/2/3 pick vertices, edges or faces and G/R/S move, rotate or scale them."),
-    ("Sculpt", "Drag over a terrain or displacement to shape it with the chosen mode."),
-    ("Blend", "Drag to paint blends on terrain layers, displacements and faces with a blend material."),
-    ("Paint", "Drag over brush faces to paint vertex colors."),
-    ("Scatter", "Drag to paint the models of the active scatter set."),
-    ("Volume", "Drag out a trigger, spawn, hurt, teleport or push volume."),
-    ("Path", "Click to chain path_corner entities, Enter finishes."),
-    ("Measure", "Drag or click two points."),
-    ("Texture", "Click a face, drag to slide its texture, right click to apply the current material."),
+    ("Select", en!("Click to select, double click for the whole group. Drag empty space to draw a brush, drag the selection to move it.")),
+    ("Clip", en!("Click two or three points, Tab picks the side to keep, Enter clips.")),
+    ("Vertex", en!("Drag brush vertices, drag an edge or face midpoint to split it.")),
+    ("Rotate", en!("Drag a ring to rotate the selection.")),
+    ("Scale", en!("Drag a handle on the selection's bounds to scale it.")),
+    ("Mesh", en!("Edit a mesh Blender style, 1/2/3 pick vertices, edges or faces and G/R/S move, rotate or scale them.")),
+    ("Sculpt", en!("Drag over a terrain or displacement to shape it with the chosen mode.")),
+    ("Blend", en!("Drag to paint blends on terrain layers, displacements and faces with a blend material.")),
+    ("Paint", en!("Drag over brush faces to paint vertex colors.")),
+    ("Scatter", en!("Drag to paint the models of the active scatter set.")),
+    ("Volume", en!("Drag out a trigger, spawn, hurt, teleport or push volume.")),
+    ("Path", en!("Click to chain path_corner entities, Enter finishes.")),
+    ("Measure", en!("Drag or click two points.")),
+    ("Texture", en!("Click a face, drag to slide its texture, right click to apply the current material.")),
 ];
 
 pub fn tool_help(tool: crate::tools::ToolKind) -> &'static str {
@@ -2960,7 +2961,7 @@ pub fn reference(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, acti
             ui.separator();
             ui.label(RichText::new("Tools").strong());
             for (tool, help) in TOOL_HELP {
-                ui.label(RichText::new(tool).color(theme::colors().cyan)).on_hover_text(help);
+                ui.label(RichText::new(tr(tool)).color(theme::colors().cyan)).on_hover_text(tr(help));
             }
         });
     });
@@ -2977,8 +2978,8 @@ fn reference_detail(ui: &mut Ui, state: &mut EditorState, ps: &mut PanelState, a
     let Some(def) = state.game.entity(&ps.reference_class).cloned() else {
         ui.label("Pick an entity to see how to use it from GDScript or C#.");
         for (tool, help) in TOOL_HELP {
-            ui.label(RichText::new(tool).strong());
-            ui.label(RichText::new(help).weak());
+            ui.label(RichText::new(tr(tool)).strong());
+            ui.label(RichText::new(tr(help)).weak());
         }
 
         return;

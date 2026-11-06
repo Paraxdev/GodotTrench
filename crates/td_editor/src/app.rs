@@ -7,7 +7,7 @@ use crate::camera::ViewKind;
 use crate::commands::{self, Action, ModelImport};
 use crate::dialogs::{CommandPalette, KeymapWindow, LinkDialog, ShapeDialog, TerrainDialog};
 use crate::help::{self, Topic};
-use crate::i18n::{Msg, en, msg, msg_n, tr, trf};
+use crate::i18n::{Msg, en, msg, msg_n, tr, tr_n, trf};
 use crate::icons;
 use crate::mcp::tools::{Deferred, HeldDrag, InputScript};
 use crate::mcp::{McpHost, ToolExecutor, switch, token, transport};
@@ -70,25 +70,25 @@ impl Panel {
     /// The tab tooltip: [`Panel::help`] with the key that renames, which the keymap can change.
     pub fn tooltip(self, ctx: &egui::Context, prefs: &Prefs) -> String {
         match commands::shortcut_text(ctx, prefs, &Action::Rename).filter(|_| self == Panel::Outliner) {
-            Some(keys) => format!("{} {keys} renames the selected object.", self.help()),
-            None => self.help().into(),
+            Some(keys) => trf!("{help} {keys} renames the selected object.", help = tr(self.help()), keys),
+            None => tr(self.help()).into(),
         }
     }
 
     /// One short sentence on what the panel is for.
     pub fn help(self) -> &'static str {
         match self {
-            Panel::Outliner => "Every layer, group, brush, mesh and entity in the map as a tree.",
-            Panel::Inspector => "Edits what is selected, or the map's own settings when nothing is.",
-            Panel::Materials => "The textures and materials of the Godot project, click one to apply it to the selection.",
-            Panel::Entities => "Entity classes from the game config, drag one into a view or double click to place it.",
-            Panel::History => "Every edit in order, click an older entry to undo back to it.",
-            Panel::Issues => "Problems found in the map, click one to select the object.",
-            Panel::Logic => "The map's entity I/O as a graph, drag from an output pin to an input pin to connect.",
-            Panel::Uv => "Edits the UVs of selected mesh faces directly.",
-            Panel::Scatter => "The active scatter set as model cards, with the surfaces it paints onto and the brush.",
-            Panel::Prefabs => "Ready made pieces to paste, click one to paste it at the pointer.",
-            Panel::Reference => "How to use the selected entity from GDScript and C#.",
+            Panel::Outliner => en!("Every layer, group, brush, mesh and entity in the map as a tree."),
+            Panel::Inspector => en!("Edits what is selected, or the map's own settings when nothing is."),
+            Panel::Materials => en!("The textures and materials of the Godot project, click one to apply it to the selection."),
+            Panel::Entities => en!("Entity classes from the game config, drag one into a view or double click to place it."),
+            Panel::History => en!("Every edit in order, click an older entry to undo back to it."),
+            Panel::Issues => en!("Problems found in the map, click one to select the object."),
+            Panel::Logic => en!("The map's entity I/O as a graph, drag from an output pin to an input pin to connect."),
+            Panel::Uv => en!("Edits the UVs of selected mesh faces directly."),
+            Panel::Scatter => en!("The active scatter set as model cards, with the surfaces it paints onto and the brush."),
+            Panel::Prefabs => en!("Ready made pieces to paste, click one to paste it at the pointer."),
+            Panel::Reference => en!("How to use the selected entity from GDScript and C#."),
         }
     }
 }
@@ -544,7 +544,7 @@ fn with_help(response: egui::Response, action: &Action, label: &str) -> egui::Re
     match action.help().map(tr) {
         Some(text) if help::page(topic).is_some() => response.on_hover_ui(|ui| {
             ui.label(text);
-            help::hint(ui, help::F1_HINT);
+            help::hint(ui, tr(help::F1_HINT));
         }),
         Some(text) => response.on_hover_text(text),
         None => response,
@@ -596,11 +596,25 @@ fn empty_hint(ui: &mut Ui, text: &str) {
 
 /// The map's counts for the status bar, without the kinds it has none of.
 fn stats_text(s: &crate::scene::SceneStats) -> String {
-    let counts = [(s.brushes, "brush", "brushes"), (s.meshes, "mesh", "meshes"), (s.terrains, "terrain", "terrains"), (s.entities, "entity", "entities")];
-    let mut parts: Vec<String> =
-        counts.into_iter().filter(|(n, _, _)| *n > 0).map(|(n, one, many)| format!("{n} {}", if n == 1 { one } else { many })).collect();
+    let mut parts = Vec::new();
+    if s.brushes > 0 {
+        parts.push(tr_n!(s.brushes, "{n} brush", "{n} brushes"));
+    }
+
+    if s.meshes > 0 {
+        parts.push(tr_n!(s.meshes, "{n} mesh", "{n} meshes"));
+    }
+
+    if s.terrains > 0 {
+        parts.push(tr_n!(s.terrains, "{n} terrain", "{n} terrains"));
+    }
+
+    if s.entities > 0 {
+        parts.push(tr_n!(s.entities, "{n} entity", "{n} entities"));
+    }
+
     if s.triangles > 0 {
-        parts.push(format!("{} tris", s.triangles));
+        parts.push(trf!("{n} tris", n = s.triangles));
     }
 
     parts.join("  ")
@@ -632,9 +646,17 @@ fn help_menu_links(ui: &mut Ui) {
     link(ui, en!("Mouse and Keys"), &mouse);
 }
 
-fn capitalize(text: &str) -> String {
-    let mut chars = text.chars();
-    chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
+/// A drag value's word before its number, with the space the number needs.
+fn prefix(word: &str) -> String {
+    format!("{} ", tr(word))
+}
+
+/// `Falloff::label` words the curve "smooth", which needs its own translation next to the blend mode of that name.
+fn falloff_name(falloff: td_doc::blend::Falloff) -> &'static str {
+    match falloff {
+        td_doc::blend::Falloff::Smooth => en!("smooth#falloff"),
+        other => other.label(),
+    }
 }
 
 const DOCK_KEY: &str = "dock";
@@ -814,17 +836,17 @@ impl App {
         if let Some(path) = args.map
             && let Err(e) = state.open_map(&path)
         {
-            state.set_status(format!("Could not open {}: {e}", path.display()));
+            state.set_status(msg!("Could not open {path}: {e}", path = path.display(), e));
             map_failed = true;
         }
 
         state.godot.refresh(&state.prefs.godot_path, state.game.project_root.as_deref());
         if !state.godot.found() {
-            let warning = format!("{}. Run Project and Open in Godot stay disabled until then", commands::GODOT_NOT_FOUND);
+            let warning = Msg::key(commands::GODOT_NOT_FOUND_AT_START);
             // A --project start is usually scripted (MCP, tests), where this is expected and would spam the log
             // every run, so only log it there when it is worth a person's attention: an interactive session.
             if args.project.is_none() {
-                eprintln!("TrenchDot: info: {warning}");
+                eprintln!("TrenchDot: info: {}", warning.en);
             }
 
             if !map_failed {
@@ -833,7 +855,11 @@ impl App {
         } else if !map_failed {
             let autosaves = state.recoverable_autosaves().len();
             if autosaves > 0 {
-                state.set_status(format!("Found {autosaves} autosaved untitled map(s), File > Open Recent lists them for recovery"));
+                state.set_status(msg_n!(
+                    autosaves,
+                    "Found {n} autosaved untitled map, File > Open Recent lists it for recovery",
+                    "Found {n} autosaved untitled maps, File > Open Recent lists them for recovery"
+                ));
             }
         }
 
@@ -1014,7 +1040,7 @@ impl App {
             Action::ShowLinkDialog => {
                 self.link_dialog.open_for(&self.state);
                 if !self.link_dialog.open {
-                    self.state.set_status("Select exactly two entities to link");
+                    self.state.set_status(msg!("Select exactly two entities to link"));
                 }
             }
             Action::ShowReference => show_tab(&mut self.dock, Tab::Reference),
@@ -1065,20 +1091,27 @@ impl App {
                 let (right, up) = (cam.right(), cam.up());
                 let faces = crate::texture_ops::target_faces(&self.state);
                 let n = crate::texture_ops::align_to_view(&mut self.state, &faces, right, up);
-                self.state.set_status(format!("Aligned {n} faces to the 3D view"));
+                self.state.set_status(msg_n!(n, "Aligned {n} face to the 3D view", "Aligned {n} faces to the 3D view"));
             }
             Action::MeshUv(kind) => {
                 let cam = &self.viewports[0].camera;
                 let view = (cam.right(), cam.up());
                 let faces = crate::texture_ops::target_faces(&self.state);
                 let n = crate::texture_ops::mesh_uv(&mut self.state, &faces, kind, view);
-                self.state.set_status(if n == 0 { "Select mesh faces or meshes first".to_string() } else { format!("{} UVs on {n} mesh faces", kind.label()) });
+                self.state.set_status(if n == 0 {
+                    msg!("Select mesh faces or meshes first")
+                } else {
+                    Msg {
+                        en: msg_n!(n, "{kind} UVs on {n} mesh face", "{kind} UVs on {n} mesh faces", kind = kind.label()).en,
+                        shown: tr_n!(n, "{kind} UVs on {n} mesh face", "{kind} UVs on {n} mesh faces", kind = tr(kind.label())),
+                    }
+                });
             }
             Action::StoreCamera(slot) => {
                 let cam = &self.viewports[0].camera;
                 let bookmark = td_doc::map::CameraBookmark { position: cam.position, yaw: cam.yaw, pitch: cam.pitch };
                 self.state.doc.edit("Store Camera Bookmark", |m, _| m.editor.cameras.insert(slot, bookmark));
-                self.state.set_status(format!("Stored camera bookmark {slot}"));
+                self.state.set_status(msg!("Stored camera bookmark {slot}", slot));
             }
             Action::RecallCamera(slot) => match self.state.doc.map.editor.cameras.get(&slot).copied() {
                 Some(b) => {
@@ -1086,13 +1119,13 @@ impl App {
                     cam.position = b.position;
                     cam.yaw = b.yaw;
                     cam.pitch = b.pitch;
-                    self.state.set_status(format!("Camera bookmark {slot}"));
+                    self.state.set_status(msg!("Camera bookmark {slot}", slot));
                 }
                 None => {
                     let store = commands::shortcut_hint(&self.state.prefs, &Action::StoreCamera(slot));
                     self.state.set_status(match store {
-                        Some(keys) => format!("Camera bookmark {slot} is empty, {keys} stores it"),
-                        None => format!("Camera bookmark {slot} is empty, View > Camera Bookmarks stores it"),
+                        Some(keys) => msg!("Camera bookmark {slot} is empty, {keys} stores it", slot, keys),
+                        None => msg!("Camera bookmark {slot} is empty, View > Camera Bookmarks stores it", slot),
                     });
                 }
             },
@@ -1119,7 +1152,7 @@ impl App {
         }
 
         if open_views(&self.dock).len() < 2 {
-            self.state.set_status("Only one view is shown, View > Views brings the others back");
+            self.state.set_status(msg!("Only one view is shown, View > Views brings the others back"));
             return;
         }
 
@@ -1140,7 +1173,7 @@ impl App {
         self.maximized = None;
         if open.contains(&view) {
             if open.len() == 1 {
-                self.state.set_status("The last view stays open");
+                self.state.set_status(msg!("The last view stays open"));
             } else if let Some(path) = self.dock.find_tab(&Tab::View(view)) {
                 self.dock.remove_tab(path);
             }
@@ -1765,8 +1798,9 @@ impl App {
             ui.spacing_mut().item_spacing.x = 2.0;
             let mut group = egui::Rect::NOTHING;
             for (icon, label, action) in
-                [(icons::NEW, "New Map", Action::NewMap), (icons::OPEN, "Open Map", Action::OpenMap), (icons::SAVE, "Save", Action::Save)]
+                [(icons::NEW, en!("New Map"), Action::NewMap), (icons::OPEN, en!("Open Map"), Action::OpenMap), (icons::SAVE, en!("Save"), Action::Save)]
             {
+                let label = tr(label);
                 let resp = icons::button(ui, icon, size, label, tip(label, &action));
                 group |= resp.rect;
                 icon_count += 1;
@@ -1779,10 +1813,11 @@ impl App {
             group = egui::Rect::NOTHING;
             group_gap(ui);
             let history = [
-                (icons::UNDO, "Undo", Action::Undo, self.state.doc.history.can_undo()),
-                (icons::REDO, "Redo", Action::Redo, self.state.doc.history.can_redo()),
+                (icons::UNDO, en!("Undo"), Action::Undo, self.state.doc.history.can_undo()),
+                (icons::REDO, en!("Redo"), Action::Redo, self.state.doc.history.can_redo()),
             ];
             for (icon, label, action, enabled) in history {
+                let label = tr(label);
                 let resp = ui.add_enabled_ui(enabled, |ui| icons::button(ui, icon, size, label, tip(label, &action))).inner;
                 group |= resp.rect;
                 icon_count += 1;
@@ -1800,9 +1835,9 @@ impl App {
                 }
 
                 for t in tools.iter().copied() {
-                    let text = format!("{}\n{}", tip(&format!("{} Tool", t.label()), &Action::SetTool(t)), panels::tool_help(t));
-                    let tooltip = help::tooltip(ui, &text, help::TOOL_HINT);
-                    let resp = icons::toggle(ui, icons::tool(t), size, self.state.tool == t, t.label(), tooltip);
+                    let text = format!("{}\n{}", tip(&trf!("{tool} Tool", tool = tr(t.label())), &Action::SetTool(t)), tr(panels::tool_help(t)));
+                    let tooltip = help::tooltip(ui, &text, tr(help::TOOL_HINT));
+                    let resp = icons::toggle(ui, icons::tool(t), size, self.state.tool == t, tr(t.label()), tooltip);
                     group |= resp.rect;
                     icon_count += 1;
                     self.tool_buttons.push((t, resp.rect));
@@ -1817,7 +1852,7 @@ impl App {
             group = egui::Rect::NOTHING;
             group_gap(ui);
             icon_count += 1;
-            group |= ui.add(icons::GRID.image(size).tint(ui.visuals().text_color())).on_hover_text("Grid size, [ and ] change it").rect;
+            group |= ui.add(icons::GRID.image(size).tint(ui.visuals().text_color())).on_hover_text(tr("Grid size, [ and ] change it")).rect;
             group |= egui::ComboBox::from_id_salt("grid")
                 .selected_text(format!("{}", self.state.grid))
                 .width(56.0)
@@ -1829,15 +1864,17 @@ impl App {
                 .response
                 .rect;
             ui.add_space(2.0);
-            let resp = icons::toggle(ui, icons::SNAP, size, self.state.snap, "Snap to Grid", tip("Snap to Grid", &Action::ToggleSnap));
+            let snap = tr("Snap to Grid");
+            let resp = icons::toggle(ui, icons::SNAP, size, self.state.snap, snap, tip(snap, &Action::ToggleSnap));
             group |= resp.rect;
             icon_count += 1;
             if resp.clicked() {
                 self.actions.push(Action::ToggleSnap);
             }
 
-            let uv_tip = format!("{}\nTextures stay fixed to faces while moving and rotating", tip("UV Lock", &Action::ToggleUvLock));
-            let resp = icons::toggle(ui, icons::UV_LOCK, size, self.state.uv_lock, "UV Lock", uv_tip);
+            let uv_lock = tr("UV Lock");
+            let uv_tip = format!("{}\n{}", tip(uv_lock, &Action::ToggleUvLock), tr("Textures stay fixed to faces while moving and rotating"));
+            let resp = icons::toggle(ui, icons::UV_LOCK, size, self.state.uv_lock, uv_lock, uv_tip);
             group |= resp.rect;
             icon_count += 1;
             if resp.clicked() {
@@ -1848,11 +1885,12 @@ impl App {
             group = egui::Rect::NOTHING;
             group_gap(ui);
             for (icon, label, help, action) in [
-                (icons::CSG_SUBTRACT, "CSG Subtract", "Carve the selected brushes out of the brushes they touch", Action::CsgSubtract),
-                (icons::CSG_MERGE, "CSG Convex Merge", "Merge the selected brushes into one convex brush", Action::CsgMerge),
-                (icons::CSG_INTERSECT, "CSG Intersect", "Keep only the volume shared by the selected brushes", Action::CsgIntersect),
-                (icons::CSG_HOLLOW, "Hollow", "Turn the selected brushes into walls (thickness in Brush > CSG)", Action::CsgHollow),
+                (icons::CSG_SUBTRACT, en!("CSG Subtract"), en!("Carve the selected brushes out of the brushes they touch"), Action::CsgSubtract),
+                (icons::CSG_MERGE, en!("CSG Convex Merge"), en!("Merge the selected brushes into one convex brush"), Action::CsgMerge),
+                (icons::CSG_INTERSECT, en!("CSG Intersect"), en!("Keep only the volume shared by the selected brushes"), Action::CsgIntersect),
+                (icons::CSG_HOLLOW, en!("Hollow"), en!("Turn the selected brushes into walls (thickness in Brush > CSG)"), Action::CsgHollow),
             ] {
+                let (label, help) = (tr(label), tr(help));
                 let resp = icons::button(ui, icon, size, label, format!("{}\n{help}", tip(label, &action)));
                 group |= resp.rect;
                 icon_count += 1;
@@ -1865,7 +1903,7 @@ impl App {
             group = egui::Rect::NOTHING;
             group_gap(ui);
             for s in Shade::ALL {
-                let label = format!("Shading: {}", s.title());
+                let label = trf!("Shading: {name}", name = tr(s.title()));
                 let resp = icons::toggle(ui, icons::shade(s), size, self.state.prefs.shade == s, &label, tip(&label, &Action::SetShade(s)));
                 group |= resp.rect;
                 icon_count += 1;
@@ -1879,11 +1917,11 @@ impl App {
                 let godot_rect = self.godot_buttons(ui, size);
                 let project = match &self.state.game.project_root {
                     Some(p) => format!("{} ({})", self.state.game.name, p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
-                    None => "Open Godot Project…".into(),
+                    None => tr("Open Godot Project…").into(),
                 };
                 let button = egui::Button::image_and_text(icons::OPEN.image(icons::SMALL), RichText::new(project).color(crate::theme::colors().cyan))
                     .image_tint_follows_text_color(true);
-                let resp = ui.add(button).on_hover_text("Open a Godot project folder");
+                let resp = ui.add(button).on_hover_text(tr("Open a Godot project folder"));
                 self.toolbar_fit.project_width = (resp.rect | godot_rect).width();
                 if resp.clicked() {
                     self.actions.push(Action::OpenProject);
@@ -1901,18 +1939,23 @@ impl App {
         let s = &self.state;
         let open = s.godot_has_project();
         let (enabled, tip, action) = if s.game.project_root.is_none() {
-            (false, "Open a Godot project first".to_string(), None)
+            (false, tr("Open a Godot project first").to_string(), None)
         } else if open {
             let version = if s.link_state.godot.is_empty() { String::new() } else { format!(" {}", s.link_state.godot) };
-            (true, format!("Godot{version} has this project open, click to show it"), Some(Action::FocusGodot))
+            (true, trf!("Godot{version} has this project open, click to show it", version), Some(Action::FocusGodot))
         } else if s.godot.found() {
-            let hint = if s.link_state.outdated { "\nThe running Godot has an older addon, update it with Godot > Install or Update Addon" } else { "" };
-            (true, format!("Open Project in Godot Editor{hint}"), Some(Action::OpenGodotEditor))
+            let mut tip = tr("Open Project in Godot Editor").to_string();
+            if s.link_state.outdated {
+                tip = format!("{tip}\n{}", tr("The running Godot has an older addon, update it with Godot > Install or Update Addon"));
+            }
+
+            (true, tip, Some(Action::OpenGodotEditor))
         } else {
-            (false, commands::GODOT_NOT_FOUND.to_string(), None)
+            (false, tr(commands::GODOT_NOT_FOUND).to_string(), None)
         };
-        let tip = if enabled && s.restricted() { format!("{tip}\nThe project is in Restricted Mode, so this asks you to trust it first") } else { tip };
-        let mut image = icons::GODOT.image(size).alt_text("Open Project in Godot Editor");
+        let tip =
+            if enabled && s.restricted() { format!("{tip}\n{}", tr("The project is in Restricted Mode, so this asks you to trust it first")) } else { tip };
+        let mut image = icons::GODOT.image(size).alt_text(tr("Open Project in Godot Editor"));
         if open {
             image = image.tint(crate::theme::colors().cyan);
         }
@@ -1928,19 +1971,19 @@ impl App {
 
         let live = s.prefs.live_mode;
         let live_tip = match (live, open, s.live_active()) {
-            (true, _, true) => "Live mode on: edits reach Godot before you save. Click to turn it off",
-            (true, true, false) => "Live mode on, waiting for Godot to show a scene that uses this map",
-            (true, false, _) => "Live mode on, waiting for the Godot editor with this project",
-            (false, _, _) if !s.prefs.live_link => commands::LIVE_LINK_OFF,
-            (false, true, _) => "Live mode: send edits to Godot before saving",
-            (false, false, _) => "Live mode needs the Godot editor with this project open",
+            (true, _, true) => tr("Live mode on: edits reach Godot before you save. Click to turn it off"),
+            (true, true, false) => tr("Live mode on, waiting for Godot to show a scene that uses this map"),
+            (true, false, _) => tr("Live mode on, waiting for the Godot editor with this project"),
+            (false, _, _) if !s.prefs.live_link => tr(commands::LIVE_LINK_OFF),
+            (false, true, _) => tr("Live mode: send edits to Godot before saving"),
+            (false, false, _) => tr("Live mode needs the Godot editor with this project open"),
         };
         let live_tip = match s.godot_unresolved() {
             Some(lacking) => format!("{live_tip}\n{lacking}"),
             None => live_tip.to_string(),
         };
         let toggle =
-            ui.add_enabled_ui(live || (open && s.prefs.live_link), |ui| icons::toggle(ui, icons::LINK, size, live, "Live Mode", live_tip.as_str())).inner;
+            ui.add_enabled_ui(live || (open && s.prefs.live_link), |ui| icons::toggle(ui, icons::LINK, size, live, tr("Live Mode"), live_tip.as_str())).inner;
         let toggle = toggle.on_disabled_hover_text(live_tip.as_str());
         rect |= toggle.rect;
         if toggle.clicked() {
@@ -1948,7 +1991,7 @@ impl App {
         }
 
         if self.state.link_state.busy {
-            rect |= ui.add(egui::Spinner::new().size(size * 0.8)).on_hover_text("Godot is building").rect;
+            rect |= ui.add(egui::Spinner::new().size(size * 0.8)).on_hover_text(tr("Godot is building")).rect;
         }
 
         ui.add_space(PROJECT_BUTTON_GAP * 0.5);
@@ -1959,11 +2002,11 @@ impl App {
         ui.horizontal_wrapped(|ui| {
             let tool = self.state.tool;
             let details = |ui: &mut Ui| {
-                ui.label(panels::tool_help(tool));
-                help::hint(ui, help::F1_HINT);
+                ui.label(tr(panels::tool_help(tool)));
+                help::hint(ui, tr(help::F1_HINT));
             };
             ui.add(icons::tool(tool).image(icons::SMALL).tint(ui.visuals().strong_text_color()));
-            let name = ui.label(RichText::new(format!("{} Tool", tool.label())).strong());
+            let name = ui.label(RichText::new(trf!("{tool} Tool", tool = tr(tool.label()))).strong());
             help::register(&name, Topic::Tool(tool));
             name.on_hover_ui(details);
             ui.separator();
@@ -1971,42 +2014,42 @@ impl App {
                 ToolKind::Sculpt | ToolKind::Paint => {
                     use td_doc::terrain::SculptMode;
                     if tool == ToolKind::Sculpt {
-                        egui::ComboBox::from_id_salt("sculpt_mode").selected_text(self.state.sculpt.mode.label()).width(90.0).show_ui(ui, |ui| {
+                        egui::ComboBox::from_id_salt("sculpt_mode").selected_text(tr(self.state.sculpt.mode.label())).width(90.0).show_ui(ui, |ui| {
                             for m in SculptMode::ALL {
-                                ui.selectable_value(&mut self.state.sculpt.mode, m, m.label());
+                                ui.selectable_value(&mut self.state.sculpt.mode, m, tr(m.label()));
                             }
                         });
                         if self.state.sculpt.mode == SculptMode::PaintLayer {
-                            ui.add(egui::DragValue::new(&mut self.state.sculpt.layer).range(0..=3).prefix("layer "));
+                            ui.add(egui::DragValue::new(&mut self.state.sculpt.layer).range(0..=3).prefix(prefix(en!("layer"))));
                         }
 
                         if self.state.sculpt.mode == SculptMode::Terrace {
-                            ui.add(egui::DragValue::new(&mut self.state.sculpt.terrace_step).range(1.0..=1024.0).prefix("step ").suffix(" u"));
+                            ui.add(egui::DragValue::new(&mut self.state.sculpt.terrace_step).range(1.0..=1024.0).prefix(prefix(en!("step"))).suffix(" u"));
                         }
                     } else {
-                        ui.label("Color");
+                        ui.label(tr("Color"));
                         ui.color_edit_button_rgba_unmultiplied(&mut self.state.paint_color);
                     }
 
-                    ui.add(egui::DragValue::new(&mut self.state.sculpt.radius).range(1.0..=8192.0).prefix("radius ").suffix(" u"));
-                    ui.add(egui::DragValue::new(&mut self.state.sculpt.strength).range(0.01..=256.0).speed(0.1).prefix("strength "))
-                        .on_hover_text("How fast the brush works. Raise and Lower move 8 units a second per point");
+                    ui.add(egui::DragValue::new(&mut self.state.sculpt.radius).range(1.0..=8192.0).prefix(prefix(en!("radius"))).suffix(" u"));
+                    ui.add(egui::DragValue::new(&mut self.state.sculpt.strength).range(0.01..=256.0).speed(0.1).prefix(prefix(en!("strength"))))
+                        .on_hover_text(tr("How fast the brush works. Raise and Lower move 8 units a second per point"));
                 }
                 ToolKind::Texture => {
-                    ui.label("Justify");
+                    ui.label(tr("Justify"));
                     for j in td_geom::Justify::ALL {
-                        if ui.small_button(j.label()).on_hover_text("Justify the selected faces").clicked() {
+                        if ui.small_button(tr(j.label())).on_hover_text(tr("Justify the selected faces")).clicked() {
                             self.actions.push(Action::Justify(j));
                         }
                     }
 
-                    ui.checkbox(&mut self.state.treat_as_one, "Treat as One");
+                    ui.checkbox(&mut self.state.treat_as_one, tr("Treat as One"));
                     ui.separator();
-                    if ui.small_button("Align to View").on_hover_text("Project the selected faces along the 3D camera").clicked() {
+                    if ui.small_button(tr("Align to View")).on_hover_text(tr("Project the selected faces along the 3D camera")).clicked() {
                         self.actions.push(Action::AlignTextureToView);
                     }
 
-                    if ui.small_button("Hotspot Fit").on_hover_text("Fit to the best rectangle of <texture>.hotspots.json").clicked() {
+                    if ui.small_button(tr("Hotspot Fit")).on_hover_text(tr("Fit to the best rectangle of <texture>.hotspots.json")).clicked() {
                         self.actions.push(Action::HotspotTexture);
                     }
                 }
@@ -2014,8 +2057,8 @@ impl App {
                     let sets: Vec<(td_core::NodeId, String)> =
                         self.state.doc.map.scatters().map(|(id, s)| (id, format!("{} ({})", s.name, s.instances.len()))).collect();
                     let active = crate::scatter_tool::active_set(&self.state);
-                    let current = active.and_then(|a| sets.iter().find(|(id, _)| *id == a)).map(|(_, n)| n.clone()).unwrap_or_else(|| "none".into());
-                    ui.label("Set");
+                    let current = active.and_then(|a| sets.iter().find(|(id, _)| *id == a)).map(|(_, n)| n.clone()).unwrap_or_else(|| tr("none").into());
+                    ui.label(tr("Set"));
                     egui::ComboBox::from_id_salt("scatter_set").selected_text(current).width(140.0).show_ui(ui, |ui| {
                         for (id, name) in &sets {
                             if ui.selectable_label(active == Some(*id), name).clicked() {
@@ -2024,131 +2067,147 @@ impl App {
                         }
 
                         ui.separator();
-                        if ui.selectable_label(false, "New empty set").clicked() {
+                        if ui.selectable_label(false, tr("New empty set")).clicked() {
                             self.actions.push(Action::NewScatterSet);
                         }
                     });
                     let erase = self.state.scatter_erase;
-                    if ui.selectable_label(!erase, "Paint").clicked() {
+                    if ui.selectable_label(!erase, tr("Paint")).clicked() {
                         self.state.scatter_erase = false;
                     }
 
-                    if ui.selectable_label(erase, "Erase").clicked() {
+                    if ui.selectable_label(erase, tr("Erase")).clicked() {
                         self.state.scatter_erase = true;
                     }
 
                     let s = &mut self.state.prefs.scatter;
-                    ui.add(egui::DragValue::new(&mut s.radius).range(8.0..=16384.0).prefix("radius ").suffix(" u"));
-                    ui.add(egui::DragValue::new(&mut s.rules.density).range(0.01..=64.0).speed(0.05).prefix("density "));
-                    ui.add(egui::DragValue::new(&mut s.rules.slope[1]).range(0.0..=90.0).prefix("max slope ").suffix("°"));
+                    ui.add(egui::DragValue::new(&mut s.radius).range(8.0..=16384.0).prefix(prefix(en!("radius"))).suffix(" u"));
+                    ui.add(egui::DragValue::new(&mut s.rules.density).range(0.01..=64.0).speed(0.05).prefix(prefix(en!("density"))));
+                    ui.add(egui::DragValue::new(&mut s.rules.slope[1]).range(0.0..=90.0).prefix(prefix(en!("max slope"))).suffix("°"));
                     let mut follow = !s.rules.only_targets;
                     if ui
-                        .checkbox(&mut follow, "Follow cursor")
-                        .on_hover_text("Paint on any surface or scattered prop under the brush instead of the set's targets")
+                        .checkbox(&mut follow, tr("Follow cursor"))
+                        .on_hover_text(tr("Paint on any surface or scattered prop under the brush instead of the set's targets"))
                         .changed()
                     {
                         s.rules.only_targets = !follow;
                     }
 
                     let picking = self.state.scatter_eyedropper;
-                    if icons::toggle(ui, icons::EYEDROPPER, 16.0, picking, "Pick target", "The next click in a view adds or removes a target, like Alt+click")
-                        .clicked()
+                    if icons::toggle(
+                        ui,
+                        icons::EYEDROPPER,
+                        16.0,
+                        picking,
+                        tr("Pick target"),
+                        tr("The next click in a view adds or removes a target, like Alt+click"),
+                    )
+                    .clicked()
                     {
                         self.state.scatter_eyedropper = !picking;
                     }
 
                     ui.separator();
-                    if ui.small_button("Scatter Panel").on_hover_text("Models, targets and brush of the active set").clicked() {
+                    if ui.small_button(tr("Scatter Panel")).on_hover_text(tr("Models, targets and brush of the active set")).clicked() {
                         self.actions.push(Action::ShowScatterPanel);
                     }
 
-                    if ui.small_button("Fill").on_hover_text("Fill the set's target surfaces").clicked() {
+                    if ui.small_button(tr("Fill")).on_hover_text(tr("Fill the set's target surfaces")).clicked() {
                         self.actions.push(Action::ScatterFill);
                     }
                 }
                 ToolKind::Blend => {
                     use td_doc::blend::{BlendMode, Falloff};
                     let b = &mut self.state.blend;
-                    egui::ComboBox::from_id_salt("blend_mode").selected_text(b.mode.label()).width(80.0).show_ui(ui, |ui| {
+                    egui::ComboBox::from_id_salt("blend_mode").selected_text(tr(b.mode.label())).width(80.0).show_ui(ui, |ui| {
                         for m in BlendMode::ALL {
-                            ui.selectable_value(&mut b.mode, m, m.label());
+                            ui.selectable_value(&mut b.mode, m, tr(m.label()));
                         }
                     });
-                    egui::ComboBox::from_id_salt("blend_falloff").selected_text(b.falloff.label()).width(80.0).show_ui(ui, |ui| {
+                    egui::ComboBox::from_id_salt("blend_falloff").selected_text(tr(falloff_name(b.falloff))).width(80.0).show_ui(ui, |ui| {
                         for f in Falloff::ALL {
-                            ui.selectable_value(&mut b.falloff, f, f.label());
+                            ui.selectable_value(&mut b.falloff, f, tr(falloff_name(f)));
                         }
                     });
-                    ui.add(egui::DragValue::new(&mut b.layer).range(0..=3).prefix("layer "));
-                    ui.add(egui::DragValue::new(&mut b.radius).range(2.0..=16384.0).prefix("radius ").suffix(" u"));
-                    ui.add(egui::Slider::new(&mut b.strength, 0.01..=1.0).text("strength"));
+                    ui.add(egui::DragValue::new(&mut b.layer).range(0..=3).prefix(prefix(en!("layer"))));
+                    ui.add(egui::DragValue::new(&mut b.radius).range(2.0..=16384.0).prefix(prefix(en!("radius"))).suffix(" u"));
+                    ui.add(egui::Slider::new(&mut b.strength, 0.01..=1.0).text(tr("strength")));
                     match b.mode {
                         BlendMode::Slope => {
-                            ui.add(egui::DragValue::new(&mut b.slope[0]).range(0.0..=90.0).prefix("slope ").suffix("°"));
-                            ui.add(egui::DragValue::new(&mut b.slope[1]).range(0.0..=90.0).prefix("to ").suffix("°"));
+                            ui.add(egui::DragValue::new(&mut b.slope[0]).range(0.0..=90.0).prefix(prefix(en!("slope"))).suffix("°"));
+                            ui.add(egui::DragValue::new(&mut b.slope[1]).range(0.0..=90.0).prefix(prefix(en!("to"))).suffix("°"));
                         }
                         BlendMode::Height => {
-                            ui.add(egui::DragValue::new(&mut b.height[0]).prefix("from ").suffix(" u"));
-                            ui.add(egui::DragValue::new(&mut b.height[1]).prefix("to ").suffix(" u"));
+                            ui.add(egui::DragValue::new(&mut b.height[0]).prefix(prefix(en!("from"))).suffix(" u"));
+                            ui.add(egui::DragValue::new(&mut b.height[1]).prefix(prefix(en!("to"))).suffix(" u"));
                         }
                         BlendMode::Noise => {
-                            ui.add(egui::DragValue::new(&mut b.noise_scale).range(4.0..=16384.0).prefix("size ").suffix(" u"));
+                            ui.add(egui::DragValue::new(&mut b.noise_scale).range(4.0..=16384.0).prefix(prefix(en!("size"))).suffix(" u"));
                         }
                         _ => {}
                     }
 
                     ui.separator();
-                    if ui.small_button("Set Blend Material").on_hover_text("Use the current material as the second texture of the selected faces").clicked() {
+                    if ui
+                        .small_button(tr("Set Blend Material"))
+                        .on_hover_text(tr("Use the current material as the second texture of the selected faces"))
+                        .clicked()
+                    {
                         self.actions.push(Action::SetBlendMaterial);
                     }
 
                     let p = &mut self.state.prefs;
-                    ui.add(egui::DragValue::new(&mut p.blend_uv_scale).range(0.01..=64.0).speed(0.05).prefix("repeat "))
-                        .on_hover_text("How much more often the blend material repeats across the face");
-                    ui.add(egui::DragValue::new(&mut p.blend_detile).range(0.0..=1.0).speed(0.02).prefix("detile "))
-                        .on_hover_text("Turns and shifts every tile and blends the joins, so a path does not look repeated");
-                    ui.add(egui::DragValue::new(&mut p.blend_detile_sharpen).range(0.0..=1.0).speed(0.02).prefix("sharpen "))
-                        .on_hover_text("Keeps the de-tiled texture crisp, 0 is soft, 1 blends only at the joins");
+                    ui.add(egui::DragValue::new(&mut p.blend_uv_scale).range(0.01..=64.0).speed(0.05).prefix(prefix(en!("repeat"))))
+                        .on_hover_text(tr("How much more often the blend material repeats across the face"));
+                    ui.add(egui::DragValue::new(&mut p.blend_detile).range(0.0..=1.0).speed(0.02).prefix(prefix(en!("detile"))))
+                        .on_hover_text(tr("Turns and shifts every tile and blends the joins, so a path does not look repeated"));
+                    ui.add(egui::DragValue::new(&mut p.blend_detile_sharpen).range(0.0..=1.0).speed(0.02).prefix(prefix(en!("sharpen"))))
+                        .on_hover_text(tr("Keeps the de-tiled texture crisp, 0 is soft, 1 blends only at the joins"));
                     let (detile, uv_scale, sharpen) = (p.blend_detile, p.blend_uv_scale, p.blend_detile_sharpen);
-                    if ui.small_button("Apply Tiling").on_hover_text("Give the selected faces the repeat and de-tiling above").clicked() {
+                    if ui.small_button(tr("Apply Tiling")).on_hover_text(tr("Give the selected faces the repeat and de-tiling above")).clicked() {
                         self.actions.push(Action::SetBlendTiling { detile, uv_scale, sharpen });
                     }
                 }
                 ToolKind::Volume => {
                     let p = &mut self.state.prefs;
-                    ui.label("Class");
+                    ui.label(tr("Class"));
                     egui::ComboBox::from_id_salt("volume_class").selected_text(p.volume_class.clone()).width(140.0).show_ui(ui, |ui| {
                         for class in crate::volume_tool::VOLUME_CLASSES {
                             ui.selectable_value(&mut p.volume_class, class.to_string(), class);
                         }
                     });
-                    ui.add(egui::DragValue::new(&mut p.volume_height).range(1.0..=8192.0).prefix("height ").suffix(" u"));
+                    ui.add(egui::DragValue::new(&mut p.volume_height).range(1.0..=8192.0).prefix(prefix(en!("height"))).suffix(" u"));
                 }
                 ToolKind::Mesh => {
                     use crate::mesh_tool::Component;
                     for c in [Component::Vertex, Component::Edge, Component::Face] {
-                        if ui.selectable_label(self.tools.mesh.component == c, capitalize(c.label())).clicked() {
+                        let name = match c {
+                            Component::Vertex => tr("Vertex"),
+                            Component::Edge => tr("Edge"),
+                            Component::Face => tr("Face"),
+                        };
+                        if ui.selectable_label(self.tools.mesh.component == c, name).clicked() {
                             self.tools.mesh.component = c;
                         }
                     }
 
                     ui.separator();
                     for (label, op) in [
-                        ("Subdivide", MeshOp::Subdivide),
-                        ("Merge", MeshOp::MergeCenter),
-                        ("Fill", MeshOp::Fill),
-                        ("Delete", MeshOp::Delete),
-                        ("Smooth", MeshOp::ShadeSmooth),
-                        ("Flat", MeshOp::ShadeFlat),
+                        (en!("Subdivide"), MeshOp::Subdivide),
+                        (en!("Merge"), MeshOp::MergeCenter),
+                        (en!("Fill"), MeshOp::Fill),
+                        (en!("Delete"), MeshOp::Delete),
+                        (en!("Smooth"), MeshOp::ShadeSmooth),
+                        (en!("Flat"), MeshOp::ShadeFlat),
                     ] {
-                        if ui.small_button(label).on_hover_text(op.label()).clicked() {
+                        if ui.small_button(tr(label)).on_hover_text(tr(op.label())).clicked() {
                             self.actions.push(Action::MeshOp(op));
                         }
                     }
                 }
                 _ => {
                     if self.state.prefs.help_text {
-                        let line = ui.label(RichText::new(help::tool_line(tool)).weak());
+                        let line = ui.label(RichText::new(tr(help::tool_line(tool))).weak());
                         help::register(&line, Topic::Tool(tool));
                         line.on_hover_ui(details);
                     }
@@ -2169,7 +2228,7 @@ impl App {
                     self.state.switch_tab(i);
                 }
 
-                if ui.small_button("×").on_hover_text(format!("Close {title}")).clicked() {
+                if ui.small_button("×").on_hover_text(trf!("Close {title}", title)).clicked() {
                     self.state.switch_tab(i);
                     self.actions.push(Action::CloseTab);
                 }
@@ -2177,7 +2236,7 @@ impl App {
                 ui.add_space(6.0);
             }
 
-            if ui.small_button("+").on_hover_text("New tab").clicked() {
+            if ui.small_button("+").on_hover_text(tr("New tab")).clicked() {
                 self.actions.push(Action::NewTab);
             }
         });
@@ -2199,19 +2258,19 @@ impl App {
                 ui.separator();
                 let sel = &s.doc.selection;
                 if sel.has_faces() {
-                    ui.label(format!("{} faces selected", sel.faces.len()));
+                    ui.label(tr_n!(sel.faces.len(), "{n} face selected", "{n} faces selected"));
                 } else if !sel.nodes.is_empty() {
-                    ui.label(format!("{} selected", sel.nodes.len()));
+                    ui.label(trf!("{n} selected", n = sel.nodes.len()));
                 }
 
                 if s.doc.map.editor.cordon_enabled {
                     ui.separator();
-                    ui.label(RichText::new("cordon").color(crate::theme::colors().yellow));
+                    ui.label(RichText::new(tr("cordon")).color(crate::theme::colors().yellow));
                 }
 
                 if !s.open_groups.is_empty() {
                     ui.separator();
-                    ui.label(RichText::new(format!("{} open groups", s.open_groups.len())).color(crate::theme::colors().cyan));
+                    ui.label(RichText::new(tr_n!(s.open_groups.len(), "{n} open group", "{n} open groups")).color(crate::theme::colors().cyan));
                 }
 
                 if let Some((text, tip)) = crate::addon_wizard::status_warning(s) {
@@ -2279,13 +2338,13 @@ impl App {
         use crate::state::UiTheme;
         let p = &mut self.state.prefs;
         let selected = match p.theme {
-            UiTheme::System => format!("System ({})", if ui.visuals().dark_mode { "Dark" } else { "Light" }),
-            theme => theme.label().to_string(),
+            UiTheme::System => trf!("System ({mode})", mode = if ui.visuals().dark_mode { tr("Dark") } else { tr("Light") }),
+            theme => tr(theme.label()).to_string(),
         };
-        ui.label("Theme");
+        ui.label(tr("Theme"));
         let combo = egui::ComboBox::from_id_salt("prefs_theme").selected_text(selected).show_ui(ui, |ui| {
             for theme in UiTheme::ALL {
-                let item = ui.selectable_value(&mut p.theme, theme, theme.label());
+                let item = ui.selectable_value(&mut p.theme, theme, tr(theme.label()));
                 let name = match theme {
                     UiTheme::Dark => "theme_dark",
                     UiTheme::Light => "theme_light",
@@ -2295,7 +2354,7 @@ impl App {
             }
         });
         self.mcp_pref_rects.push(("theme", combo.response.rect));
-        combo.response.on_hover_text("Dark or light interface. System follows the operating system and changes with it. The 3D view stays dark either way");
+        combo.response.on_hover_text(tr("Dark or light interface. System follows the operating system and changes with it. The 3D view stays dark either way"));
         ui.end_row();
     }
 
@@ -2304,7 +2363,7 @@ impl App {
         language_pref(ui, &mut self.state.prefs);
         let native = ui.ctx().native_pixels_per_point().unwrap_or(1.0);
         let p = &mut self.state.prefs;
-        ui.label("Interface scale");
+        ui.label(tr("Interface scale"));
         ui.horizontal(|ui| {
             let mut value = self.ui_scale_draft.unwrap_or(p.ui_scale);
             let slider = egui::Slider::new(&mut value, crate::state::UI_SCALE_MIN..=crate::state::UI_SCALE_MAX)
@@ -2322,16 +2381,16 @@ impl App {
                 self.ui_scale_draft = None;
             }
 
-            if ui.button("Reset").clicked() {
+            if ui.button(tr("Reset")).clicked() {
                 p.ui_scale = 1.0;
                 p.follow_display_scaling = true;
             }
         });
         ui.end_row();
-        ui.label("Display scaling");
+        ui.label(tr("Display scaling"));
         let mut follow = p.follow_display_scaling;
-        ui.checkbox(&mut follow, format!("follow the monitor ({:.0}%)", native * 100.0))
-            .on_hover_text("When off, the interface scale is exact pixels per point, for monitors that report the wrong scaling");
+        ui.checkbox(&mut follow, trf!("follow the monitor ({percent}%)", percent = format!("{:.0}", native * 100.0)))
+            .on_hover_text(tr("When off, the interface scale is exact pixels per point, for monitors that report the wrong scaling"));
         p.set_follow_display_scaling(follow, native);
         ui.end_row();
     }
@@ -2339,35 +2398,35 @@ impl App {
     fn prefs_window(&mut self, ctx: &egui::Context) {
         self.mcp_pref_rects.clear();
         let mut open = self.show_prefs;
-        egui::Window::new("Preferences").open(&mut open).resizable(false).show(ctx, |ui| {
+        crate::widgets::window(en!("Preferences")).open(&mut open).resizable(false).show(ctx, |ui| {
             egui::Grid::new("prefs_ui").num_columns(2).min_col_width(PREFS_LABEL_WIDTH).show(ui, |ui| self.ui_scale_prefs(ui));
             ui.separator();
             let p = &mut self.state.prefs;
             egui::Grid::new("prefs").num_columns(2).min_col_width(PREFS_LABEL_WIDTH).show(ui, |ui| {
-                ui.label("Fly speed");
+                ui.label(tr("Fly speed"));
                 ui.add(egui::Slider::new(&mut p.fly_speed, 64.0..=8192.0).logarithmic(true));
                 ui.end_row();
-                ui.label("Look sensitivity");
+                ui.label(tr("Look sensitivity"));
                 ui.add(egui::Slider::new(&mut p.look_sensitivity, 0.001..=0.02));
                 ui.end_row();
-                ui.label("Invert look Y");
+                ui.label(tr("Invert look Y"));
                 ui.checkbox(&mut p.invert_y, "");
                 ui.end_row();
-                ui.label("Tips on an empty map");
+                ui.label(tr("Tips on an empty map"));
                 ui.checkbox(&mut p.start_hints, "");
                 ui.end_row();
-                ui.label("Help text");
-                ui.checkbox(&mut p.help_text, "").on_hover_text("Short guidance lines in the tool options bar and the panels");
+                ui.label(tr("Help text"));
+                ui.checkbox(&mut p.help_text, "").on_hover_text(tr("Short guidance lines in the tool options bar and the panels"));
                 ui.end_row();
-                ui.label("Grid opacity (3D)");
+                ui.label(tr("Grid opacity (3D)"));
                 ui.add(egui::Slider::new(&mut p.grid_alpha, 0.0..=1.0));
                 ui.end_row();
-                ui.label("Texture filtering");
+                ui.label(tr("Texture filtering"));
                 let before = p.texture_filter;
-                egui::ComboBox::from_id_salt("prefs_filter").selected_text(p.texture_filter.label()).show_ui(ui, |ui| {
+                egui::ComboBox::from_id_salt("prefs_filter").selected_text(tr(p.texture_filter.label())).show_ui(ui, |ui| {
                     use crate::state::TextureFilter;
                     for filter in [TextureFilter::Auto, TextureFilter::Nearest, TextureFilter::Linear] {
-                        ui.selectable_value(&mut p.texture_filter, filter, filter.label());
+                        ui.selectable_value(&mut p.texture_filter, filter, tr(filter.label()));
                     }
                 });
                 if p.texture_filter != before {
@@ -2375,10 +2434,10 @@ impl App {
                 }
 
                 ui.end_row();
-                ui.label("Godot executable");
+                ui.label(tr("Godot executable"));
                 ui.horizontal(|ui| {
                     let mut text = p.godot_path.to_string_lossy().into_owned();
-                    if ui.add(egui::TextEdit::singleline(&mut text).hint_text("auto (GODOT env or PATH)").desired_width(220.0)).changed() {
+                    if ui.add(egui::TextEdit::singleline(&mut text).hint_text(tr("auto (GODOT env or PATH)")).desired_width(220.0)).changed() {
                         p.godot_path = std::path::PathBuf::from(text);
                     }
 
@@ -2391,33 +2450,33 @@ impl App {
                 ui.end_row();
                 ui.label("");
                 match &self.state.godot.exe {
-                    Some(exe) => ui.label(RichText::new(format!("Using {}", exe.display())).weak()),
+                    Some(exe) => ui.label(RichText::new(trf!("Using {path}", path = exe.display())).weak()),
                     None => {
-                        ui.label(RichText::new("Not found, Run Project and Open Project in Godot Editor are disabled").color(crate::theme::colors().yellow))
+                        ui.label(RichText::new(tr("Not found, Run Project and Open Project in Godot Editor are disabled")).color(crate::theme::colors().yellow))
                     }
                 };
                 ui.end_row();
-                ui.label("Autosave (minutes, 0 = off)");
+                ui.label(tr("Autosave (minutes, 0 = off)"));
                 ui.add(egui::DragValue::new(&mut p.autosave_minutes).range(0.0..=60.0));
                 ui.end_row();
-                ui.label("Godot live link");
+                ui.label(tr("Godot live link"));
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut p.live_link, "rebuild maps in Godot on save");
+                    ui.checkbox(&mut p.live_link, tr("rebuild maps in Godot on save"));
                     ui.add(egui::DragValue::new(&mut p.live_link_port).range(1024..=65535));
                 });
                 ui.end_row();
-                ui.label("Godot live mode");
-                ui.add_enabled_ui(p.live_link, |ui| ui.checkbox(&mut p.live_mode, "push edits to Godot before saving"))
+                ui.label(tr("Godot live mode"));
+                ui.add_enabled_ui(p.live_link, |ui| ui.checkbox(&mut p.live_mode, tr("push edits to Godot before saving")))
                     .response
-                    .on_hover_text("Edits appear right away in a Godot scene that uses the map. Saving still rebuilds it fully");
+                    .on_hover_text(tr("Edits appear right away in a Godot scene that uses the map. Saving still rebuilds it fully"));
                 ui.end_row();
-                ui.label("Running game hot reload");
+                ui.label(tr("Running game hot reload"));
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut p.hot_reload, "reload maps in a running game");
+                    ui.checkbox(&mut p.hot_reload, tr("reload maps in a running game"));
                     ui.add(egui::DragValue::new(&mut p.hot_reload_port).range(1024..=65535));
                 });
                 ui.end_row();
-                ui.label("Keymap preset");
+                ui.label(tr("Keymap preset"));
                 egui::ComboBox::from_id_salt("prefs_keymap").selected_text(commands::preset_label(&p.keymap_preset)).show_ui(ui, |ui| {
                     for preset in commands::PRESETS {
                         ui.selectable_value(&mut p.keymap_preset, preset.to_string(), commands::preset_label(preset));
@@ -2426,8 +2485,8 @@ impl App {
                 ui.end_row();
             });
             ui.separator();
-            let advanced = crate::widgets::collapsing("Advanced").default_open(false).show(ui, |ui| {
-                ui.label("For scripts and AI tools that drive the editor over MCP. Off by default.");
+            let advanced = crate::widgets::collapsing(tr("Advanced")).id_salt("Advanced").default_open(false).show(ui, |ui| {
+                ui.label(tr("For scripts and AI tools that drive the editor over MCP. Off by default."));
                 self.mcp_prefs(ui);
             });
             self.mcp_pref_rects.push(("advanced", advanced.header_response.rect));
@@ -2443,15 +2502,16 @@ impl App {
         let mut switched = false;
         let mut token_changed = false;
         egui::Grid::new("prefs_mcp").num_columns(2).min_col_width(PREFS_LABEL_WIDTH).show(ui, |ui| {
-            ui.label("MCP");
-            let text = "let agents and scripts drive the editor";
+            ui.label(tr("MCP"));
+            let text = tr("let agents and scripts drive the editor");
             let response = if self.mcp_env_off {
                 let mut on = false;
-                ui.add_enabled(false, egui::Checkbox::new(&mut on, text)).on_disabled_hover_text(format!("Turned off for this run by {}", switch::DISABLE_ENV))
+                ui.add_enabled(false, egui::Checkbox::new(&mut on, text))
+                    .on_disabled_hover_text(trf!("Turned off for this run by {name}", name = switch::DISABLE_ENV))
             } else {
                 let response = ui
                     .checkbox(&mut p.mcp_enabled, text)
-                    .on_hover_text("Off closes the MCP servers at once, and agents and scripts get an error until you turn it back on");
+                    .on_hover_text(tr("Off closes the MCP servers at once, and agents and scripts get an error until you turn it back on"));
                 switched = response.changed();
                 response
             };
@@ -2461,22 +2521,22 @@ impl App {
                 ui.disable();
             }
 
-            ui.label("MCP server (HTTP, localhost)");
+            ui.label(tr("MCP server (HTTP, localhost)"));
             ui.horizontal(|ui| {
-                ui.checkbox(&mut p.mcp_http, "enable on startup");
+                ui.checkbox(&mut p.mcp_http, tr("enable on startup"));
                 ui.add(egui::DragValue::new(&mut p.mcp_port).range(1024..=65535));
             });
             ui.end_row();
-            ui.label("Require a token");
+            ui.label(tr("Require a token"));
             let response = match self.mcp_tokens.given() {
                 Some(given) => {
                     let mut on = true;
-                    ui.add_enabled(false, egui::Checkbox::without_text(&mut on)).on_disabled_hover_text(format!("Set for this run by {}", given.name()))
+                    ui.add_enabled(false, egui::Checkbox::without_text(&mut on)).on_disabled_hover_text(trf!("Set for this run by {name}", name = given.name()))
                 }
                 None => {
                     let response = ui
                         .checkbox(&mut p.mcp_require_token, "")
-                        .on_hover_text("MCP HTTP clients must send the token below. Without it, any program on this computer can connect");
+                        .on_hover_text(tr("MCP HTTP clients must send the token below. Without it, any program on this computer can connect"));
                     token_changed = response.changed();
                     response
                 }
@@ -2493,7 +2553,7 @@ impl App {
         }
 
         if self.mcp_env_off || !self.state.prefs.mcp_enabled {
-            ui.add_enabled(false, egui::Label::new("MCP is off, agents and scripts cannot reach the editor."));
+            ui.add_enabled(false, egui::Label::new(tr("MCP is off, agents and scripts cannot reach the editor.")));
             return;
         }
 
@@ -2501,23 +2561,24 @@ impl App {
             Some(server) => {
                 let addr = server.addr();
                 let url = format!("http://{addr}/mcp");
-                let (note, command) = match server.token() {
-                    Some(token) => {
-                        (", clients must send its token", format!("claude mcp add --transport http trenchdot {url} --header \"Authorization: Bearer {token}\""))
-                    }
-                    None => ("", format!("claude mcp add --transport http trenchdot {url}")),
+                let (running, command) = match server.token() {
+                    Some(token) => (
+                        trf!("MCP running at {url}, clients must send its token", url),
+                        format!("claude mcp add --transport http trenchdot {url} --header \"Authorization: Bearer {token}\""),
+                    ),
+                    None => (trf!("MCP running at {url}", url), format!("claude mcp add --transport http trenchdot {url}")),
                 };
                 ui.horizontal(|ui| {
-                    ui.label(format!("MCP running at {url}{note}"));
-                    if ui.button("Copy command").on_hover_text("Copies the command that connects Claude Code").clicked() {
+                    ui.label(running);
+                    if ui.button(tr("Copy command")).on_hover_text(tr("Copies the command that connects Claude Code")).clicked() {
                         ui.ctx().copy_text(command.clone());
-                        self.state.set_status("Copied to the clipboard");
+                        self.state.set_status(msg!("Copied to the clipboard"));
                     }
                 });
                 ui.code(command);
             }
             None => {
-                ui.label("MCP HTTP server is not running. Enable it and restart, or launch with --mcp-http.");
+                ui.label(tr("MCP HTTP server is not running. Enable it and restart, or launch with --mcp-http."));
             }
         }
     }
@@ -2542,17 +2603,17 @@ impl App {
                 }
 
                 self.refuse_mcp_calls(&by.refusal());
-                self.state.set_status("MCP is off, agents and scripts cannot reach the editor");
+                self.state.set_status(msg!("MCP is off, agents and scripts cannot reach the editor"));
             }
             None => match self.mcp_http_port.filter(|_| self.mcp_http.is_none()) {
                 Some(port) => match start_mcp_http(port, &mut self.mcp_tokens, self.state.prefs.mcp_require_token, host) {
                     Ok(server) => {
-                        self.state.set_status(format!("MCP is on, the server listens on http://{}/mcp", server.addr()));
+                        self.state.set_status(msg!("MCP is on, the server listens on http://{addr}/mcp", addr = server.addr()));
                         self.mcp_http = Some(server);
                     }
                     Err(e) => self.state.fail_status(e),
                 },
-                None => self.state.set_status("MCP is on"),
+                None => self.state.set_status(msg!("MCP is on")),
             },
         }
     }
@@ -2566,14 +2627,14 @@ impl App {
             Err(e) => {
                 self.state.prefs.mcp_require_token = false;
                 let _ = self.mcp_saved.set(token::REQUIRE_FILE, false);
-                self.state.fail_status(format!("Could not make an MCP token: {e}"));
+                self.state.fail_status(msg!("Could not make an MCP token: {e}", e));
             }
         }
     }
 
     pub(crate) fn save_mcp_setting(&mut self, name: &str, on: bool) {
         if let Err(e) = self.mcp_saved.set(name, on) {
-            self.state.fail_status(format!("Could not save the MCP setting in {name}: {e}"));
+            self.state.fail_status(msg!("Could not save the MCP setting in {name}: {e}", name, e));
         }
     }
 
@@ -2597,26 +2658,26 @@ impl App {
         }
 
         let modal = egui::Modal::new(egui::Id::new("confirm_close")).show(ctx, |ui| {
-            ui.heading("Unsaved changes");
-            ui.label(if modified.len() == 1 { "This map has unsaved changes:" } else { "These maps have unsaved changes:" });
+            ui.heading(tr("Unsaved changes"));
+            ui.label(if modified.len() == 1 { tr("This map has unsaved changes:") } else { tr("These maps have unsaved changes:") });
             for i in &modified {
                 ui.label(RichText::new(self.state.tab_doc(*i).title()).strong());
             }
 
             ui.horizontal(|ui| {
-                let save = if modified.len() == 1 { "Save" } else { "Save All" };
+                let save = if modified.len() == 1 { tr("Save") } else { tr("Save All") };
                 if ui.button(save).clicked() {
                     if commands::save_all(&mut self.state, ctx) {
                         self.allow_close = true;
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     } else {
-                        self.state.set_status("Not every map was saved, quitting was cancelled");
+                        self.state.set_status(msg!("Not every map was saved, quitting was cancelled"));
                     }
 
                     self.confirm_close = false;
                 }
 
-                let discard = if modified.len() == 1 { "Discard" } else { "Discard All" };
+                let discard = if modified.len() == 1 { tr("Discard") } else { tr("Discard All") };
                 if ui.button(discard).clicked() {
                     self.state.revert_all_live_changes();
                     self.allow_close = true;
@@ -2624,7 +2685,7 @@ impl App {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
 
-                if ui.button("Cancel").clicked() {
+                if ui.button(tr("Cancel")).clicked() {
                     self.confirm_close = false;
                 }
             });
@@ -2645,10 +2706,10 @@ impl App {
         }
 
         let modal = egui::Modal::new(egui::Id::new("confirm_tab_close")).show(ctx, |ui| {
-            ui.heading("Unsaved changes");
-            ui.label(format!("Save changes to {} before closing its tab?", self.state.doc.title()));
+            ui.heading(tr("Unsaved changes"));
+            ui.label(trf!("Save changes to {title} before closing its tab?", title = self.state.doc.title()));
             ui.horizontal(|ui| {
-                if ui.button("Save").clicked() {
+                if ui.button(tr("Save")).clicked() {
                     commands::execute(&mut self.state, Action::Save, ctx);
                     if !self.state.doc.is_modified() {
                         commands::execute(&mut self.state, Action::CloseTab, ctx);
@@ -2657,12 +2718,12 @@ impl App {
                     self.confirm_tab_close = false;
                 }
 
-                if ui.button("Discard").clicked() {
+                if ui.button(tr("Discard")).clicked() {
                     self.state.discard_tab();
                     self.confirm_tab_close = false;
                 }
 
-                if ui.button("Cancel").clicked() {
+                if ui.button(tr("Cancel")).clicked() {
                     self.confirm_tab_close = false;
                 }
             });
@@ -2708,8 +2769,8 @@ impl TabViewer for Tabs<'_> {
 
     fn title(&mut self, tab: &mut Tab) -> egui::WidgetText {
         match tab {
-            Tab::View(i) => self.viewports.get(*i).map(|v| v.kind().label()).unwrap_or("View").into(),
-            other => tab_title(*other).into(),
+            Tab::View(i) => self.viewports.get(*i).map(|v| tr(v.kind().label())).unwrap_or(tr("View")).into(),
+            other => tr(tab_title(*other)).into(),
         }
     }
 
@@ -2720,13 +2781,13 @@ impl TabViewer for Tabs<'_> {
         } else if let Tab::View(i) = tab
             && let Some(vp) = self.viewports.get(*i)
         {
-            (if vp.kind().is_2d() { crate::welcome::CAMERA_2D_HELP } else { crate::welcome::CAMERA_3D_HELP }).to_string()
+            tr(if vp.kind().is_2d() { crate::welcome::CAMERA_2D_HELP } else { crate::welcome::CAMERA_3D_HELP }).to_string()
         } else {
             return;
         };
         response.clone().on_hover_ui(|ui| {
             ui.label(text);
-            help::hint(ui, help::F1_HINT);
+            help::hint(ui, tr(help::F1_HINT));
         });
     }
 
@@ -3327,17 +3388,41 @@ mod tests {
     }
 
     #[test]
-    fn tool_and_dock_help_stay_short() {
-        const LIMIT: usize = 140;
-        for (tool, help) in crate::panels::TOOL_HELP {
-            assert!(help.chars().count() < LIMIT, "{tool}: {} characters", help.chars().count());
+    fn outliner_tooltip_names_the_rename_key_in_every_language() {
+        use crate::i18n::{Lang, scope, tr};
+        let ctx = egui::Context::default();
+        let mut prefs = Prefs::default();
+        let key = commands::shortcut_text(&ctx, &prefs, &Action::Rename).unwrap();
+        for lang in Lang::ALL {
+            let _scope = scope(lang);
+            let tip = Panel::Outliner.tooltip(&ctx, &prefs);
+            assert!(tip.contains(&key), "{}: {tip}", lang.code());
+            assert!(tip.contains(tr(Panel::Outliner.help())), "{}: the panel's own sentence comes first", lang.code());
+            assert_eq!(Panel::History.tooltip(&ctx, &prefs), tr(Panel::History.help()));
         }
 
+        prefs.key_overrides.insert(Action::Rename.binding_id(), String::new());
+        let _de = scope(Lang::De);
+        assert_eq!(Panel::Outliner.tooltip(&ctx, &prefs), tr(Panel::Outliner.help()), "no key once it is unbound");
+    }
+
+    #[test]
+    fn tool_and_dock_help_stay_short() {
+        use crate::i18n::{Lang, scope, tr};
         let ctx = egui::Context::default();
         let prefs = Prefs::default();
-        for panel in Panel::ALL {
-            let tip = panel.tooltip(&ctx, &prefs);
-            assert!(tip.chars().count() < LIMIT, "{panel:?}: {} characters", tip.chars().count());
+        for lang in Lang::ALL {
+            let _scope = scope(lang);
+            let limit = if matches!(lang, Lang::ZhHans | Lang::Ja) { 84 } else { 140 };
+            for (tool, help) in crate::panels::TOOL_HELP {
+                let shown = tr(help);
+                assert!(shown.chars().count() < limit, "{} {tool}: {} characters", lang.code(), shown.chars().count());
+            }
+
+            for panel in Panel::ALL {
+                let tip = panel.tooltip(&ctx, &prefs);
+                assert!(tip.chars().count() < limit, "{} {panel:?}: {} characters", lang.code(), tip.chars().count());
+            }
         }
     }
 
@@ -3418,9 +3503,16 @@ mod tests {
     }
 
     #[test]
-    fn capitalizes_labels() {
-        assert_eq!(capitalize("wireframe"), "Wireframe");
-        assert_eq!(capitalize(""), "");
+    fn russian_status_bar_counts_take_the_form_of_their_number() {
+        let _ru = crate::i18n::scope(crate::i18n::Lang::Ru);
+        let counts = |brushes| stats_text(&crate::scene::SceneStats { brushes, ..Default::default() });
+        let forms: Vec<String> = [1, 3, 5, 21, 11].into_iter().map(counts).collect();
+        let word = |text: &String| text.split_once(' ').map(|(_, w)| w.to_string()).unwrap();
+        assert_ne!(word(&forms[0]), word(&forms[1]), "one and few differ");
+        assert_ne!(word(&forms[1]), word(&forms[2]), "few and many differ");
+        assert_eq!(word(&forms[0]), word(&forms[3]), "21 takes the form of 1");
+        assert_eq!(word(&forms[2]), word(&forms[4]), "11 takes the form of 5");
+        assert!(forms[0].starts_with("1 ") && forms[1].starts_with("3 ") && forms[2].starts_with("5 "));
     }
 
     /// A floating window with a number field and a drop down, driven through egui's real input handling.
@@ -3538,7 +3630,7 @@ mod tests {
             ctx.begin_pass(egui::RawInput { events, time: Some(time), screen_rect: Some(screen), ..Default::default() });
             let scope = key_scope(&ctx, had_focus, false, |_| false);
             let area = egui::Area::new(egui::Id::new("bar")).order(egui::Order::Background).fixed_pos([100.0, 20.0]);
-            let field = area.show(&ctx, |ui| ui.add(egui::DragValue::new(&mut value).prefix("radius ")).rect).inner;
+            let field = area.show(&ctx, |ui| ui.add(egui::DragValue::new(&mut value).prefix(prefix(en!("radius")))).rect).inner;
             had_focus = ctx.egui_wants_keyboard_input();
             ctx.end_pass().drop_without_applying_deltas();
             (scope, field.center())

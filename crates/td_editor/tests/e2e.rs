@@ -3514,7 +3514,8 @@ fn the_palette_switches_the_language_and_english_comes_back() {
         );
         std::thread::sleep(Duration::from_millis(500));
     };
-    let body = |img: &image::RgbaImage| image::imageops::crop_imm(img, 0, 0, img.width(), img.height() - 40).to_image();
+    // The Preferences window keeps the width a longer language gave it, so only its left part is compared.
+    let body = |img: &image::RgbaImage| image::imageops::crop_imm(img, 0, 56, 590, 680).to_image();
     let window = |label: &str| body(&shot(&ed, json!({ "target": "window" }), label));
     let english = window("english");
 
@@ -3540,7 +3541,8 @@ fn the_palette_switches_the_language_and_english_comes_back() {
 fn language_switches_without_a_restart() {
     let ed = Editor::launch("language_switch");
     let language = || ed.state()["ui"]["language"].as_str().unwrap().to_string();
-    let body = |img: &image::RgbaImage| image::imageops::crop_imm(img, 0, 0, img.width(), img.height() - 40).to_image();
+    // The Preferences window keeps the width a longer language gave it, so only its left part is compared.
+    let body = |img: &image::RgbaImage| image::imageops::crop_imm(img, 0, 56, 590, 680).to_image();
     let window = |label: &str| body(&shot(&ed, json!({ "target": "window" }), label));
     assert_eq!(language(), "en");
     open_preferences(&ed);

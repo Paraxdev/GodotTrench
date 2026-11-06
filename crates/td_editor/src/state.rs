@@ -86,9 +86,9 @@ pub enum TextureFilter {
 impl TextureFilter {
     pub fn label(&self) -> &'static str {
         match self {
-            TextureFilter::Auto => "Auto (Godot material)",
-            TextureFilter::Nearest => "Nearest (pixel art)",
-            TextureFilter::Linear => "Linear",
+            TextureFilter::Auto => en!("Auto (Godot material)"),
+            TextureFilter::Nearest => en!("Nearest (pixel art)"),
+            TextureFilter::Linear => en!("Linear"),
         }
     }
 }

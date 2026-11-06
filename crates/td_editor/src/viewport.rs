@@ -1056,8 +1056,12 @@ impl Viewport {
             && cx.state.prefs.start_hints
             && !crate::welcome::map_is_empty(&cx.state.doc.map)
         {
-            let hint =
-                painter.layout(crate::welcome::CAMERA_3D_HELP.into(), FontId::proportional(12.0), label_color.gamma_multiply(0.6), self.rect.width() - 16.0);
+            let hint = painter.layout(
+                crate::i18n::tr(crate::welcome::CAMERA_3D_HELP).into(),
+                FontId::proportional(12.0),
+                label_color.gamma_multiply(0.6),
+                self.rect.width() - 16.0,
+            );
             painter.galley(label.left_bottom() + Vec2::new(0.0, 4.0), hint, label_color);
         }
 

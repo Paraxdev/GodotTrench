@@ -2521,6 +2521,9 @@ fn unsaved_in_godot(state: &mut EditorState) {
 }
 
 pub const GODOT_NOT_FOUND: &str = en!("Godot was not found, set the Godot executable in Preferences or the GODOT environment variable");
+pub const GODOT_NOT_FOUND_AT_START: &str = en!(
+    "Godot was not found, set the Godot executable in Preferences or the GODOT environment variable. Run Project and Open in Godot stay disabled until then"
+);
 pub const LIVE_LINK_OFF: &str = en!("Live mode needs the Godot live link, turn it on in Preferences first");
 
 fn toggle_walkable(state: &mut EditorState) {

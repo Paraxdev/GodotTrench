@@ -5,9 +5,9 @@ use super::catalogue::{self, Catalogue, Entry};
 use super::*;
 
 const DE: &str = r#"{ "Open": "Öffnen", "Open#verb": "Aufmachen", "Deleted {n} objects in {layer}": "{layer}: {n} Objekte gelöscht",
-    "{n} brush": { "one": "ein Brush", "other": "{n} Brushes" } }"#;
+    "{n} widget": { "one": "ein Brush", "other": "{n} Brushes" } }"#;
 const FR: &str = r#"{ "Save": "Enregistrer" }"#;
-const RU: &str = r#"{ "{n} brush": { "one": "{n} браш", "few": "{n} браша", "many": "{n} брашей" } }"#;
+const RU: &str = r#"{ "{n} widget": { "one": "{n} браш", "few": "{n} браша", "many": "{n} брашей" } }"#;
 
 #[test]
 fn lookup_falls_back_to_english_per_key() {
@@ -49,7 +49,7 @@ fn a_second_language_leaks_nothing_from_the_first() {
     assert_eq!((tr("Open"), tr("Save")), ("Öffnen", "Save"));
     set(Lang::Fr);
     assert_eq!((tr("Open"), tr("Save")), ("Open", "Enregistrer"));
-    assert_eq!(tr_n!(3, "{n} brush", "{n} brushes"), "3 brushes", "fr has no plural of its own");
+    assert_eq!(tr_n!(3, "{n} widget", "{n} widgets"), "3 widgets", "fr has no plural of its own");
 }
 
 #[test]
@@ -110,13 +110,13 @@ fn plural_forms_by_cldr_rules() {
     let _de = test_catalogue(Lang::De, DE);
     let shown = |lang| {
         let _s = scope(lang);
-        [0u32, 1, 3, 5, 21, 111].map(|n| tr_n!(n, "{n} brush", "{n} brushes"))
+        [0u32, 1, 3, 5, 21, 111].map(|n| tr_n!(n, "{n} widget", "{n} widgets"))
     };
-    assert_eq!(shown(Lang::En), ["0 brushes", "1 brush", "3 brushes", "5 brushes", "21 brushes", "111 brushes"]);
+    assert_eq!(shown(Lang::En), ["0 widgets", "1 widget", "3 widgets", "5 widgets", "21 widgets", "111 widgets"]);
     assert_eq!(shown(Lang::Ru), ["0 брашей", "1 браш", "3 браша", "5 брашей", "21 браш", "111 брашей"]);
     assert_eq!(shown(Lang::De), ["0 Brushes", "ein Brush", "3 Brushes", "5 Brushes", "21 Brushes", "111 Brushes"]);
-    assert_eq!(shown(Lang::Ja), ["0 brushes", "1 brush", "3 brushes", "5 brushes", "21 brushes", "111 brushes"]);
-    assert_eq!(tr_n!(-1i64, "{n} brush", "{n} brushes"), "-1 brushes", "a negative count takes the other form");
+    assert_eq!(shown(Lang::Ja), ["0 widgets", "1 widget", "3 widgets", "5 widgets", "21 widgets", "111 widgets"]);
+    assert_eq!(tr_n!(-1i64, "{n} widget", "{n} widgets"), "-1 widgets", "a negative count takes the other form");
 }
 
 #[test]
@@ -150,10 +150,10 @@ fn trf_and_msg_fill_the_same_values_once() {
     assert_eq!(trf!("Open"), "Öffnen");
     assert_eq!(msg!("Save"), Msg { en: "Save".into(), shown: "Save".into() });
 
-    let m = msg_n!(count(), "{n} brush", "{n} brushes");
-    assert_eq!(m, Msg { en: "7 brushes".into(), shown: "7 Brushes".into() });
-    let m = msg_n!(1usize, "{n} brush", "{n} brushes");
-    assert_eq!(m, Msg { en: "1 brush".into(), shown: "ein Brush".into() });
+    let m = msg_n!(count(), "{n} widget", "{n} widgets");
+    assert_eq!(m, Msg { en: "7 widgets".into(), shown: "7 Brushes".into() });
+    let m = msg_n!(1usize, "{n} widget", "{n} widgets");
+    assert_eq!(m, Msg { en: "1 widget".into(), shown: "ein Brush".into() });
     assert_eq!(calls.get(), 2);
     assert_eq!(Msg::from("x"), Msg { en: "x".into(), shown: "x".into() });
     assert_eq!(Msg::from(&layer), Msg { en: "Walls".into(), shown: "Walls".into() });
@@ -193,7 +193,7 @@ fn context_suffix() {
 #[test]
 fn the_loader_rejects_broken_files() {
     let ok = catalogue::parse(Lang::Ru, RU).unwrap();
-    let Some(Entry::Plural(forms)) = ok.get("{n} brush") else { panic!("{ok:?}") };
+    let Some(Entry::Plural(forms)) = ok.get("{n} widget") else { panic!("{ok:?}") };
     assert_eq!(forms.iter().map(|(f, _)| *f).collect::<Vec<_>>(), [Form::One, Form::Few, Form::Many]);
     assert_eq!(catalogue::parse(Lang::De, "{}").unwrap().len(), 0);
     assert_eq!(catalogue::parse(Lang::De, DE).unwrap().get("Open"), Some(&Entry::Text("Öffnen".into())));
@@ -504,7 +504,11 @@ fn source_keys() -> Vec<(Key, String)> {
 /// Keys the scan cannot see because the code builds them at run time.
 fn foreign_keys() -> Vec<Key> {
     // td_geom::Justify::label, the Texture menu draws them through tr
-    ["Left", "Right", "Top", "Bottom", "Center", "Fit", "Fit W", "Fit H"].into_iter().map(|k| Key::Text(k.into())).collect()
+    let justify = ["Left", "Right", "Top", "Bottom", "Center", "Fit", "Fit W", "Fit H"];
+    // td_doc::terrain::SculptMode::label and td_doc::blend::{BlendMode, Falloff}::label, the tool options bar draws them through tr
+    let sculpt = ["Raise", "Lower", "Smooth", "Flatten", "Noise", "Paint Alpha", "Erase Alpha", "Terrace", "Paint Layer", "Hole", "Unhole"];
+    let blend = ["paint", "erase", "smooth", "sharpen", "noise", "slope", "height", "linear", "constant", "spray"];
+    justify.into_iter().chain(sculpt).chain(blend).map(|k| Key::Text(k.into())).collect()
 }
 
 #[test]
@@ -925,10 +929,26 @@ fn mcp_code_stays_english() {
 }
 
 /// Files whose UI text all goes through the lookup, so a raw literal there is text someone forgot to translate.
-const CONVERTED: &[&str] = &["dialogs.rs"];
+const CONVERTED: &[&str] = &["dialogs.rs", "help.rs", "tools.rs", "welcome.rs", "icons.rs"];
 
 /// Functions of a file that is still being converted, as (file, function name).
-const CONVERTED_FNS: &[(&str, &str)] = &[("app.rs", "menu_bar"), ("app.rs", "help_menu_links")];
+const CONVERTED_FNS: &[(&str, &str)] = &[
+    ("app.rs", "menu_bar"),
+    ("app.rs", "help_menu_links"),
+    ("app.rs", "toolbar"),
+    ("app.rs", "godot_buttons"),
+    ("app.rs", "tool_options"),
+    ("app.rs", "tab_bar"),
+    ("app.rs", "status_bar"),
+    ("app.rs", "stats_text"),
+    ("app.rs", "theme_pref"),
+    ("app.rs", "ui_scale_prefs"),
+    ("app.rs", "prefs_window"),
+    ("app.rs", "mcp_prefs"),
+    ("app.rs", "close_dialog"),
+    ("app.rs", "close_tab_dialog"),
+    ("app.rs", "tab_title"),
+];
 
 /// The lines of function `name`, rustfmt closes it with a brace at the indent of its `fn`, and the number of the line
 /// before the first one.

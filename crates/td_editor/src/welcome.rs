@@ -9,14 +9,17 @@ use td_doc::Map;
 
 use crate::camera::ViewKind;
 use crate::commands::Action;
+use crate::i18n::{en, tr, trf};
 use crate::state::EditorState;
 use crate::theme;
 use crate::tools::ToolKind;
 
 pub const GETTING_STARTED_URL: &str = "https://paraxdev.github.io/TrenchDot/getting-started.html";
 
-pub const CAMERA_3D_HELP: &str = "Hold the right mouse button to look around, WASD flies. Middle drag pans, the wheel moves forward and back.";
-pub const CAMERA_2D_HELP: &str = "Right or middle drag pans, the wheel zooms. Drag on empty space to draw a box brush.";
+pub const CAMERA_3D_HELP: &str = en!("Hold the right mouse button to look around, WASD flies. Middle drag pans, the wheel moves forward and back.");
+pub const CAMERA_2D_HELP: &str = en!("Right or middle drag pans, the wheel zooms. Drag on empty space to draw a box brush.");
+/// The top of a view that its caption, like "3D  Textured", takes and the card stays out of.
+const CAPTION_HEIGHT: f32 = 24.0;
 
 const RESCAN: Duration = Duration::from_secs(3);
 const MAX_MAPS: usize = 200;
@@ -104,12 +107,12 @@ pub fn find_maps(root: &Path) -> Vec<PathBuf> {
 /// Menu entries for `maps`, under a heading per folder.
 pub fn maps_menu(ui: &mut Ui, root: Option<&Path>, maps: &[PathBuf], actions: &mut Vec<Action>) {
     if root.is_none() {
-        ui.label(RichText::new("Open a Godot project to list its maps").weak().italics());
+        ui.label(RichText::new(tr("Open a Godot project to list its maps")).weak().italics());
         return;
     }
 
     if maps.is_empty() {
-        ui.label(RichText::new("No maps in this project yet").weak().italics());
+        ui.label(RichText::new(tr("No maps in this project yet")).weak().italics());
         return;
     }
 
@@ -149,8 +152,11 @@ pub fn view_hint(
     if kind.is_2d() {
         if state.tool == ToolKind::Select && rect.width() > 160.0 && rect.height() > 80.0 {
             let start = start_view == Some(kind);
-            let (text, color) =
-                if start { ("Drag here to draw your first box", theme::colors().yellow) } else { ("Drag here to draw a box", ui.visuals().text_color()) };
+            let (text, color) = if start {
+                (tr("Drag here to draw your first box"), theme::colors().yellow)
+            } else {
+                (tr("Drag here to draw a box"), ui.visuals().text_color())
+            };
             let painter = ui.painter_at(rect);
             let galley = painter.layout_no_wrap(text.into(), FontId::proportional(15.0), color);
             let back = Rect::from_center_size(rect.center(), galley.size() + Vec2::new(20.0, 12.0));
@@ -173,46 +179,48 @@ pub fn view_hint(
     let id = ui.id().with("start_hint");
     let size = ui.data(|d| d.get_temp::<Vec2>(id)).unwrap_or(Vec2::new(width, 180.0));
     let card = Align2::CENTER_CENTER.align_size_within_rect(Vec2::new(width, size.y), rect);
+    let card = card.translate(Vec2::new(0.0, (rect.min.y + CAPTION_HEIGHT - card.min.y).max(0.0)));
     let root = state.game.project_root.clone();
     let shown = ui.scope_builder(egui::UiBuilder::new().max_rect(card), |ui| {
         egui::Frame::popup(ui.style()).inner_margin(12).show(ui, |ui| {
             // Selectable labels would take the clicks, drags and wheel meant for the camera behind the card.
             ui.style_mut().interaction.selectable_labels = false;
             ui.set_width(ui.available_width());
-            ui.label(RichText::new("This is a new, empty map").strong().size(17.0));
+            ui.label(RichText::new(tr("This is a new, empty map")).strong().size(17.0));
             ui.add_space(4.0);
             let place = match start_view {
-                Some(ViewKind::Top) => "in the Top view",
-                Some(ViewKind::Front) => "in the Front view",
-                Some(ViewKind::Side) => "in the Side view",
-                _ => "in this view",
+                Some(ViewKind::Top) => tr("in the Top view"),
+                Some(ViewKind::Front) => tr("in the Front view"),
+                Some(ViewKind::Side) => tr("in the Side view"),
+                _ => tr("in this view"),
             };
             let first = if state.tool == ToolKind::Select {
-                format!("To start, drag {place} to draw your first box.")
+                trf!("To start, drag {place} to draw your first box.", place)
             } else {
-                let keys =
-                    crate::commands::shortcut_text(ui.ctx(), &state.prefs, &Action::SetTool(ToolKind::Select)).map(|k| format!(" ({k})")).unwrap_or_default();
-                format!("To start, pick the Select tool{keys}, then drag {place} to draw your first box.")
+                match crate::commands::shortcut_text(ui.ctx(), &state.prefs, &Action::SetTool(ToolKind::Select)) {
+                    Some(keys) => trf!("To start, pick the Select tool ({keys}), then drag {place} to draw your first box.", keys, place),
+                    None => trf!("To start, pick the Select tool, then drag {place} to draw your first box.", place),
+                }
             };
             ui.label(RichText::new(first).size(15.0).color(theme::colors().yellow));
             ui.add_space(8.0);
             let hollow = match crate::commands::shortcut_text(ui.ctx(), &state.prefs, &Action::CsgHollow) {
-                Some(keys) => format!("Brush > CSG > Hollow ({keys})"),
-                None => "Brush > CSG > Hollow".into(),
+                Some(keys) => trf!("Brush > CSG > Hollow ({keys})", keys),
+                None => tr("Brush > CSG > Hollow").into(),
             };
-            ui.label(format!("Then {hollow} turns the box into a room."));
-            ui.label(RichText::new(CAMERA_3D_HELP).weak());
+            ui.label(trf!("Then {hollow} turns the box into a room.", hollow));
+            ui.label(RichText::new(tr(CAMERA_3D_HELP)).weak());
             ui.add_space(6.0);
             ui.horizontal_wrapped(|ui| {
-                ui.hyperlink_to("Getting Started Guide", GETTING_STARTED_URL).on_hover_text(GETTING_STARTED_URL);
+                ui.hyperlink_to(tr("Getting Started Guide"), GETTING_STARTED_URL).on_hover_text(GETTING_STARTED_URL);
                 let maps = maps.get(ui.ctx(), root.as_deref());
                 if !maps.is_empty() {
-                    ui.menu_button("Open a map from this project", |ui| maps_menu(ui, root.as_deref(), maps, actions))
+                    ui.menu_button(tr("Open a map from this project"), |ui| maps_menu(ui, root.as_deref(), maps, actions))
                         .response
-                        .on_hover_text("See how a finished map is put together");
+                        .on_hover_text(tr("See how a finished map is put together"));
                 }
 
-                if ui.button("Hide tips").on_hover_text("File > Preferences brings them back").clicked() {
+                if ui.button(tr("Hide tips")).on_hover_text(tr("File > Preferences brings them back")).clicked() {
                     state.prefs.start_hints = false;
                 }
             });
@@ -358,6 +366,33 @@ mod tests {
         harness.run();
         assert!(!harness.state().state.prefs.start_hints);
         assert!(harness.query_by_label("This is a new, empty map").is_none());
+    }
+
+    /// Where the card's title and its last row sit in a 3D view at `view`.
+    fn card_in(view: Rect) -> (Rect, Rect) {
+        use egui_kittest::kittest::Queryable;
+        let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(900.0, 900.0)).build_ui_state(
+            |ui, f: &mut Fixture| view_hint(ui, view, ViewKind::Perspective, f.start_view, &mut f.state, &mut f.maps, &mut f.actions),
+            Fixture::new(EditorState::new(Default::default())),
+        );
+        harness.run();
+        let title = harness.get_by_label(tr("This is a new, empty map")).rect();
+        let last = harness.get_by_label(tr("Hide tips")).rect();
+        (title, last)
+    }
+
+    #[test]
+    fn the_card_stays_below_the_view_caption() {
+        let _german = crate::i18n::scope(crate::i18n::Lang::De);
+        let short = Rect::from_min_size(egui::pos2(37.0, 61.0), egui::vec2(492.0, 230.0));
+        let (title, _) = card_in(short);
+        assert!(title.min.y >= short.min.y + CAPTION_HEIGHT + 12.0, "the card leaves the caption free, title at {title:?} in {short:?}");
+
+        let tall = Rect::from_min_size(egui::pos2(37.0, 61.0), egui::vec2(492.0, 470.0));
+        let (title, last) = card_in(tall);
+        let above = title.min.y - 12.0 - tall.min.y;
+        let below = tall.max.y - (last.max.y + 12.0);
+        assert!((above - below).abs() < 4.0, "a card with room stays centered, {above} above and {below} below");
     }
 
     #[test]

@@ -3,17 +3,18 @@
 
 use egui::{Context, Key, Modifiers, Response, RichText, Ui, WidgetText};
 
+use crate::i18n::en;
 use crate::tools::ToolKind;
 
 /// The published manual, built from `docs/`.
 pub const SITE: &str = "https://paraxdev.github.io/TrenchDot/";
 /// Ends the tooltip of anything F1 opens the manual for.
-pub const F1_HINT: &str = "F1: manual";
+pub const F1_HINT: &str = en!("F1: manual");
 /// The click on a toolbar tool that opens its page. egui's command modifier is Cmd on macOS, where Ctrl+click is a right
 /// click.
-pub const MANUAL_CLICK: &str = if cfg!(target_os = "macos") { "Cmd+click" } else { "Ctrl+click" };
+pub const MANUAL_CLICK: &str = if cfg!(target_os = "macos") { en!("Cmd+click") } else { en!("Ctrl+click") };
 /// Ends the tooltip of a toolbar tool.
-pub const TOOL_HINT: &str = if cfg!(target_os = "macos") { "F1 or Cmd+click: manual" } else { "F1 or Ctrl+click: manual" };
+pub const TOOL_HINT: &str = if cfg!(target_os = "macos") { en!("F1 or Cmd+click: manual") } else { en!("F1 or Ctrl+click: manual") };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Topic<'a> {
@@ -204,13 +205,13 @@ pub fn hint(ui: &mut Ui, hint: &str) {
 /// see [`crate::panels::TOOL_HELP`].
 pub fn tool_line(tool: ToolKind) -> &'static str {
     match tool {
-        ToolKind::Select => "Click to pick, drag empty space to draw a brush, drag the selection to move it",
-        ToolKind::Clip => "Click two or three points, Tab picks the side to keep, Enter clips",
-        ToolKind::Vertex => "Drag corners and midpoints, Delete removes vertices",
-        ToolKind::Rotate => "Drag a ring to rotate, Shift for 1° steps",
-        ToolKind::Scale => "Drag a handle, Alt scales from the center",
-        ToolKind::Path => "Click to place path corners, Enter finishes",
-        ToolKind::Measure => "Drag or click two points",
+        ToolKind::Select => en!("Click to pick, drag empty space to draw a brush, drag the selection to move it"),
+        ToolKind::Clip => en!("Click two or three points, Tab picks the side to keep, Enter clips"),
+        ToolKind::Vertex => en!("Drag corners and midpoints, Delete removes vertices"),
+        ToolKind::Rotate => en!("Drag a ring to rotate, Shift for 1° steps"),
+        ToolKind::Scale => en!("Drag a handle, Alt scales from the center"),
+        ToolKind::Path => en!("Click to place path corners, Enter finishes"),
+        ToolKind::Measure => en!("Drag or click two points"),
         _ => "",
     }
 }
@@ -308,7 +309,12 @@ mod tests {
         let with_options = [ToolKind::Mesh, ToolKind::Texture, ToolKind::Paint, ToolKind::Sculpt, ToolKind::Blend, ToolKind::Scatter, ToolKind::Volume];
         for tool in ToolKind::all().into_iter().filter(|t| !with_options.contains(t)) {
             assert!(!tool_line(tool).is_empty(), "{tool:?} shows a line where other tools show options");
-            assert!(tool_line(tool).len() < 90, "{tool:?}: one short line, the tooltip has the details");
+            for lang in crate::i18n::Lang::ALL {
+                let _scope = crate::i18n::scope(lang);
+                let limit = if matches!(lang, crate::i18n::Lang::ZhHans | crate::i18n::Lang::Ja) { 54 } else { 90 };
+                let shown = crate::i18n::tr(tool_line(tool));
+                assert!(shown.chars().count() < limit, "{} {tool:?}: one short line, the tooltip has the details", lang.code());
+            }
         }
 
         assert_eq!(url(Tool(ToolKind::Clip)).unwrap(), format!("{SITE}editor/brushes.html#reshape"));
