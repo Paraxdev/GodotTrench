@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """Checks the built docs site for what `zensical build --strict` lets through: a mistyped page in SUMMARY.md, which
 still renders as a dead nav link, an image or file that does not exist, a link to a missing heading, and a page that
-is built but has no place in the navigation. Links to other sites are not checked.
+is built but has no place in the navigation. Every language of the site is checked, the language button's links
+included. Links to other sites are not checked.
 
-  zensical build --clean --strict
+  python3 tools/build_site.py
   python3 tools/check_site.py   # exit 1 on any problem
 """
 import os
 import pathlib
 import sys
-import tomllib
 from html.parser import HTMLParser
 from urllib.parse import unquote, urlsplit
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+import build_site
 
 
 class Page(HTMLParser):
@@ -39,13 +39,10 @@ class Page(HTMLParser):
             self.nav.append(a["href"])
 
 
-def main():
-    config = tomllib.loads((ROOT / "zensical.toml").read_text(encoding="utf-8"))["project"]
-    site = (ROOT / config.get("site_dir", "site")).resolve()
-    base = urlsplit(config["site_url"]).path
-    if not (site / "index.html").is_file():
-        sys.exit(f"{site} has no index.html, build the site first")
-
+def check(site, base, roots):
+    """The problems of the site in `site`, published below the path `base`. `roots` are the folders of its languages
+    inside `site`, "" for the English one at the top and a code like "de" for the others."""
+    site = site.resolve()
     pages = {}
     for path in site.rglob("*.html"):
         page = Page()
@@ -95,15 +92,36 @@ def main():
         others = f" and {len(rest)} other page{'s' if len(rest) > 1 else ''}" if rest else ""
         problems.append(f"{problem}, linked from {first}{others}")
 
-    index = site / "index.html"
-    in_nav = {index} | {target(index, url)[0] for url in pages[index].nav}
-    for path in sorted(set(pages) - in_nav):
-        if name(path) != "404.html":
-            problems.append(f"{name(path)} is not in the navigation, add its page to docs/SUMMARY.md")
+    # A page belongs to the language whose folder it is in, each language has its own navigation.
+    folders = sorted((root for root in roots if root), key=len, reverse=True)
 
+    def root_of(path):
+        return next((root for root in folders if name(path).startswith(root + "/")), "")
+
+    for root in roots:
+        index = (site / root / "index.html").resolve()
+        if index not in pages:
+            problems.append(f"{name(index)} does not exist, build the languages with tools/build_site.py")
+            continue
+        in_nav = {index} | {target(index, url)[0] for url in pages[index].nav}
+        for path in sorted(p for p in pages if root_of(p) == root and p not in in_nav):
+            if path.relative_to(site / root).as_posix() != "404.html":
+                problems.append(f"{name(path)} is not in the navigation, add its page to docs/SUMMARY.md")
+    return problems
+
+
+def main():
+    config = build_site.load_config()
+    project = config["project"]
+    site = (build_site.ROOT / project.get("site_dir", "site")).resolve()
+    if not (site / "index.html").is_file():
+        sys.exit(f"{site} has no index.html, build the site first")
+    roots = [""] + [code for code, _, _ in build_site.languages(config)]
+    problems = check(site, build_site.base_path(config), roots)
+    count = sum(1 for _ in site.rglob("*.html"))
     for problem in problems:
         print(problem)
-    print(f"{len(pages)} pages checked, {len(problems)} problem{'' if len(problems) == 1 else 's'}")
+    print(f"{count} pages checked, {len(problems)} problem{'' if len(problems) == 1 else 's'}")
     sys.exit(1 if problems else 0)
 
 

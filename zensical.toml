@@ -17,9 +17,52 @@ exclude_docs = """
 SUMMARY.md
 requirements.txt
 overrides/
+/translations/
 """
 extra_css = ["stylesheets/td.css"]
 extra_javascript = ["javascripts/td.js"]
+
+# One entry per language, the language button of every build lists them. The folder after /TrenchDot/ is the editor's
+# language code, the last value is the hreflang. tools/build_site.py builds each language into that folder.
+[[project.extra.alternate]]
+name = "English"
+link = "/TrenchDot/"
+lang = "en"
+
+[[project.extra.alternate]]
+name = "Deutsch"
+link = "/TrenchDot/de/"
+lang = "de"
+
+[[project.extra.alternate]]
+name = "Français"
+link = "/TrenchDot/fr/"
+lang = "fr"
+
+[[project.extra.alternate]]
+name = "Español"
+link = "/TrenchDot/es/"
+lang = "es"
+
+[[project.extra.alternate]]
+name = "Português"
+link = "/TrenchDot/pt/"
+lang = "pt-BR"
+
+[[project.extra.alternate]]
+name = "Русский"
+link = "/TrenchDot/ru/"
+lang = "ru"
+
+[[project.extra.alternate]]
+name = "简体中文"
+link = "/TrenchDot/zh-Hans/"
+lang = "zh-Hans"
+
+[[project.extra.alternate]]
+name = "日本語"
+link = "/TrenchDot/ja/"
+lang = "ja"
 
 [project.theme]
 custom_dir = "docs/overrides"
@@ -29,6 +72,7 @@ favicon = "assets/logo.png"
 # System fonts, so pages load nothing from Google Fonts.
 font = false
 features = [
+  "announce.dismiss",
   "content.action.edit",
   "content.code.copy",
   "content.tooltips",

@@ -6,13 +6,17 @@ on:
     paths:
       - "docs/**"
       - "zensical.toml"
+      - "tools/build_site.py"
       - "tools/check_site.py"
+      - "tools/test_docs.py"
       - ".github/workflows/pages.yml"
   pull_request:
     paths:
       - "docs/**"
       - "zensical.toml"
+      - "tools/build_site.py"
       - "tools/check_site.py"
+      - "tools/test_docs.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -40,8 +44,12 @@ jobs:
         run: pip install -r docs/requirements.txt
 
       - name: Build the site
-        # --strict fails on links to pages or headings that do not exist. The output lands in _site.
-        run: zensical build --clean --strict
+        # English first, then every language. Each build is strict, so it fails on links to pages or headings that do
+        # not exist. The output lands in _site.
+        run: python tools/build_site.py
+
+      - name: Test the docs tools and the built site
+        run: python tools/test_docs.py
 
       - name: Check links in the site
         # What --strict lets through: a mistyped page in SUMMARY.md, a missing image, a page left out of the nav.

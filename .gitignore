@@ -20,4 +20,5 @@ plan.md
 
 # Docs site output and the Python environment that builds it. Zensical's .cache/ ignores itself.
 /_site/
+/.site-build/
 /.venv/
