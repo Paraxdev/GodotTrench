@@ -1,5 +1,7 @@
 //! Inspector building blocks: label and value rows, axis colored vector fields and color fields.
 
+use egui::ecolor::{self, Hsva};
+use egui::widgets::color_picker;
 use egui::{Align, Color32, FontId, Layout, Pos2, Rect, RichText, Stroke, Ui, Vec2, WidgetText};
 use td_formats::PropertyType;
 
@@ -128,20 +130,30 @@ pub fn text_field(ui: &mut Ui, value: &mut String, width: f32) -> bool {
 
 /// Swatch that opens a picker, next to the raw value so it can also be typed.
 pub fn color_input(ui: &mut Ui, value: &mut String, width: f32) -> bool {
-    let (mut rgb, unit) = parse_color(value);
+    let mut hsva = picker_hsva(value);
     let swatch_w = 36.0f32.min(width * 0.35);
     let picked = ui
         .scope(|ui| {
             ui.spacing_mut().interact_size = Vec2::new(swatch_w, ROW_HEIGHT - 4.0);
             ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::new(1.0, theme::colors().gray_3);
-            ui.color_edit_button_rgb(&mut rgb).changed()
+            color_picker::color_edit_button_hsva(ui, &mut hsva, color_picker::Alpha::Opaque).changed()
         })
         .inner;
     if picked {
-        *value = format_color(rgb, unit);
+        apply_pick(value, hsva);
     }
 
     picked | text_field(ui, value, width - swatch_w - ui.spacing().item_spacing.x)
+}
+
+// Map colors are sRGB like Godot's, the picker's own rgb buttons would read them as linear.
+fn picker_hsva(value: &str) -> Hsva {
+    Hsva::from_rgb(parse_color(value).0.map(ecolor::linear_from_gamma))
+}
+
+fn apply_pick(value: &mut String, hsva: Hsva) {
+    let unit = parse_color(value).1;
+    *value = format_color(hsva.to_rgb().map(ecolor::gamma_from_linear), unit);
 }
 
 /// Colors are "r g b" in 0 to 255, or 0 to 1 when every part is at most 1 and one has a decimal point.
@@ -390,5 +402,13 @@ mod tests {
         assert_eq!(format_color([1.0, 0.0, 0.0], true), "1.0 0.0 0.0");
         assert_eq!(format_number(-35.0), "-35");
         assert_eq!(format_number(0.0002), "0.0002");
+    }
+
+    #[test]
+    fn color_picker_reads_values_as_srgb() {
+        assert_eq!(picker_hsva("89 23 72").to_srgb(), [89, 23, 72]);
+        let mut value = "89 23 72".to_string();
+        apply_pick(&mut value, Hsva::from_srgb([200, 100, 50]));
+        assert_eq!(value, "200 100 50");
     }
 }
