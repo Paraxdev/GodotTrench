@@ -2,7 +2,7 @@
 
 use egui::ecolor::{self, Hsva};
 use egui::widgets::color_picker;
-use egui::{Align, Color32, FontId, Layout, Pos2, Rect, RichText, Stroke, Ui, Vec2, WidgetText};
+use egui::{Align, Color32, FontId, Id, Layout, Pos2, Rect, RichText, Stroke, Ui, Vec2, WidgetText};
 use td_formats::PropertyType;
 
 use crate::theme;
@@ -130,7 +130,7 @@ pub fn text_field(ui: &mut Ui, value: &mut String, width: f32) -> bool {
 
 /// Swatch that opens a picker, next to the raw value so it can also be typed.
 pub fn color_input(ui: &mut Ui, value: &mut String, width: f32) -> bool {
-    let mut hsva = picker_hsva(value);
+    let mut hsva = picker_hsva(ui.ctx(), value);
     let swatch_w = 36.0f32.min(width * 0.35);
     let picked = ui
         .scope(|ui| {
@@ -140,20 +140,31 @@ pub fn color_input(ui: &mut Ui, value: &mut String, width: f32) -> bool {
         })
         .inner;
     if picked {
-        apply_pick(value, hsva);
+        apply_pick(ui.ctx(), value, hsva);
     }
 
     picked | text_field(ui, value, width - swatch_w - ui.spacing().item_spacing.x)
 }
 
-// Map colors are sRGB like Godot's, the picker's own rgb buttons would read them as linear.
-fn picker_hsva(value: &str) -> Hsva {
-    Hsva::from_rgb(parse_color(value).0.map(ecolor::linear_from_gamma))
+// Map colors are sRGB like Godot's. Black, white and grays have no hue, and the value comes back through rounded text,
+// so the picker remembers its last Hsva per text, or the hue would snap to red on the next frame.
+fn picker_hsva(ctx: &egui::Context, value: &str) -> Hsva {
+    let remembered = ctx.data_mut(|d| {
+        let memory = d.get_temp_mut_or_default::<Vec<(String, Hsva)>>(Id::new("color_input_hue"));
+        memory.iter().find(|(text, _)| text == value).map(|(_, hsva)| *hsva)
+    });
+    remembered.unwrap_or_else(|| Hsva::from_rgb(parse_color(value).0.map(ecolor::linear_from_gamma)))
 }
 
-fn apply_pick(value: &mut String, hsva: Hsva) {
+fn apply_pick(ctx: &egui::Context, value: &mut String, hsva: Hsva) {
     let unit = parse_color(value).1;
     *value = format_color(hsva.to_rgb().map(ecolor::gamma_from_linear), unit);
+    ctx.data_mut(|d| {
+        let memory = d.get_temp_mut_or_default::<Vec<(String, Hsva)>>(Id::new("color_input_hue"));
+        memory.retain(|(text, _)| text != value);
+        memory.insert(0, (value.clone(), hsva));
+        memory.truncate(16);
+    });
 }
 
 /// Colors are "r g b" in 0 to 255, or 0 to 1 when every part is at most 1 and one has a decimal point.
@@ -406,9 +417,30 @@ mod tests {
 
     #[test]
     fn color_picker_reads_values_as_srgb() {
-        assert_eq!(picker_hsva("89 23 72").to_srgb(), [89, 23, 72]);
+        let ctx = egui::Context::default();
+        assert_eq!(picker_hsva(&ctx, "89 23 72").to_srgb(), [89, 23, 72]);
         let mut value = "89 23 72".to_string();
-        apply_pick(&mut value, Hsva::from_srgb([200, 100, 50]));
+        apply_pick(&ctx, &mut value, Hsva::from_srgb([200, 100, 50]));
         assert_eq!(value, "200 100 50");
+    }
+
+    #[test]
+    fn color_picker_keeps_its_hue_on_black_white_and_gray() {
+        let ctx = egui::Context::default();
+        let green = Hsva::from_srgb([40, 200, 60]);
+        for (v, s, text) in [(0.0, 1.0, "0 0 0"), (1.0, 0.0, "255 255 255"), (0.5, 0.0, "188 188 188")] {
+            let mut value = "40 200 60".to_string();
+            apply_pick(&ctx, &mut value, Hsva { v, s, ..green });
+            assert_eq!(value, text);
+            let back = picker_hsva(&ctx, &value);
+            assert_eq!((back.h, back.s, back.v), (green.h, s, v), "{text}");
+        }
+
+        let mut value = "0.2 0.4 0.6".to_string();
+        apply_pick(&ctx, &mut value, Hsva { v: 0.0, ..green });
+        assert_eq!(value, "0.0 0.0 0.0");
+        assert_eq!(picker_hsva(&ctx, &value).h, green.h);
+
+        assert_eq!(picker_hsva(&egui::Context::default(), "0 0 0").h, 0.0, "a typed gray has no hue to keep");
     }
 }
